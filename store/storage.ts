@@ -1,28 +1,40 @@
-import { MMKV } from "react-native-mmkv";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
-export const mmkv = new MMKV({ id: "dashboarr-config" });
+// In-memory cache — populated once during initStorage(), then all reads are sync
+const cache: Record<string, string> = {};
 
-// --- MMKV helpers (non-sensitive config) ---
+export async function initStorage(): Promise<void> {
+  const keys = await AsyncStorage.getAllKeys();
+  const entries = await AsyncStorage.multiGet(keys as string[]);
+  for (const [key, value] of entries) {
+    if (key && value !== null) cache[key] = value;
+  }
+}
+
+// --- Sync helpers (read from cache, write-through to AsyncStorage) ---
 
 export function getString(key: string): string | undefined {
-  return mmkv.getString(key);
+  return cache[key];
 }
 
 export function setString(key: string, value: string): void {
-  mmkv.set(key, value);
+  cache[key] = value;
+  AsyncStorage.setItem(key, value);
 }
 
 export function getBoolean(key: string): boolean {
-  return mmkv.getBoolean(key) ?? false;
+  return cache[key] === "true";
 }
 
 export function setBoolean(key: string, value: boolean): void {
-  mmkv.set(key, value);
+  cache[key] = String(value);
+  AsyncStorage.setItem(key, String(value));
 }
 
 export function deleteKey(key: string): void {
-  mmkv.delete(key);
+  delete cache[key];
+  AsyncStorage.removeItem(key);
 }
 
 // --- SecureStore helpers (API keys, passwords) ---
@@ -39,10 +51,10 @@ export async function deleteSecret(key: string): Promise<void> {
   await SecureStore.deleteItemAsync(key);
 }
 
-// --- JSON helpers for MMKV ---
+// --- JSON helpers ---
 
 export function getJSON<T>(key: string): T | undefined {
-  const raw = mmkv.getString(key);
+  const raw = cache[key];
   if (!raw) return undefined;
   try {
     return JSON.parse(raw) as T;
@@ -52,5 +64,7 @@ export function getJSON<T>(key: string): T | undefined {
 }
 
 export function setJSON(key: string, value: unknown): void {
-  mmkv.set(key, JSON.stringify(value));
+  const json = JSON.stringify(value);
+  cache[key] = json;
+  AsyncStorage.setItem(key, json);
 }

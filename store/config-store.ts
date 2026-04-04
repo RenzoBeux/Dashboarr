@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  initStorage,
   getJSON,
   setJSON,
   getBoolean,
@@ -15,8 +16,9 @@ import {
   SERVICE_DEFAULTS,
   STORAGE_KEYS,
   SECRET_PREFIX,
+  DEFAULT_DASHBOARD_ORDER,
 } from "@/lib/constants";
-import type { ServiceId } from "@/lib/constants";
+import type { ServiceId, DashboardCardId } from "@/lib/constants";
 
 export interface ServiceConfig {
   enabled: boolean;
@@ -37,6 +39,7 @@ interface ConfigState {
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
   homeSSID: string;
+  dashboardOrder: DashboardCardId[];
   hydrated: boolean;
 }
 
@@ -47,6 +50,7 @@ interface ConfigActions {
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
   setAutoSwitch: (enabled: boolean) => void;
   setHomeSSID: (ssid: string) => void;
+  setDashboardOrder: (order: DashboardCardId[]) => void;
   getActiveUrl: (id: ServiceId) => string;
 }
 
@@ -84,10 +88,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   secrets: emptySecrets(),
   autoSwitchNetwork: false,
   homeSSID: "",
+  dashboardOrder: DEFAULT_DASHBOARD_ORDER,
   hydrated: false,
 
   hydrate: async () => {
-    // Load service configs from MMKV
+    // Populate in-memory cache from AsyncStorage
+    await initStorage();
+
+    // Load service configs
     const services = { ...defaultServices() };
     for (const id of SERVICE_IDS) {
       const stored = getJSON<ServiceConfig>(`${STORAGE_KEYS.services}.${id}`);
@@ -111,8 +119,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
     const homeSSID = getString(STORAGE_KEYS.homeSSID) ?? "";
+    const storedOrder = getJSON<DashboardCardId[]>(STORAGE_KEYS.dashboardOrder);
+    const dashboardOrder = storedOrder ?? DEFAULT_DASHBOARD_ORDER;
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, hydrated: true });
+    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, hydrated: true });
   },
 
   updateService: (id, config) => {
@@ -151,6 +161,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   setHomeSSID: (ssid) => {
     setString(STORAGE_KEYS.homeSSID, ssid);
     set({ homeSSID: ssid });
+  },
+
+  setDashboardOrder: (order) => {
+    setJSON(STORAGE_KEYS.dashboardOrder, order);
+    set({ dashboardOrder: order });
   },
 
   getActiveUrl: (id) => {

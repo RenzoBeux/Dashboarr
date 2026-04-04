@@ -4,11 +4,17 @@ import {
   getRequestCount,
   searchMedia,
   getTrending,
+  getPopularMovies,
+  getPopularTV,
+  getUpcomingMovies,
   requestMovie,
   requestTV,
   approveRequest,
   declineRequest,
+  getMovieDetails,
+  getTVDetails,
 } from "@/services/overseerr-api";
+import type { OverseerrMediaType } from "@/lib/types";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 
@@ -47,13 +53,53 @@ export function useOverseerrSearch(query: string) {
   });
 }
 
+export function useOverseerrMediaDetails(tmdbId: number, mediaType: OverseerrMediaType) {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "mediaDetails", mediaType, tmdbId],
+    queryFn: () => mediaType === "movie" ? getMovieDetails(tmdbId) : getTVDetails(tmdbId),
+    staleTime: 600000, // 10 min — titles don't change
+    enabled,
+  });
+}
+
 export function useOverseerrTrending() {
   const enabled = useOverseerrEnabled();
   return useQuery({
     queryKey: ["overseerr", "trending"],
-    queryFn: getTrending,
+    queryFn: () => getTrending(),
     enabled,
     staleTime: 300000, // 5 min
+  });
+}
+
+export function useOverseerrPopularMovies() {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "popularMovies"],
+    queryFn: () => getPopularMovies(),
+    enabled,
+    staleTime: 300000,
+  });
+}
+
+export function useOverseerrPopularTV() {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "popularTV"],
+    queryFn: () => getPopularTV(),
+    enabled,
+    staleTime: 300000,
+  });
+}
+
+export function useOverseerrUpcomingMovies() {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "upcomingMovies"],
+    queryFn: () => getUpcomingMovies(),
+    enabled,
+    staleTime: 300000,
   });
 }
 

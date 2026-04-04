@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 
-type BadgeVariant = "default" | "downloading" | "seeding" | "paused" | "missing" | "wanted" | "warning" | "error" | "success";
+type BadgeVariant = "default" | "downloading" | "seeding" | "paused" | "missing" | "wanted" | "warning" | "error" | "success" | "info";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   default: "bg-zinc-700",
@@ -12,6 +12,7 @@ const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   wanted: "bg-orange-600",
   error: "bg-red-600",
   success: "bg-green-600",
+  info: "bg-blue-600",
 };
 
 interface BadgeProps {

@@ -63,6 +63,11 @@ export async function serviceRequest<T>(
   if (serviceId === "qbittorrent") {
     // qBittorrent uses cookie-based auth — handled by the cookie jar
     // The login function must be called first to establish the session
+  } else if (serviceId === "glances") {
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
   } else if (serviceId === "plex") {
     if (secrets.apiKey) {
       headers.set("X-Plex-Token", secrets.apiKey);
@@ -106,23 +111,40 @@ export async function serviceRequest<T>(
 
 /**
  * Ping a service to check connectivity. Returns response time in ms or null if offline.
+ * Pass `urlOverride` to test a specific URL (e.g. unsaved form value) instead of the stored one.
  */
-export async function pingService(serviceId: ServiceId): Promise<number | null> {
+export async function pingService(serviceId: ServiceId, urlOverride?: string): Promise<number | null> {
   const store = useConfigStore.getState();
   const config = store.services[serviceId];
+  const secrets = store.secrets[serviceId];
+  const defaults = SERVICE_DEFAULTS[serviceId];
 
-  if (!config.enabled) return null;
-
-  const baseUrl = store.getActiveUrl(serviceId);
+  const baseUrl = urlOverride ?? store.getActiveUrl(serviceId);
   if (!baseUrl) return null;
+
+  const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+
+  const headers = new Headers();
+  if (serviceId === "plex") {
+    if (secrets.apiKey) headers.set("X-Plex-Token", secrets.apiKey);
+    headers.set("Accept", "application/json");
+  } else if (serviceId === "glances") {
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+  } else if (serviceId !== "qbittorrent") {
+    if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
+  }
 
   const start = Date.now();
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    await fetch(baseUrl, { method: "HEAD", signal: controller.signal });
+    const response = await fetch(url, { method: "GET", headers, signal: controller.signal });
     clearTimeout(timeoutId);
-    return Date.now() - start;
+    // Any HTTP response (even 4xx) means the service is reachable
+    return response.status < 500 ? Date.now() - start : null;
   } catch {
     return null;
   }

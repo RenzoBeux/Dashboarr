@@ -5,6 +5,8 @@ import type {
   OverseerrRequest,
   OverseerrRequestCount,
   OverseerrTrendingResult,
+  OverseerrMovieDetails,
+  OverseerrTVDetails,
 } from "@/lib/types";
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -43,8 +45,28 @@ export function searchMedia(
 
 // --- Trending / Discover ---
 
-export function getTrending(): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/trending");
+export function getTrending(page = 1): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/trending", {
+    params: { page },
+  });
+}
+
+export function getPopularMovies(page = 1): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/movies", {
+    params: { page },
+  });
+}
+
+export function getPopularTV(page = 1): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/tv", {
+    params: { page },
+  });
+}
+
+export function getUpcomingMovies(page = 1): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/movies/upcoming", {
+    params: { page },
+  });
 }
 
 export function getRecentlyAdded(): Promise<OverseerrSearchResponse> {
@@ -86,6 +108,16 @@ export function declineRequest(requestId: number): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", `/request/${requestId}/decline`, {
     method: "POST",
   });
+}
+
+// --- Media Details ---
+
+export function getMovieDetails(tmdbId: number): Promise<OverseerrMovieDetails> {
+  return serviceRequest<OverseerrMovieDetails>("overseerr", `/movie/${tmdbId}`);
+}
+
+export function getTVDetails(tmdbId: number): Promise<OverseerrTVDetails> {
+  return serviceRequest<OverseerrTVDetails>("overseerr", `/tv/${tmdbId}`);
 }
 
 // --- Helpers ---

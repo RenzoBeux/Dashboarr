@@ -329,6 +329,20 @@ export interface OverseerrSearchResponse {
   results: OverseerrMediaResult[];
 }
 
+export interface OverseerrMovieDetails {
+  id: number;
+  title: string;
+  posterPath?: string;
+  releaseDate?: string;
+}
+
+export interface OverseerrTVDetails {
+  id: number;
+  name: string;
+  posterPath?: string;
+  firstAirDate?: string;
+}
+
 export interface OverseerrTrendingResult extends OverseerrMediaResult {}
 
 export interface OverseerrRequestCount {
@@ -581,6 +595,61 @@ export interface PlexSessionsResponse {
     size: number;
     Metadata?: PlexSession[];
   };
+}
+
+// --- Glances Types ---
+
+export interface GlancesCpu {
+  total: number;
+  user: number;
+  system: number;
+  idle: number;
+  iowait: number;
+  cpucore: number;
+}
+
+export interface GlancesMem {
+  total: number;
+  used: number;
+  free: number;
+  available: number;
+  percent: number;
+  cached: number;
+  buffers: number;
+}
+
+export interface GlancesFsItem {
+  device_name: string;
+  mnt_point: string;
+  fs_type: string;
+  size: number;
+  used: number;
+  free: number;
+  percent: number;
+}
+
+export interface GlancesPerCpuItem {
+  cpu_number: number;
+  total: number;
+  user: number;
+  system: number;
+  idle: number;
+}
+
+export interface GlancesLoad {
+  min1: number;
+  min5: number;
+  min15: number;
+  cpucore: number;
+}
+
+export interface GlancesDiskIOItem {
+  disk_name: string;
+  read_bytes: number;
+  write_bytes: number;
+  read_count: number;
+  write_count: number;
+  time_since_update: number;
 }
 
 // --- Shared Types ---

@@ -14,12 +14,12 @@ Inspired by nzb360. No monetization, no feedback system — pure functionality.
 7. Plex (pkex) — media consumption layer
 
 ## Tech Stack
-- **Framework:** Expo SDK 52 (React Native) — managed workflow
-- **Routing:** Expo Router v4 (file-based, built on React Navigation)
+- **Framework:** Expo SDK 54 (React Native 0.81) — managed workflow
+- **Routing:** Expo Router v6 (file-based, built on React Navigation)
 - **Styling:** NativeWind v4 (Tailwind CSS for React Native)
 - **Data Fetching:** TanStack Query v5 (polling, caching, mutations)
 - **State:** Zustand v5 (lightweight local state)
-- **Storage:** react-native-mmkv (config), expo-secure-store (API keys)
+- **Storage:** AsyncStorage (config, cached in-memory), expo-secure-store (API keys)
 - **Icons:** lucide-react-native
 - **Language:** TypeScript (strict)
 - **Architecture:** Pure client — no backend, app talks directly to service APIs
@@ -60,7 +60,7 @@ Inspired by nzb360. No monetization, no feedback system — pure functionality.
 - `components/ui/` — reusable UI primitives
 - `components/dashboard/` — dashboard card components
 - `components/common/` — shared layout components
-- `store/` — Zustand stores + MMKV/SecureStore helpers
+- `store/` — Zustand stores + AsyncStorage/SecureStore helpers
 - `lib/` — types, utils, constants, HTTP client
 - No index files — import directly from source files
 

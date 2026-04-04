@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useConfigStore } from "@/store/config-store";
 import { ErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
@@ -40,18 +41,20 @@ export default function RootLayout() {
   if (!hydrated) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ErrorBoundary>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "#09090b" },
-            animation: "slide_from_right",
-          }}
-        />
-        <ToastContainer />
-      </ErrorBoundary>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <ErrorBoundary>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: "#09090b" },
+              animation: "slide_from_right",
+            }}
+          />
+          <ToastContainer />
+        </ErrorBoundary>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }

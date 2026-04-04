@@ -1,4 +1,5 @@
-import { SafeAreaView, ScrollView, RefreshControl } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ScrollView, RefreshControl } from "react-native";
 import type { ViewProps } from "react-native";
 
 interface ScreenWrapperProps extends ViewProps {

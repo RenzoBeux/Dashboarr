@@ -53,9 +53,9 @@ const COLOR_MAP: Record<ToastType, string> = {
 };
 
 const BG_MAP: Record<ToastType, string> = {
-  success: "bg-green-600/15",
-  error: "bg-red-600/15",
-  info: "bg-blue-600/15",
+  success: "bg-green-950",
+  error: "bg-red-950",
+  info: "bg-blue-950",
 };
 
 function ToastItem({ toast: t, onDismiss }: { toast: Toast; onDismiss: () => void }) {

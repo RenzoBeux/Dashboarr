@@ -1,19 +1,32 @@
-import { useState } from "react";
-import { View, Text, Pressable, Image, Alert } from "react-native";
-import { toast } from "@/components/ui/toast";
-import { Search, Check, X, Clock, Film, Tv } from "lucide-react-native";
+import { useState, useCallback } from "react";
+import { View, Text, Pressable, Image } from "react-native";
+import {
+  Search,
+  Check,
+  X,
+  Film,
+  Tv,
+  Compass,
+  ListFilter,
+} from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MediaRow } from "@/components/overseerr/media-row";
+import { PosterCard } from "@/components/overseerr/poster-card";
+import { MediaDetailModal } from "@/components/overseerr/media-detail-modal";
 import {
   useOverseerrRequests,
   useOverseerrRequestCount,
   useOverseerrSearch,
-  useRequestMovie,
-  useRequestTV,
+  useOverseerrMediaDetails,
+  useOverseerrTrending,
+  useOverseerrPopularMovies,
+  useOverseerrPopularTV,
+  useOverseerrUpcomingMovies,
   useApproveRequest,
   useDeclineRequest,
 } from "@/hooks/use-overseerr";
@@ -22,8 +35,22 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import type { OverseerrRequest, OverseerrMediaResult } from "@/lib/types";
 
-type Tab = "requests" | "search" | "trending";
-type RequestFilter = "all" | "pending" | "approved" | "processing" | "available";
+type Tab = "discover" | "search" | "requests";
+type RequestFilter =
+  | "all"
+  | "pending"
+  | "approved"
+  | "processing"
+  | "available";
+type MediaTypeFilter = "all" | "movie" | "tv";
+
+const GRID_GAP = 12;
+
+const TAB_CONFIG: { key: Tab; label: string; icon: typeof Compass }[] = [
+  { key: "discover", label: "Discover", icon: Compass },
+  { key: "search", label: "Search", icon: Search },
+  { key: "requests", label: "Requests", icon: ListFilter },
+];
 
 const REQUEST_STATUS_LABELS: Record<number, string> = {
   1: "Pending",
@@ -31,48 +58,242 @@ const REQUEST_STATUS_LABELS: Record<number, string> = {
   3: "Declined",
 };
 
-const REQUEST_STATUS_VARIANTS: Record<number, "warning" | "success" | "error"> = {
+const MEDIA_STATUS_LABEL_OVERRIDE: Record<number, string | undefined> = {
+  3: "Processing",
+  4: "Partial",
+  5: "Available",
+};
+
+const MEDIA_STATUS_VARIANT_OVERRIDE: Record<
+  number,
+  "info" | "success" | "warning" | undefined
+> = {
+  3: "info",
+  4: "warning",
+  5: "success",
+};
+
+const REQUEST_STATUS_VARIANTS: Record<
+  number,
+  "warning" | "success" | "error"
+> = {
   1: "warning",
   2: "success",
   3: "error",
 };
 
 export default function RequestsScreen() {
-  const [tab, setTab] = useState<Tab>("requests");
+  const [tab, setTab] = useState<Tab>("discover");
+  const [selectedMedia, setSelectedMedia] =
+    useState<OverseerrMediaResult | null>(null);
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["overseerr"]]);
 
   const overseerrHealth = healthData?.find((s) => s.id === "overseerr");
 
+  const handleMediaPress = useCallback((item: OverseerrMediaResult) => {
+    setSelectedMedia(item);
+  }, []);
+
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Requests" online={overseerrHealth?.online} />
+      <ServiceHeader name="Overseerr" online={overseerrHealth?.online} />
 
+      {/* Tab bar */}
       <View className="flex-row gap-2 mb-4">
-        {(["requests", "search"] as Tab[]).map((t) => (
+        {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
           <Pressable
-            key={t}
-            onPress={() => setTab(t)}
-            className={`px-4 py-2 rounded-full ${
-              tab === t ? "bg-primary" : "bg-surface-light"
+            key={key}
+            onPress={() => setTab(key)}
+            className={`flex-row items-center gap-1.5 px-4 py-2 rounded-full ${
+              tab === key ? "bg-primary" : "bg-surface-light"
             }`}
           >
+            <Icon
+              size={14}
+              color={tab === key ? "#fff" : "#a1a1aa"}
+            />
             <Text
-              className={`text-sm font-medium capitalize ${
-                tab === t ? "text-white" : "text-zinc-400"
+              className={`text-sm font-medium ${
+                tab === key ? "text-white" : "text-zinc-400"
               }`}
             >
-              {t}
+              {label}
             </Text>
           </Pressable>
         ))}
       </View>
 
+      {tab === "discover" && <DiscoverTab onItemPress={handleMediaPress} />}
+      {tab === "search" && <SearchTab onItemPress={handleMediaPress} />}
       {tab === "requests" && <RequestsList />}
-      {tab === "search" && <MediaSearch />}
+
+      <MediaDetailModal
+        item={selectedMedia}
+        visible={!!selectedMedia}
+        onClose={() => setSelectedMedia(null)}
+      />
     </ScreenWrapper>
   );
 }
+
+// ─── Discover Tab ──────────────────────────────────────────────
+
+function DiscoverTab({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const trending = useOverseerrTrending();
+  const popularMovies = useOverseerrPopularMovies();
+  const popularTV = useOverseerrPopularTV();
+  const upcoming = useOverseerrUpcomingMovies();
+
+  return (
+    <View>
+      <MediaRow
+        title="Trending"
+        items={trending.data?.results}
+        isLoading={trending.isLoading}
+        onItemPress={onItemPress}
+      />
+      <MediaRow
+        title="Popular Movies"
+        items={popularMovies.data?.results}
+        isLoading={popularMovies.isLoading}
+        onItemPress={onItemPress}
+      />
+      <MediaRow
+        title="Popular TV Shows"
+        items={popularTV.data?.results}
+        isLoading={popularTV.isLoading}
+        onItemPress={onItemPress}
+      />
+      <MediaRow
+        title="Upcoming Movies"
+        items={upcoming.data?.results}
+        isLoading={upcoming.isLoading}
+        onItemPress={onItemPress}
+      />
+    </View>
+  );
+}
+
+// ─── Search Tab ────────────────────────────────────────────────
+
+function SearchTab({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [mediaFilter, setMediaFilter] = useState<MediaTypeFilter>("all");
+  const { data, isLoading } = useOverseerrSearch(query);
+
+  const results = (data?.results ?? []).filter(
+    (item) => mediaFilter === "all" || item.mediaType === mediaFilter,
+  );
+
+  return (
+    <View>
+      {/* Search input */}
+      <View className="flex-row items-center gap-2 mb-3">
+        <View className="flex-1">
+          <TextInput
+            placeholder="Search movies & shows..."
+            value={query}
+            onChangeText={setQuery}
+            autoFocus
+          />
+        </View>
+        {query.length > 0 && (
+          <Pressable
+            onPress={() => setQuery("")}
+            className="bg-surface-light rounded-xl p-3 active:opacity-70"
+          >
+            <X size={20} color="#a1a1aa" />
+          </Pressable>
+        )}
+      </View>
+
+      {/* Media type filter */}
+      {query.length >= 2 && (
+        <View className="flex-row gap-2 mb-4">
+          {(["all", "movie", "tv"] as MediaTypeFilter[]).map((f) => (
+            <Pressable
+              key={f}
+              onPress={() => setMediaFilter(f)}
+              className={`px-3 py-1.5 rounded-full ${
+                mediaFilter === f ? "bg-primary" : "bg-surface-light"
+              }`}
+            >
+              <Text
+                className={`text-xs font-medium ${
+                  mediaFilter === f ? "text-white" : "text-zinc-400"
+                }`}
+              >
+                {f === "all" ? "All" : f === "movie" ? "Movies" : "TV Shows"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* Loading */}
+      {isLoading && query.length >= 2 && (
+        <Text className="text-zinc-500 text-center py-4">Searching...</Text>
+      )}
+
+      {/* Empty */}
+      {results.length === 0 && query.length >= 2 && !isLoading && (
+        <EmptyState title="No results" message={`Nothing found for "${query}"`} />
+      )}
+
+      {/* Prompt */}
+      {query.length < 2 && !isLoading && (
+        <EmptyState
+          icon={<Search size={32} color="#71717a" />}
+          title="Search for media"
+          message="Type at least 2 characters to search"
+        />
+      )}
+
+      {/* Results grid */}
+      {results.length > 0 && (
+        <View
+          className="flex-row flex-wrap"
+          style={{ gap: GRID_GAP }}
+        >
+          {results.map((item) => (
+            <PosterGridItem
+              key={`${item.mediaType}-${item.id}`}
+              item={item}
+              onPress={onItemPress}
+            />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function PosterGridItem({
+  item,
+  onPress,
+}: {
+  item: OverseerrMediaResult;
+  onPress: (item: OverseerrMediaResult) => void;
+}) {
+  return (
+    <PosterCard
+      item={item}
+      onPress={onPress}
+      size="sm"
+    />
+  );
+}
+
+// ─── Requests Tab ──────────────────────────────────────────────
 
 function RequestsList() {
   const [filter, setFilter] = useState<RequestFilter>("all");
@@ -87,7 +308,9 @@ function RequestsList() {
     <View>
       {/* Filter chips */}
       <View className="flex-row gap-2 mb-4">
-        {(["all", "pending", "approved", "processing"] as RequestFilter[]).map((f) => (
+        {(
+          ["all", "pending", "approved", "processing"] as RequestFilter[]
+        ).map((f) => (
           <Pressable
             key={f}
             onPress={() => setFilter(f)}
@@ -101,7 +324,9 @@ function RequestsList() {
               }`}
             >
               {f}
-              {f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}
+              {f === "pending" && counts?.pending
+                ? ` (${counts.pending})`
+                : ""}
             </Text>
           </Pressable>
         ))}
@@ -110,7 +335,10 @@ function RequestsList() {
       {isLoading ? (
         <Text className="text-zinc-500">Loading...</Text>
       ) : requests.length === 0 ? (
-        <EmptyState title="No requests" message={`No ${filter} requests found`} />
+        <EmptyState
+          title="No requests"
+          message={`No ${filter} requests found`}
+        />
       ) : (
         <View className="gap-3">
           {requests.map((req) => (
@@ -137,153 +365,91 @@ function RequestCard({
   onDecline: () => void;
 }) {
   const isPending = request.status === 1;
-  const statusLabel = REQUEST_STATUS_LABELS[request.status] ?? "Unknown";
-  const statusVariant = REQUEST_STATUS_VARIANTS[request.status] ?? "default";
+  const { data: mediaDetails } = useOverseerrMediaDetails(
+    request.media.tmdbId,
+    request.media.mediaType,
+  );
+
+  const title =
+    (mediaDetails as { title?: string; name?: string } | undefined)?.title ||
+    (mediaDetails as { title?: string; name?: string } | undefined)?.name ||
+    (request.media.mediaType === "movie" ? "Movie" : "TV") +
+      ` #${request.media.tmdbId}`;
+
+  const posterPath = (mediaDetails as { posterPath?: string } | undefined)
+    ?.posterPath;
+  const posterUrl = getPosterUrl(posterPath, "w185");
+
+  const mediaStatusOverride =
+    request.status === 2
+      ? MEDIA_STATUS_LABEL_OVERRIDE[request.media.status]
+      : undefined;
+  const statusLabel =
+    mediaStatusOverride ?? REQUEST_STATUS_LABELS[request.status] ?? "Unknown";
+  const statusVariant: "warning" | "success" | "error" | "info" | "default" =
+    (request.status === 2 &&
+      MEDIA_STATUS_VARIANT_OVERRIDE[request.media.status]) ||
+    REQUEST_STATUS_VARIANTS[request.status] ||
+    "default";
+
   const MediaIcon = request.media.mediaType === "movie" ? Film : Tv;
 
   return (
     <Card>
-      <View className="flex-row items-center justify-between mb-2">
-        <View className="flex-row items-center gap-2">
-          <MediaIcon size={16} color="#a1a1aa" />
-          <Text className="text-zinc-200 text-sm font-medium">
-            {request.media.mediaType === "movie" ? "Movie" : "TV"} #{request.media.tmdbId}
+      <View className="flex-row gap-3">
+        {posterUrl ? (
+          <Image
+            source={{ uri: posterUrl }}
+            className="w-14 h-20 rounded-lg bg-surface-light"
+            resizeMode="cover"
+          />
+        ) : (
+          <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
+            <MediaIcon size={20} color="#71717a" />
+          </View>
+        )}
+
+        <View className="flex-1 justify-center gap-1">
+          <View className="flex-row items-center justify-between gap-2">
+            <Text
+              className="text-zinc-200 text-sm font-medium flex-1"
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+            <Badge label={statusLabel} variant={statusVariant} />
+          </View>
+
+          <Text className="text-zinc-500 text-xs">
+            {request.media.mediaType === "movie" ? "Movie" : "TV"} ·{" "}
+            {request.requestedBy.displayName} ·{" "}
+            {new Date(request.createdAt).toLocaleDateString()}
           </Text>
+
+          {isPending && (
+            <View className="flex-row gap-2 mt-1">
+              <Pressable
+                onPress={onApprove}
+                className="flex-row items-center gap-1 bg-green-600/20 px-3 py-1.5 rounded-lg active:opacity-70"
+              >
+                <Check size={14} color="#22c55e" />
+                <Text className="text-success text-xs font-medium">
+                  Approve
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={onDecline}
+                className="flex-row items-center gap-1 bg-red-600/20 px-3 py-1.5 rounded-lg active:opacity-70"
+              >
+                <X size={14} color="#ef4444" />
+                <Text className="text-danger text-xs font-medium">
+                  Decline
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </View>
-        <Badge label={statusLabel} variant={statusVariant} />
       </View>
-
-      <Text className="text-zinc-500 text-xs mb-2">
-        Requested by {request.requestedBy.displayName} ·{" "}
-        {new Date(request.createdAt).toLocaleDateString()}
-      </Text>
-
-      {isPending && (
-        <View className="flex-row gap-2 mt-1">
-          <Pressable
-            onPress={onApprove}
-            className="flex-row items-center gap-1 bg-green-600/20 px-3 py-1.5 rounded-lg active:opacity-70"
-          >
-            <Check size={14} color="#22c55e" />
-            <Text className="text-success text-xs font-medium">Approve</Text>
-          </Pressable>
-          <Pressable
-            onPress={onDecline}
-            className="flex-row items-center gap-1 bg-red-600/20 px-3 py-1.5 rounded-lg active:opacity-70"
-          >
-            <X size={14} color="#ef4444" />
-            <Text className="text-danger text-xs font-medium">Decline</Text>
-          </Pressable>
-        </View>
-      )}
     </Card>
-  );
-}
-
-function MediaSearch() {
-  const [query, setQuery] = useState("");
-  const { data, isLoading } = useOverseerrSearch(query);
-  const requestMovie = useRequestMovie();
-  const requestTVMutation = useRequestTV();
-
-  const results = data?.results ?? [];
-
-  const handleRequest = (item: OverseerrMediaResult) => {
-    const title = item.title || item.name || "Unknown";
-    Alert.alert("Request", `Request "${title}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Request",
-        onPress: () => {
-          if (item.mediaType === "movie") {
-            requestMovie.mutate(item.id, {
-              onSuccess: () => toast(`${title} has been requested`),
-              onError: () => toast("Failed to request", "error"),
-            });
-          } else {
-            requestTVMutation.mutate(
-              { tvdbId: item.id },
-              {
-                onSuccess: () => toast(`${title} has been requested`),
-                onError: () => toast("Failed to request", "error"),
-              },
-            );
-          }
-        },
-      },
-    ]);
-  };
-
-  return (
-    <View>
-      <TextInput
-        placeholder="Search movies & shows..."
-        value={query}
-        onChangeText={setQuery}
-        autoFocus
-        containerClassName="mb-4"
-      />
-
-      {isLoading && <Text className="text-zinc-500">Searching...</Text>}
-
-      {results.length === 0 && query.length >= 2 && !isLoading && (
-        <EmptyState title="No results" />
-      )}
-
-      <View className="gap-3">
-        {results.map((item) => {
-          const title = item.title || item.name || "Unknown";
-          const posterUrl = getPosterUrl(item.posterPath, "w185");
-          const isAvailable = item.mediaInfo?.status === 5;
-          const isPending = item.mediaInfo?.status === 2;
-
-          return (
-            <Card key={`${item.mediaType}-${item.id}`} className="flex-row gap-3">
-              {posterUrl ? (
-                <Image
-                  source={{ uri: posterUrl }}
-                  className="w-16 h-24 rounded-lg bg-surface-light"
-                  resizeMode="cover"
-                />
-              ) : (
-                <View className="w-16 h-24 rounded-lg bg-surface-light items-center justify-center">
-                  <Film size={20} color="#71717a" />
-                </View>
-              )}
-              <View className="flex-1 justify-center">
-                <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
-                  {title}
-                </Text>
-                <Text className="text-zinc-500 text-xs">
-                  {item.releaseDate?.slice(0, 4) || item.firstAirDate?.slice(0, 4)} ·{" "}
-                  {item.mediaType === "movie" ? "Movie" : "TV"}
-                </Text>
-                {item.overview && (
-                  <Text className="text-zinc-500 text-xs mt-1" numberOfLines={2}>
-                    {item.overview}
-                  </Text>
-                )}
-              </View>
-              {isAvailable ? (
-                <View className="self-center p-2">
-                  <Check size={20} color="#22c55e" />
-                </View>
-              ) : isPending ? (
-                <View className="self-center p-2">
-                  <Clock size={20} color="#f59e0b" />
-                </View>
-              ) : (
-                <Pressable
-                  onPress={() => handleRequest(item)}
-                  className="self-center p-2 active:opacity-70"
-                >
-                  <Search size={20} color="#3b82f6" />
-                </Pressable>
-              )}
-            </Card>
-          );
-        })}
-      </View>
-    </View>
   );
 }

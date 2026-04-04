@@ -9,6 +9,7 @@ import {
   BarChart3,
   Search,
   PlayCircle,
+  Server,
   ChevronRight,
 } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -30,6 +31,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   tautulli: BarChart3,
   prowlarr: Search,
   plex: PlayCircle,
+  glances: Server,
 };
 
 export default function SettingsScreen() {
@@ -126,7 +128,7 @@ function ServiceEditor({
   const [password, setPassword] = useState(secrets.password ?? "");
   const [testing, setTesting] = useState(false);
 
-  const isQB = serviceId === "qbittorrent";
+  const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
   const handleSave = async () => {
     updateService(serviceId, { localUrl, remoteUrl });
@@ -140,7 +142,8 @@ function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    const responseTime = await pingService(serviceId);
+    const testUrl = config.useRemote ? remoteUrl : localUrl;
+    const responseTime = await pingService(serviceId, testUrl || undefined);
     setTesting(false);
 
     if (responseTime !== null) {
