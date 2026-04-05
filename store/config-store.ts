@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
+import * as LocalAuthentication from "expo-local-authentication";
 import {
   initStorage,
   getJSON,
@@ -189,6 +190,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   exportConfig: async () => {
+    const auth = await LocalAuthentication.authenticateAsync({
+      promptMessage: "Authenticate to export configuration",
+      fallbackLabel: "Use passcode",
+    });
+    if (!auth.success) {
+      throw new Error("Authentication required to export");
+    }
+
     const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder } = get();
     const payload: ExportPayload = {
       version: 1,
@@ -201,7 +210,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     };
 
     const file = new File(Paths.cache, "dashboarr-config.json");
-    file.create();
+    file.create({ overwrite: true });
     file.write(JSON.stringify(payload, null, 2));
     await Sharing.shareAsync(file.uri, {
       mimeType: "application/json",

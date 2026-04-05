@@ -50,8 +50,12 @@ export default function SettingsScreen() {
     setExporting(true);
     try {
       await exportConfig();
-    } catch {
-      toast("Failed to export config", "error");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (!msg.includes("Authentication required")) {
+        console.error("Export config error:", e);
+        toast("Failed to export config", "error");
+      }
     } finally {
       setExporting(false);
     }
