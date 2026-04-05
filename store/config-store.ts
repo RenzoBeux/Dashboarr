@@ -1,4 +1,7 @@
 import { create } from "zustand";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import * as DocumentPicker from "expo-document-picker";
 import {
   initStorage,
   getJSON,
@@ -43,6 +46,16 @@ interface ConfigState {
   hydrated: boolean;
 }
 
+export interface ExportPayload {
+  version: 1;
+  exportedAt: string;
+  services: Record<ServiceId, ServiceConfig>;
+  secrets: Record<ServiceId, ServiceSecrets>;
+  autoSwitchNetwork: boolean;
+  homeSSID: string;
+  dashboardOrder: DashboardCardId[];
+}
+
 interface ConfigActions {
   hydrate: () => Promise<void>;
   updateService: (id: ServiceId, config: Partial<ServiceConfig>) => void;
@@ -52,6 +65,8 @@ interface ConfigActions {
   setHomeSSID: (ssid: string) => void;
   setDashboardOrder: (order: DashboardCardId[]) => void;
   getActiveUrl: (id: ServiceId) => string;
+  exportConfig: () => Promise<void>;
+  importConfig: () => Promise<boolean>;
 }
 
 type ConfigStore = ConfigState & ConfigActions;
@@ -171,5 +186,79 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   getActiveUrl: (id) => {
     const service = get().services[id];
     return service.useRemote ? service.remoteUrl : service.localUrl;
+  },
+
+  exportConfig: async () => {
+    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder } = get();
+    const payload: ExportPayload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      services,
+      secrets,
+      autoSwitchNetwork,
+      homeSSID,
+      dashboardOrder,
+    };
+
+    const file = new File(Paths.cache, "dashboarr-config.json");
+    file.create();
+    file.write(JSON.stringify(payload, null, 2));
+    await Sharing.shareAsync(file.uri, {
+      mimeType: "application/json",
+      dialogTitle: "Export Dashboarr Config",
+      UTI: "public.json",
+    });
+  },
+
+  importConfig: async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "application/json",
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return false;
+
+    const pickedFile = new File(result.assets[0].uri);
+    const content = await pickedFile.text();
+    const payload = JSON.parse(content) as ExportPayload;
+
+    if (payload.version !== 1 || !payload.services) {
+      throw new Error("Invalid config file");
+    }
+
+    // Restore services
+    for (const id of SERVICE_IDS) {
+      if (payload.services[id]) {
+        const config = payload.services[id];
+        setJSON(`${STORAGE_KEYS.services}.${id}`, config);
+      }
+    }
+
+    // Restore secrets
+    for (const id of SERVICE_IDS) {
+      const s = payload.secrets?.[id];
+      if (!s) continue;
+      if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${id}.apiKey`, s.apiKey);
+      if (s.username) await setSecret(`${SECRET_PREFIX}.${id}.username`, s.username);
+      if (s.password) await setSecret(`${SECRET_PREFIX}.${id}.password`, s.password);
+    }
+
+    // Restore app settings
+    setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
+    setString(STORAGE_KEYS.homeSSID, payload.homeSSID ?? "");
+    if (payload.dashboardOrder) {
+      setJSON(STORAGE_KEYS.dashboardOrder, payload.dashboardOrder);
+    }
+
+    // Reload everything into the store
+    set({
+      services: payload.services,
+      secrets: payload.secrets ?? emptySecrets(),
+      autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
+      homeSSID: payload.homeSSID ?? "",
+      dashboardOrder: payload.dashboardOrder ?? DEFAULT_DASHBOARD_ORDER,
+    });
+
+    return true;
   },
 }));

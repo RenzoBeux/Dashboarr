@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Alert } from "react-native";
 import { toast } from "@/components/ui/toast";
 import {
   Download,
@@ -11,6 +11,8 @@ import {
   PlayCircle,
   Server,
   ChevronRight,
+  Upload,
+  FolderDown,
 } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -36,9 +38,51 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
 
 export default function SettingsScreen() {
   const [editingService, setEditingService] = useState<ServiceId | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const services = useConfigStore((s) => s.services);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const setAutoSwitch = useConfigStore((s) => s.setAutoSwitch);
+  const exportConfig = useConfigStore((s) => s.exportConfig);
+  const importConfig = useConfigStore((s) => s.importConfig);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportConfig();
+    } catch {
+      toast("Failed to export config", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = () => {
+    Alert.alert(
+      "Import Configuration",
+      "This will overwrite all current settings with the imported configuration. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Import",
+          style: "destructive",
+          onPress: async () => {
+            setImporting(true);
+            try {
+              const success = await importConfig();
+              if (success) {
+                toast("Configuration imported successfully", "success");
+              }
+            } catch {
+              toast("Invalid config file", "error");
+            } finally {
+              setImporting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   if (editingService) {
     return (
@@ -104,6 +148,34 @@ export default function SettingsScreen() {
           );
         })}
       </View>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-6">
+        Backup
+      </Text>
+
+      <View className="flex-row gap-3">
+        <Pressable onPress={handleExport} disabled={exporting} className="flex-1 active:opacity-80">
+          <Card className="flex-row items-center justify-center gap-2">
+            <Upload size={18} color="#a1a1aa" />
+            <Text className="text-zinc-100 text-base">
+              {exporting ? "Exporting..." : "Export"}
+            </Text>
+          </Card>
+        </Pressable>
+
+        <Pressable onPress={handleImport} disabled={importing} className="flex-1 active:opacity-80">
+          <Card className="flex-row items-center justify-center gap-2">
+            <FolderDown size={18} color="#a1a1aa" />
+            <Text className="text-zinc-100 text-base">
+              {importing ? "Importing..." : "Import"}
+            </Text>
+          </Card>
+        </Pressable>
+      </View>
+
+      <Text className="text-zinc-600 text-xs text-center mt-2 mb-4">
+        Export saves all service URLs, API keys, and settings to a JSON file.
+      </Text>
     </ScreenWrapper>
   );
 }

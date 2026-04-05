@@ -64,3 +64,12 @@ export const STORAGE_KEYS = {
 
 // SecureStore key prefix
 export const SECRET_PREFIX = "secrets";
+
+// Standardized icon sizes
+export const ICON = {
+  XS: 12,
+  SM: 16,
+  MD: 20,
+  LG: 24,
+  XL: 32,
+} as const;

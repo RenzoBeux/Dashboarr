@@ -1,4 +1,12 @@
 import { Pressable, Text, ActivityIndicator } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from "react-native-reanimated";
+import { lightHaptic } from "@/lib/haptics";
+
+const SPRING_CONFIG = { damping: 15, stiffness: 200 };
 
 type ButtonVariant = "primary" | "ghost" | "danger" | "outline";
 type ButtonSize = "sm" | "md" | "lg";
@@ -49,27 +57,43 @@ export function Button({
   className = "",
   icon,
 }: ButtonProps) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   const variantStyle = VARIANT_CLASSES[variant];
   const sizeStyle = SIZE_CLASSES[size];
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || loading}
-      className={`flex-row items-center justify-center ${sizeStyle.container} ${variantStyle.container} ${disabled ? "opacity-50" : "active:opacity-80"} ${className}`}
-    >
-      {loading ? (
-        <ActivityIndicator size="small" color="white" />
-      ) : (
-        <>
-          {icon && <>{icon}</>}
-          <Text
-            className={`font-semibold ${sizeStyle.text} ${variantStyle.text} ${icon ? "ml-2" : ""}`}
-          >
-            {label}
-          </Text>
-        </>
-      )}
-    </Pressable>
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        onPress={() => {
+          lightHaptic();
+          onPress();
+        }}
+        onPressIn={() => {
+          scale.value = withSpring(0.97, SPRING_CONFIG);
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, SPRING_CONFIG);
+        }}
+        disabled={disabled || loading}
+        className={`flex-row items-center justify-center ${sizeStyle.container} ${variantStyle.container} ${disabled ? "opacity-50" : ""} ${className}`}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <>
+            {icon && <>{icon}</>}
+            <Text
+              className={`font-semibold ${sizeStyle.text} ${variantStyle.text} ${icon ? "ml-2" : ""}`}
+            >
+              {label}
+            </Text>
+          </>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }

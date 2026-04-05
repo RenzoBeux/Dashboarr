@@ -1,4 +1,4 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import {
   Download,
@@ -11,7 +11,7 @@ import {
 } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import type { ServiceId } from "@/lib/constants";
+import { ICON, type ServiceId } from "@/lib/constants";
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   qbittorrent: Download,
@@ -54,18 +54,25 @@ export function ServiceHealthCard() {
               key={service.id}
               onPress={() => route && router.push(route as any)}
               className="items-center gap-1.5 active:opacity-70"
+              hitSlop={6}
             >
               <View className="relative">
                 <View className="bg-surface-light rounded-xl p-2.5">
-                  <Icon size={22} color="#a1a1aa" />
+                  <Icon size={ICON.LG} color="#a1a1aa" />
                 </View>
                 <View
                   className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${
                     service.online ? "bg-success" : "bg-danger"
                   }`}
+                  style={Platform.OS === "ios" ? {
+                    shadowColor: service.online ? "#22c55e" : "#ef4444",
+                    shadowRadius: 6,
+                    shadowOpacity: 0.6,
+                    shadowOffset: { width: 0, height: 0 },
+                  } : undefined}
                 />
               </View>
-              <Text className="text-zinc-500 text-[10px]">{service.name}</Text>
+              <Text className="text-zinc-500 text-xs">{service.name}</Text>
             </Pressable>
           );
         })}

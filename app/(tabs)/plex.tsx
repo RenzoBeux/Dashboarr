@@ -5,8 +5,10 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import {
   usePlexLibraries,
   usePlexRecentlyAdded,
@@ -34,21 +36,12 @@ export default function PlexScreen() {
 
       <View className="flex-row gap-2 mb-4">
         {(["playing", "recent", "ondeck", "libraries"] as Tab[]).map((t) => (
-          <Pressable
+          <FilterChip
             key={t}
+            label={t === "playing" ? "Now Playing" : t === "ondeck" ? "On Deck" : t.charAt(0).toUpperCase() + t.slice(1)}
+            selected={tab === t}
             onPress={() => setTab(t)}
-            className={`px-3 py-2 rounded-full ${
-              tab === t ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Text
-              className={`text-xs font-medium capitalize ${
-                tab === t ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {t === "playing" ? "Now Playing" : t === "ondeck" ? "On Deck" : t}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -63,7 +56,7 @@ export default function PlexScreen() {
 function NowPlaying() {
   const { data: sessions, isLoading } = usePlexSessions();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={2} />;
   if (!sessions?.length) {
     return (
       <EmptyState
@@ -146,7 +139,18 @@ function SessionCard({ session }: { session: PlexSession }) {
 function RecentlyAdded() {
   const { data: items, isLoading } = usePlexRecentlyAdded();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) {
+    return (
+      <View className="flex-row flex-wrap gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <View key={i} className="w-[30%]">
+            <Skeleton width="100%" height={150} borderRadius={12} />
+            <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
+          </View>
+        ))}
+      </View>
+    );
+  }
   if (!items?.length) {
     return <EmptyState title="Nothing recently added" />;
   }
@@ -163,7 +167,7 @@ function RecentlyAdded() {
 function OnDeck() {
   const { data: items, isLoading } = usePlexOnDeck();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={3} />;
   if (!items?.length) {
     return <EmptyState title="Nothing on deck" />;
   }
@@ -215,7 +219,7 @@ function OnDeck() {
 function Libraries() {
   const { data: libraries, isLoading } = usePlexLibraries();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={3} />;
   if (!libraries?.length) {
     return <EmptyState title="No libraries found" />;
   }

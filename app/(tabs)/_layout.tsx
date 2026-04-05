@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import { LayoutDashboard, Download, LayoutGrid, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { lightHaptic } from "@/lib/haptics";
 
 const TAB_ICON_SIZE = 24;
 const ACTIVE_COLOR = "#3b82f6";
@@ -41,6 +42,7 @@ export default function TabLayout() {
             <LayoutDashboard size={TAB_ICON_SIZE} color={color} />
           ),
         }}
+        listeners={{ tabPress: () => lightHaptic() }}
       />
       <Tabs.Screen
         name="downloads"
@@ -49,6 +51,7 @@ export default function TabLayout() {
             <Download size={TAB_ICON_SIZE} color={color} />
           ),
         }}
+        listeners={{ tabPress: () => lightHaptic() }}
       />
       <Tabs.Screen
         name="services"
@@ -57,6 +60,7 @@ export default function TabLayout() {
             <LayoutGrid size={TAB_ICON_SIZE} color={color} />
           ),
         }}
+        listeners={{ tabPress: () => lightHaptic() }}
       />
       <Tabs.Screen
         name="settings"
@@ -65,6 +69,7 @@ export default function TabLayout() {
             <Settings size={TAB_ICON_SIZE} color={color} />
           ),
         }}
+        listeners={{ tabPress: () => lightHaptic() }}
       />
     </Tabs>
   );

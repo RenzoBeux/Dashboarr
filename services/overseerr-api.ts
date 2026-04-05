@@ -120,6 +120,14 @@ export function getTVDetails(tmdbId: number): Promise<OverseerrTVDetails> {
   return serviceRequest<OverseerrTVDetails>("overseerr", `/tv/${tmdbId}`);
 }
 
+// --- Delete Media (resets Overseerr status so it can be re-requested) ---
+
+export function deleteMedia(mediaId: number): Promise<void> {
+  return serviceRequest<void>("overseerr", `/media/${mediaId}`, {
+    method: "DELETE",
+  });
+}
+
 // --- Helpers ---
 
 export function getPosterUrl(posterPath: string | undefined | null, size: "w185" | "w342" | "w500" = "w342"): string | null {

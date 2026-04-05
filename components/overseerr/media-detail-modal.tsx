@@ -9,6 +9,12 @@ import {
   Dimensions,
 } from "react-native";
 import { X, Star, Check, Clock, Film, Tv, Plus } from "lucide-react-native";
+import { BlurView } from "expo-blur";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from "react-native-reanimated";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -32,6 +38,10 @@ export function MediaDetailModal({
   const requestMovie = useRequestMovie();
   const requestTV = useRequestTV();
   const [requesting, setRequesting] = useState(false);
+  const backdropOpacity = useSharedValue(0);
+  const posterModalOpacity = useSharedValue(0);
+  const backdropFadeStyle = useAnimatedStyle(() => ({ opacity: withTiming(backdropOpacity.value, { duration: 300 }) }));
+  const posterFadeStyle = useAnimatedStyle(() => ({ opacity: withTiming(posterModalOpacity.value, { duration: 400 }) }));
 
   if (!item) return null;
 
@@ -80,16 +90,20 @@ export function MediaDetailModal({
           {/* Backdrop */}
           <View style={{ height: SCREEN_WIDTH * 0.56 }}>
             {backdropUrl ? (
-              <Image
-                source={{ uri: backdropUrl }}
-                className="w-full h-full"
-                resizeMode="cover"
-              />
+              <Animated.View style={backdropFadeStyle} className="w-full h-full">
+                <Image
+                  source={{ uri: backdropUrl }}
+                  className="w-full h-full"
+                  resizeMode="cover"
+                  onLoad={() => { backdropOpacity.value = 1; }}
+                />
+              </Animated.View>
             ) : (
               <View className="w-full h-full bg-surface-light" />
             )}
-            {/* Gradient overlay */}
-            <View className="absolute inset-0 bg-background/60" />
+            <View className="absolute inset-0 bg-background/40">
+              <BlurView intensity={20} tint="dark" style={{ flex: 1 }} />
+            </View>
 
             {/* Close button */}
             <Pressable
@@ -105,12 +119,15 @@ export function MediaDetailModal({
             <View className="flex-row gap-4">
               {/* Poster */}
               {posterUrl ? (
-                <Image
-                  source={{ uri: posterUrl }}
-                  className="w-28 h-42 rounded-xl bg-surface-light"
-                  style={{ width: 112, height: 168 }}
-                  resizeMode="cover"
-                />
+                <Animated.View style={posterFadeStyle}>
+                  <Image
+                    source={{ uri: posterUrl }}
+                    className="w-28 h-42 rounded-xl bg-surface-light"
+                    style={{ width: 112, height: 168 }}
+                    resizeMode="cover"
+                    onLoad={() => { posterModalOpacity.value = 1; }}
+                  />
+                </Animated.View>
               ) : (
                 <View
                   className="rounded-xl bg-surface-light items-center justify-center"

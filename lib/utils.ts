@@ -2,7 +2,7 @@
  * Format bytes to human-readable string (e.g., 1.5 GB)
  */
 export function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return "0 B";
+  if (!bytes) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -83,4 +83,26 @@ export function getDateOffset(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().split("T")[0];
+}
+
+/**
+ * Format audio channels number to label (e.g. 7.1, 5.1, 2.0)
+ */
+export function formatAudioChannels(channels: number): string {
+  if (channels >= 7) return "7.1";
+  if (channels >= 5) return "5.1";
+  if (channels >= 2) return "2.0";
+  return `${channels}`;
+}
+
+/**
+ * Format video resolution string from mediaInfo resolution (e.g. "1920x1080" → "1080p", "3840x2160" → "4K")
+ */
+export function formatResolution(resolution: string): string {
+  const height = parseInt(resolution.split("x")[1] || resolution, 10);
+  if (height >= 2160) return "4K";
+  if (height >= 1080) return "1080p";
+  if (height >= 720) return "720p";
+  if (height >= 480) return "480p";
+  return resolution;
 }

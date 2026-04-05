@@ -13,8 +13,10 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { useTautulliActivity, useTautulliHistory } from "@/hooks/use-tautulli";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
@@ -36,21 +38,12 @@ export default function ActivityScreen() {
 
       <View className="flex-row gap-2 mb-4">
         {(["streams", "history"] as Tab[]).map((t) => (
-          <Pressable
+          <FilterChip
             key={t}
+            label={t.charAt(0).toUpperCase() + t.slice(1)}
+            selected={tab === t}
             onPress={() => setTab(t)}
-            className={`px-4 py-2 rounded-full ${
-              tab === t ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium capitalize ${
-                tab === t ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {t}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -63,7 +56,7 @@ export default function ActivityScreen() {
 function ActiveStreams() {
   const { data: activity, isLoading } = useTautulliActivity();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={3} />;
 
   const sessions = activity?.sessions ?? [];
   const streamCount = parseInt(activity?.stream_count ?? "0", 10);
@@ -171,7 +164,7 @@ function SessionCard({ session }: { session: TautulliSession }) {
 function HistoryList() {
   const { data, isLoading } = useTautulliHistory(30);
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={5} />;
 
   const items = data?.data ?? [];
 

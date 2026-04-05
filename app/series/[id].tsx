@@ -1,58 +1,95 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { View, Text, Image, Pressable } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { ChevronDown, ChevronRight, Check, X } from "lucide-react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import {
   useSonarrSeriesById,
   useSonarrEpisodes,
+  useSonarrEpisodeFiles,
   useToggleEpisodeMonitored,
 } from "@/hooks/use-sonarr";
-import { formatEpisodeCode, formatBytes } from "@/lib/utils";
-import type { SonarrEpisode, SonarrSeason } from "@/lib/types";
+import { formatEpisodeCode, formatBytes, formatAudioChannels, formatResolution } from "@/lib/utils";
+import { useServiceImage } from "@/hooks/use-service-image";
+import type { SonarrEpisode, SonarrEpisodeFile, SonarrSeason } from "@/lib/types";
 
 export default function SeriesDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: series, isLoading } = useSonarrSeriesById(Number(id));
   const { data: episodes } = useSonarrEpisodes(Number(id));
+  const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id));
+
+  const episodeFileMap = useMemo(() => {
+    const map = new Map<number, SonarrEpisodeFile>();
+    episodeFiles?.forEach((f) => map.set(f.id, f));
+    return map;
+  }, [episodeFiles]);
+  const fanartOpacity = useSharedValue(0);
+  const posterOpacity = useSharedValue(0);
+  const fanartStyle = useAnimatedStyle(() => ({ opacity: withTiming(fanartOpacity.value, { duration: 400 }) }));
+  const posterStyle = useAnimatedStyle(() => ({ opacity: withTiming(posterOpacity.value, { duration: 400 }) }));
+
+  const poster = series?.images.find((i) => i.coverType === "poster");
+  const fanart = series?.images.find((i) => i.coverType === "fanart");
+  const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "sonarr");
+  const { src: fanartUrl, onError: onFanartError } = useServiceImage(fanart, "sonarr");
 
   if (isLoading || !series) {
     return (
       <ScreenWrapper>
-        <Text className="text-zinc-400 text-center mt-10">
-          {isLoading ? "Loading..." : "Series not found"}
-        </Text>
+        {isLoading ? (
+          <View>
+            <Skeleton width="100%" height={192} borderRadius={16} />
+            <View className="flex-row gap-4 mt-4">
+              <Skeleton width={96} height={144} borderRadius={12} />
+              <View className="flex-1 gap-2 justify-center">
+                <Skeleton width="80%" height={20} borderRadius={6} />
+                <Skeleton width="40%" height={14} borderRadius={4} />
+                <Skeleton width="60%" height={24} borderRadius={12} />
+              </View>
+            </View>
+          </View>
+        ) : (
+          <Text className="text-zinc-400 text-center mt-10">Series not found</Text>
+        )}
       </ScreenWrapper>
     );
   }
 
-  const poster = series.images.find((i) => i.coverType === "poster");
-  const fanart = series.images.find((i) => i.coverType === "fanart");
-  const posterUrl = poster?.remoteUrl || poster?.url;
-  const fanartUrl = fanart?.remoteUrl || fanart?.url;
-
   return (
     <ScreenWrapper>
-      {/* Backdrop */}
       {fanartUrl && (
-        <Image
-          source={{ uri: fanartUrl }}
-          className="w-full h-48 rounded-2xl mb-4"
-          resizeMode="cover"
-        />
+        <Animated.View style={fanartStyle} className="mb-4">
+          <Image
+            source={{ uri: fanartUrl }}
+            className="w-full h-48 rounded-2xl"
+            resizeMode="cover"
+            onLoad={() => { fanartOpacity.value = 1; }}
+            onError={onFanartError}
+          />
+        </Animated.View>
       )}
 
-      {/* Header */}
       <View className="flex-row gap-4 mb-4">
         {posterUrl && (
-          <Image
-            source={{ uri: posterUrl }}
-            className="w-24 h-36 rounded-xl bg-surface-light"
-            resizeMode="cover"
-          />
+          <Animated.View style={posterStyle}>
+            <Image
+              source={{ uri: posterUrl }}
+              className="w-24 h-36 rounded-xl bg-surface-light"
+              resizeMode="cover"
+              onLoad={() => { posterOpacity.value = 1; }}
+              onError={onPosterError}
+            />
+          </Animated.View>
         )}
         <View className="flex-1 justify-center">
           <Text className="text-zinc-100 text-xl font-bold">{series.title}</Text>
@@ -82,7 +119,7 @@ export default function SeriesDetailScreen() {
       {/* Info */}
       <Card className="mb-4 gap-2">
         <InfoRow label="Status" value={series.status} />
-        <InfoRow label="Size on Disk" value={formatBytes(series.sizeOnDisk)} />
+        <InfoRow label="Size on Disk" value={formatBytes(series.statistics?.sizeOnDisk ?? series.sizeOnDisk)} />
         <InfoRow label="Root Folder" value={series.rootFolderPath} />
       </Card>
 
@@ -100,6 +137,7 @@ export default function SeriesDetailScreen() {
               episodes={episodes?.filter(
                 (ep) => ep.seasonNumber === season.seasonNumber,
               )}
+              episodeFileMap={episodeFileMap}
             />
           ))}
       </View>
@@ -110,9 +148,11 @@ export default function SeriesDetailScreen() {
 function SeasonAccordion({
   season,
   episodes,
+  episodeFileMap,
 }: {
   season: SonarrSeason;
   episodes?: SonarrEpisode[];
+  episodeFileMap: Map<number, SonarrEpisodeFile>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const stats = season.statistics;
@@ -148,7 +188,7 @@ function SeasonAccordion({
           {episodes
             .sort((a, b) => a.episodeNumber - b.episodeNumber)
             .map((ep) => (
-              <EpisodeRow key={ep.id} episode={ep} />
+              <EpisodeRow key={ep.id} episode={ep} episodeFile={ep.episodeFileId ? episodeFileMap.get(ep.episodeFileId) : undefined} />
             ))}
         </View>
       )}
@@ -156,8 +196,9 @@ function SeasonAccordion({
   );
 }
 
-function EpisodeRow({ episode }: { episode: SonarrEpisode }) {
+function EpisodeRow({ episode, episodeFile }: { episode: SonarrEpisode; episodeFile?: SonarrEpisodeFile }) {
   const toggleMonitored = useToggleEpisodeMonitored();
+  const mediaInfo = episodeFile?.mediaInfo;
 
   return (
     <View className="flex-row items-center py-1.5 border-b border-border/30">
@@ -171,9 +212,14 @@ function EpisodeRow({ episode }: { episode: SonarrEpisode }) {
           {formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} —{" "}
           {episode.title}
         </Text>
-        {episode.airDate && (
+        {mediaInfo ? (
+          <Text className="text-zinc-600 text-[10px]">
+            {formatResolution(mediaInfo.resolution)} · {mediaInfo.videoCodec} · {mediaInfo.audioCodec} {formatAudioChannels(mediaInfo.audioChannels)}
+            {mediaInfo.videoDynamicRangeType ? ` · ${mediaInfo.videoDynamicRangeType}` : ""}
+          </Text>
+        ) : episode.airDate ? (
           <Text className="text-zinc-600 text-[10px]">{episode.airDate}</Text>
-        )}
+        ) : null}
       </View>
       <Pressable
         onPress={() =>

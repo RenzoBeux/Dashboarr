@@ -15,6 +15,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { ICON } from "@/lib/constants";
+import { successHaptic, errorHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
 import { PosterCard } from "@/components/overseerr/poster-card";
 import { MediaDetailModal } from "@/components/overseerr/media-detail-modal";
@@ -99,28 +103,15 @@ export default function RequestsScreen() {
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Overseerr" online={overseerrHealth?.online} />
 
-      {/* Tab bar */}
       <View className="flex-row gap-2 mb-4">
         {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
-          <Pressable
+          <FilterChip
             key={key}
+            label={label}
+            selected={tab === key}
             onPress={() => setTab(key)}
-            className={`flex-row items-center gap-1.5 px-4 py-2 rounded-full ${
-              tab === key ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Icon
-              size={14}
-              color={tab === key ? "#fff" : "#a1a1aa"}
-            />
-            <Text
-              className={`text-sm font-medium ${
-                tab === key ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {label}
-            </Text>
-          </Pressable>
+            icon={<Icon size={14} color={tab === key ? "#fff" : "#a1a1aa"} />}
+          />
         ))}
       </View>
 
@@ -216,25 +207,15 @@ function SearchTab({
         )}
       </View>
 
-      {/* Media type filter */}
       {query.length >= 2 && (
         <View className="flex-row gap-2 mb-4">
           {(["all", "movie", "tv"] as MediaTypeFilter[]).map((f) => (
-            <Pressable
+            <FilterChip
               key={f}
+              label={f === "all" ? "All" : f === "movie" ? "Movies" : "TV Shows"}
+              selected={mediaFilter === f}
               onPress={() => setMediaFilter(f)}
-              className={`px-3 py-1.5 rounded-full ${
-                mediaFilter === f ? "bg-primary" : "bg-surface-light"
-              }`}
-            >
-              <Text
-                className={`text-xs font-medium ${
-                  mediaFilter === f ? "text-white" : "text-zinc-400"
-                }`}
-              >
-                {f === "all" ? "All" : f === "movie" ? "Movies" : "TV Shows"}
-              </Text>
-            </Pressable>
+            />
           ))}
         </View>
       )}
@@ -306,34 +287,21 @@ function RequestsList() {
 
   return (
     <View>
-      {/* Filter chips */}
       <View className="flex-row gap-2 mb-4">
         {(
           ["all", "pending", "approved", "processing"] as RequestFilter[]
         ).map((f) => (
-          <Pressable
+          <FilterChip
             key={f}
+            label={`${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`}
+            selected={filter === f}
             onPress={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full ${
-              filter === f ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Text
-              className={`text-xs font-medium capitalize ${
-                filter === f ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {f}
-              {f === "pending" && counts?.pending
-                ? ` (${counts.pending})`
-                : ""}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
       {isLoading ? (
-        <Text className="text-zinc-500">Loading...</Text>
+        <SkeletonCardContent rows={4} />
       ) : requests.length === 0 ? (
         <EmptyState
           title="No requests"
@@ -429,19 +397,27 @@ function RequestCard({
           {isPending && (
             <View className="flex-row gap-2 mt-1">
               <Pressable
-                onPress={onApprove}
-                className="flex-row items-center gap-1 bg-green-600/20 px-3 py-1.5 rounded-lg active:opacity-70"
+                onPress={() => {
+                  successHaptic();
+                  onApprove();
+                }}
+                hitSlop={8}
+                className="flex-row items-center gap-1 bg-green-600/20 px-3.5 py-2 rounded-lg active:opacity-70"
               >
-                <Check size={14} color="#22c55e" />
+                <Check size={ICON.SM} color="#22c55e" />
                 <Text className="text-success text-xs font-medium">
                   Approve
                 </Text>
               </Pressable>
               <Pressable
-                onPress={onDecline}
-                className="flex-row items-center gap-1 bg-red-600/20 px-3 py-1.5 rounded-lg active:opacity-70"
+                onPress={() => {
+                  errorHaptic();
+                  onDecline();
+                }}
+                hitSlop={8}
+                className="flex-row items-center gap-1 bg-red-600/20 px-3.5 py-2 rounded-lg active:opacity-70"
               >
-                <X size={14} color="#ef4444" />
+                <X size={ICON.SM} color="#ef4444" />
                 <Text className="text-danger text-xs font-medium">
                   Decline
                 </Text>

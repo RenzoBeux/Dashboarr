@@ -3,6 +3,7 @@ import {
   getSeries,
   getSeriesById,
   getEpisodes,
+  getEpisodeFiles,
   getCalendar,
   getQueue,
   searchSeries,
@@ -41,6 +42,14 @@ export function useSonarrEpisodes(seriesId: number) {
   return useQuery({
     queryKey: ["sonarr", "episodes", seriesId],
     queryFn: () => getEpisodes(seriesId),
+    enabled: seriesId > 0,
+  });
+}
+
+export function useSonarrEpisodeFiles(seriesId: number) {
+  return useQuery({
+    queryKey: ["sonarr", "episodeFiles", seriesId],
+    queryFn: () => getEpisodeFiles(seriesId),
     enabled: seriesId > 0,
   });
 }

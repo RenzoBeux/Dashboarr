@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, Platform } from "react-native";
 
 interface ServiceHeaderProps {
   name: string;
@@ -13,6 +13,12 @@ export function ServiceHeader({ name, online, className = "" }: ServiceHeaderPro
       {online !== undefined && (
         <View
           className={`w-2.5 h-2.5 rounded-full ${online ? "bg-success" : "bg-danger"}`}
+          style={Platform.OS === "ios" ? {
+            shadowColor: online ? "#22c55e" : "#ef4444",
+            shadowRadius: 6,
+            shadowOpacity: 0.6,
+            shadowOffset: { width: 0, height: 0 },
+          } : undefined}
         />
       )}
     </View>

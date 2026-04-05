@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { GripVertical, ChevronUp, ChevronDown, Pencil, Check } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
+import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
@@ -16,7 +17,7 @@ import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card
 import { ServerStatsCard } from "@/components/dashboard/server-stats-card";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
-import type { DashboardCardId, ServiceId } from "@/lib/constants";
+import { ICON, type DashboardCardId, type ServiceId } from "@/lib/constants";
 
 const CARD_REGISTRY: Record<
   DashboardCardId,
@@ -74,9 +75,9 @@ export default function DashboardScreen() {
             hitSlop={8}
           >
             {editMode ? (
-              <Check size={20} color="#22c55e" />
+              <Check size={ICON.MD} color="#22c55e" />
             ) : (
-              <Pencil size={18} color="#71717a" />
+              <Pencil size={ICON.MD} color="#71717a" />
             )}
           </TouchableOpacity>
         )}
@@ -93,17 +94,35 @@ export default function DashboardScreen() {
         </View>
       ) : (
         <View className="gap-4">
+          {editMode && (
+            <Animated.View
+              entering={FadeIn}
+              exiting={FadeOut}
+              className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2"
+            >
+              <Text className="text-primary text-sm font-medium text-center">
+                Reorder cards by tapping arrows
+              </Text>
+            </Animated.View>
+          )}
           {visibleCards.map((id, visibleIndex) => {
-            const { component: Card, label } = CARD_REGISTRY[id];
+            const { component: CardComponent, label } = CARD_REGISTRY[id];
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleCards.length - 1;
 
             return (
-              <View key={id}>
+              <Animated.View
+                key={id}
+                entering={FadeInDown.delay(visibleIndex * 80).springify()}
+              >
                 {editMode && (
-                  <View className="flex-row items-center justify-between mb-1 px-1">
+                  <Animated.View
+                    entering={FadeIn}
+                    exiting={FadeOut}
+                    className="flex-row items-center justify-between mb-1 px-1"
+                  >
                     <View className="flex-row items-center gap-1.5">
-                      <GripVertical size={14} color="#52525b" />
+                      <GripVertical size={ICON.SM} color="#52525b" />
                       <Text className="text-zinc-500 text-xs font-medium">{label}</Text>
                     </View>
                     <View className="flex-row gap-1">
@@ -113,7 +132,7 @@ export default function DashboardScreen() {
                         className="p-1"
                         hitSlop={6}
                       >
-                        <ChevronUp size={18} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
+                        <ChevronUp size={ICON.MD} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => moveCard(id, "down")}
@@ -121,15 +140,25 @@ export default function DashboardScreen() {
                         className="p-1"
                         hitSlop={6}
                       >
-                        <ChevronDown size={18} color={isLast ? "#3f3f46" : "#a1a1aa"} />
+                        <ChevronDown size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                     </View>
-                  </View>
+                  </Animated.View>
                 )}
-                <CardErrorBoundary>
-                  <Card />
-                </CardErrorBoundary>
-              </View>
+                <View
+                  style={editMode ? {
+                    borderWidth: 1,
+                    borderStyle: "dashed",
+                    borderColor: "#3f3f46",
+                    borderRadius: 16,
+                    opacity: 0.85,
+                  } : undefined}
+                >
+                  <CardErrorBoundary>
+                    <CardComponent />
+                  </CardErrorBoundary>
+                </View>
+              </Animated.View>
             );
           })}
         </View>

@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { errorHaptic } from "@/lib/haptics";
 import {
   useAllTorrents,
   useTransferInfo,
@@ -126,24 +128,14 @@ export default function DownloadsScreen() {
         />
       )}
 
-      {/* Filters */}
       <View className="flex-row gap-2 mb-4">
         {FILTER_OPTIONS.map((opt) => (
-          <Pressable
+          <FilterChip
             key={opt.key}
+            label={opt.label}
+            selected={filter === opt.key}
             onPress={() => setFilter(opt.key)}
-            className={`px-3 py-1.5 rounded-full ${
-              filter === opt.key ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Text
-              className={`text-xs font-medium ${
-                filter === opt.key ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -185,13 +177,18 @@ function TorrentListItem({
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => deleteMutation.mutate({ hashes: [torrent.hash] }),
+        onPress: () => {
+          errorHaptic();
+          deleteMutation.mutate({ hashes: [torrent.hash] });
+        },
       },
       {
         text: "Delete + Files",
         style: "destructive",
-        onPress: () =>
-          deleteMutation.mutate({ hashes: [torrent.hash], deleteFiles: true }),
+        onPress: () => {
+          errorHaptic();
+          deleteMutation.mutate({ hashes: [torrent.hash], deleteFiles: true });
+        },
       },
     ]);
   };

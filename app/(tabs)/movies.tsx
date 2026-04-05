@@ -7,11 +7,15 @@ import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChip } from "@/components/ui/filter-chip";
 
+import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
+import { ICON } from "@/lib/constants";
 import { useRadarrMovies, useRadarrQueue, useWantedMissing } from "@/hooks/use-radarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatBytes } from "@/lib/utils";
+import { useServiceImage } from "@/hooks/use-service-image";
 import type { RadarrMovie } from "@/lib/types";
 
 type Tab = "library" | "queue" | "wanted";
@@ -32,28 +36,18 @@ export default function MoviesScreen() {
           onPress={() => router.push("/movie/search")}
           className="p-2 active:opacity-70"
         >
-          <Search size={22} color="#a1a1aa" />
+          <Search size={ICON.LG} color="#a1a1aa" />
         </Pressable>
       </View>
 
-      {/* Tabs */}
       <View className="flex-row gap-2 mb-4">
         {(["library", "queue", "wanted"] as Tab[]).map((t) => (
-          <Pressable
+          <FilterChip
             key={t}
+            label={t.charAt(0).toUpperCase() + t.slice(1)}
+            selected={tab === t}
             onPress={() => setTab(t)}
-            className={`px-4 py-2 rounded-full ${
-              tab === t ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium capitalize ${
-                tab === t ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {t}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -68,7 +62,18 @@ function MovieLibrary() {
   const { data: movies, isLoading } = useRadarrMovies();
   const router = useRouter();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) {
+    return (
+      <View className="flex-row flex-wrap gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <View key={i} className="w-[30%]">
+            <Skeleton width="100%" height={150} borderRadius={12} />
+            <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
+          </View>
+        ))}
+      </View>
+    );
+  }
   if (!movies?.length) {
     return <EmptyState icon={<Film size={32} color="#71717a" />} title="No movies in library" />;
   }
@@ -93,15 +98,16 @@ function MovieLibrary() {
 
 function MoviePoster({ movie, onPress }: { movie: RadarrMovie; onPress: () => void }) {
   const poster = movie.images.find((i) => i.coverType === "poster");
-  const posterUrl = poster?.remoteUrl || poster?.url;
+  const { src, onError } = useServiceImage(poster, "radarr");
 
   return (
     <Pressable onPress={onPress} className="w-[30%] active:opacity-80">
-      {posterUrl ? (
+      {src ? (
         <Image
-          source={{ uri: posterUrl }}
+          source={{ uri: src }}
           className="w-full aspect-[2/3] rounded-xl bg-surface-light"
           resizeMode="cover"
+          onError={onError}
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
@@ -120,7 +126,7 @@ function MovieQueue() {
   const { data: queue, isLoading } = useRadarrQueue();
   const router = useRouter();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={3} />;
   if (!queue?.records.length) {
     return <EmptyState title="Queue empty" message="No movies downloading" />;
   }
@@ -151,7 +157,7 @@ function MovieWanted() {
   const { data: wanted, isLoading } = useWantedMissing();
   const router = useRouter();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={2} />;
 
   return (
     <View>

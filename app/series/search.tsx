@@ -3,6 +3,7 @@ import { View, Text, Image, Pressable } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { useRouter } from "expo-router";
 import { Tv, Plus, Check } from "lucide-react-native";
+import { useServiceImage } from "@/hooks/use-service-image";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { TextInput } from "@/components/ui/text-input";
 import { Card } from "@/components/ui/card";
@@ -74,7 +75,7 @@ function SearchResultCard({
   const { data: folders } = useSonarrRootFolders();
 
   const poster = result.images.find((i) => i.coverType === "poster");
-  const posterUrl = poster?.remoteUrl || poster?.url;
+  const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "sonarr");
 
   const handleAdd = () => {
     if (!profiles?.length || !folders?.length) {
@@ -103,6 +104,7 @@ function SearchResultCard({
           source={{ uri: posterUrl }}
           className="w-16 h-24 rounded-lg bg-surface-light"
           resizeMode="cover"
+          onError={onPosterError}
         />
       ) : (
         <View className="w-16 h-24 rounded-lg bg-surface-light items-center justify-center">

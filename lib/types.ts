@@ -76,7 +76,29 @@ export interface QBTorrentTracker {
   msg: string;
 }
 
+// --- Shared Media Info ---
+
+export interface MediaInfo {
+  audioChannels: number;
+  audioCodec: string;
+  audioLanguages?: string;
+  videoCodec: string;
+  videoDynamicRange: string;
+  videoDynamicRangeType: string;
+  resolution: string;
+  videoBitDepth?: number;
+}
+
 // --- Radarr Types ---
+
+export interface RadarrMovieFile {
+  id: number;
+  movieId: number;
+  relativePath: string;
+  size: number;
+  quality: { quality: { name: string } };
+  mediaInfo?: MediaInfo;
+}
 
 export interface RadarrMovie {
   id: number;
@@ -97,6 +119,7 @@ export interface RadarrMovie {
   runtime: number;
   qualityProfileId: number;
   rootFolderPath: string;
+  movieFile?: RadarrMovieFile;
 }
 
 export interface RadarrImage {
@@ -170,12 +193,30 @@ export interface SonarrSeries {
   seasons: SonarrSeason[];
   qualityProfileId: number;
   rootFolderPath: string;
+  statistics?: {
+    seasonCount: number;
+    episodeFileCount: number;
+    episodeCount: number;
+    totalEpisodeCount: number;
+    sizeOnDisk: number;
+    percentOfEpisodes: number;
+  };
 }
 
 export interface SonarrImage {
   coverType: "poster" | "banner" | "fanart";
   url: string;
   remoteUrl: string;
+}
+
+export interface SonarrEpisodeFile {
+  id: number;
+  seriesId: number;
+  seasonNumber: number;
+  relativePath: string;
+  size: number;
+  quality: { quality: { name: string } };
+  mediaInfo?: MediaInfo;
 }
 
 export interface SonarrSeason {
@@ -202,6 +243,8 @@ export interface SonarrEpisode {
   hasFile: boolean;
   monitored: boolean;
   series?: SonarrSeries;
+  episodeFileId?: number;
+  episodeFile?: SonarrEpisodeFile;
 }
 
 export interface SonarrCalendarEntry {
@@ -334,6 +377,10 @@ export interface OverseerrMovieDetails {
   title: string;
   posterPath?: string;
   releaseDate?: string;
+  mediaInfo?: {
+    id: number;
+    status: OverseerrMediaStatus;
+  };
 }
 
 export interface OverseerrTVDetails {

@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable, Alert, Platform } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { Search, Power, AlertTriangle, CheckCircle, XCircle } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SkeletonCardContent } from "@/components/ui/skeleton";
 import {
   useProwlarrIndexers,
   useProwlarrIndexerStatuses,
@@ -37,21 +39,12 @@ export default function IndexersScreen() {
 
       <View className="flex-row gap-2 mb-4">
         {(["indexers", "search", "stats"] as Tab[]).map((t) => (
-          <Pressable
+          <FilterChip
             key={t}
+            label={t.charAt(0).toUpperCase() + t.slice(1)}
+            selected={tab === t}
             onPress={() => setTab(t)}
-            className={`px-4 py-2 rounded-full ${
-              tab === t ? "bg-primary" : "bg-surface-light"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium capitalize ${
-                tab === t ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              {t}
-            </Text>
-          </Pressable>
+          />
         ))}
       </View>
 
@@ -67,7 +60,7 @@ function IndexerList() {
   const { data: statuses } = useProwlarrIndexerStatuses();
   const toggleIndexer = useToggleIndexer();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={4} />;
   if (!indexers?.length) {
     return <EmptyState title="No indexers configured" />;
   }
@@ -93,6 +86,12 @@ function IndexerList() {
                         ? "bg-danger"
                         : "bg-success"
                   }`}
+                  style={Platform.OS === "ios" && isEnabled ? {
+                    shadowColor: isDisabled ? "#ef4444" : "#22c55e",
+                    shadowRadius: 6,
+                    shadowOpacity: 0.6,
+                    shadowOffset: { width: 0, height: 0 },
+                  } : undefined}
                 />
                 <View className="flex-1">
                   <Text className="text-zinc-200 text-sm font-medium">
@@ -207,7 +206,7 @@ function IndexerSearch() {
 function IndexerStats() {
   const { data: stats, isLoading } = useProwlarrStats();
 
-  if (isLoading) return <Text className="text-zinc-500">Loading...</Text>;
+  if (isLoading) return <SkeletonCardContent rows={3} />;
   if (!stats?.indexers?.length) {
     return <EmptyState title="No stats available" />;
   }

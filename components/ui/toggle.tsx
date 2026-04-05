@@ -1,4 +1,5 @@
 import { View, Text, Switch } from "react-native";
+import { lightHaptic } from "@/lib/haptics";
 
 interface ToggleProps {
   label: string;
@@ -27,7 +28,10 @@ export function Toggle({
       </View>
       <Switch
         value={value}
-        onValueChange={onValueChange}
+        onValueChange={(val) => {
+          lightHaptic();
+          onValueChange(val);
+        }}
         disabled={disabled}
         trackColor={{ false: "#3f3f46", true: "#3b82f6" }}
         thumbColor={value ? "#ffffff" : "#a1a1aa"}

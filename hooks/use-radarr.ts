@@ -10,6 +10,7 @@ import {
   getQualityProfiles,
   getRootFolders,
 } from "@/services/radarr-api";
+import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 
@@ -74,16 +75,33 @@ export function useAddMovie() {
 
 export function useDeleteMovie() {
   const queryClient = useQueryClient();
+  const overseerrEnabled = useConfigStore((s) => s.services.overseerr.enabled);
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       id,
       deleteFiles = false,
+      tmdbId,
     }: {
       id: number;
       deleteFiles?: boolean;
-    }) => deleteMovie(id, deleteFiles),
+      tmdbId?: number;
+    }) => {
+      await deleteMovie(id, deleteFiles);
+      // Clear Overseerr media entry so the movie can be re-requested
+      if (tmdbId && overseerrEnabled) {
+        try {
+          const details = await getMovieDetails(tmdbId);
+          if (details.mediaInfo?.id) {
+            await deleteMedia(details.mediaInfo.id);
+          }
+        } catch {
+          // Non-critical — don't block Radarr delete if Overseerr cleanup fails
+        }
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["radarr", "movies"] });
+      queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
   });
 }

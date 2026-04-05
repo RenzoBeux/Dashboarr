@@ -2,6 +2,7 @@ import { serviceRequest } from "@/lib/http-client";
 import type {
   SonarrSeries,
   SonarrEpisode,
+  SonarrEpisodeFile,
   SonarrCalendarEntry,
   SonarrQueue,
   SonarrSearchResult,
@@ -27,6 +28,14 @@ export function getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {
 
 export function getEpisode(id: number): Promise<SonarrEpisode> {
   return serviceRequest<SonarrEpisode>("sonarr", `/episode/${id}`);
+}
+
+// --- Episode Files ---
+
+export function getEpisodeFiles(seriesId: number): Promise<SonarrEpisodeFile[]> {
+  return serviceRequest<SonarrEpisodeFile[]>("sonarr", "/episodefile", {
+    params: { seriesId },
+  });
 }
 
 // --- Calendar ---

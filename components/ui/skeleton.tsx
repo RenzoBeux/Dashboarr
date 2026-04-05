@@ -1,5 +1,12 @@
-import { useEffect, useRef } from "react";
-import { Animated, View } from "react-native";
+import { useEffect } from "react";
+import { View } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 
 interface SkeletonProps {
   width?: number | string;
@@ -14,38 +21,45 @@ export function Skeleton({
   borderRadius = 8,
   className,
 }: SkeletonProps) {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const translateX = useSharedValue(-1);
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
+    translateX.value = withRepeat(
+      withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+      -1,
     );
-    animation.start();
-    return () => animation.stop();
-  }, [opacity]);
+  }, [translateX]);
+
+  const shimmerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value * 200 }],
+  }));
 
   return (
-    <Animated.View
+    <View
       className={className}
       style={{
         width: width as any,
         height,
         borderRadius,
         backgroundColor: "#27272a",
-        opacity,
+        overflow: "hidden",
       }}
-    />
+    >
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            width: "40%",
+            backgroundColor: "#3f3f46",
+            borderRadius,
+            opacity: 0.5,
+          },
+          shimmerStyle,
+        ]}
+      />
+    </View>
   );
 }
 
