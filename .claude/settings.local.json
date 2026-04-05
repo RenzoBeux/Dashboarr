@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(npx tsc:*)",
-      "Bash(npx expo:*)",
-      "Bash(npx eas-cli:*)"
-    ]
-  }
-}

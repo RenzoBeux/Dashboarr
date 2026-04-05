@@ -13,3 +13,4 @@ android/
 ios/
 .env
 .env.local
+.claude/
