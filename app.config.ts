@@ -29,7 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-router",
     "expo-secure-store",
-    "@react-native-community/netinfo",
+    "./plugins/withAndroidSigning",
     [
       "expo-location",
       {
