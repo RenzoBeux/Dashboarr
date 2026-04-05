@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable, Alert, ActivityIndicator } from "react-native";
 import { toast } from "@/components/ui/toast";
 import {
   Download,
@@ -13,7 +13,9 @@ import {
   ChevronRight,
   Upload,
   FolderDown,
+  Wifi,
 } from "lucide-react-native";
+import { detectSSID } from "@/lib/wifi";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
@@ -40,9 +42,29 @@ export default function SettingsScreen() {
   const [editingService, setEditingService] = useState<ServiceId | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [detectingSSID, setDetectingSSID] = useState(false);
+
+  const handleDetectSSID = async () => {
+    setDetectingSSID(true);
+    try {
+      const ssid = await detectSSID();
+      if (ssid) {
+        setHomeSSID(ssid);
+        toast(`Detected: ${ssid}`, "success");
+      } else {
+        toast("Could not detect WiFi name. Check that you're on WiFi and location is allowed.", "error");
+      }
+    } catch {
+      toast("Failed to detect WiFi name", "error");
+    } finally {
+      setDetectingSSID(false);
+    }
+  };
   const services = useConfigStore((s) => s.services);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
+  const homeSSID = useConfigStore((s) => s.homeSSID);
   const setAutoSwitch = useConfigStore((s) => s.setAutoSwitch);
+  const setHomeSSID = useConfigStore((s) => s.setHomeSSID);
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
 
@@ -103,13 +125,36 @@ export default function SettingsScreen() {
         Settings
       </Text>
 
-      <Card className="mb-4">
+      <Card className="gap-4 mb-4">
         <Toggle
           label="Auto-switch network"
           description="Use local URLs on home WiFi, remote otherwise"
           value={autoSwitchNetwork}
           onValueChange={setAutoSwitch}
         />
+        {autoSwitchNetwork && (
+          <View className="flex-row items-end gap-2">
+            <View className="flex-1">
+              <TextInput
+                label="Home WiFi Name (SSID)"
+                placeholder="e.g. MyHomeNetwork"
+                value={homeSSID}
+                onChangeText={setHomeSSID}
+              />
+            </View>
+            <Pressable
+              onPress={handleDetectSSID}
+              disabled={detectingSSID}
+              className="bg-surface-light rounded-xl p-3 active:opacity-70"
+            >
+              {detectingSSID ? (
+                <ActivityIndicator size={20} color="#a1a1aa" />
+              ) : (
+                <Wifi size={20} color="#a1a1aa" />
+              )}
+            </Pressable>
+          </View>
+        )}
       </Card>
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">

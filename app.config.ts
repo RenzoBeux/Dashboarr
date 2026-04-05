@@ -26,5 +26,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.dashboarr.app",
   },
   scheme: "dashboarr",
-  plugins: ["expo-router", "expo-secure-store"],
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    "@react-native-community/netinfo",
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission:
+          "Allow Dashboarr to detect your WiFi network name for automatic local/remote URL switching.",
+      },
+    ],
+  ],
 });
