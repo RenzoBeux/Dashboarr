@@ -10,7 +10,7 @@
     "prebuild": "expo prebuild",
     "build:android": "eas build --platform android",
     "build:ios": "eas build --platform ios",
-    "build:android:prod": "expo prebuild --platform android --clean && cp ~/.android-keystores/dashboarr-release.keystore android/app/ && cd android && ./gradlew bundleRelease"
+    "build:android:prod": "expo prebuild --platform android --clean && node -e \"require('fs').copyFileSync(require('path').join(require('os').homedir(),'.android-keystores','dashboarr-release.keystore'),'android/app/dashboarr-release.keystore')\" && cd android && gradlew bundleRelease"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
