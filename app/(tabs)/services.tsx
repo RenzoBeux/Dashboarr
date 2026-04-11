@@ -9,8 +9,10 @@ import {
   Search,
   PlayCircle,
   Server,
+  Captions,
 } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { WakeOnLanButton } from "@/components/common/wake-on-lan-button";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { SERVICE_IDS } from "@/lib/constants";
@@ -25,6 +27,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   prowlarr: Search,
   plex: PlayCircle,
   glances: Server,
+  bazarr: Captions,
 };
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
@@ -36,6 +39,7 @@ const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   prowlarr: "/(tabs)/indexers",
   plex: "/(tabs)/plex",
   glances: "/(tabs)/glances",
+  bazarr: "/(tabs)/bazarr",
 };
 
 export default function ServicesScreen() {
@@ -85,6 +89,9 @@ export default function ServicesScreen() {
                 />
               </View>
               <Text className="text-zinc-100 text-sm font-medium">{service.name}</Text>
+              {!online && service.wakeOnLan?.mac && (
+                <WakeOnLanButton serviceId={id} variant="outline" size="sm" />
+              )}
             </Pressable>
           );
         })}

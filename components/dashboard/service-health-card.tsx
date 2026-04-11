@@ -8,12 +8,13 @@ import {
   BarChart3,
   Search,
   PlayCircle,
+  Captions,
 } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { ICON, type ServiceId } from "@/lib/constants";
 
-const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
+const SERVICE_ICONS: Partial<Record<ServiceId, React.ElementType>> = {
   qbittorrent: Download,
   radarr: Film,
   sonarr: Tv,
@@ -21,6 +22,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   tautulli: BarChart3,
   prowlarr: Search,
   plex: PlayCircle,
+  bazarr: Captions,
 };
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
@@ -48,6 +50,7 @@ export function ServiceHealthCard() {
         {enabledServices.map((service) => {
           const Icon = SERVICE_ICONS[service.id as ServiceId];
           const route = SERVICE_ROUTES[service.id as ServiceId];
+          if (!Icon) return null;
 
           return (
             <Pressable

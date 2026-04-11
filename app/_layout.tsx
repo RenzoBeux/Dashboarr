@@ -6,6 +6,9 @@ import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useConfigStore } from "@/store/config-store";
+import { useNotificationStore } from "@/store/notifications-store";
+import { configureNotifications } from "@/lib/notifications";
+import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
 import { ErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
 import "../global.css";
@@ -25,13 +28,21 @@ function onAppStateChange(status: AppStateStatus) {
   focusManager.setFocused(status === "active");
 }
 
+function NotificationWatchers() {
+  useNotificationWatchers();
+  return null;
+}
+
 export default function RootLayout() {
   const hydrate = useConfigStore((s) => s.hydrate);
   const hydrated = useConfigStore((s) => s.hydrated);
+  const hydrateNotifications = useNotificationStore((s) => s.hydrate);
 
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    hydrateNotifications();
+    configureNotifications();
+  }, [hydrate, hydrateNotifications]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", onAppStateChange);
@@ -44,6 +55,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <ErrorBoundary>
+          <NotificationWatchers />
           <StatusBar style="light" />
           <Stack
             screenOptions={{

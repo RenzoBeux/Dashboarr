@@ -10,6 +10,7 @@ import {
   Search,
   PlayCircle,
   Server,
+  Captions,
   ChevronRight,
   Upload,
   FolderDown,
@@ -25,7 +26,9 @@ import { useConfigStore } from "@/store/config-store";
 import { pingService } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
-import type { ServiceConfig, ServiceSecrets } from "@/store/config-store";
+import type { ServiceConfig, ServiceSecrets, WakeOnLanConfig } from "@/store/config-store";
+import { WakeOnLanButton } from "@/components/common/wake-on-lan-button";
+import { NotificationSettingsSection } from "@/components/common/notification-settings-section";
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   qbittorrent: Download,
@@ -36,6 +39,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   prowlarr: Search,
   plex: PlayCircle,
   glances: Server,
+  bazarr: Captions,
 };
 
 export default function SettingsScreen() {
@@ -198,6 +202,8 @@ export default function SettingsScreen() {
         })}
       </View>
 
+      <NotificationSettingsSection />
+
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-6">
         Backup
       </Text>
@@ -247,12 +253,26 @@ function ServiceEditor({
   const [apiKey, setApiKey] = useState(secrets.apiKey ?? "");
   const [username, setUsername] = useState(secrets.username ?? "");
   const [password, setPassword] = useState(secrets.password ?? "");
+  const [wolMac, setWolMac] = useState(config.wakeOnLan?.mac ?? "");
+  const [wolBroadcast, setWolBroadcast] = useState(
+    config.wakeOnLan?.broadcastAddress ?? "",
+  );
+  const [wolPort, setWolPort] = useState(
+    config.wakeOnLan?.port ? String(config.wakeOnLan.port) : "",
+  );
   const [testing, setTesting] = useState(false);
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
   const handleSave = async () => {
-    updateService(serviceId, { localUrl, remoteUrl });
+    const wakeOnLan: WakeOnLanConfig | undefined = wolMac.trim()
+      ? {
+          mac: wolMac.trim(),
+          broadcastAddress: wolBroadcast.trim() || undefined,
+          port: wolPort.trim() ? Number(wolPort.trim()) || 9 : undefined,
+        }
+      : undefined;
+    updateService(serviceId, { localUrl, remoteUrl, wakeOnLan });
     if (isQB) {
       await updateSecrets(serviceId, { username, password });
     } else {
@@ -341,6 +361,36 @@ function ServiceEditor({
             onChangeText={setApiKey}
             secureTextEntry
           />
+        )}
+      </Card>
+
+      <Card className="gap-4 mb-4">
+        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+          Wake-on-LAN (optional)
+        </Text>
+        <TextInput
+          label="MAC Address"
+          placeholder="00:11:22:33:44:55"
+          value={wolMac}
+          onChangeText={setWolMac}
+          autoCapitalize="none"
+        />
+        <TextInput
+          label="Broadcast Address"
+          placeholder="192.168.1.255"
+          value={wolBroadcast}
+          onChangeText={setWolBroadcast}
+          keyboardType="url"
+        />
+        <TextInput
+          label="Port"
+          placeholder="9"
+          value={wolPort}
+          onChangeText={setWolPort}
+          keyboardType="number-pad"
+        />
+        {config.wakeOnLan?.mac && (
+          <WakeOnLanButton serviceId={serviceId} />
         )}
       </Card>
 

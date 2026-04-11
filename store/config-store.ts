@@ -24,12 +24,19 @@ import {
 } from "@/lib/constants";
 import type { ServiceId, DashboardCardId } from "@/lib/constants";
 
+export interface WakeOnLanConfig {
+  mac: string;
+  broadcastAddress?: string;
+  port?: number;
+}
+
 export interface ServiceConfig {
   enabled: boolean;
   name: string;
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+  wakeOnLan?: WakeOnLanConfig;
 }
 
 export interface ServiceSecrets {

@@ -702,6 +702,72 @@ export interface GlancesDiskIOItem {
   time_since_update: number;
 }
 
+// --- Bazarr Types ---
+
+export interface BazarrMissingSubtitle {
+  name: string; // language name
+  code2: string;
+  code3: string;
+  hi: boolean;
+  forced: boolean;
+}
+
+export interface BazarrWantedMovie {
+  radarrId: number;
+  title: string;
+  missing_subtitles: BazarrMissingSubtitle[];
+  sceneName?: string;
+  tags?: string[];
+  poster?: string;
+  year?: string;
+  hearing_impaired?: boolean;
+}
+
+export interface BazarrWantedEpisode {
+  sonarrSeriesId: number;
+  sonarrEpisodeId: number;
+  seriesTitle: string;
+  episodeTitle: string;
+  episode_number: string; // e.g. "1x01"
+  missing_subtitles: BazarrMissingSubtitle[];
+  sceneName?: string;
+  tags?: string[];
+  hearing_impaired?: boolean;
+}
+
+export interface BazarrWantedResponse<T> {
+  data: T[];
+  total: number;
+}
+
+export type BazarrWantedMoviesResponse = BazarrWantedResponse<BazarrWantedMovie>;
+export type BazarrWantedEpisodesResponse = BazarrWantedResponse<BazarrWantedEpisode>;
+
+export interface BazarrHistoryItem {
+  id: number;
+  action: number;
+  timestamp: string;
+  description: string;
+  language?: { name: string; code2: string; code3?: string };
+  provider?: string;
+  score?: string;
+  title?: string;
+  seriesTitle?: string;
+  episodeTitle?: string;
+  subtitles_path?: string;
+}
+
+export interface BazarrHistoryResponse {
+  data: BazarrHistoryItem[];
+  total: number;
+}
+
+export interface BazarrProvider {
+  name: string;
+  status: string;
+  retry?: string;
+}
+
 // --- Shared Types ---
 
 export interface ServiceHealthStatus {

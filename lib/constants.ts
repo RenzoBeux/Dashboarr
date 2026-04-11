@@ -7,6 +7,7 @@ export const SERVICE_IDS = [
   "prowlarr",
   "plex",
   "glances",
+  "bazarr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -28,6 +29,7 @@ export const SERVICE_DEFAULTS: Record<
   prowlarr: { name: "Prowlarr", defaultPort: 9696, apiBasePath: "/api/v1", pingPath: "/system/status" },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
   glances: { name: "Glances", defaultPort: 61208, apiBasePath: "/api/4", pingPath: "/cpu" },
+  bazarr: { name: "Bazarr", defaultPort: 6767, apiBasePath: "/api", pingPath: "/system/status" },
 };
 
 export const POLLING_INTERVALS = {
@@ -49,6 +51,7 @@ export const DASHBOARD_CARD_IDS = [
   "overseerr-requests",
   "plex-now-playing",
   "prowlarr-stats",
+  "bazarr-wanted",
 ] as const;
 
 export type DashboardCardId = (typeof DASHBOARD_CARD_IDS)[number];
@@ -60,6 +63,7 @@ export const STORAGE_KEYS = {
   autoSwitchNetwork: "app.autoSwitchNetwork",
   homeSSID: "app.homeSSID",
   dashboardOrder: "app.dashboardOrder",
+  notificationSettings: "app.notificationSettings",
 } as const;
 
 // SecureStore key prefix
