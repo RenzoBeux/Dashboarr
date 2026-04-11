@@ -139,6 +139,7 @@ export default function TorrentDetailScreen() {
               ? resumeMutation.mutate([hash])
               : pauseMutation.mutate([hash])
           }
+          loading={pauseMutation.isPending || resumeMutation.isPending}
           icon={
             isPaused ? (
               <Play size={16} color="#3b82f6" />
@@ -152,6 +153,7 @@ export default function TorrentDetailScreen() {
           label="Delete"
           variant="danger"
           onPress={handleDelete}
+          loading={deleteMutation.isPending}
           icon={<Trash2 size={16} color="white" />}
           className="flex-1"
         />

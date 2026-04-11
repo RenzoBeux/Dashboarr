@@ -54,11 +54,11 @@ export function useSonarrEpisodeFiles(seriesId: number) {
   });
 }
 
-export function useSonarrCalendar() {
+export function useSonarrCalendar(days = 7) {
   const enabled = useSonarrEnabled();
   return useQuery({
-    queryKey: ["sonarr", "calendar"],
-    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(7)),
+    queryKey: ["sonarr", "calendar", days],
+    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(days)),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled,
   });

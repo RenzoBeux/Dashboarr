@@ -152,6 +152,7 @@ export default function MovieDetailScreen() {
         label="Delete Movie"
         variant="danger"
         onPress={handleDelete}
+        loading={deleteMutation.isPending}
         icon={<Trash2 size={16} color="white" />}
       />
     </ScreenWrapper>

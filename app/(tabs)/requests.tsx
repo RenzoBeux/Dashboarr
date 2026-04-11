@@ -315,6 +315,7 @@ function RequestsList() {
               request={req}
               onApprove={() => approve.mutate(req.id)}
               onDecline={() => decline.mutate(req.id)}
+              busy={approve.isPending || decline.isPending}
             />
           ))}
         </View>
@@ -327,10 +328,12 @@ function RequestCard({
   request,
   onApprove,
   onDecline,
+  busy,
 }: {
   request: OverseerrRequest;
   onApprove: () => void;
   onDecline: () => void;
+  busy?: boolean;
 }) {
   const isPending = request.status === 1;
   const { data: mediaDetails } = useOverseerrMediaDetails(
@@ -401,8 +404,9 @@ function RequestCard({
                   successHaptic();
                   onApprove();
                 }}
+                disabled={busy}
                 hitSlop={8}
-                className="flex-row items-center gap-1 bg-green-600/20 px-3.5 py-2 rounded-lg active:opacity-70"
+                className={`flex-row items-center gap-1 bg-green-600/20 px-3.5 py-2 rounded-lg active:opacity-70 ${busy ? "opacity-50" : ""}`}
               >
                 <Check size={ICON.SM} color="#22c55e" />
                 <Text className="text-success text-xs font-medium">
@@ -414,8 +418,9 @@ function RequestCard({
                   errorHaptic();
                   onDecline();
                 }}
+                disabled={busy}
                 hitSlop={8}
-                className="flex-row items-center gap-1 bg-red-600/20 px-3.5 py-2 rounded-lg active:opacity-70"
+                className={`flex-row items-center gap-1 bg-red-600/20 px-3.5 py-2 rounded-lg active:opacity-70 ${busy ? "opacity-50" : ""}`}
               >
                 <X size={ICON.SM} color="#ef4444" />
                 <Text className="text-danger text-xs font-medium">

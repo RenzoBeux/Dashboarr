@@ -61,7 +61,7 @@ export function MediaDetailModal({
       if (item.mediaType === "movie") {
         await requestMovie.mutateAsync(item.id);
       } else {
-        await requestTV.mutateAsync({ tvdbId: item.id });
+        await requestTV.mutateAsync({ tmdbId: item.id });
       }
       toast(`${title} has been requested`);
       onClose();

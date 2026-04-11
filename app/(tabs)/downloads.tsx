@@ -228,7 +228,8 @@ function TorrentListItem({
                 ? resumeMutation.mutate([torrent.hash])
                 : pauseMutation.mutate([torrent.hash])
             }
-            className="p-1.5 active:opacity-70"
+            disabled={pauseMutation.isPending || resumeMutation.isPending}
+            className={`p-1.5 active:opacity-70 ${pauseMutation.isPending || resumeMutation.isPending ? "opacity-50" : ""}`}
             hitSlop={6}
           >
             {isPaused ? (
@@ -239,7 +240,8 @@ function TorrentListItem({
           </Pressable>
           <Pressable
             onPress={handleDelete}
-            className="p-1.5 active:opacity-70"
+            disabled={deleteMutation.isPending}
+            className={`p-1.5 active:opacity-70 ${deleteMutation.isPending ? "opacity-50" : ""}`}
             hitSlop={6}
           >
             <Trash2 size={16} color="#ef4444" />

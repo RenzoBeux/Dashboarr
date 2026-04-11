@@ -228,7 +228,8 @@ function EpisodeRow({ episode, episodeFile }: { episode: SonarrEpisode; episodeF
             monitored: !episode.monitored,
           })
         }
-        className="p-1 active:opacity-70"
+        disabled={toggleMonitored.isPending}
+        className={`p-1 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
         hitSlop={6}
       >
         {episode.monitored ? (

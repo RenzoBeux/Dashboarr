@@ -47,6 +47,16 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 - **Config import/export** — Back up and restore your entire configuration (with biometric auth)
 - **No backend** — Pure client architecture, your data stays between your phone and your servers
 
+## Download from Play Store (Android)
+
+Dashboarr is available on the Google Play Store as an open testing release:
+
+1. **Join the Google Group:** [Dashboarr Testers](https://groups.google.com/g/dashboarr-testers)
+2. **Opt in to the testing program:** [Web sign-up](https://play.google.com/apps/testing/com.dashboarr.app)
+3. **Install from the Play Store:** [Dashboarr on Google Play](https://play.google.com/store/apps/details?id=com.dashboarr.app)
+
+> **Note:** You must join the Google Group first, then opt in via the web sign-up link. After that, the Play Store listing will be available.
+
 ## Getting Started
 
 ### Prerequisites

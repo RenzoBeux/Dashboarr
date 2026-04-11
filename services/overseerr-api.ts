@@ -85,12 +85,12 @@ export function requestMovie(tmdbId: number): Promise<OverseerrRequest> {
   });
 }
 
-export function requestTV(tvdbId: number, seasons?: number[]): Promise<OverseerrRequest> {
+export function requestTV(tmdbId: number, seasons?: number[]): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", "/request", {
     method: "POST",
     body: JSON.stringify({
       mediaType: "tv",
-      mediaId: tvdbId,
+      mediaId: tmdbId,
       ...(seasons ? { seasons } : {}),
     }),
   });

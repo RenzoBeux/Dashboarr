@@ -39,7 +39,7 @@ export async function qbLogin(): Promise<boolean> {
     if (match) sessionCookie = match[1];
   }
 
-  return true;
+  return !!sessionCookie;
 }
 
 /**

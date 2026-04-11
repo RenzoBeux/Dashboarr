@@ -116,8 +116,8 @@ export function useRequestMovie() {
 export function useRequestTV() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ tvdbId, seasons }: { tvdbId: number; seasons?: number[] }) =>
-      requestTV(tvdbId, seasons),
+    mutationFn: ({ tmdbId, seasons }: { tmdbId: number; seasons?: number[] }) =>
+      requestTV(tmdbId, seasons),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },

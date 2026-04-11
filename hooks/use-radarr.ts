@@ -4,6 +4,7 @@ import {
   getMovie,
   getQueue,
   getWantedMissing,
+  getCalendar,
   searchMovies,
   addMovie,
   deleteMovie,
@@ -13,6 +14,7 @@ import {
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { getDateOffset } from "@/lib/utils";
 
 function useRadarrEnabled() {
   return useConfigStore((s) => s.services.radarr.enabled);
@@ -23,6 +25,16 @@ export function useRadarrMovies() {
   return useQuery({
     queryKey: ["radarr", "movies"],
     queryFn: getMovies,
+    enabled,
+  });
+}
+
+export function useRadarrCalendar() {
+  const enabled = useRadarrEnabled();
+  return useQuery({
+    queryKey: ["radarr", "calendar"],
+    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(30)),
+    refetchInterval: POLLING_INTERVALS.calendar,
     enabled,
   });
 }

@@ -113,6 +113,9 @@ export interface RadarrMovie {
   isAvailable: boolean;
   status: string;
   added: string;
+  inCinemas?: string;
+  physicalRelease?: string;
+  digitalRelease?: string;
   sizeOnDisk: number;
   images: RadarrImage[];
   ratings: { votes: number; value: number };

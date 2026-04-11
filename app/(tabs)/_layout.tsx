@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { LayoutDashboard, Download, LayoutGrid, Settings } from "lucide-react-native";
+import { LayoutDashboard, Download, CalendarDays, LayoutGrid, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightHaptic } from "@/lib/haptics";
 
@@ -49,6 +49,15 @@ export default function TabLayout() {
         options={{
           tabBarIcon: ({ color }) => (
             <Download size={TAB_ICON_SIZE} color={color} />
+          ),
+        }}
+        listeners={{ tabPress: () => lightHaptic() }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          tabBarIcon: ({ color }) => (
+            <CalendarDays size={TAB_ICON_SIZE} color={color} />
           ),
         }}
         listeners={{ tabPress: () => lightHaptic() }}
