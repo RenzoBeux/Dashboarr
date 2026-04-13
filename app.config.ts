@@ -3,6 +3,7 @@ import { ExpoConfig, ConfigContext } from "expo/config";
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "Dashboarr",
+  "owner": "dashboarr",
   slug: "dashboarr",
   version: "1.0.0",
   orientation: "portrait",
@@ -37,7 +38,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // enabled on the Expo side (see backend README).
   extra: {
     eas: {
-      projectId: "00000000-0000-0000-0000-000000000000",
+      "projectId": "2e40d2d5-f7c5-4c28-922c-40e2a5ab2a8c"
     },
   },
   plugins: [

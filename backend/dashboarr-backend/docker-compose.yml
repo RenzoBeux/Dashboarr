@@ -20,9 +20,4 @@ services:
       # - TRUST_PROXY=true
       # Poll Expo for push delivery receipts (rarely needed).
       # - PUSH_RECEIPTS=true
-    networks:
-      - media
 
-networks:
-  media:
-    external: true
