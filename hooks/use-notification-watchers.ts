@@ -5,6 +5,7 @@ import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useNotificationStore } from "@/store/notifications-store";
+import { useBackendStore } from "@/store/backend-store";
 import { sendLocalNotification } from "@/lib/notifications";
 import type { QBTorrent, TorrentState } from "@/lib/types";
 
@@ -35,11 +36,20 @@ export function useNotificationWatchers() {
   const serviceOffline = useNotificationStore((s) => s.serviceOffline);
   const overseerrNewRequest = useNotificationStore((s) => s.overseerrNewRequest);
 
+  // When a backend is paired AND currently reachable, defer notifications to
+  // it so the user doesn't get double-notified (one local, one push). If the
+  // backend goes offline (2 consecutive /health failures), `backendActive`
+  // flips back to false and local watchers take over again.
+  const backendActive = useBackendStore(
+    (s) => s.hydrated && !!s.sharedSecret && !!s.url && s.isHealthy,
+  );
+
   // --- qBittorrent: torrent downloading → completed ---
   const { data: torrents } = useAllTorrents();
   const prevTorrents = useRef<Map<string, QBTorrent> | null>(null);
 
   useEffect(() => {
+    if (backendActive) return;
     if (!hydrated || !enabled || !torrentCompleted || !torrents) return;
     const prev = prevTorrents.current;
     if (prev !== null) {
@@ -55,13 +65,14 @@ export function useNotificationWatchers() {
       }
     }
     prevTorrents.current = new Map(torrents.map((t) => [t.hash, t]));
-  }, [torrents, hydrated, enabled, torrentCompleted]);
+  }, [torrents, hydrated, enabled, torrentCompleted, backendActive]);
 
   // --- Radarr: queue item disappears (success only) ---
   const { data: radarrQueue } = useRadarrQueue();
   const prevRadarrQueue = useRef<Map<number, { title: string; status?: string }> | null>(null);
 
   useEffect(() => {
+    if (backendActive) return;
     if (!hydrated || !enabled || !radarrDownloaded || !radarrQueue) return;
     const prev = prevRadarrQueue.current;
     const currentMap = new Map(
@@ -82,13 +93,14 @@ export function useNotificationWatchers() {
       }
     }
     prevRadarrQueue.current = currentMap;
-  }, [radarrQueue, hydrated, enabled, radarrDownloaded]);
+  }, [radarrQueue, hydrated, enabled, radarrDownloaded, backendActive]);
 
   // --- Sonarr: queue item disappears (success only) ---
   const { data: sonarrQueue } = useSonarrQueue();
   const prevSonarrQueue = useRef<Map<number, { title: string; status?: string }> | null>(null);
 
   useEffect(() => {
+    if (backendActive) return;
     if (!hydrated || !enabled || !sonarrDownloaded || !sonarrQueue) return;
     const prev = prevSonarrQueue.current;
     const currentMap = new Map(
@@ -109,13 +121,14 @@ export function useNotificationWatchers() {
       }
     }
     prevSonarrQueue.current = currentMap;
-  }, [sonarrQueue, hydrated, enabled, sonarrDownloaded]);
+  }, [sonarrQueue, hydrated, enabled, sonarrDownloaded, backendActive]);
 
   // --- Service health: online → offline ---
   const { data: health } = useServiceHealth();
   const prevHealth = useRef<Map<string, boolean> | null>(null);
 
   useEffect(() => {
+    if (backendActive) return;
     if (!hydrated || !enabled || !serviceOffline || !health) return;
     const prev = prevHealth.current;
     if (prev !== null) {
@@ -131,13 +144,14 @@ export function useNotificationWatchers() {
       }
     }
     prevHealth.current = new Map(health.map((s) => [s.id, s.online]));
-  }, [health, hydrated, enabled, serviceOffline]);
+  }, [health, hydrated, enabled, serviceOffline, backendActive]);
 
   // --- Overseerr: new pending request ---
   const { data: overseerrRequests } = useOverseerrRequests(1, "pending");
   const prevRequestIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
+    if (backendActive) return;
     if (!hydrated || !enabled || !overseerrNewRequest || !overseerrRequests) return;
     const currentIds = new Set(overseerrRequests.results.map((r) => r.id));
     const prev = prevRequestIds.current;
@@ -153,5 +167,5 @@ export function useNotificationWatchers() {
       }
     }
     prevRequestIds.current = currentIds;
-  }, [overseerrRequests, hydrated, enabled, overseerrNewRequest]);
+  }, [overseerrRequests, hydrated, enabled, overseerrNewRequest, backendActive]);
 }

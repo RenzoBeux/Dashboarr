@@ -1,0 +1,32 @@
+# Sample compose file. Copy to docker-compose.yml and tweak.
+#
+# Put this next to your existing *arr stack. You'll want the backend to be
+# reachable from:
+#   1. Your *arr containers (for webhooks) — same docker network is easiest
+#   2. Your phone on LAN (for the app) — publish the port or route via your
+#      reverse proxy (Caddy / Nginx Proxy Manager / Traefik).
+#
+# TLS is your responsibility. HTTP on LAN is acceptable; the shared secret
+# exchanged via pairing still blocks casual abuse.
+
+services:
+  dashboarr-backend:
+    image: ghcr.io/renzobeux/dashboarr-backend:latest
+    container_name: dashboarr-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/data
+    environment:
+      - LOG_LEVEL=info
+      # Optional: the public URL your phone will use to reach this container.
+      # Only used to render the pairing QR. If omitted the server guesses from
+      # the first request it receives on /pair.
+      # - PUBLIC_URL=https://dashboarr.example.com
+    networks:
+      - media
+
+networks:
+  media:
+    external: true

@@ -1,0 +1,55 @@
+version: 2
+
+updates:
+  # Backend Node dependencies
+  - package-ecosystem: npm
+    directory: /backend/dashboarr-backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(backend)'
+      include: scope
+    labels:
+      - dependencies
+      - backend
+    groups:
+      backend-prod:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      backend-dev:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    # Major bumps still open individual PRs so you can review them.
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
+        # Remove this `ignore` block if you'd rather see major bumps too.
+
+  # GitHub Actions used by workflows in .github/workflows/
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(ci)'
+      include: scope
+    labels:
+      - dependencies
+      - ci
+    groups:
+      actions:
+        patterns:
+          - '*'

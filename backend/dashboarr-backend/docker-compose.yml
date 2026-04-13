@@ -1,0 +1,28 @@
+services:
+  dashboarr-backend:
+    build: .
+    # Or use a pre-built image when available:
+    # image: ghcr.io/renzobeux/dashboarr-backend:latest
+    container_name: dashboarr-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/data
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      # Public URL your phone will use to reach the backend.
+      # Required if behind a reverse proxy; used for QR code generation.
+      # - PUBLIC_URL=https://dashboarr.yourdomain.com
+      # Enable if behind a reverse proxy (Caddy, Nginx, Traefik) so
+      # rate limiting uses the real client IP from X-Forwarded-For.
+      # - TRUST_PROXY=true
+      # Poll Expo for push delivery receipts (rarely needed).
+      # - PUSH_RECEIPTS=true
+    networks:
+      - media
+
+networks:
+  media:
+    external: true

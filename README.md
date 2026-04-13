@@ -45,7 +45,8 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 - **Secure storage** — API keys stored in the device's secure enclave via `expo-secure-store`
 - **Pull-to-refresh** — On every screen
 - **Config import/export** — Back up and restore your entire configuration (with biometric auth)
-- **No backend** — Pure client architecture, your data stays between your phone and your servers
+- **No backend required** — Pure client architecture for core functionality; your data stays between your phone and your servers
+- **Optional self-hosted backend** — Enable real push notifications by running the companion backend on your server (Node.js or Docker)
 
 ## Download from Play Store (Android)
 
@@ -94,6 +95,58 @@ npm run build:ios
 npm run build:android:prod
 ```
 
+## Backend (Optional — Push Notifications)
+
+Dashboarr works fully without a backend, but if you want **real push notifications** (torrent completed, new episodes grabbed, request approved, etc.), you can self-host the companion backend.
+
+The backend is a lightweight Fastify + SQLite server that:
+- **Polls** your *arr services on a schedule and detects state changes
+- **Receives webhooks** from Radarr, Sonarr, Overseerr, Bazarr, and Tautulli
+- **Sends push notifications** to your phone via the Expo push service
+- **Pairs** with your device via QR code — no accounts needed
+
+### Quick Start (Docker)
+
+```yaml
+# docker-compose.yml
+services:
+  dashboarr-backend:
+    build: ./backend/dashboarr-backend
+    # or use a pre-built image:
+    # image: ghcr.io/renzobeux/dashboarr-backend:latest
+    container_name: dashboarr-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - dashboarr-data:/data
+    environment:
+      - NODE_ENV=production
+      - PUBLIC_URL=https://dashboarr.yourdomain.com  # your externally reachable URL
+      # - TRUST_PROXY=true                           # enable if behind a reverse proxy
+      # - LOG_LEVEL=debug                            # default: info
+
+volumes:
+  dashboarr-data:
+```
+
+```bash
+docker compose up -d
+```
+
+### Quick Start (Node.js)
+
+```bash
+cd backend/dashboarr-backend
+npm install
+npm run build
+npm start
+```
+
+Then open the Dashboarr app, go to **Settings → Backend**, enter your backend URL, and scan the pairing QR code.
+
+For full setup instructions, environment variables, webhook configuration, and more, see the [backend README](backend/dashboarr-backend/README.md).
+
 ## Configuration
 
 All service configuration is done in the **Settings** tab within the app:
@@ -111,6 +164,8 @@ app/                  # Expo Router file-based routing
   movie/              # Movie detail & search screens
   series/             # Series detail & search screens
   torrent/            # Torrent detail screen
+backend/
+  dashboarr-backend/  # Self-hosted companion server (Fastify + SQLite)
 components/
   ui/                 # Reusable UI primitives (cards, buttons, inputs, toggles)
   dashboard/          # Dashboard card components

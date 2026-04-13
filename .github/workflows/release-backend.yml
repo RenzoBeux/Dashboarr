@@ -1,0 +1,91 @@
+name: Release backend image
+
+# Publishes the dashboarr-backend Docker image to GHCR (always) and
+# Docker Hub (only if DOCKERHUB_USERNAME + DOCKERHUB_TOKEN secrets are set).
+#
+# Triggers:
+#   - Push a tag like `backend-v0.1.0` (recommended — keeps backend releases
+#     independent of app releases).
+#   - Manual dispatch from the Actions tab, with an optional version override.
+
+on:
+  push:
+    tags:
+      - 'backend-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 0.1.0). Leave empty to use "manual".'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/dashboarr-backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Docker Hub credentials
+        id: dockerhub_check
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub_check.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/dashboarr-backend
+            ${{ steps.dockerhub_check.outputs.enabled == 'true' && format('{0}/dashboarr-backend', secrets.DOCKERHUB_USERNAME) || '' }}
+          # Strip the `backend-v` prefix so tags become clean semver.
+          tags: |
+            type=match,pattern=backend-v(.*),group=1
+            type=match,pattern=backend-v(\d+\.\d+)\.\d+,group=1
+            type=match,pattern=backend-v(\d+)\.\d+\.\d+,group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/backend-v') }}
+            type=raw,value=${{ inputs.version != '' && inputs.version || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/dashboarr-backend
+          file: backend/dashboarr-backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

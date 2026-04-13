@@ -30,6 +30,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.dashboarr.app",
   },
   scheme: "dashboarr",
+  // Shared EAS project used by every install. Required for real push tokens —
+  // Notifications.getExpoPushTokenAsync({ projectId }) reads from extra.eas.projectId.
+  // Keep this stable across releases; replace with the real EAS project UUID
+  // from `eas init`. Must NOT have Enhanced Security for Push Notifications
+  // enabled on the Expo side (see backend README).
+  extra: {
+    eas: {
+      projectId: "00000000-0000-0000-0000-000000000000",
+    },
+  },
   plugins: [
     "expo-router",
     "expo-secure-store",
@@ -45,6 +55,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "expo-notifications",
       {
         color: "#3b82f6",
+      },
+    ],
+    [
+      "expo-camera",
+      {
+        cameraPermission: "Allow Dashboarr to scan your backend pairing QR code.",
       },
     ],
   ],

@@ -1,0 +1,118 @@
+name: CI backend
+
+# Runs on PRs and pushes that touch the backend. Verifies the TypeScript
+# typechecks and that the Docker image builds for both target architectures.
+# On amd64 the built image is also scanned by Trivy for CVEs.
+# Does NOT push anything — this is a pre-flight check before cutting a
+# `backend-v*` release tag.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/dashboarr-backend/**'
+      - '.github/workflows/ci-backend.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/dashboarr-backend/**'
+      - '.github/workflows/ci-backend.yml'
+
+# Cancel in-progress runs when a new commit lands on the same PR/branch.
+concurrency:
+  group: ci-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Needed so Trivy can upload SARIF results to the Security tab
+  # (only used on pushes to main — skipped on PRs from forks).
+  security-events: write
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/dashboarr-backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/dashboarr-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build (tsc)
+        run: npm run build
+
+  docker-build:
+    name: Docker build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native amd64 runner — fast, and we load the image locally so
+          # Trivy can scan it.
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            scan: true
+          # Native arm64 runner (free for public repos, no QEMU emulation).
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            scan: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/dashboarr-backend
+          file: backend/dashboarr-backend/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: false
+          # Load into the local Docker daemon only when we need to scan it.
+          # `load: true` requires single-platform builds (which we have here).
+          load: ${{ matrix.scan }}
+          tags: local/dashboarr-backend:ci
+          cache-from: type=gha,scope=ci-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.platform }}
+
+      - name: Scan image with Trivy
+        if: matrix.scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: local/dashboarr-backend:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          # Report findings but don't fail the build — flip to '1' later
+          # if you want CVEs to block merges.
+          exit-code: '0'
+
+      - name: Upload Trivy results to Security tab
+        # SARIF upload requires write access to security-events, which fork
+        # PRs don't have. Only upload on push to main where it always works.
+        if: matrix.scan && github.event_name == 'push'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-backend

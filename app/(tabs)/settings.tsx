@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator } from "react-native";
+import { router } from "expo-router";
 import { toast } from "@/components/ui/toast";
 import {
   Download,
@@ -15,7 +16,9 @@ import {
   Upload,
   FolderDown,
   Wifi,
+  Cloud,
 } from "lucide-react-native";
+import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { detectSSID } from "@/lib/wifi";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -205,6 +208,28 @@ export default function SettingsScreen() {
       <NotificationSettingsSection />
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-6">
+        Push Notifications
+      </Text>
+
+      <Pressable onPress={() => router.push("/backend")} className="active:opacity-80 mb-4">
+        <Card className="flex-row items-center">
+          <View className="bg-surface-light rounded-xl p-2.5 mr-3">
+            <Cloud size={20} color="#a1a1aa" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-base">Backend</Text>
+            <Text className="text-zinc-500 text-xs">
+              Self-host for real push notifications when the app is closed
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-2">
+            <BackendStatusPill />
+            <ChevronRight size={18} color="#71717a" />
+          </View>
+        </Card>
+      </Pressable>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-2">
         Backup
       </Text>
 
