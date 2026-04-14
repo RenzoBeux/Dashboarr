@@ -22,6 +22,10 @@ import {
   SECRET_PREFIX,
   DEFAULT_DASHBOARD_ORDER,
 } from "@/lib/constants";
+import { CURRENT_CONFIG_VERSION, migrateConfig } from "@/store/config-migrations";
+import { useBackendStore } from "@/store/backend-store";
+import { useNotificationStore } from "@/store/notifications-store";
+import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, DashboardCardId } from "@/lib/constants";
 
 export interface WakeOnLanConfig {
@@ -55,13 +59,16 @@ interface ConfigState {
 }
 
 export interface ExportPayload {
-  version: 1;
+  version: number;
   exportedAt: string;
   services: Record<ServiceId, ServiceConfig>;
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
   homeSSID: string;
   dashboardOrder: DashboardCardId[];
+  // v2
+  backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
+  notificationSettings?: NotificationSettings;
 }
 
 interface ConfigActions {
@@ -206,14 +213,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder } = get();
+    const { url, sharedSecret, deviceId } = useBackendStore.getState();
+    const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
+      useNotificationStore.getState();
+
     const payload: ExportPayload = {
-      version: 1,
+      version: CURRENT_CONFIG_VERSION,
       exportedAt: new Date().toISOString(),
       services,
       secrets,
       autoSwitchNetwork,
       homeSSID,
       dashboardOrder,
+      backend: { url, sharedSecret, deviceId },
+      notificationSettings: notifSettings,
     };
 
     const file = new File(Paths.cache, "dashboarr-config.json");
@@ -236,24 +249,24 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const pickedFile = new File(result.assets[0].uri);
     const content = await pickedFile.text();
-    const payload = JSON.parse(content) as ExportPayload;
+    const raw = JSON.parse(content);
+    const payload = migrateConfig(raw);
 
-    if (payload.version !== 1 || !payload.services) {
-      throw new Error("Invalid config file");
-    }
-
-    // Restore services
+    // Merge imported services over defaults so missing services get defaults
+    const mergedServices = defaultServices();
     for (const id of SERVICE_IDS) {
       if (payload.services[id]) {
-        const config = payload.services[id];
-        setJSON(`${STORAGE_KEYS.services}.${id}`, config);
+        mergedServices[id] = { ...defaultServiceConfig(id), ...payload.services[id] };
+        setJSON(`${STORAGE_KEYS.services}.${id}`, mergedServices[id]);
       }
     }
 
     // Restore secrets
+    const mergedSecrets = emptySecrets();
     for (const id of SERVICE_IDS) {
       const s = payload.secrets?.[id];
       if (!s) continue;
+      mergedSecrets[id] = s;
       if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${id}.apiKey`, s.apiKey);
       if (s.username) await setSecret(`${SECRET_PREFIX}.${id}.username`, s.username);
       if (s.password) await setSecret(`${SECRET_PREFIX}.${id}.password`, s.password);
@@ -266,10 +279,25 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       setJSON(STORAGE_KEYS.dashboardOrder, payload.dashboardOrder);
     }
 
+    // Restore backend pairing (v2+)
+    if (payload.backend?.url && payload.backend?.sharedSecret) {
+      await useBackendStore.getState().pair({
+        url: payload.backend.url,
+        sharedSecret: payload.backend.sharedSecret,
+        deviceId: payload.backend.deviceId ?? "",
+      });
+    }
+
+    // Restore notification settings (v2+)
+    if (payload.notificationSettings) {
+      setJSON(STORAGE_KEYS.notificationSettings, payload.notificationSettings);
+      useNotificationStore.getState().hydrate();
+    }
+
     // Reload everything into the store
     set({
-      services: payload.services,
-      secrets: payload.secrets ?? emptySecrets(),
+      services: mergedServices,
+      secrets: mergedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeSSID: payload.homeSSID ?? "",
       dashboardOrder: payload.dashboardOrder ?? DEFAULT_DASHBOARD_ORDER,

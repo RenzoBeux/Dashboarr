@@ -90,6 +90,19 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - `backend/dashboarr-backend/` — optional Node.js push notification relay (Docker-based)
 - No index files — import directly from source files
 
+## Config Export/Import & Versioned Migrations
+- Config backup lives in `store/config-store.ts` (export/import) + `store/config-migrations.ts` (migration chain)
+- `CURRENT_CONFIG_VERSION` in `config-migrations.ts` is the source of truth for the schema version
+- Export always writes `CURRENT_CONFIG_VERSION`; import detects the version and chains migrations up
+- Migration functions live in a `migrations` record keyed by source version: `N: (payload) => ({ ...transformed, version: N+1 })`
+- After migration, import merges services over `defaultServices()` so newly added services get defaults instead of `undefined`
+- **When changing the export schema** (new field, renamed field, new service, etc.):
+  1. Bump `CURRENT_CONFIG_VERSION`
+  2. Add a migration entry for the old version
+  3. Update `ExportPayload` interface in `config-store.ts`
+  4. Update `exportConfig` / `importConfig` to handle the new data
+- Version history: v0 (pre-versioning) → v1 (first versioned) → v2 (backend pairing + notification settings)
+
 ## What NOT to Build
 - No user accounts or authentication beyond service API keys
 - No monetization or credit system
