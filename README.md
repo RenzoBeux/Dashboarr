@@ -14,7 +14,8 @@
   <img src="https://img.shields.io/badge/Expo_SDK-54-blue?logo=expo" alt="Expo SDK 54" />
   <img src="https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react" alt="React Native" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Platform-Android_%7C_iOS-green" alt="Platforms" />
+  <img src="https://img.shields.io/badge/Android-Closed_Testing-green?logo=android" alt="Android — Closed Testing" />
+  <img src="https://img.shields.io/badge/iOS-In_Progress-orange?logo=apple" alt="iOS — In Progress" />
 </p>
 
 ---

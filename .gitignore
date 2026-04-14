@@ -15,3 +15,5 @@ ios/
 .env
 .env.local
 .claude/
+google-services.json
+*-firebase-adminsdk-*.json

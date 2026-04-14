@@ -33,14 +33,13 @@ const BANNER = `
 
 async function printStartupPairing(publicUrl: string): Promise<void> {
   const { token } = ensureActiveToken();
-  const payload = JSON.stringify({ url: publicUrl, token });
 
   console.log("\nScan this QR in Dashboarr → Settings → Backend:\n");
   try {
-    const ascii = await QRCode.toString(payload, { type: "terminal", small: true });
+    const ascii = await QRCode.toString(token, { type: "terminal", small: true });
     console.log(ascii);
   } catch {
-    console.log(`  (QR render failed — enter URL + token manually)`);
+    console.log(`  (QR render failed — enter token manually)`);
   }
   console.log(`  URL:   ${publicUrl}`);
   console.log(`  Token: ${token}\n`);

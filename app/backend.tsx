@@ -21,17 +21,14 @@ import { getExpoPushToken, hasProjectId } from "@/lib/expo-push";
 
 type Mode = "summary" | "scanning" | "manual";
 
-interface QrPayload {
-  url: string;
-  token: string;
-}
-
-function parseQr(data: string): QrPayload | null {
+function parseQrToken(data: string): string | null {
+  // Raw hex token (32 chars = 16 random bytes)
+  const trimmed = data.trim();
+  if (/^[0-9a-f]{32}$/i.test(trimmed)) return trimmed;
+  // JSON fallback (backward compat with older backends)
   try {
-    const parsed = JSON.parse(data) as QrPayload;
-    if (typeof parsed.url === "string" && typeof parsed.token === "string") {
-      return parsed;
-    }
+    const parsed = JSON.parse(data);
+    if (typeof parsed.token === "string") return parsed.token;
   } catch {
     // not JSON
   }
@@ -47,14 +44,20 @@ export default function BackendScreen() {
 
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
-  const [manualUrl, setManualUrl] = useState("");
+  const [backendUrl, setBackendUrl] = useState("");
   const [manualToken, setManualToken] = useState("");
   const [permission, requestPermission] = useCameraPermissions();
 
   const projectReady = hasProjectId();
 
   const handleClaim = useCallback(
-    async (payload: QrPayload) => {
+    async (token: string) => {
+      const trimmedUrl = backendUrl.trim().replace(/\/$/, "");
+      if (!trimmedUrl) {
+        toast("Enter the backend URL first", "error");
+        setMode("summary");
+        return;
+      }
       setBusy(true);
       try {
         const expoPushToken = await getExpoPushToken();
@@ -64,8 +67,8 @@ export default function BackendScreen() {
           return;
         }
         const platform: "ios" | "android" = Platform.OS === "ios" ? "ios" : "android";
-        const result = await pairClaim(payload.url, payload.token, expoPushToken, platform);
-        await pair({ url: payload.url, sharedSecret: result.sharedSecret, deviceId: result.deviceId });
+        const result = await pairClaim(trimmedUrl, token, expoPushToken, platform);
+        await pair({ url: trimmedUrl, sharedSecret: result.sharedSecret, deviceId: result.deviceId });
         // Kick a health check and an initial config sync immediately.
         try {
           await getBackendHealth();
@@ -86,29 +89,29 @@ export default function BackendScreen() {
         setBusy(false);
       }
     },
-    [pair],
+    [backendUrl, pair],
   );
 
   const handleScan = useCallback(
     ({ data }: { data: string }) => {
       if (busy) return;
-      const payload = parseQr(data);
-      if (!payload) {
+      const token = parseQrToken(data);
+      if (!token) {
         toast("Unrecognized QR code", "error");
         return;
       }
-      void handleClaim(payload);
+      void handleClaim(token);
     },
     [busy, handleClaim],
   );
 
   const handleManual = useCallback(async () => {
-    if (!manualUrl.trim() || !manualToken.trim()) {
-      toast("Enter URL and token", "error");
+    if (!manualToken.trim()) {
+      toast("Enter a pairing token", "error");
       return;
     }
-    await handleClaim({ url: manualUrl.trim().replace(/\/$/, ""), token: manualToken.trim() });
-  }, [manualUrl, manualToken, handleClaim]);
+    await handleClaim(manualToken.trim());
+  }, [manualToken, handleClaim]);
 
   const handleTestPush = useCallback(async () => {
     setBusy(true);
@@ -223,9 +226,20 @@ export default function BackendScreen() {
             </>
           ) : (
             <>
+              <Card className="mb-4">
+                <TextInput
+                  label="Backend URL"
+                  placeholder="http://192.168.1.50:4000"
+                  value={backendUrl}
+                  onChangeText={setBackendUrl}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </Card>
+
               <Pressable
                 onPress={() => setMode("scanning")}
-                disabled={busy || !projectReady}
+                disabled={busy || !projectReady || !backendUrl.trim()}
                 className="active:opacity-80 mb-3"
               >
                 <Card className="flex-row items-center justify-center gap-2">
@@ -236,12 +250,12 @@ export default function BackendScreen() {
 
               <Pressable
                 onPress={() => setMode("manual")}
-                disabled={busy || !projectReady}
+                disabled={busy || !projectReady || !backendUrl.trim()}
                 className="active:opacity-80"
               >
                 <Card className="flex-row items-center justify-center gap-2">
                   <Bell size={18} color="#a1a1aa" />
-                  <Text className="text-zinc-100 text-base">Enter URL + token manually</Text>
+                  <Text className="text-zinc-100 text-base">Enter token manually</Text>
                 </Card>
               </Pressable>
             </>
@@ -281,17 +295,10 @@ export default function BackendScreen() {
       {mode === "manual" && (
         <>
           <Card className="gap-4 mb-4">
-            <TextInput
-              label="Backend URL"
-              placeholder="http://192.168.1.50:4000"
-              value={manualUrl}
-              onChangeText={setManualUrl}
-              keyboardType="url"
-              autoCapitalize="none"
-            />
+            <Text className="text-zinc-500 text-xs break-all">{backendUrl.trim()}</Text>
             <TextInput
               label="Pairing token"
-              placeholder="hex token from backend logs / /pair page"
+              placeholder="hex token from backend logs"
               value={manualToken}
               onChangeText={setManualToken}
               autoCapitalize="none"

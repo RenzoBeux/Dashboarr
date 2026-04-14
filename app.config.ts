@@ -19,6 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: true,
     bundleIdentifier: "com.dashboarr.app",
     infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
       NSLocalNetworkUsageDescription:
         "Dashboarr sends Wake-on-LAN magic packets to your home server on the local network.",
     },
@@ -29,6 +30,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#09090b",
     },
     package: "com.dashboarr.app",
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   scheme: "dashboarr",
   // Shared EAS project used by every install. Required for real push tokens —
