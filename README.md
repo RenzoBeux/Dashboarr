@@ -191,6 +191,12 @@ lib/                  # Types, utils, constants, HTTP client
 | Icons | lucide-react-native |
 | Language | TypeScript (strict mode) |
 
+## Roadmap
+
+- [ ] iOS App Store publish
+- [ ] SABnzbd integration
+- [ ] Improve dashboard UI
+
 ## Contributing
 
 Contributions are welcome! Feel free to open issues and pull requests.

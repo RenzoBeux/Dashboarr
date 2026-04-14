@@ -152,16 +152,37 @@ export async function diffOverseerrPending(requests: OverseerrRequest[]): Promis
 
 // ---------------- Service health ----------------
 
+/** Require this many consecutive failed pings before declaring a service offline. */
+const OFFLINE_THRESHOLD = 3;
+
+interface HealthState {
+  online: boolean;
+  failCount: number;
+}
+
 export async function diffHealth(
   serviceId: string,
   displayName: string,
   online: boolean,
 ): Promise<void> {
   const key = `health:${serviceId}:online`;
-  const prev = getState<{ online: boolean }>(key);
-  setState(key, { online });
-  if (!prev) return;
-  if (prev.online === true && online === false) {
+  const prev = getState<HealthState>(key);
+
+  if (!prev) {
+    setState(key, { online, failCount: online ? 0 : 1 });
+    return;
+  }
+
+  if (online) {
+    setState(key, { online: true, failCount: 0 });
+    return;
+  }
+
+  // Ping failed — increment consecutive failure count
+  const failCount = prev.failCount + 1;
+
+  if (failCount >= OFFLINE_THRESHOLD && prev.online) {
+    setState(key, { online: false, failCount });
     await dispatchPush({
       category: "serviceOffline",
       title: "Service offline",
@@ -170,5 +191,7 @@ export async function diffHealth(
       dedupeKey: `health:offline:${serviceId}:${Date.now() - (Date.now() % 300000)}`,
       // dedupe window is rounded to 5min buckets so flapping doesn't spam
     });
+  } else {
+    setState(key, { online: prev.online, failCount });
   }
 }

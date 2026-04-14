@@ -117,7 +117,6 @@ export function pushConfigSnapshot(): Promise<void> {
       apiKey: secrets.apiKey || undefined,
       username: secrets.username || undefined,
       password: secrets.password || undefined,
-      wolMac: config.wakeOnLan?.mac || undefined,
     };
   });
 

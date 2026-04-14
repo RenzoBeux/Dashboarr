@@ -45,9 +45,11 @@ const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
 export default function ServicesScreen() {
   const router = useRouter();
   const services = useConfigStore((s) => s.services);
+  const wakeOnLan = useConfigStore((s) => s.wakeOnLan);
   const { data: health } = useServiceHealth();
 
   const enabledServices = SERVICE_IDS.filter((id) => services[id].enabled && SERVICE_ROUTES[id]);
+  const anyOffline = health?.some((h) => enabledServices.includes(h.id as ServiceId) && !h.online);
 
   if (!enabledServices.length) {
     return (
@@ -64,7 +66,12 @@ export default function ServicesScreen() {
 
   return (
     <ScreenWrapper>
-      <Text className="text-zinc-100 text-2xl font-bold mb-4">Services</Text>
+      <View className="flex-row items-center justify-between mb-4">
+        <Text className="text-zinc-100 text-2xl font-bold">Services</Text>
+        {anyOffline && wakeOnLan?.mac && (
+          <WakeOnLanButton variant="outline" size="sm" />
+        )}
+      </View>
       <View className="flex-row flex-wrap gap-3">
         {enabledServices.map((id) => {
           const Icon = SERVICE_ICONS[id];
@@ -89,9 +96,6 @@ export default function ServicesScreen() {
                 />
               </View>
               <Text className="text-zinc-100 text-sm font-medium">{service.name}</Text>
-              {!online && service.wakeOnLan?.mac && (
-                <WakeOnLanButton serviceId={id} variant="outline" size="sm" />
-              )}
             </Pressable>
           );
         })}

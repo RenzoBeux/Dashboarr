@@ -9,8 +9,9 @@ import type { ExportPayload } from "@/store/config-store";
  *   v0  — pre-versioning (no version field)
  *   v1  — first versioned format (may be missing newer services)
  *   v2  — added backend pairing + notification settings
+ *   v3  — moved wake-on-LAN from per-service to global config
  */
-export const CURRENT_CONFIG_VERSION = 2;
+export const CURRENT_CONFIG_VERSION = 3;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -37,6 +38,20 @@ const migrations: Record<number, (payload: any) => any> = {
     backend: payload.backend ?? null,
     notificationSettings: payload.notificationSettings ?? null,
   }),
+
+  // v2 → v3: move wake-on-LAN from per-service to global
+  2: (payload) => {
+    let wakeOnLan = null;
+    const services: Record<string, any> = {};
+    for (const [id, svc] of Object.entries(payload.services ?? {})) {
+      const { wakeOnLan: wolConfig, ...rest } = svc as any;
+      if (!wakeOnLan && wolConfig?.mac) {
+        wakeOnLan = wolConfig;
+      }
+      services[id] = rest;
+    }
+    return { ...payload, version: 3, services, wakeOnLan };
+  },
 };
 
 /**

@@ -40,7 +40,6 @@ export interface ServiceConfig {
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
-  wakeOnLan?: WakeOnLanConfig;
 }
 
 export interface ServiceSecrets {
@@ -55,6 +54,7 @@ interface ConfigState {
   autoSwitchNetwork: boolean;
   homeSSID: string;
   dashboardOrder: DashboardCardId[];
+  wakeOnLan: WakeOnLanConfig | null;
   hydrated: boolean;
 }
 
@@ -69,6 +69,8 @@ export interface ExportPayload {
   // v2
   backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
   notificationSettings?: NotificationSettings;
+  // v3
+  wakeOnLan?: WakeOnLanConfig | null;
 }
 
 interface ConfigActions {
@@ -79,6 +81,7 @@ interface ConfigActions {
   setAutoSwitch: (enabled: boolean) => void;
   setHomeSSID: (ssid: string) => void;
   setDashboardOrder: (order: DashboardCardId[]) => void;
+  setWakeOnLan: (config: WakeOnLanConfig | null) => void;
   getActiveUrl: (id: ServiceId) => string;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
@@ -119,6 +122,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   autoSwitchNetwork: false,
   homeSSID: "",
   dashboardOrder: DEFAULT_DASHBOARD_ORDER,
+  wakeOnLan: null,
   hydrated: false,
 
   hydrate: async () => {
@@ -151,8 +155,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const homeSSID = getString(STORAGE_KEYS.homeSSID) ?? "";
     const storedOrder = getJSON<DashboardCardId[]>(STORAGE_KEYS.dashboardOrder);
     const dashboardOrder = storedOrder ?? DEFAULT_DASHBOARD_ORDER;
+    const wakeOnLan = getJSON<WakeOnLanConfig>(STORAGE_KEYS.wakeOnLan) ?? null;
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, hydrated: true });
+    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wakeOnLan, hydrated: true });
   },
 
   updateService: (id, config) => {
@@ -198,6 +203,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ dashboardOrder: order });
   },
 
+  setWakeOnLan: (config) => {
+    if (config) {
+      setJSON(STORAGE_KEYS.wakeOnLan, config);
+    } else {
+      setJSON(STORAGE_KEYS.wakeOnLan, null);
+    }
+    set({ wakeOnLan: config });
+  },
+
   getActiveUrl: (id) => {
     const service = get().services[id];
     return service.useRemote ? service.remoteUrl : service.localUrl;
@@ -212,7 +226,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       throw new Error("Authentication required to export");
     }
 
-    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder } = get();
+    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wakeOnLan } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
       useNotificationStore.getState();
@@ -227,6 +241,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboardOrder,
       backend: { url, sharedSecret, deviceId },
       notificationSettings: notifSettings,
+      wakeOnLan,
     };
 
     const file = new File(Paths.cache, "dashboarr-config.json");
@@ -278,6 +293,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     if (payload.dashboardOrder) {
       setJSON(STORAGE_KEYS.dashboardOrder, payload.dashboardOrder);
     }
+    setJSON(STORAGE_KEYS.wakeOnLan, payload.wakeOnLan ?? null);
 
     // Restore backend pairing (v2+)
     if (payload.backend?.url && payload.backend?.sharedSecret) {
@@ -301,6 +317,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeSSID: payload.homeSSID ?? "",
       dashboardOrder: payload.dashboardOrder ?? DEFAULT_DASHBOARD_ORDER,
+      wakeOnLan: payload.wakeOnLan ?? null,
     });
 
     return true;

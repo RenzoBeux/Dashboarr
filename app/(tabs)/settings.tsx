@@ -17,6 +17,7 @@ import {
   FolderDown,
   Wifi,
   Cloud,
+  Zap,
 } from "lucide-react-native";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { detectSSID } from "@/lib/wifi";
@@ -29,8 +30,8 @@ import { useConfigStore } from "@/store/config-store";
 import { pingService } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
-import type { ServiceConfig, ServiceSecrets, WakeOnLanConfig } from "@/store/config-store";
-import { WakeOnLanButton } from "@/components/common/wake-on-lan-button";
+import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
+import type { WakeOnLanConfig } from "@/store/config-store";
 import { NotificationSettingsSection } from "@/components/common/notification-settings-section";
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
@@ -74,6 +75,12 @@ export default function SettingsScreen() {
   const setHomeSSID = useConfigStore((s) => s.setHomeSSID);
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
+  const wakeOnLan = useConfigStore((s) => s.wakeOnLan);
+  const setWakeOnLan = useConfigStore((s) => s.setWakeOnLan);
+  const [wolMac, setWolMac] = useState(wakeOnLan?.mac ?? "");
+  const [wolBroadcast, setWolBroadcast] = useState(wakeOnLan?.broadcastAddress ?? "");
+  const [wolPort, setWolPort] = useState(wakeOnLan?.port ? String(wakeOnLan.port) : "");
+  const [wolSending, setWolSending] = useState(false);
 
   const handleExport = async () => {
     setExporting(true);
@@ -162,6 +169,85 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
         )}
+      </Card>
+
+      <Card className="gap-4 mb-4">
+        <View className="flex-row items-center gap-2">
+          <Zap size={16} color="#a1a1aa" />
+          <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+            Wake-on-LAN
+          </Text>
+        </View>
+        <TextInput
+          label="MAC Address"
+          placeholder="00:11:22:33:44:55"
+          value={wolMac}
+          onChangeText={setWolMac}
+          autoCapitalize="none"
+        />
+        <TextInput
+          label="Broadcast Address"
+          placeholder="192.168.1.255"
+          value={wolBroadcast}
+          onChangeText={setWolBroadcast}
+          keyboardType="url"
+        />
+        <TextInput
+          label="Port"
+          placeholder="9"
+          value={wolPort}
+          onChangeText={setWolPort}
+          keyboardType="number-pad"
+        />
+        <View className="flex-row gap-3">
+          <Button
+            label="Save"
+            onPress={() => {
+              const config: WakeOnLanConfig | null = wolMac.trim()
+                ? {
+                    mac: wolMac.trim(),
+                    broadcastAddress: wolBroadcast.trim() || undefined,
+                    port: wolPort.trim() ? Number(wolPort.trim()) || 9 : undefined,
+                  }
+                : null;
+              setWakeOnLan(config);
+              toast(config ? "Wake-on-LAN saved" : "Wake-on-LAN cleared", "success");
+            }}
+            variant="outline"
+            size="sm"
+            className="flex-1"
+          />
+          {wakeOnLan?.mac && (
+            <Button
+              label="Wake"
+              onPress={async () => {
+                setWolSending(true);
+                try {
+                  await sendWakeOnLan({
+                    mac: wakeOnLan.mac,
+                    broadcastAddress: wakeOnLan.broadcastAddress,
+                    port: wakeOnLan.port,
+                  });
+                  toast("Magic packet sent", "success");
+                } catch (err) {
+                  const msg =
+                    err instanceof WakeOnLanError
+                      ? err.message
+                      : err instanceof Error
+                        ? err.message
+                        : "Failed to send magic packet";
+                  toast(msg, "error");
+                } finally {
+                  setWolSending(false);
+                }
+              }}
+              loading={wolSending}
+              icon={<Zap size={14} color="#fff" />}
+              size="sm"
+              className="flex-1"
+            />
+          )}
+        </View>
       </Card>
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
@@ -278,26 +364,12 @@ function ServiceEditor({
   const [apiKey, setApiKey] = useState(secrets.apiKey ?? "");
   const [username, setUsername] = useState(secrets.username ?? "");
   const [password, setPassword] = useState(secrets.password ?? "");
-  const [wolMac, setWolMac] = useState(config.wakeOnLan?.mac ?? "");
-  const [wolBroadcast, setWolBroadcast] = useState(
-    config.wakeOnLan?.broadcastAddress ?? "",
-  );
-  const [wolPort, setWolPort] = useState(
-    config.wakeOnLan?.port ? String(config.wakeOnLan.port) : "",
-  );
   const [testing, setTesting] = useState(false);
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
   const handleSave = async () => {
-    const wakeOnLan: WakeOnLanConfig | undefined = wolMac.trim()
-      ? {
-          mac: wolMac.trim(),
-          broadcastAddress: wolBroadcast.trim() || undefined,
-          port: wolPort.trim() ? Number(wolPort.trim()) || 9 : undefined,
-        }
-      : undefined;
-    updateService(serviceId, { localUrl, remoteUrl, wakeOnLan });
+    updateService(serviceId, { localUrl, remoteUrl });
     if (isQB) {
       await updateSecrets(serviceId, { username, password });
     } else {
@@ -386,36 +458,6 @@ function ServiceEditor({
             onChangeText={setApiKey}
             secureTextEntry
           />
-        )}
-      </Card>
-
-      <Card className="gap-4 mb-4">
-        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-          Wake-on-LAN (optional)
-        </Text>
-        <TextInput
-          label="MAC Address"
-          placeholder="00:11:22:33:44:55"
-          value={wolMac}
-          onChangeText={setWolMac}
-          autoCapitalize="none"
-        />
-        <TextInput
-          label="Broadcast Address"
-          placeholder="192.168.1.255"
-          value={wolBroadcast}
-          onChangeText={setWolBroadcast}
-          keyboardType="url"
-        />
-        <TextInput
-          label="Port"
-          placeholder="9"
-          value={wolPort}
-          onChangeText={setWolPort}
-          keyboardType="number-pad"
-        />
-        {config.wakeOnLan?.mac && (
-          <WakeOnLanButton serviceId={serviceId} />
         )}
       </Card>
 

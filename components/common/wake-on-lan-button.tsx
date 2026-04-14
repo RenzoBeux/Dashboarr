@@ -4,35 +4,32 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
 import { useConfigStore } from "@/store/config-store";
-import type { ServiceId } from "@/lib/constants";
 
 interface WakeOnLanButtonProps {
-  serviceId: ServiceId;
   variant?: "primary" | "outline";
   size?: "sm" | "md" | "lg";
   className?: string;
 }
 
 export function WakeOnLanButton({
-  serviceId,
   variant = "outline",
   size = "md",
   className,
 }: WakeOnLanButtonProps) {
-  const config = useConfigStore((s) => s.services[serviceId]);
+  const wakeOnLan = useConfigStore((s) => s.wakeOnLan);
   const [sending, setSending] = useState(false);
 
-  if (!config.wakeOnLan?.mac) return null;
+  if (!wakeOnLan?.mac) return null;
 
   const handleWake = async () => {
     setSending(true);
     try {
       await sendWakeOnLan({
-        mac: config.wakeOnLan!.mac,
-        broadcastAddress: config.wakeOnLan!.broadcastAddress,
-        port: config.wakeOnLan!.port,
+        mac: wakeOnLan.mac,
+        broadcastAddress: wakeOnLan.broadcastAddress,
+        port: wakeOnLan.port,
       });
-      toast(`Magic packet sent to ${config.name}`, "success");
+      toast("Magic packet sent", "success");
     } catch (err) {
       const msg =
         err instanceof WakeOnLanError

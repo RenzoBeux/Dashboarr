@@ -64,6 +64,7 @@ export const STORAGE_KEYS = {
   homeSSID: "app.homeSSID",
   dashboardOrder: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
+  wakeOnLan: "app.wakeOnLan",
 } as const;
 
 // SecureStore key prefix
