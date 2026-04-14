@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboarr — Manage Your Media Stack</title>
+  <meta name="description" content="A mobile app to manage your self-hosted media stack from a single interface. Built with Expo & React Native.">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #09090b;
+      color: #e4e4e7;
+      line-height: 1.7;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 5rem 1.5rem 3rem;
+    }
+    .hero-icon {
+      width: 100px;
+      height: 100px;
+      border-radius: 22px;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: 2.75rem;
+      font-weight: 700;
+      color: #fafafa;
+      margin-bottom: 0.75rem;
+    }
+    .hero p {
+      font-size: 1.2rem;
+      color: #a1a1aa;
+      max-width: 520px;
+      margin: 0 auto 2rem;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { text-decoration: none; opacity: 0.85; }
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #22c55e);
+      color: #fff;
+    }
+    .btn-secondary {
+      background: #27272a;
+      color: #e4e4e7;
+      border: 1px solid #3f3f46;
+    }
+    .btn svg { width: 20px; height: 20px; fill: currentColor; }
+
+    /* Badges */
+    .badges {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.8rem;
+      border-radius: 999px;
+      background: #18181b;
+      color: #a1a1aa;
+      border: 1px solid #27272a;
+    }
+
+    /* Features */
+    .features {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+    }
+    .features h2 {
+      text-align: center;
+      font-size: 1.75rem;
+      color: #fafafa;
+      margin-bottom: 2rem;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.25rem;
+    }
+    .feature-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .feature-card h3 {
+      font-size: 1rem;
+      color: #fafafa;
+      margin-bottom: 0.4rem;
+    }
+    .feature-card p {
+      font-size: 0.9rem;
+      color: #a1a1aa;
+    }
+
+    /* Services */
+    .services {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 3rem;
+    }
+    .services h2 {
+      text-align: center;
+      font-size: 1.75rem;
+      color: #fafafa;
+      margin-bottom: 2rem;
+    }
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .service-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+    .service-card h3 {
+      font-size: 0.95rem;
+      color: #fafafa;
+      margin-bottom: 0.25rem;
+    }
+    .service-card p {
+      font-size: 0.8rem;
+      color: #71717a;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem 1.5rem 3rem;
+      color: #52525b;
+      font-size: 0.85rem;
+    }
+    footer a { color: #71717a; }
+    footer a:hover { color: #a1a1aa; }
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <img
+      src="https://raw.githubusercontent.com/RenzoBeux/Dashboarr/main/assets/icon.png"
+      alt="Dashboarr"
+      class="hero-icon"
+    />
+    <h1>Dashboarr</h1>
+    <p>A mobile app to manage your self-hosted media stack from a single interface.</p>
+    <div class="hero-buttons">
+      <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app" class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 2.302-2.302 2.302-2.593-2.302 2.593-2.302zM5.864 2.658L16.8 8.99l-2.302 2.302-8.635-8.635z"/></svg>
+        Google Play
+      </a>
+      <a href="https://github.com/RenzoBeux/Dashboarr" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        GitHub
+      </a>
+    </div>
+    <div class="badges">
+      <span class="badge">Expo SDK 54</span>
+      <span class="badge">React Native</span>
+      <span class="badge">TypeScript</span>
+      <span class="badge">Open Source</span>
+    </div>
+  </section>
+
+  <section class="features">
+    <h2>Features</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h3>Unified Dashboard</h3>
+        <p>All your services at a glance with customizable, reorderable cards.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Auto Network Switching</h3>
+        <p>Detects your home WiFi and switches between local and remote URLs automatically.</p>
+      </div>
+      <div class="feature-card">
+        <h3>No Backend Required</h3>
+        <p>Connects directly to your services. Your data stays between your phone and your servers.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Push Notifications</h3>
+        <p>Optional self-hosted backend for real-time notifications when downloads finish or media arrives.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Secure Storage</h3>
+        <p>API keys stored in your device's secure enclave. No cloud, no accounts, no tracking.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Config Backup</h3>
+        <p>Export and import your entire configuration with biometric authentication.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="services">
+    <h2>Supported Services</h2>
+    <div class="services-grid">
+      <div class="service-card">
+        <h3>qBittorrent</h3>
+        <p>Queue, pause, resume, delete, speed stats</p>
+      </div>
+      <div class="service-card">
+        <h3>Radarr</h3>
+        <p>Search, add movies, monitor, queue</p>
+      </div>
+      <div class="service-card">
+        <h3>Sonarr</h3>
+        <p>Search, add shows, episode monitoring</p>
+      </div>
+      <div class="service-card">
+        <h3>Overseerr</h3>
+        <p>Browse, request, approve media</p>
+      </div>
+      <div class="service-card">
+        <h3>Tautulli</h3>
+        <p>Active streams, bandwidth, history</p>
+      </div>
+      <div class="service-card">
+        <h3>Prowlarr</h3>
+        <p>Indexer management, search, stats</p>
+      </div>
+      <div class="service-card">
+        <h3>Plex</h3>
+        <p>Now playing, recently added, on deck</p>
+      </div>
+      <div class="service-card">
+        <h3>Glances</h3>
+        <p>Server CPU, RAM, disk, network stats</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-links">
+      <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+      <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app">Google Play</a>
+      <a href="privacy-policy.html">Privacy Policy</a>
+    </div>
+    <p>Open source under GPL-3.0. Built by <a href="https://github.com/RenzoBeux">Renzo Beux</a>.</p>
+  </footer>
+
+</body>
+</html>

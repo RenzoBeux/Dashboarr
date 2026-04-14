@@ -103,6 +103,13 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
   4. Update `exportConfig` / `importConfig` to handle the new data
 - Version history: v0 (pre-versioning) → v1 (first versioned) → v2 (backend pairing + notification settings)
 
+## GitHub Pages Landing Page
+- Served from `docs/` on the `main` branch: https://renzobeux.github.io/Dashboarr/
+- `docs/index.html` — landing page (features, supported services, download links)
+- `docs/privacy-policy.html` — privacy policy (required for Play Store)
+- **Keep `index.html` in sync** when adding/removing services, changing major features, or updating download links
+- Self-contained HTML with inline styles — no build step, no dependencies
+
 ## What NOT to Build
 - No user accounts or authentication beyond service API keys
 - No monetization or credit system

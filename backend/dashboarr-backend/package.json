@@ -2,7 +2,7 @@
   "name": "dashboarr-backend",
   "version": "0.1.0",
   "description": "Self-hosted companion backend for Dashboarr — polls your *arr stack and sends real Expo push notifications",
-  "license": "MIT",
+  "license": "GPL-3.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
