@@ -28,7 +28,9 @@ import { useNotificationStore } from "@/store/notifications-store";
 import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, DashboardCardId } from "@/lib/constants";
 
-export interface WakeOnLanConfig {
+export interface WakeOnLanDevice {
+  id: string;
+  name: string;
   mac: string;
   broadcastAddress?: string;
   port?: number;
@@ -54,7 +56,7 @@ interface ConfigState {
   autoSwitchNetwork: boolean;
   homeSSID: string;
   dashboardOrder: DashboardCardId[];
-  wakeOnLan: WakeOnLanConfig | null;
+  wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
 }
 
@@ -69,8 +71,8 @@ export interface ExportPayload {
   // v2
   backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
   notificationSettings?: NotificationSettings;
-  // v3
-  wakeOnLan?: WakeOnLanConfig | null;
+  // v4
+  wolDevices?: WakeOnLanDevice[];
 }
 
 interface ConfigActions {
@@ -81,7 +83,7 @@ interface ConfigActions {
   setAutoSwitch: (enabled: boolean) => void;
   setHomeSSID: (ssid: string) => void;
   setDashboardOrder: (order: DashboardCardId[]) => void;
-  setWakeOnLan: (config: WakeOnLanConfig | null) => void;
+  setWolDevices: (devices: WakeOnLanDevice[]) => void;
   getActiveUrl: (id: ServiceId) => string;
   exportConfig: () => Promise<void>;
   importConfig: () => Promise<boolean>;
@@ -122,7 +124,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   autoSwitchNetwork: false,
   homeSSID: "",
   dashboardOrder: DEFAULT_DASHBOARD_ORDER,
-  wakeOnLan: null,
+  wolDevices: [],
   hydrated: false,
 
   hydrate: async () => {
@@ -154,10 +156,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
     const homeSSID = getString(STORAGE_KEYS.homeSSID) ?? "";
     const storedOrder = getJSON<DashboardCardId[]>(STORAGE_KEYS.dashboardOrder);
-    const dashboardOrder = storedOrder ?? DEFAULT_DASHBOARD_ORDER;
-    const wakeOnLan = getJSON<WakeOnLanConfig>(STORAGE_KEYS.wakeOnLan) ?? null;
+    // Append any new card IDs that were added since the user last saved their order
+    const baseOrder = storedOrder ?? DEFAULT_DASHBOARD_ORDER;
+    const missing = DEFAULT_DASHBOARD_ORDER.filter((id) => !baseOrder.includes(id));
+    const dashboardOrder = missing.length ? [...baseOrder, ...missing] : baseOrder;
+    const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wakeOnLan, hydrated: true });
+    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wolDevices, hydrated: true });
   },
 
   updateService: (id, config) => {
@@ -203,13 +208,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ dashboardOrder: order });
   },
 
-  setWakeOnLan: (config) => {
-    if (config) {
-      setJSON(STORAGE_KEYS.wakeOnLan, config);
-    } else {
-      setJSON(STORAGE_KEYS.wakeOnLan, null);
-    }
-    set({ wakeOnLan: config });
+  setWolDevices: (devices) => {
+    setJSON(STORAGE_KEYS.wolDevices, devices);
+    set({ wolDevices: devices });
   },
 
   getActiveUrl: (id) => {
@@ -226,7 +227,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       throw new Error("Authentication required to export");
     }
 
-    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wakeOnLan } = get();
+    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wolDevices } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
       useNotificationStore.getState();
@@ -241,7 +242,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboardOrder,
       backend: { url, sharedSecret, deviceId },
       notificationSettings: notifSettings,
-      wakeOnLan,
+      wolDevices,
     };
 
     const file = new File(Paths.cache, "dashboarr-config.json");
@@ -293,7 +294,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     if (payload.dashboardOrder) {
       setJSON(STORAGE_KEYS.dashboardOrder, payload.dashboardOrder);
     }
-    setJSON(STORAGE_KEYS.wakeOnLan, payload.wakeOnLan ?? null);
+    setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
 
     // Restore backend pairing (v2+)
     if (payload.backend?.url && payload.backend?.sharedSecret) {
@@ -317,7 +318,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeSSID: payload.homeSSID ?? "",
       dashboardOrder: payload.dashboardOrder ?? DEFAULT_DASHBOARD_ORDER,
-      wakeOnLan: payload.wakeOnLan ?? null,
+      wolDevices: payload.wolDevices ?? [],
     });
 
     return true;

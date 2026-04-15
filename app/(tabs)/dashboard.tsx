@@ -16,6 +16,7 @@ import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
 import { ServerStatsCard } from "@/components/dashboard/server-stats-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
+import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
 import { ICON, type DashboardCardId, type ServiceId } from "@/lib/constants";
@@ -35,6 +36,7 @@ const CARD_REGISTRY: Record<
   "plex-now-playing": { label: "Plex Now Playing", component: PlexNowPlayingCard, service: "plex" },
   "prowlarr-stats": { label: "Prowlarr Stats", component: ProwlarrStatsCard, service: "prowlarr" },
   "bazarr-wanted": { label: "Bazarr Wanted", component: BazarrWantedCard, service: "bazarr" },
+  "wol-devices": { label: "Wake-on-LAN", component: WolDevicesCard, service: null },
 };
 
 export default function DashboardScreen() {

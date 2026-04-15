@@ -10,8 +10,9 @@ import type { ExportPayload } from "@/store/config-store";
  *   v1  — first versioned format (may be missing newer services)
  *   v2  — added backend pairing + notification settings
  *   v3  — moved wake-on-LAN from per-service to global config
+ *   v4  — multiple WOL devices (wakeOnLan → wolDevices array)
  */
-export const CURRENT_CONFIG_VERSION = 3;
+export const CURRENT_CONFIG_VERSION = 4;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -51,6 +52,22 @@ const migrations: Record<number, (payload: any) => any> = {
       services[id] = rest;
     }
     return { ...payload, version: 3, services, wakeOnLan };
+  },
+
+  // v3 → v4: single wakeOnLan → wolDevices array
+  3: (payload) => {
+    const wolDevices: any[] = [];
+    if (payload.wakeOnLan?.mac) {
+      wolDevices.push({
+        id: "migrated-1",
+        name: "Server",
+        mac: payload.wakeOnLan.mac,
+        broadcastAddress: payload.wakeOnLan.broadcastAddress,
+        port: payload.wakeOnLan.port,
+      });
+    }
+    const { wakeOnLan: _, ...rest } = payload;
+    return { ...rest, version: 4, wolDevices };
   },
 };
 

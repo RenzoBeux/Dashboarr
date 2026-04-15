@@ -30,8 +30,6 @@ import { useConfigStore } from "@/store/config-store";
 import { pingService } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
-import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
-import type { WakeOnLanConfig } from "@/store/config-store";
 import { NotificationSettingsSection } from "@/components/common/notification-settings-section";
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
@@ -75,12 +73,7 @@ export default function SettingsScreen() {
   const setHomeSSID = useConfigStore((s) => s.setHomeSSID);
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
-  const wakeOnLan = useConfigStore((s) => s.wakeOnLan);
-  const setWakeOnLan = useConfigStore((s) => s.setWakeOnLan);
-  const [wolMac, setWolMac] = useState(wakeOnLan?.mac ?? "");
-  const [wolBroadcast, setWolBroadcast] = useState(wakeOnLan?.broadcastAddress ?? "");
-  const [wolPort, setWolPort] = useState(wakeOnLan?.port ? String(wakeOnLan.port) : "");
-  const [wolSending, setWolSending] = useState(false);
+  const wolDevices = useConfigStore((s) => s.wolDevices);
 
   const handleExport = async () => {
     setExporting(true);
@@ -171,84 +164,22 @@ export default function SettingsScreen() {
         )}
       </Card>
 
-      <Card className="gap-4 mb-4">
-        <View className="flex-row items-center gap-2">
-          <Zap size={16} color="#a1a1aa" />
-          <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-            Wake-on-LAN
-          </Text>
-        </View>
-        <TextInput
-          label="MAC Address"
-          placeholder="00:11:22:33:44:55"
-          value={wolMac}
-          onChangeText={setWolMac}
-          autoCapitalize="none"
-        />
-        <TextInput
-          label="Broadcast Address"
-          placeholder="192.168.1.255"
-          value={wolBroadcast}
-          onChangeText={setWolBroadcast}
-          keyboardType="url"
-        />
-        <TextInput
-          label="Port"
-          placeholder="9"
-          value={wolPort}
-          onChangeText={setWolPort}
-          keyboardType="number-pad"
-        />
-        <View className="flex-row gap-3">
-          <Button
-            label="Save"
-            onPress={() => {
-              const config: WakeOnLanConfig | null = wolMac.trim()
-                ? {
-                    mac: wolMac.trim(),
-                    broadcastAddress: wolBroadcast.trim() || undefined,
-                    port: wolPort.trim() ? Number(wolPort.trim()) || 9 : undefined,
-                  }
-                : null;
-              setWakeOnLan(config);
-              toast(config ? "Wake-on-LAN saved" : "Wake-on-LAN cleared", "success");
-            }}
-            variant="outline"
-            size="sm"
-            className="flex-1"
-          />
-          {wakeOnLan?.mac && (
-            <Button
-              label="Wake"
-              onPress={async () => {
-                setWolSending(true);
-                try {
-                  await sendWakeOnLan({
-                    mac: wakeOnLan.mac,
-                    broadcastAddress: wakeOnLan.broadcastAddress,
-                    port: wakeOnLan.port,
-                  });
-                  toast("Magic packet sent", "success");
-                } catch (err) {
-                  const msg =
-                    err instanceof WakeOnLanError
-                      ? err.message
-                      : err instanceof Error
-                        ? err.message
-                        : "Failed to send magic packet";
-                  toast(msg, "error");
-                } finally {
-                  setWolSending(false);
-                }
-              }}
-              loading={wolSending}
-              icon={<Zap size={14} color="#fff" />}
-              size="sm"
-              className="flex-1"
-            />
-          )}
-        </View>
-      </Card>
+      <Pressable onPress={() => router.push("/wake-on-lan")} className="active:opacity-80 mb-4">
+        <Card className="flex-row items-center">
+          <View className="bg-surface-light rounded-xl p-2.5 mr-3">
+            <Zap size={20} color="#a1a1aa" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-base">Wake-on-LAN</Text>
+            <Text className="text-zinc-500 text-xs">
+              {wolDevices.length
+                ? `${wolDevices.length} device${wolDevices.length > 1 ? "s" : ""} configured`
+                : "Wake devices on your network"}
+            </Text>
+          </View>
+          <ChevronRight size={18} color="#71717a" />
+        </Card>
+      </Pressable>
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
         Services

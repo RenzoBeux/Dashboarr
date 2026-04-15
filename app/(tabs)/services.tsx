@@ -10,9 +10,9 @@ import {
   PlayCircle,
   Server,
   Captions,
+  Zap,
 } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
-import { WakeOnLanButton } from "@/components/common/wake-on-lan-button";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { SERVICE_IDS } from "@/lib/constants";
@@ -45,11 +45,10 @@ const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
 export default function ServicesScreen() {
   const router = useRouter();
   const services = useConfigStore((s) => s.services);
-  const wakeOnLan = useConfigStore((s) => s.wakeOnLan);
+  const wolDevices = useConfigStore((s) => s.wolDevices);
   const { data: health } = useServiceHealth();
 
   const enabledServices = SERVICE_IDS.filter((id) => services[id].enabled && SERVICE_ROUTES[id]);
-  const anyOffline = health?.some((h) => enabledServices.includes(h.id as ServiceId) && !h.online);
 
   if (!enabledServices.length) {
     return (
@@ -68,8 +67,14 @@ export default function ServicesScreen() {
     <ScreenWrapper>
       <View className="flex-row items-center justify-between mb-4">
         <Text className="text-zinc-100 text-2xl font-bold">Services</Text>
-        {anyOffline && wakeOnLan?.mac && (
-          <WakeOnLanButton variant="outline" size="sm" />
+        {wolDevices.length > 0 && (
+          <Pressable
+            onPress={() => router.push("/wake-on-lan")}
+            className="flex-row items-center gap-1.5 bg-surface border border-border rounded-xl px-3 py-2 active:opacity-70"
+          >
+            <Zap size={14} color="#a1a1aa" />
+            <Text className="text-zinc-300 text-sm">Wake</Text>
+          </Pressable>
         )}
       </View>
       <View className="flex-row flex-wrap gap-3">

@@ -52,6 +52,7 @@ export const DASHBOARD_CARD_IDS = [
   "plex-now-playing",
   "prowlarr-stats",
   "bazarr-wanted",
+  "wol-devices",
 ] as const;
 
 export type DashboardCardId = (typeof DASHBOARD_CARD_IDS)[number];
@@ -64,7 +65,7 @@ export const STORAGE_KEYS = {
   homeSSID: "app.homeSSID",
   dashboardOrder: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
-  wakeOnLan: "app.wakeOnLan",
+  wolDevices: "app.wolDevices",
 } as const;
 
 // SecureStore key prefix

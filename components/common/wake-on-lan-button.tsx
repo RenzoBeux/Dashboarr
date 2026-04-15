@@ -3,33 +3,32 @@ import { Zap } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
-import { useConfigStore } from "@/store/config-store";
+import type { WakeOnLanDevice } from "@/store/config-store";
 
 interface WakeOnLanButtonProps {
+  device: WakeOnLanDevice;
   variant?: "primary" | "outline";
   size?: "sm" | "md" | "lg";
   className?: string;
 }
 
 export function WakeOnLanButton({
+  device,
   variant = "outline",
   size = "md",
   className,
 }: WakeOnLanButtonProps) {
-  const wakeOnLan = useConfigStore((s) => s.wakeOnLan);
   const [sending, setSending] = useState(false);
-
-  if (!wakeOnLan?.mac) return null;
 
   const handleWake = async () => {
     setSending(true);
     try {
       await sendWakeOnLan({
-        mac: wakeOnLan.mac,
-        broadcastAddress: wakeOnLan.broadcastAddress,
-        port: wakeOnLan.port,
+        mac: device.mac,
+        broadcastAddress: device.broadcastAddress,
+        port: device.port,
       });
-      toast("Magic packet sent", "success");
+      toast(`Magic packet sent to ${device.name}`, "success");
     } catch (err) {
       const msg =
         err instanceof WakeOnLanError
@@ -45,7 +44,7 @@ export function WakeOnLanButton({
 
   return (
     <Button
-      label="Wake"
+      label={`Wake ${device.name}`}
       onPress={handleWake}
       variant={variant}
       size={size}
