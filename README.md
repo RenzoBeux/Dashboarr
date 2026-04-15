@@ -123,7 +123,7 @@ services:
       - dashboarr-data:/data
     environment:
       - NODE_ENV=production
-      - PUBLIC_URL=https://dashboarr.yourdomain.com  # your externally reachable URL
+      # - PUBLIC_URL=https://dashboarr.yourdomain.com  # set to embed URL in pairing QR for single-scan setup
       # - TRUST_PROXY=true                           # enable if behind a reverse proxy
       # - LOG_LEVEL=debug                            # default: info
 

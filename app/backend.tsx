@@ -21,14 +21,19 @@ import { getExpoPushToken, hasProjectId } from "@/lib/expo-push";
 
 type Mode = "summary" | "scanning" | "manual";
 
-function parseQrToken(data: string): string | null {
-  // Raw hex token (32 chars = 16 random bytes)
+function parseQrPayload(data: string): { token: string; url?: string } | null {
+  // Raw hex token (32 chars = 16 random bytes) — backend without PUBLIC_URL
   const trimmed = data.trim();
-  if (/^[0-9a-f]{32}$/i.test(trimmed)) return trimmed;
-  // JSON fallback (backward compat with older backends)
+  if (/^[0-9a-f]{32}$/i.test(trimmed)) return { token: trimmed };
+  // JSON with url + token (backend has PUBLIC_URL set)
   try {
     const parsed = JSON.parse(data);
-    if (typeof parsed.token === "string") return parsed.token;
+    if (typeof parsed.token === "string") {
+      return {
+        token: parsed.token,
+        url: typeof parsed.url === "string" ? parsed.url : undefined,
+      };
+    }
   } catch {
     // not JSON
   }
@@ -51,8 +56,8 @@ export default function BackendScreen() {
   const projectReady = hasProjectId();
 
   const handleClaim = useCallback(
-    async (token: string) => {
-      const trimmedUrl = backendUrl.trim().replace(/\/$/, "");
+    async (token: string, urlOverride?: string) => {
+      const trimmedUrl = (urlOverride ?? backendUrl).trim().replace(/\/$/, "");
       if (!trimmedUrl) {
         toast("Enter the backend URL first", "error");
         setMode("summary");
@@ -95,12 +100,13 @@ export default function BackendScreen() {
   const handleScan = useCallback(
     ({ data }: { data: string }) => {
       if (busy) return;
-      const token = parseQrToken(data);
-      if (!token) {
+      const result = parseQrPayload(data);
+      if (!result) {
         toast("Unrecognized QR code", "error");
         return;
       }
-      void handleClaim(token);
+      if (result.url) setBackendUrl(result.url);
+      void handleClaim(result.token, result.url);
     },
     [busy, handleClaim],
   );
@@ -239,7 +245,7 @@ export default function BackendScreen() {
 
               <Pressable
                 onPress={() => setMode("scanning")}
-                disabled={busy || !projectReady || !backendUrl.trim()}
+                disabled={busy || !projectReady}
                 className="active:opacity-80 mb-3"
               >
                 <Card className="flex-row items-center justify-center gap-2">

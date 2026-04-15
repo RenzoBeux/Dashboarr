@@ -75,8 +75,9 @@ services:
       - ./data:/data
     environment:
       - LOG_LEVEL=info
-      # Optional: used only to render the pairing QR. If you're reverse-proxying
-      # set this to the public URL your phone will use.
+      # Optional: when set the pairing QR encodes both the URL and token so
+      # the app can pair in a single scan. When omitted the QR only contains
+      # the token and you enter the URL manually in the app.
       # - PUBLIC_URL=https://dashboarr.example.com
     networks:
       - media
@@ -133,7 +134,7 @@ docker run -d --name dashboarr-backend \
 | `HOST`          | `0.0.0.0`     | HTTP listen host |
 | `DATA_DIR`      | `./data`      | SQLite directory (mount a volume here in Docker) |
 | `LOG_LEVEL`     | `info`        | pino log level (`fatal`…`trace`) |
-| `PUBLIC_URL`    | (unset)       | Public URL used in the pairing QR when reverse-proxied |
+| `PUBLIC_URL`    | (unset)       | When set, the pairing QR encodes both URL and token for single-scan pairing. When omitted, the QR only contains the token |
 | `PUSH_RECEIPTS` | `false`       | Poll Expo push receipts 15 min after each send (extra cost, rarely needed) |
 | `TRUST_PROXY`   | `false`       | Honor `X-Forwarded-*` headers; enable when behind a reverse proxy you control |
 
@@ -219,8 +220,8 @@ This backend does **not** terminate TLS. Options:
 - **LAN-only:** just publish port 4000 on your docker host and keep it on your
   home network. The pairing shared secret still prevents casual abuse.
 - **Caddy / Traefik / Nginx Proxy Manager:** put a reverse proxy in front of it
-  and terminate TLS there. Point `PUBLIC_URL` at the HTTPS URL so the pairing
-  QR is correct.
+  and terminate TLS there. Set `PUBLIC_URL` to the HTTPS URL so the pairing
+  QR encodes the full connection info for single-scan setup.
 
 ### Caddy snippet
 

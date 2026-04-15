@@ -31,12 +31,22 @@ const BANNER = `
 ===============================================================================
 `;
 
-async function printStartupPairing(publicUrl: string): Promise<void> {
+async function printStartupPairing(
+  publicUrl: string,
+  hasPublicUrl: boolean,
+): Promise<void> {
   const { token } = ensureActiveToken();
+
+  // If the operator set PUBLIC_URL the QR encodes both the URL and the token
+  // so the app can pair in a single scan. Otherwise just the token — the user
+  // enters the URL manually in the app.
+  const qrPayload = hasPublicUrl
+    ? JSON.stringify({ url: publicUrl, token })
+    : token;
 
   console.log("\nScan this QR in Dashboarr → Settings → Backend:\n");
   try {
-    const ascii = await QRCode.toString(token, { type: "terminal", small: true });
+    const ascii = await QRCode.toString(qrPayload, { type: "terminal", small: true });
     console.log(ascii);
   } catch {
     console.log(`  (QR render failed — enter token manually)`);
@@ -151,8 +161,9 @@ async function main(): Promise<void> {
   purgeHandle.unref();
 
   const address = await app.listen({ port: env.PORT, host: env.HOST });
+  const hasPublicUrl = !!env.PUBLIC_URL;
   const publicUrl = env.PUBLIC_URL?.replace(/\/$/, "") ?? address;
-  await printStartupPairing(publicUrl);
+  await printStartupPairing(publicUrl, hasPublicUrl);
 
   const shutdown = async (signal: string) => {
     console.log(`\n${signal} received — shutting down`);
