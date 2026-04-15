@@ -13,7 +13,7 @@ RUN npm run build && npm prune --omit=dev
 # ---------- runtime ----------
 FROM node:22-alpine
 # tini is PID 1; su-exec drops privileges from the entrypoint.
-RUN apk add --no-cache tini su-exec
+RUN apk upgrade --no-cache && apk add --no-cache tini su-exec
 WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules
