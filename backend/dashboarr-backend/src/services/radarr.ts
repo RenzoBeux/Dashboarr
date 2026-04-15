@@ -3,9 +3,10 @@ import { serviceFetch } from "./http.js";
 
 export interface RadarrQueueItem {
   id: number;
+  movieId?: number;
   title: string;
   trackedDownloadStatus?: string;
-  movie?: { title?: string; year?: number };
+  movie?: { id?: number; title?: string; year?: number };
 }
 
 export interface RadarrQueue {

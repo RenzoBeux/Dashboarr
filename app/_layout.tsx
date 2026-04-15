@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
+import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
@@ -33,6 +34,54 @@ function onAppStateChange(status: AppStateStatus) {
 
 function NotificationWatchers() {
   useNotificationWatchers();
+  return null;
+}
+
+function NotificationRouter() {
+  const router = useRouter();
+
+  useEffect(() => {
+    function handleNotificationData(data: Record<string, unknown> | undefined) {
+      if (!data?.type) return;
+
+      switch (data.type) {
+        case "radarr":
+          if (data.movieId) router.push(`/movie/${data.movieId}`);
+          break;
+        case "sonarr":
+          if (data.seriesId) router.push(`/series/${data.seriesId}`);
+          break;
+        case "torrent":
+          if (data.hash) router.push(`/torrent/${data.hash}`);
+          break;
+        case "overseerr":
+          router.push("/(tabs)/requests");
+          break;
+        case "health":
+          router.push("/(tabs)/services");
+          break;
+      }
+    }
+
+    // Handle tap when app was killed (cold start)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        handleNotificationData(
+          response.notification.request.content.data as Record<string, unknown> | undefined,
+        );
+      }
+    });
+
+    // Handle tap when app is in background or foreground
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationData(
+        response.notification.request.content.data as Record<string, unknown> | undefined,
+      );
+    });
+
+    return () => subscription.remove();
+  }, [router]);
+
   return null;
 }
 
@@ -110,6 +159,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ErrorBoundary>
           <NotificationWatchers />
+          <NotificationRouter />
           <BackendHealthPoller />
           <ConfigSyncBridge />
           <StatusBar style="light" />

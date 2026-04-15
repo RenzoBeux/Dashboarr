@@ -3,9 +3,10 @@ import { serviceFetch } from "./http.js";
 
 export interface SonarrQueueItem {
   id: number;
+  seriesId?: number;
   title: string;
   trackedDownloadStatus?: string;
-  series?: { title?: string };
+  series?: { id?: number; title?: string };
   episode?: { title?: string; seasonNumber?: number; episodeNumber?: number };
 }
 

@@ -77,7 +77,7 @@ export async function diffQbTorrents(torrents: QBTorrent[]): Promise<void> {
 const RADARR_KEY = "radarr:queue:ids";
 
 interface QueueSnapshot {
-  [id: string]: { title: string; status?: string };
+  [id: string]: { title: string; status?: string; entityId?: number };
 }
 
 function radarrDisplayTitle(r: RadarrQueueItem): string {
@@ -91,7 +91,11 @@ export async function diffRadarrQueue(records: RadarrQueueItem[]): Promise<void>
   const prev = getState<QueueSnapshot>(RADARR_KEY);
   const next: QueueSnapshot = {};
   for (const r of records) {
-    next[String(r.id)] = { title: radarrDisplayTitle(r), status: r.trackedDownloadStatus };
+    next[String(r.id)] = {
+      title: radarrDisplayTitle(r),
+      status: r.trackedDownloadStatus,
+      entityId: r.movieId ?? r.movie?.id,
+    };
   }
   setState(RADARR_KEY, next);
 
@@ -104,7 +108,7 @@ export async function diffRadarrQueue(records: RadarrQueueItem[]): Promise<void>
         category: "radarrDownloaded",
         title: "Movie downloaded",
         body: item.title,
-        data: { type: "radarr", queueId: Number(id) },
+        data: { type: "radarr", movieId: item.entityId },
         dedupeKey: `radarr:downloaded:${id}`,
       });
     }
@@ -129,7 +133,11 @@ export async function diffSonarrQueue(records: SonarrQueueItem[]): Promise<void>
   const prev = getState<QueueSnapshot>(SONARR_KEY);
   const next: QueueSnapshot = {};
   for (const r of records) {
-    next[String(r.id)] = { title: sonarrDisplayTitle(r), status: r.trackedDownloadStatus };
+    next[String(r.id)] = {
+      title: sonarrDisplayTitle(r),
+      status: r.trackedDownloadStatus,
+      entityId: r.seriesId ?? r.series?.id,
+    };
   }
   setState(SONARR_KEY, next);
 
@@ -142,7 +150,7 @@ export async function diffSonarrQueue(records: SonarrQueueItem[]): Promise<void>
         category: "sonarrDownloaded",
         title: "Episode downloaded",
         body: item.title,
-        data: { type: "sonarr", queueId: Number(id) },
+        data: { type: "sonarr", seriesId: item.entityId },
         dedupeKey: `sonarr:downloaded:${id}`,
       });
     }
