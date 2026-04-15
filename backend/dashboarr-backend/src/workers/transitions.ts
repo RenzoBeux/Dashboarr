@@ -31,6 +31,13 @@ function isDownloading(state: TorrentState): boolean {
 
 const QBT_KEY = "qbt:hashes:downloading";
 
+/** Categories that Radarr/Sonarr set on torrents they manage. */
+const MANAGED_CATEGORIES = new Set(["radarr", "sonarr", "tv-sonarr"]);
+
+function isManagedByArr(category: string): boolean {
+  return MANAGED_CATEGORIES.has(category.toLowerCase());
+}
+
 interface QbtSnapshot {
   [hash: string]: { name: string; state: TorrentState };
 }
@@ -50,6 +57,10 @@ export async function diffQbTorrents(torrents: QBTorrent[]): Promise<void> {
   for (const t of torrents) {
     const before = prev[t.hash];
     if (before && isDownloading(before.state) && !isDownloading(t.state)) {
+      // Skip notification for torrents managed by Radarr/Sonarr — those
+      // services send their own, more informative notifications.
+      if (isManagedByArr(t.category)) continue;
+
       await dispatchPush({
         category: "torrentCompleted",
         title: "Download complete",

@@ -27,6 +27,7 @@ export interface QBTorrent {
   hash: string;
   name: string;
   state: TorrentState;
+  category: string;
 }
 
 // Simple in-process session cookie cache keyed by `<baseUrl>`.
