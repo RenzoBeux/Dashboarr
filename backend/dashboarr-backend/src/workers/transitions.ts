@@ -80,11 +80,18 @@ interface QueueSnapshot {
   [id: string]: { title: string; status?: string };
 }
 
+function radarrDisplayTitle(r: RadarrQueueItem): string {
+  if (r.movie?.title) {
+    return r.movie.year ? `${r.movie.title} (${r.movie.year})` : r.movie.title;
+  }
+  return r.title;
+}
+
 export async function diffRadarrQueue(records: RadarrQueueItem[]): Promise<void> {
   const prev = getState<QueueSnapshot>(RADARR_KEY);
   const next: QueueSnapshot = {};
   for (const r of records) {
-    next[String(r.id)] = { title: r.title, status: r.trackedDownloadStatus };
+    next[String(r.id)] = { title: radarrDisplayTitle(r), status: r.trackedDownloadStatus };
   }
   setState(RADARR_KEY, next);
 
@@ -108,11 +115,21 @@ export async function diffRadarrQueue(records: RadarrQueueItem[]): Promise<void>
 
 const SONARR_KEY = "sonarr:queue:ids";
 
+function sonarrDisplayTitle(r: SonarrQueueItem): string {
+  if (r.series?.title && r.episode) {
+    const ep = `S${String(r.episode.seasonNumber ?? 0).padStart(2, "0")}E${String(r.episode.episodeNumber ?? 0).padStart(2, "0")}`;
+    const epTitle = r.episode.title ? ` - ${r.episode.title}` : "";
+    return `${r.series.title} ${ep}${epTitle}`;
+  }
+  if (r.series?.title) return r.series.title;
+  return r.title;
+}
+
 export async function diffSonarrQueue(records: SonarrQueueItem[]): Promise<void> {
   const prev = getState<QueueSnapshot>(SONARR_KEY);
   const next: QueueSnapshot = {};
   for (const r of records) {
-    next[String(r.id)] = { title: r.title, status: r.trackedDownloadStatus };
+    next[String(r.id)] = { title: sonarrDisplayTitle(r), status: r.trackedDownloadStatus };
   }
   setState(SONARR_KEY, next);
 

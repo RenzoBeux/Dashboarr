@@ -5,6 +5,7 @@ export interface RadarrQueueItem {
   id: number;
   title: string;
   trackedDownloadStatus?: string;
+  movie?: { title?: string; year?: number };
 }
 
 export interface RadarrQueue {
@@ -14,6 +15,6 @@ export interface RadarrQueue {
 
 export function getRadarrQueue(config: StoredServiceConfig): Promise<RadarrQueue> {
   return serviceFetch<RadarrQueue>(config, "/queue", {
-    params: { page: 1, pageSize: 200, includeMovie: false },
+    params: { page: 1, pageSize: 200, includeMovie: true },
   });
 }

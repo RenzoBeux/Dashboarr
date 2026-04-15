@@ -5,6 +5,8 @@ export interface SonarrQueueItem {
   id: number;
   title: string;
   trackedDownloadStatus?: string;
+  series?: { title?: string };
+  episode?: { title?: string; seasonNumber?: number; episodeNumber?: number };
 }
 
 export interface SonarrQueue {
@@ -14,6 +16,6 @@ export interface SonarrQueue {
 
 export function getSonarrQueue(config: StoredServiceConfig): Promise<SonarrQueue> {
   return serviceFetch<SonarrQueue>(config, "/queue", {
-    params: { page: 1, pageSize: 200 },
+    params: { page: 1, pageSize: 200, includeSeries: true, includeEpisode: true },
   });
 }

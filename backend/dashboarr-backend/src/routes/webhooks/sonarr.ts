@@ -29,10 +29,12 @@ export async function sonarrWebhook(app: FastifyInstance): Promise<void> {
 
     if (payload.eventType === "Download" && payload.series?.title) {
       const firstEp = payload.episodes?.[0];
-      const suffix =
-        firstEp && firstEp.seasonNumber != null && firstEp.episodeNumber != null
-          ? ` S${String(firstEp.seasonNumber).padStart(2, "0")}E${String(firstEp.episodeNumber).padStart(2, "0")}`
-          : "";
+      let suffix = "";
+      if (firstEp && firstEp.seasonNumber != null && firstEp.episodeNumber != null) {
+        const ep = `S${String(firstEp.seasonNumber).padStart(2, "0")}E${String(firstEp.episodeNumber).padStart(2, "0")}`;
+        const epTitle = firstEp.title ? ` - ${firstEp.title}` : "";
+        suffix = ` ${ep}${epTitle}`;
+      }
       const title = `${payload.series.title}${suffix}`;
       await dispatchPush({
         category: "sonarrDownloaded",
