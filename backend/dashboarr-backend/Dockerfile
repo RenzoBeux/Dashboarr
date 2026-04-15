@@ -1,5 +1,5 @@
 # ---------- build ----------
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # better-sqlite3 needs build tools
@@ -11,7 +11,7 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 # ---------- runtime ----------
-FROM node:20-alpine
+FROM node:22-alpine
 # tini is PID 1; su-exec drops privileges from the entrypoint.
 RUN apk add --no-cache tini su-exec
 WORKDIR /app
