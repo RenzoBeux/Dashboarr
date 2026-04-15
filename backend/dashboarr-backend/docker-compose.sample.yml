@@ -25,9 +25,3 @@ services:
       # pair in a single scan. When omitted the QR only contains the token and
       # you enter the URL manually in the app.
       # - PUBLIC_URL=https://dashboarr.example.com
-    networks:
-      - media
-
-networks:
-  media:
-    external: true
