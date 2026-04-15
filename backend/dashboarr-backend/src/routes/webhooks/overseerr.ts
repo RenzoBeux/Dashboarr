@@ -19,6 +19,12 @@ export async function overseerrWebhook(app: FastifyInstance): Promise<void> {
     recordWebhook("overseerr", payload);
 
     if (payload.notification_type === "TEST_NOTIFICATION") {
+      await dispatchPush({
+        category: "overseerrNewRequest",
+        title: "Overseerr webhook connected",
+        body: "Test notification received successfully",
+        bypassCategory: true,
+      });
       return { ok: true, test: true };
     }
 

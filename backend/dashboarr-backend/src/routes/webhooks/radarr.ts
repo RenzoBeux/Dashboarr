@@ -33,6 +33,12 @@ export async function radarrWebhook(app: FastifyInstance): Promise<void> {
     recordWebhook("radarr", payload);
 
     if (payload.eventType === "Test") {
+      await dispatchPush({
+        category: "radarrDownloaded",
+        title: "Radarr webhook connected",
+        body: "Test notification received successfully",
+        bypassCategory: true,
+      });
       return { ok: true, test: true };
     }
 

@@ -18,6 +18,12 @@ export async function sonarrWebhook(app: FastifyInstance): Promise<void> {
     recordWebhook("sonarr", payload);
 
     if (payload.eventType === "Test") {
+      await dispatchPush({
+        category: "sonarrDownloaded",
+        title: "Sonarr webhook connected",
+        body: "Test notification received successfully",
+        bypassCategory: true,
+      });
       return { ok: true, test: true };
     }
 
