@@ -26,7 +26,13 @@ export function activeBaseUrl(config: StoredServiceConfig): string {
   // The app pushes its own `useRemote` based on the phone's WiFi state, but the
   // backend is a separate network citizen — usually on the LAN next to the
   // services — so we ignore the app flag and route via BACKEND_USE_REMOTE.
-  return getEnv().BACKEND_USE_REMOTE ? config.remoteUrl : config.localUrl;
+  // Fall back to the other URL when the preferred one is empty, so a user who
+  // only filled in one of the two doesn't end up with every service stuck
+  // unreachable from the backend.
+  const preferRemote = getEnv().BACKEND_USE_REMOTE;
+  const primary = preferRemote ? config.remoteUrl : config.localUrl;
+  const secondary = preferRemote ? config.localUrl : config.remoteUrl;
+  return primary || secondary;
 }
 
 function buildUrl(
