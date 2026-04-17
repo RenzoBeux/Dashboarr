@@ -120,15 +120,27 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - dashboarr-data:/data
+      - ./data:/data
     environment:
       - NODE_ENV=production
-      # - PUBLIC_URL=https://dashboarr.yourdomain.com  # set to embed URL in pairing QR for single-scan setup
-      # - TRUST_PROXY=true                           # enable if behind a reverse proxy
-      # - LOG_LEVEL=debug                            # default: info
-
-volumes:
-  dashboarr-data:
+      - LOG_LEVEL=info
+      # Public URL your phone will use to reach the backend.
+      # When set the pairing QR encodes both the URL and token so the app
+      # can pair in a single scan. When omitted the QR only contains the
+      # token and you enter the URL manually in the app.
+      # - PUBLIC_URL=https://dashboarr.yourdomain.com
+      # Enable if behind a reverse proxy (Caddy, Nginx, Traefik) so
+      # rate limiting uses the real client IP from X-Forwarded-For.
+      # - TRUST_PROXY=true
+      # Poll Expo for push delivery receipts (rarely needed).
+      # - PUSH_RECEIPTS=true
+      # Consecutive failed health checks (30s each) before "service offline"
+      # notification. Default 3 (~1.5 min). Set to 10 for ~5 min tolerance.
+      # - OFFLINE_THRESHOLD=10
+      # Route service polls via remoteUrl instead of localUrl. The app's own
+      # useRemote flag is always ignored server-side. Default false (backend
+      # on LAN). Flip to true only if the backend lives off-LAN.
+      # - BACKEND_USE_REMOTE=false
 ```
 
 ```bash

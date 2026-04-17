@@ -1,4 +1,5 @@
 import type { StoredServiceConfig } from "../db/repos/config.js";
+import { getEnv } from "../env.js";
 import { SERVICE_API_BASE, SERVICE_PING_PATH } from "../types.js";
 import type { ServiceId } from "../types.js";
 
@@ -22,7 +23,10 @@ export class ServiceHttpError extends Error {
 }
 
 export function activeBaseUrl(config: StoredServiceConfig): string {
-  return config.useRemote ? config.remoteUrl : config.localUrl;
+  // The app pushes its own `useRemote` based on the phone's WiFi state, but the
+  // backend is a separate network citizen — usually on the LAN next to the
+  // services — so we ignore the app flag and route via BACKEND_USE_REMOTE.
+  return getEnv().BACKEND_USE_REMOTE ? config.remoteUrl : config.localUrl;
 }
 
 function buildUrl(

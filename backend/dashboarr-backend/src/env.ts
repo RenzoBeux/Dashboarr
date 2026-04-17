@@ -21,6 +21,16 @@ const envSchema = z.object({
   // offline and a push notification is sent. Default 3 (≈1.5 min at 30s
   // interval). Raise to 10 for ~5 min tolerance (e.g. slow DDNS updates).
   OFFLINE_THRESHOLD: z.coerce.number().int().positive().default(3),
+  // Which URL the backend uses when polling services. The mobile app's
+  // `useRemote` flag is always ignored server-side — the backend typically
+  // runs next to the services on the LAN, so routing its polls through a
+  // public reverse proxy adds latency and breaks whenever DDNS churns.
+  // Set to "true" only if the backend genuinely lives off-LAN from the stack.
+  BACKEND_USE_REMOTE: z
+    .string()
+    .optional()
+    .default("false")
+    .transform((v) => v === "true" || v === "1"),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -74,11 +74,25 @@ services:
     volumes:
       - ./data:/data
     environment:
+      - NODE_ENV=production
       - LOG_LEVEL=info
-      # Optional: when set the pairing QR encodes both the URL and token so
-      # the app can pair in a single scan. When omitted the QR only contains
-      # the token and you enter the URL manually in the app.
-      # - PUBLIC_URL=https://dashboarr.example.com
+      # Public URL your phone will use to reach the backend.
+      # When set the pairing QR encodes both the URL and token so the app
+      # can pair in a single scan. When omitted the QR only contains the
+      # token and you enter the URL manually in the app.
+      # - PUBLIC_URL=https://dashboarr.yourdomain.com
+      # Enable if behind a reverse proxy (Caddy, Nginx, Traefik) so
+      # rate limiting uses the real client IP from X-Forwarded-For.
+      # - TRUST_PROXY=true
+      # Poll Expo for push delivery receipts (rarely needed).
+      # - PUSH_RECEIPTS=true
+      # Consecutive failed health checks (30s each) before "service offline"
+      # notification. Default 3 (~1.5 min). Set to 10 for ~5 min tolerance.
+      # - OFFLINE_THRESHOLD=10
+      # Route service polls via remoteUrl instead of localUrl. The app's own
+      # useRemote flag is always ignored server-side. Default false (backend
+      # on LAN). Flip to true only if the backend lives off-LAN.
+      # - BACKEND_USE_REMOTE=false
     networks:
       - media
 networks:
@@ -138,6 +152,7 @@ docker run -d --name dashboarr-backend \
 | `PUSH_RECEIPTS` | `false`       | Poll Expo push receipts 15 min after each send (extra cost, rarely needed) |
 | `TRUST_PROXY`   | `false`       | Honor `X-Forwarded-*` headers; enable when behind a reverse proxy you control |
 | `OFFLINE_THRESHOLD` | `3`       | Consecutive failed health checks (30s each) before a "service offline" push is sent. Raise to `10` (~5 min) if your DDNS is slow to update |
+| `BACKEND_USE_REMOTE` | `false`  | Route polls via each service's `remoteUrl` instead of `localUrl`. The app's own `useRemote` flag is always ignored server-side; flip this to `true` only if the backend lives off-LAN from your stack |
 
 ---
 
@@ -151,8 +166,7 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/pair/claim` | one-time token in body | Exchange token + push token for shared secret |
 | `POST` | `/device/register` | bearer | Refresh push token on reinstall |
 | `POST` | `/device/unregister` | bearer | Remove this device |
-| `GET`  | `/config` | bearer | Current persisted config |
-| `PUT`  | `/config` | bearer | Replace config, hot-reload pollers |
+| `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers |
 | `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices |
 | `POST` | `/webhooks/radarr/:secret` | path secret | Radarr "Custom" webhook ingestion |
 | `POST` | `/webhooks/sonarr/:secret` | path secret | Sonarr "Custom" webhook ingestion |

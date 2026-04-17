@@ -25,4 +25,8 @@ services:
       # Consecutive failed health checks (30s each) before "service offline"
       # notification. Default 3 (~1.5 min). Set to 10 for ~5 min tolerance.
       # - OFFLINE_THRESHOLD=10
+      # Route service polls via remoteUrl instead of localUrl. The app's own
+      # useRemote flag is always ignored server-side. Default false (backend
+      # on LAN). Flip to true only if the backend lives off-LAN.
+      # - BACKEND_USE_REMOTE=false
 
