@@ -17,6 +17,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true" || v === "1"),
+  // Number of consecutive failed health checks before a service is declared
+  // offline and a push notification is sent. Default 3 (≈1.5 min at 30s
+  // interval). Raise to 10 for ~5 min tolerance (e.g. slow DDNS updates).
+  OFFLINE_THRESHOLD: z.coerce.number().int().positive().default(3),
 });
 
 export type Env = z.infer<typeof envSchema>;

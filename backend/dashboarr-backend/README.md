@@ -137,6 +137,7 @@ docker run -d --name dashboarr-backend \
 | `PUBLIC_URL`    | (unset)       | When set, the pairing QR encodes both URL and token for single-scan pairing. When omitted, the QR only contains the token |
 | `PUSH_RECEIPTS` | `false`       | Poll Expo push receipts 15 min after each send (extra cost, rarely needed) |
 | `TRUST_PROXY`   | `false`       | Honor `X-Forwarded-*` headers; enable when behind a reverse proxy you control |
+| `OFFLINE_THRESHOLD` | `3`       | Consecutive failed health checks (30s each) before a "service offline" push is sent. Raise to `10` (~5 min) if your DDNS is slow to update |
 
 ---
 

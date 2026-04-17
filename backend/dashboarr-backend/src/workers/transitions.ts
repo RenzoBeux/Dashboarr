@@ -1,4 +1,5 @@
 import { getState, setState } from "../db/repos/seen-state.js";
+import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
 import type { RadarrQueueItem } from "../services/radarr.js";
@@ -189,7 +190,7 @@ export async function diffOverseerrPending(requests: OverseerrRequest[]): Promis
 // ---------------- Service health ----------------
 
 /** Require this many consecutive failed pings before declaring a service offline. */
-const OFFLINE_THRESHOLD = 3;
+const OFFLINE_THRESHOLD = getEnv().OFFLINE_THRESHOLD;
 
 interface HealthState {
   online: boolean;

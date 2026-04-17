@@ -22,4 +22,7 @@ services:
       # - TRUST_PROXY=true
       # Poll Expo for push delivery receipts (rarely needed).
       # - PUSH_RECEIPTS=true
+      # Consecutive failed health checks (30s each) before "service offline"
+      # notification. Default 3 (~1.5 min). Set to 10 for ~5 min tolerance.
+      # - OFFLINE_THRESHOLD=10
 
