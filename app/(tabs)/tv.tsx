@@ -1,30 +1,143 @@
-import { useState } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { useState, useMemo } from "react";
+import { View, Text, Pressable, Image, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Tv } from "lucide-react-native";
+import { Search, Tv, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
-import { useSonarrSeries, useSonarrCalendar } from "@/hooks/use-sonarr";
+import {
+  useSonarrSeries,
+  useSonarrCalendar,
+  useSearchForSeries,
+  useSearchForEpisodes,
+  useToggleSeriesMonitored,
+  useDeleteSeries,
+} from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode, relativeDate } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
+
+type SeriesSheetTarget =
+  | { kind: "series"; item: SonarrSeries }
+  | { kind: "calendar"; item: SonarrCalendarEntry }
+  | null;
 
 type Tab = "library" | "calendar";
 
 export default function TVScreen() {
   const [tab, setTab] = useState<Tab>("library");
+  const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
 
+  const searchSeries = useSearchForSeries();
+  const searchEpisodes = useSearchForEpisodes();
+  const toggleMonitor = useToggleSeriesMonitored();
+  const deleteMutation = useDeleteSeries();
+
   const sonarrHealth = healthData?.find((s) => s.id === "sonarr");
+
+  const actions: ActionSheetAction[] = useMemo(() => {
+    if (!sheetTarget) return [];
+
+    if (sheetTarget.kind === "series") {
+      const series = sheetTarget.item;
+      return [
+        {
+          label: "Search",
+          icon: <Search size={18} color="#a1a1aa" />,
+          onPress: () => searchSeries.mutate(series.id),
+        },
+        {
+          label: series.monitored ? "Unmonitor" : "Monitor",
+          icon: series.monitored ? (
+            <EyeOff size={18} color="#a1a1aa" />
+          ) : (
+            <Eye size={18} color="#a1a1aa" />
+          ),
+          onPress: () =>
+            toggleMonitor.mutate({
+              seriesId: series.id,
+              monitored: !series.monitored,
+            }),
+        },
+        {
+          label: "Open Details",
+          icon: <Info size={18} color="#a1a1aa" />,
+          onPress: () => router.push(`/series/${series.id}`),
+        },
+        {
+          label: "Delete",
+          icon: <Trash2 size={18} color="#ef4444" />,
+          variant: "danger",
+          onPress: () => {
+            Alert.alert("Delete Series", `Delete "${series.title}"?`, [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => deleteMutation.mutate({ id: series.id }),
+              },
+              {
+                text: "Delete + Files",
+                style: "destructive",
+                onPress: () =>
+                  deleteMutation.mutate({ id: series.id, deleteFiles: true }),
+              },
+            ]);
+          },
+        },
+      ];
+    }
+
+    // calendar
+    const ep = sheetTarget.item;
+    return [
+      {
+        label: "Search Episode",
+        icon: <Search size={18} color="#a1a1aa" />,
+        onPress: () => searchEpisodes.mutate([ep.id]),
+      },
+      {
+        label: "Open Series Details",
+        icon: <Info size={18} color="#a1a1aa" />,
+        onPress: () => router.push(`/series/${ep.seriesId}`),
+      },
+    ];
+  }, [sheetTarget, searchSeries, searchEpisodes, toggleMonitor, deleteMutation, router]);
+
+  const sheetTitle =
+    sheetTarget?.kind === "series"
+      ? sheetTarget.item.title
+      : sheetTarget?.kind === "calendar"
+        ? sheetTarget.item.series.title
+        : undefined;
+
+  const sheetSubtitle =
+    sheetTarget?.kind === "calendar"
+      ? `${formatEpisodeCode(
+          sheetTarget.item.seasonNumber,
+          sheetTarget.item.episodeNumber,
+        )} — ${sheetTarget.item.title}`
+      : undefined;
+
+  const openSeriesSheet = (series: SonarrSeries) => {
+    mediumHaptic();
+    setSheetTarget({ kind: "series", item: series });
+  };
+  const openCalendarSheet = (ep: SonarrCalendarEntry) => {
+    mediumHaptic();
+    setSheetTarget({ kind: "calendar", item: ep });
+  };
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
@@ -49,13 +162,21 @@ export default function TVScreen() {
         ))}
       </View>
 
-      {tab === "library" && <SeriesLibrary />}
-      {tab === "calendar" && <CalendarView />}
+      {tab === "library" && <SeriesLibrary onLongPress={openSeriesSheet} />}
+      {tab === "calendar" && <CalendarView onLongPress={openCalendarSheet} />}
+
+      <ActionSheet
+        visible={sheetTarget !== null}
+        onClose={() => setSheetTarget(null)}
+        title={sheetTitle}
+        subtitle={sheetSubtitle}
+        actions={actions}
+      />
     </ScreenWrapper>
   );
 }
 
-function SeriesLibrary() {
+function SeriesLibrary({ onLongPress }: { onLongPress: (series: SonarrSeries) => void }) {
   const { data: series, isLoading } = useSonarrSeries();
   const router = useRouter();
 
@@ -86,6 +207,7 @@ function SeriesLibrary() {
           key={show.id}
           series={show}
           onPress={() => router.push(`/series/${show.id}`)}
+          onLongPress={() => onLongPress(show)}
         />
       ))}
     </View>
@@ -95,15 +217,22 @@ function SeriesLibrary() {
 function SeriesPoster({
   series,
   onPress,
+  onLongPress,
 }: {
   series: SonarrSeries;
   onPress: () => void;
+  onLongPress: () => void;
 }) {
   const poster = series.images.find((i) => i.coverType === "poster");
   const { src, onError } = useServiceImage(poster, "sonarr");
 
   return (
-    <Pressable onPress={onPress} className="w-[30%] active:opacity-80">
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      className="w-[30%] active:opacity-80"
+    >
       {src ? (
         <Image
           source={{ uri: src }}
@@ -126,7 +255,7 @@ function SeriesPoster({
   );
 }
 
-function CalendarView() {
+function CalendarView({ onLongPress }: { onLongPress: (ep: SonarrCalendarEntry) => void }) {
   const { data: episodes, isLoading } = useSonarrCalendar();
   const router = useRouter();
 
@@ -165,6 +294,7 @@ function CalendarView() {
                 <Card
                   key={ep.id}
                   onPress={() => router.push(`/series/${ep.seriesId}`)}
+                  onLongPress={() => onLongPress(ep)}
                 >
                   <View className="flex-row items-center gap-2">
                     <View

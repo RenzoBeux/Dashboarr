@@ -14,7 +14,11 @@ import {
   getMovieDetails,
   getTVDetails,
 } from "@/services/overseerr-api";
-import type { OverseerrMediaType } from "@/lib/types";
+import type {
+  OverseerrMediaType,
+  OverseerrMovieDetails,
+  OverseerrTVDetails,
+} from "@/lib/types";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 
@@ -55,9 +59,10 @@ export function useOverseerrSearch(query: string) {
 
 export function useOverseerrMediaDetails(tmdbId: number, mediaType: OverseerrMediaType) {
   const enabled = useOverseerrEnabled();
-  return useQuery({
+  return useQuery<OverseerrMovieDetails | OverseerrTVDetails>({
     queryKey: ["overseerr", "mediaDetails", mediaType, tmdbId],
-    queryFn: () => mediaType === "movie" ? getMovieDetails(tmdbId) : getTVDetails(tmdbId),
+    queryFn: () =>
+      mediaType === "movie" ? getMovieDetails(tmdbId) : getTVDetails(tmdbId),
     staleTime: 600000, // 10 min — titles don't change
     enabled,
   });

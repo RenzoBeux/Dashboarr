@@ -1,32 +1,121 @@
-import { useState } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { useState, useMemo } from "react";
+import { View, Text, Pressable, Image, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Film } from "lucide-react-native";
+import { Search, Film, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
-import { useRadarrMovies, useRadarrQueue, useWantedMissing } from "@/hooks/use-radarr";
+import {
+  useRadarrMovies,
+  useRadarrQueue,
+  useWantedMissing,
+  useSearchForMovie,
+  useToggleMovieMonitored,
+  useDeleteMovie,
+} from "@/hooks/use-radarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatBytes } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
-import type { RadarrMovie } from "@/lib/types";
+import { mediumHaptic } from "@/lib/haptics";
+import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
+
+type MovieSheetTarget =
+  | { kind: "movie"; item: RadarrMovie }
+  | { kind: "queue"; item: RadarrQueueItem }
+  | null;
 
 type Tab = "library" | "queue" | "wanted";
 
 export default function MoviesScreen() {
   const [tab, setTab] = useState<Tab>("library");
+  const [sheetTarget, setSheetTarget] = useState<MovieSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["radarr"]]);
 
+  const searchMutation = useSearchForMovie();
+  const toggleMonitor = useToggleMovieMonitored();
+  const deleteMutation = useDeleteMovie();
+
   const radarrHealth = healthData?.find((s) => s.id === "radarr");
+
+  const sheetMovie: RadarrMovie | undefined =
+    sheetTarget?.kind === "movie"
+      ? sheetTarget.item
+      : sheetTarget?.kind === "queue"
+        ? sheetTarget.item.movie
+        : undefined;
+
+  const actions: ActionSheetAction[] = useMemo(() => {
+    if (!sheetMovie) return [];
+    const movie = sheetMovie;
+    return [
+      {
+        label: "Search",
+        icon: <Search size={18} color="#a1a1aa" />,
+        onPress: () => searchMutation.mutate(movie.id),
+      },
+      {
+        label: movie.monitored ? "Unmonitor" : "Monitor",
+        icon: movie.monitored ? (
+          <EyeOff size={18} color="#a1a1aa" />
+        ) : (
+          <Eye size={18} color="#a1a1aa" />
+        ),
+        onPress: () =>
+          toggleMonitor.mutate({ movieId: movie.id, monitored: !movie.monitored }),
+      },
+      {
+        label: "Open Details",
+        icon: <Info size={18} color="#a1a1aa" />,
+        onPress: () => router.push(`/movie/${movie.id}`),
+      },
+      {
+        label: "Delete",
+        icon: <Trash2 size={18} color="#ef4444" />,
+        variant: "danger",
+        onPress: () => {
+          Alert.alert("Delete Movie", `Delete "${movie.title}"?`, [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () =>
+                deleteMutation.mutate({ id: movie.id, tmdbId: movie.tmdbId }),
+            },
+            {
+              text: "Delete + Files",
+              style: "destructive",
+              onPress: () =>
+                deleteMutation.mutate({
+                  id: movie.id,
+                  deleteFiles: true,
+                  tmdbId: movie.tmdbId,
+                }),
+            },
+          ]);
+        },
+      },
+    ];
+  }, [sheetMovie, searchMutation, toggleMonitor, deleteMutation, router]);
+
+  const openMovieSheet = (movie: RadarrMovie) => {
+    mediumHaptic();
+    setSheetTarget({ kind: "movie", item: movie });
+  };
+  const openQueueSheet = (item: RadarrQueueItem) => {
+    if (!item.movie) return;
+    mediumHaptic();
+    setSheetTarget({ kind: "queue", item });
+  };
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
@@ -51,14 +140,22 @@ export default function MoviesScreen() {
         ))}
       </View>
 
-      {tab === "library" && <MovieLibrary />}
-      {tab === "queue" && <MovieQueue />}
+      {tab === "library" && <MovieLibrary onLongPress={openMovieSheet} />}
+      {tab === "queue" && <MovieQueue onLongPress={openQueueSheet} />}
       {tab === "wanted" && <MovieWanted />}
+
+      <ActionSheet
+        visible={sheetTarget !== null}
+        onClose={() => setSheetTarget(null)}
+        title={sheetMovie?.title}
+        subtitle={sheetMovie ? String(sheetMovie.year) : undefined}
+        actions={actions}
+      />
     </ScreenWrapper>
   );
 }
 
-function MovieLibrary() {
+function MovieLibrary({ onLongPress }: { onLongPress: (movie: RadarrMovie) => void }) {
   const { data: movies, isLoading } = useRadarrMovies();
   const router = useRouter();
 
@@ -90,18 +187,32 @@ function MovieLibrary() {
           key={movie.id}
           movie={movie}
           onPress={() => router.push(`/movie/${movie.id}`)}
+          onLongPress={() => onLongPress(movie)}
         />
       ))}
     </View>
   );
 }
 
-function MoviePoster({ movie, onPress }: { movie: RadarrMovie; onPress: () => void }) {
+function MoviePoster({
+  movie,
+  onPress,
+  onLongPress,
+}: {
+  movie: RadarrMovie;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
   const poster = movie.images.find((i) => i.coverType === "poster");
   const { src, onError } = useServiceImage(poster, "radarr");
 
   return (
-    <Pressable onPress={onPress} className="w-[30%] active:opacity-80">
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      className="w-[30%] active:opacity-80"
+    >
       {src ? (
         <Image
           source={{ uri: src }}
@@ -122,7 +233,7 @@ function MoviePoster({ movie, onPress }: { movie: RadarrMovie; onPress: () => vo
   );
 }
 
-function MovieQueue() {
+function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => void }) {
   const { data: queue, isLoading } = useRadarrQueue();
   const router = useRouter();
 
@@ -137,6 +248,7 @@ function MovieQueue() {
         <Card
           key={item.id}
           onPress={() => item.movie && router.push(`/movie/${item.movie.id}`)}
+          onLongPress={item.movie ? () => onLongPress(item) : undefined}
         >
           <View className="flex-row items-center justify-between">
             <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>

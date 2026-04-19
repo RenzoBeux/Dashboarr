@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, Image, Pressable } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { useRouter } from "expo-router";
-import { Film, Plus, Check } from "lucide-react-native";
+import { Film, Plus, Check, SlidersHorizontal } from "lucide-react-native";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { TextInput } from "@/components/ui/text-input";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AddMovieSheet } from "@/components/radarr/add-movie-sheet";
 import {
   useRadarrSearch,
   useAddMovie,
@@ -23,8 +23,12 @@ export default function MovieSearchScreen() {
   const { data: results, isLoading } = useRadarrSearch(query);
   const { data: existing } = useRadarrMovies();
   const router = useRouter();
+  const [advancedTarget, setAdvancedTarget] = useState<RadarrSearchResult | null>(null);
 
-  const existingTmdbIds = new Set(existing?.map((m) => m.tmdbId) ?? []);
+  const existingTmdbIds = useMemo(
+    () => new Set(existing?.map((m) => m.tmdbId) ?? []),
+    [existing],
+  );
 
   return (
     <ScreenWrapper>
@@ -56,10 +60,17 @@ export default function MovieSearchScreen() {
               key={result.tmdbId}
               result={result}
               alreadyAdded={existingTmdbIds.has(result.tmdbId)}
+              onAdvanced={() => setAdvancedTarget(result)}
             />
           ))}
         </View>
       )}
+
+      <AddMovieSheet
+        result={advancedTarget}
+        visible={advancedTarget !== null}
+        onClose={() => setAdvancedTarget(null)}
+      />
     </ScreenWrapper>
   );
 }
@@ -67,9 +78,11 @@ export default function MovieSearchScreen() {
 function SearchResultCard({
   result,
   alreadyAdded,
+  onAdvanced,
 }: {
   result: RadarrSearchResult;
   alreadyAdded: boolean;
+  onAdvanced: () => void;
 }) {
   const addMovie = useAddMovie();
   const { data: profiles } = useRadarrQualityProfiles();
@@ -78,7 +91,7 @@ function SearchResultCard({
   const poster = result.images.find((i) => i.coverType === "poster");
   const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "radarr");
 
-  const handleAdd = () => {
+  const handleQuickAdd = () => {
     if (!profiles?.length || !folders?.length) {
       toast("Could not load quality profiles or root folders", "error");
       return;
@@ -128,13 +141,23 @@ function SearchResultCard({
           <Check size={20} color="#22c55e" />
         </View>
       ) : (
-        <Pressable
-          onPress={handleAdd}
-          className="self-center p-2 active:opacity-70"
-          disabled={addMovie.isPending}
-        >
-          <Plus size={20} color="#3b82f6" />
-        </Pressable>
+        <View className="flex-row items-center self-center">
+          <Pressable
+            onPress={onAdvanced}
+            className="p-2 active:opacity-70"
+            hitSlop={4}
+          >
+            <SlidersHorizontal size={18} color="#a1a1aa" />
+          </Pressable>
+          <Pressable
+            onPress={handleQuickAdd}
+            className="p-2 active:opacity-70"
+            disabled={addMovie.isPending}
+            hitSlop={4}
+          >
+            <Plus size={20} color="#3b82f6" />
+          </Pressable>
+        </View>
       )}
     </Card>
   );

@@ -10,9 +10,15 @@ import {
   addSeries,
   deleteSeries,
   toggleEpisodeMonitored,
+  toggleSeriesMonitored,
+  searchForSeries,
+  searchForEpisodes,
   getQualityProfiles,
   getRootFolders,
+  getTags,
 } from "@/services/sonarr-api";
+import { toast } from "@/components/ui/toast";
+import type { SonarrSeries } from "@/lib/types";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getDateOffset } from "@/lib/utils";
@@ -124,6 +130,70 @@ export function useToggleEpisodeMonitored() {
   });
 }
 
+export function useSearchForSeries() {
+  return useMutation({
+    mutationFn: (seriesId: number) => searchForSeries(seriesId),
+    onSuccess: () => toast("Search started"),
+    onError: () => toast("Search failed", "error"),
+  });
+}
+
+export function useSearchForEpisodes() {
+  return useMutation({
+    mutationFn: (episodeIds: number[]) => searchForEpisodes(episodeIds),
+    onSuccess: () => toast("Search started"),
+    onError: () => toast("Search failed", "error"),
+  });
+}
+
+export function useToggleSeriesMonitored() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      monitored,
+    }: {
+      seriesId: number;
+      monitored: boolean;
+    }) => toggleSeriesMonitored(seriesId, monitored),
+    onMutate: async ({ seriesId, monitored }) => {
+      await queryClient.cancelQueries({ queryKey: ["sonarr", "series"] });
+      await queryClient.cancelQueries({ queryKey: ["sonarr", "series", seriesId] });
+
+      const prevList = queryClient.getQueryData<SonarrSeries[]>(["sonarr", "series"]);
+      const prevDetail = queryClient.getQueryData<SonarrSeries>(["sonarr", "series", seriesId]);
+
+      if (prevList) {
+        queryClient.setQueryData<SonarrSeries[]>(
+          ["sonarr", "series"],
+          prevList.map((s) => (s.id === seriesId ? { ...s, monitored } : s)),
+        );
+      }
+      if (prevDetail) {
+        queryClient.setQueryData<SonarrSeries>(
+          ["sonarr", "series", seriesId],
+          { ...prevDetail, monitored },
+        );
+      }
+
+      return { prevList, prevDetail };
+    },
+    onError: (_err, { seriesId }, context) => {
+      if (context?.prevList) {
+        queryClient.setQueryData(["sonarr", "series"], context.prevList);
+      }
+      if (context?.prevDetail) {
+        queryClient.setQueryData(["sonarr", "series", seriesId], context.prevDetail);
+      }
+      toast("Failed to update monitoring", "error");
+    },
+    onSettled: (_data, _err, { seriesId }) => {
+      queryClient.invalidateQueries({ queryKey: ["sonarr", "series"] });
+      queryClient.invalidateQueries({ queryKey: ["sonarr", "series", seriesId] });
+    },
+  });
+}
+
 export function useSonarrQualityProfiles() {
   const enabled = useSonarrEnabled();
   return useQuery({
@@ -139,6 +209,16 @@ export function useSonarrRootFolders() {
   return useQuery({
     queryKey: ["sonarr", "rootFolders"],
     queryFn: getRootFolders,
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useSonarrTags() {
+  const enabled = useSonarrEnabled();
+  return useQuery({
+    queryKey: ["sonarr", "tags"],
+    queryFn: getTags,
     enabled,
     staleTime: Infinity,
   });

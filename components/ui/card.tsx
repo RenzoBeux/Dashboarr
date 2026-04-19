@@ -18,9 +18,10 @@ const CARD_SHADOW: StyleProp<ViewStyle> = {
 
 interface CardProps extends ViewProps {
   onPress?: () => void;
+  onLongPress?: () => void;
 }
 
-export function Card({ className = "", onPress, children, style, ...props }: CardProps) {
+export function Card({ className = "", onPress, onLongPress, children, style, ...props }: CardProps) {
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -28,11 +29,13 @@ export function Card({ className = "", onPress, children, style, ...props }: Car
 
   const baseClasses = `bg-surface rounded-2xl p-4 border border-border ${className}`;
 
-  if (onPress) {
+  if (onPress || onLongPress) {
     return (
       <Animated.View style={animatedStyle}>
         <Pressable
           onPress={onPress}
+          onLongPress={onLongPress}
+          delayLongPress={400}
           onPressIn={() => {
             scale.value = withSpring(0.975, SPRING_CONFIG);
           }}

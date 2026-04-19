@@ -72,6 +72,19 @@ export function searchSeries(term: string): Promise<SonarrSearchResult[]> {
 
 // --- Add Series ---
 
+export type SonarrSeriesType = "standard" | "daily" | "anime";
+
+export type SonarrMonitorOption =
+  | "all"
+  | "future"
+  | "missing"
+  | "existing"
+  | "firstSeason"
+  | "lastSeason"
+  | "pilot"
+  | "recent"
+  | "none";
+
 export function addSeries(series: {
   tvdbId: number;
   title: string;
@@ -80,6 +93,10 @@ export function addSeries(series: {
   monitored?: boolean;
   seasonFolder?: boolean;
   searchForMissingEpisodes?: boolean;
+  searchForCutoffUnmetEpisodes?: boolean;
+  seriesType?: SonarrSeriesType;
+  monitor?: SonarrMonitorOption;
+  tags?: number[];
 }): Promise<SonarrSeries> {
   return serviceRequest<SonarrSeries>("sonarr", "/series", {
     method: "POST",
@@ -90,8 +107,13 @@ export function addSeries(series: {
       rootFolderPath: series.rootFolderPath,
       monitored: series.monitored ?? true,
       seasonFolder: series.seasonFolder ?? true,
+      seriesType: series.seriesType ?? "standard",
+      tags: series.tags ?? [],
       addOptions: {
         searchForMissingEpisodes: series.searchForMissingEpisodes ?? true,
+        searchForCutoffUnmetEpisodes:
+          series.searchForCutoffUnmetEpisodes ?? false,
+        monitor: series.monitor ?? "all",
       },
     }),
   });
@@ -121,6 +143,32 @@ export function toggleEpisodeMonitored(
   });
 }
 
+export function toggleSeriesMonitored(
+  seriesId: number,
+  monitored: boolean,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", "/series/editor", {
+    method: "PUT",
+    body: JSON.stringify({ seriesIds: [seriesId], monitored }),
+  });
+}
+
+// --- Search Commands ---
+
+export function searchForSeries(seriesId: number): Promise<void> {
+  return serviceRequest<void>("sonarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "SeriesSearch", seriesId }),
+  });
+}
+
+export function searchForEpisodes(episodeIds: number[]): Promise<void> {
+  return serviceRequest<void>("sonarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "EpisodeSearch", episodeIds }),
+  });
+}
+
 // --- Quality Profiles ---
 
 export interface SonarrQualityProfile {
@@ -142,4 +190,15 @@ export interface SonarrRootFolder {
 
 export function getRootFolders(): Promise<SonarrRootFolder[]> {
   return serviceRequest<SonarrRootFolder[]>("sonarr", "/rootfolder");
+}
+
+// --- Tags ---
+
+export interface SonarrTag {
+  id: number;
+  label: string;
+}
+
+export function getTags(): Promise<SonarrTag[]> {
+  return serviceRequest<SonarrTag[]>("sonarr", "/tag");
 }

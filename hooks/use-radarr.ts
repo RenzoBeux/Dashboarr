@@ -8,9 +8,14 @@ import {
   searchMovies,
   addMovie,
   deleteMovie,
+  searchForMovie,
+  toggleMovieMonitored,
   getQualityProfiles,
   getRootFolders,
+  getTags,
 } from "@/services/radarr-api";
+import { toast } from "@/components/ui/toast";
+import type { RadarrMovie } from "@/lib/types";
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
@@ -118,6 +123,62 @@ export function useDeleteMovie() {
   });
 }
 
+export function useSearchForMovie() {
+  return useMutation({
+    mutationFn: (movieId: number) => searchForMovie(movieId),
+    onSuccess: () => toast("Search started"),
+    onError: () => toast("Search failed", "error"),
+  });
+}
+
+export function useToggleMovieMonitored() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      movieId,
+      monitored,
+    }: {
+      movieId: number;
+      monitored: boolean;
+    }) => toggleMovieMonitored(movieId, monitored),
+    onMutate: async ({ movieId, monitored }) => {
+      await queryClient.cancelQueries({ queryKey: ["radarr", "movies"] });
+      await queryClient.cancelQueries({ queryKey: ["radarr", "movie", movieId] });
+
+      const prevList = queryClient.getQueryData<RadarrMovie[]>(["radarr", "movies"]);
+      const prevDetail = queryClient.getQueryData<RadarrMovie>(["radarr", "movie", movieId]);
+
+      if (prevList) {
+        queryClient.setQueryData<RadarrMovie[]>(
+          ["radarr", "movies"],
+          prevList.map((m) => (m.id === movieId ? { ...m, monitored } : m)),
+        );
+      }
+      if (prevDetail) {
+        queryClient.setQueryData<RadarrMovie>(
+          ["radarr", "movie", movieId],
+          { ...prevDetail, monitored },
+        );
+      }
+
+      return { prevList, prevDetail };
+    },
+    onError: (_err, { movieId }, context) => {
+      if (context?.prevList) {
+        queryClient.setQueryData(["radarr", "movies"], context.prevList);
+      }
+      if (context?.prevDetail) {
+        queryClient.setQueryData(["radarr", "movie", movieId], context.prevDetail);
+      }
+      toast("Failed to update monitoring", "error");
+    },
+    onSettled: (_data, _err, { movieId }) => {
+      queryClient.invalidateQueries({ queryKey: ["radarr", "movies"] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", "movie", movieId] });
+    },
+  });
+}
+
 export function useRadarrQualityProfiles() {
   const enabled = useRadarrEnabled();
   return useQuery({
@@ -133,6 +194,16 @@ export function useRadarrRootFolders() {
   return useQuery({
     queryKey: ["radarr", "rootFolders"],
     queryFn: getRootFolders,
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useRadarrTags() {
+  const enabled = useRadarrEnabled();
+  return useQuery({
+    queryKey: ["radarr", "tags"],
+    queryFn: getTags,
     enabled,
     staleTime: Infinity,
   });

@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, Image, Pressable } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { useRouter } from "expo-router";
-import { Tv, Plus, Check } from "lucide-react-native";
+import { Tv, Plus, Check, SlidersHorizontal } from "lucide-react-native";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { TextInput } from "@/components/ui/text-input";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AddSeriesSheet } from "@/components/sonarr/add-series-sheet";
 import {
   useSonarrSearch,
   useAddSeries,
@@ -22,8 +23,12 @@ export default function SeriesSearchScreen() {
   const { data: results, isLoading } = useSonarrSearch(query);
   const { data: existing } = useSonarrSeries();
   const router = useRouter();
+  const [advancedTarget, setAdvancedTarget] = useState<SonarrSearchResult | null>(null);
 
-  const existingTvdbIds = new Set(existing?.map((s) => s.tvdbId) ?? []);
+  const existingTvdbIds = useMemo(
+    () => new Set(existing?.map((s) => s.tvdbId) ?? []),
+    [existing],
+  );
 
   return (
     <ScreenWrapper>
@@ -55,10 +60,17 @@ export default function SeriesSearchScreen() {
               key={result.tvdbId}
               result={result}
               alreadyAdded={existingTvdbIds.has(result.tvdbId)}
+              onAdvanced={() => setAdvancedTarget(result)}
             />
           ))}
         </View>
       )}
+
+      <AddSeriesSheet
+        result={advancedTarget}
+        visible={advancedTarget !== null}
+        onClose={() => setAdvancedTarget(null)}
+      />
     </ScreenWrapper>
   );
 }
@@ -66,9 +78,11 @@ export default function SeriesSearchScreen() {
 function SearchResultCard({
   result,
   alreadyAdded,
+  onAdvanced,
 }: {
   result: SonarrSearchResult;
   alreadyAdded: boolean;
+  onAdvanced: () => void;
 }) {
   const addSeries = useAddSeries();
   const { data: profiles } = useSonarrQualityProfiles();
@@ -77,7 +91,7 @@ function SearchResultCard({
   const poster = result.images.find((i) => i.coverType === "poster");
   const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "sonarr");
 
-  const handleAdd = () => {
+  const handleQuickAdd = () => {
     if (!profiles?.length || !folders?.length) {
       toast("Could not load quality profiles or root folders", "error");
       return;
@@ -116,8 +130,13 @@ function SearchResultCard({
           {result.title}
         </Text>
         <Text className="text-zinc-500 text-xs">
-          {result.year} · {result.network} · {result.seasonCount} season
-          {result.seasonCount !== 1 ? "s" : ""}
+          {[
+            result.year,
+            result.network,
+            `${result.seasonCount} season${result.seasonCount !== 1 ? "s" : ""}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
         {result.overview && (
           <Text className="text-zinc-500 text-xs mt-1" numberOfLines={2}>
@@ -130,13 +149,23 @@ function SearchResultCard({
           <Check size={20} color="#22c55e" />
         </View>
       ) : (
-        <Pressable
-          onPress={handleAdd}
-          className="self-center p-2 active:opacity-70"
-          disabled={addSeries.isPending}
-        >
-          <Plus size={20} color="#3b82f6" />
-        </Pressable>
+        <View className="flex-row items-center self-center">
+          <Pressable
+            onPress={onAdvanced}
+            className="p-2 active:opacity-70"
+            hitSlop={4}
+          >
+            <SlidersHorizontal size={18} color="#a1a1aa" />
+          </Pressable>
+          <Pressable
+            onPress={handleQuickAdd}
+            className="p-2 active:opacity-70"
+            disabled={addSeries.isPending}
+            hitSlop={4}
+          >
+            <Plus size={20} color="#3b82f6" />
+          </Pressable>
+        </View>
       )}
     </Card>
   );

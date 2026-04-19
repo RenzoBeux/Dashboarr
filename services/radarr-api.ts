@@ -49,6 +49,16 @@ export function searchMovies(term: string): Promise<RadarrSearchResult[]> {
 
 // --- Add Movie ---
 
+export type RadarrMinimumAvailability =
+  | "announced"
+  | "inCinemas"
+  | "released";
+
+export type RadarrMonitorOption =
+  | "movieOnly"
+  | "movieAndCollection"
+  | "none";
+
 export function addMovie(movie: {
   tmdbId: number;
   title: string;
@@ -56,6 +66,9 @@ export function addMovie(movie: {
   rootFolderPath: string;
   monitored?: boolean;
   searchForMovie?: boolean;
+  minimumAvailability?: RadarrMinimumAvailability;
+  monitor?: RadarrMonitorOption;
+  tags?: number[];
 }): Promise<RadarrMovie> {
   return serviceRequest<RadarrMovie>("radarr", "/movie", {
     method: "POST",
@@ -65,8 +78,11 @@ export function addMovie(movie: {
       qualityProfileId: movie.qualityProfileId,
       rootFolderPath: movie.rootFolderPath,
       monitored: movie.monitored ?? true,
+      minimumAvailability: movie.minimumAvailability ?? "released",
+      tags: movie.tags ?? [],
       addOptions: {
         searchForMovie: movie.searchForMovie ?? true,
+        monitor: movie.monitor ?? "movieOnly",
       },
     }),
   });
@@ -81,6 +97,27 @@ export function deleteMovie(
   return serviceRequest<void>("radarr", `/movie/${id}`, {
     method: "DELETE",
     params: { deleteFiles },
+  });
+}
+
+// --- Search Command ---
+
+export function searchForMovie(movieId: number): Promise<void> {
+  return serviceRequest<void>("radarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "MoviesSearch", movieIds: [movieId] }),
+  });
+}
+
+// --- Toggle Monitored (via bulk editor endpoint) ---
+
+export function toggleMovieMonitored(
+  movieId: number,
+  monitored: boolean,
+): Promise<void> {
+  return serviceRequest<void>("radarr", "/movie/editor", {
+    method: "PUT",
+    body: JSON.stringify({ movieIds: [movieId], monitored }),
   });
 }
 
@@ -116,4 +153,15 @@ export interface RadarrRootFolder {
 
 export function getRootFolders(): Promise<RadarrRootFolder[]> {
   return serviceRequest<RadarrRootFolder[]>("radarr", "/rootfolder");
+}
+
+// --- Tags ---
+
+export interface RadarrTag {
+  id: number;
+  label: string;
+}
+
+export function getTags(): Promise<RadarrTag[]> {
+  return serviceRequest<RadarrTag[]>("radarr", "/tag");
 }
