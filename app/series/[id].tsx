@@ -40,6 +40,10 @@ export default function SeriesDetailScreen() {
 
   const poster = series?.images.find((i) => i.coverType === "poster");
   const fanart = series?.images.find((i) => i.coverType === "fanart");
+  const seasonCount =
+    series?.statistics?.seasonCount ??
+    series?.seasons.filter((s) => s.seasonNumber > 0).length ??
+    0;
   const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "sonarr");
   const { src: fanartUrl, onError: onFanartError } = useServiceImage(fanart, "sonarr");
 
@@ -98,7 +102,7 @@ export default function SeriesDetailScreen() {
           </Text>
           <View className="flex-row gap-2 mt-2">
             <Badge
-              label={`${series.seasonCount} Season${series.seasonCount !== 1 ? "s" : ""}`}
+              label={`${seasonCount} Season${seasonCount !== 1 ? "s" : ""}`}
               variant="default"
             />
             {series.monitored && <Badge label="Monitored" variant="downloading" />}
