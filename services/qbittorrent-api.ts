@@ -1,5 +1,6 @@
 import { serviceRequest } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
+import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type {
   QBTransferInfo,
@@ -8,8 +9,40 @@ import type {
   QBTorrentTracker,
 } from "@/lib/types";
 
-let sessionCookie: string | null = null;
-let loginPromise: Promise<boolean> | null = null;
+// Session cookie management. Kept in a closure (not a module-level `let`) so
+// it isn't trivially enumerable from outside this file, and persisted in
+// SecureStore (Keychain / Keystore) so we don't need to re-authenticate on
+// every cold start.
+const SESSION_COOKIE_KEY = "secrets.qbittorrent.sessionCookie";
+
+const cookieStore = (() => {
+  let cached: string | null = null;
+  let loaded = false;
+  let loginPromise: Promise<boolean> | null = null;
+
+  return {
+    async get(): Promise<string | null> {
+      if (!loaded) {
+        cached = await getSecret(SESSION_COOKIE_KEY);
+        loaded = true;
+      }
+      return cached;
+    },
+    async set(value: string | null): Promise<void> {
+      cached = value;
+      loaded = true;
+      if (value) await setSecret(SESSION_COOKIE_KEY, value);
+      else await deleteSecret(SESSION_COOKIE_KEY);
+    },
+    /** Dedup concurrent login attempts so we only hit /auth/login once. */
+    getLoginPromise() {
+      return loginPromise;
+    },
+    setLoginPromise(p: Promise<boolean> | null) {
+      loginPromise = p;
+    },
+  };
+})();
 
 /**
  * Authenticate with qBittorrent using username/password.
@@ -36,10 +69,10 @@ export async function qbLogin(): Promise<boolean> {
   const setCookie = response.headers.get("set-cookie");
   if (setCookie) {
     const match = setCookie.match(/SID=([^;]+)/);
-    if (match) sessionCookie = match[1];
+    if (match) await cookieStore.set(match[1] ?? null);
   }
 
-  return !!sessionCookie;
+  return (await cookieStore.get()) !== null;
 }
 
 /**
@@ -47,17 +80,19 @@ export async function qbLogin(): Promise<boolean> {
  * Deduplicates concurrent login attempts.
  */
 async function ensureAuth(): Promise<void> {
-  if (sessionCookie) return;
-  if (loginPromise) {
-    await loginPromise;
+  if (await cookieStore.get()) return;
+  const existing = cookieStore.getLoginPromise();
+  if (existing) {
+    await existing;
     return;
   }
-  loginPromise = qbLogin();
+  const p = qbLogin();
+  cookieStore.setLoginPromise(p);
   try {
-    const ok = await loginPromise;
+    const ok = await p;
     if (!ok) throw new Error("qBittorrent authentication failed");
   } finally {
-    loginPromise = null;
+    cookieStore.setLoginPromise(null);
   }
 }
 
@@ -69,8 +104,9 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
   // Auto-login on first request
   await ensureAuth();
 
+  let cookie = await cookieStore.get();
   const headers = new Headers(options?.headers);
-  headers.set("Cookie", `SID=${sessionCookie}`);
+  headers.set("Cookie", `SID=${cookie}`);
 
   const response = await fetch(`${baseUrl}${apiBase}${path}`, {
     ...options,
@@ -79,9 +115,10 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
   // Re-authenticate if session expired
   if (response.status === 403) {
-    sessionCookie = null;
+    await cookieStore.set(null);
     await ensureAuth();
-    headers.set("Cookie", `SID=${sessionCookie}`);
+    cookie = await cookieStore.get();
+    headers.set("Cookie", `SID=${cookie}`);
     const retry = await fetch(`${baseUrl}${apiBase}${path}`, {
       ...options,
       headers,
@@ -97,6 +134,15 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
     return (await response.json()) as T;
   }
   return (await response.text()) as unknown as T;
+}
+
+/**
+ * Clear the stored qBittorrent session cookie. Call on sign-out or after the
+ * user changes their qBittorrent password so we don't try to reuse a
+ * now-invalid session.
+ */
+export async function qbClearSession(): Promise<void> {
+  await cookieStore.set(null);
 }
 
 // --- Transfer Info ---
