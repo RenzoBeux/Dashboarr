@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import Fastify from "fastify";
 import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
@@ -32,9 +34,34 @@ const BANNER = `
 ===============================================================================
 `;
 
+async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise<string> {
+  const webhookSecret = getWebhookSecret();
+  const webhookBase = `${publicUrl}/webhooks`;
+  const lines: string[] = [
+    "# Dashboarr webhook URLs",
+    "# Copy into each service's Custom / Webhook notification connection.",
+    "#",
+    "# Preferred — use a custom header (keeps the secret out of reverse-proxy access logs):",
+    `#   URL:    ${webhookBase}/<service>`,
+    `#   Header: X-Dashboarr-Secret: ${webhookSecret}`,
+    "#",
+    "# Back-compat — secret in the URL path (works with services that can't send custom headers):",
+  ];
+  for (const id of SERVICE_IDS) {
+    if (id === "qbittorrent" || id === "prowlarr" || id === "plex" || id === "glances") continue;
+    lines.push(`${id.padEnd(10)} ${webhookBase}/${id}/${webhookSecret}`);
+  }
+  const content = lines.join("\n") + "\n";
+  const filePath = path.resolve(dataDir, "webhook-urls.txt");
+  // mode 0600 so only the backend's user can read the secret at rest.
+  await writeFile(filePath, content, { mode: 0o600 });
+  return filePath;
+}
+
 async function printStartupPairing(
   publicUrl: string,
   hasPublicUrl: boolean,
+  dataDir: string,
 ): Promise<void> {
   const { token } = ensureActiveToken();
 
@@ -53,18 +80,19 @@ async function printStartupPairing(
     console.log(`  (QR render failed — enter token manually)`);
   }
   console.log(`  URL:   ${publicUrl}`);
-  console.log(`  Token: ${token}\n`);
+  console.log(`  Token: ${token}`);
+  console.log(`  (Token expires in ~10 minutes. It's a one-shot credential — once claimed or expired, it becomes useless.)\n`);
 
-  // Webhook URLs used to live on the /pair HTML page. They're printed here
-  // instead so they stay out of any HTTP response.
-  const webhookSecret = getWebhookSecret();
-  const webhookBase = `${publicUrl}/webhooks`;
-  console.log("Webhook URLs — paste into each service's Custom/Webhook connection:");
-  for (const id of SERVICE_IDS) {
-    if (id === "qbittorrent" || id === "prowlarr" || id === "plex" || id === "glances") continue;
-    console.log(`  ${id.padEnd(10)} ${webhookBase}/${id}/${webhookSecret}`);
+  // Webhook secrets are durable (no TTL) so they must NOT go to stdout — stdout
+  // commonly gets shipped to log aggregators (Loki, Grafana Cloud, Datadog),
+  // where broader-than-intended read access would leak the secret.
+  try {
+    const filePath = await writeWebhookUrlsFile(publicUrl, dataDir);
+    console.log(`Webhook URLs written to: ${filePath}`);
+    console.log(`  View with:  cat ${filePath}\n`);
+  } catch (err) {
+    console.warn("Failed to write webhook URLs file:", err);
   }
-  console.log("");
 }
 
 async function main(): Promise<void> {
@@ -132,22 +160,34 @@ async function main(): Promise<void> {
     global: false,
   });
 
-  // Rate-limit pairing endpoints specifically.
+  // /pair/* — tight cap. Claiming a token is a one-shot credential exchange;
+  // anything above a handful of requests per minute is abuse.
   app.register(async (scope) => {
     await scope.register(rateLimit, { max: 5, timeWindow: "1 minute" });
     await pairRoutes(scope);
   });
 
+  // /webhooks/* — higher cap to absorb legitimate bursts when a user queues
+  // many downloads at once, but still bounded so a leaked secret can't be
+  // used to flood notifications.
   await app.register(async (scope) => {
-    await healthRoutes(scope);
-    await deviceRoutes(scope);
-    await configRoutes(scope);
-    await notificationRoutes(scope);
+    await scope.register(rateLimit, { max: 60, timeWindow: "1 minute" });
     await radarrWebhook(scope);
     await sonarrWebhook(scope);
     await overseerrWebhook(scope);
     await bazarrWebhook(scope);
     await tautulliWebhook(scope);
+  });
+
+  // Everything else (bearer-authed app traffic): a reasonable ceiling that
+  // lets the app poll /health every few seconds and sync /config on demand
+  // without tripping, while still capping what a stolen bearer can do.
+  await app.register(async (scope) => {
+    await scope.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+    await healthRoutes(scope);
+    await deviceRoutes(scope);
+    await configRoutes(scope);
+    await notificationRoutes(scope);
   });
 
   // Start the polling scheduler. Will pick up whatever config has been synced.
@@ -170,7 +210,7 @@ async function main(): Promise<void> {
   const address = await app.listen({ port: env.PORT, host: env.HOST });
   const hasPublicUrl = !!env.PUBLIC_URL;
   const publicUrl = env.PUBLIC_URL?.replace(/\/$/, "") ?? address;
-  await printStartupPairing(publicUrl, hasPublicUrl);
+  await printStartupPairing(publicUrl, hasPublicUrl, env.DATA_DIR);
 
   const shutdown = async (signal: string) => {
     console.log(`\n${signal} received — shutting down`);

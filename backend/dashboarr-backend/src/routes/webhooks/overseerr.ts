@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { dispatchPush } from "../../push/dispatcher.js";
 import { checkWebhookSecret } from "./shared.js";
@@ -11,8 +11,10 @@ interface OverseerrWebhookPayload {
   request?: { request_id?: number; requestedBy_username?: string };
 }
 
+type WebhookReq = FastifyRequest<{ Params: { secret?: string } }>;
+
 export async function overseerrWebhook(app: FastifyInstance): Promise<void> {
-  app.post<{ Params: { secret: string } }>("/webhooks/overseerr/:secret", async (request, reply) => {
+  const handler = async (request: WebhookReq, reply: FastifyReply) => {
     if (!(await checkWebhookSecret(request, reply))) return;
 
     const payload = (request.body ?? {}) as OverseerrWebhookPayload;
@@ -41,5 +43,8 @@ export async function overseerrWebhook(app: FastifyInstance): Promise<void> {
     }
 
     return { ok: true };
-  });
+  };
+
+  app.post<{ Params: { secret?: string } }>("/webhooks/overseerr", handler);
+  app.post<{ Params: { secret?: string } }>("/webhooks/overseerr/:secret", handler);
 }

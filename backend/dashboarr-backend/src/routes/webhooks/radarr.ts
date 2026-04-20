@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { dispatchPush } from "../../push/dispatcher.js";
 import { checkWebhookSecret } from "./shared.js";
@@ -25,8 +25,10 @@ interface RadarrWebhookPayload {
   downloadId?: string;
 }
 
+type WebhookReq = FastifyRequest<{ Params: { secret?: string } }>;
+
 export async function radarrWebhook(app: FastifyInstance): Promise<void> {
-  app.post<{ Params: { secret: string } }>("/webhooks/radarr/:secret", async (request, reply) => {
+  const handler = async (request: WebhookReq, reply: FastifyReply) => {
     if (!(await checkWebhookSecret(request, reply))) return;
 
     const payload = (request.body ?? {}) as RadarrWebhookPayload;
@@ -56,5 +58,10 @@ export async function radarrWebhook(app: FastifyInstance): Promise<void> {
     }
 
     return { ok: true };
-  });
+  };
+
+  // Preferred: secret in X-Dashboarr-Secret header (keeps it out of access logs).
+  app.post<{ Params: { secret?: string } }>("/webhooks/radarr", handler);
+  // Back-compat: secret in URL path, for services that don't support custom headers.
+  app.post<{ Params: { secret?: string } }>("/webhooks/radarr/:secret", handler);
 }

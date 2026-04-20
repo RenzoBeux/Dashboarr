@@ -169,14 +169,32 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/device/unregister` | bearer | Remove this device |
 | `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers |
 | `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices |
-| `POST` | `/webhooks/radarr/:secret` | path secret | Radarr "Custom" webhook ingestion |
-| `POST` | `/webhooks/sonarr/:secret` | path secret | Sonarr "Custom" webhook ingestion |
-| `POST` | `/webhooks/overseerr/:secret` | path secret | Overseerr webhook ingestion |
-| `POST` | `/webhooks/bazarr/:secret` | path secret | Bazarr webhook ingestion (logged only) |
-| `POST` | `/webhooks/tautulli/:secret` | path secret | Tautulli webhook ingestion (logged only) |
+| `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred) |
+| `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
+| `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook |
+| `POST` | `/webhooks/sonarr/:secret` | path | Sonarr back-compat |
+| `POST` | `/webhooks/overseerr` | header | Overseerr webhook |
+| `POST` | `/webhooks/overseerr/:secret` | path | Overseerr back-compat |
+| `POST` | `/webhooks/bazarr` | header | Bazarr webhook (logged only) |
+| `POST` | `/webhooks/bazarr/:secret` | path | Bazarr back-compat |
+| `POST` | `/webhooks/tautulli` | header | Tautulli webhook (logged only) |
+| `POST` | `/webhooks/tautulli/:secret` | path | Tautulli back-compat |
 
-Visit `/pair` in a browser to see copy-paste-ready webhook URLs for each
-service, with the current path secret baked in.
+Copy-paste-ready webhook URLs (and the `X-Dashboarr-Secret` value) are written
+at startup to `${DATA_DIR}/webhook-urls.txt` with mode 0600 — i.e. readable
+only by the backend's user. View them with `cat`:
+
+```sh
+docker exec dashboarr-backend cat /data/webhook-urls.txt
+```
+
+Prefer the header variant when the service supports custom headers (Radarr 4+,
+Sonarr 4+, Overseerr) — the secret stays out of reverse-proxy / CDN access
+logs. The path variant remains available for services that can't send custom
+headers.
+
+Rate limits: `/pair/*` is capped at 5 req/min, `/webhooks/*` at 60 req/min,
+everything else at 120 req/min, all per source IP.
 
 ---
 

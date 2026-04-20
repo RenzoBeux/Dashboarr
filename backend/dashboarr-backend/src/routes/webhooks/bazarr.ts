@@ -1,6 +1,8 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { checkWebhookSecret } from "./shared.js";
+
+type WebhookReq = FastifyRequest<{ Params: { secret?: string } }>;
 
 /**
  * Bazarr doesn't have a structured webhook payload like Radarr/Sonarr — it uses
@@ -9,9 +11,12 @@ import { checkWebhookSecret } from "./shared.js";
  * user's notification settings yet).
  */
 export async function bazarrWebhook(app: FastifyInstance): Promise<void> {
-  app.post<{ Params: { secret: string } }>("/webhooks/bazarr/:secret", async (request, reply) => {
+  const handler = async (request: WebhookReq, reply: FastifyReply) => {
     if (!(await checkWebhookSecret(request, reply))) return;
     recordWebhook("bazarr", request.body ?? {});
     return { ok: true };
-  });
+  };
+
+  app.post<{ Params: { secret?: string } }>("/webhooks/bazarr", handler);
+  app.post<{ Params: { secret?: string } }>("/webhooks/bazarr/:secret", handler);
 }
