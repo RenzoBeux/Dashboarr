@@ -69,6 +69,7 @@ export const STORAGE_KEYS = {
   services: "services",
   autoSwitchNetwork: "app.autoSwitchNetwork",
   homeSSID: "app.homeSSID",
+  homeBSSID: "app.homeBSSID",
   dashboardWidgets: "app.dashboardWidgets",
   // Legacy key — read-only fallback during one-time hydrate migration.
   dashboardOrderLegacy: "app.dashboardOrder",

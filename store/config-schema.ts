@@ -119,6 +119,9 @@ export function validateExportPayload(raw: unknown): ExportPayload {
   if (!isPlainObject(raw.secrets)) throw new Error("Config secrets is missing or invalid");
   if (typeof raw.autoSwitchNetwork !== "boolean") throw new Error("Config autoSwitchNetwork is invalid");
   if (typeof raw.homeSSID !== "string" || raw.homeSSID.length > 64) throw new Error("Config homeSSID is invalid");
+  if (raw.homeBSSID !== undefined && (typeof raw.homeBSSID !== "string" || raw.homeBSSID.length > 64)) {
+    throw new Error("Config homeBSSID is invalid");
+  }
   if (!Array.isArray(raw.dashboardWidgets)) throw new Error("Config dashboardWidgets is invalid");
 
   const services = {} as Record<ServiceId, ServiceConfig>;
@@ -153,6 +156,10 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     homeSSID: raw.homeSSID,
     dashboardWidgets,
   };
+
+  if (typeof raw.homeBSSID === "string") {
+    payload.homeBSSID = raw.homeBSSID;
+  }
 
   if (raw.backend !== undefined && raw.backend !== null) {
     const coerced = coerceBackend(raw.backend);

@@ -62,6 +62,7 @@ interface ConfigState {
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
   homeSSID: string;
+  homeBSSID: string;
   dashboardWidgets: WidgetId[];
   wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
@@ -74,6 +75,7 @@ export interface ExportPayload {
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
   homeSSID: string;
+  homeBSSID?: string;
   dashboardWidgets: WidgetId[];
   // v2
   backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
@@ -96,6 +98,7 @@ interface ConfigActions {
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
   setAutoSwitch: (enabled: boolean) => void;
   setHomeSSID: (ssid: string) => void;
+  setHomeBSSID: (bssid: string) => void;
   setDashboardWidgets: (widgets: WidgetId[]) => void;
   addWidget: (id: WidgetId) => void;
   removeWidget: (id: WidgetId) => void;
@@ -143,6 +146,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   secrets: emptySecrets(),
   autoSwitchNetwork: false,
   homeSSID: "",
+  homeBSSID: "",
   dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
   wolDevices: [],
   hydrated: false,
@@ -175,6 +179,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
     const homeSSID = getString(STORAGE_KEYS.homeSSID) ?? "";
+    const homeBSSID = getString(STORAGE_KEYS.homeBSSID) ?? "";
 
     // Prefer the new key. If absent, fall back to the legacy dashboardOrder key
     // (one-time local migration for users upgrading from pre-widget builds).
@@ -192,7 +197,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardWidgets, wolDevices, hydrated: true });
+    set({ services, secrets, autoSwitchNetwork, homeSSID, homeBSSID, dashboardWidgets, wolDevices, hydrated: true });
   },
 
   updateService: (id, config) => {
@@ -231,6 +236,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   setHomeSSID: (ssid) => {
     setString(STORAGE_KEYS.homeSSID, ssid);
     set({ homeSSID: ssid });
+  },
+
+  setHomeBSSID: (bssid) => {
+    const normalized = bssid.trim().toLowerCase();
+    setString(STORAGE_KEYS.homeBSSID, normalized);
+    set({ homeBSSID: normalized });
   },
 
   setDashboardWidgets: (widgets) => {

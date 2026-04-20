@@ -12,8 +12,9 @@ import type { ExportPayload } from "@/store/config-store";
  *   v3  — moved wake-on-LAN from per-service to global config
  *   v4  — multiple WOL devices (wakeOnLan → wolDevices array)
  *   v5  — dashboardOrder renamed to dashboardWidgets
+ *   v6  — added optional homeBSSID for rogue-AP-resistant auto-switch
  */
-export const CURRENT_CONFIG_VERSION = 5;
+export const CURRENT_CONFIG_VERSION = 6;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -79,6 +80,14 @@ const migrations: Record<number, (payload: any) => any> = {
       : DEFAULT_DASHBOARD_WIDGETS;
     return { ...rest, version: 5, dashboardWidgets };
   },
+
+  // v5 → v6: added optional homeBSSID. Pre-v6 exports lack it; default empty
+  // so existing auto-switch falls back to SSID-only matching (old behavior).
+  5: (payload) => ({
+    ...payload,
+    version: 6,
+    homeBSSID: typeof payload.homeBSSID === "string" ? payload.homeBSSID : "",
+  }),
 };
 
 /**
