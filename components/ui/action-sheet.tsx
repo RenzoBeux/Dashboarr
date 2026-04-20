@@ -18,6 +18,11 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightHaptic, errorHaptic } from "@/lib/haptics";
 import { ICON } from "@/lib/constants";
@@ -90,6 +95,18 @@ export function ActionSheet({
     action.onPress();
   }
 
+  const handlePan = Gesture.Pan()
+    .onUpdate((e) => {
+      translateY.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY > 90 || e.velocityY > 800) {
+        runOnJS(onClose)();
+      } else {
+        translateY.value = withSpring(0, { damping: 24, stiffness: 210 });
+      }
+    });
+
   const hasHeader = Boolean(title || subtitle);
 
   return (
@@ -100,70 +117,76 @@ export function ActionSheet({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end">
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <Pressable onPress={onClose} className="flex-1 bg-black/70" />
-        </Animated.View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View className="flex-1 justify-end">
+          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+            <Pressable onPress={onClose} className="flex-1 bg-black/70" />
+          </Animated.View>
 
-        <Animated.View
-          style={[
-            sheetStyle,
-            { maxHeight: SHEET_MAX, paddingBottom: insets.bottom + 8 },
-          ]}
-          className="bg-surface rounded-t-3xl border-t border-border"
-        >
-          <View className="items-center pt-3 pb-1">
-            <View className="w-10 h-1 rounded-full bg-zinc-700" />
-          </View>
-
-          {hasHeader && (
-            <>
-              <View className="flex-row items-start justify-between px-5 pt-3 pb-3">
-                <View className="flex-1 pr-3">
-                  {title && (
-                    <Text
-                      className="text-zinc-100 text-lg font-bold"
-                      numberOfLines={2}
-                    >
-                      {title}
-                    </Text>
-                  )}
-                  {subtitle && (
-                    <Text
-                      className="text-zinc-500 text-xs mt-0.5"
-                      numberOfLines={1}
-                    >
-                      {subtitle}
-                    </Text>
-                  )}
-                </View>
-                <Pressable
-                  onPress={onClose}
-                  hitSlop={10}
-                  className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
-                >
-                  <X size={ICON.SM} color="#a1a1aa" />
-                </Pressable>
-              </View>
-              <View className="h-px bg-border/60 mx-5 mb-1" />
-            </>
-          )}
-
-          <ScrollView
-            contentContainerClassName="px-3 pt-2 pb-2"
-            showsVerticalScrollIndicator={false}
+          <Animated.View
+            style={[
+              sheetStyle,
+              { maxHeight: SHEET_MAX, paddingBottom: insets.bottom + 8 },
+            ]}
+            className="bg-surface rounded-t-3xl border-t border-border"
           >
-            {actions.map((action, i) => (
-              <Animated.View
-                key={i}
-                entering={FadeInDown.delay(i * 25).duration(220)}
-              >
-                <ActionRow action={action} onPress={() => handleAction(action)} />
-              </Animated.View>
-            ))}
-          </ScrollView>
-        </Animated.View>
-      </View>
+            <GestureDetector gesture={handlePan}>
+              <View>
+                <View className="items-center pt-3 pb-1">
+                  <View className="w-10 h-1 rounded-full bg-zinc-700" />
+                </View>
+
+                {hasHeader && (
+                  <>
+                    <View className="flex-row items-start justify-between px-5 pt-3 pb-3">
+                      <View className="flex-1 pr-3">
+                        {title && (
+                          <Text
+                            className="text-zinc-100 text-lg font-bold"
+                            numberOfLines={2}
+                          >
+                            {title}
+                          </Text>
+                        )}
+                        {subtitle && (
+                          <Text
+                            className="text-zinc-500 text-xs mt-0.5"
+                            numberOfLines={1}
+                          >
+                            {subtitle}
+                          </Text>
+                        )}
+                      </View>
+                      <Pressable
+                        onPress={onClose}
+                        hitSlop={10}
+                        className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
+                      >
+                        <X size={ICON.SM} color="#a1a1aa" />
+                      </Pressable>
+                    </View>
+                    <View className="h-px bg-border/60 mx-5 mb-1" />
+                  </>
+                )}
+              </View>
+            </GestureDetector>
+
+            <ScrollView
+              contentContainerClassName="px-3 pt-2 pb-2"
+              showsVerticalScrollIndicator={false}
+            >
+              {actions.map((action, i) => (
+                <Animated.View
+                  key={i}
+                  entering={FadeInDown.delay(i * 25).duration(220)}
+                >
+                  <ActionRow action={action} onPress={() => handleAction(action)} />
+                </Animated.View>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

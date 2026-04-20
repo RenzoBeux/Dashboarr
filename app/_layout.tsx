@@ -6,6 +6,7 @@ import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
@@ -182,24 +183,26 @@ export default function RootLayout() {
   if (!hydrated) return null;
 
   return (
-    <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <ErrorBoundary>
-          <NotificationWatchers />
-          <NotificationRouter />
-          <BackendHealthPoller />
-          <ConfigSyncBridge />
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: "#09090b" },
-              animation: "slide_from_right",
-            }}
-          />
-          <ToastContainer />
-        </ErrorBoundary>
-      </QueryClientProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <ErrorBoundary>
+            <NotificationWatchers />
+            <NotificationRouter />
+            <BackendHealthPoller />
+            <ConfigSyncBridge />
+            <StatusBar style="light" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: "#09090b" },
+                animation: "slide_from_right",
+              }}
+            />
+            <ToastContainer />
+          </ErrorBoundary>
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

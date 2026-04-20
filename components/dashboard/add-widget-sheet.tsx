@@ -18,6 +18,11 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useConfigStore } from "@/store/config-store";
@@ -86,6 +91,18 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
     onClose();
   }
 
+  const handlePan = Gesture.Pan()
+    .onUpdate((e) => {
+      translateY.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY > 90 || e.velocityY > 800) {
+        runOnJS(onClose)();
+      } else {
+        translateY.value = withSpring(0, { damping: 22, stiffness: 200 });
+      }
+    });
+
   return (
     <Modal
       visible={mounted}
@@ -94,93 +111,97 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end">
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <Pressable onPress={onClose} className="flex-1 bg-black/70" />
-        </Animated.View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View className="flex-1 justify-end">
+          <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+            <Pressable onPress={onClose} className="flex-1 bg-black/70" />
+          </Animated.View>
 
-        <Animated.View
-          style={[
-            sheetStyle,
-            { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8 },
-          ]}
-          className="bg-surface rounded-t-3xl border-t border-border"
-        >
-          <View className="pt-3 pb-1">
-            <View className="self-center w-10 h-1 rounded-full bg-zinc-700" />
+          <Animated.View
+            style={[
+              sheetStyle,
+              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8 },
+            ]}
+            className="bg-surface rounded-t-3xl border-t border-border"
+          >
+            <GestureDetector gesture={handlePan}>
+              <View className="pt-3 pb-1">
+                <View className="self-center w-10 h-1 rounded-full bg-zinc-700" />
 
-            <View className="flex-row items-center justify-between px-5 pt-4 pb-3">
-              <View className="flex-1 pr-3">
-                <Text className="text-zinc-100 text-xl font-bold">
-                  Add widget
+                <View className="flex-row items-center justify-between px-5 pt-4 pb-3">
+                  <View className="flex-1 pr-3">
+                    <Text className="text-zinc-100 text-xl font-bold">
+                      Add widget
+                    </Text>
+                    <Text className="text-zinc-500 text-xs mt-0.5">
+                      {available.length === 0
+                        ? "All widgets are on your dashboard"
+                        : `${available.length} widget${available.length === 1 ? "" : "s"} available`}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={onClose}
+                    hitSlop={10}
+                    className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
+                  >
+                    <X size={ICON.SM} color="#a1a1aa" />
+                  </Pressable>
+                </View>
+              </View>
+            </GestureDetector>
+
+            {available.length === 0 ? (
+              <View className="items-center py-10 px-8">
+                <View className="w-14 h-14 rounded-full bg-surface-light items-center justify-center mb-3">
+                  <LayoutGrid size={24} color="#71717a" />
+                </View>
+                <Text className="text-zinc-300 text-base font-medium">
+                  You're all set
                 </Text>
-                <Text className="text-zinc-500 text-xs mt-0.5">
-                  {available.length === 0
-                    ? "All widgets are on your dashboard"
-                    : `${available.length} widget${available.length === 1 ? "" : "s"} available`}
+                <Text className="text-zinc-500 text-sm text-center mt-1">
+                  Every widget is already on your dashboard.
                 </Text>
               </View>
-              <Pressable
-                onPress={onClose}
-                hitSlop={10}
-                className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
+            ) : (
+              <ScrollView
+                contentContainerClassName="px-4 pt-1 pb-4"
+                showsVerticalScrollIndicator={false}
               >
-                <X size={ICON.SM} color="#a1a1aa" />
-              </Pressable>
-            </View>
-          </View>
-
-          {available.length === 0 ? (
-            <View className="items-center py-10 px-8">
-              <View className="w-14 h-14 rounded-full bg-surface-light items-center justify-center mb-3">
-                <LayoutGrid size={24} color="#71717a" />
-              </View>
-              <Text className="text-zinc-300 text-base font-medium">
-                You're all set
-              </Text>
-              <Text className="text-zinc-500 text-sm text-center mt-1">
-                Every widget is already on your dashboard.
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              contentContainerClassName="px-4 pt-1 pb-4"
-              showsVerticalScrollIndicator={false}
-            >
-              {enabled.length > 0 && (
-                <View>
-                  <SectionLabel label="Available" />
-                  <View className="gap-2">
-                    {enabled.map((widget, idx) => (
-                      <EnabledRow
-                        key={widget.id}
-                        widget={widget}
-                        index={idx}
-                        onAdd={() => handleAdd(widget)}
-                      />
-                    ))}
+                {enabled.length > 0 && (
+                  <View>
+                    <SectionLabel label="Available" />
+                    <View className="gap-2">
+                      {enabled.map((widget, idx) => (
+                        <EnabledRow
+                          key={widget.id}
+                          widget={widget}
+                          index={idx}
+                          onAdd={() => handleAdd(widget)}
+                        />
+                      ))}
+                    </View>
                   </View>
-                </View>
-              )}
+                )}
 
-              {locked.length > 0 && (
-                <View className={enabled.length > 0 ? "mt-5" : ""}>
-                  <SectionLabel label="Requires setup" />
-                  <View className="gap-2">
-                    {locked.map((widget, idx) => (
-                      <LockedRow
-                        key={widget.id}
-                        widget={widget}
-                        index={idx + enabled.length}
-                      />
-                    ))}
+                {locked.length > 0 && (
+                  <View className={enabled.length > 0 ? "mt-5" : ""}>
+                    <SectionLabel label="Requires setup" />
+                    <View className="gap-2">
+                      {locked.map((widget, idx) => (
+                        <LockedRow
+                          key={widget.id}
+                          widget={widget}
+                          index={idx + enabled.length}
+                        />
+                      ))}
+                    </View>
                   </View>
-                </View>
-              )}
-            </ScrollView>
-          )}
-        </Animated.View>
-      </View>
+                )}
+              </ScrollView>
+            )}
+          </Animated.View>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

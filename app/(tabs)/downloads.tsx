@@ -1,8 +1,8 @@
-import { useState, useCallback } from "react";
-import { View, Text, Pressable, Alert, BackHandler } from "react-native";
+import { useState, useCallback, useMemo } from "react";
+import { View, Text, Pressable, Alert, BackHandler, ScrollView } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Pause, Play, Trash2, Plus, CheckCircle2, Circle } from "lucide-react-native";
+import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import {
   useAllTorrents,
@@ -37,6 +38,36 @@ const FILTER_OPTIONS: { key: FilterType; label: string }[] = [
   { key: "paused", label: "Paused" },
 ];
 
+type SortKey =
+  | "progress-desc"
+  | "progress-asc"
+  | "name-asc"
+  | "size-desc"
+  | "added-desc";
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "progress-desc", label: "Progress: High → Low" },
+  { key: "progress-asc", label: "Progress: Low → High" },
+  { key: "name-asc", label: "Name: A → Z" },
+  { key: "size-desc", label: "Size: Large → Small" },
+  { key: "added-desc", label: "Added: Newest First" },
+];
+
+function compareTorrents(a: QBTorrent, b: QBTorrent, sort: SortKey): number {
+  switch (sort) {
+    case "progress-desc":
+      return b.progress - a.progress;
+    case "progress-asc":
+      return a.progress - b.progress;
+    case "name-asc":
+      return a.name.localeCompare(b.name);
+    case "size-desc":
+      return b.size - a.size;
+    case "added-desc":
+      return b.added_on - a.added_on;
+  }
+}
+
 function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" | "paused" | "error" | "default" {
   if (state.includes("DL") || state === "downloading" || state === "metaDL") return "downloading";
   if (state.includes("UP") || state === "uploading") return "seeding";
@@ -47,9 +78,15 @@ function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" 
 
 export default function DownloadsScreen() {
   const [filter, setFilter] = useState<FilterType>("all");
+  const [sort, setSort] = useState<SortKey>("progress-desc");
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
   const { data: torrents } = useAllTorrents(filter === "all" ? undefined : filter);
+  const sortedTorrents = useMemo(
+    () => (torrents ? [...torrents].sort((a, b) => compareTorrents(a, b, sort)) : torrents),
+    [torrents, sort],
+  );
   const { data: transfer } = useTransferInfo();
   const { data: healthData } = useServiceHealth();
   const addTorrent = useAddTorrent();
@@ -222,25 +259,39 @@ export default function DownloadsScreen() {
             />
           )}
 
-          <View className="flex-row gap-2 mb-4">
-            {FILTER_OPTIONS.map((opt) => (
-              <FilterChip
-                key={opt.key}
-                label={opt.label}
-                selected={filter === opt.key}
-                onPress={() => setFilter(opt.key)}
-              />
-            ))}
+          <View className="flex-row items-center gap-2 mb-4">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-2"
+              className="flex-1"
+            >
+              {FILTER_OPTIONS.map((opt) => (
+                <FilterChip
+                  key={opt.key}
+                  label={opt.label}
+                  selected={filter === opt.key}
+                  onPress={() => setFilter(opt.key)}
+                />
+              ))}
+            </ScrollView>
+            <Pressable
+              onPress={() => setSortSheetOpen(true)}
+              hitSlop={6}
+              className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
+            >
+              <ArrowUpDown size={16} color="#a1a1aa" />
+            </Pressable>
           </View>
         </>
       )}
 
       {/* Torrent List */}
-      {!torrents || torrents.length === 0 ? (
+      {!sortedTorrents || sortedTorrents.length === 0 ? (
         <EmptyState title="No torrents" message={`No ${filter} torrents found`} />
       ) : (
         <View className="gap-2">
-          {torrents.map((torrent) => (
+          {sortedTorrents.map((torrent) => (
             <TorrentListItem
               key={torrent.hash}
               torrent={torrent}
@@ -252,6 +303,22 @@ export default function DownloadsScreen() {
           ))}
         </View>
       )}
+
+      <ActionSheet
+        visible={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        title="Sort torrents"
+        actions={SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            sort === opt.key ? (
+              <Check size={18} color="#3b82f6" />
+            ) : (
+              <ArrowUpDown size={18} color="#71717a" />
+            ),
+          onPress: () => setSort(opt.key),
+        }))}
+      />
     </ScreenWrapper>
   );
 }
