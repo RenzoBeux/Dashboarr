@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator, Platform } from "react-native";
 import { router } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { ArrowLeft, Bell, QrCode, Unlink, Cloud, CloudOff } from "lucide-react-native";
+import { ArrowLeft, Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -155,6 +155,35 @@ export default function BackendScreen() {
     ]);
   }, [unpair]);
 
+  const handleRotate = useCallback(() => {
+    Alert.alert(
+      "Rotate backend secret",
+      "This unpairs the current shared secret. Scan a fresh pairing QR from your backend to get a new one. Push notifications will stop until you re-pair.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Rotate",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              try {
+                await unregisterDevice();
+              } catch {
+                /* ignore — rotate locally even if server is unreachable */
+              }
+              await unpair();
+              // Drops us into the un-paired summary state; user scans a new QR.
+              toast("Secret rotated — scan a new pairing QR", "success");
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [unpair]);
+
   useEffect(() => {
     if (mode === "scanning" && !permission?.granted) {
       void requestPermission();
@@ -222,6 +251,13 @@ export default function BackendScreen() {
                   className="flex-1"
                 />
               </View>
+
+              <Pressable onPress={handleRotate} disabled={busy} className="active:opacity-80 mb-3">
+                <Card className="flex-row items-center justify-center gap-2">
+                  <RefreshCw size={16} color="#a1a1aa" />
+                  <Text className="text-zinc-200 text-base">Rotate secret</Text>
+                </Card>
+              </Pressable>
 
               <Pressable onPress={handleUnpair} disabled={busy} className="active:opacity-80">
                 <Card className="flex-row items-center justify-center gap-2 bg-red-950/30 border border-red-900/50">
