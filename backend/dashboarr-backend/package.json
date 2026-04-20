@@ -15,7 +15,7 @@
   "dependencies": {
     "@fastify/rate-limit": "^10.2.1",
     "better-sqlite3": "^11.7.0",
-    "fastify": "^5.2.0",
+    "fastify": "^5.8.5",
     "qrcode": "^1.5.4",
     "zod": "^3.24.1"
   },
