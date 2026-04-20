@@ -20,7 +20,7 @@ import {
   Zap,
 } from "lucide-react-native";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
-import { detectSSID } from "@/lib/wifi";
+import { detectWifi } from "@/lib/wifi";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
@@ -86,10 +86,15 @@ export default function SettingsScreen() {
   const handleDetectSSID = async () => {
     setDetectingSSID(true);
     try {
-      const ssid = await detectSSID();
-      if (ssid) {
-        setHomeSSID(ssid);
-        toast(`Detected: ${ssid}`, "success");
+      const wifi = await detectWifi();
+      if (wifi) {
+        setHomeSSID(wifi.ssid);
+        // Also pin the BSSID (AP MAC). Makes auto-switch resistant to a
+        // rogue AP cloning the home SSID. Empty if the platform doesn't
+        // surface a BSSID on this build.
+        setHomeBSSID(wifi.bssid);
+        const suffix = wifi.bssid ? ` · pinned to AP ${wifi.bssid}` : " · no BSSID available";
+        toast(`Detected: ${wifi.ssid}${suffix}`, "success");
       } else {
         toast("Could not detect WiFi name. Check that you're on WiFi and location is allowed.", "error");
       }
@@ -102,8 +107,10 @@ export default function SettingsScreen() {
   const services = useConfigStore((s) => s.services);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeSSID = useConfigStore((s) => s.homeSSID);
+  const homeBSSID = useConfigStore((s) => s.homeBSSID);
   const setAutoSwitch = useConfigStore((s) => s.setAutoSwitch);
   const setHomeSSID = useConfigStore((s) => s.setHomeSSID);
+  const setHomeBSSID = useConfigStore((s) => s.setHomeBSSID);
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
   const wolDevices = useConfigStore((s) => s.wolDevices);
@@ -197,27 +204,46 @@ export default function SettingsScreen() {
           onValueChange={setAutoSwitch}
         />
         {autoSwitchNetwork && (
-          <View className="flex-row items-end gap-2">
-            <View className="flex-1">
-              <TextInput
-                label="Home WiFi Name (SSID)"
-                placeholder="e.g. MyHomeNetwork"
-                value={homeSSID}
-                onChangeText={setHomeSSID}
-              />
+          <>
+            <View className="flex-row items-end gap-2">
+              <View className="flex-1">
+                <TextInput
+                  label="Home WiFi Name (SSID)"
+                  placeholder="e.g. MyHomeNetwork"
+                  value={homeSSID}
+                  onChangeText={setHomeSSID}
+                />
+              </View>
+              <Pressable
+                onPress={handleDetectSSID}
+                disabled={detectingSSID}
+                className="bg-surface-light rounded-xl p-3 active:opacity-70"
+              >
+                {detectingSSID ? (
+                  <ActivityIndicator size={20} color="#a1a1aa" />
+                ) : (
+                  <Wifi size={20} color="#a1a1aa" />
+                )}
+              </Pressable>
             </View>
-            <Pressable
-              onPress={handleDetectSSID}
-              disabled={detectingSSID}
-              className="bg-surface-light rounded-xl p-3 active:opacity-70"
-            >
-              {detectingSSID ? (
-                <ActivityIndicator size={20} color="#a1a1aa" />
-              ) : (
-                <Wifi size={20} color="#a1a1aa" />
-              )}
-            </Pressable>
-          </View>
+            {homeBSSID ? (
+              <View className="flex-row items-center justify-between -mt-2">
+                <Text className="text-zinc-500 text-xs flex-1">
+                  Pinned to AP <Text className="text-zinc-300">{homeBSSID}</Text>
+                </Text>
+                <Pressable
+                  onPress={() => setHomeBSSID("")}
+                  className="active:opacity-70 px-2 py-1"
+                >
+                  <Text className="text-primary text-xs">Clear pin</Text>
+                </Pressable>
+              </View>
+            ) : homeSSID ? (
+              <Text className="text-zinc-500 text-xs -mt-2">
+                Tap the WiFi icon while connected to your home network to pin its AP — guards against rogue access points that clone your SSID.
+              </Text>
+            ) : null}
+          </>
         )}
       </Card>
 
