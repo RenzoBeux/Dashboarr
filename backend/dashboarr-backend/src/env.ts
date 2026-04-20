@@ -31,6 +31,15 @@ const envSchema = z.object({
     .optional()
     .default("false")
     .transform((v) => v === "true" || v === "1"),
+  // Optional passphrase used to encrypt per-service api_key/username/password
+  // columns at rest in SQLite. When set, new writes are AES-256-GCM encrypted
+  // with a key derived via SHA-256 from this value. Unset = legacy plaintext
+  // (back-compat for existing deployments).
+  //
+  // IMPORTANT: losing this value makes previously-encrypted secrets
+  // unrecoverable. Services with unrecoverable credentials will fail to poll
+  // and you'll see a warning in the logs on startup.
+  CONFIG_ENCRYPTION_KEY: z.string().min(16).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

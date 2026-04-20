@@ -40,7 +40,7 @@ export const POLLING_INTERVALS = {
   calendar: 60000,
 } as const;
 
-export const DASHBOARD_CARD_IDS = [
+export const DASHBOARD_WIDGET_IDS = [
   "server-stats",
   "speed-stats",
   "service-health",
@@ -55,15 +55,23 @@ export const DASHBOARD_CARD_IDS = [
   "wol-devices",
 ] as const;
 
-export type DashboardCardId = (typeof DASHBOARD_CARD_IDS)[number];
-export const DEFAULT_DASHBOARD_ORDER: DashboardCardId[] = [...DASHBOARD_CARD_IDS];
+export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
+
+// Curated initial set for fresh installs. Users add more via the picker.
+export const DEFAULT_DASHBOARD_WIDGETS: WidgetId[] = [
+  "service-health",
+  "radarr-queue",
+  "sonarr-calendar",
+];
 
 // MMKV key prefixes
 export const STORAGE_KEYS = {
   services: "services",
   autoSwitchNetwork: "app.autoSwitchNetwork",
   homeSSID: "app.homeSSID",
-  dashboardOrder: "app.dashboardOrder",
+  dashboardWidgets: "app.dashboardWidgets",
+  // Legacy key — read-only fallback during one-time hydrate migration.
+  dashboardOrderLegacy: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
   wolDevices: "app.wolDevices",
 } as const;

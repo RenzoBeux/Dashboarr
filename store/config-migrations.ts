@@ -1,4 +1,4 @@
-import { DEFAULT_DASHBOARD_ORDER } from "@/lib/constants";
+import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
 
 /**
@@ -11,8 +11,9 @@ import type { ExportPayload } from "@/store/config-store";
  *   v2  — added backend pairing + notification settings
  *   v3  — moved wake-on-LAN from per-service to global config
  *   v4  — multiple WOL devices (wakeOnLan → wolDevices array)
+ *   v5  — dashboardOrder renamed to dashboardWidgets
  */
-export const CURRENT_CONFIG_VERSION = 4;
+export const CURRENT_CONFIG_VERSION = 5;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -29,7 +30,7 @@ const migrations: Record<number, (payload: any) => any> = {
     secrets: payload.secrets ?? {},
     autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
     homeSSID: payload.homeSSID ?? "",
-    dashboardOrder: payload.dashboardOrder ?? DEFAULT_DASHBOARD_ORDER,
+    dashboardOrder: payload.dashboardOrder ?? [],
   }),
 
   // v1 → v2: add backend pairing + notification settings
@@ -68,6 +69,15 @@ const migrations: Record<number, (payload: any) => any> = {
     }
     const { wakeOnLan: _, ...rest } = payload;
     return { ...rest, version: 4, wolDevices };
+  },
+
+  // v4 → v5: dashboardOrder renamed to dashboardWidgets
+  4: (payload) => {
+    const { dashboardOrder, ...rest } = payload;
+    const dashboardWidgets = Array.isArray(dashboardOrder) && dashboardOrder.length > 0
+      ? dashboardOrder
+      : DEFAULT_DASHBOARD_WIDGETS;
+    return { ...rest, version: 5, dashboardWidgets };
   },
 };
 

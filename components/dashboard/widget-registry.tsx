@@ -1,0 +1,143 @@
+import {
+  Activity,
+  CalendarDays,
+  Captions,
+  Cpu,
+  Download,
+  Film,
+  Gauge,
+  HeartPulse,
+  Inbox,
+  PlayCircle,
+  Power,
+  Radar,
+  type LucideIcon,
+} from "lucide-react-native";
+import { ServerStatsCard } from "@/components/dashboard/server-stats-card";
+import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
+import { ServiceHealthCard } from "@/components/dashboard/service-health-card";
+import { DownloadCard } from "@/components/dashboard/download-card";
+import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
+import { SonarrCalendarCard } from "@/components/dashboard/sonarr-calendar-card";
+import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
+import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
+import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
+import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
+import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
+import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
+import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
+
+export interface WidgetDefinition {
+  id: WidgetId;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  service: ServiceId | null;
+  component: React.ComponentType;
+}
+
+export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
+  "service-health": {
+    id: "service-health",
+    label: "Service Health",
+    description: "Status grid of all enabled services",
+    icon: HeartPulse,
+    service: null,
+    component: ServiceHealthCard,
+  },
+  "server-stats": {
+    id: "server-stats",
+    label: "Server Stats",
+    description: "CPU, RAM and disk usage from Glances",
+    icon: Cpu,
+    service: "glances",
+    component: ServerStatsCard,
+  },
+  "speed-stats": {
+    id: "speed-stats",
+    label: "Speed Stats",
+    description: "Live download and upload speeds",
+    icon: Gauge,
+    service: "qbittorrent",
+    component: SpeedStatsCard,
+  },
+  "downloads": {
+    id: "downloads",
+    label: "Downloads",
+    description: "Top active torrents with pause and resume",
+    icon: Download,
+    service: "qbittorrent",
+    component: DownloadCard,
+  },
+  "radarr-queue": {
+    id: "radarr-queue",
+    label: "Radarr Queue",
+    description: "Movies currently downloading or grabbed",
+    icon: Film,
+    service: "radarr",
+    component: RadarrQueueCard,
+  },
+  "sonarr-calendar": {
+    id: "sonarr-calendar",
+    label: "Sonarr Calendar",
+    description: "Upcoming episodes from monitored series",
+    icon: CalendarDays,
+    service: "sonarr",
+    component: SonarrCalendarCard,
+  },
+  "tautulli-activity": {
+    id: "tautulli-activity",
+    label: "Tautulli Activity",
+    description: "Current Plex streams and bandwidth",
+    icon: Activity,
+    service: "tautulli",
+    component: TautulliActivityCard,
+  },
+  "overseerr-requests": {
+    id: "overseerr-requests",
+    label: "Overseerr Requests",
+    description: "Recent media requests with status",
+    icon: Inbox,
+    service: "overseerr",
+    component: OverseerrRequestsCard,
+  },
+  "plex-now-playing": {
+    id: "plex-now-playing",
+    label: "Plex Now Playing",
+    description: "Live playback sessions on your Plex server",
+    icon: PlayCircle,
+    service: "plex",
+    component: PlexNowPlayingCard,
+  },
+  "prowlarr-stats": {
+    id: "prowlarr-stats",
+    label: "Prowlarr Stats",
+    description: "Indexer health and query stats",
+    icon: Radar,
+    service: "prowlarr",
+    component: ProwlarrStatsCard,
+  },
+  "bazarr-wanted": {
+    id: "bazarr-wanted",
+    label: "Bazarr Wanted",
+    description: "Missing subtitles across your library",
+    icon: Captions,
+    service: "bazarr",
+    component: BazarrWantedCard,
+  },
+  "wol-devices": {
+    id: "wol-devices",
+    label: "Wake-on-LAN",
+    description: "One-tap wake for saved devices",
+    icon: Power,
+    service: null,
+    component: WolDevicesCard,
+  },
+};
+
+export function getAvailableWidgets(currentIds: WidgetId[]): WidgetDefinition[] {
+  const current = new Set(currentIds);
+  return DASHBOARD_WIDGET_IDS.filter((id) => !current.has(id)).map(
+    (id) => WIDGET_REGISTRY[id],
+  );
+}

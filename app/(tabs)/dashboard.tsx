@@ -1,71 +1,54 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { GripVertical, ChevronUp, ChevronDown, Pencil, Check } from "lucide-react-native";
+import {
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  Pencil,
+  Check,
+  X,
+  Plus,
+} from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
-import { ServiceHealthCard } from "@/components/dashboard/service-health-card";
-import { DownloadCard } from "@/components/dashboard/download-card";
-import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
-import { SonarrCalendarCard } from "@/components/dashboard/sonarr-calendar-card";
-import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
-import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
-import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
-import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
-import { ServerStatsCard } from "@/components/dashboard/server-stats-card";
-import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
-import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
-import { ICON, type DashboardCardId, type ServiceId } from "@/lib/constants";
-
-const CARD_REGISTRY: Record<
-  DashboardCardId,
-  { label: string; component: React.ComponentType; service: ServiceId | null }
-> = {
-  "server-stats": { label: "Server Stats", component: ServerStatsCard, service: "glances" },
-  "speed-stats": { label: "Speed Stats", component: SpeedStatsCard, service: "qbittorrent" },
-  "service-health": { label: "Service Health", component: ServiceHealthCard, service: null },
-  "downloads": { label: "Downloads", component: DownloadCard, service: "qbittorrent" },
-  "radarr-queue": { label: "Radarr Queue", component: RadarrQueueCard, service: "radarr" },
-  "sonarr-calendar": { label: "Sonarr Calendar", component: SonarrCalendarCard, service: "sonarr" },
-  "tautulli-activity": { label: "Tautulli Activity", component: TautulliActivityCard, service: "tautulli" },
-  "overseerr-requests": { label: "Overseerr Requests", component: OverseerrRequestsCard, service: "overseerr" },
-  "plex-now-playing": { label: "Plex Now Playing", component: PlexNowPlayingCard, service: "plex" },
-  "prowlarr-stats": { label: "Prowlarr Stats", component: ProwlarrStatsCard, service: "prowlarr" },
-  "bazarr-wanted": { label: "Bazarr Wanted", component: BazarrWantedCard, service: "bazarr" },
-  "wol-devices": { label: "Wake-on-LAN", component: WolDevicesCard, service: null },
-};
+import { ICON } from "@/lib/constants";
+import { WIDGET_REGISTRY } from "@/components/dashboard/widget-registry";
+import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
   const services = useConfigStore((s) => s.services);
-  const dashboardOrder = useConfigStore((s) => s.dashboardOrder);
-  const setDashboardOrder = useConfigStore((s) => s.setDashboardOrder);
+  const dashboardWidgets = useConfigStore((s) => s.dashboardWidgets);
+  const removeWidget = useConfigStore((s) => s.removeWidget);
+  const moveWidget = useConfigStore((s) => s.moveWidget);
   const [editMode, setEditMode] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const hasAnyEnabled = Object.values(services).some((s) => s.enabled);
 
-  const visibleCards = dashboardOrder.filter((id) => {
-    const { service } = CARD_REGISTRY[id];
-    return service === null || services[service].enabled;
+  const visibleWidgets = dashboardWidgets.filter((id) => {
+    const widget = WIDGET_REGISTRY[id];
+    if (!widget) return false;
+    return widget.service === null || services[widget.service].enabled;
   });
 
-  function moveCard(cardId: DashboardCardId, direction: "up" | "down") {
-    const visibleIndex = visibleCards.indexOf(cardId);
-    const targetVisibleIndex = direction === "up" ? visibleIndex - 1 : visibleIndex + 1;
-    if (targetVisibleIndex < 0 || targetVisibleIndex >= visibleCards.length) return;
-
-    const targetId = visibleCards[targetVisibleIndex];
-    const newOrder = [...dashboardOrder];
-    const aIdx = newOrder.indexOf(cardId);
-    const bIdx = newOrder.indexOf(targetId);
-    [newOrder[aIdx], newOrder[bIdx]] = [newOrder[bIdx], newOrder[aIdx]];
-
+  function handleMove(id: (typeof dashboardWidgets)[number], direction: "up" | "down") {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setDashboardOrder(newOrder);
+    moveWidget(id, direction);
+  }
+
+  function handleRemove(id: (typeof dashboardWidgets)[number]) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    removeWidget(id);
+  }
+
+  function openPicker() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPickerVisible(true);
   }
 
   return (
@@ -105,14 +88,16 @@ export default function DashboardScreen() {
               className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2"
             >
               <Text className="text-primary text-sm font-medium text-center">
-                Reorder cards by tapping arrows
+                Reorder, remove, or add widgets
               </Text>
             </Animated.View>
           )}
-          {visibleCards.map((id, visibleIndex) => {
-            const { component: CardComponent, label } = CARD_REGISTRY[id];
+          {visibleWidgets.map((id, visibleIndex) => {
+            const widget = WIDGET_REGISTRY[id];
+            if (!widget) return null;
+            const { component: WidgetComponent, label } = widget;
             const isFirst = visibleIndex === 0;
-            const isLast = visibleIndex === visibleCards.length - 1;
+            const isLast = visibleIndex === visibleWidgets.length - 1;
 
             return (
               <Animated.View
@@ -125,13 +110,15 @@ export default function DashboardScreen() {
                     exiting={FadeOut}
                     className="flex-row items-center justify-between mb-1 px-1"
                   >
-                    <View className="flex-row items-center gap-1.5">
+                    <View className="flex-row items-center gap-1.5 flex-1">
                       <GripVertical size={ICON.SM} color="#52525b" />
-                      <Text className="text-zinc-500 text-xs font-medium">{label}</Text>
+                      <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
+                        {label}
+                      </Text>
                     </View>
-                    <View className="flex-row gap-1">
+                    <View className="flex-row items-center gap-1">
                       <TouchableOpacity
-                        onPress={() => moveCard(id, "up")}
+                        onPress={() => handleMove(id, "up")}
                         disabled={isFirst}
                         className="p-1"
                         hitSlop={6}
@@ -139,12 +126,19 @@ export default function DashboardScreen() {
                         <ChevronUp size={ICON.MD} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={() => moveCard(id, "down")}
+                        onPress={() => handleMove(id, "down")}
                         disabled={isLast}
                         className="p-1"
                         hitSlop={6}
                       >
                         <ChevronDown size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleRemove(id)}
+                        className="p-1 ml-1"
+                        hitSlop={6}
+                      >
+                        <X size={ICON.MD} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
                   </Animated.View>
@@ -159,14 +153,28 @@ export default function DashboardScreen() {
                   } : undefined}
                 >
                   <CardErrorBoundary>
-                    <CardComponent />
+                    <WidgetComponent />
                   </CardErrorBoundary>
                 </View>
               </Animated.View>
             );
           })}
+
+          {editMode && (
+            <Animated.View entering={FadeIn} exiting={FadeOut}>
+              <TouchableOpacity
+                onPress={openPicker}
+                className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
+              >
+                <Plus size={ICON.MD} color="#a1a1aa" />
+                <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
         </View>
       )}
+
+      <AddWidgetSheet visible={pickerVisible} onClose={() => setPickerVisible(false)} />
     </ScreenWrapper>
   );
 }

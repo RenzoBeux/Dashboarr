@@ -6,6 +6,7 @@ import { getEnv } from "./env.js";
 import { getDb, closeDb } from "./db/client.js";
 import { ensureActiveToken, purgeExpiredTokens } from "./auth/pairing-tokens.js";
 import { getWebhookSecret } from "./db/repos/settings.js";
+import { isEncryptionEnabled } from "./crypto/secrets.js";
 import { SERVICE_IDS } from "./types.js";
 import { initScheduler, getScheduler } from "./workers/scheduler.js";
 import { healthRoutes } from "./routes/health.js";
@@ -69,6 +70,12 @@ async function printStartupPairing(
 async function main(): Promise<void> {
   const env = getEnv();
   console.log(BANNER);
+
+  if (isEncryptionEnabled()) {
+    console.log("🔒 CONFIG_ENCRYPTION_KEY set — service credentials encrypted at rest (AES-256-GCM).\n");
+  } else {
+    console.log("⚠️  CONFIG_ENCRYPTION_KEY not set — service credentials stored in plaintext in SQLite. Set it to enable encryption at rest.\n");
+  }
 
   // Ensure DB is initialized and the webhook secret exists before any request lands
   getDb();

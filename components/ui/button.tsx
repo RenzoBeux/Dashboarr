@@ -66,7 +66,7 @@ export function Button({
   const sizeStyle = SIZE_CLASSES[size];
 
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View style={animatedStyle} className={className}>
       <Pressable
         onPress={() => {
           lightHaptic();
@@ -79,7 +79,7 @@ export function Button({
           scale.value = withSpring(1, SPRING_CONFIG);
         }}
         disabled={disabled || loading}
-        className={`flex-row items-center justify-center ${sizeStyle.container} ${variantStyle.container} ${disabled ? "opacity-50" : ""} ${className}`}
+        className={`flex-row items-center justify-center ${sizeStyle.container} ${variantStyle.container} ${disabled ? "opacity-50" : ""}`}
       >
         {loading ? (
           <ActivityIndicator size="small" color="white" />

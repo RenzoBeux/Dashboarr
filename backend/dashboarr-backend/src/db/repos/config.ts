@@ -1,6 +1,7 @@
 import { getDb } from "../client.js";
 import type { ServiceId, ServiceConfigPayload, NotificationSettings } from "../../types.js";
 import { DEFAULT_NOTIFICATION_SETTINGS, SERVICE_IDS } from "../../types.js";
+import { decryptSecret, encryptSecret } from "../../crypto/secrets.js";
 
 interface ServiceConfigRow {
   service_id: string;
@@ -40,9 +41,9 @@ function mapRow(row: ServiceConfigRow): StoredServiceConfig {
     localUrl: row.local_url,
     remoteUrl: row.remote_url,
     useRemote: row.use_remote === 1,
-    apiKey: row.api_key,
-    username: row.username,
-    password: row.password,
+    apiKey: decryptSecret(row.api_key),
+    username: decryptSecret(row.username),
+    password: decryptSecret(row.password),
     wolMac: row.wol_mac,
     pollMs: row.poll_ms,
     updatedAt: row.updated_at,
@@ -75,9 +76,9 @@ export function upsertServiceConfig(payload: ServiceConfigPayload): void {
     payload.localUrl,
     payload.remoteUrl,
     payload.useRemote ? 1 : 0,
-    payload.apiKey ?? null,
-    payload.username ?? null,
-    payload.password ?? null,
+    encryptSecret(payload.apiKey ?? null),
+    encryptSecret(payload.username ?? null),
+    encryptSecret(payload.password ?? null),
     payload.wolMac ?? null,
     payload.pollMs ?? null,
     Date.now(),

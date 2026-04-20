@@ -37,6 +37,27 @@ function NotificationWatchers() {
   return null;
 }
 
+// Notification payloads come from a paired backend. The backend is trusted,
+// but "trusted" is a posture — if a user is ever tricked into re-pairing to
+// a rogue server, these IDs flow straight into router.push. Validate format
+// so a malformed payload can't inject path traversal or crash the router.
+const POSITIVE_INT = /^\d+$/;
+const TORRENT_HASH = /^[a-f0-9]{40}$/i;
+
+function asPositiveIntId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return String(value);
+  }
+  if (typeof value === "string" && POSITIVE_INT.test(value) && value !== "0") {
+    return value;
+  }
+  return null;
+}
+
+function asTorrentHash(value: unknown): string | null {
+  return typeof value === "string" && TORRENT_HASH.test(value) ? value.toLowerCase() : null;
+}
+
 function NotificationRouter() {
   const router = useRouter();
 
@@ -45,15 +66,21 @@ function NotificationRouter() {
       if (!data?.type) return;
 
       switch (data.type) {
-        case "radarr":
-          if (data.movieId) router.push(`/movie/${data.movieId}`);
+        case "radarr": {
+          const id = asPositiveIntId(data.movieId);
+          if (id) router.push(`/movie/${id}`);
           break;
-        case "sonarr":
-          if (data.seriesId) router.push(`/series/${data.seriesId}`);
+        }
+        case "sonarr": {
+          const id = asPositiveIntId(data.seriesId);
+          if (id) router.push(`/series/${id}`);
           break;
-        case "torrent":
-          if (data.hash) router.push(`/torrent/${data.hash}`);
+        }
+        case "torrent": {
+          const hash = asTorrentHash(data.hash);
+          if (hash) router.push(`/torrent/${hash}`);
           break;
+        }
         case "overseerr":
           router.push("/(tabs)/requests");
           break;

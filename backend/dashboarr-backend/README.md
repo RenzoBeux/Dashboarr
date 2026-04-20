@@ -153,6 +153,7 @@ docker run -d --name dashboarr-backend \
 | `TRUST_PROXY`   | `false`       | Honor `X-Forwarded-*` headers; enable when behind a reverse proxy you control |
 | `OFFLINE_THRESHOLD` | `3`       | Consecutive failed health checks (30s each) before a "service offline" push is sent. Raise to `10` (~5 min) if your DDNS is slow to update |
 | `BACKEND_USE_REMOTE` | `false`  | Route polls via each service's `remoteUrl` instead of `localUrl`. The app's own `useRemote` flag is always ignored server-side; flip this to `true` only if the backend lives off-LAN from your stack |
+| `CONFIG_ENCRYPTION_KEY` | (unset) | When set, per-service `apiKey` / `username` / `password` columns are AES-256-GCM encrypted at rest (key = SHA-256 of this value). Unset = plaintext (back-compat for existing deployments). **Losing this value makes previously-encrypted secrets unrecoverable** — services fail to poll and a warning appears in logs |
 
 ---
 
@@ -245,3 +246,26 @@ dashboarr.example.com {
   reverse_proxy dashboarr-backend:4000
 }
 ```
+
+---
+
+## Secrets-at-rest encryption
+
+By default, service credentials (API keys, qBittorrent/Glances passwords) are
+stored as plaintext columns in SQLite. Set `CONFIG_ENCRYPTION_KEY` to a long
+random string (16+ chars) to enable AES-256-GCM encryption at rest:
+
+```yaml
+environment:
+  - CONFIG_ENCRYPTION_KEY=change-me-to-something-long-and-random
+```
+
+The backend derives the AES-256 key by SHA-256 of this value, so any string
+length ≥ 16 works — longer is fine. Existing plaintext rows keep working; new
+writes encrypt; rows touched after enabling encryption become encrypted.
+
+**Important tradeoff:** if you lose the value, previously-encrypted credentials
+cannot be recovered. Services affected will silently fail to poll and the
+backend will log a warning when it can't decrypt a row. If this happens, push
+a fresh config snapshot from the app — that re-writes the columns with
+plaintext (if the var is unset) or fresh ciphertext (if set).

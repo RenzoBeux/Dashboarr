@@ -27,10 +27,21 @@ import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { useConfigStore } from "@/store/config-store";
+import type { ExportStage, ImportStage } from "@/store/config-store";
+import { ProgressModal } from "@/components/common/progress-modal";
 import { pingService } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
+import { validateServiceUrl } from "@/lib/url-validation";
 import { NotificationSettingsSection } from "@/components/common/notification-settings-section";
+import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
+import type { PassphraseMode, PassphraseResult } from "@/components/common/passphrase-prompt";
+import {
+  forgetRememberedPassphrase,
+  hasRememberedPassphrase,
+  loadRememberedPassphrase,
+  saveRememberedPassphrase,
+} from "@/lib/config-passphrase";
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   qbittorrent: Download,
@@ -46,9 +57,31 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
 
 export default function SettingsScreen() {
   const [editingService, setEditingService] = useState<ServiceId | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [exportStage, setExportStage] = useState<ExportStage | null>(null);
+  const [importStage, setImportStage] = useState<ImportStage | null>(null);
   const [detectingSSID, setDetectingSSID] = useState(false);
+  const [passphraseRequest, setPassphraseRequest] = useState<{
+    mode: PassphraseMode;
+    resolve: (value: PassphraseResult | null) => void;
+  } | null>(null);
+  const [hasRemembered, setHasRemembered] = useState(() => hasRememberedPassphrase());
+
+  const requestPassphrase = (mode: PassphraseMode) =>
+    new Promise<PassphraseResult | null>((resolve) => {
+      setPassphraseRequest({ mode, resolve });
+    });
+
+  // After a successful op, reflect the user's "Remember" choice to the
+  // Keychain/Keystore-backed store (save, or forget if they turned it off).
+  const syncRememberedState = async (result: PassphraseResult) => {
+    if (result.remember) {
+      await saveRememberedPassphrase(result.passphrase);
+      setHasRemembered(true);
+    } else if (hasRemembered) {
+      await forgetRememberedPassphrase();
+      setHasRemembered(false);
+    }
+  };
 
   const handleDetectSSID = async () => {
     setDetectingSSID(true);
@@ -76,18 +109,34 @@ export default function SettingsScreen() {
   const wolDevices = useConfigStore((s) => s.wolDevices);
 
   const handleExport = async () => {
-    setExporting(true);
+    const result = await requestPassphrase("export");
+    if (!result) return;
     try {
-      await exportConfig();
+      await exportConfig(result.passphrase, setExportStage);
+      await syncRememberedState(result);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      if (!msg.includes("Authentication required")) {
-        console.error("Export config error:", e);
-        toast("Failed to export config", "error");
-      }
+      const msg = e instanceof Error ? e.message : "Failed to export config";
+      toast(msg, "error");
     } finally {
-      setExporting(false);
+      setExportStage(null);
     }
+  };
+
+  const exportStageContent: Record<ExportStage, { title: string; subtitle?: string }> = {
+    preparing: { title: "Preparing backup…" },
+    encrypting: {
+      title: "Encrypting…",
+      subtitle: "Deriving a key from your passphrase. This takes a moment on mobile.",
+    },
+    finalizing: { title: "Almost done…" },
+  };
+
+  const importStageContent: Record<ImportStage, { title: string; subtitle?: string }> = {
+    decrypting: {
+      title: "Decrypting…",
+      subtitle: "Deriving a key from your passphrase. This takes a moment on mobile.",
+    },
+    restoring: { title: "Restoring settings…" },
   };
 
   const handleImport = () => {
@@ -100,16 +149,24 @@ export default function SettingsScreen() {
           text: "Import",
           style: "destructive",
           onPress: async () => {
-            setImporting(true);
+            // Captured from the requestPassphrase callback below — only set
+            // if the picked file was encrypted and the user supplied a
+            // passphrase. Plain-JSON legacy backups leave this null.
+            let capturedResult: PassphraseResult | null = null;
             try {
-              const success = await importConfig();
+              const success = await importConfig(async () => {
+                capturedResult = await requestPassphrase("import");
+                return capturedResult?.passphrase ?? null;
+              }, setImportStage);
               if (success) {
+                if (capturedResult) await syncRememberedState(capturedResult);
                 toast("Configuration imported successfully", "success");
               }
-            } catch {
-              toast("Invalid config file", "error");
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : "Invalid config file";
+              toast(msg, "error");
             } finally {
-              setImporting(false);
+              setImportStage(null);
             }
           },
         },
@@ -251,28 +308,63 @@ export default function SettingsScreen() {
       </Text>
 
       <View className="flex-row gap-3">
-        <Pressable onPress={handleExport} disabled={exporting} className="flex-1 active:opacity-80">
+        <Pressable
+          onPress={handleExport}
+          disabled={exportStage !== null}
+          className="flex-1 active:opacity-80"
+        >
           <Card className="flex-row items-center justify-center gap-2">
             <Upload size={18} color="#a1a1aa" />
-            <Text className="text-zinc-100 text-base">
-              {exporting ? "Exporting..." : "Export"}
-            </Text>
+            <Text className="text-zinc-100 text-base">Export</Text>
           </Card>
         </Pressable>
 
-        <Pressable onPress={handleImport} disabled={importing} className="flex-1 active:opacity-80">
+        <Pressable
+          onPress={handleImport}
+          disabled={importStage !== null}
+          className="flex-1 active:opacity-80"
+        >
           <Card className="flex-row items-center justify-center gap-2">
             <FolderDown size={18} color="#a1a1aa" />
-            <Text className="text-zinc-100 text-base">
-              {importing ? "Importing..." : "Import"}
-            </Text>
+            <Text className="text-zinc-100 text-base">Import</Text>
           </Card>
         </Pressable>
       </View>
 
       <Text className="text-zinc-600 text-xs text-center mt-2 mb-4">
-        Export saves all service URLs, API keys, and settings to a JSON file.
+        Backups are encrypted with a passphrase you choose. Keep it safe — without it the backup cannot be restored.
       </Text>
+
+      <ProgressModal
+        visible={exportStage !== null}
+        title={exportStage ? exportStageContent[exportStage].title : ""}
+        subtitle={exportStage ? exportStageContent[exportStage].subtitle : undefined}
+      />
+
+      <ProgressModal
+        visible={importStage !== null}
+        title={importStage ? importStageContent[importStage].title : ""}
+        subtitle={importStage ? importStageContent[importStage].subtitle : undefined}
+      />
+
+      <PassphrasePrompt
+        visible={!!passphraseRequest}
+        mode={passphraseRequest?.mode ?? "import"}
+        hasRemembered={hasRemembered}
+        onUseRemembered={async () => {
+          const saved = await loadRememberedPassphrase();
+          if (!saved) setHasRemembered(false);
+          return saved;
+        }}
+        onSubmit={(result) => {
+          passphraseRequest?.resolve(result);
+          setPassphraseRequest(null);
+        }}
+        onCancel={() => {
+          passphraseRequest?.resolve(null);
+          setPassphraseRequest(null);
+        }}
+      />
     </ScreenWrapper>
   );
 }
@@ -299,7 +391,30 @@ function ServiceEditor({
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
+  const confirmHttpWarning = (message: string) =>
+    new Promise<boolean>((resolve) => {
+      Alert.alert("Remote URL uses HTTP", message, [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Save anyway", style: "destructive", onPress: () => resolve(true) },
+      ]);
+    });
+
   const handleSave = async () => {
+    const localResult = validateServiceUrl(localUrl, "local");
+    if (localResult.kind === "invalid") {
+      toast(localResult.message, "error");
+      return;
+    }
+    const remoteResult = validateServiceUrl(remoteUrl, "remote");
+    if (remoteResult.kind === "invalid") {
+      toast(remoteResult.message, "error");
+      return;
+    }
+    if (remoteResult.kind === "warn") {
+      const confirmed = await confirmHttpWarning(remoteResult.message);
+      if (!confirmed) return;
+    }
+
     updateService(serviceId, { localUrl, remoteUrl });
     if (isQB) {
       await updateSecrets(serviceId, { username, password });

@@ -14,19 +14,26 @@ import {
   getSecret,
   setSecret,
   deleteSecret,
+  deleteKey,
 } from "@/store/storage";
 import {
   SERVICE_IDS,
   SERVICE_DEFAULTS,
   STORAGE_KEYS,
   SECRET_PREFIX,
-  DEFAULT_DASHBOARD_ORDER,
+  DEFAULT_DASHBOARD_WIDGETS,
 } from "@/lib/constants";
 import { CURRENT_CONFIG_VERSION, migrateConfig } from "@/store/config-migrations";
+import { validateExportPayload } from "@/store/config-schema";
+import {
+  decryptEnvelope,
+  encryptJsonString,
+  isEncryptedEnvelope,
+} from "@/lib/config-crypto";
 import { useBackendStore } from "@/store/backend-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import type { NotificationSettings } from "@/store/notifications-store";
-import type { ServiceId, DashboardCardId } from "@/lib/constants";
+import type { ServiceId, WidgetId } from "@/lib/constants";
 
 export interface WakeOnLanDevice {
   id: string;
@@ -55,7 +62,7 @@ interface ConfigState {
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
   homeSSID: string;
-  dashboardOrder: DashboardCardId[];
+  dashboardWidgets: WidgetId[];
   wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
 }
@@ -67,13 +74,20 @@ export interface ExportPayload {
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
   homeSSID: string;
-  dashboardOrder: DashboardCardId[];
+  dashboardWidgets: WidgetId[];
   // v2
   backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
   notificationSettings?: NotificationSettings;
   // v4
   wolDevices?: WakeOnLanDevice[];
 }
+
+export type ExportStage = "preparing" | "encrypting" | "finalizing";
+export type ImportStage = "decrypting" | "restoring";
+
+// Macrotask yield so React can paint the new stage before the next CPU-bound
+// step hogs the JS thread (pbkdf2 in particular only yields microtasks).
+const yieldToPaint = () => new Promise<void>((resolve) => setTimeout(resolve, 16));
 
 interface ConfigActions {
   hydrate: () => Promise<void>;
@@ -82,11 +96,17 @@ interface ConfigActions {
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
   setAutoSwitch: (enabled: boolean) => void;
   setHomeSSID: (ssid: string) => void;
-  setDashboardOrder: (order: DashboardCardId[]) => void;
+  setDashboardWidgets: (widgets: WidgetId[]) => void;
+  addWidget: (id: WidgetId) => void;
+  removeWidget: (id: WidgetId) => void;
+  moveWidget: (id: WidgetId, direction: "up" | "down") => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   getActiveUrl: (id: ServiceId) => string;
-  exportConfig: () => Promise<void>;
-  importConfig: () => Promise<boolean>;
+  exportConfig: (passphrase: string, onStage?: (stage: ExportStage) => void) => Promise<void>;
+  importConfig: (
+    requestPassphrase: () => Promise<string | null>,
+    onStage?: (stage: ImportStage) => void,
+  ) => Promise<boolean>;
 }
 
 type ConfigStore = ConfigState & ConfigActions;
@@ -123,7 +143,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   secrets: emptySecrets(),
   autoSwitchNetwork: false,
   homeSSID: "",
-  dashboardOrder: DEFAULT_DASHBOARD_ORDER,
+  dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
   wolDevices: [],
   hydrated: false,
 
@@ -155,14 +175,24 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
     const homeSSID = getString(STORAGE_KEYS.homeSSID) ?? "";
-    const storedOrder = getJSON<DashboardCardId[]>(STORAGE_KEYS.dashboardOrder);
-    // Append any new card IDs that were added since the user last saved their order
-    const baseOrder = storedOrder ?? DEFAULT_DASHBOARD_ORDER;
-    const missing = DEFAULT_DASHBOARD_ORDER.filter((id) => !baseOrder.includes(id));
-    const dashboardOrder = missing.length ? [...baseOrder, ...missing] : baseOrder;
+
+    // Prefer the new key. If absent, fall back to the legacy dashboardOrder key
+    // (one-time local migration for users upgrading from pre-widget builds).
+    let dashboardWidgets = getJSON<WidgetId[]>(STORAGE_KEYS.dashboardWidgets);
+    if (!dashboardWidgets) {
+      const legacy = getJSON<WidgetId[]>(STORAGE_KEYS.dashboardOrderLegacy);
+      if (legacy && legacy.length > 0) {
+        dashboardWidgets = legacy;
+        setJSON(STORAGE_KEYS.dashboardWidgets, legacy);
+        deleteKey(STORAGE_KEYS.dashboardOrderLegacy);
+      } else {
+        dashboardWidgets = DEFAULT_DASHBOARD_WIDGETS;
+      }
+    }
+
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wolDevices, hydrated: true });
+    set({ services, secrets, autoSwitchNetwork, homeSSID, dashboardWidgets, wolDevices, hydrated: true });
   },
 
   updateService: (id, config) => {
@@ -203,9 +233,37 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ homeSSID: ssid });
   },
 
-  setDashboardOrder: (order) => {
-    setJSON(STORAGE_KEYS.dashboardOrder, order);
-    set({ dashboardOrder: order });
+  setDashboardWidgets: (widgets) => {
+    setJSON(STORAGE_KEYS.dashboardWidgets, widgets);
+    set({ dashboardWidgets: widgets });
+  },
+
+  addWidget: (id) => {
+    const { dashboardWidgets } = get();
+    if (dashboardWidgets.includes(id)) return;
+    const next = [...dashboardWidgets, id];
+    setJSON(STORAGE_KEYS.dashboardWidgets, next);
+    set({ dashboardWidgets: next });
+  },
+
+  removeWidget: (id) => {
+    const { dashboardWidgets } = get();
+    if (!dashboardWidgets.includes(id)) return;
+    const next = dashboardWidgets.filter((w) => w !== id);
+    setJSON(STORAGE_KEYS.dashboardWidgets, next);
+    set({ dashboardWidgets: next });
+  },
+
+  moveWidget: (id, direction) => {
+    const { dashboardWidgets } = get();
+    const index = dashboardWidgets.indexOf(id);
+    if (index === -1) return;
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= dashboardWidgets.length) return;
+    const next = [...dashboardWidgets];
+    [next[index], next[target]] = [next[target], next[index]];
+    setJSON(STORAGE_KEYS.dashboardWidgets, next);
+    set({ dashboardWidgets: next });
   },
 
   setWolDevices: (devices) => {
@@ -218,16 +276,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     return service.useRemote ? service.remoteUrl : service.localUrl;
   },
 
-  exportConfig: async () => {
-    const auth = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Authenticate to export configuration",
-      fallbackLabel: "Use passcode",
-    });
-    if (!auth.success) {
-      throw new Error("Authentication required to export");
+  exportConfig: async (passphrase: string, onStage) => {
+    onStage?.("preparing");
+    await yieldToPaint();
+    // Require device auth so a bystander with a momentarily-unlocked phone
+    // can't dump secrets by exporting with a passphrase they chose. Skip
+    // only if the device has no lock at all — no security boundary to enforce.
+    const level = await LocalAuthentication.getEnrolledLevelAsync();
+    if (level !== LocalAuthentication.SecurityLevel.NONE) {
+      const auth = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Authenticate to export configuration",
+        fallbackLabel: "Use passcode",
+      });
+      if (!auth.success) {
+        if ("error" in auth && (auth.error === "user_cancel" || auth.error === "app_cancel" || auth.error === "system_cancel")) {
+          return;
+        }
+        const reason = "error" in auth ? auth.error : "failed";
+        throw new Error(`Device authentication ${reason}`);
+      }
     }
 
-    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardOrder, wolDevices } = get();
+    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardWidgets, wolDevices } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
       useNotificationStore.getState();
@@ -239,15 +309,25 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       secrets,
       autoSwitchNetwork,
       homeSSID,
-      dashboardOrder,
+      dashboardWidgets,
       backend: { url, sharedSecret, deviceId },
       notificationSettings: notifSettings,
       wolDevices,
     };
 
+    onStage?.("encrypting");
+    await yieldToPaint();
+    const envelope = await encryptJsonString(JSON.stringify(payload), passphrase);
+
+    onStage?.("finalizing");
+    await yieldToPaint();
     const file = new File(Paths.cache, "dashboarr-config.json");
     file.create({ overwrite: true });
-    file.write(JSON.stringify(payload, null, 2));
+    file.write(JSON.stringify(envelope, null, 2));
+
+    if (!(await Sharing.isAvailableAsync())) {
+      throw new Error("Sharing is not available on this device");
+    }
     await Sharing.shareAsync(file.uri, {
       mimeType: "application/json",
       dialogTitle: "Export Dashboarr Config",
@@ -255,7 +335,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
   },
 
-  importConfig: async () => {
+  importConfig: async (requestPassphrase, onStage) => {
     const result = await DocumentPicker.getDocumentAsync({
       type: "application/json",
       copyToCacheDirectory: true,
@@ -265,8 +345,33 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const pickedFile = new File(result.assets[0].uri);
     const content = await pickedFile.text();
-    const raw = JSON.parse(content);
-    const payload = migrateConfig(raw);
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(content);
+    } catch {
+      throw new Error("File is not valid JSON");
+    }
+
+    // Encrypted (current) format: unwrap it first, then proceed as normal.
+    // Unencrypted format is still accepted so existing backups can be imported.
+    if (isEncryptedEnvelope(raw)) {
+      const passphrase = await requestPassphrase();
+      if (!passphrase) return false;
+      onStage?.("decrypting");
+      await yieldToPaint();
+      const decrypted = await decryptEnvelope(raw, passphrase);
+      try {
+        raw = JSON.parse(decrypted);
+      } catch {
+        throw new Error("Decrypted content is not valid JSON");
+      }
+    }
+
+    onStage?.("restoring");
+    await yieldToPaint();
+    const migrated = migrateConfig(raw);
+    const payload = validateExportPayload(migrated);
 
     // Merge imported services over defaults so missing services get defaults
     const mergedServices = defaultServices();
@@ -291,8 +396,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Restore app settings
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
     setString(STORAGE_KEYS.homeSSID, payload.homeSSID ?? "");
-    if (payload.dashboardOrder) {
-      setJSON(STORAGE_KEYS.dashboardOrder, payload.dashboardOrder);
+    if (payload.dashboardWidgets) {
+      setJSON(STORAGE_KEYS.dashboardWidgets, payload.dashboardWidgets);
     }
     setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
 
@@ -317,7 +422,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       secrets: mergedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeSSID: payload.homeSSID ?? "",
-      dashboardOrder: payload.dashboardOrder ?? DEFAULT_DASHBOARD_ORDER,
+      dashboardWidgets: payload.dashboardWidgets ?? DEFAULT_DASHBOARD_WIDGETS,
       wolDevices: payload.wolDevices ?? [],
     });
 
