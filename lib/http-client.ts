@@ -9,13 +9,31 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   params?: Record<string, string | number | boolean>;
 }
 
+const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token"];
+
+export function redactUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const key of Array.from(u.searchParams.keys())) {
+      if (REDACT_PARAMS.includes(key.toLowerCase())) {
+        u.searchParams.set(key, "***");
+      }
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export class HttpError extends Error {
   constructor(
     public status: number,
     public statusText: string,
     public url: string,
   ) {
-    super(`HTTP ${status} ${statusText} — ${url}`);
+    const safe = redactUrl(url);
+    super(`HTTP ${status} ${statusText} — ${safe}`);
+    this.url = safe;
     this.name = "HttpError";
   }
 }

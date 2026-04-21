@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useConfigStore } from "@/store/config-store";
+import { redactUrl } from "@/lib/http-client";
 import type { ServiceId } from "@/lib/constants";
 
 interface ServiceImage {
@@ -45,7 +46,12 @@ export function useServiceImage(
 
   const onError = useCallback((e: { nativeEvent: { error?: string } }) => {
     const failed = failCount < candidates.length ? candidates[failCount] : "unknown";
-    console.warn(`[ServiceImage] FAILED:`, failed, `| reason:`, e?.nativeEvent?.error ?? "unknown");
+    console.warn(
+      `[ServiceImage] FAILED:`,
+      failed === "unknown" ? failed : redactUrl(failed),
+      `| reason:`,
+      e?.nativeEvent?.error ?? "unknown",
+    );
     setFailCount((c) => c + 1);
   }, [failCount, candidates]);
 
