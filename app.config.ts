@@ -30,7 +30,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#09090b",
     },
     package: "com.dashboarr.app",
-    versionCode: 2,
+    versionCode: 3,
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   scheme: "dashboarr",
