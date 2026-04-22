@@ -15,6 +15,19 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     resizeMode: "cover",
     backgroundColor: "#09090b",
   },
+  // EAS Update — OTA JS/asset updates shipped via `eas update --branch <channel>`.
+  // Binary and update must share the same runtimeVersion; bumping the native
+  // `version` (or adding any native code) cuts a new runtime and requires a
+  // fresh TestFlight / Play Store build.
+  updates: {
+    url: "https://u.expo.dev/2e40d2d5-f7c5-4c28-922c-40e2a5ab2a8c",
+    requestHeaders: {
+      "expo-channel-name": process.env.EAS_UPDATE_CHANNEL ?? "production",
+    },
+  },
+  runtimeVersion: {
+    policy: "appVersion",
+  },
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.dashboarr.app",
