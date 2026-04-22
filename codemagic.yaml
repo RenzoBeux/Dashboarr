@@ -34,7 +34,7 @@ workflows:
           pnpm install --frozen-lockfile --prod=false
       - name: Expo prebuild (generate native ios/ project)
         script: |
-          pnpm dlx expo prebuild --platform ios --clean --no-install
+          pnpm exec expo prebuild --platform ios --clean --no-install
       - name: Install CocoaPods
         script: |
           cd ios
