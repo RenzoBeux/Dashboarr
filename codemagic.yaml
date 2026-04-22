@@ -1,59 +1,75 @@
 workflows:
-  ios-release:
-    name: iOS Release (TestFlight)
+  # ─────────────────────────────────────────────
+  # iOS – App Store / TestFlight
+  # ─────────────────────────────────────────────
+  ios-workflow:
+    name: iOS Production Build
+    max_build_duration: 120
     instance_type: mac_mini_m2
-    max_build_duration: 60
     integrations:
-      app_store_connect: Dashboarr ASC
+      app_store_connect: Apple
     environment:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.dashboarr.app
-      vars:
-        XCODE_WORKSPACE: "Dashboarr.xcworkspace"
-        XCODE_SCHEME: "Dashboarr"
-        APP_STORE_APPLE_ID: 0000000000
-      node: 20.18.0
+      node: 20
       xcode: latest
       cocoapods: default
     triggering:
       events:
+        - push
         - tag
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
       tag_patterns:
         - pattern: 'v*'
           include: true
     scripts:
-      - name: Install pnpm
+      - name: Install dependencies
         script: |
-          npm install -g pnpm@9
-      - name: Install JS dependencies
+          corepack enable
+          corepack prepare pnpm@9.15.4 --activate
+          pnpm install --frozen-lockfile --prod=false
+      - name: Expo prebuild (generate native ios/ project)
         script: |
-          pnpm install --frozen-lockfile
-      - name: Expo prebuild (generate ios/)
-        script: |
-          pnpm dlx expo prebuild --platform ios --clean
-      - name: Set Info.plist build number from BUILD_NUMBER
-        script: |
-          cd ios
-          agvtool new-version -all $(($BUILD_NUMBER + 100))
+          pnpm dlx expo prebuild --platform ios --clean --no-install
       - name: Install CocoaPods
         script: |
-          cd ios && pod install
-      - name: Set up signing
+          cd ios
+          pod install
+      - name: Set iOS version from package.json
         script: |
+          APP_VERSION=$(node -p "require('./package.json').version")
+          BUILD_NUMBER=$PROJECT_BUILD_NUMBER
+          cd ios
+          agvtool new-marketing-version "$APP_VERSION"
+          agvtool new-version -all "$BUILD_NUMBER"
+      - name: Apply provisioning profiles
+        script: |
+          cd ios
           xcode-project use-profiles
-      - name: Build ipa
+          test -f /Users/builder/export_options.plist || (echo "Missing /Users/builder/export_options.plist after use-profiles" && exit 1)
+      - name: Build iOS (archive)
         script: |
+          cd ios
           xcode-project build-ipa \
-            --workspace "ios/$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+            --workspace Dashboarr.xcworkspace \
+            --scheme Dashboarr \
+            --archive-flags="-destination 'generic/platform=iOS'"
     artifacts:
-      - build/ios/ipa/*.ipa
+      - ios/build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - ios/build/**/*.dSYM
+      - ios/*.xcresult
     publishing:
+      email:
+        recipients:
+          - renzobeux@gmail.com
+        notify:
+          success: true
+          failure: true
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
+        expire_build_submitted_for_review: true
