@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { serviceRequest } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
@@ -14,6 +15,13 @@ import type {
 // SecureStore (Keychain / Keystore) so we don't need to re-authenticate on
 // every cold start.
 const SESSION_COOKIE_KEY = "secrets.qbittorrent.sessionCookie";
+
+// iOS's NSURLSession manages cookies in its own native jar and strips
+// Set-Cookie from response.headers, so we can't read the SID from JS. Instead
+// we let the native jar attach the cookie automatically and only track that
+// we've authenticated at least once.
+const USE_NATIVE_COOKIE_JAR = Platform.OS === "ios";
+const NATIVE_JAR_SENTINEL = "__native_cookie_jar__";
 
 const cookieStore = (() => {
   let cached: string | null = null;
@@ -65,7 +73,14 @@ export async function qbLogin(): Promise<boolean> {
   const text = await response.text();
   if (text !== "Ok.") return false;
 
-  // Extract SID cookie
+  if (USE_NATIVE_COOKIE_JAR) {
+    // iOS already stored the SID cookie in NSURLSession's jar. Stash a
+    // sentinel so ensureAuth() knows we've logged in.
+    await cookieStore.set(NATIVE_JAR_SENTINEL);
+    return true;
+  }
+
+  // Extract SID cookie (Android exposes Set-Cookie in response.headers).
   const setCookie = response.headers.get("set-cookie");
   if (setCookie) {
     const match = setCookie.match(/SID=([^;]+)/);
@@ -106,7 +121,11 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
   let cookie = await cookieStore.get();
   const headers = new Headers(options?.headers);
-  headers.set("Cookie", `SID=${cookie}`);
+  // On iOS the native cookie jar attaches SID automatically; setting it
+  // manually is unnecessary and can collide with NSURLSession's handling.
+  if (!USE_NATIVE_COOKIE_JAR && cookie) {
+    headers.set("Cookie", `SID=${cookie}`);
+  }
 
   const response = await fetch(`${baseUrl}${apiBase}${path}`, {
     ...options,
@@ -118,7 +137,9 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
     await cookieStore.set(null);
     await ensureAuth();
     cookie = await cookieStore.get();
-    headers.set("Cookie", `SID=${cookie}`);
+    if (!USE_NATIVE_COOKIE_JAR && cookie) {
+      headers.set("Cookie", `SID=${cookie}`);
+    }
     const retry = await fetch(`${baseUrl}${apiBase}${path}`, {
       ...options,
       headers,
