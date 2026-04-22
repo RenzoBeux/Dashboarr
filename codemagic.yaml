@@ -1,0 +1,59 @@
+workflows:
+  ios-release:
+    name: iOS Release (TestFlight)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: Dashboarr ASC
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.dashboarr.app
+      vars:
+        XCODE_WORKSPACE: "Dashboarr.xcworkspace"
+        XCODE_SCHEME: "Dashboarr"
+        APP_STORE_APPLE_ID: 0000000000
+      node: 20.18.0
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+          include: true
+    scripts:
+      - name: Install pnpm
+        script: |
+          npm install -g pnpm@9
+      - name: Install JS dependencies
+        script: |
+          pnpm install --frozen-lockfile
+      - name: Expo prebuild (generate ios/)
+        script: |
+          pnpm dlx expo prebuild --platform ios --clean
+      - name: Set Info.plist build number from BUILD_NUMBER
+        script: |
+          cd ios
+          agvtool new-version -all $(($BUILD_NUMBER + 100))
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install
+      - name: Set up signing
+        script: |
+          xcode-project use-profiles
+      - name: Build ipa
+        script: |
+          xcode-project build-ipa \
+            --workspace "ios/$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - ios/build/**/*.dSYM
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
