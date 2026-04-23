@@ -36,6 +36,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSLocalNetworkUsageDescription:
         "Dashboarr sends Wake-on-LAN magic packets to your home server on the local network.",
     },
+    // Required so NetInfo can read the current Wi-Fi SSID/BSSID for the
+    // local-vs-remote auto-switch feature. iOS also needs Location When-In-Use
+    // permission at runtime (handled in lib/wifi.ts via expo-location).
+    entitlements: {
+      "com.apple.developer.networking.wifi-info": true,
+    },
   },
   android: {
     adaptiveIcon: {

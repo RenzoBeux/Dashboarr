@@ -11,8 +11,10 @@ export interface WifiIdentity {
 }
 
 export async function detectWifi(): Promise<WifiIdentity | null> {
-  // Android requires location permission to read WiFi SSID/BSSID
-  if (Platform.OS === "android") {
+  // Both Android and iOS require Location permission to read WiFi SSID/BSSID.
+  // On iOS this also needs the `com.apple.developer.networking.wifi-info`
+  // entitlement (set in app.config.ts → ios.entitlements).
+  if (Platform.OS === "android" || Platform.OS === "ios") {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") return null;
   }
