@@ -34,6 +34,7 @@ import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import { validateServiceUrl } from "@/lib/url-validation";
 import { NotificationSettingsSection } from "@/components/common/notification-settings-section";
+import { AppVersionCard } from "@/components/common/app-version-card";
 import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
 import type { PassphraseMode, PassphraseResult } from "@/components/common/passphrase-prompt";
 import {
@@ -360,6 +361,8 @@ export default function SettingsScreen() {
       <Text className="text-zinc-600 text-xs text-center mt-2 mb-4">
         Backups are encrypted with a passphrase you choose. Keep it safe — without it the backup cannot be restored.
       </Text>
+
+      <AppVersionCard />
 
       <ProgressModal
         visible={exportStage !== null}
