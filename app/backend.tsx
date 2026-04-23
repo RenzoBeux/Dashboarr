@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator, Platform } from "react-native";
 import { router } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -52,23 +52,27 @@ export default function BackendScreen() {
   const [backendUrl, setBackendUrl] = useState("");
   const [manualToken, setManualToken] = useState("");
   const [permission, requestPermission] = useCameraPermissions();
+  // Synchronous guard — camera onBarcodeScanned can fire multiple times before
+  // setBusy(true) causes a re-render, so we can't rely on the busy state alone.
+  const claimingRef = useRef(false);
 
   const projectReady = hasProjectId();
 
   const handleClaim = useCallback(
     async (token: string, urlOverride?: string) => {
+      if (claimingRef.current) return;
       const trimmedUrl = (urlOverride ?? backendUrl).trim().replace(/\/$/, "");
       if (!trimmedUrl) {
         toast("Enter the backend URL first", "error");
         setMode("summary");
         return;
       }
+      claimingRef.current = true;
       setBusy(true);
       try {
         const expoPushToken = await getExpoPushToken();
         if (!expoPushToken) {
           toast("Push permissions denied or projectId missing", "error");
-          setBusy(false);
           return;
         }
         const platform: "ios" | "android" = Platform.OS === "ios" ? "ios" : "android";
@@ -91,6 +95,7 @@ export default function BackendScreen() {
         console.warn("pair failed", err);
         toast(err instanceof Error ? err.message : "Pairing failed", "error");
       } finally {
+        claimingRef.current = false;
         setBusy(false);
       }
     },
@@ -99,7 +104,7 @@ export default function BackendScreen() {
 
   const handleScan = useCallback(
     ({ data }: { data: string }) => {
-      if (busy) return;
+      if (claimingRef.current) return;
       const result = parseQrPayload(data);
       if (!result) {
         toast("Unrecognized QR code", "error");
@@ -108,7 +113,7 @@ export default function BackendScreen() {
       if (result.url) setBackendUrl(result.url);
       void handleClaim(result.token, result.url);
     },
-    [busy, handleClaim],
+    [handleClaim],
   );
 
   const handleManual = useCallback(async () => {
