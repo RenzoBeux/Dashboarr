@@ -2,6 +2,11 @@ import NetInfo from "@react-native-community/netinfo";
 import * as Location from "expo-location";
 import { Platform } from "react-native";
 
+// NetInfo defaults `shouldFetchWiFiSSID` to false on iOS (privacy — fetching
+// SSID triggers the location-services indicator). Without this, NetInfo
+// returns null SSID even with the wifi-info entitlement and Location granted.
+NetInfo.configure({ shouldFetchWiFiSSID: true });
+
 export interface WifiIdentity {
   ssid: string;
   /** AP MAC address. Used as a secondary check in auto-switch so a rogue AP

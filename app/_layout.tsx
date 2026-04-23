@@ -11,6 +11,7 @@ import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
 import { configureNotifications } from "@/lib/notifications";
+import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
 import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { pushConfigSnapshot } from "@/services/backend-api";
