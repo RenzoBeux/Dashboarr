@@ -1,6 +1,7 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
+import { getDemoResponse } from "@/lib/demo-data";
 
 const DEFAULT_TIMEOUT = 15000;
 
@@ -60,6 +61,12 @@ export async function serviceRequest<T>(
 ): Promise<T> {
   const { timeout = DEFAULT_TIMEOUT, params, ...fetchOptions } = options;
   const store = useConfigStore.getState();
+
+  if (store.demoMode) {
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 120));
+    return (getDemoResponse(serviceId, path) ?? undefined) as T;
+  }
+
   const config = store.services[serviceId];
   const secrets = store.secrets[serviceId];
   const defaults = SERVICE_DEFAULTS[serviceId];
@@ -154,6 +161,8 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
+
+  if (useConfigStore.getState().demoMode) return 45;
 
   const start = Date.now();
   try {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
+import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
 import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
@@ -18,16 +19,6 @@ import { pushConfigSnapshot } from "@/services/backend-api";
 import { ErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
 import "../global.css";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 5000,
-      gcTime: 300000,
-    },
-  },
-});
 
 // Pause/resume polling based on app state
 function onAppStateChange(status: AppStateStatus) {

@@ -3,6 +3,7 @@ import { serviceRequest } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import { getDemoResponse } from "@/lib/demo-data";
 import type {
   QBTransferInfo,
   QBTorrent,
@@ -113,6 +114,12 @@ async function ensureAuth(): Promise<void> {
 
 async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const store = useConfigStore.getState();
+
+  if (store.demoMode) {
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 120));
+    return (getDemoResponse("qbittorrent", path) ?? undefined) as T;
+  }
+
   const baseUrl = store.getActiveUrl("qbittorrent");
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 

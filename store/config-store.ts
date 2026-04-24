@@ -32,6 +32,7 @@ import {
 } from "@/lib/config-crypto";
 import { useBackendStore } from "@/store/backend-store";
 import { useNotificationStore } from "@/store/notifications-store";
+import { queryClient } from "@/lib/query-client";
 import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 
@@ -66,6 +67,7 @@ interface ConfigState {
   dashboardWidgets: WidgetId[];
   wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
+  demoMode: boolean;
 }
 
 export interface ExportPayload {
@@ -105,6 +107,8 @@ interface ConfigActions {
   moveWidget: (id: WidgetId, direction: "up" | "down") => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   getActiveUrl: (id: ServiceId) => string;
+  enableDemoMode: () => void;
+  disableDemoMode: () => Promise<void>;
   exportConfig: (passphrase: string, onStage?: (stage: ExportStage) => void) => Promise<void>;
   importConfig: (
     requestPassphrase: () => Promise<string | null>,
@@ -150,6 +154,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
   wolDevices: [],
   hydrated: false,
+  demoMode: false,
 
   hydrate: async () => {
     // Populate in-memory cache from AsyncStorage
@@ -197,7 +202,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, homeBSSID, dashboardWidgets, wolDevices, hydrated: true });
+    const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
+    if (demoMode) {
+      for (const id of SERVICE_IDS) {
+        services[id] = { ...defaultServiceConfig(id), enabled: true, localUrl: "http://demo.local", remoteUrl: "" };
+      }
+    }
+
+    set({ services, secrets, autoSwitchNetwork, homeSSID, homeBSSID, dashboardWidgets, wolDevices, demoMode, hydrated: true });
   },
 
   updateService: (id, config) => {
@@ -285,6 +297,22 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   getActiveUrl: (id) => {
     const service = get().services[id];
     return service.useRemote ? service.remoteUrl : service.localUrl;
+  },
+
+  enableDemoMode: () => {
+    setBoolean(STORAGE_KEYS.demoMode, true);
+    const demoServices: Record<ServiceId, ServiceConfig> = {} as Record<ServiceId, ServiceConfig>;
+    for (const id of SERVICE_IDS) {
+      demoServices[id] = { ...defaultServiceConfig(id), enabled: true, localUrl: "http://demo.local", remoteUrl: "" };
+    }
+    set({ demoMode: true, services: demoServices });
+    queryClient.clear();
+  },
+
+  disableDemoMode: async () => {
+    deleteKey(STORAGE_KEYS.demoMode);
+    queryClient.clear();
+    await get().hydrate();
   },
 
   exportConfig: async (passphrase: string, onStage) => {

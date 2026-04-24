@@ -115,6 +115,9 @@ export default function SettingsScreen() {
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
   const wolDevices = useConfigStore((s) => s.wolDevices);
+  const demoMode = useConfigStore((s) => s.demoMode);
+  const enableDemoMode = useConfigStore((s) => s.enableDemoMode);
+  const disableDemoMode = useConfigStore((s) => s.disableDemoMode);
 
   const handleExport = async () => {
     const result = await requestPassphrase("export");
@@ -264,6 +267,25 @@ export default function SettingsScreen() {
           <ChevronRight size={18} color="#71717a" />
         </Card>
       </Pressable>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
+        Demo
+      </Text>
+
+      <Card className="mb-4">
+        <Toggle
+          label="Demo Mode"
+          description="Show sample data — no server required"
+          value={demoMode}
+          onValueChange={(v) => {
+            if (v) {
+              enableDemoMode();
+            } else {
+              void disableDemoMode();
+            }
+          }}
+        />
+      </Card>
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
         Services

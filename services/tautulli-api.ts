@@ -1,5 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import { getDemoTautulliResponse } from "@/lib/demo-data";
 import type {
   TautulliActivity,
   TautulliHistoryResponse,
@@ -15,6 +16,12 @@ async function tautulliRequest<T>(
   params: Record<string, string | number> = {},
 ): Promise<T> {
   const store = useConfigStore.getState();
+
+  if (store.demoMode) {
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 120));
+    return (getDemoTautulliResponse(cmd) ?? undefined) as T;
+  }
+
   const config = store.services.tautulli;
   const secrets = store.secrets.tautulli;
 

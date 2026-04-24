@@ -1,6 +1,7 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ScrollView, RefreshControl } from "react-native";
 import type { ViewProps } from "react-native";
+import { DemoBanner } from "@/components/common/demo-banner";
 
 interface ScreenWrapperProps extends ViewProps {
   scrollable?: boolean;
@@ -19,6 +20,7 @@ export function ScreenWrapper({
   if (scrollable) {
     return (
       <SafeAreaView className={`flex-1 bg-background ${className}`} {...props}>
+        <DemoBanner />
         <ScrollView
           className="flex-1"
           contentContainerClassName="px-4 pt-2 pb-6"
@@ -43,6 +45,7 @@ export function ScreenWrapper({
 
   return (
     <SafeAreaView className={`flex-1 bg-background px-4 ${className}`} {...props}>
+      <DemoBanner />
       {children}
     </SafeAreaView>
   );

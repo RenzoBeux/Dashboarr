@@ -75,6 +75,7 @@ export const STORAGE_KEYS = {
   dashboardOrderLegacy: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
   wolDevices: "app.wolDevices",
+  demoMode: "app.demoMode",
 } as const;
 
 // SecureStore key prefix

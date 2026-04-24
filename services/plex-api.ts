@@ -1,5 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import { getDemoPlexResponse } from "@/lib/demo-data";
 import type {
   PlexLibrariesResponse,
   PlexLibrary,
@@ -11,6 +12,12 @@ import type {
 
 async function plexRequest<T>(path: string): Promise<T> {
   const store = useConfigStore.getState();
+
+  if (store.demoMode) {
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 120));
+    return (getDemoPlexResponse(path) ?? undefined) as T;
+  }
+
   const config = store.services.plex;
   const secrets = store.secrets.plex;
 
