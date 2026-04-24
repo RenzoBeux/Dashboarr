@@ -22,13 +22,17 @@ export function AppVersionCard() {
   const handleCheck = async () => {
     setChecking(true);
     try {
-      const [otaResult, storeResult] = await Promise.all([
-        checkForOtaUpdate().catch(() => ({ available: false }) as const),
+      const [otaSettled, storeResult] = await Promise.all([
+        checkForOtaUpdate().then(
+          (r) => ({ ok: true as const, value: r }),
+          (err: unknown) => ({ ok: false as const, error: err }),
+        ),
         checkStoreVersion().catch(
           () =>
             ({ storeVersion: null, storeUrl: "", hasUpdate: false, unknown: true }) as const,
         ),
       ]);
+      const otaResult = otaSettled.ok ? otaSettled.value : { available: false };
 
       if (storeResult.hasUpdate && storeResult.storeVersion) {
         Alert.alert(
@@ -65,6 +69,15 @@ export function AppVersionCard() {
             },
           ],
         );
+        return;
+      }
+
+      if (!otaSettled.ok) {
+        const msg =
+          otaSettled.error instanceof Error
+            ? otaSettled.error.message
+            : String(otaSettled.error);
+        Alert.alert("OTA check failed", msg || "Unknown error checking for updates.");
         return;
       }
 

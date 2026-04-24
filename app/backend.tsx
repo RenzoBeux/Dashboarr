@@ -94,8 +94,12 @@ export default function BackendScreen() {
       } catch (err) {
         console.warn("pair failed", err);
         toast(err instanceof Error ? err.message : "Pairing failed", "error");
-      } finally {
+        // Only release the guard on failure so the user can retry. On success
+        // we intentionally keep it latched — the camera stays mounted briefly
+        // after the success toast, and any buffered native scan would
+        // otherwise re-POST the (now-claimed) token and trip a 401.
         claimingRef.current = false;
+      } finally {
         setBusy(false);
       }
     },
@@ -194,6 +198,13 @@ export default function BackendScreen() {
       void requestPermission();
     }
   }, [mode, permission, requestPermission]);
+
+  // A successful claim latches `claimingRef` to block buffered native scans
+  // from re-POSTing the already-claimed token. Releasing requires a real
+  // "no longer paired" transition — unpair or rotate.
+  useEffect(() => {
+    if (!url) claimingRef.current = false;
+  }, [url]);
 
   return (
     <ScreenWrapper>
