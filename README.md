@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react" alt="React Native" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Android-Closed_Testing-green?logo=android" alt="Android — Closed Testing" />
-  <img src="https://img.shields.io/badge/iOS-In_Progress-orange?logo=apple" alt="iOS — In review" />
+  <img src="https://img.shields.io/badge/iOS-App_Store-black?logo=apple" alt="iOS — App Store" />
 </p>
 
 ---
@@ -49,7 +49,13 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 - **No backend required** — Pure client architecture for core functionality; your data stays between your phone and your servers
 - **Optional self-hosted backend** — Enable real push notifications by running the companion backend on your server (Node.js or Docker)
 
-## Download from Play Store (Android)
+## Download
+
+### iOS — App Store
+
+Dashboarr is now available on the Apple App Store: [Dashboarr on the App Store](https://apps.apple.com/us/app/dashboarr/id6762170117)
+
+### Android — Play Store
 
 Dashboarr is available on the Google Play Store as an open testing release:
 
@@ -205,7 +211,7 @@ lib/                  # Types, utils, constants, HTTP client
 
 ## Roadmap
 
-- [ ] iOS App Store publish
+- [x] iOS App Store publish
 - [ ] SABnzbd integration
 - [ ] Improve dashboard UI
 
