@@ -46,7 +46,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "service-health",
   "downloads",
   "radarr-queue",
-  "sonarr-calendar",
+  "calendar",
   "tautulli-activity",
   "overseerr-requests",
   "plex-now-playing",
@@ -61,8 +61,14 @@ export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
 export const DEFAULT_DASHBOARD_WIDGETS: WidgetId[] = [
   "service-health",
   "radarr-queue",
-  "sonarr-calendar",
+  "calendar",
 ];
+
+// Old widget ids that have been renamed. Hydrate + import use this to remap
+// stored values so users keep their dashboard layout across upgrades.
+export const WIDGET_ID_RENAMES: Record<string, WidgetId> = {
+  "sonarr-calendar": "calendar",
+};
 
 // MMKV key prefixes
 export const STORAGE_KEYS = {
@@ -71,6 +77,7 @@ export const STORAGE_KEYS = {
   homeSSID: "app.homeSSID",
   homeBSSID: "app.homeBSSID",
   dashboardWidgets: "app.dashboardWidgets",
+  widgetSettings: "app.widgetSettings",
   // Legacy key — read-only fallback during one-time hydrate migration.
   dashboardOrderLegacy: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",

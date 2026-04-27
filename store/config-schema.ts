@@ -1,6 +1,12 @@
 import { SERVICE_IDS, DASHBOARD_WIDGET_IDS } from "@/lib/constants";
 import type { ServiceId, WidgetId } from "@/lib/constants";
-import type { ExportPayload, ServiceConfig, ServiceSecrets, WakeOnLanDevice } from "@/store/config-store";
+import type {
+  ExportPayload,
+  ServiceConfig,
+  ServiceSecrets,
+  WakeOnLanDevice,
+  WidgetSettingsMap,
+} from "@/store/config-store";
 import type { NotificationSettings } from "@/store/notifications-store";
 
 const SERVICE_ID_SET: ReadonlySet<string> = new Set(SERVICE_IDS);
@@ -182,6 +188,22 @@ export function validateExportPayload(raw: unknown): ExportPayload {
       devices.push(coerced);
     }
     payload.wolDevices = devices;
+  }
+
+  if (raw.widgetSettings !== undefined && raw.widgetSettings !== null) {
+    if (!isPlainObject(raw.widgetSettings)) {
+      throw new Error("Config widgetSettings is invalid");
+    }
+    const settings: WidgetSettingsMap = {};
+    for (const [id, value] of Object.entries(raw.widgetSettings)) {
+      // Drop unknown widget ids (forward-compatibility) and require object
+      // values; specific shape is enforced by the widget registry's defaults
+      // when the values are read.
+      if (!WIDGET_ID_SET.has(id)) continue;
+      if (!isPlainObject(value)) throw new Error(`Config widgetSettings.${id} is invalid`);
+      settings[id as WidgetId] = value as Record<string, unknown>;
+    }
+    payload.widgetSettings = settings;
   }
 
   return payload;

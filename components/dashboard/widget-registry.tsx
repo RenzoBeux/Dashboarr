@@ -18,22 +18,46 @@ import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
 import { ServiceHealthCard } from "@/components/dashboard/service-health-card";
 import { DownloadCard } from "@/components/dashboard/download-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
-import { SonarrCalendarCard } from "@/components/dashboard/sonarr-calendar-card";
+import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
+import {
+  ServerStatsSettings,
+  SERVER_STATS_DEFAULT_SETTINGS,
+  type ServerStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/server-stats-settings";
+import {
+  CalendarSettings,
+  CALENDAR_DEFAULT_SETTINGS,
+  type CalendarSettingsValue,
+} from "@/components/dashboard/widget-settings/calendar-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
+
+export interface WidgetSettingsComponentProps {
+  onClose: () => void;
+}
 
 export interface WidgetDefinition {
   id: WidgetId;
   label: string;
   description: string;
   icon: LucideIcon;
+  // Service this widget needs configured. `null` means the widget renders
+  // regardless of which services are enabled (e.g. service-health, calendar
+  // which can show Sonarr, Radarr, or both).
   service: ServiceId | null;
   component: React.ComponentType;
+  // If provided, the dashboard renders a gear icon in edit mode that opens
+  // this component inside the WidgetSettingsSheet.
+  settingsComponent?: React.ComponentType<WidgetSettingsComponentProps>;
+  // Frozen defaults the widget falls back to when no settings have been saved.
+  // Lives here (not in the widget itself) so the registry can describe a
+  // widget without rendering it — useful for the settings sheet picker.
+  defaultSettings?: Record<string, unknown>;
 }
 
 export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
@@ -52,6 +76,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Cpu,
     service: "glances",
     component: ServerStatsCard,
+    settingsComponent: ServerStatsSettings,
+    defaultSettings: SERVER_STATS_DEFAULT_SETTINGS,
   },
   "speed-stats": {
     id: "speed-stats",
@@ -77,13 +103,15 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     service: "radarr",
     component: RadarrQueueCard,
   },
-  "sonarr-calendar": {
-    id: "sonarr-calendar",
-    label: "Sonarr Calendar",
-    description: "Upcoming episodes from monitored series",
+  "calendar": {
+    id: "calendar",
+    label: "Calendar",
+    description: "Upcoming releases from Sonarr and Radarr",
     icon: CalendarDays,
-    service: "sonarr",
-    component: SonarrCalendarCard,
+    service: null,
+    component: CalendarCard,
+    settingsComponent: CalendarSettings,
+    defaultSettings: CALENDAR_DEFAULT_SETTINGS,
   },
   "tautulli-activity": {
     id: "tautulli-activity",
@@ -141,3 +169,5 @@ export function getAvailableWidgets(currentIds: WidgetId[]): WidgetDefinition[] 
     (id) => WIDGET_REGISTRY[id],
   );
 }
+
+export type { ServerStatsSettingsValue, CalendarSettingsValue };

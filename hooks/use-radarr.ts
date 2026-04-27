@@ -34,11 +34,11 @@ export function useRadarrMovies() {
   });
 }
 
-export function useRadarrCalendar() {
+export function useRadarrCalendar(days = 30) {
   const enabled = useRadarrEnabled();
   return useQuery({
-    queryKey: ["radarr", "calendar"],
-    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(30)),
+    queryKey: ["radarr", "calendar", days],
+    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(days)),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled,
   });

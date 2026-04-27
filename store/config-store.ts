@@ -22,6 +22,8 @@ import {
   STORAGE_KEYS,
   SECRET_PREFIX,
   DEFAULT_DASHBOARD_WIDGETS,
+  WIDGET_ID_RENAMES,
+  DASHBOARD_WIDGET_IDS,
 } from "@/lib/constants";
 import { CURRENT_CONFIG_VERSION, migrateConfig } from "@/store/config-migrations";
 import { validateExportPayload } from "@/store/config-schema";
@@ -58,6 +60,11 @@ export interface ServiceSecrets {
   password?: string;
 }
 
+// Per-widget settings live as an opaque record keyed by widget id. The widget
+// registry owns the shape (via defaultSettings) — the store just persists what
+// each widget hands back. Values must be plain JSON-serializable objects.
+export type WidgetSettingsMap = Partial<Record<WidgetId, Record<string, unknown>>>;
+
 interface ConfigState {
   services: Record<ServiceId, ServiceConfig>;
   secrets: Record<ServiceId, ServiceSecrets>;
@@ -65,6 +72,7 @@ interface ConfigState {
   homeSSID: string;
   homeBSSID: string;
   dashboardWidgets: WidgetId[];
+  widgetSettings: WidgetSettingsMap;
   wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
   demoMode: boolean;
@@ -84,6 +92,8 @@ export interface ExportPayload {
   notificationSettings?: NotificationSettings;
   // v4
   wolDevices?: WakeOnLanDevice[];
+  // v7
+  widgetSettings?: WidgetSettingsMap;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -105,6 +115,8 @@ interface ConfigActions {
   addWidget: (id: WidgetId) => void;
   removeWidget: (id: WidgetId) => void;
   moveWidget: (id: WidgetId, direction: "up" | "down") => void;
+  setWidgetSettings: (id: WidgetId, settings: Record<string, unknown>) => void;
+  resetWidgetSettings: (id: WidgetId) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   getActiveUrl: (id: ServiceId) => string;
   enableDemoMode: () => void;
@@ -145,6 +157,37 @@ function emptySecrets(): Record<ServiceId, ServiceSecrets> {
   return secrets;
 }
 
+const VALID_WIDGET_IDS = new Set<string>(DASHBOARD_WIDGET_IDS);
+
+function normalizeWidgetIds(ids: string[]): WidgetId[] {
+  const seen = new Set<string>();
+  const out: WidgetId[] = [];
+  for (const raw of ids) {
+    if (typeof raw !== "string") continue;
+    const id = WIDGET_ID_RENAMES[raw] ?? raw;
+    if (!VALID_WIDGET_IDS.has(id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id as WidgetId);
+  }
+  return out;
+}
+
+function remapWidgetSettings(
+  raw: Record<string, Record<string, unknown>>,
+): WidgetSettingsMap {
+  const out: WidgetSettingsMap = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    const id = WIDGET_ID_RENAMES[key] ?? key;
+    if (!VALID_WIDGET_IDS.has(id)) continue;
+    // If both old and new keys are present, the newer key wins.
+    if (out[id as WidgetId]) continue;
+    out[id as WidgetId] = value;
+  }
+  return out;
+}
+
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   services: defaultServices(),
   secrets: emptySecrets(),
@@ -152,6 +195,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   homeSSID: "",
   homeBSSID: "",
   dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
+  widgetSettings: {},
   wolDevices: [],
   hydrated: false,
   demoMode: false,
@@ -188,17 +232,32 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     // Prefer the new key. If absent, fall back to the legacy dashboardOrder key
     // (one-time local migration for users upgrading from pre-widget builds).
-    let dashboardWidgets = getJSON<WidgetId[]>(STORAGE_KEYS.dashboardWidgets);
-    if (!dashboardWidgets) {
-      const legacy = getJSON<WidgetId[]>(STORAGE_KEYS.dashboardOrderLegacy);
+    let rawWidgets = getJSON<string[]>(STORAGE_KEYS.dashboardWidgets);
+    let widgetsCameFromStorage = !!rawWidgets;
+    if (!rawWidgets) {
+      const legacy = getJSON<string[]>(STORAGE_KEYS.dashboardOrderLegacy);
       if (legacy && legacy.length > 0) {
-        dashboardWidgets = legacy;
-        setJSON(STORAGE_KEYS.dashboardWidgets, legacy);
+        rawWidgets = legacy;
         deleteKey(STORAGE_KEYS.dashboardOrderLegacy);
       } else {
-        dashboardWidgets = DEFAULT_DASHBOARD_WIDGETS;
+        rawWidgets = [...DEFAULT_DASHBOARD_WIDGETS];
       }
     }
+    const normalizedWidgets = normalizeWidgetIds(rawWidgets);
+    const widgetsChanged =
+      !widgetsCameFromStorage ||
+      normalizedWidgets.length !== rawWidgets.length ||
+      normalizedWidgets.some((id, i) => id !== rawWidgets![i]);
+    if (widgetsChanged) {
+      setJSON(STORAGE_KEYS.dashboardWidgets, normalizedWidgets);
+    }
+
+    // Load per-widget settings, remapping legacy widget ids and dropping any
+    // unknown ones so a downgrade-then-upgrade can't leave orphaned entries.
+    const storedSettings = getJSON<Record<string, Record<string, unknown>>>(
+      STORAGE_KEYS.widgetSettings,
+    ) ?? {};
+    const widgetSettings = remapWidgetSettings(storedSettings);
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
 
@@ -209,7 +268,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
     }
 
-    set({ services, secrets, autoSwitchNetwork, homeSSID, homeBSSID, dashboardWidgets, wolDevices, demoMode, hydrated: true });
+    set({
+      services,
+      secrets,
+      autoSwitchNetwork,
+      homeSSID,
+      homeBSSID,
+      dashboardWidgets: normalizedWidgets,
+      widgetSettings,
+      wolDevices,
+      demoMode,
+      hydrated: true,
+    });
   },
 
   updateService: (id, config) => {
@@ -289,6 +359,24 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ dashboardWidgets: next });
   },
 
+  setWidgetSettings: (id, settings) => {
+    const next: WidgetSettingsMap = {
+      ...get().widgetSettings,
+      [id]: { ...settings },
+    };
+    setJSON(STORAGE_KEYS.widgetSettings, next);
+    set({ widgetSettings: next });
+  },
+
+  resetWidgetSettings: (id) => {
+    const current = get().widgetSettings;
+    if (!(id in current)) return;
+    const next: WidgetSettingsMap = { ...current };
+    delete next[id];
+    setJSON(STORAGE_KEYS.widgetSettings, next);
+    set({ widgetSettings: next });
+  },
+
   setWolDevices: (devices) => {
     setJSON(STORAGE_KEYS.wolDevices, devices);
     set({ wolDevices: devices });
@@ -336,7 +424,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
     }
 
-    const { services, secrets, autoSwitchNetwork, homeSSID, dashboardWidgets, wolDevices } = get();
+    const {
+      services,
+      secrets,
+      autoSwitchNetwork,
+      homeSSID,
+      dashboardWidgets,
+      widgetSettings,
+      wolDevices,
+    } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
       useNotificationStore.getState();
@@ -349,6 +445,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       autoSwitchNetwork,
       homeSSID,
       dashboardWidgets,
+      widgetSettings,
       backend: { url, sharedSecret, deviceId },
       notificationSettings: notifSettings,
       wolDevices,
@@ -438,6 +535,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     if (payload.dashboardWidgets) {
       setJSON(STORAGE_KEYS.dashboardWidgets, payload.dashboardWidgets);
     }
+    const importedWidgetSettings = payload.widgetSettings ?? {};
+    setJSON(STORAGE_KEYS.widgetSettings, importedWidgetSettings);
     setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
 
     // Restore backend pairing (v2+)
@@ -462,6 +561,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeSSID: payload.homeSSID ?? "",
       dashboardWidgets: payload.dashboardWidgets ?? DEFAULT_DASHBOARD_WIDGETS,
+      widgetSettings: importedWidgetSettings,
       wolDevices: payload.wolDevices ?? [],
     });
 

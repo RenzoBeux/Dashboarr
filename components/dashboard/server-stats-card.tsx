@@ -5,6 +5,11 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { useGlancesCpu, useGlancesMem, useGlancesFs } from "@/hooks/use-glances";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import {
+  SERVER_STATS_DEFAULT_SETTINGS,
+  type ServerStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/server-stats-settings";
 import { formatBytes } from "@/lib/utils";
 import type { GlancesFsItem } from "@/lib/types";
 
@@ -70,13 +75,33 @@ function RingChart({ percent, label }: { percent: number; label: string }) {
 }
 
 export function ServerStatsCard() {
-  const { data: cpu, isLoading: cpuLoading, isError: cpuError } = useGlancesCpu();
-  const { data: mem, isLoading: memLoading, isError: memError } = useGlancesMem();
-  const { data: fs, isLoading: fsLoading, isError: fsError } = useGlancesFs();
+  const { settings } = useWidgetSettings<ServerStatsSettingsValue>(
+    "server-stats",
+    SERVER_STATS_DEFAULT_SETTINGS,
+  );
 
-  const isLoading = cpuLoading || memLoading || fsLoading;
+  const cpuQuery = useGlancesCpu();
+  const memQuery = useGlancesMem();
+  const fsQuery = useGlancesFs();
+
+  // Skip loading/error states for sections the user has hidden so a disabled
+  // section can never block the rest of the card from rendering.
+  const cpu = settings.showCpu ? cpuQuery.data : undefined;
+  const mem = settings.showRam ? memQuery.data : undefined;
+  const fs = settings.showDisks ? fsQuery.data : undefined;
+
+  const isLoading =
+    (settings.showCpu && cpuQuery.isLoading) ||
+    (settings.showRam && memQuery.isLoading) ||
+    (settings.showDisks && fsQuery.isLoading);
   const hasData = cpu || mem || (fs && fs.length > 0);
-  const showError = !isLoading && !hasData && (cpuError || memError || fsError);
+  const showError =
+    !isLoading &&
+    !hasData &&
+    ((settings.showCpu && cpuQuery.isError) ||
+      (settings.showRam && memQuery.isError) ||
+      (settings.showDisks && fsQuery.isError));
+  const allHidden = !settings.showCpu && !settings.showRam && !settings.showDisks;
 
   return (
     <Card>
@@ -84,7 +109,11 @@ export function ServerStatsCard() {
         <CardTitle>Server</CardTitle>
       </CardHeader>
 
-      {isLoading ? (
+      {allHidden ? (
+        <Text className="text-zinc-500 text-sm py-1">
+          All sections hidden — enable one in the widget settings.
+        </Text>
+      ) : isLoading ? (
         <SkeletonCardContent rows={2} />
       ) : showError ? (
         <View className="flex-row items-center gap-2 py-1">
@@ -93,14 +122,14 @@ export function ServerStatsCard() {
         </View>
       ) : (
         <View className="gap-4">
-          {/* Rings */}
-          <View className="flex-row justify-around">
-            {cpu && <RingChart percent={cpu.total} label="CPU" />}
-            {mem && <RingChart percent={mem.percent} label="RAM" />}
-          </View>
+          {(settings.showCpu || settings.showRam) && (
+            <View className="flex-row justify-around">
+              {settings.showCpu && cpu && <RingChart percent={cpu.total} label="CPU" />}
+              {settings.showRam && mem && <RingChart percent={mem.percent} label="RAM" />}
+            </View>
+          )}
 
-          {/* Disks */}
-          {fs && fs.length > 0 && (
+          {settings.showDisks && fs && fs.length > 0 && (
             <View className="gap-2">
               {fs.map((disk) => (
                 <DiskRow key={disk.mnt_point} disk={disk} />

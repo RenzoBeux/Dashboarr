@@ -1,4 +1,4 @@
-import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/constants";
+import { DEFAULT_DASHBOARD_WIDGETS, WIDGET_ID_RENAMES } from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
 
 /**
@@ -13,8 +13,9 @@ import type { ExportPayload } from "@/store/config-store";
  *   v4  — multiple WOL devices (wakeOnLan → wolDevices array)
  *   v5  — dashboardOrder renamed to dashboardWidgets
  *   v6  — added optional homeBSSID for rogue-AP-resistant auto-switch
+ *   v7  — added per-widget settings; renamed sonarr-calendar → calendar
  */
-export const CURRENT_CONFIG_VERSION = 6;
+export const CURRENT_CONFIG_VERSION = 7;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -88,6 +89,25 @@ const migrations: Record<number, (payload: any) => any> = {
     version: 6,
     homeBSSID: typeof payload.homeBSSID === "string" ? payload.homeBSSID : "",
   }),
+
+  // v6 → v7: rename retired widget ids in dashboardWidgets and add empty
+  // widgetSettings. Old exports never had settings, so an empty record means
+  // every widget will fall back to defaultSettings declared in the registry.
+  6: (payload) => {
+    const ids = Array.isArray(payload.dashboardWidgets) ? payload.dashboardWidgets : [];
+    const remapped = ids.map((id: unknown) =>
+      typeof id === "string" && id in WIDGET_ID_RENAMES ? WIDGET_ID_RENAMES[id] : id,
+    );
+    // Drop dupes that the rename can produce (e.g. user already had `calendar`).
+    const seen = new Set<string>();
+    const dashboardWidgets: string[] = [];
+    for (const id of remapped) {
+      if (typeof id !== "string" || seen.has(id)) continue;
+      seen.add(id);
+      dashboardWidgets.push(id);
+    }
+    return { ...payload, version: 7, dashboardWidgets, widgetSettings: {} };
+  },
 };
 
 /**

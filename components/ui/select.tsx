@@ -61,6 +61,10 @@ export function Select<T extends string | number>({
         visible={open}
         animationType="slide"
         presentationStyle="pageSheet"
+        // Inherits a translucent status bar when opened from inside another
+        // translucent-status-bar sheet on Android. SheetHeader applies the
+        // top inset internally so the title stays visible regardless.
+        statusBarTranslucent
         onRequestClose={() => setOpen(false)}
       >
         <View className="flex-1 bg-background">

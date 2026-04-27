@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Pencil,
   Check,
+  Settings,
   X,
   Plus,
 } from "lucide-react-native";
@@ -15,9 +16,10 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
-import { ICON } from "@/lib/constants";
+import { ICON, type WidgetId } from "@/lib/constants";
 import { WIDGET_REGISTRY } from "@/components/dashboard/widget-registry";
 import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
+import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
 
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
@@ -27,6 +29,7 @@ export default function DashboardScreen() {
   const moveWidget = useConfigStore((s) => s.moveWidget);
   const [editMode, setEditMode] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [settingsForWidget, setSettingsForWidget] = useState<WidgetId | null>(null);
 
   const hasAnyEnabled = Object.values(services).some((s) => s.enabled);
 
@@ -49,6 +52,11 @@ export default function DashboardScreen() {
   function openPicker() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setPickerVisible(true);
+  }
+
+  function openSettings(id: WidgetId) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSettingsForWidget(id);
   }
 
   return (
@@ -95,7 +103,7 @@ export default function DashboardScreen() {
           {visibleWidgets.map((id, visibleIndex) => {
             const widget = WIDGET_REGISTRY[id];
             if (!widget) return null;
-            const { component: WidgetComponent, label } = widget;
+            const { component: WidgetComponent, label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleWidgets.length - 1;
 
@@ -133,6 +141,15 @@ export default function DashboardScreen() {
                       >
                         <ChevronDown size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
+                      {settingsComponent && (
+                        <TouchableOpacity
+                          onPress={() => openSettings(id)}
+                          className="p-1 ml-1"
+                          hitSlop={6}
+                        >
+                          <Settings size={ICON.MD} color="#60a5fa" />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         onPress={() => handleRemove(id)}
                         className="p-1 ml-1"
@@ -175,6 +192,10 @@ export default function DashboardScreen() {
       )}
 
       <AddWidgetSheet visible={pickerVisible} onClose={() => setPickerVisible(false)} />
+      <WidgetSettingsSheet
+        widgetId={settingsForWidget}
+        onClose={() => setSettingsForWidget(null)}
+      />
     </ScreenWrapper>
   );
 }
