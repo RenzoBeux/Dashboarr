@@ -4,36 +4,111 @@ import { Pause, Play, CheckCircle } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useActiveTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
+import { useAllTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
 import { formatSpeed, formatEta, truncateText } from "@/lib/utils";
-import type { QBTorrent } from "@/lib/types";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import {
+  DOWNLOADS_DEFAULT_SETTINGS,
+  type DownloadsSettingsValue,
+  type DownloadsSortBy,
+} from "@/components/dashboard/widget-settings/downloads-settings";
+import type { QBTorrent, TorrentState } from "@/lib/types";
 
-const MAX_DISPLAY = 5;
+type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
+
+// qBittorrent uses 8640000 (100 days) as a sentinel for "unknown ETA". Treat
+// that and anything larger as missing so it sorts to the end.
+const ETA_UNKNOWN = 8640000;
+
+function classifyState(state: TorrentState): StateGroup {
+  if (state === "error" || state === "missingFiles") return "errored";
+  if (state === "pausedDL" || state === "pausedUP") return "paused";
+  if (
+    state === "downloading" ||
+    state === "metaDL" ||
+    state === "stalledDL" ||
+    state === "queuedDL" ||
+    state === "forcedDL" ||
+    state === "checkingDL" ||
+    state === "allocating"
+  ) {
+    return "downloading";
+  }
+  if (
+    state === "uploading" ||
+    state === "stalledUP" ||
+    state === "queuedUP" ||
+    state === "forcedUP" ||
+    state === "checkingUP"
+  ) {
+    return "seeding";
+  }
+  return "other";
+}
+
+function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): number {
+  switch (sortBy) {
+    case "speed": {
+      // Combined throughput so a busy seeder ranks alongside a fast downloader.
+      const aSpeed = a.dlspeed + a.upspeed;
+      const bSpeed = b.dlspeed + b.upspeed;
+      return bSpeed - aSpeed;
+    }
+    case "progress":
+      return b.progress - a.progress;
+    case "eta": {
+      const aEta = !a.eta || a.eta >= ETA_UNKNOWN ? Number.POSITIVE_INFINITY : a.eta;
+      const bEta = !b.eta || b.eta >= ETA_UNKNOWN ? Number.POSITIVE_INFINITY : b.eta;
+      return aEta - bEta;
+    }
+    case "added":
+      return b.added_on - a.added_on;
+  }
+}
 
 export function DownloadCard() {
-  const { data: torrents, isLoading } = useActiveTorrents();
+  const { settings } = useWidgetSettings<DownloadsSettingsValue>(
+    "downloads",
+    DOWNLOADS_DEFAULT_SETTINGS,
+  );
+  const { data: torrents, isLoading } = useAllTorrents();
   const router = useRouter();
 
-  const displayTorrents = torrents?.slice(0, MAX_DISPLAY) ?? [];
-  const hasMore = (torrents?.length ?? 0) > MAX_DISPLAY;
+  const allowedGroups = new Set<StateGroup>();
+  if (settings.showDownloading) allowedGroups.add("downloading");
+  if (settings.showSeeding) allowedGroups.add("seeding");
+  if (settings.showPaused) allowedGroups.add("paused");
+  if (settings.showErrored) allowedGroups.add("errored");
+
+  const filtered = (torrents ?? [])
+    .filter((t) => allowedGroups.has(classifyState(t.state)))
+    .sort((a, b) => compareTorrents(a, b, settings.sortBy));
+
+  const displayTorrents = filtered.slice(0, settings.maxItems);
+  const hasMore = filtered.length > settings.maxItems;
+  const allHidden = allowedGroups.size === 0;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Active Downloads</CardTitle>
-        {torrents && torrents.length > 0 && (
-          <Text className="text-zinc-500 text-sm">{torrents.length}</Text>
+        <CardTitle>Downloads</CardTitle>
+        {filtered.length > 0 && (
+          <Text className="text-zinc-500 text-sm">{filtered.length}</Text>
         )}
       </CardHeader>
 
-      {isLoading ? (
+      {allHidden ? (
+        <Text className="text-zinc-500 text-sm py-1">
+          All states hidden — enable one in the widget settings.
+        </Text>
+      ) : isLoading ? (
         <SkeletonCardContent rows={3} />
       ) : displayTorrents.length === 0 ? (
         <EmptyState
           icon={<CheckCircle size={32} color="#71717a" />}
-          title="No active downloads"
+          title="Nothing to show"
         />
       ) : (
         <View className="gap-3">
@@ -101,7 +176,7 @@ function TorrentRow({
                 ↑ {formatSpeed(torrent.upspeed)}
               </Text>
             )}
-            {torrent.eta > 0 && (
+            {torrent.eta > 0 && torrent.eta < ETA_UNKNOWN && (
               <Text className="text-zinc-500 text-xs">
                 ETA {formatEta(torrent.eta)}
               </Text>

@@ -26,16 +26,6 @@ export function useTransferInfo() {
   });
 }
 
-export function useActiveTorrents() {
-  const enabled = useQBEnabled();
-  return useQuery({
-    queryKey: ["qbittorrent", "torrents", "active"],
-    queryFn: () => getTorrents("active"),
-    refetchInterval: POLLING_INTERVALS.activeTorrents,
-    enabled,
-  });
-}
-
 export function useAllTorrents(
   filter?: "all" | "downloading" | "seeding" | "completed" | "paused" | "active" | "inactive" | "stalled",
 ) {

@@ -35,6 +35,26 @@ import {
   CALENDAR_DEFAULT_SETTINGS,
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
+import {
+  DownloadsSettings,
+  DOWNLOADS_DEFAULT_SETTINGS,
+  type DownloadsSettingsValue,
+} from "@/components/dashboard/widget-settings/downloads-settings";
+import {
+  PlexNowPlayingSettings,
+  PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
+  type PlexNowPlayingSettingsValue,
+} from "@/components/dashboard/widget-settings/plex-now-playing-settings";
+import {
+  TautulliActivitySettings,
+  TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
+  type TautulliActivitySettingsValue,
+} from "@/components/dashboard/widget-settings/tautulli-activity-settings";
+import {
+  OverseerrRequestsSettings,
+  OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
+  type OverseerrRequestsSettingsValue,
+} from "@/components/dashboard/widget-settings/overseerr-requests-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 export interface WidgetSettingsComponentProps {
@@ -94,6 +114,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Download,
     service: "qbittorrent",
     component: DownloadCard,
+    settingsComponent: DownloadsSettings,
+    defaultSettings: DOWNLOADS_DEFAULT_SETTINGS,
   },
   "radarr-queue": {
     id: "radarr-queue",
@@ -120,6 +142,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Activity,
     service: "tautulli",
     component: TautulliActivityCard,
+    settingsComponent: TautulliActivitySettings,
+    defaultSettings: TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   },
   "overseerr-requests": {
     id: "overseerr-requests",
@@ -128,6 +152,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Inbox,
     service: "overseerr",
     component: OverseerrRequestsCard,
+    settingsComponent: OverseerrRequestsSettings,
+    defaultSettings: OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   },
   "plex-now-playing": {
     id: "plex-now-playing",
@@ -136,6 +162,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: PlayCircle,
     service: "plex",
     component: PlexNowPlayingCard,
+    settingsComponent: PlexNowPlayingSettings,
+    defaultSettings: PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
   },
   "prowlarr-stats": {
     id: "prowlarr-stats",
@@ -170,4 +198,11 @@ export function getAvailableWidgets(currentIds: WidgetId[]): WidgetDefinition[] 
   );
 }
 
-export type { ServerStatsSettingsValue, CalendarSettingsValue };
+export type {
+  ServerStatsSettingsValue,
+  CalendarSettingsValue,
+  DownloadsSettingsValue,
+  PlexNowPlayingSettingsValue,
+  TautulliActivitySettingsValue,
+  OverseerrRequestsSettingsValue,
+};
