@@ -211,9 +211,7 @@ lib/                  # Types, utils, constants, HTTP client
 
 ## Roadmap
 
-- [x] iOS App Store publish
-- [ ] SABnzbd integration
-- [ ] Improve dashboard UI
+See [TODO.md](TODO.md) for planned features and ideas.
 
 ## Contributing
 
