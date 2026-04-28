@@ -17,3 +17,4 @@ ios/
 .claude/
 google-services.json
 *-firebase-adminsdk-*.json
+coverage/*

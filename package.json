@@ -9,6 +9,9 @@
     "ios": "expo run:ios",
     "lint": "eslint .",
     "prebuild": "expo prebuild",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "build:android": "eas build --platform android",
     "build:ios": "eas build --platform ios",
     "build:android:prod": "expo prebuild --platform android --clean && node -e \"require('fs').copyFileSync(require('path').join(require('os').homedir(),'.android-keystores','dashboarr-release.keystore'),'android/app/dashboarr-release.keystore')\" && cd android && gradlew bundleRelease"
@@ -54,8 +57,12 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.0.0",
     "@types/react": "~19.1.10",
     "canvas": "^3.2.3",
+    "jest": "^29.7.0",
+    "jest-expo": "~54.0.0",
     "prettier": "^3.4.0",
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.0",
