@@ -31,7 +31,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **qBittorrent** | View queue, pause/resume/delete torrents, speed stats, transfer progress |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |
 | **Sonarr** | Search & add shows, episode monitoring, airing calendar/schedule |
-| **Overseerr** | Browse & search media, request movies/shows, approve/decline requests |
+| **Seerr** | Browse & search media, request movies/shows, approve/decline requests |
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
 | **Plex** | Now playing, recently added, on deck, library browsing |
@@ -102,7 +102,7 @@ Dashboarr works fully without a backend, but if you want **real push notificatio
 
 The backend is a lightweight Fastify + SQLite server that:
 - **Polls** your *arr services on a schedule and detects state changes
-- **Receives webhooks** from Radarr, Sonarr, Overseerr, Bazarr, and Tautulli
+- **Receives webhooks** from Radarr, Sonarr, Seerr, Bazarr, and Tautulli
 - **Sends push notifications** to your phone via the Expo push service
 - **Pairs** with your device via QR code — no accounts needed
 
@@ -183,7 +183,7 @@ components/
   ui/                 # Reusable UI primitives (cards, buttons, inputs, toggles)
   dashboard/          # Dashboard card components
   common/             # Shared layout components (screen wrapper, pull-to-refresh)
-  overseerr/          # Overseerr-specific components
+  overseerr/          # Seerr-specific components
 services/             # Raw API clients for each service
 hooks/                # TanStack Query wrappers (caching, polling, mutations)
 store/                # Zustand stores + AsyncStorage/SecureStore helpers

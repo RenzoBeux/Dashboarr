@@ -101,7 +101,7 @@ export default function RequestsScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Overseerr" online={overseerrHealth?.online} />
+      <ServiceHeader name="Seerr" online={overseerrHealth?.online} />
 
       <View className="flex-row gap-2 mb-4">
         {TAB_CONFIG.map(({ key, label, icon: Icon }) => (

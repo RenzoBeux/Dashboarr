@@ -54,7 +54,7 @@ export function NotificationSettingsSection() {
               onValueChange={(v) => setSetting("serviceOffline", v)}
             />
             <Toggle
-              label="New Overseerr request"
+              label="New Seerr request"
               value={overseerrNewRequest}
               onValueChange={(v) => setSetting("overseerrNewRequest", v)}
             />

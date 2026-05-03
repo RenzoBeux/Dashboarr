@@ -43,7 +43,7 @@ The warning is surfaced in:
    notification toggles). The backend starts polling and/or waiting for
    webhooks.
 5. When something happens — a download finishes, a service goes offline, a new
-   Overseerr request appears — the backend fires an Expo push that lands on
+   Seerr request appears — the backend fires an Expo push that lands on
    your phone whether the app is running or not.
 
 ### Trust chain
@@ -173,8 +173,8 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
 | `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook |
 | `POST` | `/webhooks/sonarr/:secret` | path | Sonarr back-compat |
-| `POST` | `/webhooks/overseerr` | header | Overseerr webhook |
-| `POST` | `/webhooks/overseerr/:secret` | path | Overseerr back-compat |
+| `POST` | `/webhooks/overseerr` | header | Seerr webhook (path keeps `overseerr` for back-compat) |
+| `POST` | `/webhooks/overseerr/:secret` | path | Seerr back-compat |
 | `POST` | `/webhooks/bazarr` | header | Bazarr webhook (logged only) |
 | `POST` | `/webhooks/bazarr/:secret` | path | Bazarr back-compat |
 | `POST` | `/webhooks/tautulli` | header | Tautulli webhook (logged only) |
@@ -189,7 +189,7 @@ docker exec dashboarr-backend cat /data/webhook-urls.txt
 ```
 
 Prefer the header variant when the service supports custom headers (Radarr 4+,
-Sonarr 4+, Overseerr) — the secret stays out of reverse-proxy / CDN access
+Sonarr 4+, Seerr) — the secret stays out of reverse-proxy / CDN access
 logs. The path variant remains available for services that can't send custom
 headers.
 
@@ -205,7 +205,7 @@ everything else at 120 req/min, all per source IP.
 | **qBittorrent** | ❌ | ✅ 15s | "downloading → not downloading" transition; torrent hash dedupe |
 | **Radarr** | ✅ (preferred) | ✅ 30s | Webhook for `Download` event; poll diffs the queue |
 | **Sonarr** | ✅ (preferred) | ✅ 30s | Same as Radarr |
-| **Overseerr** | ✅ (preferred) | ✅ 60s | Webhook for `MEDIA_PENDING`; poll diffs pending requests |
+| **Seerr** | ✅ (preferred) | ✅ 60s | Webhook for `MEDIA_PENDING`; poll diffs pending requests |
 | **Bazarr** | ✅ (logged) | — | Payload is unstructured; no default category yet |
 | **Tautulli** | ✅ (logged) | — | User-scripted payloads; no default category yet |
 | **Prowlarr** | ❌ | ✅ 5m | Currently advisory — no user-facing category yet |

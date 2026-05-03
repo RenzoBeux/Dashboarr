@@ -99,7 +99,7 @@ export async function serviceRequest<T>(
       headers.set("Accept", "application/json");
     }
   } else {
-    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr use X-Api-Key
+    // Radarr, Sonarr, Seerr, Tautulli, Prowlarr use X-Api-Key
     if (secrets.apiKey) {
       headers.set("X-Api-Key", secrets.apiKey);
     }

@@ -13,7 +13,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 1. qBittorrent — torrent client (core)
 2. Radarr — movie automation
 3. Sonarr — TV automation
-4. Overseerr — media requests
+4. Seerr (formerly Overseerr) — media requests
 5. Tautulli — Plex monitoring & stats
 6. Prowlarr — indexer management
 7. Plex — media consumption layer
@@ -58,7 +58,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - [x] Sonarr: search, add show, episode monitoring, airing schedule
 
 ### Phase 2 — Visibility & Requests ✅
-- [x] Overseerr: browse, search, request movie/show, approve/decline, request status
+- [x] Seerr: browse, search, request movie/show, approve/decline, request status
 - [x] Tautulli: active streams, bandwidth stats, playback history
 
 ### Phase 3 — Power Tools ✅
@@ -82,7 +82,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - `components/ui/` — reusable UI primitives
 - `components/dashboard/` — dashboard card components
 - `components/common/` — shared layout components
-- `components/overseerr/` — Overseerr-specific components (posters, media detail)
+- `components/overseerr/` — Seerr-specific components (posters, media detail; folder kept as `overseerr/` for back-compat)
 - `store/` — Zustand stores + AsyncStorage/SecureStore helpers
 - `lib/` — types, utils, constants, HTTP client, notifications, haptics, Wake-on-LAN
 - `plugins/` — custom Expo config plugins (e.g. Android signing)

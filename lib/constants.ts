@@ -24,7 +24,7 @@ export const SERVICE_DEFAULTS: Record<
   },
   radarr: { name: "Radarr", defaultPort: 7878, apiBasePath: "/api/v3", pingPath: "/system/status" },
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
-  overseerr: { name: "Overseerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
+  overseerr: { name: "Seerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
   tautulli: { name: "Tautulli", defaultPort: 8181, apiBasePath: "/api/v2", pingPath: "/home" },
   prowlarr: { name: "Prowlarr", defaultPort: 9696, apiBasePath: "/api/v1", pingPath: "/system/status" },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
