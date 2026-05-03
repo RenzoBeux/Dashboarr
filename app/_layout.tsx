@@ -15,6 +15,7 @@ import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
 import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
+import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { ErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
@@ -110,6 +111,11 @@ function BackendHealthPoller() {
   return null;
 }
 
+function AppUpdateChecker() {
+  useAppUpdateCheck();
+  return null;
+}
+
 const CONFIG_SYNC_DEBOUNCE_MS = 2000;
 
 /**
@@ -183,6 +189,7 @@ export default function RootLayout() {
             <NotificationRouter />
             <BackendHealthPoller />
             <ConfigSyncBridge />
+            <AppUpdateChecker />
             <StatusBar style="light" />
             <Stack
               screenOptions={{
