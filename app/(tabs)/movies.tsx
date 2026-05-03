@@ -33,9 +33,17 @@ type MovieSheetTarget =
   | null;
 
 type Tab = "library" | "queue" | "wanted";
+type MonitorFilter = "monitored" | "unmonitored" | "all";
+
+const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
+  { value: "monitored", label: "Monitored" },
+  { value: "unmonitored", label: "Unmonitored" },
+  { value: "all", label: "All" },
+];
 
 export default function MoviesScreen() {
   const [tab, setTab] = useState<Tab>("library");
+  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
   const [sheetTarget, setSheetTarget] = useState<MovieSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -140,7 +148,22 @@ export default function MoviesScreen() {
         ))}
       </View>
 
-      {tab === "library" && <MovieLibrary onLongPress={openMovieSheet} />}
+      {tab === "library" && (
+        <View className="flex-row gap-2 mb-4">
+          {MONITOR_FILTERS.map((f) => (
+            <FilterChip
+              key={f.value}
+              label={f.label}
+              selected={monitorFilter === f.value}
+              onPress={() => setMonitorFilter(f.value)}
+            />
+          ))}
+        </View>
+      )}
+
+      {tab === "library" && (
+        <MovieLibrary monitorFilter={monitorFilter} onLongPress={openMovieSheet} />
+      )}
       {tab === "queue" && <MovieQueue onLongPress={openQueueSheet} />}
       {tab === "wanted" && <MovieWanted />}
 
@@ -155,7 +178,13 @@ export default function MoviesScreen() {
   );
 }
 
-function MovieLibrary({ onLongPress }: { onLongPress: (movie: RadarrMovie) => void }) {
+function MovieLibrary({
+  monitorFilter,
+  onLongPress,
+}: {
+  monitorFilter: MonitorFilter;
+  onLongPress: (movie: RadarrMovie) => void;
+}) {
   const { data: movies, isLoading } = useRadarrMovies();
   const router = useRouter();
 
@@ -175,8 +204,24 @@ function MovieLibrary({ onLongPress }: { onLongPress: (movie: RadarrMovie) => vo
     return <EmptyState icon={<Film size={32} color="#71717a" />} title="No movies in library" />;
   }
 
+  const filtered = movies.filter((m) => {
+    if (monitorFilter === "monitored") return m.monitored;
+    if (monitorFilter === "unmonitored") return !m.monitored;
+    return true;
+  });
+
+  if (!filtered.length) {
+    const title =
+      monitorFilter === "monitored"
+        ? "No monitored movies"
+        : monitorFilter === "unmonitored"
+          ? "No unmonitored movies"
+          : "No movies in library";
+    return <EmptyState icon={<Film size={32} color="#71717a" />} title={title} />;
+  }
+
   // Sort by recently added
-  const sorted = [...movies].sort(
+  const sorted = [...filtered].sort(
     (a, b) => new Date(b.added).getTime() - new Date(a.added).getTime(),
   );
 

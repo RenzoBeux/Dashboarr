@@ -31,9 +31,17 @@ type SeriesSheetTarget =
   | null;
 
 type Tab = "library" | "calendar";
+type MonitorFilter = "monitored" | "unmonitored" | "all";
+
+const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
+  { value: "monitored", label: "Monitored" },
+  { value: "unmonitored", label: "Unmonitored" },
+  { value: "all", label: "All" },
+];
 
 export default function TVScreen() {
   const [tab, setTab] = useState<Tab>("library");
+  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -162,7 +170,22 @@ export default function TVScreen() {
         ))}
       </View>
 
-      {tab === "library" && <SeriesLibrary onLongPress={openSeriesSheet} />}
+      {tab === "library" && (
+        <View className="flex-row gap-2 mb-4">
+          {MONITOR_FILTERS.map((f) => (
+            <FilterChip
+              key={f.value}
+              label={f.label}
+              selected={monitorFilter === f.value}
+              onPress={() => setMonitorFilter(f.value)}
+            />
+          ))}
+        </View>
+      )}
+
+      {tab === "library" && (
+        <SeriesLibrary monitorFilter={monitorFilter} onLongPress={openSeriesSheet} />
+      )}
       {tab === "calendar" && <CalendarView onLongPress={openCalendarSheet} />}
 
       <ActionSheet
@@ -176,7 +199,13 @@ export default function TVScreen() {
   );
 }
 
-function SeriesLibrary({ onLongPress }: { onLongPress: (series: SonarrSeries) => void }) {
+function SeriesLibrary({
+  monitorFilter,
+  onLongPress,
+}: {
+  monitorFilter: MonitorFilter;
+  onLongPress: (series: SonarrSeries) => void;
+}) {
   const { data: series, isLoading } = useSonarrSeries();
   const router = useRouter();
 
@@ -196,7 +225,23 @@ function SeriesLibrary({ onLongPress }: { onLongPress: (series: SonarrSeries) =>
     return <EmptyState icon={<Tv size={32} color="#71717a" />} title="No shows in library" />;
   }
 
-  const sorted = [...series].sort(
+  const filtered = series.filter((s) => {
+    if (monitorFilter === "monitored") return s.monitored;
+    if (monitorFilter === "unmonitored") return !s.monitored;
+    return true;
+  });
+
+  if (!filtered.length) {
+    const title =
+      monitorFilter === "monitored"
+        ? "No monitored shows"
+        : monitorFilter === "unmonitored"
+          ? "No unmonitored shows"
+          : "No shows in library";
+    return <EmptyState icon={<Tv size={32} color="#71717a" />} title={title} />;
+  }
+
+  const sorted = [...filtered].sort(
     (a, b) => new Date(b.added).getTime() - new Date(a.added).getTime(),
   );
 
