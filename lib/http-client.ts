@@ -1,7 +1,10 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
+import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
+
+export { buildUrl };
 
 const DEFAULT_TIMEOUT = 15000;
 
@@ -37,21 +40,6 @@ export class HttpError extends Error {
     this.url = safe;
     this.name = "HttpError";
   }
-}
-
-function buildUrl(
-  baseUrl: string,
-  apiBasePath: string,
-  path: string,
-  params?: Record<string, string | number | boolean>,
-): string {
-  const url = new URL(`${apiBasePath}${path}`, baseUrl);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, String(value));
-    }
-  }
-  return url.toString();
 }
 
 export async function serviceRequest<T>(

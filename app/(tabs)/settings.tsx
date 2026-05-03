@@ -442,6 +442,29 @@ function ServiceEditor({
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
+  const isDirty =
+    localUrl !== config.localUrl ||
+    remoteUrl !== config.remoteUrl ||
+    (isQB
+      ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
+      : apiKey !== (secrets.apiKey ?? ""));
+
+  const handleBack = () => {
+    if (!isDirty) {
+      onBack();
+      return;
+    }
+    Alert.alert(
+      "Unsaved changes",
+      "Your URL or credentials haven't been saved. What would you like to do?",
+      [
+        { text: "Keep editing", style: "cancel" },
+        { text: "Discard", style: "destructive", onPress: onBack },
+        { text: "Save", onPress: () => void handleSave() },
+      ],
+    );
+  };
+
   const confirmHttpWarning = (message: string) =>
     new Promise<boolean>((resolve) => {
       Alert.alert("Remote URL uses HTTP", message, [
@@ -491,10 +514,13 @@ function ServiceEditor({
   return (
     <ScreenWrapper>
       <View className="flex-row items-center mb-4 mt-2">
-        <Pressable onPress={onBack} className="mr-3 active:opacity-70">
+        <Pressable onPress={handleBack} className="mr-3 active:opacity-70">
           <Text className="text-primary text-base">← Back</Text>
         </Pressable>
         <Text className="text-zinc-100 text-xl font-bold">{config.name}</Text>
+        {isDirty && (
+          <Text className="text-amber-400 text-xs ml-2">• unsaved</Text>
+        )}
       </View>
 
       <Card className="mb-4">

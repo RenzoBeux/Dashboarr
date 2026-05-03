@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { serviceRequest } from "@/lib/http-client";
+import { serviceRequest, buildUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
@@ -63,7 +63,7 @@ export async function qbLogin(): Promise<boolean> {
   const baseUrl = store.getActiveUrl("qbittorrent");
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 
-  const response = await fetch(`${baseUrl}${apiBase}/auth/login`, {
+  const response = await fetch(buildUrl(baseUrl, apiBase, "/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
@@ -134,7 +134,7 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
     headers.set("Cookie", `SID=${cookie}`);
   }
 
-  const response = await fetch(`${baseUrl}${apiBase}${path}`, {
+  const response = await fetch(buildUrl(baseUrl, apiBase, path), {
     ...options,
     headers,
   });
@@ -147,7 +147,7 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
     if (!USE_NATIVE_COOKIE_JAR && cookie) {
       headers.set("Cookie", `SID=${cookie}`);
     }
-    const retry = await fetch(`${baseUrl}${apiBase}${path}`, {
+    const retry = await fetch(buildUrl(baseUrl, apiBase, path), {
       ...options,
       headers,
     });

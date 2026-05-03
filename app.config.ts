@@ -5,7 +5,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: "Dashboarr",
   "owner": "dashboarr",
   slug: "dashboarr",
-  version: "1.1.0",
+  version: "1.2.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "dark",
@@ -49,7 +49,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#09090b",
     },
     package: "com.dashboarr.app",
-    versionCode: 3,
+    versionCode: 4,
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   scheme: "dashboarr",
@@ -67,6 +67,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-router",
     "expo-secure-store",
     "./plugins/withAndroidSigning",
+    "./plugins/withCleartextTraffic",
     [
       "expo-location",
       {

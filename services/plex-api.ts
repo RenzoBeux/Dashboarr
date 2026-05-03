@@ -1,5 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import { buildUrl } from "@/lib/http-client";
 import { getDemoPlexResponse } from "@/lib/demo-data";
 import type {
   PlexLibrariesResponse,
@@ -26,7 +27,9 @@ async function plexRequest<T>(path: string): Promise<T> {
   const baseUrl = store.getActiveUrl("plex");
   if (!baseUrl) throw new Error("No URL configured for Plex");
 
-  const url = new URL(path, baseUrl);
+  const url = new URL(
+    buildUrl(baseUrl, SERVICE_DEFAULTS.plex.apiBasePath, path),
+  );
   if (secrets.apiKey) {
     url.searchParams.set("X-Plex-Token", secrets.apiKey);
   }
@@ -118,5 +121,6 @@ export function getPlexImageUrl(
   const store = useConfigStore.getState();
   const baseUrl = store.getActiveUrl("plex");
   const secrets = store.secrets.plex;
-  return `${baseUrl}/photo/:/transcode?width=${width}&height=${height}&minSize=1&url=${encodeURIComponent(thumbPath)}&X-Plex-Token=${secrets.apiKey}`;
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  return `${trimmed}/photo/:/transcode?width=${width}&height=${height}&minSize=1&url=${encodeURIComponent(thumbPath)}&X-Plex-Token=${secrets.apiKey}`;
 }

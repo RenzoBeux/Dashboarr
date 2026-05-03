@@ -1,5 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import { buildUrl } from "@/lib/http-client";
 import { getDemoTautulliResponse } from "@/lib/demo-data";
 import type {
   TautulliActivity,
@@ -30,7 +31,9 @@ async function tautulliRequest<T>(
   const baseUrl = store.getActiveUrl("tautulli");
   if (!baseUrl) throw new Error("No URL configured for Tautulli");
 
-  const url = new URL(`${SERVICE_DEFAULTS.tautulli.apiBasePath}`, baseUrl);
+  const url = new URL(
+    buildUrl(baseUrl, SERVICE_DEFAULTS.tautulli.apiBasePath, ""),
+  );
   url.searchParams.set("apikey", secrets.apiKey ?? "");
   url.searchParams.set("cmd", cmd);
   url.searchParams.set("out_type", "json");
