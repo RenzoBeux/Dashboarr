@@ -36,6 +36,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       ITSAppUsesNonExemptEncryption: false,
       NSLocalNetworkUsageDescription:
         "Dashboarr sends Wake-on-LAN magic packets to your home server on the local network.",
+      // Self-hosted services on a LAN almost always speak plain http://, and
+      // iOS blocks cleartext by default (App Transport Security). Mirrors the
+      // Android cleartext-traffic plugin. The remote-URL form already warns
+      // when users pick http:// for an internet-facing endpoint.
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: true,
+      },
     },
     // Required so NetInfo can read the current Wi-Fi SSID/BSSID for the
     // local-vs-remote auto-switch feature. iOS also needs Location When-In-Use
