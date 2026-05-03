@@ -25,12 +25,28 @@ describe("buildUrl", () => {
     );
   });
 
-  it("appends query params via searchParams", () => {
+  it("appends query params and encodes spaces as %20 (not +)", () => {
     const url = buildUrl("http://myhost:7878/radarr", "/api/v3", "/movie/lookup", {
       term: "blade runner",
     });
     expect(url).toBe(
-      "http://myhost:7878/radarr/api/v3/movie/lookup?term=blade+runner",
+      "http://myhost:7878/radarr/api/v3/movie/lookup?term=blade%20runner",
+    );
+  });
+
+  it("encodes special characters in query params", () => {
+    const url = buildUrl("http://host", "/api/v1", "/search", {
+      query: "the rock & roll",
+      page: 1,
+    });
+    expect(url).toBe(
+      "http://host/api/v1/search?query=the%20rock%20%26%20roll&page=1",
+    );
+  });
+
+  it("returns plain url when params is empty", () => {
+    expect(buildUrl("http://host", "/api/v1", "/search", {})).toBe(
+      "http://host/api/v1/search",
     );
   });
 
