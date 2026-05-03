@@ -64,7 +64,7 @@ export async function serviceRequest<T>(
 
   if (store.demoMode) {
     await new Promise((r) => setTimeout(r, 80 + Math.random() * 120));
-    return (getDemoResponse(serviceId, path) ?? undefined) as T;
+    return (getDemoResponse(serviceId, path, params) ?? undefined) as T;
   }
 
   const config = store.services[serviceId];
@@ -80,7 +80,15 @@ export async function serviceRequest<T>(
     throw new Error(`No URL configured for ${serviceId}`);
   }
 
-  const url = buildUrl(baseUrl, defaults.apiBasePath, path, params);
+  // SABnzbd auth lives in the query string (?apikey=…&output=json), not
+  // headers. Merge defaults into the caller-supplied params so service
+  // modules don't have to know about either of those parameters.
+  const finalParams =
+    serviceId === "sabnzbd"
+      ? { ...(params ?? {}), apikey: secrets.apiKey ?? "", output: "json" }
+      : params;
+
+  const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
 
   // Inject auth headers based on service type
   const headers = new Headers(fetchOptions.headers);
@@ -88,6 +96,8 @@ export async function serviceRequest<T>(
   if (serviceId === "qbittorrent") {
     // qBittorrent uses cookie-based auth — handled by the cookie jar
     // The login function must be called first to establish the session
+  } else if (serviceId === "sabnzbd") {
+    // apikey is injected as a query param above — no header needed
   } else if (serviceId === "glances") {
     if (secrets.username && secrets.password) {
       const encoded = btoa(`${secrets.username}:${secrets.password}`);
@@ -147,7 +157,15 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
   const baseUrl = urlOverride ?? store.getActiveUrl(serviceId);
   if (!baseUrl) return null;
 
-  const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+  // SAB has no /system endpoint to GET — it advertises version through the
+  // single /api?mode=version handler, so we synthesize the ping URL from the
+  // mode + apikey params.
+  const pingParams =
+    serviceId === "sabnzbd"
+      ? { mode: "version", apikey: secrets.apiKey ?? "", output: "json" }
+      : undefined;
+
+  const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath, pingParams);
 
   const headers = new Headers();
   if (serviceId === "plex") {
@@ -158,6 +176,8 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
       const encoded = btoa(`${secrets.username}:${secrets.password}`);
       headers.set("Authorization", `Basic ${encoded}`);
     }
+  } else if (serviceId === "sabnzbd") {
+    // apikey already in query params
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }

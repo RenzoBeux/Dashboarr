@@ -8,6 +8,7 @@ import {
   Tv,
   Inbox,
   BarChart3,
+  Newspaper,
   Search,
   PlayCircle,
   Server,
@@ -46,6 +47,7 @@ import {
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   qbittorrent: Download,
+  sabnzbd: Newspaper,
   radarr: Film,
   sonarr: Tv,
   overseerr: Inbox,

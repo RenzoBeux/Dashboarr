@@ -56,6 +56,10 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     // cookie-based — qbittorrent.ts handles it
     return;
   }
+  if (id === "sabnzbd") {
+    // apikey is injected as a query param in serviceFetch — no header needed
+    return;
+  }
   if (id === "glances") {
     if (config.username && config.password) {
       const encoded = Buffer.from(`${config.username}:${config.password}`).toString("base64");
@@ -83,7 +87,14 @@ export async function serviceFetch<T>(
   const baseUrl = activeBaseUrl(config);
   if (!baseUrl) throw new Error(`No URL configured for ${config.id}`);
   const apiBase = SERVICE_API_BASE[config.id];
-  const url = buildUrl(baseUrl, apiBase, path, options.params);
+
+  // SABnzbd auth lives in the query string, not headers.
+  const finalParams =
+    config.id === "sabnzbd"
+      ? { ...(options.params ?? {}), apikey: config.apiKey ?? "", output: "json" }
+      : options.params;
+
+  const url = buildUrl(baseUrl, apiBase, path, finalParams);
 
   const headers = new Headers(options.headers);
   applyAuth(headers, config);
@@ -122,7 +133,12 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   if (!baseUrl) return false;
 
   const apiBase = SERVICE_API_BASE[config.id];
-  const url = buildUrl(baseUrl, apiBase, SERVICE_PING_PATH[config.id]);
+  // SAB exposes its version through ?mode=version on the same /api endpoint.
+  const pingParams =
+    config.id === "sabnzbd"
+      ? { mode: "version", apikey: config.apiKey ?? "", output: "json" }
+      : undefined;
+  const url = buildUrl(baseUrl, apiBase, SERVICE_PING_PATH[config.id], pingParams);
   const headers = new Headers();
   applyAuth(headers, config);
 

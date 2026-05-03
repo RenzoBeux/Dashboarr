@@ -8,6 +8,7 @@ import {
   Gauge,
   HeartPulse,
   Inbox,
+  Newspaper,
   PlayCircle,
   Power,
   Radar,
@@ -17,6 +18,7 @@ import { ServerStatsCard } from "@/components/dashboard/server-stats-card";
 import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
 import { ServiceHealthCard } from "@/components/dashboard/service-health-card";
 import { DownloadCard } from "@/components/dashboard/download-card";
+import { SabnzbdQueueCard } from "@/components/dashboard/sabnzbd-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
@@ -40,6 +42,11 @@ import {
   DOWNLOADS_DEFAULT_SETTINGS,
   type DownloadsSettingsValue,
 } from "@/components/dashboard/widget-settings/downloads-settings";
+import {
+  SabnzbdQueueSettings,
+  SABNZBD_QUEUE_DEFAULT_SETTINGS,
+  type SabnzbdQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/sabnzbd-queue-settings";
 import {
   PlexNowPlayingSettings,
   PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
@@ -116,6 +123,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     component: DownloadCard,
     settingsComponent: DownloadsSettings,
     defaultSettings: DOWNLOADS_DEFAULT_SETTINGS,
+  },
+  "sabnzbd-queue": {
+    id: "sabnzbd-queue",
+    label: "SABnzbd Queue",
+    description: "Top active Usenet downloads",
+    icon: Newspaper,
+    service: "sabnzbd",
+    component: SabnzbdQueueCard,
+    settingsComponent: SabnzbdQueueSettings,
+    defaultSettings: SABNZBD_QUEUE_DEFAULT_SETTINGS,
   },
   "radarr-queue": {
     id: "radarr-queue",
@@ -202,6 +219,7 @@ export type {
   ServerStatsSettingsValue,
   CalendarSettingsValue,
   DownloadsSettingsValue,
+  SabnzbdQueueSettingsValue,
   PlexNowPlayingSettingsValue,
   TautulliActivitySettingsValue,
   OverseerrRequestsSettingsValue,

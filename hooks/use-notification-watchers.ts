@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useAllTorrents } from "@/hooks/use-qbittorrent";
+import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useRadarrQueue } from "@/hooks/use-radarr";
 import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -23,6 +24,15 @@ function isDownloadingState(state: TorrentState): boolean {
   return DOWNLOADING_STATES.includes(state);
 }
 
+// Categories Radarr/Sonarr set on jobs they manage. The arr-specific watchers
+// already notify on those, so the download-client watchers skip them to avoid
+// double-firing.
+const MANAGED_CATEGORIES = new Set(["radarr", "sonarr", "tv-sonarr"]);
+
+function isManagedByArr(category: string): boolean {
+  return MANAGED_CATEGORIES.has(category.toLowerCase());
+}
+
 /**
  * Subscribes to existing React Query hooks and fires local notifications on
  * state transitions. Must be rendered inside a QueryClientProvider.
@@ -31,6 +41,7 @@ export function useNotificationWatchers() {
   const enabled = useNotificationStore((s) => s.enabled);
   const hydrated = useNotificationStore((s) => s.hydrated);
   const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
+  const sabnzbdCompleted = useNotificationStore((s) => s.sabnzbdCompleted);
   const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
   const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
   const serviceOffline = useNotificationStore((s) => s.serviceOffline);
@@ -56,6 +67,7 @@ export function useNotificationWatchers() {
       for (const t of torrents) {
         const prevT = prev.get(t.hash);
         if (prevT && isDownloadingState(prevT.state) && !isDownloadingState(t.state)) {
+          if (isManagedByArr(t.category)) continue;
           sendLocalNotification({
             title: "Download complete",
             body: t.name,
@@ -66,6 +78,30 @@ export function useNotificationWatchers() {
     }
     prevTorrents.current = new Map(torrents.map((t) => [t.hash, t]));
   }, [torrents, hydrated, enabled, torrentCompleted, backendActive]);
+
+  // --- SABnzbd: new history entries with status=Completed ---
+  const { data: sabHistory } = useSabHistory(20);
+  const prevSabHistoryIds = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (backendActive) return;
+    if (!hydrated || !enabled || !sabnzbdCompleted || !sabHistory) return;
+    const prev = prevSabHistoryIds.current;
+    const currentIds = new Set(sabHistory.slots.map((s) => s.nzo_id));
+    if (prev !== null) {
+      for (const slot of sabHistory.slots) {
+        if (prev.has(slot.nzo_id)) continue;
+        if (slot.status !== "Completed") continue;
+        if (isManagedByArr(slot.category)) continue;
+        sendLocalNotification({
+          title: "Download complete",
+          body: slot.name,
+          data: { type: "sabnzbd", nzoId: slot.nzo_id },
+        });
+      }
+    }
+    prevSabHistoryIds.current = currentIds;
+  }, [sabHistory, hydrated, enabled, sabnzbdCompleted, backendActive]);
 
   // --- Radarr: queue item disappears (success only) ---
   const { data: radarrQueue } = useRadarrQueue();

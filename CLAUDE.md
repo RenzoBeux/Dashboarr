@@ -11,14 +11,15 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 
 ## My Active Stack (Priority Order)
 1. qBittorrent — torrent client (core)
-2. Radarr — movie automation
-3. Sonarr — TV automation
-4. Overseerr — media requests
-5. Tautulli — Plex monitoring & stats
-6. Prowlarr — indexer management
-7. Plex — media consumption layer
-8. Bazarr — subtitle management
-9. Glances — system/server monitoring
+2. SABnzbd — Usenet client
+3. Radarr — movie automation
+4. Sonarr — TV automation
+5. Overseerr — media requests
+6. Tautulli — Plex monitoring & stats
+7. Prowlarr — indexer management
+8. Plex — media consumption layer
+9. Bazarr — subtitle management
+10. Glances — system/server monitoring
 
 ## Tech Stack
 - **Framework:** Expo SDK 54 (React Native 0.81) — managed workflow
@@ -74,6 +75,9 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - [x] Calendar view (upcoming media)
 - [x] Activity view
 - [x] Service health monitoring
+
+### Phase 5 — Usenet ✅
+- [x] SABnzbd: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications
 
 ## File Structure Conventions
 - Expo Router file-based routing in `app/` directory

@@ -76,6 +76,73 @@ export interface QBTorrentTracker {
   msg: string;
 }
 
+// --- SABnzbd Types ---
+
+export type SabSlotStatus =
+  | "Queued"
+  | "Paused"
+  | "Downloading"
+  | "Grabbing"
+  | "Fetching"
+  | "Checking"
+  | "Verifying"
+  | "Repairing"
+  | "Extracting"
+  | "Moving"
+  | "Completed"
+  | "Failed";
+
+export interface SabQueueSlot {
+  nzo_id: string;
+  filename: string;
+  cat: string;
+  status: SabSlotStatus;
+  priority: string;
+  // SAB returns most numeric fields as strings — keep them as the API does
+  // and parse at the call site so types match the wire format exactly.
+  mb: string;
+  mbleft: string;
+  size: string;
+  sizeleft: string;
+  percentage: string;
+  timeleft: string;
+  index: number;
+}
+
+export interface SabQueue {
+  paused: boolean;
+  speed: string;
+  speedlimit: string;
+  size: string;
+  sizeleft: string;
+  noofslots: number;
+  noofslots_total: number;
+  diskspace1: string;
+  diskspace2: string;
+  status: "Idle" | "Paused" | "Downloading";
+  kbpersec: string;
+  slots: SabQueueSlot[];
+}
+
+export interface SabHistorySlot {
+  nzo_id: string;
+  name: string;
+  category: string;
+  status: "Completed" | "Failed";
+  fail_message: string;
+  size: string;
+  bytes: number;
+  download_time: number;
+  completed: number;
+  storage: string;
+}
+
+export interface SabHistory {
+  slots: SabHistorySlot[];
+  total_size: string;
+  noofslots: number;
+}
+
 // --- Shared Media Info ---
 
 export interface MediaInfo {

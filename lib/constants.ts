@@ -1,5 +1,6 @@
 export const SERVICE_IDS = [
   "qbittorrent",
+  "sabnzbd",
   "radarr",
   "sonarr",
   "overseerr",
@@ -22,6 +23,10 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/api/v2",
     pingPath: "/app/version",
   },
+  // SAB has no REST routes — every call is /api?mode=<command>. The empty
+  // pingPath combined with mode=version (injected as a param in pingService)
+  // gives /api?mode=version&apikey=... at request time.
+  sabnzbd: { name: "SABnzbd", defaultPort: 8080, apiBasePath: "/api", pingPath: "" },
   radarr: { name: "Radarr", defaultPort: 7878, apiBasePath: "/api/v3", pingPath: "/system/status" },
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
   overseerr: { name: "Overseerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
@@ -45,6 +50,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "speed-stats",
   "service-health",
   "downloads",
+  "sabnzbd-queue",
   "radarr-queue",
   "calendar",
   "tautulli-activity",

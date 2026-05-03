@@ -36,6 +36,8 @@ function NotificationWatchers() {
 // so a malformed payload can't inject path traversal or crash the router.
 const POSITIVE_INT = /^\d+$/;
 const TORRENT_HASH = /^[a-f0-9]{40}$/i;
+// SABnzbd nzo_id format: "SABnzbd_nzo_<random>", letters/digits/underscores only.
+const SAB_NZO_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 function asPositiveIntId(value: unknown): string | null {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
@@ -49,6 +51,10 @@ function asPositiveIntId(value: unknown): string | null {
 
 function asTorrentHash(value: unknown): string | null {
   return typeof value === "string" && TORRENT_HASH.test(value) ? value.toLowerCase() : null;
+}
+
+function asSabNzoId(value: unknown): string | null {
+  return typeof value === "string" && SAB_NZO_ID.test(value) ? value : null;
 }
 
 function NotificationRouter() {
@@ -72,6 +78,11 @@ function NotificationRouter() {
         case "torrent": {
           const hash = asTorrentHash(data.hash);
           if (hash) router.push(`/torrent/${hash}`);
+          break;
+        }
+        case "sabnzbd": {
+          const nzoId = asSabNzoId(data.nzoId);
+          if (nzoId) router.push(`/sab/${nzoId}`);
           break;
         }
         case "overseerr":

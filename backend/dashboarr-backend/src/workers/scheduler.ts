@@ -2,6 +2,7 @@ import { listServiceConfigs } from "../db/repos/config.js";
 import type { StoredServiceConfig } from "../db/repos/config.js";
 import type { ServiceId } from "../types.js";
 import { pollQbittorrent } from "./pollers/qbittorrent.js";
+import { pollSabnzbd } from "./pollers/sabnzbd.js";
 import { pollRadarr } from "./pollers/radarr.js";
 import { pollSonarr } from "./pollers/sonarr.js";
 import { pollOverseerr } from "./pollers/overseerr.js";
@@ -19,6 +20,10 @@ interface PollerDef {
 
 const POLLERS: PollerDef[] = [
   { id: "qbittorrent", defaultIntervalMs: 15_000, run: pollQbittorrent },
+  // SAB only needs to poll history fast enough to feel snappy on completion.
+  // 30s matches Radarr/Sonarr's queue cadence and is well under the typical
+  // post-processing time of any meaningful NZB.
+  { id: "sabnzbd", defaultIntervalMs: 30_000, run: pollSabnzbd },
   { id: "radarr", defaultIntervalMs: 30_000, run: pollRadarr },
   { id: "sonarr", defaultIntervalMs: 30_000, run: pollSonarr },
   { id: "overseerr", defaultIntervalMs: 60_000, run: pollOverseerr },

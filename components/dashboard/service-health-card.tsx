@@ -6,6 +6,7 @@ import {
   Tv,
   Inbox,
   BarChart3,
+  Newspaper,
   Search,
   PlayCircle,
   Captions,
@@ -16,6 +17,7 @@ import { ICON, type ServiceId } from "@/lib/constants";
 
 const SERVICE_ICONS: Partial<Record<ServiceId, React.ElementType>> = {
   qbittorrent: Download,
+  sabnzbd: Newspaper,
   radarr: Film,
   sonarr: Tv,
   overseerr: Inbox,
@@ -27,6 +29,7 @@ const SERVICE_ICONS: Partial<Record<ServiceId, React.ElementType>> = {
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
+  sabnzbd: "/(tabs)/downloads",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
 };

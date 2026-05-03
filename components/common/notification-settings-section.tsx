@@ -7,6 +7,7 @@ import { useNotificationStore } from "@/store/notifications-store";
 export function NotificationSettingsSection() {
   const enabled = useNotificationStore((s) => s.enabled);
   const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
+  const sabnzbdCompleted = useNotificationStore((s) => s.sabnzbdCompleted);
   const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
   const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
   const serviceOffline = useNotificationStore((s) => s.serviceOffline);
@@ -37,6 +38,11 @@ export function NotificationSettingsSection() {
               label="Torrent completed"
               value={torrentCompleted}
               onValueChange={(v) => setSetting("torrentCompleted", v)}
+            />
+            <Toggle
+              label="NZB completed"
+              value={sabnzbdCompleted}
+              onValueChange={(v) => setSetting("sabnzbdCompleted", v)}
             />
             <Toggle
               label="Movie downloaded"
