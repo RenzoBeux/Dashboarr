@@ -14,8 +14,8 @@
   <img src="https://img.shields.io/badge/Expo_SDK-54-blue?logo=expo" alt="Expo SDK 54" />
   <img src="https://img.shields.io/badge/React_Native-0.81-61DAFB?logo=react" alt="React Native" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Android-Closed_Testing-green?logo=android" alt="Android — Closed Testing" />
-  <img src="https://img.shields.io/badge/iOS-App_Store-black?logo=apple" alt="iOS — App Store" />
+  <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app"><img src="https://img.shields.io/badge/Android-Google_Play-3DDC84?logo=android&logoColor=white" alt="Android — Google Play" /></a>
+  <a href="https://apps.apple.com/us/app/dashboarr/id6762170117"><img src="https://img.shields.io/badge/iOS-App_Store-black?logo=apple" alt="iOS — App Store" /></a>
 </p>
 
 ---
@@ -57,13 +57,7 @@ Dashboarr is now available on the Apple App Store: [Dashboarr on the App Store](
 
 ### Android — Play Store
 
-Dashboarr is available on the Google Play Store as an open testing release:
-
-1. **Join the Google Group:** [Dashboarr Testers](https://groups.google.com/g/dashboarr-testers)
-2. **Opt in to the testing program:** [Web sign-up](https://play.google.com/apps/testing/com.dashboarr.app)
-3. **Install from the Play Store:** [Dashboarr on Google Play](https://play.google.com/store/apps/details?id=com.dashboarr.app)
-
-> **Note:** You must join the Google Group first, then opt in via the web sign-up link. After that, the Play Store listing will be available.
+Dashboarr is now available on the Google Play Store: [Dashboarr on Google Play](https://play.google.com/store/apps/details?id=com.dashboarr.app)
 
 ## Getting Started
 

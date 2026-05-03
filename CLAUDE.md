@@ -5,8 +5,8 @@ An open-source mobile app (Android & iOS) to manage a self-hosted media stack fr
 Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system — pure functionality.
 
 - **Repository:** public on GitHub (`renzobeux/dashboarr`)
-- **Android:** available on Google Play Store (closed testing)
-- **iOS:** in progress
+- **Android:** available on Google Play Store (production)
+- **iOS:** available on the Apple App Store
 - **Backend:** optional self-hosted companion server for push notifications (Docker or Node.js)
 
 ## My Active Stack (Priority Order)
