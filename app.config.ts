@@ -1,6 +1,11 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
 import pkg from "./package.json";
 
+// Derives a monotonic integer from semver so `pnpm bump:*` propagates to the
+// native build identifiers Google Play / App Store require. 1.2.3 → 10203.
+const [major, minor, patch] = pkg.version.split(".").map((n) => parseInt(n, 10));
+const nativeBuildNumber = major * 10000 + minor * 100 + patch;
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "Dashboarr",
@@ -32,6 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.dashboarr.app",
+    buildNumber: String(nativeBuildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSLocalNetworkUsageDescription:
@@ -57,7 +63,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#09090b",
     },
     package: "com.dashboarr.app",
-    versionCode: 5,
+    versionCode: nativeBuildNumber,
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   scheme: "dashboarr",

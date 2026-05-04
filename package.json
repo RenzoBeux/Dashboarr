@@ -14,6 +14,9 @@
     "test:coverage": "jest --coverage",
     "build:android": "eas build --platform android",
     "build:ios": "eas build --platform ios",
+    "bump:patch": "pnpm version patch -m \"chore: release v%s\"",
+    "bump:minor": "pnpm version minor -m \"chore: release v%s\"",
+    "bump:major": "pnpm version major -m \"chore: release v%s\"",
     "build:android:prod": "expo prebuild --platform android --clean && node -e \"require('fs').copyFileSync(require('path').join(require('os').homedir(),'.android-keystores','dashboarr-release.keystore'),'android/app/dashboarr-release.keystore')\" && cd android && gradlew bundleRelease"
   },
   "dependencies": {
