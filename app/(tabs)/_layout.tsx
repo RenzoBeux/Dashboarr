@@ -34,6 +34,7 @@ export default function TabLayout() {
       <Tabs.Screen name="activity" options={{ href: null }} />
       <Tabs.Screen name="indexers" options={{ href: null }} />
       <Tabs.Screen name="plex" options={{ href: null }} />
+      <Tabs.Screen name="jellyfin" options={{ href: null }} />
       <Tabs.Screen name="glances" options={{ href: null }} />
       <Tabs.Screen name="bazarr" options={{ href: null }} />
       <Tabs.Screen

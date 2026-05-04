@@ -86,6 +86,10 @@ export async function serviceRequest<T>(
       headers.set("X-Plex-Token", secrets.apiKey);
       headers.set("Accept", "application/json");
     }
+  } else if (serviceId === "jellyfin") {
+    if (secrets.apiKey) {
+      headers.set("X-Emby-Token", secrets.apiKey);
+    }
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr use X-Api-Key
     if (secrets.apiKey) {
@@ -141,6 +145,8 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
   if (serviceId === "plex") {
     if (secrets.apiKey) headers.set("X-Plex-Token", secrets.apiKey);
     headers.set("Accept", "application/json");
+  } else if (serviceId === "jellyfin") {
+    if (secrets.apiKey) headers.set("X-Emby-Token", secrets.apiKey);
   } else if (serviceId === "glances") {
     if (secrets.username && secrets.password) {
       const encoded = btoa(`${secrets.username}:${secrets.password}`);

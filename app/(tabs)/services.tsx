@@ -8,6 +8,7 @@ import {
   BarChart3,
   Search,
   PlayCircle,
+  Clapperboard,
   Server,
   Captions,
   Zap,
@@ -26,6 +27,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   tautulli: BarChart3,
   prowlarr: Search,
   plex: PlayCircle,
+  jellyfin: Clapperboard,
   glances: Server,
   bazarr: Captions,
 };
@@ -38,6 +40,7 @@ const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   tautulli: "/(tabs)/activity",
   prowlarr: "/(tabs)/indexers",
   plex: "/(tabs)/plex",
+  jellyfin: "/(tabs)/jellyfin",
   glances: "/(tabs)/glances",
   bazarr: "/(tabs)/bazarr",
 };

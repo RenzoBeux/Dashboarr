@@ -74,6 +74,12 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
+  if (id === "jellyfin") {
+    if (config.apiKey) {
+      headers.set("X-Emby-Token", config.apiKey);
+    }
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }

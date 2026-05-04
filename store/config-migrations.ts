@@ -15,8 +15,10 @@ import type { ExportPayload } from "@/store/config-store";
  *   v6  — added optional homeBSSID for rogue-AP-resistant auto-switch
  *   v7  — added per-widget settings; renamed sonarr-calendar → calendar
  *   v8  — added hapticsEnabled global preference
+ *   v9  — added jellyfin service entry (no schema change; defaultServices()
+ *         backfills the new id, so this is a version stamp only)
  */
-export const CURRENT_CONFIG_VERSION = 8;
+export const CURRENT_CONFIG_VERSION = 9;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -117,6 +119,11 @@ const migrations: Record<number, (payload: any) => any> = {
     version: 8,
     hapticsEnabled: typeof payload.hapticsEnabled === "boolean" ? payload.hapticsEnabled : true,
   }),
+
+  // v8 → v9: jellyfin added to SERVICE_IDS. importConfig merges over
+  // defaultServices() afterward, so older payloads that lack a jellyfin entry
+  // get the disabled default automatically — nothing to transform here.
+  8: (payload) => ({ ...payload, version: 9 }),
 };
 
 /**

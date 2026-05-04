@@ -647,6 +647,133 @@ export interface PlexSessionsResponse {
   };
 }
 
+// --- Jellyfin Types ---
+
+export interface JellyfinUser {
+  Id: string;
+  Name: string;
+  Policy?: {
+    IsAdministrator?: boolean;
+    IsDisabled?: boolean;
+  };
+}
+
+export type JellyfinCollectionType =
+  | "movies"
+  | "tvshows"
+  | "music"
+  | "musicvideos"
+  | "homevideos"
+  | "boxsets"
+  | "books"
+  | "playlists"
+  | "livetv"
+  | "mixed"
+  | string;
+
+export interface JellyfinLibrary {
+  Id: string;
+  Name: string;
+  CollectionType?: JellyfinCollectionType;
+  ImageTags?: { Primary?: string };
+}
+
+export interface JellyfinUserData {
+  PlayedPercentage?: number;
+  PlaybackPositionTicks?: number;
+  PlayCount?: number;
+  IsFavorite?: boolean;
+  Played?: boolean;
+  LastPlayedDate?: string;
+}
+
+export type JellyfinItemType =
+  | "Movie"
+  | "Series"
+  | "Season"
+  | "Episode"
+  | "Audio"
+  | "MusicAlbum"
+  | "MusicArtist"
+  | "BoxSet"
+  | "CollectionFolder"
+  | "Folder"
+  | string;
+
+export interface JellyfinItem {
+  Id: string;
+  Name: string;
+  Type: JellyfinItemType;
+  SeriesId?: string;
+  SeriesName?: string;
+  SeasonId?: string;
+  SeasonName?: string;
+  ParentIndexNumber?: number;
+  IndexNumber?: number;
+  ProductionYear?: number;
+  PremiereDate?: string;
+  DateCreated?: string;
+  RunTimeTicks?: number;
+  Overview?: string;
+  CommunityRating?: number;
+  ImageTags?: {
+    Primary?: string;
+    Backdrop?: string;
+    Thumb?: string;
+    Logo?: string;
+  };
+  BackdropImageTags?: string[];
+  ParentBackdropImageTags?: string[];
+  ParentBackdropItemId?: string;
+  SeriesPrimaryImageTag?: string;
+  ParentThumbImageTag?: string;
+  ParentThumbItemId?: string;
+  UserData?: JellyfinUserData;
+}
+
+export interface JellyfinItemsResponse {
+  Items: JellyfinItem[];
+  TotalRecordCount: number;
+}
+
+export interface JellyfinTranscodingInfo {
+  AudioCodec?: string;
+  VideoCodec?: string;
+  Container?: string;
+  IsVideoDirect?: boolean;
+  IsAudioDirect?: boolean;
+  Bitrate?: number;
+  Framerate?: number;
+  CompletionPercentage?: number;
+  Width?: number;
+  Height?: number;
+  TranscodeReasons?: string[];
+}
+
+export interface JellyfinPlayState {
+  PositionTicks?: number;
+  CanSeek?: boolean;
+  IsPaused?: boolean;
+  IsMuted?: boolean;
+  PlayMethod?: "Transcode" | "DirectStream" | "DirectPlay";
+  RepeatMode?: string;
+}
+
+export interface JellyfinSession {
+  Id: string;
+  UserId?: string;
+  UserName?: string;
+  Client: string;
+  DeviceName: string;
+  DeviceId?: string;
+  ApplicationVersion?: string;
+  RemoteEndPoint?: string;
+  IsActive?: boolean;
+  NowPlayingItem?: JellyfinItem;
+  PlayState?: JellyfinPlayState;
+  TranscodingInfo?: JellyfinTranscodingInfo;
+}
+
 // --- Glances Types ---
 
 export interface GlancesCpu {

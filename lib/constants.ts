@@ -6,6 +6,7 @@ export const SERVICE_IDS = [
   "tautulli",
   "prowlarr",
   "plex",
+  "jellyfin",
   "glances",
   "bazarr",
 ] as const;
@@ -28,6 +29,7 @@ export const SERVICE_DEFAULTS: Record<
   tautulli: { name: "Tautulli", defaultPort: 8181, apiBasePath: "/api/v2", pingPath: "/home" },
   prowlarr: { name: "Prowlarr", defaultPort: 9696, apiBasePath: "/api/v1", pingPath: "/system/status" },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
+  jellyfin: { name: "Jellyfin", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
   glances: { name: "Glances", defaultPort: 61208, apiBasePath: "/api/4", pingPath: "/cpu" },
   bazarr: { name: "Bazarr", defaultPort: 6767, apiBasePath: "/api", pingPath: "/system/status" },
 };
@@ -50,6 +52,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "tautulli-activity",
   "overseerr-requests",
   "plex-now-playing",
+  "jellyfin-now-playing",
   "prowlarr-stats",
   "bazarr-wanted",
   "wol-devices",
