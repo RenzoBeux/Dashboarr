@@ -7,6 +7,7 @@ import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
@@ -190,39 +191,41 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <ErrorBoundary>
-            {/* Invisible root subscribers — isolated so a single failing
-                watcher (e.g. a service returning an unexpected payload) can't
-                unmount the navigator and trap the user on the fallback. */}
-            <SilentErrorBoundary label="notification-watchers">
-              <NotificationWatchers />
-            </SilentErrorBoundary>
-            <SilentErrorBoundary label="notification-router">
-              <NotificationRouter />
-            </SilentErrorBoundary>
-            <SilentErrorBoundary label="backend-health">
-              <BackendHealthPoller />
-            </SilentErrorBoundary>
-            <SilentErrorBoundary label="config-sync">
-              <ConfigSyncBridge />
-            </SilentErrorBoundary>
-            <SilentErrorBoundary label="app-update-checker">
-              <AppUpdateChecker />
-            </SilentErrorBoundary>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: "#09090b" },
-                animation: "slide_from_right",
-              }}
-            />
-            <ToastContainer />
-          </ErrorBoundary>
-        </QueryClientProvider>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <ErrorBoundary>
+              {/* Invisible root subscribers — isolated so a single failing
+                  watcher (e.g. a service returning an unexpected payload) can't
+                  unmount the navigator and trap the user on the fallback. */}
+              <SilentErrorBoundary label="notification-watchers">
+                <NotificationWatchers />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="notification-router">
+                <NotificationRouter />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="backend-health">
+                <BackendHealthPoller />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="config-sync">
+                <ConfigSyncBridge />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="app-update-checker">
+                <AppUpdateChecker />
+              </SilentErrorBoundary>
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: "#09090b" },
+                  animation: "slide_from_right",
+                }}
+              />
+              <ToastContainer />
+            </ErrorBoundary>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

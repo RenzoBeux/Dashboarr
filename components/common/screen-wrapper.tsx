@@ -1,7 +1,14 @@
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ScrollView, RefreshControl } from "react-native";
+import { RefreshControl, Platform } from "react-native";
 import type { ViewProps } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { cssInterop } from "nativewind";
 import { DemoBanner } from "@/components/common/demo-banner";
+
+cssInterop(KeyboardAwareScrollView, {
+  className: "style",
+  contentContainerClassName: "contentContainerStyle",
+});
 
 interface ScreenWrapperProps extends ViewProps {
   scrollable?: boolean;
@@ -21,10 +28,13 @@ export function ScreenWrapper({
     return (
       <SafeAreaView className={`flex-1 bg-background ${className}`} {...props}>
         <DemoBanner />
-        <ScrollView
+        <KeyboardAwareScrollView
           className="flex-1"
           contentContainerClassName="px-4 pt-2 pb-6"
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          bottomOffset={20}
           refreshControl={
             onRefresh ? (
               <RefreshControl
@@ -38,7 +48,7 @@ export function ScreenWrapper({
           }
         >
           {children}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </SafeAreaView>
     );
   }
