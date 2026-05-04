@@ -245,3 +245,13 @@ This project is open source. See the [LICENSE](LICENSE) file for details.
 
 - [nzb360](https://nzb360.com/) — The original inspiration for this project
 - The *arr stack community for building incredible self-hosted media tools
+
+## Star History
+
+<a href="https://www.star-history.com/#RenzoBeux/Dashboarr&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date" />
+ </picture>
+</a>
