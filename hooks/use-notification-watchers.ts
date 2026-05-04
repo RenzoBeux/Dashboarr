@@ -7,6 +7,7 @@ import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
 import { sendLocalNotification } from "@/lib/notifications";
+import { toast } from "@/components/ui/toast";
 import type { QBTorrent, TorrentState } from "@/lib/types";
 
 const DOWNLOADING_STATES: TorrentState[] = [
@@ -153,14 +154,26 @@ export function useNotificationWatchers() {
   // --- Overseerr: new pending request ---
   const { data: overseerrRequests } = useOverseerrRequests(1, "pending");
   const prevRequestIds = useRef<Set<number> | null>(null);
+  const overseerrShapeWarned = useRef(false);
+
+  // Surface a one-shot toast when Overseerr returns a body that isn't shaped
+  // like { results: [...] } — usually a reverse-proxy auth challenge or a URL
+  // that doesn't actually point at Overseerr. Without this the user just sees
+  // empty screens with no clue why.
+  useEffect(() => {
+    if (overseerrShapeWarned.current) return;
+    if (overseerrRequests === undefined) return;
+    if (Array.isArray(overseerrRequests?.results)) return;
+    overseerrShapeWarned.current = true;
+    toast(
+      "Overseerr returned an unexpected response. Check the URL and API key.",
+      "error",
+    );
+  }, [overseerrRequests]);
 
   useEffect(() => {
     if (backendActive) return;
     if (!hydrated || !enabled || !overseerrNewRequest) return;
-    // A misconfigured Overseerr (reverse proxy auth challenge, wrong URL, fork
-    // with divergent shape) can return 200 + JSON without `results`. Falling
-    // through to .map(undefined) here previously crashed the whole app since
-    // this hook is mounted at the root.
     if (!Array.isArray(overseerrRequests?.results)) return;
     const currentIds = new Set(overseerrRequests.results.map((r) => r.id));
     const prev = prevRequestIds.current;
