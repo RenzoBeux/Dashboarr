@@ -1,13 +1,24 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable, Image, Alert } from "react-native";
+import { View, Text, Pressable, Image, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Tv, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
+import {
+  Search,
+  Tv,
+  Eye,
+  EyeOff,
+  Trash2,
+  Info,
+  ArrowUpDown,
+  Check,
+} from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { SortButton } from "@/components/ui/sort-button";
+import { useSortStore, SORT_DEFAULTS, type SeriesSortKey } from "@/store/sort-store";
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
 import {
@@ -39,9 +50,38 @@ const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
   { value: "all", label: "All" },
 ];
 
+const SORT_OPTIONS: { key: SeriesSortKey; label: string }[] = [
+  { key: "added-desc", label: "Recently Added" },
+  { key: "title-asc", label: "Title: A → Z" },
+  { key: "title-desc", label: "Title: Z → A" },
+  { key: "year-desc", label: "Year: Newest First" },
+  { key: "year-asc", label: "Year: Oldest First" },
+  { key: "size-desc", label: "Size: Largest First" },
+];
+
+function compareSeries(a: SonarrSeries, b: SonarrSeries, sort: SeriesSortKey): number {
+  switch (sort) {
+    case "added-desc":
+      return new Date(b.added).getTime() - new Date(a.added).getTime();
+    case "title-asc":
+      return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+    case "title-desc":
+      return (b.sortTitle || b.title).localeCompare(a.sortTitle || a.title);
+    case "year-desc":
+      return b.year - a.year;
+    case "year-asc":
+      return a.year - b.year;
+    case "size-desc":
+      return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+  }
+}
+
 export default function TVScreen() {
   const [tab, setTab] = useState<Tab>("library");
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
+  const sort = useSortStore((s) => s.series);
+  const setSort = useSortStore((s) => s.setSeries);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -171,20 +211,35 @@ export default function TVScreen() {
       </View>
 
       {tab === "library" && (
-        <View className="flex-row gap-2 mb-4">
-          {MONITOR_FILTERS.map((f) => (
-            <FilterChip
-              key={f.value}
-              label={f.label}
-              selected={monitorFilter === f.value}
-              onPress={() => setMonitorFilter(f.value)}
-            />
-          ))}
+        <View className="flex-row items-center gap-2 mb-4">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-2"
+            className="flex-1"
+          >
+            {MONITOR_FILTERS.map((f) => (
+              <FilterChip
+                key={f.value}
+                label={f.label}
+                selected={monitorFilter === f.value}
+                onPress={() => setMonitorFilter(f.value)}
+              />
+            ))}
+          </ScrollView>
+          <SortButton
+            onPress={() => setSortSheetOpen(true)}
+            active={sort !== SORT_DEFAULTS.series}
+          />
         </View>
       )}
 
       {tab === "library" && (
-        <SeriesLibrary monitorFilter={monitorFilter} onLongPress={openSeriesSheet} />
+        <SeriesLibrary
+          monitorFilter={monitorFilter}
+          sort={sort}
+          onLongPress={openSeriesSheet}
+        />
       )}
       {tab === "calendar" && <CalendarView onLongPress={openCalendarSheet} />}
 
@@ -195,15 +250,33 @@ export default function TVScreen() {
         subtitle={sheetSubtitle}
         actions={actions}
       />
+
+      <ActionSheet
+        visible={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        title="Sort shows"
+        actions={SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            sort === opt.key ? (
+              <Check size={18} color="#3b82f6" />
+            ) : (
+              <ArrowUpDown size={18} color="#71717a" />
+            ),
+          onPress: () => setSort(opt.key),
+        }))}
+      />
     </ScreenWrapper>
   );
 }
 
 function SeriesLibrary({
   monitorFilter,
+  sort,
   onLongPress,
 }: {
   monitorFilter: MonitorFilter;
+  sort: SeriesSortKey;
   onLongPress: (series: SonarrSeries) => void;
 }) {
   const { data: series, isLoading } = useSonarrSeries();
@@ -241,9 +314,7 @@ function SeriesLibrary({
     return <EmptyState icon={<Tv size={32} color="#71717a" />} title={title} />;
   }
 
-  const sorted = [...filtered].sort(
-    (a, b) => new Date(b.added).getTime() - new Date(a.added).getTime(),
-  );
+  const sorted = [...filtered].sort((a, b) => compareSeries(a, b, sort));
 
   return (
     <View className="flex-row flex-wrap gap-3">

@@ -17,12 +17,15 @@ export function getRequests(
   page = 1,
   pageSize = 20,
   filter?: "all" | "approved" | "pending" | "processing" | "available",
+  sort: "added" | "modified" = "added",
+  sortDirection: "asc" | "desc" = "desc",
 ): Promise<OverseerrRequestsResponse> {
   return serviceRequest<OverseerrRequestsResponse>("overseerr", "/request", {
     params: {
       take: pageSize,
       skip: (page - 1) * pageSize,
-      sort: "added",
+      sort,
+      sortDirection,
       ...(filter && filter !== "all" ? { filter } : {}),
     },
   });

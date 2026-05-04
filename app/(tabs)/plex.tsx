@@ -1,6 +1,15 @@
 import { useState } from "react";
-import { View, Text, Pressable, Image } from "react-native";
-import { Play, Pause, Loader, Library, Clock, Tv } from "lucide-react-native";
+import { View, Text, Pressable, Image, ScrollView } from "react-native";
+import {
+  Play,
+  Pause,
+  Loader,
+  Library,
+  Clock,
+  Tv,
+  ArrowUpDown,
+  Check,
+} from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -9,6 +18,13 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { SortButton } from "@/components/ui/sort-button";
+import {
+  useSortStore,
+  SORT_DEFAULTS,
+  type PlexRecentSortKey,
+} from "@/store/sort-store";
 import {
   usePlexLibraries,
   usePlexRecentlyAdded,
@@ -23,8 +39,42 @@ import type { PlexSession, PlexMediaItem, PlexLibrary } from "@/lib/types";
 
 type Tab = "playing" | "recent" | "ondeck" | "libraries";
 
+const RECENT_SORT_OPTIONS: { key: PlexRecentSortKey; label: string }[] = [
+  { key: "added-desc", label: "Recently Added" },
+  { key: "title-asc", label: "Title: A → Z" },
+  { key: "title-desc", label: "Title: Z → A" },
+  { key: "year-desc", label: "Year: Newest First" },
+  { key: "year-asc", label: "Year: Oldest First" },
+];
+
+function recentTitle(item: PlexMediaItem): string {
+  return item.grandparentTitle || item.parentTitle || item.title;
+}
+
+function compareRecent(
+  a: PlexMediaItem,
+  b: PlexMediaItem,
+  sort: PlexRecentSortKey,
+): number {
+  switch (sort) {
+    case "added-desc":
+      return (b.addedAt ?? 0) - (a.addedAt ?? 0);
+    case "title-asc":
+      return recentTitle(a).localeCompare(recentTitle(b));
+    case "title-desc":
+      return recentTitle(b).localeCompare(recentTitle(a));
+    case "year-desc":
+      return (b.year ?? 0) - (a.year ?? 0);
+    case "year-asc":
+      return (a.year ?? 0) - (b.year ?? 0);
+  }
+}
+
 export default function PlexScreen() {
   const [tab, setTab] = useState<Tab>("playing");
+  const recentSort = useSortStore((s) => s.plexRecent);
+  const setRecentSort = useSortStore((s) => s.setPlexRecent);
+  const [recentSortOpen, setRecentSortOpen] = useState(false);
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["plex"]]);
 
@@ -34,21 +84,50 @@ export default function PlexScreen() {
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Plex" online={plexHealth?.online} />
 
-      <View className="flex-row gap-2 mb-4">
-        {(["playing", "recent", "ondeck", "libraries"] as Tab[]).map((t) => (
-          <FilterChip
-            key={t}
-            label={t === "playing" ? "Now Playing" : t === "ondeck" ? "On Deck" : t.charAt(0).toUpperCase() + t.slice(1)}
-            selected={tab === t}
-            onPress={() => setTab(t)}
+      <View className="flex-row items-center gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="flex-1"
+        >
+          {(["playing", "recent", "ondeck", "libraries"] as Tab[]).map((t) => (
+            <FilterChip
+              key={t}
+              label={t === "playing" ? "Now Playing" : t === "ondeck" ? "On Deck" : t.charAt(0).toUpperCase() + t.slice(1)}
+              selected={tab === t}
+              onPress={() => setTab(t)}
+            />
+          ))}
+        </ScrollView>
+        {tab === "recent" && (
+          <SortButton
+            onPress={() => setRecentSortOpen(true)}
+            active={recentSort !== SORT_DEFAULTS.plexRecent}
           />
-        ))}
+        )}
       </View>
 
       {tab === "playing" && <NowPlaying />}
-      {tab === "recent" && <RecentlyAdded />}
+      {tab === "recent" && <RecentlyAdded sort={recentSort} />}
       {tab === "ondeck" && <OnDeck />}
       {tab === "libraries" && <Libraries />}
+
+      <ActionSheet
+        visible={recentSortOpen}
+        onClose={() => setRecentSortOpen(false)}
+        title="Sort recently added"
+        actions={RECENT_SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            recentSort === opt.key ? (
+              <Check size={18} color="#3b82f6" />
+            ) : (
+              <ArrowUpDown size={18} color="#71717a" />
+            ),
+          onPress: () => setRecentSort(opt.key),
+        }))}
+      />
     </ScreenWrapper>
   );
 }
@@ -136,7 +215,7 @@ function SessionCard({ session }: { session: PlexSession }) {
   );
 }
 
-function RecentlyAdded() {
+function RecentlyAdded({ sort }: { sort: PlexRecentSortKey }) {
   const { data: items, isLoading } = usePlexRecentlyAdded();
 
   if (isLoading) {
@@ -155,9 +234,11 @@ function RecentlyAdded() {
     return <EmptyState title="Nothing recently added" />;
   }
 
+  const sorted = [...items].sort((a, b) => compareRecent(a, b, sort));
+
   return (
     <View className="flex-row flex-wrap gap-3">
-      {items.map((item) => (
+      {sorted.map((item) => (
         <MediaPoster key={item.ratingKey} item={item} />
       ))}
     </View>

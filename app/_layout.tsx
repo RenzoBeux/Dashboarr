@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
+import { useSortStore } from "@/store/sort-store";
 import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
@@ -165,6 +166,7 @@ export default function RootLayout() {
   const hydrated = useConfigStore((s) => s.hydrated);
   const hydrateNotifications = useNotificationStore((s) => s.hydrate);
   const hydrateBackend = useBackendStore((s) => s.hydrate);
+  const hydrateSort = useSortStore((s) => s.hydrate);
 
   useEffect(() => {
     hydrate();
@@ -172,6 +174,12 @@ export default function RootLayout() {
     hydrateBackend();
     configureNotifications();
   }, [hydrate, hydrateNotifications, hydrateBackend]);
+
+  // Sort prefs read sync from the storage cache, which is populated by
+  // useConfigStore.hydrate(). Wait for that before reading.
+  useEffect(() => {
+    if (hydrated) hydrateSort();
+  }, [hydrated, hydrateSort]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", onAppStateChange);

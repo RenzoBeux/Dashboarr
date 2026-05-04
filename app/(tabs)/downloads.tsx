@@ -14,6 +14,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
+import { SortButton } from "@/components/ui/sort-button";
+import {
+  useSortStore,
+  SORT_DEFAULTS,
+  type DownloadsSortKey,
+} from "@/store/sort-store";
 import {
   useAllTorrents,
   useTransferInfo,
@@ -38,14 +44,7 @@ const FILTER_OPTIONS: { key: FilterType; label: string }[] = [
   { key: "paused", label: "Paused" },
 ];
 
-type SortKey =
-  | "progress-desc"
-  | "progress-asc"
-  | "name-asc"
-  | "size-desc"
-  | "added-desc";
-
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+const SORT_OPTIONS: { key: DownloadsSortKey; label: string }[] = [
   { key: "progress-desc", label: "Progress: High → Low" },
   { key: "progress-asc", label: "Progress: Low → High" },
   { key: "name-asc", label: "Name: A → Z" },
@@ -53,7 +52,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "added-desc", label: "Added: Newest First" },
 ];
 
-function compareTorrents(a: QBTorrent, b: QBTorrent, sort: SortKey): number {
+function compareTorrents(a: QBTorrent, b: QBTorrent, sort: DownloadsSortKey): number {
   switch (sort) {
     case "progress-desc":
       return b.progress - a.progress;
@@ -78,7 +77,8 @@ function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" 
 
 export default function DownloadsScreen() {
   const [filter, setFilter] = useState<FilterType>("all");
-  const [sort, setSort] = useState<SortKey>("progress-desc");
+  const sort = useSortStore((s) => s.downloads);
+  const setSort = useSortStore((s) => s.setDownloads);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
@@ -275,13 +275,10 @@ export default function DownloadsScreen() {
                 />
               ))}
             </ScrollView>
-            <Pressable
+            <SortButton
               onPress={() => setSortSheetOpen(true)}
-              hitSlop={6}
-              className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
-            >
-              <ArrowUpDown size={16} color="#a1a1aa" />
-            </Pressable>
+              active={sort !== SORT_DEFAULTS.downloads}
+            />
           </View>
         </>
       )}

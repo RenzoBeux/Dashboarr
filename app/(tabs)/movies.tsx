@@ -1,7 +1,16 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable, Image, Alert } from "react-native";
+import { View, Text, Pressable, Image, Alert, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Film, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
+import {
+  Search,
+  Film,
+  Eye,
+  EyeOff,
+  Trash2,
+  Info,
+  ArrowUpDown,
+  Check,
+} from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -9,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { SortButton } from "@/components/ui/sort-button";
+import { useSortStore, SORT_DEFAULTS, type MoviesSortKey } from "@/store/sort-store";
 
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
@@ -41,9 +52,38 @@ const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
   { value: "all", label: "All" },
 ];
 
+const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
+  { key: "added-desc", label: "Recently Added" },
+  { key: "title-asc", label: "Title: A → Z" },
+  { key: "title-desc", label: "Title: Z → A" },
+  { key: "year-desc", label: "Year: Newest First" },
+  { key: "year-asc", label: "Year: Oldest First" },
+  { key: "size-desc", label: "Size: Largest First" },
+];
+
+function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): number {
+  switch (sort) {
+    case "added-desc":
+      return new Date(b.added).getTime() - new Date(a.added).getTime();
+    case "title-asc":
+      return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+    case "title-desc":
+      return (b.sortTitle || b.title).localeCompare(a.sortTitle || a.title);
+    case "year-desc":
+      return b.year - a.year;
+    case "year-asc":
+      return a.year - b.year;
+    case "size-desc":
+      return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+  }
+}
+
 export default function MoviesScreen() {
   const [tab, setTab] = useState<Tab>("library");
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
+  const sort = useSortStore((s) => s.movies);
+  const setSort = useSortStore((s) => s.setMovies);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<MovieSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -149,20 +189,35 @@ export default function MoviesScreen() {
       </View>
 
       {tab === "library" && (
-        <View className="flex-row gap-2 mb-4">
-          {MONITOR_FILTERS.map((f) => (
-            <FilterChip
-              key={f.value}
-              label={f.label}
-              selected={monitorFilter === f.value}
-              onPress={() => setMonitorFilter(f.value)}
-            />
-          ))}
+        <View className="flex-row items-center gap-2 mb-4">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-2"
+            className="flex-1"
+          >
+            {MONITOR_FILTERS.map((f) => (
+              <FilterChip
+                key={f.value}
+                label={f.label}
+                selected={monitorFilter === f.value}
+                onPress={() => setMonitorFilter(f.value)}
+              />
+            ))}
+          </ScrollView>
+          <SortButton
+            onPress={() => setSortSheetOpen(true)}
+            active={sort !== SORT_DEFAULTS.movies}
+          />
         </View>
       )}
 
       {tab === "library" && (
-        <MovieLibrary monitorFilter={monitorFilter} onLongPress={openMovieSheet} />
+        <MovieLibrary
+          monitorFilter={monitorFilter}
+          sort={sort}
+          onLongPress={openMovieSheet}
+        />
       )}
       {tab === "queue" && <MovieQueue onLongPress={openQueueSheet} />}
       {tab === "wanted" && <MovieWanted />}
@@ -174,15 +229,33 @@ export default function MoviesScreen() {
         subtitle={sheetMovie ? String(sheetMovie.year) : undefined}
         actions={actions}
       />
+
+      <ActionSheet
+        visible={sortSheetOpen}
+        onClose={() => setSortSheetOpen(false)}
+        title="Sort movies"
+        actions={SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            sort === opt.key ? (
+              <Check size={18} color="#3b82f6" />
+            ) : (
+              <ArrowUpDown size={18} color="#71717a" />
+            ),
+          onPress: () => setSort(opt.key),
+        }))}
+      />
     </ScreenWrapper>
   );
 }
 
 function MovieLibrary({
   monitorFilter,
+  sort,
   onLongPress,
 }: {
   monitorFilter: MonitorFilter;
+  sort: MoviesSortKey;
   onLongPress: (movie: RadarrMovie) => void;
 }) {
   const { data: movies, isLoading } = useRadarrMovies();
@@ -220,10 +293,7 @@ function MovieLibrary({
     return <EmptyState icon={<Film size={32} color="#71717a" />} title={title} />;
   }
 
-  // Sort by recently added
-  const sorted = [...filtered].sort(
-    (a, b) => new Date(b.added).getTime() - new Date(a.added).getTime(),
-  );
+  const sorted = [...filtered].sort((a, b) => compareMovies(a, b, sort));
 
   return (
     <View className="flex-row flex-wrap gap-3">

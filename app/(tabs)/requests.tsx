@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { View, Text, Pressable, Image, ScrollView } from "react-native";
 import {
   Search,
   Check,
@@ -8,6 +8,7 @@ import {
   Tv,
   Compass,
   ListFilter,
+  ArrowUpDown,
 } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -17,6 +18,13 @@ import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { SortButton } from "@/components/ui/sort-button";
+import {
+  useSortStore,
+  SORT_DEFAULTS,
+  type RequestsSortKey,
+} from "@/store/sort-store";
 import { ICON } from "@/lib/constants";
 import { successHaptic, errorHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
@@ -47,6 +55,28 @@ type RequestFilter =
   | "processing"
   | "available";
 type MediaTypeFilter = "all" | "movie" | "tv";
+
+const REQUEST_SORT_OPTIONS: { key: RequestsSortKey; label: string }[] = [
+  { key: "created-desc", label: "Newest First" },
+  { key: "created-asc", label: "Oldest First" },
+  { key: "updated-desc", label: "Recently Updated" },
+  { key: "updated-asc", label: "Least Recently Updated" },
+];
+
+function sortToParams(
+  sort: RequestsSortKey,
+): { sort: "added" | "modified"; sortDirection: "asc" | "desc" } {
+  switch (sort) {
+    case "created-desc":
+      return { sort: "added", sortDirection: "desc" };
+    case "created-asc":
+      return { sort: "added", sortDirection: "asc" };
+    case "updated-desc":
+      return { sort: "modified", sortDirection: "desc" };
+    case "updated-asc":
+      return { sort: "modified", sortDirection: "asc" };
+  }
+}
 
 const GRID_GAP = 12;
 
@@ -278,7 +308,11 @@ function PosterGridItem({
 
 function RequestsList() {
   const [filter, setFilter] = useState<RequestFilter>("all");
-  const { data, isLoading } = useOverseerrRequests(1, filter);
+  const sort = useSortStore((s) => s.requests);
+  const setSort = useSortStore((s) => s.setRequests);
+  const [sortOpen, setSortOpen] = useState(false);
+  const { sort: apiSort, sortDirection } = sortToParams(sort);
+  const { data, isLoading } = useOverseerrRequests(1, filter, apiSort, sortDirection);
   const { data: counts } = useOverseerrRequestCount();
   const approve = useApproveRequest();
   const decline = useDeclineRequest();
@@ -287,17 +321,28 @@ function RequestsList() {
 
   return (
     <View>
-      <View className="flex-row gap-2 mb-4">
-        {(
-          ["all", "pending", "approved", "processing"] as RequestFilter[]
-        ).map((f) => (
-          <FilterChip
-            key={f}
-            label={`${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`}
-            selected={filter === f}
-            onPress={() => setFilter(f)}
-          />
-        ))}
+      <View className="flex-row items-center gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="flex-1"
+        >
+          {(
+            ["all", "pending", "approved", "processing"] as RequestFilter[]
+          ).map((f) => (
+            <FilterChip
+              key={f}
+              label={`${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`}
+              selected={filter === f}
+              onPress={() => setFilter(f)}
+            />
+          ))}
+        </ScrollView>
+        <SortButton
+          onPress={() => setSortOpen(true)}
+          active={sort !== SORT_DEFAULTS.requests}
+        />
       </View>
 
       {isLoading ? (
@@ -320,6 +365,22 @@ function RequestsList() {
           ))}
         </View>
       )}
+
+      <ActionSheet
+        visible={sortOpen}
+        onClose={() => setSortOpen(false)}
+        title="Sort requests"
+        actions={REQUEST_SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            sort === opt.key ? (
+              <Check size={18} color="#3b82f6" />
+            ) : (
+              <ArrowUpDown size={18} color="#71717a" />
+            ),
+          onPress: () => setSort(opt.key),
+        }))}
+      />
     </View>
   );
 }
