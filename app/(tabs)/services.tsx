@@ -20,6 +20,7 @@ import type { ServiceId } from "@/lib/constants";
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   qbittorrent: Download,
+  rtorrent: Download,
   radarr: Film,
   sonarr: Tv,
   overseerr: Inbox,
@@ -32,6 +33,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
+  rtorrent: "/(tabs)/downloads",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
   overseerr: "/(tabs)/requests",

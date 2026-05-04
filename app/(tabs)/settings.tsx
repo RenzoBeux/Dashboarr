@@ -46,6 +46,7 @@ import {
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   qbittorrent: Download,
+  rtorrent: Download,
   radarr: Film,
   sonarr: Tv,
   overseerr: Inbox,
@@ -432,6 +433,8 @@ function ServiceEditor({
   const updateService = useConfigStore((s) => s.updateService);
   const updateSecrets = useConfigStore((s) => s.updateSecrets);
   const toggleService = useConfigStore((s) => s.toggleService);
+  const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
+  const rtEnabled = useConfigStore((s) => s.services.rtorrent.enabled);
 
   const [localUrl, setLocalUrl] = useState(config.localUrl);
   const [remoteUrl, setRemoteUrl] = useState(config.remoteUrl);
@@ -440,7 +443,7 @@ function ServiceEditor({
   const [password, setPassword] = useState(secrets.password ?? "");
   const [testing, setTesting] = useState(false);
 
-  const isQB = serviceId === "qbittorrent" || serviceId === "glances";
+  const isQB = serviceId === "qbittorrent" || serviceId === "glances" || serviceId === "rtorrent";
 
   const isDirty =
     localUrl !== config.localUrl ||
@@ -527,7 +530,22 @@ function ServiceEditor({
         <Toggle
           label="Enabled"
           value={config.enabled}
-          onValueChange={() => toggleService(serviceId)}
+          onValueChange={() => {
+            if (serviceId === "rtorrent" && !config.enabled && qbEnabled) {
+              Alert.alert(
+                "qBittorrent already enabled",
+                "Using both torrent clients at once is not recommended. The Downloads screen uses qBittorrent when both are enabled. Consider disabling qBittorrent.",
+                [{ text: "OK" }],
+              );
+            } else if (serviceId === "qbittorrent" && !config.enabled && rtEnabled) {
+              Alert.alert(
+                "rTorrent already enabled",
+                "Using both torrent clients at once is not recommended. The Downloads screen uses qBittorrent when both are enabled. Consider disabling rTorrent.",
+                [{ text: "OK" }],
+              );
+            }
+            toggleService(serviceId);
+          }}
         />
       </Card>
 

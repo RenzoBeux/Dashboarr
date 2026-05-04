@@ -768,6 +768,51 @@ export interface BazarrProvider {
   retry?: string;
 }
 
+// --- rTorrent Types ---
+
+export type RTorrentState = "downloading" | "seeding" | "paused" | "stopped" | "error";
+
+export interface RTTransferInfo {
+  dl_rate: number;
+  up_rate: number;
+  dl_total: number;
+  up_total: number;
+}
+
+export interface RTTorrent {
+  hash: string;
+  name: string;
+  size: number;
+  bytes_done: number;
+  dl_rate: number;
+  up_rate: number;
+  state: number;
+  is_active: number;
+  is_open: number;
+  complete: number;
+  ratio: number; // x1000 — divide by 1000 for display
+  peers_connected: number;
+  timestamp_started: number;
+  timestamp_finished: number;
+  label: string;
+  base_path: string;
+}
+
+export interface RTTorrentFile {
+  path: string;
+  size_bytes: number;
+  completed_chunks: number;
+  size_chunks: number;
+  priority: number;
+}
+
+export interface RTTorrentTracker {
+  url: string;
+  activity_time_last: number;
+  scrape_complete: number;
+  scrape_incomplete: number;
+}
+
 // --- Shared Types ---
 
 export interface ServiceHealthStatus {

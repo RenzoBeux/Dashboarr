@@ -5,6 +5,8 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAllTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
+import { useAllRTTorrents, usePauseRTTorrent, useResumeRTTorrent } from "@/hooks/use-rtorrent";
+import { useConfigStore } from "@/store/config-store";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
 import { formatSpeed, formatEta, truncateText } from "@/lib/utils";
@@ -14,15 +16,16 @@ import {
   type DownloadsSettingsValue,
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
-import type { QBTorrent, TorrentState } from "@/lib/types";
+import { rtorrentStateToLabel } from "@/services/rtorrent-api";
+import type { QBTorrent, TorrentState, RTTorrent } from "@/lib/types";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
-// qBittorrent uses 8640000 (100 days) as a sentinel for "unknown ETA". Treat
-// that and anything larger as missing so it sorts to the end.
 const ETA_UNKNOWN = 8640000;
 
-function classifyState(state: TorrentState): StateGroup {
+// --- qBittorrent helpers ---
+
+function classifyQBState(state: TorrentState): StateGroup {
   if (state === "error" || state === "missingFiles") return "errored";
   if (state === "pausedDL" || state === "pausedUP") return "paused";
   if (
@@ -48,10 +51,9 @@ function classifyState(state: TorrentState): StateGroup {
   return "other";
 }
 
-function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): number {
+function compareQBTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): number {
   switch (sortBy) {
     case "speed": {
-      // Combined throughput so a busy seeder ranks alongside a fast downloader.
       const aSpeed = a.dlspeed + a.upspeed;
       const bSpeed = b.dlspeed + b.upspeed;
       return bSpeed - aSpeed;
@@ -68,12 +70,48 @@ function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): n
   }
 }
 
+// --- rTorrent helpers ---
+
+function classifyRTState(t: RTTorrent): StateGroup {
+  const state = rtorrentStateToLabel(t);
+  if (state === "downloading") return "downloading";
+  if (state === "seeding") return "seeding";
+  if (state === "paused" || state === "stopped") return "paused";
+  return "other";
+}
+
+function compareRTTorrents(a: RTTorrent, b: RTTorrent, sortBy: DownloadsSortBy): number {
+  const aProgress = a.size > 0 ? a.bytes_done / a.size : 0;
+  const bProgress = b.size > 0 ? b.bytes_done / b.size : 0;
+  switch (sortBy) {
+    case "speed":
+      return (b.dl_rate + b.up_rate) - (a.dl_rate + a.up_rate);
+    case "progress":
+      return bProgress - aProgress;
+    case "eta":
+      return aProgress - bProgress; // higher progress = closer to done
+    case "added":
+      return b.timestamp_started - a.timestamp_started;
+  }
+}
+
+// --- Widget ---
+
 export function DownloadCard() {
   const { settings } = useWidgetSettings<DownloadsSettingsValue>(
     "downloads",
     DOWNLOADS_DEFAULT_SETTINGS,
   );
-  const { data: torrents, isLoading } = useAllTorrents();
+
+  const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
+  const rtEnabled = useConfigStore((s) => s.services.rtorrent.enabled);
+  const activeClient = qbEnabled ? "qbittorrent" : rtEnabled ? "rtorrent" : null;
+  const qbActive = activeClient === "qbittorrent";
+  const rtActive = activeClient === "rtorrent";
+
+  const { data: qbTorrents, isLoading: qbLoading } = useAllTorrents(undefined, qbActive);
+  const { data: rtTorrents, isLoading: rtLoading } = useAllRTTorrents(undefined, rtActive);
+
   const router = useRouter();
 
   const allowedGroups = new Set<StateGroup>();
@@ -82,13 +120,67 @@ export function DownloadCard() {
   if (settings.showPaused) allowedGroups.add("paused");
   if (settings.showErrored) allowedGroups.add("errored");
 
-  const filtered = (torrents ?? [])
-    .filter((t) => allowedGroups.has(classifyState(t.state)))
-    .sort((a, b) => compareTorrents(a, b, settings.sortBy));
+  const allHidden = allowedGroups.size === 0;
+  const isLoading = activeClient === "rtorrent" ? rtLoading : qbLoading;
 
+  if (activeClient === "rtorrent") {
+    const filtered = (rtTorrents ?? [])
+      .filter((t) => allowedGroups.has(classifyRTState(t)))
+      .sort((a, b) => compareRTTorrents(a, b, settings.sortBy));
+    const displayTorrents = filtered.slice(0, settings.maxItems);
+    const hasMore = filtered.length > settings.maxItems;
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Downloads</CardTitle>
+          {filtered.length > 0 && (
+            <Text className="text-zinc-500 text-sm">{filtered.length}</Text>
+          )}
+        </CardHeader>
+
+        {allHidden ? (
+          <Text className="text-zinc-500 text-sm py-1">
+            All states hidden — enable one in the widget settings.
+          </Text>
+        ) : isLoading ? (
+          <SkeletonCardContent rows={3} />
+        ) : displayTorrents.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle size={32} color="#71717a" />}
+            title="Nothing to show"
+          />
+        ) : (
+          <View className="gap-3">
+            {displayTorrents.map((torrent) => (
+              <RTorrentRow
+                key={torrent.hash}
+                torrent={torrent}
+                onPress={() => router.push(`/torrent/${torrent.hash}`)}
+              />
+            ))}
+            {hasMore && (
+              <Pressable
+                onPress={() => router.push("/(tabs)/downloads")}
+                className="active:opacity-70"
+              >
+                <Text className="text-primary text-sm text-center font-medium">
+                  View All →
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </Card>
+    );
+  }
+
+  // qBittorrent (default)
+  const filtered = (qbTorrents ?? [])
+    .filter((t) => allowedGroups.has(classifyQBState(t.state)))
+    .sort((a, b) => compareQBTorrents(a, b, settings.sortBy));
   const displayTorrents = filtered.slice(0, settings.maxItems);
   const hasMore = filtered.length > settings.maxItems;
-  const allHidden = allowedGroups.size === 0;
 
   return (
     <Card>
@@ -179,6 +271,67 @@ function TorrentRow({
             {torrent.eta > 0 && torrent.eta < ETA_UNKNOWN && (
               <Text className="text-zinc-500 text-xs">
                 ETA {formatEta(torrent.eta)}
+              </Text>
+            )}
+          </View>
+        </View>
+        <Pressable
+          onPress={handleToggle}
+          className="p-2 active:opacity-70"
+          hitSlop={8}
+        >
+          {isPaused ? (
+            <Play size={20} color="#3b82f6" />
+          ) : (
+            <Pause size={20} color="#f59e0b" />
+          )}
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+function RTorrentRow({
+  torrent,
+  onPress,
+}: {
+  torrent: RTTorrent;
+  onPress: () => void;
+}) {
+  const pauseMutation = usePauseRTTorrent();
+  const resumeMutation = useResumeRTTorrent();
+
+  const state = rtorrentStateToLabel(torrent);
+  const isPaused = state === "paused" || state === "stopped";
+  const isDownloading = state === "downloading";
+  const progress = torrent.size > 0 ? torrent.bytes_done / torrent.size : 0;
+
+  const handleToggle = () => {
+    lightHaptic();
+    if (isPaused) {
+      resumeMutation.mutate([torrent.hash]);
+    } else {
+      pauseMutation.mutate([torrent.hash]);
+    }
+  };
+
+  return (
+    <Pressable onPress={onPress} className="active:opacity-80">
+      <View className="flex-row items-center gap-3">
+        <View className="flex-1">
+          <Text className="text-zinc-200 text-sm" numberOfLines={1}>
+            {truncateText(torrent.name, 40)}
+          </Text>
+          <ProgressBar progress={progress} showLabel className="mt-1.5" />
+          <View className="flex-row gap-3 mt-1">
+            {isDownloading && torrent.dl_rate > 0 && (
+              <Text className="text-zinc-500 text-xs">
+                ↓ {formatSpeed(torrent.dl_rate)}
+              </Text>
+            )}
+            {torrent.up_rate > 0 && (
+              <Text className="text-zinc-500 text-xs">
+                ↑ {formatSpeed(torrent.up_rate)}
               </Text>
             )}
           </View>

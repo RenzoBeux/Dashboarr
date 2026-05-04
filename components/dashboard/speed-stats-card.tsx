@@ -3,12 +3,31 @@ import { ArrowDown, ArrowUp } from "lucide-react-native";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTransferInfo } from "@/hooks/use-qbittorrent";
+import { useRTTransferInfo } from "@/hooks/use-rtorrent";
+import { useConfigStore } from "@/store/config-store";
 import { formatSpeed, formatBytes } from "@/lib/utils";
 
 export function SpeedStatsCard() {
-  const { data, isLoading } = useTransferInfo();
+  const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
+  const rtEnabled = useConfigStore((s) => s.services.rtorrent.enabled);
+  const activeClient = qbEnabled ? "qbittorrent" : rtEnabled ? "rtorrent" : null;
+  const qbActive = activeClient === "qbittorrent";
+  const rtActive = activeClient === "rtorrent";
 
-  if (isLoading || !data) {
+  const { data: qbData, isLoading: qbLoading } = useTransferInfo(qbActive);
+  const { data: rtData, isLoading: rtLoading } = useRTTransferInfo(rtActive);
+
+  const isLoading = activeClient === "rtorrent" ? rtLoading : qbLoading;
+  const dlSpeed =
+    activeClient === "rtorrent" ? rtData?.dl_rate : qbData?.dl_info_speed;
+  const upSpeed =
+    activeClient === "rtorrent" ? rtData?.up_rate : qbData?.up_info_speed;
+  const dlTotal =
+    activeClient === "rtorrent" ? rtData?.dl_total : qbData?.dl_info_data;
+  const upTotal =
+    activeClient === "rtorrent" ? rtData?.up_total : qbData?.up_info_data;
+
+  if (isLoading || (dlSpeed === undefined && upSpeed === undefined)) {
     return (
       <Card className="flex-row gap-3">
         <View className="flex-1 flex-row items-center gap-3 rounded-xl p-3 bg-blue-600/10">
@@ -33,13 +52,13 @@ export function SpeedStatsCard() {
     <Card className="flex-row gap-3">
       <SpeedPill
         direction="down"
-        speed={formatSpeed(data.dl_info_speed)}
-        total={formatBytes(data.dl_info_data)}
+        speed={formatSpeed(dlSpeed ?? 0)}
+        total={formatBytes(dlTotal ?? 0)}
       />
       <SpeedPill
         direction="up"
-        speed={formatSpeed(data.up_info_speed)}
-        total={formatBytes(data.up_info_data)}
+        speed={formatSpeed(upSpeed ?? 0)}
+        total={formatBytes(upTotal ?? 0)}
       />
     </Card>
   );

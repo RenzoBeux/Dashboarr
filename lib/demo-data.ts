@@ -126,6 +126,90 @@ const DEMO_QB_TORRENTS = [
   },
 ];
 
+// --- rTorrent ---
+
+const DEMO_RT_TRANSFER_INFO = {
+  dl_rate: 5242880,
+  up_rate: 1048576,
+  dl_total: 107374182400,
+  up_total: 21474836480,
+};
+
+const DEMO_RT_TORRENTS = [
+  {
+    name: "The.Dark.Knight.2008.2160p.UHD.BluRay.x265-TERMINAL",
+    hash: "A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2",
+    size: 48318382080,
+    bytes_done: 30441095168,
+    dl_rate: 4194304,
+    up_rate: 524288,
+    state: 1,
+    is_active: 1,
+    is_open: 1,
+    complete: 0,
+    ratio: 180,
+    peers_connected: 7,
+    timestamp_started: NOW_TS - 7200,
+    timestamp_finished: 0,
+    label: "movies",
+    base_path: "/downloads/movies/The.Dark.Knight.2008.2160p.UHD.BluRay.x265-TERMINAL",
+  },
+  {
+    name: "Fallout.S01E01-E08.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+    hash: "B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3",
+    size: 22548578304,
+    bytes_done: 9244916736,
+    dl_rate: 1048576,
+    up_rate: 204800,
+    state: 1,
+    is_active: 1,
+    is_open: 1,
+    complete: 0,
+    ratio: 90,
+    peers_connected: 3,
+    timestamp_started: NOW_TS - 3600,
+    timestamp_finished: 0,
+    label: "tv",
+    base_path: "/downloads/tv/Fallout.S01E01-E08",
+  },
+  {
+    name: "Dune.Part.Two.2024.1080p.BluRay.x264-SPARKS",
+    hash: "C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4",
+    size: 14495514624,
+    bytes_done: 14495514624,
+    dl_rate: 0,
+    up_rate: 786432,
+    state: 1,
+    is_active: 1,
+    is_open: 1,
+    complete: 1,
+    ratio: 2140,
+    peers_connected: 22,
+    timestamp_started: NOW_TS - 86400,
+    timestamp_finished: NOW_TS - 72000,
+    label: "movies",
+    base_path: "/downloads/movies/Dune.Part.Two.2024.1080p.BluRay.x264-SPARKS",
+  },
+  {
+    name: "House.of.the.Dragon.S02E08.1080p.MAX.WEB-DL.DDP5.1.H.264-FLUX",
+    hash: "D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5",
+    size: 4831838208,
+    bytes_done: 4831838208,
+    dl_rate: 0,
+    up_rate: 0,
+    state: 1,
+    is_active: 0,
+    is_open: 1,
+    complete: 1,
+    ratio: 870,
+    peers_connected: 0,
+    timestamp_started: NOW_TS - 172800,
+    timestamp_finished: NOW_TS - 169200,
+    label: "tv",
+    base_path: "/downloads/tv/House.of.the.Dragon.S02E08",
+  },
+];
+
 // --- Radarr ---
 
 function makeMovie(id: number, title: string, year: number, tmdbId: number, hasFile: boolean) {
@@ -699,6 +783,11 @@ export function getDemoResponse(serviceId: ServiceId, path: string): unknown {
       if (normalized.startsWith("/torrents/files")) return [];
       if (normalized.startsWith("/torrents/trackers")) return [];
       if (normalized.startsWith("/app/version")) return "5.0.0";
+      return undefined;
+    }
+    case "rtorrent": {
+      if (path === "transfer") return DEMO_RT_TRANSFER_INFO;
+      if (path === "torrents") return DEMO_RT_TORRENTS;
       return undefined;
     }
     default:

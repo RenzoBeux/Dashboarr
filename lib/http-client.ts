@@ -135,6 +135,32 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
   const baseUrl = urlOverride ?? store.getActiveUrl(serviceId);
   if (!baseUrl) return null;
 
+  // rTorrent is pinged via XML-RPC POST, not a REST GET
+  if (serviceId === "rtorrent") {
+    if (useConfigStore.getState().demoMode) return 45;
+    const body =
+      '<?xml version="1.0"?><methodCall><methodName>system.client_version</methodName><params/></methodCall>';
+    const pingHeaders = new Headers({ "Content-Type": "application/xml" });
+    if (secrets.username && secrets.password) {
+      pingHeaders.set("Authorization", `Basic ${btoa(`${secrets.username}:${secrets.password}`)}`);
+    }
+    const start = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: pingHeaders,
+        body,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response.status < 500 ? Date.now() - start : null;
+    } catch {
+      return null;
+    }
+  }
+
   const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
 
   const headers = new Headers();

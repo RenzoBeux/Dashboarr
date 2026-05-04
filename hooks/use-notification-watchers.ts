@@ -1,14 +1,17 @@
 import { useEffect, useRef } from "react";
 import { useAllTorrents } from "@/hooks/use-qbittorrent";
+import { useAllRTTorrents } from "@/hooks/use-rtorrent";
 import { useRadarrQueue } from "@/hooks/use-radarr";
 import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
+import { useConfigStore } from "@/store/config-store";
 import { sendLocalNotification } from "@/lib/notifications";
 import { toast } from "@/components/ui/toast";
-import type { QBTorrent, TorrentState } from "@/lib/types";
+import { rtorrentStateToLabel } from "@/services/rtorrent-api";
+import type { QBTorrent, TorrentState, RTTorrent } from "@/lib/types";
 
 const DOWNLOADING_STATES: TorrentState[] = [
   "downloading",
@@ -45,6 +48,8 @@ export function useNotificationWatchers() {
     (s) => s.hydrated && !!s.sharedSecret && !!s.url && s.isHealthy,
   );
 
+  const rtEnabled = useConfigStore((s) => s.services.rtorrent.enabled);
+
   // --- qBittorrent: torrent downloading → completed ---
   const { data: torrents } = useAllTorrents();
   const prevTorrents = useRef<Map<string, QBTorrent> | null>(null);
@@ -68,6 +73,34 @@ export function useNotificationWatchers() {
     }
     prevTorrents.current = new Map(torrents.map((t) => [t.hash, t]));
   }, [torrents, hydrated, enabled, torrentCompleted, backendActive]);
+
+  // --- rTorrent: torrent downloading → completed ---
+  const { data: rtTorrents } = useAllRTTorrents();
+  const prevRTTorrents = useRef<Map<string, RTTorrent> | null>(null);
+
+  useEffect(() => {
+    if (backendActive) return;
+    if (!hydrated || !enabled || !torrentCompleted) return;
+    if (!rtEnabled || !Array.isArray(rtTorrents)) return;
+    const prev = prevRTTorrents.current;
+    if (prev !== null) {
+      for (const t of rtTorrents) {
+        const prevT = prev.get(t.hash);
+        if (prevT) {
+          const wasDownloading = rtorrentStateToLabel(prevT) === "downloading";
+          const isNowComplete = t.complete === 1 && prevT.complete === 0;
+          if (wasDownloading && isNowComplete) {
+            sendLocalNotification({
+              title: "Download complete",
+              body: t.name,
+              data: { type: "torrent", hash: t.hash },
+            });
+          }
+        }
+      }
+    }
+    prevRTTorrents.current = new Map(rtTorrents.map((t) => [t.hash, t]));
+  }, [rtTorrents, hydrated, enabled, torrentCompleted, backendActive, rtEnabled]);
 
   // --- Radarr: queue item disappears (success only) ---
   const { data: radarrQueue } = useRadarrQueue();

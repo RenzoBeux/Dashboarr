@@ -16,41 +16,44 @@ function useQBEnabled() {
   return useConfigStore((s) => s.services.qbittorrent.enabled);
 }
 
-export function useTransferInfo() {
-  const enabled = useQBEnabled();
+export function useTransferInfo(enabled = true) {
+  const serviceEnabled = useQBEnabled();
   return useQuery({
     queryKey: ["qbittorrent", "transfer"],
     queryFn: getTransferInfo,
     refetchInterval: POLLING_INTERVALS.transferSpeed,
-    enabled,
+    enabled: serviceEnabled && enabled,
   });
 }
 
 export function useAllTorrents(
   filter?: "all" | "downloading" | "seeding" | "completed" | "paused" | "active" | "inactive" | "stalled",
+  enabled = true,
 ) {
-  const enabled = useQBEnabled();
+  const serviceEnabled = useQBEnabled();
   return useQuery({
     queryKey: ["qbittorrent", "torrents", filter ?? "all"],
     queryFn: () => getTorrents(filter),
     refetchInterval: POLLING_INTERVALS.activeTorrents,
-    enabled,
+    enabled: serviceEnabled && enabled,
   });
 }
 
-export function useTorrentFiles(hash: string) {
+export function useTorrentFiles(hash: string, enabled = true) {
+  const serviceEnabled = useQBEnabled();
   return useQuery({
     queryKey: ["qbittorrent", "files", hash],
     queryFn: () => getTorrentFiles(hash),
-    enabled: !!hash,
+    enabled: serviceEnabled && enabled && !!hash,
   });
 }
 
-export function useTorrentTrackers(hash: string) {
+export function useTorrentTrackers(hash: string, enabled = true) {
+  const serviceEnabled = useQBEnabled();
   return useQuery({
     queryKey: ["qbittorrent", "trackers", hash],
     queryFn: () => getTorrentTrackers(hash),
-    enabled: !!hash,
+    enabled: serviceEnabled && enabled && !!hash,
   });
 }
 

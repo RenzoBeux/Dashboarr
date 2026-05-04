@@ -104,7 +104,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Speed Stats",
     description: "Live download and upload speeds",
     icon: Gauge,
-    service: "qbittorrent",
+    service: null,
     component: SpeedStatsCard,
   },
   "downloads": {
@@ -112,7 +112,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Downloads",
     description: "Top active torrents with pause and resume",
     icon: Download,
-    service: "qbittorrent",
+    service: null,
     component: DownloadCard,
     settingsComponent: DownloadsSettings,
     defaultSettings: DOWNLOADS_DEFAULT_SETTINGS,

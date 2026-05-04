@@ -1,5 +1,6 @@
 export const SERVICE_IDS = [
   "qbittorrent",
+  "rtorrent",
   "radarr",
   "sonarr",
   "overseerr",
@@ -21,6 +22,12 @@ export const SERVICE_DEFAULTS: Record<
     defaultPort: 8080,
     apiBasePath: "/api/v2",
     pingPath: "/app/version",
+  },
+  rtorrent: {
+    name: "rTorrent",
+    defaultPort: 8080,
+    apiBasePath: "",
+    pingPath: "",
   },
   radarr: { name: "Radarr", defaultPort: 7878, apiBasePath: "/api/v3", pingPath: "/system/status" },
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
