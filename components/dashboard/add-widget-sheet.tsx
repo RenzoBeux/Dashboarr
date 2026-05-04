@@ -31,6 +31,7 @@ import {
   getAvailableWidgets,
   type WidgetDefinition,
 } from "@/components/dashboard/widget-registry";
+import { GlassSurface } from "@/components/ui/glass-surface";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
@@ -120,10 +121,14 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
           <Animated.View
             style={[
               sheetStyle,
-              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8 },
+              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8, overflow: "hidden" },
             ]}
-            className="bg-surface rounded-t-3xl border-t border-border"
+            className="rounded-t-3xl border-t border-border"
           >
+            <GlassSurface
+              style={StyleSheet.absoluteFill}
+              fallbackClassName="bg-surface"
+            />
             <GestureDetector gesture={handlePan}>
               <View className="pt-3 pb-1">
                 <View className="self-center w-10 h-1 rounded-full bg-zinc-700" />

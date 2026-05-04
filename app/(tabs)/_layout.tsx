@@ -1,7 +1,10 @@
+import { StyleSheet } from "react-native";
 import { Tabs } from "expo-router";
 import { LayoutDashboard, Download, CalendarDays, LayoutGrid, Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightHaptic } from "@/lib/haptics";
+import { GlassSurface } from "@/components/ui/glass-surface";
+import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 
 const TAB_ICON_SIZE = 24;
 const ACTIVE_COLOR = "#3b82f6";
@@ -15,13 +18,17 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#18181b",
-          borderTopColor: "#3f3f46",
-          borderTopWidth: 0.5,
+          backgroundColor: HAS_GLASS_TAB_BAR ? "transparent" : "#18181b",
+          borderTopColor: HAS_GLASS_TAB_BAR ? "transparent" : "#3f3f46",
+          borderTopWidth: HAS_GLASS_TAB_BAR ? 0 : 0.5,
           height: 52 + bottom,
           paddingBottom: 4 + bottom,
           paddingTop: 6,
+          position: HAS_GLASS_TAB_BAR ? "absolute" : undefined,
         },
+        tabBarBackground: HAS_GLASS_TAB_BAR
+          ? () => <GlassSurface style={StyleSheet.absoluteFill} />
+          : undefined,
         tabBarActiveTintColor: ACTIVE_COLOR,
         tabBarInactiveTintColor: INACTIVE_COLOR,
         tabBarShowLabel: false,

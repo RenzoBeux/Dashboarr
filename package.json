@@ -22,6 +22,7 @@
     "release:android": "pnpm build:android:prod && pnpm release:android:apk"
   },
   "dependencies": {
+    "@callstack/liquid-glass": "^0.7.1",
     "@noble/ciphers": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@react-native-async-storage/async-storage": "2.2.0",
