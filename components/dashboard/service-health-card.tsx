@@ -8,6 +8,7 @@ import {
   BarChart3,
   Search,
   PlayCircle,
+  Clapperboard,
   Captions,
 } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,7 @@ const SERVICE_ICONS: Partial<Record<ServiceId, React.ElementType>> = {
   tautulli: BarChart3,
   prowlarr: Search,
   plex: PlayCircle,
+  jellyfin: Clapperboard,
   bazarr: Captions,
 };
 

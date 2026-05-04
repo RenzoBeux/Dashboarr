@@ -20,6 +20,10 @@ export type PlexRecentSortKey =
   | "year-desc"
   | "year-asc";
 
+// Jellyfin's "Recently Added" tab sorts on the same axes as Plex's, so reuse
+// the type instead of forking a parallel one.
+export type JellyfinRecentSortKey = PlexRecentSortKey;
+
 export type RequestsSortKey =
   | "created-desc"
   | "created-asc"
@@ -37,6 +41,7 @@ interface SortPreferences {
   movies: MoviesSortKey;
   series: SeriesSortKey;
   plexRecent: PlexRecentSortKey;
+  jellyfinRecent: JellyfinRecentSortKey;
   requests: RequestsSortKey;
   downloads: DownloadsSortKey;
 }
@@ -45,6 +50,7 @@ export const SORT_DEFAULTS: SortPreferences = {
   movies: "added-desc",
   series: "added-desc",
   plexRecent: "added-desc",
+  jellyfinRecent: "added-desc",
   requests: "created-desc",
   downloads: "progress-desc",
 };
@@ -54,6 +60,7 @@ interface SortStore extends SortPreferences {
   setMovies: (v: MoviesSortKey) => void;
   setSeries: (v: SeriesSortKey) => void;
   setPlexRecent: (v: PlexRecentSortKey) => void;
+  setJellyfinRecent: (v: JellyfinRecentSortKey) => void;
   setRequests: (v: RequestsSortKey) => void;
   setDownloads: (v: DownloadsSortKey) => void;
 }
@@ -63,6 +70,7 @@ function snapshot(state: SortPreferences): SortPreferences {
     movies: state.movies,
     series: state.series,
     plexRecent: state.plexRecent,
+    jellyfinRecent: state.jellyfinRecent,
     requests: state.requests,
     downloads: state.downloads,
   };
@@ -90,6 +98,10 @@ export const useSortStore = create<SortStore>((set, get) => ({
   setPlexRecent: (plexRecent) => {
     set({ plexRecent });
     setJSON(STORAGE_KEY, snapshot({ ...get(), plexRecent }));
+  },
+  setJellyfinRecent: (jellyfinRecent) => {
+    set({ jellyfinRecent });
+    setJSON(STORAGE_KEY, snapshot({ ...get(), jellyfinRecent }));
   },
   setRequests: (requests) => {
     set({ requests });

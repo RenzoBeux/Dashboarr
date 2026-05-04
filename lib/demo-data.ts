@@ -567,6 +567,65 @@ const DEMO_PLEX_MEDIA_CONTAINER = {
   },
 };
 
+// --- Jellyfin ---
+
+const DEMO_JELLYFIN_USER_ID = "demo-user-id-0001";
+
+const DEMO_JELLYFIN_ME = {
+  Id: DEMO_JELLYFIN_USER_ID,
+  Name: "demo",
+  Policy: { IsAdministrator: true, IsDisabled: false },
+};
+
+const DEMO_JELLYFIN_USERS = [DEMO_JELLYFIN_ME];
+
+const DEMO_JELLYFIN_VIEWS = {
+  Items: [
+    { Id: "lib-movies", Name: "Movies", CollectionType: "movies", ImageTags: { Primary: "tag-movies" } },
+    { Id: "lib-tv", Name: "TV Shows", CollectionType: "tvshows", ImageTags: { Primary: "tag-tv" } },
+    { Id: "lib-music", Name: "Music", CollectionType: "music", ImageTags: { Primary: "tag-music" } },
+  ],
+  TotalRecordCount: 3,
+};
+
+const DEMO_JELLYFIN_LATEST: unknown[] = [
+  { Id: "jf-1", Name: "Dune: Part Two", Type: "Movie", ProductionYear: 2024, RunTimeTicks: 9960000 * 10000, DateCreated: new Date(NOW_TS * 1000 - 3600 * 1000).toISOString(), ImageTags: { Primary: "tag-1" } },
+  { Id: "jf-2", Name: "Oppenheimer", Type: "Movie", ProductionYear: 2023, RunTimeTicks: 11040000 * 10000, DateCreated: new Date(NOW_TS * 1000 - 86400 * 1000).toISOString(), ImageTags: { Primary: "tag-2" } },
+  { Id: "jf-3", Name: "The End", Type: "Episode", SeriesName: "Fallout", SeriesId: "jf-series-fallout", SeasonName: "Season 1", ParentIndexNumber: 1, IndexNumber: 8, RunTimeTicks: 4200000 * 10000, DateCreated: new Date(NOW_TS * 1000 - 7200 * 1000).toISOString(), ImageTags: { Primary: "tag-3" }, SeriesPrimaryImageTag: "tag-series-fallout" },
+  { Id: "jf-4", Name: "The Big Door Prize", Type: "Episode", SeriesName: "Fallout", SeriesId: "jf-series-fallout", SeasonName: "Season 1", ParentIndexNumber: 1, IndexNumber: 5, RunTimeTicks: 3720000 * 10000, DateCreated: new Date(NOW_TS * 1000 - 3600 * 1000).toISOString(), ImageTags: { Primary: "tag-4" }, SeriesPrimaryImageTag: "tag-series-fallout" },
+];
+
+const DEMO_JELLYFIN_RESUME = {
+  Items: [
+    { Id: "jf-r1", Name: "Dune: Part Two", Type: "Movie", ProductionYear: 2024, RunTimeTicks: 9960000 * 10000, UserData: { PlaybackPositionTicks: 4681200 * 10000, PlayedPercentage: 47 }, ImageTags: { Primary: "tag-1" } },
+    { Id: "jf-r2", Name: "The Radio", Type: "Episode", SeriesName: "Fallout", SeriesId: "jf-series-fallout", ParentIndexNumber: 1, IndexNumber: 6, RunTimeTicks: 3780000 * 10000, UserData: { PlaybackPositionTicks: 1500000 * 10000, PlayedPercentage: 39 }, ImageTags: { Primary: "tag-r2" }, SeriesPrimaryImageTag: "tag-series-fallout" },
+  ],
+  TotalRecordCount: 2,
+};
+
+const DEMO_JELLYFIN_SESSIONS = [
+  {
+    Id: "session-demo-1",
+    UserId: DEMO_JELLYFIN_USER_ID,
+    UserName: "demo",
+    Client: "Jellyfin Web",
+    DeviceName: "Living Room TV",
+    DeviceId: "device-1",
+    ApplicationVersion: "10.8.13",
+    RemoteEndPoint: "192.168.1.45",
+    IsActive: true,
+    NowPlayingItem: {
+      Id: "jf-1",
+      Name: "Dune: Part Two",
+      Type: "Movie",
+      ProductionYear: 2024,
+      RunTimeTicks: 9960000 * 10000,
+      ImageTags: { Primary: "tag-1" },
+    },
+    PlayState: { PositionTicks: 4681200 * 10000, IsPaused: false, PlayMethod: "DirectPlay" },
+  },
+];
+
 // --- Glances ---
 
 const DEMO_GLANCES_CPU = { total: 43.2, user: 29.8, system: 11.4, idle: 56.8, iowait: 1.8, cpucore: 8 };
@@ -699,6 +758,16 @@ export function getDemoResponse(serviceId: ServiceId, path: string): unknown {
       if (normalized.startsWith("/torrents/files")) return [];
       if (normalized.startsWith("/torrents/trackers")) return [];
       if (normalized.startsWith("/app/version")) return "5.0.0";
+      return undefined;
+    }
+    case "jellyfin": {
+      if (basePath === "/System/Info/Public") return { Version: "10.8.13", ServerName: "Demo Jellyfin" };
+      if (basePath === "/Users/Me") return DEMO_JELLYFIN_ME;
+      if (basePath === "/Users") return DEMO_JELLYFIN_USERS;
+      if (basePath === "/Sessions") return DEMO_JELLYFIN_SESSIONS;
+      if (basePath.endsWith("/Views")) return DEMO_JELLYFIN_VIEWS;
+      if (basePath.endsWith("/Items/Latest")) return DEMO_JELLYFIN_LATEST;
+      if (basePath.endsWith("/Items/Resume")) return DEMO_JELLYFIN_RESUME;
       return undefined;
     }
     default:

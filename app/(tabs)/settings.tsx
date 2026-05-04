@@ -10,6 +10,7 @@ import {
   BarChart3,
   Search,
   PlayCircle,
+  Clapperboard,
   Server,
   Captions,
   ChevronRight,
@@ -52,6 +53,7 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   tautulli: BarChart3,
   prowlarr: Search,
   plex: PlayCircle,
+  jellyfin: Clapperboard,
   glances: Server,
   bazarr: Captions,
 };
