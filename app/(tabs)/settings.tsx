@@ -57,6 +57,13 @@ const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   bazarr: Captions,
 };
 
+const URL_PLACEHOLDERS: Partial<Record<ServiceId, { local: string; remote: string }>> = {
+  rtorrent: {
+    local: "http://192.168.1.100:8080/RPC2",
+    remote: "https://service.mydomain.com/RPC2",
+  },
+};
+
 export default function SettingsScreen() {
   const [editingService, setEditingService] = useState<ServiceId | null>(null);
   const [exportStage, setExportStage] = useState<ExportStage | null>(null);
@@ -444,6 +451,10 @@ function ServiceEditor({
   const [testing, setTesting] = useState(false);
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances" || serviceId === "rtorrent";
+  const placeholders = URL_PLACEHOLDERS[serviceId] ?? {
+    local: "http://192.168.1.100:8080",
+    remote: "https://service.mydomain.com",
+  };
 
   const isDirty =
     localUrl !== config.localUrl ||
@@ -552,14 +563,14 @@ function ServiceEditor({
       <Card className="gap-4 mb-4">
         <TextInput
           label="Local URL"
-          placeholder="http://192.168.1.100:8080"
+          placeholder={placeholders.local}
           value={localUrl}
           onChangeText={setLocalUrl}
           keyboardType="url"
         />
         <TextInput
           label="Remote URL"
-          placeholder="https://service.mydomain.com"
+          placeholder={placeholders.remote}
           value={remoteUrl}
           onChangeText={setRemoteUrl}
           keyboardType="url"
