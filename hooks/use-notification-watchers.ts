@@ -50,7 +50,8 @@ export function useNotificationWatchers() {
 
   useEffect(() => {
     if (backendActive) return;
-    if (!hydrated || !enabled || !torrentCompleted || !torrents) return;
+    if (!hydrated || !enabled || !torrentCompleted) return;
+    if (!Array.isArray(torrents)) return;
     const prev = prevTorrents.current;
     if (prev !== null) {
       for (const t of torrents) {
@@ -73,7 +74,8 @@ export function useNotificationWatchers() {
 
   useEffect(() => {
     if (backendActive) return;
-    if (!hydrated || !enabled || !radarrDownloaded || !radarrQueue) return;
+    if (!hydrated || !enabled || !radarrDownloaded) return;
+    if (!Array.isArray(radarrQueue?.records)) return;
     const prev = prevRadarrQueue.current;
     const currentMap = new Map(
       radarrQueue.records.map((r) => [
@@ -101,7 +103,8 @@ export function useNotificationWatchers() {
 
   useEffect(() => {
     if (backendActive) return;
-    if (!hydrated || !enabled || !sonarrDownloaded || !sonarrQueue) return;
+    if (!hydrated || !enabled || !sonarrDownloaded) return;
+    if (!Array.isArray(sonarrQueue?.records)) return;
     const prev = prevSonarrQueue.current;
     const currentMap = new Map(
       sonarrQueue.records.map((r) => [
@@ -129,7 +132,8 @@ export function useNotificationWatchers() {
 
   useEffect(() => {
     if (backendActive) return;
-    if (!hydrated || !enabled || !serviceOffline || !health) return;
+    if (!hydrated || !enabled || !serviceOffline) return;
+    if (!Array.isArray(health)) return;
     const prev = prevHealth.current;
     if (prev !== null) {
       for (const s of health) {
@@ -152,7 +156,12 @@ export function useNotificationWatchers() {
 
   useEffect(() => {
     if (backendActive) return;
-    if (!hydrated || !enabled || !overseerrNewRequest || !overseerrRequests) return;
+    if (!hydrated || !enabled || !overseerrNewRequest) return;
+    // A misconfigured Overseerr (reverse proxy auth challenge, wrong URL, fork
+    // with divergent shape) can return 200 + JSON without `results`. Falling
+    // through to .map(undefined) here previously crashed the whole app since
+    // this hook is mounted at the root.
+    if (!Array.isArray(overseerrRequests?.results)) return;
     const currentIds = new Set(overseerrRequests.results.map((r) => r.id));
     const prev = prevRequestIds.current;
     if (prev !== null) {

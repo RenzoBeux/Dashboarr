@@ -17,7 +17,7 @@ import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
 import { pushConfigSnapshot } from "@/services/backend-api";
-import { ErrorBoundary } from "@/components/common/error-boundary";
+import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
 import "../global.css";
 
@@ -185,11 +185,24 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <ErrorBoundary>
-            <NotificationWatchers />
-            <NotificationRouter />
-            <BackendHealthPoller />
-            <ConfigSyncBridge />
-            <AppUpdateChecker />
+            {/* Invisible root subscribers — isolated so a single failing
+                watcher (e.g. a service returning an unexpected payload) can't
+                unmount the navigator and trap the user on the fallback. */}
+            <SilentErrorBoundary label="notification-watchers">
+              <NotificationWatchers />
+            </SilentErrorBoundary>
+            <SilentErrorBoundary label="notification-router">
+              <NotificationRouter />
+            </SilentErrorBoundary>
+            <SilentErrorBoundary label="backend-health">
+              <BackendHealthPoller />
+            </SilentErrorBoundary>
+            <SilentErrorBoundary label="config-sync">
+              <ConfigSyncBridge />
+            </SilentErrorBoundary>
+            <SilentErrorBoundary label="app-update-checker">
+              <AppUpdateChecker />
+            </SilentErrorBoundary>
             <StatusBar style="light" />
             <Stack
               screenOptions={{

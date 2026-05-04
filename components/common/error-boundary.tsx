@@ -57,6 +57,37 @@ export class ErrorBoundary extends Component<Props, State> {
 }
 
 /**
+ * Boundary for invisible root-level components (notification watchers, config
+ * sync bridges). Renders nothing on failure so a single misbehaving hook can't
+ * unmount the whole app and trap the user on the fallback screen.
+ */
+export class SilentErrorBoundary extends Component<
+  { children: ReactNode; label?: string },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; label?: string }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(
+      `SilentErrorBoundary[${this.props.label ?? "unknown"}] caught:`,
+      error,
+      info.componentStack,
+    );
+  }
+
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
+
+/**
  * Lightweight error boundary for individual cards/sections.
  * Shows a minimal inline error instead of crashing the whole screen.
  */
