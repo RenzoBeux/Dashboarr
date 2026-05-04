@@ -118,6 +118,8 @@ export default function SettingsScreen() {
   const demoMode = useConfigStore((s) => s.demoMode);
   const enableDemoMode = useConfigStore((s) => s.enableDemoMode);
   const disableDemoMode = useConfigStore((s) => s.disableDemoMode);
+  const hapticsEnabled = useConfigStore((s) => s.hapticsEnabled);
+  const setHapticsEnabled = useConfigStore((s) => s.setHapticsEnabled);
 
   const handleExport = async () => {
     const result = await requestPassphrase("export");
@@ -268,22 +270,12 @@ export default function SettingsScreen() {
         </Card>
       </Pressable>
 
-      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
-        Demo
-      </Text>
-
       <Card className="mb-4">
         <Toggle
-          label="Demo Mode"
-          description="Show sample data — no server required"
-          value={demoMode}
-          onValueChange={(v) => {
-            if (v) {
-              enableDemoMode();
-            } else {
-              void disableDemoMode();
-            }
-          }}
+          label="Haptic feedback"
+          description="Vibrations on taps, toggles, and refreshes"
+          value={hapticsEnabled}
+          onValueChange={setHapticsEnabled}
         />
       </Card>
 
@@ -383,6 +375,25 @@ export default function SettingsScreen() {
       <Text className="text-zinc-600 text-xs text-center mt-2 mb-4">
         Backups are encrypted with a passphrase you choose. Keep it safe — without it the backup cannot be restored.
       </Text>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-2">
+        Demo
+      </Text>
+
+      <Card className="mb-4">
+        <Toggle
+          label="Demo Mode"
+          description="Show sample data — no server required"
+          value={demoMode}
+          onValueChange={(v) => {
+            if (v) {
+              enableDemoMode();
+            } else {
+              void disableDemoMode();
+            }
+          }}
+        />
+      </Card>
 
       <AppVersionCard />
 

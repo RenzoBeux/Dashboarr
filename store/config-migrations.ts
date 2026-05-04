@@ -14,8 +14,9 @@ import type { ExportPayload } from "@/store/config-store";
  *   v5  — dashboardOrder renamed to dashboardWidgets
  *   v6  — added optional homeBSSID for rogue-AP-resistant auto-switch
  *   v7  — added per-widget settings; renamed sonarr-calendar → calendar
+ *   v8  — added hapticsEnabled global preference
  */
-export const CURRENT_CONFIG_VERSION = 7;
+export const CURRENT_CONFIG_VERSION = 8;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -108,6 +109,14 @@ const migrations: Record<number, (payload: any) => any> = {
     }
     return { ...payload, version: 7, dashboardWidgets, widgetSettings: {} };
   },
+
+  // v7 → v8: add hapticsEnabled. Pre-v8 backups never recorded the preference,
+  // so default to true to match the long-standing always-on behavior.
+  7: (payload) => ({
+    ...payload,
+    version: 8,
+    hapticsEnabled: typeof payload.hapticsEnabled === "boolean" ? payload.hapticsEnabled : true,
+  }),
 };
 
 /**

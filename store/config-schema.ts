@@ -206,5 +206,10 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     payload.widgetSettings = settings;
   }
 
+  if (raw.hapticsEnabled !== undefined) {
+    if (typeof raw.hapticsEnabled !== "boolean") throw new Error("Config hapticsEnabled is invalid");
+    payload.hapticsEnabled = raw.hapticsEnabled;
+  }
+
   return payload;
 }

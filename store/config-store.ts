@@ -76,6 +76,7 @@ interface ConfigState {
   wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
   demoMode: boolean;
+  hapticsEnabled: boolean;
 }
 
 export interface ExportPayload {
@@ -94,6 +95,8 @@ export interface ExportPayload {
   wolDevices?: WakeOnLanDevice[];
   // v7
   widgetSettings?: WidgetSettingsMap;
+  // v8
+  hapticsEnabled?: boolean;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -118,6 +121,7 @@ interface ConfigActions {
   setWidgetSettings: (id: WidgetId, settings: Record<string, unknown>) => void;
   resetWidgetSettings: (id: WidgetId) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
+  setHapticsEnabled: (enabled: boolean) => void;
   getActiveUrl: (id: ServiceId) => string;
   enableDemoMode: () => void;
   disableDemoMode: () => Promise<void>;
@@ -199,6 +203,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   wolDevices: [],
   hydrated: false,
   demoMode: false,
+  hapticsEnabled: true,
 
   hydrate: async () => {
     // Populate in-memory cache from AsyncStorage
@@ -261,6 +266,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
 
+    // Default to true for new installs and pre-v8 users who never had the toggle.
+    // getBoolean can't distinguish missing from explicit false, so we probe the
+    // raw string and treat "false" as the only off signal.
+    const rawHaptics = getString(STORAGE_KEYS.hapticsEnabled);
+    const hapticsEnabled = rawHaptics === undefined ? true : rawHaptics !== "false";
+
     const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
     if (demoMode) {
       for (const id of SERVICE_IDS) {
@@ -278,6 +289,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       widgetSettings,
       wolDevices,
       demoMode,
+      hapticsEnabled,
       hydrated: true,
     });
   },
@@ -382,6 +394,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ wolDevices: devices });
   },
 
+  setHapticsEnabled: (enabled) => {
+    setBoolean(STORAGE_KEYS.hapticsEnabled, enabled);
+    set({ hapticsEnabled: enabled });
+  },
+
   getActiveUrl: (id) => {
     const service = get().services[id];
     return service.useRemote ? service.remoteUrl : service.localUrl;
@@ -432,6 +449,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboardWidgets,
       widgetSettings,
       wolDevices,
+      hapticsEnabled,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
@@ -449,6 +467,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       backend: { url, sharedSecret, deviceId },
       notificationSettings: notifSettings,
       wolDevices,
+      hapticsEnabled,
     };
 
     onStage?.("encrypting");
@@ -538,6 +557,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const importedWidgetSettings = payload.widgetSettings ?? {};
     setJSON(STORAGE_KEYS.widgetSettings, importedWidgetSettings);
     setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
+    const importedHapticsEnabled = payload.hapticsEnabled ?? true;
+    setBoolean(STORAGE_KEYS.hapticsEnabled, importedHapticsEnabled);
 
     // Restore backend pairing (v2+)
     if (payload.backend?.url && payload.backend?.sharedSecret) {
@@ -563,6 +584,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboardWidgets: payload.dashboardWidgets ?? DEFAULT_DASHBOARD_WIDGETS,
       widgetSettings: importedWidgetSettings,
       wolDevices: payload.wolDevices ?? [],
+      hapticsEnabled: importedHapticsEnabled,
     });
 
     return true;

@@ -400,8 +400,42 @@ describe("v6 → v7 (widget rename + settings)", () => {
   });
 });
 
+describe("v7 → v8 (hapticsEnabled)", () => {
+  it("adds hapticsEnabled=true when missing", () => {
+    const result: any = migrateConfig({
+      version: 7,
+      services: {},
+      dashboardWidgets: [],
+      widgetSettings: {},
+    });
+    expect(result.hapticsEnabled).toBe(true);
+  });
+
+  it("preserves hapticsEnabled=false when explicitly set", () => {
+    const result: any = migrateConfig({
+      version: 7,
+      services: {},
+      dashboardWidgets: [],
+      widgetSettings: {},
+      hapticsEnabled: false,
+    });
+    expect(result.hapticsEnabled).toBe(false);
+  });
+
+  it("replaces a non-boolean hapticsEnabled with the default true", () => {
+    const result: any = migrateConfig({
+      version: 7,
+      services: {},
+      dashboardWidgets: [],
+      widgetSettings: {},
+      hapticsEnabled: "yes" as any,
+    });
+    expect(result.hapticsEnabled).toBe(true);
+  });
+});
+
 describe("end-to-end multi-step", () => {
-  it("upgrades a fully populated v0 fixture all the way to v7 in one pass", () => {
+  it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {
       // No version field — pre-versioning export.
       services: {
@@ -431,7 +465,7 @@ describe("end-to-end multi-step", () => {
 
     const result: any = migrateConfig(v0);
 
-    expect(result.version).toBe(7);
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
     // v0→v1 generated exportedAt
     expect(typeof result.exportedAt).toBe("string");
     // v1→v2 added these
@@ -455,11 +489,13 @@ describe("end-to-end multi-step", () => {
     expect(result.homeBSSID).toBe("");
     // v6→v7 added widgetSettings
     expect(result.widgetSettings).toEqual({});
+    // v7→v8 defaulted hapticsEnabled
+    expect(result.hapticsEnabled).toBe(true);
     // user data preserved
     expect(result.secrets).toEqual({ radarr: { apiKey: "k1" } });
   });
 
-  it("upgrades a v3 fixture (typical post-v3 build) to v7 without touching steps 0-2", () => {
+  it("upgrades a v3 fixture (typical post-v3 build) to the current version without touching steps 0-2", () => {
     const v3 = {
       version: 3,
       exportedAt: "2025-06-01T00:00:00.000Z",
@@ -483,7 +519,7 @@ describe("end-to-end multi-step", () => {
 
     const result: any = migrateConfig(v3);
 
-    expect(result.version).toBe(7);
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
     expect(result.exportedAt).toBe("2025-06-01T00:00:00.000Z");
     expect(result.homeSSID).toBe("MyWifi");
     expect(result.wolDevices).toHaveLength(1);

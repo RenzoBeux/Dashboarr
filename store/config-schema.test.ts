@@ -401,6 +401,29 @@ describe("validateExportPayload — widget IDs (silent drop)", () => {
   });
 });
 
+describe("validateExportPayload — hapticsEnabled", () => {
+  it("accepts true", () => {
+    const result = validateExportPayload({ ...baseValid(), hapticsEnabled: true });
+    expect(result.hapticsEnabled).toBe(true);
+  });
+
+  it("accepts false", () => {
+    const result = validateExportPayload({ ...baseValid(), hapticsEnabled: false });
+    expect(result.hapticsEnabled).toBe(false);
+  });
+
+  it("rejects a non-boolean hapticsEnabled", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), hapticsEnabled: "yes" as any }),
+    ).toThrow(/hapticsEnabled/);
+  });
+
+  it("omits hapticsEnabled from the result when absent in input", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.hapticsEnabled).toBeUndefined();
+  });
+});
+
 describe("validateExportPayload — widget settings", () => {
   it("drops unknown widget IDs from widgetSettings", () => {
     const result = validateExportPayload({
