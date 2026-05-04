@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript" alt="TypeScript" />
   <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app"><img src="https://img.shields.io/badge/Android-Google_Play-3DDC84?logo=android&logoColor=white" alt="Android — Google Play" /></a>
   <a href="https://apps.apple.com/us/app/dashboarr/id6762170117"><img src="https://img.shields.io/badge/iOS-App_Store-black?logo=apple" alt="iOS — App Store" /></a>
+  <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest"><img src="https://img.shields.io/github/v/release/RenzoBeux/Dashboarr?label=APK&logo=github&color=24292e" alt="Direct APK download" /></a>
 </p>
 
 ---
@@ -59,6 +60,16 @@ Dashboarr is now available on the Apple App Store: [Dashboarr on the App Store](
 
 Dashboarr is now available on the Google Play Store: [Dashboarr on Google Play](https://play.google.com/store/apps/details?id=com.dashboarr.app)
 
+### Android — Direct APK (de-Googled / sideload)
+
+If you're running a de-Googled Android (GrapheneOS, LineageOS, /e/OS, etc.) or just prefer to sideload, the signed APK for every release is attached to the matching tag on the [Releases page](https://github.com/RenzoBeux/Dashboarr/releases/latest).
+
+1. Download `app-release.apk` from the latest release
+2. Open it on your device — Android will prompt you to allow installs from your browser/file manager
+3. Updates are **manual**: there is no in-app updater for sideloaded installs, so check the Releases page periodically (or watch the repo)
+
+The APK is signed with the same keystore as the Play Store build, so you can install it side-by-side or migrate from Play without losing data — but you cannot mix the two on the same device.
+
 ## Getting Started
 
 ### Prerequisites
@@ -87,14 +98,23 @@ Scan the QR code with [Expo Go](https://expo.dev/go) on your device, or press `a
 
 ```bash
 # Android (EAS Build)
-npm run build:android
+pnpm build:android
 
 # iOS (EAS Build)
-npm run build:ios
+pnpm build:ios
 
-# Android local production build
-npm run build:android:prod
+# Android local production build — produces both AAB (Play Store) and APK (sideload)
+pnpm build:android:prod
+
+# Upload the locally-built APK to the GitHub Release matching package.json version
+# (creates the release with auto-generated notes if it doesn't exist yet)
+pnpm release:android:apk
+
+# Build + upload in one go
+pnpm release:android
 ```
+
+The `release:*` scripts require the [GitHub CLI](https://cli.github.com/) (`gh`) to be installed and authenticated against the repo. The APK is read from `android/app/build/outputs/apk/release/app-release.apk` and uploaded to the tag `v<version>` from `package.json`.
 
 ## Backend (Optional — Push Notifications)
 

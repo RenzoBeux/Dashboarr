@@ -17,7 +17,9 @@
     "bump:patch": "pnpm version patch -m \"chore: release v%s\"",
     "bump:minor": "pnpm version minor -m \"chore: release v%s\"",
     "bump:major": "pnpm version major -m \"chore: release v%s\"",
-    "build:android:prod": "expo prebuild --platform android --clean && node -e \"require('fs').copyFileSync(require('path').join(require('os').homedir(),'.android-keystores','dashboarr-release.keystore'),'android/app/dashboarr-release.keystore')\" && cd android && gradlew bundleRelease"
+    "build:android:prod": "expo prebuild --platform android --clean && node -e \"require('fs').copyFileSync(require('path').join(require('os').homedir(),'.android-keystores','dashboarr-release.keystore'),'android/app/dashboarr-release.keystore')\" && cd android && gradlew bundleRelease assembleRelease",
+    "release:android:apk": "node scripts/release-android-apk.js",
+    "release:android": "pnpm build:android:prod && pnpm release:android:apk"
   },
   "dependencies": {
     "@noble/ciphers": "^2.2.0",
@@ -28,6 +30,7 @@
     "@tanstack/react-query": "^5.67.0",
     "babel-preset-expo": "~54.0.10",
     "expo": "54",
+    "expo-application": "~7.0.8",
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",
