@@ -26,6 +26,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightHaptic, errorHaptic } from "@/lib/haptics";
 import { ICON } from "@/lib/constants";
+import { GlassSurface } from "@/components/ui/glass-surface";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX = Math.round(SCREEN_H * 0.85);
@@ -126,10 +127,14 @@ export function ActionSheet({
           <Animated.View
             style={[
               sheetStyle,
-              { maxHeight: SHEET_MAX, paddingBottom: insets.bottom + 8 },
+              { maxHeight: SHEET_MAX, paddingBottom: insets.bottom + 8, overflow: "hidden" },
             ]}
-            className="bg-surface rounded-t-3xl border-t border-border"
+            className="rounded-t-3xl border-t border-border"
           >
+            <GlassSurface
+              style={StyleSheet.absoluteFill}
+              fallbackClassName="bg-surface"
+            />
             <GestureDetector gesture={handlePan}>
               <View>
                 <View className="items-center pt-3 pb-1">
