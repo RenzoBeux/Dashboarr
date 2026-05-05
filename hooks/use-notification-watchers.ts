@@ -166,7 +166,7 @@ export function useNotificationWatchers() {
     if (Array.isArray(overseerrRequests?.results)) return;
     overseerrShapeWarned.current = true;
     toast(
-      "Overseerr returned an unexpected response. Check the URL and API key.",
+      "Seerr returned an unexpected response. Check the URL and API key.",
       "error",
     );
   }, [overseerrRequests]);

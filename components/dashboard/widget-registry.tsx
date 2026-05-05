@@ -154,7 +154,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   },
   "overseerr-requests": {
     id: "overseerr-requests",
-    label: "Overseerr Requests",
+    label: "Seerr Requests",
     description: "Recent media requests with status",
     icon: Inbox,
     service: "overseerr",

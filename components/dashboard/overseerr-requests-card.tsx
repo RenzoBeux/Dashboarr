@@ -1,12 +1,18 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ScrollView, Image } from "react-native";
 import { useRouter } from "expo-router";
-import { Inbox, Check, Clock, X } from "lucide-react-native";
+import { Inbox, Check, Clock, X, ChevronRight, Film, Tv } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { useOverseerrRequests, useOverseerrRequestCount } from "@/hooks/use-overseerr";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  useOverseerrRequests,
+  useOverseerrRequestCount,
+  useOverseerrMediaDetails,
+} from "@/hooks/use-overseerr";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { getPosterUrl } from "@/services/overseerr-api";
+import type { OverseerrRequest } from "@/lib/types";
 import {
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   type OverseerrRequestsSettingsValue,
@@ -19,11 +25,14 @@ const REQUEST_STATUS_ICON: Record<number, React.ElementType> = {
   3: X, // declined
 };
 
-const REQUEST_STATUS_COLOR: Record<number, string> = {
+const REQUEST_STATUS_BG: Record<number, string> = {
   1: "#f59e0b",
   2: "#22c55e",
   3: "#ef4444",
 };
+
+const POSTER_WIDTH = 110;
+const POSTER_HEIGHT = 165;
 
 // Maps the widget setting to the API filter argument. "pending-approved" needs
 // client-side filtering so we fetch "all" and trim down below.
@@ -55,10 +64,19 @@ export function OverseerrRequestsCard() {
   const filtered = allResults.filter((req) => statusMatches(req.status, settings.statusFilter));
   const display = filtered.slice(0, settings.maxItems);
 
+  const goToRequests = () => router.push("/(tabs)/requests?tab=requests");
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Requests</CardTitle>
+        <Pressable
+          onPress={goToRequests}
+          className="flex-row items-center gap-1 active:opacity-70"
+          hitSlop={8}
+        >
+          <CardTitle>Requests</CardTitle>
+          <ChevronRight size={18} color="#a1a1aa" />
+        </Pressable>
         <View className="flex-row gap-2">
           {counts && counts.pending > 0 && (
             <Badge label="Pending" variant="warning" count={counts.pending} />
@@ -67,7 +85,24 @@ export function OverseerrRequestsCard() {
       </CardHeader>
 
       {isLoading ? (
-        <SkeletonCardContent rows={3} />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
+          {Array.from({ length: 4 }).map((_, i) => (
+            <View key={i} style={{ width: POSTER_WIDTH }}>
+              <Skeleton
+                width={POSTER_WIDTH}
+                height={POSTER_HEIGHT}
+                borderRadius={12}
+              />
+              <View className="mt-2">
+                <Skeleton width={90} height={12} borderRadius={4} />
+              </View>
+            </View>
+          ))}
+        </ScrollView>
       ) : display.length === 0 ? (
         <EmptyState
           icon={<Inbox size={32} color="#71717a" />}
@@ -78,44 +113,110 @@ export function OverseerrRequestsCard() {
           }
         />
       ) : (
-        <View className="gap-2">
-          {display.map((req) => {
-            const Icon = REQUEST_STATUS_ICON[req.status] ?? Clock;
-            const color = REQUEST_STATUS_COLOR[req.status] ?? "#71717a";
-
-            return (
-              <Pressable
-                key={req.id}
-                onPress={() => router.push("/(tabs)/requests")}
-                className="flex-row items-center gap-3 py-1 active:opacity-80"
-              >
-                <Icon size={16} color={color} />
-                <View className="flex-1">
-                  <Text className="text-zinc-200 text-sm">
-                    {req.media.mediaType === "movie" ? "Movie" : "TV"} #{req.media.tmdbId}
-                  </Text>
-                  {settings.showRequester && (
-                    <Text className="text-zinc-500 text-xs">
-                      {req.requestedBy.displayName} ·{" "}
-                      {new Date(req.createdAt).toLocaleDateString()}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
+          {display.map((req) => (
+            <RequestPosterCard
+              key={req.id}
+              request={req}
+              showRequester={settings.showRequester}
+              onPress={goToRequests}
+            />
+          ))}
           {filtered.length > settings.maxItems && (
             <Pressable
-              onPress={() => router.push("/(tabs)/requests")}
-              className="active:opacity-70"
+              onPress={goToRequests}
+              className="items-center justify-center active:opacity-70"
+              style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT }}
             >
-              <Text className="text-primary text-sm text-center font-medium">
-                View All →
-              </Text>
+              <View className="items-center justify-center bg-surface-light rounded-xl border border-border w-full h-full gap-1.5">
+                <ChevronRight size={28} color="#a1a1aa" />
+                <Text className="text-zinc-300 text-xs font-medium">
+                  View all
+                </Text>
+              </View>
             </Pressable>
           )}
-        </View>
+        </ScrollView>
       )}
     </Card>
+  );
+}
+
+function RequestPosterCard({
+  request,
+  showRequester,
+  onPress,
+}: {
+  request: OverseerrRequest;
+  showRequester: boolean;
+  onPress: () => void;
+}) {
+  const Icon = REQUEST_STATUS_ICON[request.status] ?? Clock;
+  const statusBg = REQUEST_STATUS_BG[request.status] ?? "#71717a";
+
+  const { data: mediaDetails } = useOverseerrMediaDetails(
+    request.media.tmdbId,
+    request.media.mediaType,
+  );
+
+  const details = mediaDetails as
+    | { title?: string; name?: string; posterPath?: string }
+    | undefined;
+  const title =
+    details?.title ||
+    details?.name ||
+    `${request.media.mediaType === "movie" ? "Movie" : "TV"} #${request.media.tmdbId}`;
+  const posterUrl = getPosterUrl(details?.posterPath, "w185");
+
+  return (
+    <Pressable
+      onPress={onPress}
+      className="active:opacity-80"
+      style={{ width: POSTER_WIDTH }}
+    >
+      <View
+        className="rounded-xl overflow-hidden bg-surface-light"
+        style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT }}
+      >
+        {posterUrl ? (
+          <Image
+            source={{ uri: posterUrl }}
+            className="w-full h-full"
+            resizeMode="cover"
+          />
+        ) : (
+          <View className="w-full h-full items-center justify-center">
+            {request.media.mediaType === "movie" ? (
+              <Film size={24} color="#71717a" />
+            ) : (
+              <Tv size={24} color="#71717a" />
+            )}
+          </View>
+        )}
+
+        <View
+          className="absolute top-1.5 right-1.5 rounded-full p-1"
+          style={{ backgroundColor: statusBg }}
+        >
+          <Icon size={10} color="#fff" />
+        </View>
+      </View>
+
+      <Text
+        className="text-zinc-200 text-xs font-medium mt-1.5"
+        numberOfLines={2}
+      >
+        {title}
+      </Text>
+      {showRequester && (
+        <Text className="text-zinc-500 text-[11px]" numberOfLines={1}>
+          {request.requestedBy.displayName}
+        </Text>
+      )}
+    </Pressable>
   );
 }

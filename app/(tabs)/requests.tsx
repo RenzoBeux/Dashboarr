@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { View, Text, Pressable, Image, ScrollView } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import {
   Search,
   Check,
@@ -112,7 +113,14 @@ const REQUEST_STATUS_VARIANTS: Record<
 };
 
 export default function RequestsScreen() {
-  const [tab, setTab] = useState<Tab>("discover");
+  const { tab: initialTabParam } = useLocalSearchParams<{ tab?: string }>();
+  const initialTab: Tab =
+    initialTabParam === "requests" ||
+    initialTabParam === "search" ||
+    initialTabParam === "discover"
+      ? initialTabParam
+      : "discover";
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [selectedMedia, setSelectedMedia] =
     useState<OverseerrMediaResult | null>(null);
   const { data: healthData } = useServiceHealth();
@@ -126,7 +134,7 @@ export default function RequestsScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Overseerr" online={overseerrHealth?.online} />
+      <ServiceHeader name="Seerr" online={overseerrHealth?.online} />
 
       <View className="flex-row gap-2 mb-4">
         {TAB_CONFIG.map(({ key, label, icon: Icon }) => (

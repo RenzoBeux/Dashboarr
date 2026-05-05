@@ -1,7 +1,7 @@
 # Backend Proxy Mode
 
 ## Summary
-Add an **optional** mode where the Dashboarr app talks only to the self-hosted backend, and the backend proxies all requests to the underlying services (qBittorrent, Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Plex, Bazarr, Glances). Today, the app connects directly to each service, which means the user has to expose every service individually (port forwards, reverse proxy entries, TLS certs, auth). Proxy mode collapses that to a single exposed endpoint: the backend.
+Add an **optional** mode where the Dashboarr app talks only to the self-hosted backend, and the backend proxies all requests to the underlying services (qBittorrent, Radarr, Sonarr, Seerr, Tautulli, Prowlarr, Plex, Bazarr, Glances). Today, the app connects directly to each service, which means the user has to expose every service individually (port forwards, reverse proxy entries, TLS certs, auth). Proxy mode collapses that to a single exposed endpoint: the backend.
 
 This is **opt-in**, not a replacement. The current direct-connection architecture remains the default so the backend stays optional for users who don't want or need it.
 

@@ -217,6 +217,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         services[id] = { ...defaultServiceConfig(id), ...stored };
       }
     }
+    // Existing users have the legacy default "Overseerr" in AsyncStorage; show
+    // the current default ("Seerr") instead. Custom names set by the user are
+    // preserved (only the verbatim legacy default is replaced).
+    if (services.overseerr.name === "Overseerr") {
+      services.overseerr.name = SERVICE_DEFAULTS.overseerr.name;
+    }
 
     // Load secrets from SecureStore
     const secrets = { ...emptySecrets() };
