@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
+import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
 import {
   Download,
@@ -19,6 +20,7 @@ import {
   Wifi,
   Cloud,
   Zap,
+  ImageOff,
 } from "lucide-react-native";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { detectWifi } from "@/lib/wifi";
@@ -153,6 +155,31 @@ export default function SettingsScreen() {
       subtitle: "Deriving a key from your passphrase. This takes a moment on mobile.",
     },
     restoring: { title: "Restoring settings…" },
+  };
+
+  const handleClearImageCache = () => {
+    Alert.alert(
+      "Clear image cache",
+      "Posters and backdrops will be re-downloaded the next time you view them.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await Promise.all([
+                Image.clearMemoryCache(),
+                Image.clearDiskCache(),
+              ]);
+              toast("Image cache cleared", "success");
+            } catch {
+              toast("Failed to clear image cache", "error");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleImport = () => {
@@ -378,6 +405,25 @@ export default function SettingsScreen() {
       <Text className="text-zinc-600 text-xs text-center mt-2 mb-4">
         Backups are encrypted with a passphrase you choose. Keep it safe — without it the backup cannot be restored.
       </Text>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-2">
+        Storage
+      </Text>
+
+      <Pressable onPress={handleClearImageCache} className="active:opacity-80 mb-4">
+        <Card className="flex-row items-center">
+          <View className="bg-surface-light rounded-xl p-2.5 mr-3">
+            <ImageOff size={20} color="#a1a1aa" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-base">Clear image cache</Text>
+            <Text className="text-zinc-500 text-xs">
+              Free up disk space used by cached posters and backdrops
+            </Text>
+          </View>
+          <ChevronRight size={18} color="#71717a" />
+        </Card>
+      </Pressable>
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1 mt-2">
         Demo
