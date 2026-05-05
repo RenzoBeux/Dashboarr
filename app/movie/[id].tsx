@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ export default function MovieDetailScreen() {
   if (isLoading || !movie) {
     return (
       <ScreenWrapper>
+        <BackHeader />
         {isLoading ? (
           <View>
             <Skeleton width="100%" height={192} borderRadius={16} />
@@ -78,6 +80,7 @@ export default function MovieDetailScreen() {
 
   return (
     <ScreenWrapper>
+      <BackHeader />
       {fanartUrl && (
         <Animated.View style={fanartStyle} className="mb-4">
           <Image

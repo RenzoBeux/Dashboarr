@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator, Platform } from "react-native";
-import { router } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { ArrowLeft, Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react-native";
+import { Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
@@ -208,13 +208,7 @@ export default function BackendScreen() {
 
   return (
     <ScreenWrapper>
-      <View className="flex-row items-center mb-4 mt-2">
-        <Pressable onPress={() => router.back()} className="mr-3 active:opacity-70 p-1">
-          <ArrowLeft size={22} color="#e4e4e7" />
-        </Pressable>
-        <Text className="text-zinc-100 text-xl font-bold flex-1">Backend</Text>
-        <BackendStatusPill />
-      </View>
+      <BackHeader title="Backend" right={<BackendStatusPill />} />
 
       {!projectReady && (
         <Card className="mb-4 bg-amber-950/40 border border-amber-900">

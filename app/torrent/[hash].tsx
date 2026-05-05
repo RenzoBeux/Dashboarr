@@ -2,6 +2,7 @@ import { View, Text, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, ArrowUp } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -30,6 +31,7 @@ export default function TorrentDetailScreen() {
   if (!torrent) {
     return (
       <ScreenWrapper>
+        <BackHeader />
         <Text className="text-zinc-400 text-center mt-10">
           {isLoading ? "Loading…" : "Torrent not found"}
         </Text>
@@ -63,8 +65,9 @@ export default function TorrentDetailScreen() {
 
   return (
     <ScreenWrapper>
+      <BackHeader />
       {/* Header */}
-      <Text className="text-zinc-100 text-lg font-bold mt-2 mb-1">
+      <Text className="text-zinc-100 text-lg font-bold mb-1">
         {torrent.name}
       </Text>
       <Badge

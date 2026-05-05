@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
-import { useRouter } from "expo-router";
 import { Tv, Plus, Check, SlidersHorizontal } from "lucide-react-native";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { TextInput } from "@/components/ui/text-input";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,7 +23,6 @@ export default function SeriesSearchScreen() {
   const [query, setQuery] = useState("");
   const { data: results, isLoading } = useSonarrSearch(query);
   const { data: existing } = useSonarrSeries();
-  const router = useRouter();
   const [advancedTarget, setAdvancedTarget] = useState<SonarrSearchResult | null>(null);
 
   const existingTvdbIds = useMemo(
@@ -33,12 +32,7 @@ export default function SeriesSearchScreen() {
 
   return (
     <ScreenWrapper>
-      <View className="flex-row items-center mb-4 mt-2">
-        <Pressable onPress={() => router.back()} className="mr-3 active:opacity-70">
-          <Text className="text-primary text-base">← Back</Text>
-        </Pressable>
-        <Text className="text-zinc-100 text-xl font-bold">Search TV Shows</Text>
-      </View>
+      <BackHeader title="Search TV Shows" />
 
       <TextInput
         placeholder="Search for a show..."

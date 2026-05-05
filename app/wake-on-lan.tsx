@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { View, Text, Pressable, Alert } from "react-native";
-import { router } from "expo-router";
-import { ArrowLeft, Zap, Plus, Pencil, Trash2, X } from "lucide-react-native";
+import { Zap, Plus, Pencil, Trash2, X } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
@@ -120,17 +120,10 @@ export default function WakeOnLanScreen() {
   if (mode === "add" || mode === "edit") {
     return (
       <ScreenWrapper>
-        <View className="flex-row items-center mb-4 mt-2">
-          <Pressable
-            onPress={() => { resetForm(); setMode("list"); }}
-            className="mr-3 active:opacity-70 p-1"
-          >
-            <ArrowLeft size={22} color="#e4e4e7" />
-          </Pressable>
-          <Text className="text-zinc-100 text-xl font-bold">
-            {mode === "add" ? "Add Device" : "Edit Device"}
-          </Text>
-        </View>
+        <BackHeader
+          title={mode === "add" ? "Add Device" : "Edit Device"}
+          onBack={() => { resetForm(); setMode("list"); }}
+        />
 
         <Card className="gap-4 mb-4">
           <TextInput
@@ -181,15 +174,14 @@ export default function WakeOnLanScreen() {
 
   return (
     <ScreenWrapper>
-      <View className="flex-row items-center mb-4 mt-2">
-        <Pressable onPress={() => router.back()} className="mr-3 active:opacity-70 p-1">
-          <ArrowLeft size={22} color="#e4e4e7" />
-        </Pressable>
-        <Text className="text-zinc-100 text-xl font-bold flex-1">Wake-on-LAN</Text>
-        <Pressable onPress={startAdd} className="active:opacity-70 p-1">
-          <Plus size={22} color="#3b82f6" />
-        </Pressable>
-      </View>
+      <BackHeader
+        title="Wake-on-LAN"
+        right={
+          <Pressable onPress={startAdd} className="active:opacity-70 p-1">
+            <Plus size={22} color="#3b82f6" />
+          </Pressable>
+        }
+      />
 
       {!wolDevices.length ? (
         <View className="items-center justify-center py-20 gap-3">
