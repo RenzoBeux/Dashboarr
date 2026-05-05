@@ -24,8 +24,27 @@ const DOWNLOADING_STATES: readonly TorrentState[] = [
   "checkingDL",
 ];
 
+// Post-download states. `pausedUP`/`stoppedUP` cover qBT 4.x and 5.x naming.
+// Excluded on purpose: pausedDL/stoppedDL (paused mid-download), error/
+// missingFiles/unknown (failures), and transient states like moving/
+// checkingResumeData — they resolve into one of the buckets above on the next
+// poll.
+const COMPLETED_STATES: readonly TorrentState[] = [
+  "uploading",
+  "pausedUP",
+  "stoppedUP",
+  "queuedUP",
+  "stalledUP",
+  "checkingUP",
+  "forcedUP",
+];
+
 function isDownloading(state: TorrentState): boolean {
   return DOWNLOADING_STATES.includes(state);
+}
+
+function isCompleted(state: TorrentState): boolean {
+  return COMPLETED_STATES.includes(state);
 }
 
 // ---------------- qBittorrent ----------------
@@ -57,7 +76,7 @@ export async function diffQbTorrents(torrents: QBTorrent[]): Promise<void> {
 
   for (const t of torrents) {
     const before = prev[t.hash];
-    if (before && isDownloading(before.state) && !isDownloading(t.state)) {
+    if (before && isDownloading(before.state) && isCompleted(t.state)) {
       // Skip notification for torrents managed by Radarr/Sonarr — those
       // services send their own, more informative notifications.
       if (isManagedByArr(t.category)) continue;

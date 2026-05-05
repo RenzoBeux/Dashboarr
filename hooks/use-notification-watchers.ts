@@ -20,8 +20,25 @@ const DOWNLOADING_STATES: TorrentState[] = [
   "checkingDL",
 ];
 
+// Post-download states. `pausedUP`/`stoppedUP` cover qBT 4.x and 5.x naming.
+// Excluding pausedDL/stoppedDL here is what stops a pause from being mistaken
+// for a completion.
+const COMPLETED_STATES: TorrentState[] = [
+  "uploading",
+  "pausedUP",
+  "stoppedUP",
+  "queuedUP",
+  "stalledUP",
+  "checkingUP",
+  "forcedUP",
+];
+
 function isDownloadingState(state: TorrentState): boolean {
   return DOWNLOADING_STATES.includes(state);
+}
+
+function isCompletedState(state: TorrentState): boolean {
+  return COMPLETED_STATES.includes(state);
 }
 
 /**
@@ -57,7 +74,7 @@ export function useNotificationWatchers() {
     if (prev !== null) {
       for (const t of torrents) {
         const prevT = prev.get(t.hash);
-        if (prevT && isDownloadingState(prevT.state) && !isDownloadingState(t.state)) {
+        if (prevT && isDownloadingState(prevT.state) && isCompletedState(t.state)) {
           sendLocalNotification({
             title: "Download complete",
             body: t.name,

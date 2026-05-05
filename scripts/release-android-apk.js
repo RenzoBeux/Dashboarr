@@ -6,6 +6,7 @@ const fs = require('fs');
 const pkg = require('../package.json');
 const version = pkg.version;
 const tag = `v${version}`;
+const FORCE = process.argv.includes('--force');
 const apkPath = path.join(
   __dirname,
   '..',
@@ -55,8 +56,13 @@ const releaseView = capture('gh', ['release', 'view', tag]);
 if (releaseView.status !== 0) {
   console.log(`[release] Release ${tag} not found, creating...`);
   run('gh', ['release', 'create', tag, '--title', tag, '--generate-notes']);
+} else if (FORCE) {
+  console.log(`[release] Release ${tag} already exists, --force passed, overwriting APK asset.`);
 } else {
-  console.log(`[release] Release ${tag} already exists, will overwrite APK asset.`);
+  console.error(`[release] Release ${tag} already exists.`);
+  console.error(`[release] Refusing to overwrite the APK asset — did you forget to bump the version in package.json?`);
+  console.error(`[release] Run "pnpm bump:patch" (or :minor / :major) and retry, or pass --force to overwrite intentionally.`);
+  process.exit(1);
 }
 
 console.log(`[release] Uploading APK...`);
