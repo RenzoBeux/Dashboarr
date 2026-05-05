@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { useAllTorrents } from "@/hooks/use-qbittorrent";
+import { useDownloadingTorrentsForWatcher } from "@/hooks/use-qbittorrent";
+import { getTorrents } from "@/services/qbittorrent-api";
 import { useRadarrQueue } from "@/hooks/use-radarr";
 import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -9,16 +10,6 @@ import { useBackendStore } from "@/store/backend-store";
 import { sendLocalNotification } from "@/lib/notifications";
 import { toast } from "@/components/ui/toast";
 import type { QBTorrent, TorrentState } from "@/lib/types";
-
-const DOWNLOADING_STATES: TorrentState[] = [
-  "downloading",
-  "metaDL",
-  "stalledDL",
-  "queuedDL",
-  "forcedDL",
-  "allocating",
-  "checkingDL",
-];
 
 // Post-download states. `pausedUP`/`stoppedUP` cover qBT 4.x and 5.x naming.
 // Excluding pausedDL/stoppedDL here is what stops a pause from being mistaken
@@ -32,10 +23,6 @@ const COMPLETED_STATES: TorrentState[] = [
   "checkingUP",
   "forcedUP",
 ];
-
-function isDownloadingState(state: TorrentState): boolean {
-  return DOWNLOADING_STATES.includes(state);
-}
 
 function isCompletedState(state: TorrentState): boolean {
   return COMPLETED_STATES.includes(state);
@@ -63,28 +50,60 @@ export function useNotificationWatchers() {
   );
 
   // --- qBittorrent: torrent downloading → completed ---
-  const { data: torrents } = useAllTorrents();
-  const prevTorrents = useRef<Map<string, QBTorrent> | null>(null);
+  // We only fetch torrents currently in a downloading state (a small slice
+  // even on huge libraries). When a hash leaves that set, we do a targeted
+  // verification fetch by hash to disambiguate completion (notify) from
+  // pause/delete (don't notify). The watcher query stays fully disabled
+  // unless notifications are on, qBT is enabled, completions are wanted,
+  // and the backend isn't already pushing — so the cost is zero at rest.
+  const watcherActive =
+    !backendActive && hydrated && enabled && torrentCompleted;
+  const { data: downloading } = useDownloadingTorrentsForWatcher(watcherActive);
+  const prevDownloading = useRef<Map<string, QBTorrent>>(new Map());
+
+  // Reset the baseline whenever the watcher goes inactive so the next active
+  // poll doesn't compare against a stale snapshot from before the gap.
+  useEffect(() => {
+    if (!watcherActive) prevDownloading.current = new Map();
+  }, [watcherActive]);
 
   useEffect(() => {
-    if (backendActive) return;
-    if (!hydrated || !enabled || !torrentCompleted) return;
-    if (!Array.isArray(torrents)) return;
-    const prev = prevTorrents.current;
-    if (prev !== null) {
-      for (const t of torrents) {
-        const prevT = prev.get(t.hash);
-        if (prevT && isDownloadingState(prevT.state) && isCompletedState(t.state)) {
-          sendLocalNotification({
-            title: "Download complete",
-            body: t.name,
-            data: { type: "torrent", hash: t.hash },
-          });
-        }
-      }
+    if (!watcherActive) return;
+    if (!Array.isArray(downloading)) return;
+
+    const currMap = new Map(downloading.map((t) => [t.hash, t]));
+    const prev = prevDownloading.current;
+    prevDownloading.current = currMap;
+
+    const departed: QBTorrent[] = [];
+    for (const [hash, t] of prev) {
+      if (!currMap.has(hash)) departed.push(t);
     }
-    prevTorrents.current = new Map(torrents.map((t) => [t.hash, t]));
-  }, [torrents, hydrated, enabled, torrentCompleted, backendActive]);
+    if (departed.length === 0) return;
+
+    // Disappearance from the downloading set could mean the torrent was
+    // paused, deleted, or actually completed — verify with one targeted
+    // fetch before notifying.
+    void (async () => {
+      try {
+        const list = await getTorrents({ hashes: departed.map((t) => t.hash) });
+        const stateByHash = new Map(list.map((t) => [t.hash, t.state]));
+        for (const t of departed) {
+          const newState = stateByHash.get(t.hash);
+          if (newState && isCompletedState(newState)) {
+            sendLocalNotification({
+              title: "Download complete",
+              body: t.name,
+              data: { type: "torrent", hash: t.hash },
+            });
+          }
+        }
+      } catch {
+        // Best-effort — if verification fails, skip the notification rather
+        // than risk a false positive.
+      }
+    })();
+  }, [downloading, watcherActive]);
 
   // --- Radarr: queue item disappears (success only) ---
   const { data: radarrQueue } = useRadarrQueue();

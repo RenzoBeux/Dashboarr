@@ -187,11 +187,45 @@ export function getTransferInfo(): Promise<QBTransferInfo> {
 
 // --- Torrents ---
 
-export function getTorrents(
-  filter?: "all" | "downloading" | "seeding" | "completed" | "paused" | "active" | "inactive" | "stalled",
-): Promise<QBTorrent[]> {
-  const params = filter ? `?filter=${filter}` : "";
-  return qbRequest<QBTorrent[]>(`/torrents/info${params}`);
+// Mirrors the query params accepted by `GET /api/v2/torrents/info`. `sort` is
+// any field name from `QBTorrent` (e.g. "progress", "added_on", "dlspeed").
+// `hashes` are joined with `|` per the qBT 5.0 API.
+export type QBTorrentFilter =
+  | "all"
+  | "downloading"
+  | "seeding"
+  | "completed"
+  | "paused"
+  | "active"
+  | "inactive"
+  | "stalled"
+  | "errored";
+
+export interface GetTorrentsOptions {
+  filter?: QBTorrentFilter;
+  category?: string;
+  tag?: string;
+  sort?: keyof QBTorrent;
+  reverse?: boolean;
+  limit?: number;
+  offset?: number;
+  hashes?: string[];
+}
+
+export function getTorrents(options: GetTorrentsOptions = {}): Promise<QBTorrent[]> {
+  const params = new URLSearchParams();
+  if (options.filter) params.set("filter", options.filter);
+  if (options.category !== undefined) params.set("category", options.category);
+  if (options.tag !== undefined) params.set("tag", options.tag);
+  if (options.sort) params.set("sort", options.sort);
+  if (options.reverse !== undefined) params.set("reverse", String(options.reverse));
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  if (options.hashes && options.hashes.length > 0) {
+    params.set("hashes", options.hashes.join("|"));
+  }
+  const query = params.toString();
+  return qbRequest<QBTorrent[]>(`/torrents/info${query ? `?${query}` : ""}`);
 }
 
 export function getTorrentFiles(hash: string): Promise<QBTorrentFile[]> {

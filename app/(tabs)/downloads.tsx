@@ -1,10 +1,22 @@
-import { useState, useCallback, useMemo } from "react";
-import { View, Text, Pressable, Alert, BackHandler, ScrollView } from "react-native";
+import { useState, useCallback, useContext, useEffect } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  Alert,
+  BackHandler,
+  ScrollView,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap } from "lucide-react-native";
-import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { DemoBanner } from "@/components/common/demo-banner";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Badge } from "@/components/ui/badge";
@@ -13,15 +25,16 @@ import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
-import { errorHaptic, mediumHaptic } from "@/lib/haptics";
+import { errorHaptic, lightHaptic, mediumHaptic } from "@/lib/haptics";
 import { SortButton } from "@/components/ui/sort-button";
+import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 import {
   useSortStore,
   SORT_DEFAULTS,
   type DownloadsSortKey,
 } from "@/store/sort-store";
 import {
-  useAllTorrents,
+  useInfiniteTorrents,
   useTransferInfo,
   usePauseTorrent,
   useResumeTorrent,
@@ -29,11 +42,12 @@ import {
   useAddTorrent,
   useSpeedLimitsMode,
 } from "@/hooks/use-qbittorrent";
+import type { QBTorrentFilter } from "@/services/qbittorrent-api";
 import { SpeedLimitsSheet } from "@/components/qbittorrent/speed-limits-sheet";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatSpeed, formatEta, formatBytes, truncateText } from "@/lib/utils";
-import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
 
 type FilterType = "all" | "downloading" | "seeding" | "completed" | "paused";
@@ -54,18 +68,28 @@ const SORT_OPTIONS: { key: DownloadsSortKey; label: string }[] = [
   { key: "added-desc", label: "Added: Newest First" },
 ];
 
-function compareTorrents(a: QBTorrent, b: QBTorrent, sort: DownloadsSortKey): number {
-  switch (sort) {
+const PAGE_SIZE = 50;
+
+// Tab filter maps directly to qBittorrent's `filter` param. "all" omits it
+// rather than sending `filter=all`, which is functionally identical and a
+// few bytes cheaper on the wire.
+function tabFilterToQB(filter: FilterType): QBTorrentFilter | undefined {
+  return filter === "all" ? undefined : filter;
+}
+
+// Sort key from `useSortStore` → qBittorrent's `sort` field name + `reverse`.
+function sortKeyToQB(key: DownloadsSortKey): { sort: keyof QBTorrent; reverse: boolean } {
+  switch (key) {
     case "progress-desc":
-      return b.progress - a.progress;
+      return { sort: "progress", reverse: true };
     case "progress-asc":
-      return a.progress - b.progress;
+      return { sort: "progress", reverse: false };
     case "name-asc":
-      return a.name.localeCompare(b.name);
+      return { sort: "name", reverse: false };
     case "size-desc":
-      return b.size - a.size;
+      return { sort: "size", reverse: true };
     case "added-desc":
-      return b.added_on - a.added_on;
+      return { sort: "added_on", reverse: true };
   }
 }
 
@@ -87,11 +111,24 @@ export default function DownloadsScreen() {
   const [speedLimitsOpen, setSpeedLimitsOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
-  const { data: torrents } = useAllTorrents(filter === "all" ? undefined : filter);
-  const sortedTorrents = useMemo(
-    () => (torrents ? [...torrents].sort((a, b) => compareTorrents(a, b, sort)) : torrents),
-    [torrents, sort],
-  );
+  const [refreshing, setRefreshing] = useState(false);
+
+  const { sort: qbSort, reverse } = sortKeyToQB(sort);
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    refetch,
+  } = useInfiniteTorrents({
+    filter: tabFilterToQB(filter),
+    sort: qbSort,
+    reverse,
+    pageSize: PAGE_SIZE,
+  });
+  // Server-side sort means we just flatten pages in order — no client re-sort.
+  const torrents = data?.pages.flat() ?? [];
   const { data: transfer } = useTransferInfo();
   const { data: healthData } = useServiceHealth();
   const { data: altModeOn } = useSpeedLimitsMode();
@@ -100,7 +137,27 @@ export default function DownloadsScreen() {
   const resumeMutation = useResumeTorrent();
   const deleteMutation = useDeleteTorrent();
   const router = useRouter();
-  const { refreshing, onRefresh } = usePullToRefresh([["qbittorrent"]]);
+  const queryClient = useQueryClient();
+
+  // Tab-bar offset so the last list item clears the floating glass tab bar
+  // (iOS 26+). On other platforms the safe-area inset already handles it.
+  const tabBarHeight = useContext(BottomTabBarHeightContext);
+  const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
+  const safeAreaEdges = usesFloatingTabBar
+    ? (["top", "left", "right"] as const)
+    : (["top", "left", "right", "bottom"] as const);
+  const listBottomPadding = 24 + (usesFloatingTabBar ? tabBarHeight : 0);
+
+  const onRefresh = useCallback(async () => {
+    lightHaptic();
+    setRefreshing(true);
+    try {
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ["qbittorrent", "transfer"] });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, queryClient]);
 
   // Only the rows whose hashes are actually in-flight should disable —
   // mutating one torrent shouldn't gray out every other row's buttons.
@@ -111,6 +168,13 @@ export default function DownloadsScreen() {
   ]);
 
   const multiSelect = useMultiSelect<QBTorrent>((t) => t.hash);
+
+  // Selection refers to specific torrent hashes; if the active filter changes
+  // those hashes may no longer be in the loaded set, so drop the selection.
+  useEffect(() => {
+    if (multiSelect.isActive) multiSelect.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
 
   const qbHealth = healthData?.find((s) => s.id === "qbittorrent");
 
@@ -136,8 +200,7 @@ export default function DownloadsScreen() {
     });
   };
 
-  const selectedHashes = () =>
-    torrents ? multiSelect.selectedItems(torrents).map((t) => t.hash) : [];
+  const selectedHashes = () => multiSelect.selectedItems(torrents).map((t) => t.hash);
 
   const handleBulkPause = () => {
     const hashes = selectedHashes();
@@ -196,150 +259,184 @@ export default function DownloadsScreen() {
     resumeMutation.isPending ||
     deleteMutation.isPending;
 
-  return (
-    <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      {multiSelect.isActive ? (
-        <SelectionBar
-          count={multiSelect.count}
-          total={torrents?.length ?? 0}
-          onCancel={multiSelect.clear}
-          onSelectAll={() => {
-            if (!torrents) return;
-            if (multiSelect.count === torrents.length) multiSelect.clear();
-            else multiSelect.selectAll(torrents);
-          }}
-          onPause={handleBulkPause}
-          onResume={handleBulkResume}
-          onDelete={handleBulkDelete}
-          busy={bulkBusy}
-        />
-      ) : (
-        <>
-          <ServiceHeader name="Downloads" online={qbHealth?.online} />
+  const header = multiSelect.isActive ? (
+    <SelectionBar
+      count={multiSelect.count}
+      onCancel={multiSelect.clear}
+      onPause={handleBulkPause}
+      onResume={handleBulkResume}
+      onDelete={handleBulkDelete}
+      busy={bulkBusy}
+    />
+  ) : (
+    <>
+      <ServiceHeader name="Downloads" online={qbHealth?.online} />
 
-          {/* Speed Summary */}
-          {transfer && (
-            <View className="flex-row gap-3 mb-4">
-              <View className="flex-1 bg-blue-600/10 rounded-xl p-3">
-                <Text className="text-download text-lg font-bold">
-                  ↓ {formatSpeed(transfer.dl_info_speed)}
-                </Text>
-              </View>
-              <View className="flex-1 bg-green-600/10 rounded-xl p-3">
-                <Text className="text-upload text-lg font-bold">
-                  ↑ {formatSpeed(transfer.up_info_speed)}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setSpeedLimitsOpen(true)}
-                hitSlop={6}
-                accessibilityLabel="Speed limits"
-                className={`w-12 rounded-xl items-center justify-center active:opacity-70 ${
-                  altModeOn ? "bg-amber-600/20" : "bg-surface-light"
-                }`}
-              >
-                <Zap
-                  size={20}
-                  color={altModeOn ? "#f59e0b" : "#a1a1aa"}
-                  fill={altModeOn ? "#f59e0b" : "transparent"}
-                />
-              </Pressable>
-            </View>
-          )}
-
-          {/* Add Torrent */}
-          {showAddModal ? (
-            <Card className="mb-4 gap-3">
-              <TextInput
-                placeholder="Paste magnet link..."
-                value={magnetUri}
-                onChangeText={setMagnetUri}
-                autoFocus
-              />
-              <View className="flex-row gap-2">
-                <Button
-                  label="Cancel"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => {
-                    setShowAddModal(false);
-                    setMagnetUri("");
-                  }}
-                  className="flex-1"
-                />
-                <Button
-                  label="Add"
-                  size="sm"
-                  onPress={handleAdd}
-                  loading={addTorrent.isPending}
-                  className="flex-1"
-                />
-              </View>
-            </Card>
-          ) : (
-            <Button
-              label="Add Torrent"
-              variant="outline"
-              size="sm"
-              onPress={() => setShowAddModal(true)}
-              icon={<Plus size={16} color="#a1a1aa" />}
-              className="mb-4 self-start"
-            />
-          )}
-
-          <View className="flex-row items-center gap-2 mb-4">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-2"
-              className="flex-1"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <FilterChip
-                  key={opt.key}
-                  label={opt.label}
-                  selected={filter === opt.key}
-                  onPress={() => setFilter(opt.key)}
-                />
-              ))}
-            </ScrollView>
-            <SortButton
-              onPress={() => setSortSheetOpen(true)}
-              active={sort !== SORT_DEFAULTS.downloads}
-            />
+      {/* Speed Summary */}
+      {transfer && (
+        <View className="flex-row gap-3 mb-4">
+          <View className="flex-1 bg-blue-600/10 rounded-xl p-3">
+            <Text className="text-download text-lg font-bold">
+              ↓ {formatSpeed(transfer.dl_info_speed)}
+            </Text>
           </View>
-        </>
-      )}
-
-      {/* Torrent List */}
-      {!sortedTorrents || sortedTorrents.length === 0 ? (
-        <EmptyState title="No torrents" message={`No ${filter} torrents found`} />
-      ) : (
-        <View className="gap-2">
-          {sortedTorrents.map((torrent) => (
-            <TorrentListItem
-              key={torrent.hash}
-              torrent={torrent}
-              selectionMode={multiSelect.isActive}
-              isSelected={multiSelect.isSelected(torrent)}
-              onPress={() => handleTorrentPress(torrent)}
-              onLongPress={() => handleTorrentLongPress(torrent)}
-              onTogglePause={(t) => {
-                if (isTorrentPaused(t.state)) {
-                  resumeMutation.mutate([t.hash]);
-                } else {
-                  pauseMutation.mutate([t.hash]);
-                }
-              }}
-              onDelete={(t, deleteFiles) => {
-                errorHaptic();
-                deleteMutation.mutate({ hashes: [t.hash], deleteFiles });
-              }}
-              busy={busyHashes.has(torrent.hash)}
+          <View className="flex-1 bg-green-600/10 rounded-xl p-3">
+            <Text className="text-upload text-lg font-bold">
+              ↑ {formatSpeed(transfer.up_info_speed)}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setSpeedLimitsOpen(true)}
+            hitSlop={6}
+            accessibilityLabel="Speed limits"
+            className={`w-12 rounded-xl items-center justify-center active:opacity-70 ${
+              altModeOn ? "bg-amber-600/20" : "bg-surface-light"
+            }`}
+          >
+            <Zap
+              size={20}
+              color={altModeOn ? "#f59e0b" : "#a1a1aa"}
+              fill={altModeOn ? "#f59e0b" : "transparent"}
             />
-          ))}
+          </Pressable>
         </View>
       )}
+
+      {/* Add Torrent */}
+      {showAddModal ? (
+        <Card className="mb-4 gap-3">
+          <TextInput
+            placeholder="Paste magnet link..."
+            value={magnetUri}
+            onChangeText={setMagnetUri}
+            autoFocus
+          />
+          <View className="flex-row gap-2">
+            <Button
+              label="Cancel"
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setShowAddModal(false);
+                setMagnetUri("");
+              }}
+              className="flex-1"
+            />
+            <Button
+              label="Add"
+              size="sm"
+              onPress={handleAdd}
+              loading={addTorrent.isPending}
+              className="flex-1"
+            />
+          </View>
+        </Card>
+      ) : (
+        <Button
+          label="Add Torrent"
+          variant="outline"
+          size="sm"
+          onPress={() => setShowAddModal(true)}
+          icon={<Plus size={16} color="#a1a1aa" />}
+          className="mb-4 self-start"
+        />
+      )}
+
+      <View className="flex-row items-center gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="flex-1"
+        >
+          {FILTER_OPTIONS.map((opt) => (
+            <FilterChip
+              key={opt.key}
+              label={opt.label}
+              selected={filter === opt.key}
+              onPress={() => setFilter(opt.key)}
+            />
+          ))}
+        </ScrollView>
+        <SortButton
+          onPress={() => setSortSheetOpen(true)}
+          active={sort !== SORT_DEFAULTS.downloads}
+        />
+      </View>
+    </>
+  );
+
+  const showEmpty = !isLoading && torrents.length === 0;
+
+  return (
+    <SafeAreaView edges={safeAreaEdges} className="flex-1 bg-background">
+      <DemoBanner />
+      <FlatList
+        data={torrents}
+        keyExtractor={(t) => t.hash}
+        renderItem={({ item }) => (
+          <TorrentListItem
+            torrent={item}
+            selectionMode={multiSelect.isActive}
+            isSelected={multiSelect.isSelected(item)}
+            onPress={() => handleTorrentPress(item)}
+            onLongPress={() => handleTorrentLongPress(item)}
+            onTogglePause={(t) => {
+              if (isTorrentPaused(t.state)) {
+                resumeMutation.mutate([t.hash]);
+              } else {
+                pauseMutation.mutate([t.hash]);
+              }
+            }}
+            onDelete={(t, deleteFiles) => {
+              errorHaptic();
+              deleteMutation.mutate({ hashes: [t.hash], deleteFiles });
+            }}
+            busy={busyHashes.has(item.hash)}
+          />
+        )}
+        ItemSeparatorComponent={() => <View className="h-2" />}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          showEmpty ? (
+            <EmptyState title="No torrents" message={`No ${filter} torrents found`} />
+          ) : null
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View className="py-4 items-center">
+              <ActivityIndicator color="#3b82f6" />
+            </View>
+          ) : null
+        }
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 8,
+          paddingBottom: listBottomPadding,
+          flexGrow: 1,
+        }}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#3b82f6"
+            colors={["#3b82f6"]}
+            progressBackgroundColor="#18181b"
+          />
+        }
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        // Pre-render a screen-and-a-half ahead/behind so fast scrolls don't
+        // expose blank gaps; balance against memory on large libraries.
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        removeClippedSubviews
+      />
 
       <ActionSheet
         visible={sortSheetOpen}
@@ -361,30 +458,25 @@ export default function DownloadsScreen() {
         visible={speedLimitsOpen}
         onClose={() => setSpeedLimitsOpen(false)}
       />
-    </ScreenWrapper>
+    </SafeAreaView>
   );
 }
 
 function SelectionBar({
   count,
-  total,
   onCancel,
-  onSelectAll,
   onPause,
   onResume,
   onDelete,
   busy,
 }: {
   count: number;
-  total: number;
   onCancel: () => void;
-  onSelectAll: () => void;
   onPause: () => void;
   onResume: () => void;
   onDelete: () => void;
   busy: boolean;
 }) {
-  const allSelected = count === total && total > 0;
   return (
     <View className="mb-4">
       <View className="flex-row items-center justify-between mt-2 mb-3">
@@ -394,11 +486,7 @@ function SelectionBar({
         <Text className="text-zinc-100 text-base font-semibold">
           {count} selected
         </Text>
-        <Pressable onPress={onSelectAll} className="p-2 active:opacity-70" hitSlop={8}>
-          <Text className="text-primary text-base">
-            {allSelected ? "Deselect All" : "Select All"}
-          </Text>
-        </Pressable>
+        <View className="w-16" />
       </View>
       <View className="flex-row gap-2">
         <Button

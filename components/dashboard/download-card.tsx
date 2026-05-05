@@ -4,7 +4,7 @@ import { Pause, Play, CheckCircle, AlertTriangle } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useAllTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
+import { useTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
 import { formatSpeed, formatEta, truncateText } from "@/lib/utils";
@@ -15,6 +15,7 @@ import {
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
+import type { QBTorrentFilter, GetTorrentsOptions } from "@/services/qbittorrent-api";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
@@ -68,12 +69,55 @@ function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): n
   }
 }
 
+// Map the widget's sort key to qBittorrent's `sort` field. The dashboard's
+// "speed" mode uses combined dl+up speed client-side which qBT can't replicate
+// server-side; we sort by `dlspeed` so active downloads dominate, and let the
+// client re-sort within the fetched window.
+function sortByToQB(sortBy: DownloadsSortBy): { sort: keyof QBTorrent; reverse: boolean } {
+  switch (sortBy) {
+    case "speed":
+      return { sort: "dlspeed", reverse: true };
+    case "progress":
+      return { sort: "progress", reverse: true };
+    case "eta":
+      return { sort: "eta", reverse: false };
+    case "added":
+      return { sort: "added_on", reverse: true };
+  }
+}
+
+// Push state filtering to the server when the user has narrowed it to a single
+// state. Combined states (the default downloading+seeding) have no equivalent
+// qBT filter, so we leave it off and rely on the larger client-side window.
+function pickServerFilter(s: DownloadsSettingsValue): QBTorrentFilter | undefined {
+  const flags: { flag: boolean; filter: QBTorrentFilter }[] = [
+    { flag: s.showDownloading, filter: "downloading" },
+    { flag: s.showSeeding, filter: "seeding" },
+    { flag: s.showPaused, filter: "paused" },
+    { flag: s.showErrored, filter: "errored" },
+  ];
+  const active = flags.filter((f) => f.flag);
+  return active.length === 1 ? active[0].filter : undefined;
+}
+
+// Server-side window. Big enough that client-side state filtering and sort
+// almost always have material to work with; small enough to be a fraction of
+// fetching the entire library on every poll.
+const DASHBOARD_FETCH_LIMIT = 100;
+
 export function DownloadCard() {
   const { settings } = useWidgetSettings<DownloadsSettingsValue>(
     "downloads",
     DOWNLOADS_DEFAULT_SETTINGS,
   );
-  const { data: torrents, isLoading, isError } = useAllTorrents();
+  const { sort, reverse } = sortByToQB(settings.sortBy);
+  const queryOptions: GetTorrentsOptions = {
+    filter: pickServerFilter(settings),
+    sort,
+    reverse,
+    limit: DASHBOARD_FETCH_LIMIT,
+  };
+  const { data: torrents, isLoading, isError } = useTorrents(queryOptions);
   const router = useRouter();
 
   const allowedGroups = new Set<StateGroup>();

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import {
-  useAllTorrents,
+  useTorrent,
   useTorrentFiles,
   useTorrentTrackers,
   usePauseTorrent,
@@ -20,19 +20,19 @@ import { isTorrentPaused } from "@/lib/types";
 export default function TorrentDetailScreen() {
   const { hash } = useLocalSearchParams<{ hash: string }>();
   const router = useRouter();
-  const { data: torrents } = useAllTorrents();
+  const { data: torrent, isLoading } = useTorrent(hash);
   const { data: files } = useTorrentFiles(hash);
   const { data: trackers } = useTorrentTrackers(hash);
   const pauseMutation = usePauseTorrent();
   const resumeMutation = useResumeTorrent();
   const deleteMutation = useDeleteTorrent();
 
-  const torrent = torrents?.find((t) => t.hash === hash);
-
   if (!torrent) {
     return (
       <ScreenWrapper>
-        <Text className="text-zinc-400 text-center mt-10">Torrent not found</Text>
+        <Text className="text-zinc-400 text-center mt-10">
+          {isLoading ? "Loading…" : "Torrent not found"}
+        </Text>
       </ScreenWrapper>
     );
   }
