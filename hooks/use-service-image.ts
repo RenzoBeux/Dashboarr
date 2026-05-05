@@ -44,13 +44,17 @@ export function useServiceImage(
   );
   const src = failCount < candidates.length ? candidates[failCount] : undefined;
 
-  const onError = useCallback((e: { nativeEvent: { error?: string } }) => {
+  const onError = useCallback((e?: { error?: string } | { nativeEvent?: { error?: string } }) => {
     const failed = failCount < candidates.length ? candidates[failCount] : "unknown";
+    const reason =
+      (e && "error" in e ? e.error : undefined) ??
+      (e && "nativeEvent" in e ? e.nativeEvent?.error : undefined) ??
+      "unknown";
     console.warn(
       `[ServiceImage] FAILED:`,
       failed === "unknown" ? failed : redactUrl(failed),
       `| reason:`,
-      e?.nativeEvent?.error ?? "unknown",
+      reason,
     );
     setFailCount((c) => c + 1);
   }, [failCount, candidates]);

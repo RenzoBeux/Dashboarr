@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Text, Image, ScrollView } from "react-native";
+import { View, Text, ScrollView } from "react-native";
+import { Image } from "expo-image";
 import {
   Play,
   Pause,
@@ -200,7 +201,10 @@ function SessionCard({ session }: { session: JellyfinSession }) {
         <Image
           source={{ uri: thumbUrl }}
           className="w-14 h-20 rounded-lg bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={thumbUrl}
         />
       ) : (
         <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
@@ -292,7 +296,10 @@ function ContinueWatching() {
               <Image
                 source={{ uri: thumbUrl }}
                 className="w-14 h-20 rounded-lg bg-surface-light"
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={200}
+                recyclingKey={thumbUrl}
               />
             ) : (
               <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
@@ -364,7 +371,10 @@ function MediaPoster({ item }: { item: JellyfinItem }) {
         <Image
           source={{ uri: thumbUrl }}
           className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={thumbUrl}
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">

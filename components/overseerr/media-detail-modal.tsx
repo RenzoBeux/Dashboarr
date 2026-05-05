@@ -4,10 +4,10 @@ import {
   View,
   Text,
   Pressable,
-  Image,
   ScrollView,
   Dimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import { X, Star, Check, Clock, Film, Tv, Plus } from "lucide-react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
@@ -78,7 +78,10 @@ export function MediaDetailModal({
                 <Image
                   source={{ uri: backdropUrl }}
                   className="w-full h-full"
-                  resizeMode="cover"
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  transition={200}
+                  recyclingKey={backdropUrl}
                   onLoad={() => { backdropOpacity.value = 1; }}
                 />
               </Animated.View>
@@ -108,7 +111,10 @@ export function MediaDetailModal({
                     source={{ uri: posterUrl }}
                     className="w-28 h-42 rounded-xl bg-surface-light"
                     style={{ width: 112, height: 168 }}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    transition={200}
+                    recyclingKey={posterUrl}
                     onLoad={() => { posterModalOpacity.value = 1; }}
                   />
                 </Animated.View>

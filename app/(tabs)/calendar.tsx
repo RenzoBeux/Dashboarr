@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Tv, Film } from "lucide-react-native";
@@ -326,7 +327,10 @@ function EpisodeRow({
           <Image
             source={{ uri: src }}
             className="w-10 h-14 rounded-lg bg-surface-light"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={src}
             onError={onError}
           />
         ) : (
@@ -372,7 +376,10 @@ function MovieRow({
           <Image
             source={{ uri: src }}
             className="w-10 h-14 rounded-lg bg-surface-light"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={src}
             onError={onError}
           />
         ) : (

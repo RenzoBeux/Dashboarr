@@ -1,4 +1,5 @@
-import { View, Text, Image, ScrollView, Alert } from "react-native";
+import { View, Text, ScrollView, Alert } from "react-native";
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Trash2, Star } from "lucide-react-native";
 import Animated, {
@@ -82,7 +83,10 @@ export default function MovieDetailScreen() {
           <Image
             source={{ uri: fanartUrl }}
             className="w-full h-48 rounded-2xl"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={fanartUrl}
             onLoad={() => { fanartOpacity.value = 1; }}
             onError={onFanartError}
           />
@@ -95,7 +99,10 @@ export default function MovieDetailScreen() {
             <Image
               source={{ uri: posterUrl }}
               className="w-24 h-36 rounded-xl bg-surface-light"
-              resizeMode="cover"
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={200}
+              recyclingKey={posterUrl}
               onLoad={() => { posterOpacity.value = 1; }}
               onError={onPosterError}
             />

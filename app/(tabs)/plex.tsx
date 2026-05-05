@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Text, Pressable, Image, ScrollView } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
+import { Image } from "expo-image";
 import {
   Play,
   Pause,
@@ -189,7 +190,10 @@ function SessionCard({ session }: { session: PlexSession }) {
         <Image
           source={{ uri: thumbUrl }}
           className="w-14 h-20 rounded-lg bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={thumbUrl}
         />
       ) : (
         <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
@@ -272,7 +276,10 @@ function OnDeck() {
               <Image
                 source={{ uri: thumbUrl }}
                 className="w-14 h-20 rounded-lg bg-surface-light"
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={200}
+                recyclingKey={thumbUrl}
               />
             ) : (
               <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
@@ -347,7 +354,10 @@ function MediaPoster({ item }: { item: PlexMediaItem }) {
         <Image
           source={{ uri: thumbUrl }}
           className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={thumbUrl}
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">

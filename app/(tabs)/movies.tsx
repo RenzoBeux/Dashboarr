@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable, Image, Alert, ScrollView } from "react-native";
+import { View, Text, Pressable, Alert, ScrollView } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import {
   Search,
@@ -332,7 +333,10 @@ function MoviePoster({
         <Image
           source={{ uri: src }}
           className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={src}
           onError={onError}
         />
       ) : (

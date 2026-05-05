@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { View, Text, Image, Pressable } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { useLocalSearchParams } from "expo-router";
 import { ChevronDown, ChevronRight, Check, X } from "lucide-react-native";
 import Animated, {
@@ -76,7 +77,10 @@ export default function SeriesDetailScreen() {
           <Image
             source={{ uri: fanartUrl }}
             className="w-full h-48 rounded-2xl"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={fanartUrl}
             onLoad={() => { fanartOpacity.value = 1; }}
             onError={onFanartError}
           />
@@ -89,7 +93,10 @@ export default function SeriesDetailScreen() {
             <Image
               source={{ uri: posterUrl }}
               className="w-24 h-36 rounded-xl bg-surface-light"
-              resizeMode="cover"
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={200}
+              recyclingKey={posterUrl}
               onLoad={() => { posterOpacity.value = 1; }}
               onError={onPosterError}
             />

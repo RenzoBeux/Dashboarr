@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { View, Text, Image, Pressable } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
 import { useRouter } from "expo-router";
 import { Tv, Plus, Check, SlidersHorizontal } from "lucide-react-native";
@@ -117,7 +118,10 @@ function SearchResultCard({
         <Image
           source={{ uri: posterUrl }}
           className="w-16 h-24 rounded-lg bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={posterUrl}
           onError={onPosterError}
         />
       ) : (

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Modal, View, Text, ScrollView, Image } from "react-native";
+import { Modal, View, Text, ScrollView } from "react-native";
+import { Image } from "expo-image";
 import { Tv, Plus } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -128,7 +129,10 @@ export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps
                 source={{ uri: posterUrl }}
                 className="rounded-lg bg-surface-light"
                 style={{ width: 80, height: 120 }}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={200}
+                recyclingKey={posterUrl}
                 onError={onPosterError}
               />
             ) : (
