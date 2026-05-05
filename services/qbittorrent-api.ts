@@ -204,20 +204,47 @@ export function getTorrentTrackers(hash: string): Promise<QBTorrentTracker[]> {
 
 // --- Torrent Actions ---
 
+// qBittorrent 5.0 renamed /torrents/pause → /torrents/stop and
+// /torrents/resume → /torrents/start. Try the new path first and fall back
+// to the legacy path on 404 so we work against both 4.x and 5.x servers.
+async function qbActionWithFallback(
+  primary: string,
+  legacy: string,
+  body: string,
+): Promise<void> {
+  try {
+    await qbRequest(primary, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.endsWith(": 404")) {
+      await qbRequest(legacy, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      return;
+    }
+    throw err;
+  }
+}
+
 export function pauseTorrents(hashes: string[]): Promise<void> {
-  return qbRequest("/torrents/pause", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `hashes=${hashes.join("|")}`,
-  });
+  return qbActionWithFallback(
+    "/torrents/stop",
+    "/torrents/pause",
+    `hashes=${hashes.join("|")}`,
+  );
 }
 
 export function resumeTorrents(hashes: string[]): Promise<void> {
-  return qbRequest("/torrents/resume", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `hashes=${hashes.join("|")}`,
-  });
+  return qbActionWithFallback(
+    "/torrents/start",
+    "/torrents/resume",
+    `hashes=${hashes.join("|")}`,
+  );
 }
 
 export function deleteTorrents(

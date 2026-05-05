@@ -34,7 +34,7 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { formatSpeed, formatEta, formatBytes, truncateText } from "@/lib/utils";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import type { QBTorrent, TorrentState } from "@/lib/types";
+import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
 
 type FilterType = "all" | "downloading" | "seeding" | "completed" | "paused";
 
@@ -70,10 +70,10 @@ function compareTorrents(a: QBTorrent, b: QBTorrent, sort: DownloadsSortKey): nu
 }
 
 function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" | "paused" | "error" | "default" {
-  // pausedDL / pausedUP must match "paused" before the DL/UP suffix tests,
-  // otherwise paused torrents wear the downloading/seeding badge color.
+  // Paused/stopped must be checked before the DL/UP suffix tests, otherwise
+  // paused torrents wear the downloading/seeding badge color.
   if (state === "error" || state === "missingFiles") return "error";
-  if (state.includes("paused")) return "paused";
+  if (isTorrentPaused(state)) return "paused";
   if (state.includes("DL") || state === "downloading" || state === "metaDL") return "downloading";
   if (state.includes("UP") || state === "uploading") return "seeding";
   return "default";
@@ -325,7 +325,7 @@ export default function DownloadsScreen() {
               onPress={() => handleTorrentPress(torrent)}
               onLongPress={() => handleTorrentLongPress(torrent)}
               onTogglePause={(t) => {
-                if (t.state.includes("paused")) {
+                if (isTorrentPaused(t.state)) {
                   resumeMutation.mutate([t.hash]);
                 } else {
                   pauseMutation.mutate([t.hash]);
@@ -452,7 +452,7 @@ function TorrentListItem({
   onDelete: (torrent: QBTorrent, deleteFiles: boolean) => void;
   busy: boolean;
 }) {
-  const isPaused = torrent.state.includes("paused");
+  const isPaused = isTorrentPaused(torrent.state);
   const badgeVariant = getTorrentBadgeVariant(torrent.state);
 
   const handleDelete = () => {

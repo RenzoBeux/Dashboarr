@@ -14,7 +14,7 @@ import {
   type DownloadsSettingsValue,
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
-import type { QBTorrent, TorrentState } from "@/lib/types";
+import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
@@ -24,7 +24,7 @@ const ETA_UNKNOWN = 8640000;
 
 function classifyState(state: TorrentState): StateGroup {
   if (state === "error" || state === "missingFiles") return "errored";
-  if (state === "pausedDL" || state === "pausedUP") return "paused";
+  if (isTorrentPaused(state)) return "paused";
   if (
     state === "downloading" ||
     state === "metaDL" ||
@@ -152,7 +152,7 @@ function TorrentRow({
   const resumeMutation = useResumeTorrent();
 
   const isDownloading = torrent.state.includes("DL") || torrent.state === "downloading";
-  const isPaused = torrent.state.includes("paused");
+  const isPaused = isTorrentPaused(torrent.state);
 
   const handleToggle = () => {
     lightHaptic();

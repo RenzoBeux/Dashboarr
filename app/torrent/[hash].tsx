@@ -15,6 +15,7 @@ import {
   useDeleteTorrent,
 } from "@/hooks/use-qbittorrent";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
+import { isTorrentPaused } from "@/lib/types";
 
 export default function TorrentDetailScreen() {
   const { hash } = useLocalSearchParams<{ hash: string }>();
@@ -36,7 +37,7 @@ export default function TorrentDetailScreen() {
     );
   }
 
-  const isPaused = torrent.state.includes("paused");
+  const isPaused = isTorrentPaused(torrent.state);
 
   const handleDelete = () => {
     Alert.alert("Delete Torrent", "Are you sure?", [

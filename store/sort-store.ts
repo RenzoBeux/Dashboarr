@@ -24,11 +24,9 @@ export type PlexRecentSortKey =
 // the type instead of forking a parallel one.
 export type JellyfinRecentSortKey = PlexRecentSortKey;
 
-export type RequestsSortKey =
-  | "created-desc"
-  | "created-asc"
-  | "updated-desc"
-  | "updated-asc";
+// Overseerr's API only sorts DESC — asc options would be a lie. See
+// services/overseerr-api.ts:getRequests for context.
+export type RequestsSortKey = "created-desc" | "updated-desc";
 
 export type DownloadsSortKey =
   | "progress-desc"

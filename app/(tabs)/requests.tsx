@@ -58,23 +58,18 @@ type MediaTypeFilter = "all" | "movie" | "tv";
 
 const REQUEST_SORT_OPTIONS: { key: RequestsSortKey; label: string }[] = [
   { key: "created-desc", label: "Newest First" },
-  { key: "created-asc", label: "Oldest First" },
   { key: "updated-desc", label: "Recently Updated" },
-  { key: "updated-asc", label: "Least Recently Updated" },
 ];
 
-function sortToParams(
-  sort: RequestsSortKey,
-): { sort: "added" | "modified"; sortDirection: "asc" | "desc" } {
+// Default branch covers legacy values ("created-asc"/"updated-asc") that may
+// still be persisted from before the asc options were removed.
+function sortToParams(sort: RequestsSortKey): { sort: "added" | "modified" } {
   switch (sort) {
-    case "created-desc":
-      return { sort: "added", sortDirection: "desc" };
-    case "created-asc":
-      return { sort: "added", sortDirection: "asc" };
     case "updated-desc":
-      return { sort: "modified", sortDirection: "desc" };
-    case "updated-asc":
-      return { sort: "modified", sortDirection: "asc" };
+      return { sort: "modified" };
+    case "created-desc":
+    default:
+      return { sort: "added" };
   }
 }
 
@@ -311,8 +306,8 @@ function RequestsList() {
   const sort = useSortStore((s) => s.requests);
   const setSort = useSortStore((s) => s.setRequests);
   const [sortOpen, setSortOpen] = useState(false);
-  const { sort: apiSort, sortDirection } = sortToParams(sort);
-  const { data, isLoading } = useOverseerrRequests(1, filter, apiSort, sortDirection);
+  const { sort: apiSort } = sortToParams(sort);
+  const { data, isLoading } = useOverseerrRequests(1, filter, apiSort);
   const { data: counts } = useOverseerrRequestCount();
   const approve = useApproveRequest();
   const decline = useDeclineRequest();

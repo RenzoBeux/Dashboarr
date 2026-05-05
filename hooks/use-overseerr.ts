@@ -30,12 +30,11 @@ export function useOverseerrRequests(
   page = 1,
   filter?: "all" | "approved" | "pending" | "processing" | "available",
   sort: "added" | "modified" = "added",
-  sortDirection: "asc" | "desc" = "desc",
 ) {
   const enabled = useOverseerrEnabled();
   return useQuery({
-    queryKey: ["overseerr", "requests", page, filter, sort, sortDirection],
-    queryFn: () => getRequests(page, 20, filter, sort, sortDirection),
+    queryKey: ["overseerr", "requests", page, filter, sort],
+    queryFn: () => getRequests(page, 20, filter, sort),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled,
   });

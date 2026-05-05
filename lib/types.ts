@@ -11,11 +11,14 @@ export interface QBTransferInfo {
   connection_status: "connected" | "firewalled" | "disconnected";
 }
 
+// qBittorrent 5.0 renamed `pausedUP`/`pausedDL` to `stoppedUP`/`stoppedDL`.
+// Both are kept here so the app works against 4.x and 5.x servers.
 export type TorrentState =
   | "error"
   | "missingFiles"
   | "uploading"
   | "pausedUP"
+  | "stoppedUP"
   | "queuedUP"
   | "stalledUP"
   | "checkingUP"
@@ -24,6 +27,7 @@ export type TorrentState =
   | "downloading"
   | "metaDL"
   | "pausedDL"
+  | "stoppedDL"
   | "queuedDL"
   | "stalledDL"
   | "checkingDL"
@@ -31,6 +35,15 @@ export type TorrentState =
   | "checkingResumeData"
   | "moving"
   | "unknown";
+
+export function isTorrentPaused(state: TorrentState): boolean {
+  return (
+    state === "pausedUP" ||
+    state === "pausedDL" ||
+    state === "stoppedUP" ||
+    state === "stoppedDL"
+  );
+}
 
 export interface QBTorrent {
   hash: string;
