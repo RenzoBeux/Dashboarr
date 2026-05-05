@@ -1,13 +1,18 @@
-import { View, Text, Pressable } from "react-native";
+import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Film } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRadarrQueue, useWantedMissing } from "@/hooks/use-radarr";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { truncateText } from "@/lib/utils";
+import { getRadarrPoster } from "@/services/radarr-api";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
+
+const MAX_ITEMS = 5;
 
 export function RadarrQueueCard() {
   const { data: queue, isLoading } = useRadarrQueue();
@@ -16,60 +21,62 @@ export function RadarrQueueCard() {
 
   const records = queue?.records ?? [];
   const missingCount = wanted?.totalRecords ?? 0;
+  const display = records.slice(0, MAX_ITEMS);
+  const hasMore = records.length > MAX_ITEMS;
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Radarr Queue</CardTitle>
-        <View className="flex-row gap-2">
-          {missingCount > 0 && (
+      <CardHeaderLink
+        title="Radarr Queue"
+        onPress={() => router.push("/(tabs)/movies")}
+        trailing={
+          missingCount > 0 ? (
             <Badge label="Missing" variant="missing" count={missingCount} />
-          )}
-        </View>
-      </CardHeader>
+          ) : null
+        }
+      />
 
       {isLoading ? (
-        <SkeletonCardContent rows={3} />
+        <PosterSkeletonRow count={4} showSubtitle />
       ) : records.length === 0 ? (
         <EmptyState
           icon={<Film size={32} color="#71717a" />}
           title="No movies in queue"
         />
       ) : (
-        <View className="gap-3">
-          {records.slice(0, 5).map((item) => {
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
+          {display.map((item) => {
             const progress =
               item.size > 0 ? (item.size - item.sizeleft) / item.size : 0;
+            const posterUrl = getRadarrPoster(item.movie?.images);
+            const movieTitle = item.movie?.title || item.title;
 
             return (
-              <Pressable
+              <MediaPosterTile
                 key={item.id}
+                posterUrl={posterUrl}
+                title={movieTitle}
+                subtitle={item.timeleft ? `ETA ${item.timeleft}` : undefined}
+                cornerBadge={{
+                  label: item.quality.quality.name,
+                  color: "rgba(37, 99, 235, 0.9)",
+                }}
+                bottomOverlay={<PosterProgressStrip progress={progress} />}
+                mediaType="movie"
                 onPress={() =>
                   item.movie && router.push(`/movie/${item.movie.id}`)
                 }
-                className="active:opacity-80"
-              >
-                <View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
-                      {truncateText(item.title, 35)}
-                    </Text>
-                    <Badge
-                      label={item.quality.quality.name}
-                      variant="default"
-                    />
-                  </View>
-                  <ProgressBar progress={progress} showLabel className="mt-1.5" />
-                  {item.timeleft && (
-                    <Text className="text-zinc-500 text-xs mt-1">
-                      ETA {item.timeleft}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
+              />
             );
           })}
-        </View>
+          {hasMore && (
+            <ViewAllTile onPress={() => router.push("/(tabs)/movies")} />
+          )}
+        </ScrollView>
       )}
     </Card>
   );

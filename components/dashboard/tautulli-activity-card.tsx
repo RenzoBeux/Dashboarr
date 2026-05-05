@@ -1,18 +1,22 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Play, Pause, Loader, MonitorPlay, Cog } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTautulliActivity } from "@/hooks/use-tautulli";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { getTautulliImageSource } from "@/services/tautulli-api";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import {
   TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   type TautulliActivitySettingsValue,
 } from "@/components/dashboard/widget-settings/tautulli-activity-settings";
-import { formatBytes, truncateText } from "@/lib/utils";
+import { formatBytes } from "@/lib/utils";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 import type { TautulliSession } from "@/lib/types";
 
 function parseHiddenUsers(value: string): Set<string> {
@@ -43,43 +47,43 @@ export function TautulliActivityCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Now Playing</CardTitle>
-        {sessions.length > 0 && (
-          <Badge
-            label={`${sessions.length} stream${sessions.length !== 1 ? "s" : ""}`}
-            variant="success"
-          />
-        )}
-      </CardHeader>
+      <CardHeaderLink
+        title="Now Playing"
+        onPress={() => router.push("/(tabs)/activity")}
+        trailing={
+          sessions.length > 0 ? (
+            <Badge
+              label={`${sessions.length} stream${sessions.length !== 1 ? "s" : ""}`}
+              variant="success"
+            />
+          ) : null
+        }
+      />
 
       {isLoading ? (
-        <SkeletonCardContent rows={2} />
+        <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState
           icon={<MonitorPlay size={32} color="#71717a" />}
           title="Nothing playing"
         />
       ) : (
-        <View className="gap-3">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
           {display.map((session) => (
-            <SessionRow
+            <TautulliSessionTile
               key={session.session_key}
               session={session}
               settings={settings}
             />
           ))}
           {hasMore && (
-            <Pressable
-              onPress={() => router.push("/(tabs)/activity")}
-              className="active:opacity-70"
-            >
-              <Text className="text-primary text-sm text-center font-medium">
-                View All →
-              </Text>
-            </Pressable>
+            <ViewAllTile onPress={() => router.push("/(tabs)/activity")} />
           )}
-        </View>
+        </ScrollView>
       )}
 
       {settings.showBandwidthSummary && sessions.length > 0 && activity && (
@@ -93,7 +97,7 @@ export function TautulliActivityCard() {
   );
 }
 
-function SessionRow({
+function TautulliSessionTile({
   session,
   settings,
 }: {
@@ -108,36 +112,35 @@ function SessionRow({
   const stateColor = isPaused ? "#f59e0b" : isBuffering ? "#f59e0b" : "#22c55e";
 
   const transcoding = session.transcode_decision === "transcode";
-  const bitrateKbps = parseInt(session.bandwidth, 10);
+  const showTranscodingPill = settings.showTranscoding && transcoding;
 
-  const subtitleParts: string[] = [];
-  if (settings.showUserAndDevice) {
-    subtitleParts.push(`${session.user} · ${session.player}`);
-  }
-  if (settings.showTranscoding) {
-    subtitleParts.push(session.transcode_decision);
-  }
-  if (settings.showBitrate && Number.isFinite(bitrateKbps) && bitrateKbps > 0) {
-    subtitleParts.push(`${(bitrateKbps / 1000).toFixed(1)} Mbps`);
-  }
+  // For episodes prefer the show poster (grandparent_rating_key); fall back to
+  // the item itself.
+  const ratingKey =
+    session.media_type === "episode" && session.grandparent_rating_key
+      ? session.grandparent_rating_key
+      : session.rating_key;
+  const posterSource = ratingKey
+    ? getTautulliImageSource(ratingKey, 220, 330)
+    : null;
+
+  const subtitle = settings.showUserAndDevice
+    ? `${session.user} · ${session.player}`
+    : undefined;
 
   return (
-    <View>
-      <View className="flex-row items-center gap-2 mb-1">
-        <StateIcon size={14} color={stateColor} />
-        <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
-          {truncateText(session.full_title, 35)}
-        </Text>
-        {settings.showTranscoding && transcoding && (
-          <Cog size={12} color="#f59e0b" />
-        )}
-      </View>
-      <ProgressBar progress={progress} className="mb-1" />
-      {subtitleParts.length > 0 && (
-        <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-          {subtitleParts.join(" · ")}
-        </Text>
-      )}
-    </View>
+    <MediaPosterTile
+      posterUrl={posterSource}
+      title={session.full_title}
+      subtitle={subtitle}
+      cornerBadge={{ icon: StateIcon, color: stateColor }}
+      bottomLeftBadge={
+        showTranscodingPill
+          ? { icon: Cog, color: "rgba(245, 158, 11, 0.9)" }
+          : undefined
+      }
+      bottomOverlay={<PosterProgressStrip progress={progress} />}
+      mediaType={session.media_type === "episode" ? "tv" : "movie"}
+    />
   );
 }

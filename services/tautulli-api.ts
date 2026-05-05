@@ -111,3 +111,15 @@ export function getTautulliImageUrl(
   const secrets = store.secrets.tautulli;
   return `${baseUrl}/pms_image_proxy?img=/library/metadata/${ratingKey}/thumb&width=${width}&height=${height}&fallback=poster&apikey=${secrets.apiKey}`;
 }
+
+// expo-image source with a token-stripped cacheKey so rotating the apikey
+// doesn't invalidate every cached poster.
+export function getTautulliImageSource(
+  ratingKey: string | number,
+  width = 300,
+  height = 450,
+): { uri: string; cacheKey: string } {
+  const uri = getTautulliImageUrl(ratingKey, width, height);
+  const cacheKey = uri.replace(/[?&]apikey=[^&]*/g, "");
+  return { uri, cacheKey };
+}

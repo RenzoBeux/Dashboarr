@@ -14,6 +14,7 @@ import {
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { ICON, type ServiceId } from "@/lib/constants";
+import { useConfigStore } from "@/store/config-store";
 
 const SERVICE_ICONS: Partial<Record<ServiceId, React.ElementType>> = {
   qbittorrent: Download,
@@ -35,10 +36,11 @@ const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
 
 export function ServiceHealthCard() {
   const { data: services } = useServiceHealth();
+  const configServices = useConfigStore((s) => s.services);
   const router = useRouter();
 
   const enabledServices = services?.filter(
-    (s) => s.id in SERVICE_ICONS,
+    (s) => s.id in SERVICE_ICONS && configServices[s.id as ServiceId]?.enabled,
   );
 
   if (!enabledServices?.length) return null;

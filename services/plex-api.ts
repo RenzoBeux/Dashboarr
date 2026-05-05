@@ -124,3 +124,16 @@ export function getPlexImageUrl(
   const trimmed = baseUrl.replace(/\/+$/, "");
   return `${trimmed}/photo/:/transcode?width=${width}&height=${height}&minSize=1&url=${encodeURIComponent(thumbPath)}&X-Plex-Token=${secrets.apiKey}`;
 }
+
+// expo-image source with a token-stripped cacheKey so rotating the X-Plex-Token
+// doesn't invalidate every cached poster.
+export function getPlexImageSource(
+  thumbPath: string | undefined | null,
+  width = 300,
+  height = 450,
+): { uri: string; cacheKey: string } | null {
+  const uri = getPlexImageUrl(thumbPath, width, height);
+  if (!uri) return null;
+  const cacheKey = uri.replace(/[?&]X-Plex-Token=[^&]*/g, "");
+  return { uri, cacheKey };
+}

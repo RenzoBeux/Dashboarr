@@ -1,19 +1,25 @@
-import { View, Text, Pressable } from "react-native";
+import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Play, Pause, Loader, PlayCircle, Cog } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { useJellyfinSessions } from "@/hooks/use-jellyfin";
-import { isJellyfinTranscoding, ticksToMs } from "@/services/jellyfin-api";
+import {
+  isJellyfinTranscoding,
+  ticksToMs,
+  getJellyfinImageSource,
+} from "@/services/jellyfin-api";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import {
   JELLYFIN_NOW_PLAYING_DEFAULT_SETTINGS,
   type JellyfinNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/jellyfin-now-playing-settings";
-import { truncateText } from "@/lib/utils";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 import type { JellyfinSession } from "@/lib/types";
 
 function parseHiddenUsers(value: string): Set<string> {
@@ -33,9 +39,6 @@ function isLocalEndpoint(remote: string | undefined): boolean {
   const r = remote.toLowerCase().trim();
   if (!r) return false;
 
-  // Bracketed IPv6 like `[::1]:8443` — pull the address from inside the brackets.
-  // Bare IPv6 (e.g. `fe80::abc`) is left intact since splitting on `:` would
-  // shred it; for IPv4 / hostnames we strip a trailing `:port` if present.
   let host: string;
   if (r.startsWith("[")) {
     const end = r.indexOf("]");
@@ -51,7 +54,6 @@ function isLocalEndpoint(remote: string | undefined): boolean {
   if (host.startsWith("10.")) return true;
   if (host.startsWith("192.168.")) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
-  // IPv6 link-local (fe80::/10) and ULA (fc00::/7).
   if (host.startsWith("fe80:") || host.startsWith("fe80::")) return true;
   if (host.startsWith("fc") || host.startsWith("fd")) return true;
   return false;
@@ -81,49 +83,49 @@ export function JellyfinNowPlayingCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Jellyfin</CardTitle>
-        {filtered.length > 0 && (
-          <Badge
-            label={`${filtered.length} stream${filtered.length !== 1 ? "s" : ""}`}
-            variant="success"
-          />
-        )}
-      </CardHeader>
+      <CardHeaderLink
+        title="Jellyfin"
+        onPress={() => router.push("/(tabs)/jellyfin")}
+        trailing={
+          filtered.length > 0 ? (
+            <Badge
+              label={`${filtered.length} stream${filtered.length !== 1 ? "s" : ""}`}
+              variant="success"
+            />
+          ) : null
+        }
+      />
 
       {isLoading ? (
-        <SkeletonCardContent rows={2} />
+        <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState
           icon={<PlayCircle size={32} color="#71717a" />}
           title="Nothing playing"
         />
       ) : (
-        <View className="gap-3">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
           {display.map((session) => (
-            <JellyfinSessionRow
+            <JellyfinSessionTile
               key={session.Id}
               session={session}
               settings={settings}
             />
           ))}
           {hasMore && (
-            <Pressable
-              onPress={() => router.push("/(tabs)/jellyfin")}
-              className="active:opacity-70"
-            >
-              <Text className="text-primary text-sm text-center font-medium">
-                View All →
-              </Text>
-            </Pressable>
+            <ViewAllTile onPress={() => router.push("/(tabs)/jellyfin")} />
           )}
-        </View>
+        </ScrollView>
       )}
     </Card>
   );
 }
 
-function JellyfinSessionRow({
+function JellyfinSessionTile({
   session,
   settings,
 }: {
@@ -137,8 +139,6 @@ function JellyfinSessionRow({
 
   const isPaused = !!session.PlayState?.IsPaused;
   const transcoding = isJellyfinTranscoding(session);
-  // Jellyfin reports playback "buffering" via TranscodingInfo.CompletionPercentage
-  // rather than a discrete state — we just collapse it into the transcoding case.
   const StateIcon = isPaused ? Pause : transcoding ? Loader : Play;
   const stateColor = isPaused ? "#f59e0b" : transcoding ? "#f59e0b" : "#22c55e";
 
@@ -147,42 +147,28 @@ function JellyfinSessionRow({
       ? `${item.SeriesName} — ${item.Name}`
       : (item?.Name ?? "Unknown");
 
-  const bitrateKbps = session.TranscodingInfo?.Bitrate
-    ? Math.round(session.TranscodingInfo.Bitrate / 1000)
-    : 0;
+  const posterSource = getJellyfinImageSource(item ?? null, "Primary", 220, 330);
 
-  const subtitleParts: string[] = [];
-  if (settings.showUserAndDevice && (session.UserName || session.Client)) {
-    subtitleParts.push(
-      [session.UserName, session.Client].filter(Boolean).join(" · "),
-    );
-  }
-  if (settings.showBitrate && bitrateKbps > 0) {
-    subtitleParts.push(`${(bitrateKbps / 1000).toFixed(1)} Mbps`);
-  }
+  const subtitle =
+    settings.showUserAndDevice && (session.UserName || session.Client)
+      ? [session.UserName, session.Client].filter(Boolean).join(" · ")
+      : undefined;
+
+  const showTranscodingPill = settings.showTranscoding && transcoding;
 
   return (
-    <View>
-      <View className="flex-row items-center gap-2 mb-1">
-        <StateIcon size={14} color={stateColor} />
-        <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
-          {truncateText(title, 30)}
-        </Text>
-        {settings.showTranscoding && transcoding && (
-          <View className="flex-row items-center gap-1">
-            <Cog size={12} color="#f59e0b" />
-            <Text className="text-amber-500 text-[10px] font-semibold uppercase">
-              Transcode
-            </Text>
-          </View>
-        )}
-      </View>
-      <ProgressBar progress={progress} className="mb-1" />
-      {subtitleParts.length > 0 && (
-        <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-          {subtitleParts.join(" · ")}
-        </Text>
-      )}
-    </View>
+    <MediaPosterTile
+      posterUrl={posterSource}
+      title={title}
+      subtitle={subtitle}
+      cornerBadge={{ icon: StateIcon, color: stateColor }}
+      bottomLeftBadge={
+        showTranscodingPill
+          ? { icon: Cog, color: "rgba(245, 158, 11, 0.9)" }
+          : undefined
+      }
+      bottomOverlay={<PosterProgressStrip progress={progress} />}
+      mediaType={item?.Type === "Episode" ? "tv" : "movie"}
+    />
   );
 }

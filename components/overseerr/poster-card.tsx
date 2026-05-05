@@ -1,4 +1,5 @@
-import { View, Text, Pressable, Image } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { Star, Check, Clock, Film, Tv } from "lucide-react-native";
 import { getPosterUrl } from "@/services/overseerr-api";
 import type { OverseerrMediaResult } from "@/lib/types";
@@ -35,8 +36,11 @@ export function PosterCard({ item, onPress, size = "sm" }: PosterCardProps) {
         {posterUrl ? (
           <Image
             source={{ uri: posterUrl }}
-            className="w-full h-full"
-            resizeMode="cover"
+            style={{ width: "100%", height: "100%" }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={posterUrl}
           />
         ) : (
           <View className="w-full h-full items-center justify-center">

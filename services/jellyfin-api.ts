@@ -168,6 +168,20 @@ export function getJellyfinImageUrl(
   return `${trimmed}/Items/${encodeURIComponent(itemId)}/Images/${type}?${params.toString()}`;
 }
 
+// expo-image source with a token-stripped cacheKey so rotating the api_key
+// doesn't invalidate every cached poster.
+export function getJellyfinImageSource(
+  item: Parameters<typeof getJellyfinImageUrl>[0],
+  type: "Primary" | "Backdrop" | "Thumb" = "Primary",
+  width = 300,
+  height = 450,
+): { uri: string; cacheKey: string } | null {
+  const uri = getJellyfinImageUrl(item, type, width, height);
+  if (!uri) return null;
+  const cacheKey = uri.replace(/[?&]api_key=[^&]*/g, "");
+  return { uri, cacheKey };
+}
+
 // Convert Jellyfin's "ticks" (100-nanosecond units) to milliseconds.
 export function ticksToMs(ticks: number | undefined | null): number {
   if (!ticks || ticks <= 0) return 0;

@@ -1,13 +1,20 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Pause, Play, CheckCircle, AlertTriangle } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProgressBar } from "@/components/ui/progress-bar";
+import {
+  Pause,
+  Play,
+  CheckCircle,
+  AlertTriangle,
+  Download,
+  Upload,
+  CircleAlert,
+} from "lucide-react-native";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { useTorrentPosterMap } from "@/hooks/use-torrent-poster-map";
 import { lightHaptic } from "@/lib/haptics";
-import { formatSpeed, formatEta, truncateText } from "@/lib/utils";
+import { formatSpeed, formatEta } from "@/lib/utils";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import {
   DOWNLOADS_DEFAULT_SETTINGS,
@@ -16,11 +23,14 @@ import {
 } from "@/components/dashboard/widget-settings/downloads-settings";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
 import type { QBTorrentFilter, GetTorrentsOptions } from "@/services/qbittorrent-api";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
-// qBittorrent uses 8640000 (100 days) as a sentinel for "unknown ETA". Treat
-// that and anything larger as missing so it sorts to the end.
 const ETA_UNKNOWN = 8640000;
 
 function classifyState(state: TorrentState): StateGroup {
@@ -52,7 +62,6 @@ function classifyState(state: TorrentState): StateGroup {
 function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): number {
   switch (sortBy) {
     case "speed": {
-      // Combined throughput so a busy seeder ranks alongside a fast downloader.
       const aSpeed = a.dlspeed + a.upspeed;
       const bSpeed = b.dlspeed + b.upspeed;
       return bSpeed - aSpeed;
@@ -69,10 +78,6 @@ function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): n
   }
 }
 
-// Map the widget's sort key to qBittorrent's `sort` field. The dashboard's
-// "speed" mode uses combined dl+up speed client-side which qBT can't replicate
-// server-side; we sort by `dlspeed` so active downloads dominate, and let the
-// client re-sort within the fetched window.
 function sortByToQB(sortBy: DownloadsSortBy): { sort: keyof QBTorrent; reverse: boolean } {
   switch (sortBy) {
     case "speed":
@@ -86,9 +91,6 @@ function sortByToQB(sortBy: DownloadsSortBy): { sort: keyof QBTorrent; reverse: 
   }
 }
 
-// Push state filtering to the server when the user has narrowed it to a single
-// state. Combined states (the default downloading+seeding) have no equivalent
-// qBT filter, so we leave it off and rely on the larger client-side window.
 function pickServerFilter(s: DownloadsSettingsValue): QBTorrentFilter | undefined {
   const flags: { flag: boolean; filter: QBTorrentFilter }[] = [
     { flag: s.showDownloading, filter: "downloading" },
@@ -100,10 +102,18 @@ function pickServerFilter(s: DownloadsSettingsValue): QBTorrentFilter | undefine
   return active.length === 1 ? active[0].filter : undefined;
 }
 
-// Server-side window. Big enough that client-side state filtering and sort
-// almost always have material to work with; small enough to be a fraction of
-// fetching the entire library on every poll.
 const DASHBOARD_FETCH_LIMIT = 100;
+
+const STATE_BADGE: Record<
+  StateGroup,
+  { color: string; icon: typeof Download } | null
+> = {
+  downloading: { color: "rgba(59, 130, 246, 0.9)", icon: Download },
+  seeding: { color: "rgba(34, 197, 94, 0.9)", icon: Upload },
+  paused: { color: "rgba(245, 158, 11, 0.9)", icon: Pause },
+  errored: { color: "rgba(239, 68, 68, 0.9)", icon: CircleAlert },
+  other: null,
+};
 
 export function DownloadCard() {
   const { settings } = useWidgetSettings<DownloadsSettingsValue>(
@@ -118,6 +128,7 @@ export function DownloadCard() {
     limit: DASHBOARD_FETCH_LIMIT,
   };
   const { data: torrents, isLoading, isError } = useTorrents(queryOptions);
+  const posterMap = useTorrentPosterMap();
   const router = useRouter();
 
   const allowedGroups = new Set<StateGroup>();
@@ -136,19 +147,22 @@ export function DownloadCard() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Downloads</CardTitle>
-        {filtered.length > 0 && (
-          <Text className="text-zinc-500 text-sm">{filtered.length}</Text>
-        )}
-      </CardHeader>
+      <CardHeaderLink
+        title="Downloads"
+        onPress={() => router.push("/(tabs)/downloads")}
+        trailing={
+          filtered.length > 0 ? (
+            <Text className="text-zinc-500 text-sm">{filtered.length}</Text>
+          ) : null
+        }
+      />
 
       {allHidden ? (
         <Text className="text-zinc-500 text-sm py-1">
           All states hidden — enable one in the widget settings.
         </Text>
       ) : isLoading ? (
-        <SkeletonCardContent rows={3} />
+        <PosterSkeletonRow count={4} showSubtitle />
       ) : isError ? (
         <EmptyState
           icon={<AlertTriangle size={32} color="#f59e0b" />}
@@ -161,42 +175,47 @@ export function DownloadCard() {
           title="Nothing to show"
         />
       ) : (
-        <View className="gap-3">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
           {displayTorrents.map((torrent) => (
-            <TorrentRow
+            <TorrentTile
               key={torrent.hash}
               torrent={torrent}
-              onPress={() => router.push(`/torrent/${torrent.hash}`)}
+              posterEntry={posterMap.get(torrent.hash.toLowerCase())}
             />
           ))}
           {hasMore && (
-            <Pressable
-              onPress={() => router.push("/(tabs)/downloads")}
-              className="active:opacity-70"
-            >
-              <Text className="text-primary text-sm text-center font-medium">
-                View All →
-              </Text>
-            </Pressable>
+            <ViewAllTile onPress={() => router.push("/(tabs)/downloads")} />
           )}
-        </View>
+        </ScrollView>
       )}
     </Card>
   );
 }
 
-function TorrentRow({
+function TorrentTile({
   torrent,
-  onPress,
+  posterEntry,
 }: {
   torrent: QBTorrent;
-  onPress: () => void;
+  posterEntry: ReturnType<typeof useTorrentPosterMap>["get"] extends (
+    k: string,
+  ) => infer R
+    ? R
+    : never;
 }) {
+  const router = useRouter();
   const pauseMutation = usePauseTorrent();
   const resumeMutation = useResumeTorrent();
 
-  const isDownloading = torrent.state.includes("DL") || torrent.state === "downloading";
+  const isDownloading =
+    torrent.state.includes("DL") || torrent.state === "downloading";
   const isPaused = isTorrentPaused(torrent.state);
+  const stateGroup = classifyState(torrent.state);
+  const stateBadge = STATE_BADGE[stateGroup];
 
   const handleToggle = () => {
     lightHaptic();
@@ -207,44 +226,35 @@ function TorrentRow({
     }
   };
 
+  const subtitle = isDownloading
+    ? formatSpeed(torrent.dlspeed)
+    : torrent.eta > 0 && torrent.eta < ETA_UNKNOWN
+      ? `ETA ${formatEta(torrent.eta)}`
+      : torrent.upspeed > 0
+        ? `↑ ${formatSpeed(torrent.upspeed)}`
+        : undefined;
+
   return (
-    <Pressable onPress={onPress} className="active:opacity-80">
-      <View className="flex-row items-center gap-3">
-        <View className="flex-1">
-          <Text className="text-zinc-200 text-sm" numberOfLines={1}>
-            {truncateText(torrent.name, 40)}
-          </Text>
-          <ProgressBar progress={torrent.progress} showLabel className="mt-1.5" />
-          <View className="flex-row gap-3 mt-1">
-            {isDownloading && (
-              <Text className="text-zinc-500 text-xs">
-                ↓ {formatSpeed(torrent.dlspeed)}
-              </Text>
-            )}
-            {torrent.upspeed > 0 && (
-              <Text className="text-zinc-500 text-xs">
-                ↑ {formatSpeed(torrent.upspeed)}
-              </Text>
-            )}
-            {torrent.eta > 0 && torrent.eta < ETA_UNKNOWN && (
-              <Text className="text-zinc-500 text-xs">
-                ETA {formatEta(torrent.eta)}
-              </Text>
-            )}
-          </View>
-        </View>
-        <Pressable
-          onPress={handleToggle}
-          className="p-2 active:opacity-70"
-          hitSlop={8}
-        >
-          {isPaused ? (
-            <Play size={20} color="#3b82f6" />
-          ) : (
-            <Pause size={20} color="#f59e0b" />
-          )}
-        </Pressable>
-      </View>
-    </Pressable>
+    <MediaPosterTile
+      posterUrl={posterEntry?.posterUrl ?? null}
+      title={posterEntry?.title ?? torrent.name}
+      subtitle={subtitle}
+      cornerBadge={
+        stateBadge
+          ? { icon: stateBadge.icon, color: stateBadge.color }
+          : undefined
+      }
+      bottomLeftBadge={{
+        icon: isPaused ? Play : Pause,
+        color: isPaused
+          ? "rgba(59, 130, 246, 0.9)"
+          : "rgba(245, 158, 11, 0.9)",
+        onPress: handleToggle,
+      }}
+      bottomOverlay={<PosterProgressStrip progress={torrent.progress} />}
+      mediaType={posterEntry?.mediaType}
+      fallbackIcon={!posterEntry ? Download : undefined}
+      onPress={() => router.push(`/torrent/${torrent.hash}`)}
+    />
   );
 }

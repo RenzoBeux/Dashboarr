@@ -165,6 +165,7 @@ export interface RadarrQueueItem {
   timeleft?: string;
   estimatedCompletionTime?: string;
   protocol: string;
+  downloadId?: string;
   downloadClient?: string;
   quality: { quality: { name: string } };
   movie?: RadarrMovie;
@@ -297,6 +298,7 @@ export interface SonarrQueueItem {
   timeleft?: string;
   estimatedCompletionTime?: string;
   protocol: string;
+  downloadId?: string;
   quality: { quality: { name: string } };
   series?: SonarrSeries;
   episode?: SonarrEpisode;
@@ -494,6 +496,9 @@ export interface TautulliSession {
   grandparent_title: string; // show name for episodes
   full_title: string;
   year: string;
+  rating_key: string;
+  parent_rating_key: string;
+  grandparent_rating_key: string;
   thumb: string;
   parent_thumb: string;
   grandparent_thumb: string;

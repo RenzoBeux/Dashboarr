@@ -1,9 +1,9 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { CalendarDays, Film, Tv } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { CalendarDays } from "lucide-react-native";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSonarrCalendar } from "@/hooks/use-sonarr";
 import { useRadarrCalendar } from "@/hooks/use-radarr";
 import { useConfigStore } from "@/store/config-store";
@@ -13,6 +13,13 @@ import {
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
 import { formatEpisodeCode, relativeDate } from "@/lib/utils";
+import { getSonarrPoster, getSonarrFanart } from "@/services/sonarr-api";
+import { getRadarrPoster, getRadarrFanart } from "@/services/radarr-api";
+import {
+  MediaBackdropRow,
+  BACKDROP_ROW_HEIGHT,
+} from "@/components/dashboard/media-backdrop-row";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
 
 type CalendarItem =
@@ -35,7 +42,6 @@ function pickRadarrDate(
       return physical ?? null;
     case "any":
     default: {
-      // Earliest available release in the future-or-present window.
       const candidates = [cinemas, digital, physical].filter(
         (d): d is string => typeof d === "string" && d.length > 0,
       );
@@ -47,7 +53,6 @@ function pickRadarrDate(
 }
 
 function isoDate(value: string): string {
-  // Accept full ISO timestamps and date-only strings; normalize to YYYY-MM-DD.
   return value.slice(0, 10);
 }
 
@@ -68,9 +73,6 @@ export function CalendarCard() {
   const showSonarr = settings.includeSonarr && sonarrEnabled;
   const showRadarr = settings.includeRadarr && radarrEnabled;
 
-  // Hooks call the underlying APIs with `enabled: serviceEnabled`. When the
-  // user toggles the source off the data lingers in the cache but we ignore
-  // it below — no need to disable the query manually.
   const { data: episodes, isLoading: episodesLoading } = useSonarrCalendar(
     settings.daysAhead,
   );
@@ -110,19 +112,21 @@ export function CalendarCard() {
   const noServicesEnabled = !sonarrEnabled && !radarrEnabled;
 
   const headerCount = items.length;
-  const headerNoun =
-    headerCount === 1 ? "release" : "releases";
+  const headerNoun = headerCount === 1 ? "release" : "releases";
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Releasing Soon</CardTitle>
-        {!noSources && headerCount > 0 && (
-          <Text className="text-zinc-500 text-sm">
-            {headerCount} {headerNoun}
-          </Text>
-        )}
-      </CardHeader>
+      <CardHeaderLink
+        title="Releasing Soon"
+        onPress={() => router.push("/(tabs)/calendar")}
+        trailing={
+          !noSources && headerCount > 0 ? (
+            <Text className="text-zinc-500 text-sm">
+              {headerCount} {headerNoun}
+            </Text>
+          ) : null
+        }
+      />
 
       {noSources ? (
         <EmptyState
@@ -135,7 +139,7 @@ export function CalendarCard() {
           }
         />
       ) : isLoading ? (
-        <SkeletonCardContent rows={4} />
+        <CalendarSkeleton />
       ) : grouped.length === 0 ? (
         <EmptyState
           icon={<CalendarDays size={32} color="#71717a" />}
@@ -144,9 +148,9 @@ export function CalendarCard() {
       ) : (
         <View className="gap-4">
           {grouped.map(({ date, entries }) => (
-            <View key={date}>
+            <View key={date} className="gap-2">
               <Text
-                className={`text-xs font-semibold mb-2 ${
+                className={`text-xs font-semibold ${
                   isToday(date) ? "text-primary" : "text-zinc-500"
                 }`}
               >
@@ -158,7 +162,9 @@ export function CalendarCard() {
                     <EpisodeRow
                       key={`ep-${item.entry.id}`}
                       entry={item.entry}
-                      onPress={() => router.push(`/series/${item.entry.seriesId}`)}
+                      onPress={() =>
+                        router.push(`/series/${item.entry.seriesId}`)
+                      }
                     />
                   ) : (
                     <MovieRow
@@ -174,6 +180,27 @@ export function CalendarCard() {
         </View>
       )}
     </Card>
+  );
+}
+
+function CalendarSkeleton() {
+  return (
+    <View className="gap-4">
+      {Array.from({ length: 2 }).map((_, groupIdx) => (
+        <View key={groupIdx} className="gap-2">
+          <Skeleton width={80} height={12} borderRadius={4} />
+          <View className="gap-2">
+            {Array.from({ length: 2 }).map((_, rowIdx) => (
+              <Skeleton
+                key={rowIdx}
+                height={BACKDROP_ROW_HEIGHT}
+                borderRadius={12}
+              />
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -199,6 +226,15 @@ function titleOf(item: CalendarItem): string {
   return item.kind === "episode" ? item.entry.series.title : item.movie.title;
 }
 
+function StatusDot({ hasFile }: { hasFile: boolean }) {
+  return (
+    <View
+      className="w-2 h-2 rounded-full"
+      style={{ backgroundColor: hasFile ? "#22c55e" : "#52525b" }}
+    />
+  );
+}
+
 function EpisodeRow({
   entry,
   onPress,
@@ -207,25 +243,15 @@ function EpisodeRow({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} className="active:opacity-80">
-      <View className="flex-row items-center gap-2">
-        <View
-          className={`w-1 h-8 rounded-full ${
-            entry.hasFile ? "bg-success" : "bg-zinc-600"
-          }`}
-        />
-        <Tv size={14} color="#a1a1aa" />
-        <View className="flex-1">
-          <Text className="text-zinc-200 text-sm" numberOfLines={1}>
-            {entry.series.title}
-          </Text>
-          <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-            {formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} —{" "}
-            {entry.title}
-          </Text>
-        </View>
-      </View>
-    </Pressable>
+    <MediaBackdropRow
+      posterUrl={getSonarrPoster(entry.series.images)}
+      backdropUrl={getSonarrFanart(entry.series.images)}
+      title={entry.series.title}
+      subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
+      rightAccessory={<StatusDot hasFile={entry.hasFile} />}
+      mediaType="tv"
+      onPress={onPress}
+    />
   );
 }
 
@@ -237,23 +263,14 @@ function MovieRow({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} className="active:opacity-80">
-      <View className="flex-row items-center gap-2">
-        <View
-          className={`w-1 h-8 rounded-full ${
-            movie.hasFile ? "bg-success" : "bg-zinc-600"
-          }`}
-        />
-        <Film size={14} color="#a1a1aa" />
-        <View className="flex-1">
-          <Text className="text-zinc-200 text-sm" numberOfLines={1}>
-            {movie.title}
-          </Text>
-          <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-            {movie.year ? `${movie.year} • ` : ""}Movie
-          </Text>
-        </View>
-      </View>
-    </Pressable>
+    <MediaBackdropRow
+      posterUrl={getRadarrPoster(movie.images)}
+      backdropUrl={getRadarrFanart(movie.images)}
+      title={movie.title}
+      subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
+      rightAccessory={<StatusDot hasFile={movie.hasFile} />}
+      mediaType="movie"
+      onPress={onPress}
+    />
   );
 }

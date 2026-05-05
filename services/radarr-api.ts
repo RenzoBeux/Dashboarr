@@ -4,7 +4,27 @@ import type {
   RadarrQueue,
   RadarrWantedMissing,
   RadarrSearchResult,
+  RadarrImage,
 } from "@/lib/types";
+
+// --- Image helpers ---
+
+export function getRadarrPoster(
+  images: RadarrImage[] | undefined | null,
+): string | null {
+  if (!images?.length) return null;
+  const poster = images.find((i) => i.coverType === "poster");
+  // Prefer remoteUrl (TMDB CDN, immutable, fast) over url (local proxy).
+  return poster?.remoteUrl || poster?.url || null;
+}
+
+export function getRadarrFanart(
+  images: RadarrImage[] | undefined | null,
+): string | null {
+  if (!images?.length) return null;
+  const fanart = images.find((i) => i.coverType === "fanart");
+  return fanart?.remoteUrl || fanart?.url || null;
+}
 
 // --- Movies ---
 

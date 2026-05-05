@@ -6,7 +6,27 @@ import type {
   SonarrCalendarEntry,
   SonarrQueue,
   SonarrSearchResult,
+  SonarrImage,
 } from "@/lib/types";
+
+// --- Image helpers ---
+
+export function getSonarrPoster(
+  images: SonarrImage[] | undefined | null,
+): string | null {
+  if (!images?.length) return null;
+  const poster = images.find((i) => i.coverType === "poster");
+  // Prefer remoteUrl (TMDB CDN, immutable, fast) over url (local proxy).
+  return poster?.remoteUrl || poster?.url || null;
+}
+
+export function getSonarrFanart(
+  images: SonarrImage[] | undefined | null,
+): string | null {
+  if (!images?.length) return null;
+  const fanart = images.find((i) => i.coverType === "fanart");
+  return fanart?.remoteUrl || fanart?.url || null;
+}
 
 // --- Series ---
 
