@@ -15,6 +15,7 @@ import { useSortStore } from "@/store/sort-store";
 import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
+import "@/lib/expo-image-nativewind"; // side-effect: cssInterop on expo-image's Image
 import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
