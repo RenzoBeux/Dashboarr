@@ -407,11 +407,56 @@ export interface OverseerrMovieDetails {
   };
 }
 
+export interface OverseerrSeasonInfo {
+  id: number;
+  seasonNumber: number;
+  episodeCount: number;
+  name?: string;
+  airDate?: string;
+}
+
 export interface OverseerrTVDetails {
   id: number;
   name: string;
   posterPath?: string;
   firstAirDate?: string;
+  seasons?: OverseerrSeasonInfo[];
+}
+
+// --- Overseerr Service Discovery (Radarr/Sonarr instances configured in Seerr) ---
+
+export interface OverseerrServerInfo {
+  id: number;
+  name: string;
+  is4k: boolean;
+  isDefault: boolean;
+  activeDirectory: string;
+  activeProfileId: number;
+  activeTags: number[];
+}
+
+export interface OverseerrProfile {
+  id: number;
+  name: string;
+}
+
+export interface OverseerrRootFolder {
+  id: number;
+  path: string;
+  freeSpace: number;
+  totalSpace: number;
+}
+
+export interface OverseerrTag {
+  id: number;
+  label: string;
+}
+
+export interface OverseerrServerDetails {
+  server: OverseerrServerInfo;
+  profiles: OverseerrProfile[];
+  rootFolders: OverseerrRootFolder[];
+  tags: OverseerrTag[];
 }
 
 export interface OverseerrTrendingResult extends OverseerrMediaResult {}

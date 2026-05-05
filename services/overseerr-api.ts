@@ -7,7 +7,16 @@ import type {
   OverseerrTrendingResult,
   OverseerrMovieDetails,
   OverseerrTVDetails,
+  OverseerrServerInfo,
+  OverseerrServerDetails,
 } from "@/lib/types";
+
+export interface OverseerrRequestOptions {
+  serverId?: number;
+  profileId?: number;
+  rootFolder?: string;
+  tags?: number[];
+}
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
@@ -79,23 +88,34 @@ export function getRecentlyAdded(): Promise<OverseerrSearchResponse> {
 
 // --- Request Media ---
 
-export function requestMovie(tmdbId: number): Promise<OverseerrRequest> {
+export function requestMovie(
+  tmdbId: number,
+  options?: OverseerrRequestOptions,
+): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", "/request", {
     method: "POST",
     body: JSON.stringify({
       mediaType: "movie",
       mediaId: tmdbId,
+      ...options,
     }),
   });
 }
 
-export function requestTV(tmdbId: number, seasons?: number[]): Promise<OverseerrRequest> {
+// Seerr requires `seasons` for TV requests; "all" resolves server-side to every
+// non-special season.
+export function requestTV(
+  tmdbId: number,
+  seasons: number[] | "all" = "all",
+  options?: OverseerrRequestOptions,
+): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", "/request", {
     method: "POST",
     body: JSON.stringify({
       mediaType: "tv",
       mediaId: tmdbId,
-      ...(seasons ? { seasons } : {}),
+      seasons,
+      ...options,
     }),
   });
 }
@@ -130,6 +150,28 @@ export function deleteMedia(mediaId: number): Promise<void> {
   return serviceRequest<void>("overseerr", `/media/${mediaId}`, {
     method: "DELETE",
   });
+}
+
+// --- Service discovery (Radarr/Sonarr instances configured in Seerr) ---
+
+export function getOverseerrRadarrServers(): Promise<OverseerrServerInfo[]> {
+  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/radarr");
+}
+
+export function getOverseerrSonarrServers(): Promise<OverseerrServerInfo[]> {
+  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/sonarr");
+}
+
+export function getOverseerrRadarrServerDetails(
+  id: number,
+): Promise<OverseerrServerDetails> {
+  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/radarr/${id}`);
+}
+
+export function getOverseerrSonarrServerDetails(
+  id: number,
+): Promise<OverseerrServerDetails> {
+  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/sonarr/${id}`);
 }
 
 // --- Helpers ---

@@ -17,9 +17,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/toast";
 import { getPosterUrl, getBackdropUrl } from "@/services/overseerr-api";
-import { useRequestMovie, useRequestTV } from "@/hooks/use-overseerr";
+import { RequestOptionsSheet } from "@/components/overseerr/request-options-sheet";
 import type { OverseerrMediaResult } from "@/lib/types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -35,9 +34,7 @@ export function MediaDetailModal({
   visible,
   onClose,
 }: MediaDetailModalProps) {
-  const requestMovie = useRequestMovie();
-  const requestTV = useRequestTV();
-  const [requesting, setRequesting] = useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
   const backdropOpacity = useSharedValue(0);
   const posterModalOpacity = useSharedValue(0);
   const backdropFadeStyle = useAnimatedStyle(() => ({ opacity: withTiming(backdropOpacity.value, { duration: 300 }) }));
@@ -55,21 +52,8 @@ export function MediaDetailModal({
     item.mediaInfo?.status === 2 || item.mediaInfo?.status === 3;
   const canRequest = !isAvailable && !isPending;
 
-  const handleRequest = async () => {
-    setRequesting(true);
-    try {
-      if (item.mediaType === "movie") {
-        await requestMovie.mutateAsync(item.id);
-      } else {
-        await requestTV.mutateAsync({ tmdbId: item.id });
-      }
-      toast(`${title} has been requested`);
-      onClose();
-    } catch {
-      toast("Failed to request", "error");
-    } finally {
-      setRequesting(false);
-    }
+  const handleRequest = () => {
+    setOptionsVisible(true);
   };
 
   const statusBadge = isAvailable
@@ -182,7 +166,6 @@ export function MediaDetailModal({
                 <Button
                   label={`Request ${item.mediaType === "movie" ? "Movie" : "TV Show"}`}
                   onPress={handleRequest}
-                  loading={requesting}
                   icon={<Plus size={16} color="#fff" />}
                   size="lg"
                   className="w-full"
@@ -219,6 +202,13 @@ export function MediaDetailModal({
             <View className="h-8" />
           </View>
         </ScrollView>
+
+        <RequestOptionsSheet
+          item={item}
+          visible={optionsVisible}
+          onClose={() => setOptionsVisible(false)}
+          onRequested={onClose}
+        />
       </View>
     </Modal>
   );

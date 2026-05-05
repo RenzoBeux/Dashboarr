@@ -13,6 +13,11 @@ import {
   declineRequest,
   getMovieDetails,
   getTVDetails,
+  getOverseerrRadarrServers,
+  getOverseerrSonarrServers,
+  getOverseerrRadarrServerDetails,
+  getOverseerrSonarrServerDetails,
+  type OverseerrRequestOptions,
 } from "@/services/overseerr-api";
 import type {
   OverseerrMediaType,
@@ -112,7 +117,13 @@ export function useOverseerrUpcomingMovies() {
 export function useRequestMovie() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (tmdbId: number) => requestMovie(tmdbId),
+    mutationFn: ({
+      tmdbId,
+      options,
+    }: {
+      tmdbId: number;
+      options?: OverseerrRequestOptions;
+    }) => requestMovie(tmdbId, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
@@ -122,11 +133,60 @@ export function useRequestMovie() {
 export function useRequestTV() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ tmdbId, seasons }: { tmdbId: number; seasons?: number[] }) =>
-      requestTV(tmdbId, seasons),
+    mutationFn: ({
+      tmdbId,
+      seasons = "all",
+      options,
+    }: {
+      tmdbId: number;
+      seasons?: number[] | "all";
+      options?: OverseerrRequestOptions;
+    }) => requestTV(tmdbId, seasons, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
+  });
+}
+
+// --- Service discovery hooks ---
+
+export function useOverseerrRadarrServers() {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "service", "radarr"],
+    queryFn: getOverseerrRadarrServers,
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useOverseerrSonarrServers() {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "service", "sonarr"],
+    queryFn: getOverseerrSonarrServers,
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useOverseerrRadarrServerDetails(id: number | undefined) {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "service", "radarr", id],
+    queryFn: () => getOverseerrRadarrServerDetails(id!),
+    enabled: enabled && id !== undefined && id >= 0,
+    staleTime: Infinity,
+  });
+}
+
+export function useOverseerrSonarrServerDetails(id: number | undefined) {
+  const enabled = useOverseerrEnabled();
+  return useQuery({
+    queryKey: ["overseerr", "service", "sonarr", id],
+    queryFn: () => getOverseerrSonarrServerDetails(id!),
+    enabled: enabled && id !== undefined && id >= 0,
+    staleTime: Infinity,
   });
 }
 
