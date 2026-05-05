@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from "react";
 import { View, Text, Pressable, Alert, BackHandler, ScrollView } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check } from "lucide-react-native";
+import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap } from "lucide-react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -27,7 +27,9 @@ import {
   useResumeTorrent,
   useDeleteTorrent,
   useAddTorrent,
+  useSpeedLimitsMode,
 } from "@/hooks/use-qbittorrent";
+import { SpeedLimitsSheet } from "@/components/qbittorrent/speed-limits-sheet";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { formatSpeed, formatEta, formatBytes, truncateText } from "@/lib/utils";
@@ -68,10 +70,12 @@ function compareTorrents(a: QBTorrent, b: QBTorrent, sort: DownloadsSortKey): nu
 }
 
 function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" | "paused" | "error" | "default" {
+  // pausedDL / pausedUP must match "paused" before the DL/UP suffix tests,
+  // otherwise paused torrents wear the downloading/seeding badge color.
+  if (state === "error" || state === "missingFiles") return "error";
+  if (state.includes("paused")) return "paused";
   if (state.includes("DL") || state === "downloading" || state === "metaDL") return "downloading";
   if (state.includes("UP") || state === "uploading") return "seeding";
-  if (state.includes("paused")) return "paused";
-  if (state === "error" || state === "missingFiles") return "error";
   return "default";
 }
 
@@ -80,6 +84,7 @@ export default function DownloadsScreen() {
   const sort = useSortStore((s) => s.downloads);
   const setSort = useSortStore((s) => s.setDownloads);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [speedLimitsOpen, setSpeedLimitsOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
   const { data: torrents } = useAllTorrents(filter === "all" ? undefined : filter);
@@ -89,12 +94,21 @@ export default function DownloadsScreen() {
   );
   const { data: transfer } = useTransferInfo();
   const { data: healthData } = useServiceHealth();
+  const { data: altModeOn } = useSpeedLimitsMode();
   const addTorrent = useAddTorrent();
   const pauseMutation = usePauseTorrent();
   const resumeMutation = useResumeTorrent();
   const deleteMutation = useDeleteTorrent();
   const router = useRouter();
   const { refreshing, onRefresh } = usePullToRefresh([["qbittorrent"]]);
+
+  // Only the rows whose hashes are actually in-flight should disable —
+  // mutating one torrent shouldn't gray out every other row's buttons.
+  const busyHashes = new Set<string>([
+    ...(pauseMutation.isPending ? pauseMutation.variables ?? [] : []),
+    ...(resumeMutation.isPending ? resumeMutation.variables ?? [] : []),
+    ...(deleteMutation.isPending ? deleteMutation.variables?.hashes ?? [] : []),
+  ]);
 
   const multiSelect = useMultiSelect<QBTorrent>((t) => t.hash);
 
@@ -216,6 +230,20 @@ export default function DownloadsScreen() {
                   ↑ {formatSpeed(transfer.up_info_speed)}
                 </Text>
               </View>
+              <Pressable
+                onPress={() => setSpeedLimitsOpen(true)}
+                hitSlop={6}
+                accessibilityLabel="Speed limits"
+                className={`w-12 rounded-xl items-center justify-center active:opacity-70 ${
+                  altModeOn ? "bg-amber-600/20" : "bg-surface-light"
+                }`}
+              >
+                <Zap
+                  size={20}
+                  color={altModeOn ? "#f59e0b" : "#a1a1aa"}
+                  fill={altModeOn ? "#f59e0b" : "transparent"}
+                />
+              </Pressable>
             </View>
           )}
 
@@ -296,6 +324,18 @@ export default function DownloadsScreen() {
               isSelected={multiSelect.isSelected(torrent)}
               onPress={() => handleTorrentPress(torrent)}
               onLongPress={() => handleTorrentLongPress(torrent)}
+              onTogglePause={(t) => {
+                if (t.state.includes("paused")) {
+                  resumeMutation.mutate([t.hash]);
+                } else {
+                  pauseMutation.mutate([t.hash]);
+                }
+              }}
+              onDelete={(t, deleteFiles) => {
+                errorHaptic();
+                deleteMutation.mutate({ hashes: [t.hash], deleteFiles });
+              }}
+              busy={busyHashes.has(torrent.hash)}
             />
           ))}
         </View>
@@ -315,6 +355,11 @@ export default function DownloadsScreen() {
             ),
           onPress: () => setSort(opt.key),
         }))}
+      />
+
+      <SpeedLimitsSheet
+        visible={speedLimitsOpen}
+        onClose={() => setSpeedLimitsOpen(false)}
       />
     </ScreenWrapper>
   );
@@ -394,17 +439,19 @@ function TorrentListItem({
   onLongPress,
   selectionMode,
   isSelected,
+  onTogglePause,
+  onDelete,
+  busy,
 }: {
   torrent: QBTorrent;
   onPress: () => void;
   onLongPress: () => void;
   selectionMode: boolean;
   isSelected: boolean;
+  onTogglePause: (torrent: QBTorrent) => void;
+  onDelete: (torrent: QBTorrent, deleteFiles: boolean) => void;
+  busy: boolean;
 }) {
-  const pauseMutation = usePauseTorrent();
-  const resumeMutation = useResumeTorrent();
-  const deleteMutation = useDeleteTorrent();
-
   const isPaused = torrent.state.includes("paused");
   const badgeVariant = getTorrentBadgeVariant(torrent.state);
 
@@ -414,18 +461,12 @@ function TorrentListItem({
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          deleteMutation.mutate({ hashes: [torrent.hash] });
-        },
+        onPress: () => onDelete(torrent, false),
       },
       {
         text: "Delete + Files",
         style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          deleteMutation.mutate({ hashes: [torrent.hash], deleteFiles: true });
-        },
+        onPress: () => onDelete(torrent, true),
       },
     ]);
   };
@@ -474,13 +515,9 @@ function TorrentListItem({
         {!selectionMode && (
           <View className="flex-row gap-1">
             <Pressable
-              onPress={() =>
-                isPaused
-                  ? resumeMutation.mutate([torrent.hash])
-                  : pauseMutation.mutate([torrent.hash])
-              }
-              disabled={pauseMutation.isPending || resumeMutation.isPending}
-              className={`p-1.5 active:opacity-70 ${pauseMutation.isPending || resumeMutation.isPending ? "opacity-50" : ""}`}
+              onPress={() => onTogglePause(torrent)}
+              disabled={busy}
+              className={`p-1.5 active:opacity-70 ${busy ? "opacity-50" : ""}`}
               hitSlop={6}
             >
               {isPaused ? (
@@ -491,8 +528,8 @@ function TorrentListItem({
             </Pressable>
             <Pressable
               onPress={handleDelete}
-              disabled={deleteMutation.isPending}
-              className={`p-1.5 active:opacity-70 ${deleteMutation.isPending ? "opacity-50" : ""}`}
+              disabled={busy}
+              className={`p-1.5 active:opacity-70 ${busy ? "opacity-50" : ""}`}
               hitSlop={6}
             >
               <Trash2 size={16} color="#ef4444" />

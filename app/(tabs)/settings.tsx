@@ -31,6 +31,7 @@ import { useConfigStore } from "@/store/config-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { pingService } from "@/lib/http-client";
+import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import { validateServiceUrl } from "@/lib/url-validation";
@@ -507,6 +508,12 @@ function ServiceEditor({
       await updateSecrets(serviceId, { username, password });
     } else {
       await updateSecrets(serviceId, { apiKey });
+    }
+    // Drop the cached qBittorrent SID so the next request re-logs in with the
+    // new URL or credentials. (glances reuses isQB for its u/p form but has
+    // no session to clear.)
+    if (serviceId === "qbittorrent") {
+      await qbClearSession();
     }
     onBack();
   };

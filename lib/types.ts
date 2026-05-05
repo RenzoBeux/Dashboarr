@@ -76,6 +76,14 @@ export interface QBTorrentTracker {
   msg: string;
 }
 
+// Subset of qBittorrent /app/preferences. All limits are bytes/s; 0 = unlimited.
+export interface QBSpeedPreferences {
+  dl_limit: number;
+  up_limit: number;
+  alt_dl_limit: number;
+  alt_up_limit: number;
+}
+
 // --- Shared Media Info ---
 
 export interface MediaInfo {

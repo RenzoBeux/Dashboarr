@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { serviceRequest, buildUrl } from "@/lib/http-client";
+import { buildUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
@@ -9,6 +9,7 @@ import type {
   QBTorrent,
   QBTorrentFile,
   QBTorrentTracker,
+  QBSpeedPreferences,
 } from "@/lib/types";
 
 // Session cookie management. Kept in a closure (not a module-level `let`) so
@@ -17,11 +18,10 @@ import type {
 // every cold start.
 const SESSION_COOKIE_KEY = "secrets.qbittorrent.sessionCookie";
 
-// iOS's NSURLSession manages cookies in its own native jar and strips
-// Set-Cookie from response.headers, so we can't read the SID from JS. Instead
-// we let the native jar attach the cookie automatically and only track that
-// we've authenticated at least once.
-const USE_NATIVE_COOKIE_JAR = Platform.OS === "ios";
+// iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
+// lives in the native jar and we can't read the SID from JS. Android's OkHttp
+// CookieJar usually also consumes Set-Cookie before fetch exposes it, so we
+// fall back to the same sentinel approach when we can't parse the SID.
 const NATIVE_JAR_SENTINEL = "__native_cookie_jar__";
 
 const cookieStore = (() => {
@@ -74,21 +74,21 @@ export async function qbLogin(): Promise<boolean> {
   const text = await response.text();
   if (text !== "Ok.") return false;
 
-  if (USE_NATIVE_COOKIE_JAR) {
-    // iOS already stored the SID cookie in NSURLSession's jar. Stash a
-    // sentinel so ensureAuth() knows we've logged in.
-    await cookieStore.set(NATIVE_JAR_SENTINEL);
-    return true;
+  // Try to extract the SID so we can attach it as a Cookie header. If we
+  // can't read Set-Cookie (iOS always strips it; Android usually does because
+  // OkHttp's CookieJar consumes it), the platform jar still has the cookie
+  // and will auto-attach it on subsequent requests — record a sentinel so
+  // ensureAuth() knows we've authenticated.
+  if (Platform.OS !== "ios") {
+    const setCookie = response.headers.get("set-cookie");
+    const match = setCookie?.match(/SID=([^;]+)/);
+    if (match?.[1]) {
+      await cookieStore.set(match[1]);
+      return true;
+    }
   }
-
-  // Extract SID cookie (Android exposes Set-Cookie in response.headers).
-  const setCookie = response.headers.get("set-cookie");
-  if (setCookie) {
-    const match = setCookie.match(/SID=([^;]+)/);
-    if (match) await cookieStore.set(match[1] ?? null);
-  }
-
-  return (await cookieStore.get()) !== null;
+  await cookieStore.set(NATIVE_JAR_SENTINEL);
+  return true;
 }
 
 /**
@@ -112,6 +112,21 @@ async function ensureAuth(): Promise<void> {
   }
 }
 
+async function parseQbResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type");
+  if (contentType?.includes("application/json")) {
+    return (await response.json()) as T;
+  }
+  return (await response.text()) as unknown as T;
+}
+
+function applyCookie(headers: Headers, cookie: string | null): void {
+  headers.delete("Cookie");
+  if (cookie && cookie !== NATIVE_JAR_SENTINEL) {
+    headers.set("Cookie", `SID=${cookie}`);
+  }
+}
+
 async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const store = useConfigStore.getState();
 
@@ -120,19 +135,18 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
     return (getDemoResponse("qbittorrent", path) ?? undefined) as T;
   }
 
+  if (!store.services.qbittorrent.enabled) {
+    throw new Error("qBittorrent is not enabled");
+  }
   const baseUrl = store.getActiveUrl("qbittorrent");
+  if (!baseUrl) throw new Error("No URL configured for qBittorrent");
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 
   // Auto-login on first request
   await ensureAuth();
 
-  let cookie = await cookieStore.get();
   const headers = new Headers(options?.headers);
-  // On iOS the native cookie jar attaches SID automatically; setting it
-  // manually is unnecessary and can collide with NSURLSession's handling.
-  if (!USE_NATIVE_COOKIE_JAR && cookie) {
-    headers.set("Cookie", `SID=${cookie}`);
-  }
+  applyCookie(headers, await cookieStore.get());
 
   const response = await fetch(buildUrl(baseUrl, apiBase, path), {
     ...options,
@@ -143,25 +157,17 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
   if (response.status === 403) {
     await cookieStore.set(null);
     await ensureAuth();
-    cookie = await cookieStore.get();
-    if (!USE_NATIVE_COOKIE_JAR && cookie) {
-      headers.set("Cookie", `SID=${cookie}`);
-    }
+    applyCookie(headers, await cookieStore.get());
     const retry = await fetch(buildUrl(baseUrl, apiBase, path), {
       ...options,
       headers,
     });
     if (!retry.ok) throw new Error(`qBittorrent request failed: ${retry.status}`);
-    return (await retry.json()) as T;
+    return parseQbResponse<T>(retry);
   }
 
   if (!response.ok) throw new Error(`qBittorrent request failed: ${response.status}`);
-
-  const contentType = response.headers.get("content-type");
-  if (contentType?.includes("application/json")) {
-    return (await response.json()) as T;
-  }
-  return (await response.text()) as unknown as T;
+  return parseQbResponse<T>(response);
 }
 
 /**
@@ -235,18 +241,68 @@ export function addTorrentMagnet(magnetUri: string): Promise<void> {
 
 // --- Speed Limits ---
 
-export function setDownloadLimit(limit: number): Promise<void> {
+// /transfer/setDownloadLimit and /setUploadLimit take bytes/s. 0 = unlimited.
+export function setDownloadLimit(bytesPerSec: number): Promise<void> {
   return qbRequest("/transfer/setDownloadLimit", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `limit=${limit}`,
+    body: `limit=${Math.max(0, Math.round(bytesPerSec))}`,
   });
 }
 
-export function setUploadLimit(limit: number): Promise<void> {
+export function setUploadLimit(bytesPerSec: number): Promise<void> {
   return qbRequest("/transfer/setUploadLimit", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `limit=${limit}`,
+    body: `limit=${Math.max(0, Math.round(bytesPerSec))}`,
+  });
+}
+
+// --- Alternative Speed Mode ---
+
+// /transfer/speedLimitsMode returns "0" (off) or "1" (on) as plain text.
+export async function getSpeedLimitsMode(): Promise<boolean> {
+  const raw = await qbRequest<string>("/transfer/speedLimitsMode");
+  return String(raw).trim() === "1";
+}
+
+export function toggleSpeedLimitsMode(): Promise<void> {
+  return qbRequest("/transfer/toggleSpeedLimitsMode", { method: "POST" });
+}
+
+// /app/preferences exposes alt_dl_limit / alt_up_limit (and global dl_limit /
+// up_limit) in bytes/s. 0 = unlimited. The wiki claims KiB/s but the real API
+// returns bytes — verified against a running instance (9216 == "9 KiB/s" in
+// the desktop UI).
+export async function getSpeedPreferences(): Promise<QBSpeedPreferences> {
+  const prefs = await qbRequest<Record<string, unknown>>("/app/preferences");
+  const num = (key: string) => {
+    const v = prefs[key];
+    return typeof v === "number" && v > 0 ? v : 0;
+  };
+  return {
+    dl_limit: num("dl_limit"),
+    up_limit: num("up_limit"),
+    alt_dl_limit: num("alt_dl_limit"),
+    alt_up_limit: num("alt_up_limit"),
+  };
+}
+
+// Set alt limits via /app/setPreferences. Values are bytes/s; 0 = unlimited.
+export function setAltSpeedLimits(limits: {
+  dl?: number;
+  up?: number;
+}): Promise<void> {
+  const sanitized: Record<string, number> = {};
+  if (limits.dl !== undefined) {
+    sanitized.alt_dl_limit = Math.max(0, Math.round(limits.dl));
+  }
+  if (limits.up !== undefined) {
+    sanitized.alt_up_limit = Math.max(0, Math.round(limits.up));
+  }
+  return qbRequest("/app/setPreferences", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `json=${encodeURIComponent(JSON.stringify(sanitized))}`,
   });
 }

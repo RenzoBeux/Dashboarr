@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
-import { Pause, Play, CheckCircle } from "lucide-react-native";
+import { Pause, Play, CheckCircle, AlertTriangle } from "lucide-react-native";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -73,7 +73,7 @@ export function DownloadCard() {
     "downloads",
     DOWNLOADS_DEFAULT_SETTINGS,
   );
-  const { data: torrents, isLoading } = useAllTorrents();
+  const { data: torrents, isLoading, isError } = useAllTorrents();
   const router = useRouter();
 
   const allowedGroups = new Set<StateGroup>();
@@ -105,6 +105,12 @@ export function DownloadCard() {
         </Text>
       ) : isLoading ? (
         <SkeletonCardContent rows={3} />
+      ) : isError ? (
+        <EmptyState
+          icon={<AlertTriangle size={32} color="#f59e0b" />}
+          title="Couldn't load downloads"
+          message="Check qBittorrent is reachable and credentials are correct."
+        />
       ) : displayTorrents.length === 0 ? (
         <EmptyState
           icon={<CheckCircle size={32} color="#71717a" />}
