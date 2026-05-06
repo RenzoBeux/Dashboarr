@@ -58,6 +58,10 @@ export interface ServiceSecrets {
   apiKey?: string;
   username?: string;
   password?: string;
+  // Per-service custom HTTP headers (e.g. CF-Access-Client-Id for reverse-proxy
+  // auth). Stored alongside other secrets in SecureStore because values often
+  // contain bearer tokens.
+  customHeaders?: Record<string, string>;
 }
 
 // Per-widget settings live as an opaque record keyed by widget id. The widget
@@ -77,6 +81,9 @@ interface ConfigState {
   hydrated: boolean;
   demoMode: boolean;
   hapticsEnabled: boolean;
+  // Headers merged into every outgoing service request (Cloudflare Access etc.).
+  // Per-service customHeaders override on top of these.
+  globalCustomHeaders: Record<string, string>;
 }
 
 export interface ExportPayload {
@@ -97,6 +104,8 @@ export interface ExportPayload {
   widgetSettings?: WidgetSettingsMap;
   // v8
   hapticsEnabled?: boolean;
+  // v10
+  globalCustomHeaders?: Record<string, string>;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -122,6 +131,8 @@ interface ConfigActions {
   resetWidgetSettings: (id: WidgetId) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   setHapticsEnabled: (enabled: boolean) => void;
+  setGlobalCustomHeaders: (headers: Record<string, string>) => void;
+  getMergedHeaders: (id: ServiceId) => Record<string, string>;
   getActiveUrl: (id: ServiceId) => string;
   enableDemoMode: () => void;
   disableDemoMode: () => Promise<void>;
@@ -204,6 +215,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   hydrated: false,
   demoMode: false,
   hapticsEnabled: true,
+  globalCustomHeaders: {},
 
   hydrate: async () => {
     // Populate in-memory cache from AsyncStorage
@@ -230,10 +242,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const apiKey = await getSecret(`${SECRET_PREFIX}.${id}.apiKey`);
       const username = await getSecret(`${SECRET_PREFIX}.${id}.username`);
       const password = await getSecret(`${SECRET_PREFIX}.${id}.password`);
+      const customHeadersRaw = await getSecret(`${SECRET_PREFIX}.${id}.customHeaders`);
+      let customHeaders: Record<string, string> | undefined;
+      if (customHeadersRaw) {
+        try {
+          const parsed: unknown = JSON.parse(customHeadersRaw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            customHeaders = parsed as Record<string, string>;
+          }
+        } catch {
+          // Corrupt entry — drop it so the user can re-enter rather than crash.
+        }
+      }
       secrets[id] = {
         ...(apiKey ? { apiKey } : {}),
         ...(username ? { username } : {}),
         ...(password ? { password } : {}),
+        ...(customHeaders ? { customHeaders } : {}),
       };
     }
 
@@ -271,6 +296,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const widgetSettings = remapWidgetSettings(storedSettings);
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
+    const globalCustomHeaders =
+      getJSON<Record<string, string>>(STORAGE_KEYS.globalCustomHeaders) ?? {};
 
     // Default to true for new installs and pre-v8 users who never had the toggle.
     // getBoolean can't distinguish missing from explicit false, so we probe the
@@ -296,6 +323,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       wolDevices,
       demoMode,
       hapticsEnabled,
+      globalCustomHeaders,
       hydrated: true,
     });
   },
@@ -316,15 +344,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   updateSecrets: async (id, newSecrets) => {
     for (const [key, value] of Object.entries(newSecrets)) {
-      if (value) {
-        await setSecret(`${SECRET_PREFIX}.${id}.${key}`, value);
+      const storageKey = `${SECRET_PREFIX}.${id}.${key}`;
+      if (key === "customHeaders") {
+        // Stored as a JSON string so SecureStore (string-only) can hold it.
+        const map = value as Record<string, string> | undefined;
+        if (map && Object.keys(map).length > 0) {
+          await setSecret(storageKey, JSON.stringify(map));
+        } else {
+          await deleteSecret(storageKey);
+        }
+      } else if (typeof value === "string" && value.length > 0) {
+        await setSecret(storageKey, value);
       } else {
-        await deleteSecret(`${SECRET_PREFIX}.${id}.${key}`);
+        await deleteSecret(storageKey);
       }
     }
     set((state) => {
-      const updated = { ...state.secrets[id], ...newSecrets };
-      return { secrets: { ...state.secrets, [id]: updated } };
+      // Drop empty customHeaders so consumers don't have to dance around {}.
+      const merged: ServiceSecrets = { ...state.secrets[id], ...newSecrets };
+      if (merged.customHeaders && Object.keys(merged.customHeaders).length === 0) {
+        delete merged.customHeaders;
+      }
+      return { secrets: { ...state.secrets, [id]: merged } };
     });
   },
 
@@ -405,6 +446,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ hapticsEnabled: enabled });
   },
 
+  setGlobalCustomHeaders: (headers) => {
+    setJSON(STORAGE_KEYS.globalCustomHeaders, headers);
+    set({ globalCustomHeaders: headers });
+  },
+
+  getMergedHeaders: (id) => {
+    const state = get();
+    return { ...state.globalCustomHeaders, ...(state.secrets[id]?.customHeaders ?? {}) };
+  },
+
   getActiveUrl: (id) => {
     const service = get().services[id];
     return service.useRemote ? service.remoteUrl : service.localUrl;
@@ -456,6 +507,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       widgetSettings,
       wolDevices,
       hapticsEnabled,
+      globalCustomHeaders,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
@@ -474,6 +526,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       notificationSettings: notifSettings,
       wolDevices,
       hapticsEnabled,
+      globalCustomHeaders,
     };
 
     onStage?.("encrypting");
@@ -552,6 +605,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${id}.apiKey`, s.apiKey);
       if (s.username) await setSecret(`${SECRET_PREFIX}.${id}.username`, s.username);
       if (s.password) await setSecret(`${SECRET_PREFIX}.${id}.password`, s.password);
+      if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
+        await setSecret(
+          `${SECRET_PREFIX}.${id}.customHeaders`,
+          JSON.stringify(s.customHeaders),
+        );
+      } else {
+        await deleteSecret(`${SECRET_PREFIX}.${id}.customHeaders`);
+      }
     }
 
     // Restore app settings
@@ -565,6 +626,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
     const importedHapticsEnabled = payload.hapticsEnabled ?? true;
     setBoolean(STORAGE_KEYS.hapticsEnabled, importedHapticsEnabled);
+    const importedGlobalCustomHeaders = payload.globalCustomHeaders ?? {};
+    setJSON(STORAGE_KEYS.globalCustomHeaders, importedGlobalCustomHeaders);
 
     // Restore backend pairing (v2+)
     if (payload.backend?.url && payload.backend?.sharedSecret) {
@@ -591,6 +654,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       widgetSettings: importedWidgetSettings,
       wolDevices: payload.wolDevices ?? [],
       hapticsEnabled: importedHapticsEnabled,
+      globalCustomHeaders: importedGlobalCustomHeaders,
     });
 
     return true;

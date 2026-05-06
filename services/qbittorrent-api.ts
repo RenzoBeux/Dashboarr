@@ -63,9 +63,20 @@ export async function qbLogin(): Promise<boolean> {
   const baseUrl = store.getActiveUrl("qbittorrent");
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 
+  // Custom headers first so the reverse proxy lets /auth/login through; then
+  // the form Content-Type wins. We deliberately ignore a user-supplied
+  // `Cookie` so the platform jar can populate SID on the response.
+  const headers = new Headers();
+  const customHeaders = store.getMergedHeaders("qbittorrent");
+  for (const [k, v] of Object.entries(customHeaders)) {
+    if (k.toLowerCase() === "cookie") continue;
+    headers.set(k, v);
+  }
+  headers.set("Content-Type", "application/x-www-form-urlencoded");
+
   const response = await fetch(buildUrl(baseUrl, apiBase, "/auth/login"), {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers,
     body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
   });
 
@@ -146,6 +157,15 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
   await ensureAuth();
 
   const headers = new Headers(options?.headers);
+
+  // Apply custom headers FIRST. We skip `Cookie` so the user can't accidentally
+  // clobber the SID; applyCookie() then sets/replaces the Cookie header itself.
+  const customHeaders = store.getMergedHeaders("qbittorrent");
+  for (const [k, v] of Object.entries(customHeaders)) {
+    if (k.toLowerCase() === "cookie") continue;
+    headers.set(k, v);
+  }
+
   applyCookie(headers, await cookieStore.get());
 
   const response = await fetch(buildUrl(baseUrl, apiBase, path), {

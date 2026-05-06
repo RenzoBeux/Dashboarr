@@ -21,6 +21,7 @@ import {
   Cloud,
   Zap,
   ImageOff,
+  Globe,
 } from "lucide-react-native";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { detectWifi } from "@/lib/wifi";
@@ -29,6 +30,7 @@ import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
+import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
@@ -120,6 +122,9 @@ export default function SettingsScreen() {
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
   const wolDevices = useConfigStore((s) => s.wolDevices);
+  const globalHeaderCount = useConfigStore(
+    (s) => Object.keys(s.globalCustomHeaders).length,
+  );
   const demoMode = useConfigStore((s) => s.demoMode);
   const enableDemoMode = useConfigStore((s) => s.enableDemoMode);
   const disableDemoMode = useConfigStore((s) => s.disableDemoMode);
@@ -294,6 +299,23 @@ export default function SettingsScreen() {
               {wolDevices.length
                 ? `${wolDevices.length} device${wolDevices.length > 1 ? "s" : ""} configured`
                 : "Wake devices on your network"}
+            </Text>
+          </View>
+          <ChevronRight size={18} color="#71717a" />
+        </Card>
+      </Pressable>
+
+      <Pressable onPress={() => router.push("/custom-headers")} className="active:opacity-80 mb-4">
+        <Card className="flex-row items-center">
+          <View className="bg-surface-light rounded-xl p-2.5 mr-3">
+            <Globe size={20} color="#a1a1aa" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-base">Custom Headers</Text>
+            <Text className="text-zinc-500 text-xs">
+              {globalHeaderCount > 0
+                ? `${globalHeaderCount} header${globalHeaderCount > 1 ? "s" : ""} sent on every request`
+                : "Add headers for reverse-proxy auth"}
             </Text>
           </View>
           <ChevronRight size={18} color="#71717a" />
@@ -498,13 +520,20 @@ function ServiceEditor({
   const [apiKey, setApiKey] = useState(secrets.apiKey ?? "");
   const [username, setUsername] = useState(secrets.username ?? "");
   const [password, setPassword] = useState(secrets.password ?? "");
+  const [customHeaders, setCustomHeaders] = useState<Record<string, string>>(
+    secrets.customHeaders ?? {},
+  );
   const [testing, setTesting] = useState(false);
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
+  const headersJson = JSON.stringify(customHeaders);
+  const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
+
   const isDirty =
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
+    headersJson !== savedHeadersJson ||
     (isQB
       ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
       : apiKey !== (secrets.apiKey ?? ""));
@@ -549,11 +578,25 @@ function ServiceEditor({
       if (!confirmed) return;
     }
 
+    // Mirror the schema validator so the user can't save an invalid header
+    // map and then have hydrate() silently drop it after a restart.
+    const headerNameRe = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+    for (const [name, val] of Object.entries(customHeaders)) {
+      if (!headerNameRe.test(name)) {
+        toast(`Invalid header name: "${name}"`, "error");
+        return;
+      }
+      if (/[\r\n]/.test(val)) {
+        toast(`Header "${name}" value contains newlines`, "error");
+        return;
+      }
+    }
+
     updateService(serviceId, { localUrl, remoteUrl });
     if (isQB) {
-      await updateSecrets(serviceId, { username, password });
+      await updateSecrets(serviceId, { username, password, customHeaders });
     } else {
-      await updateSecrets(serviceId, { apiKey });
+      await updateSecrets(serviceId, { apiKey, customHeaders });
     }
     // Drop the cached qBittorrent SID so the next request re-logs in with the
     // new URL or credentials. (glances reuses isQB for its u/p form but has
@@ -648,6 +691,17 @@ function ServiceEditor({
             secureTextEntry
           />
         )}
+      </Card>
+
+      <Card className="gap-4 mb-4">
+        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+          Custom Headers
+        </Text>
+        <HeaderListEditor
+          value={customHeaders}
+          onChange={setCustomHeaders}
+          helperText="Sent on every request to this service. Combined with the global headers (Settings → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
+        />
       </Card>
 
       <View className="flex-row gap-3">

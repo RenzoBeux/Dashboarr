@@ -34,12 +34,19 @@ async function plexRequest<T>(path: string): Promise<T> {
     url.searchParams.set("X-Plex-Token", secrets.apiKey);
   }
 
+  // Custom headers first, then Plex's required Accept — Accept wins if the
+  // user sets it themselves (rare but harmless).
+  const headers = new Headers();
+  const customHeaders = store.getMergedHeaders("plex");
+  for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+  headers.set("Accept", "application/json");
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
     const response = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
+      headers,
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Plex HTTP ${response.status}`);

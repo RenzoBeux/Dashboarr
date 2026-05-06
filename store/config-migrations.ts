@@ -17,8 +17,10 @@ import type { ExportPayload } from "@/store/config-store";
  *   v8  — added hapticsEnabled global preference
  *   v9  — added jellyfin service entry (no schema change; defaultServices()
  *         backfills the new id, so this is a version stamp only)
+ *   v10 — added customHeaders per service (in secrets) + globalCustomHeaders
+ *         at the top level for reverse-proxy auth (Cloudflare Access etc.)
  */
-export const CURRENT_CONFIG_VERSION = 9;
+export const CURRENT_CONFIG_VERSION = 10;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -124,6 +126,18 @@ const migrations: Record<number, (payload: any) => any> = {
   // defaultServices() afterward, so older payloads that lack a jellyfin entry
   // get the disabled default automatically — nothing to transform here.
   8: (payload) => ({ ...payload, version: 9 }),
+
+  // v9 → v10: added customHeaders per-service (in secrets) and a top-level
+  // globalCustomHeaders. Older payloads have neither; defaulting to an empty
+  // object preserves the prior "no extra headers" behavior.
+  9: (payload) => ({
+    ...payload,
+    version: 10,
+    globalCustomHeaders:
+      payload.globalCustomHeaders && typeof payload.globalCustomHeaders === "object"
+        ? payload.globalCustomHeaders
+        : {},
+  }),
 };
 
 /**

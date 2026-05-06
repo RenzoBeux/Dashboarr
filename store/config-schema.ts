@@ -27,6 +27,26 @@ function isHttpUrlOrEmpty(v: unknown): v is string {
   }
 }
 
+// RFC 7230 token chars — same set the spec allows in field-name. Rejecting
+// CR/LF in values closes off header-injection if someone hand-edits an export.
+const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+const MAX_HEADERS_PER_SCOPE = 32;
+
+function coerceHeaderMap(v: unknown): Record<string, string> | null {
+  if (!isPlainObject(v)) return null;
+  const out: Record<string, string> = {};
+  let count = 0;
+  for (const [key, value] of Object.entries(v)) {
+    if (typeof key !== "string" || key.length === 0 || key.length > 200) return null;
+    if (!HEADER_NAME_RE.test(key)) return null;
+    if (typeof value !== "string" || value.length > 4096) return null;
+    if (/[\r\n]/.test(value)) return null;
+    out[key] = value;
+    if (++count > MAX_HEADERS_PER_SCOPE) return null;
+  }
+  return out;
+}
+
 function coerceServiceConfig(v: unknown): ServiceConfig | null {
   if (!isPlainObject(v)) return null;
   if (typeof v.enabled !== "boolean") return null;
@@ -51,6 +71,11 @@ function coerceServiceSecrets(v: unknown): ServiceSecrets | null {
     if (raw === undefined || raw === null) continue;
     if (typeof raw !== "string" || raw.length > 4096) return null;
     out[key] = raw;
+  }
+  if (v.customHeaders !== undefined && v.customHeaders !== null) {
+    const headers = coerceHeaderMap(v.customHeaders);
+    if (!headers) return null;
+    if (Object.keys(headers).length > 0) out.customHeaders = headers;
   }
   return out;
 }
@@ -209,6 +234,12 @@ export function validateExportPayload(raw: unknown): ExportPayload {
   if (raw.hapticsEnabled !== undefined) {
     if (typeof raw.hapticsEnabled !== "boolean") throw new Error("Config hapticsEnabled is invalid");
     payload.hapticsEnabled = raw.hapticsEnabled;
+  }
+
+  if (raw.globalCustomHeaders !== undefined && raw.globalCustomHeaders !== null) {
+    const headers = coerceHeaderMap(raw.globalCustomHeaders);
+    if (!headers) throw new Error("Config globalCustomHeaders is invalid");
+    payload.globalCustomHeaders = headers;
   }
 
   return payload;

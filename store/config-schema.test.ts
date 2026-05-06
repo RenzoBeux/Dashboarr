@@ -424,6 +424,144 @@ describe("validateExportPayload — hapticsEnabled", () => {
   });
 });
 
+describe("validateExportPayload — service customHeaders", () => {
+  it("accepts a typical reverse-proxy header pair", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      secrets: {
+        radarr: {
+          apiKey: "abc",
+          customHeaders: {
+            "CF-Access-Client-Id": "id",
+            "CF-Access-Client-Secret": "secret",
+          },
+        },
+      },
+    });
+    expect(result.secrets.radarr?.customHeaders).toEqual({
+      "CF-Access-Client-Id": "id",
+      "CF-Access-Client-Secret": "secret",
+    });
+  });
+
+  it("drops an empty header map (so consumers see undefined, not {})", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      secrets: { radarr: { customHeaders: {} } },
+    });
+    expect(result.secrets.radarr?.customHeaders).toBeUndefined();
+  });
+
+  it("rejects a header name with a space (CRLF-injection vector)", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: { "Bad Header": "x" } } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects a header name containing : (would corrupt the wire format)", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: { "X-Bad:Name": "x" } } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects an empty header name", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: { "": "x" } } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects a header value containing CR or LF (header-splitting vector)", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: {
+          radarr: { customHeaders: { "X-Foo": "ok\r\nX-Injected: bad" } },
+        },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects a header value longer than 4096 chars", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: { "X-Foo": "x".repeat(4097) } } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects more than 32 headers", () => {
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 33; i++) many[`X-Header-${i}`] = "v";
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: many } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects customHeaders that is not a plain object", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: "not-an-object" as any } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+
+  it("rejects a non-string header value (e.g. numeric)", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        secrets: { radarr: { customHeaders: { "X-Foo": 42 as any } } },
+      }),
+    ).toThrow(/secrets\.radarr/);
+  });
+});
+
+describe("validateExportPayload — globalCustomHeaders", () => {
+  it("accepts a populated map at the top level", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      globalCustomHeaders: { Authorization: "Bearer xyz" },
+    });
+    expect(result.globalCustomHeaders).toEqual({ Authorization: "Bearer xyz" });
+  });
+
+  it("omits globalCustomHeaders from the result when absent in input", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.globalCustomHeaders).toBeUndefined();
+  });
+
+  it("rejects globalCustomHeaders that is not a plain object", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        globalCustomHeaders: ["X-Foo"] as any,
+      }),
+    ).toThrow(/globalCustomHeaders/);
+  });
+
+  it("rejects a CRLF-injection attempt in a global header value", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        globalCustomHeaders: { "X-Foo": "ok\nX-Injected: bad" },
+      }),
+    ).toThrow(/globalCustomHeaders/);
+  });
+});
+
 describe("validateExportPayload — widget settings", () => {
   it("drops unknown widget IDs from widgetSettings", () => {
     const result = validateExportPayload({

@@ -91,9 +91,16 @@ export async function serviceRequest<T>(
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, path, params);
 
-  // Inject auth headers based on service type
   const headers = new Headers(fetchOptions.headers);
 
+  // Apply user-supplied custom headers (global + per-service merged) FIRST so
+  // service auth headers below can overwrite on collision. Reverse-proxy
+  // headers like CF-Access-Client-Id rarely collide; this just guards the
+  // user from accidentally pasting `X-Api-Key` and breaking service auth.
+  const customHeaders = store.getMergedHeaders(serviceId);
+  for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+
+  // Inject auth headers based on service type
   if (serviceId === "qbittorrent") {
     // qBittorrent uses cookie-based auth — handled by the cookie jar
     // The login function must be called first to establish the session
@@ -169,6 +176,12 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
   const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
 
   const headers = new Headers();
+
+  // Same custom-then-auth ordering as serviceRequest so the proxy lets the
+  // ping through and service auth still wins on collision.
+  const customHeaders = store.getMergedHeaders(serviceId);
+  for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+
   if (serviceId === "plex") {
     if (secrets.apiKey) headers.set("X-Plex-Token", secrets.apiKey);
     headers.set("Accept", "application/json");

@@ -87,6 +87,7 @@ export const STORAGE_KEYS = {
   wolDevices: "app.wolDevices",
   demoMode: "app.demoMode",
   hapticsEnabled: "app.hapticsEnabled",
+  globalCustomHeaders: "app.globalCustomHeaders",
 } as const;
 
 // SecureStore key prefix

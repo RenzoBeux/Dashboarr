@@ -434,6 +434,68 @@ describe("v7 → v8 (hapticsEnabled)", () => {
   });
 });
 
+describe("v8 → v9 (jellyfin stamp)", () => {
+  it("just stamps the version without touching unrelated fields", () => {
+    const result: any = migrateConfig({
+      version: 8,
+      services: { radarr: { enabled: true } },
+      dashboardWidgets: ["calendar"],
+      hapticsEnabled: false,
+    });
+    expect(result.services.radarr.enabled).toBe(true);
+    expect(result.hapticsEnabled).toBe(false);
+  });
+});
+
+describe("v9 → v10 (custom headers)", () => {
+  it("adds globalCustomHeaders={} when not present", () => {
+    const result: any = migrateConfig({
+      version: 9,
+      services: {},
+      dashboardWidgets: [],
+      widgetSettings: {},
+    });
+    expect(result.globalCustomHeaders).toEqual({});
+  });
+
+  it("preserves an existing globalCustomHeaders map", () => {
+    const result: any = migrateConfig({
+      version: 9,
+      services: {},
+      dashboardWidgets: [],
+      widgetSettings: {},
+      globalCustomHeaders: { "CF-Access-Client-Id": "xyz" },
+    });
+    expect(result.globalCustomHeaders).toEqual({ "CF-Access-Client-Id": "xyz" });
+  });
+
+  it("replaces a non-object globalCustomHeaders with {}", () => {
+    const result: any = migrateConfig({
+      version: 9,
+      services: {},
+      dashboardWidgets: [],
+      widgetSettings: {},
+      globalCustomHeaders: "not-an-object" as any,
+    });
+    expect(result.globalCustomHeaders).toEqual({});
+  });
+
+  it("preserves per-service customHeaders inside secrets through the stamp", () => {
+    const result: any = migrateConfig({
+      version: 9,
+      services: {},
+      secrets: {
+        radarr: { apiKey: "k", customHeaders: { Authorization: "Bearer x" } },
+      },
+      dashboardWidgets: [],
+      widgetSettings: {},
+    });
+    expect(result.secrets.radarr.customHeaders).toEqual({
+      Authorization: "Bearer x",
+    });
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {

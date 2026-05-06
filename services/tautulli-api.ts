@@ -42,11 +42,17 @@ async function tautulliRequest<T>(
     url.searchParams.set(key, String(value));
   }
 
+  // apikey lives in the query string, so custom headers can never collide
+  // with auth here — straight pass-through.
+  const headers = new Headers();
+  const customHeaders = store.getMergedHeaders("tautulli");
+  for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const response = await fetch(url.toString(), { signal: controller.signal });
+    const response = await fetch(url.toString(), { headers, signal: controller.signal });
     if (!response.ok) throw new Error(`Tautulli HTTP ${response.status}`);
     const json = await response.json();
     return json.response.data as T;
