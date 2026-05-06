@@ -10,7 +10,6 @@ import {
   getBoolean,
   setBoolean,
   getString,
-  setString,
   getSecret,
   setSecret,
   deleteSecret,
@@ -37,6 +36,7 @@ import { useNotificationStore } from "@/store/notifications-store";
 import { queryClient } from "@/lib/query-client";
 import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, WidgetId } from "@/lib/constants";
+import { normalizeBssid } from "@/lib/wifi";
 
 export interface WakeOnLanDevice {
   id: string;
@@ -44,6 +44,15 @@ export interface WakeOnLanDevice {
   mac: string;
   broadcastAddress?: string;
   port?: number;
+}
+
+export interface HomeNetwork {
+  id: string;
+  ssid: string;
+  // Optional AP MAC pin. Empty string means SSID-only match for this entry —
+  // the rogue-AP guard from v6 lives per-entry now so each AP in a mesh can
+  // carry its own pin.
+  bssid: string;
 }
 
 export interface ServiceConfig {
@@ -73,8 +82,7 @@ interface ConfigState {
   services: Record<ServiceId, ServiceConfig>;
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
-  homeSSID: string;
-  homeBSSID: string;
+  homeNetworks: HomeNetwork[];
   dashboardWidgets: WidgetId[];
   widgetSettings: WidgetSettingsMap;
   wolDevices: WakeOnLanDevice[];
@@ -92,8 +100,9 @@ export interface ExportPayload {
   services: Record<ServiceId, ServiceConfig>;
   secrets: Record<ServiceId, ServiceSecrets>;
   autoSwitchNetwork: boolean;
-  homeSSID: string;
-  homeBSSID?: string;
+  // v11 — replaces homeSSID/homeBSSID with a per-AP list so mesh setups can
+  // register every SSID/BSSID pair the user considers "home".
+  homeNetworks: HomeNetwork[];
   dashboardWidgets: WidgetId[];
   // v2
   backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
@@ -121,8 +130,10 @@ interface ConfigActions {
   toggleService: (id: ServiceId) => void;
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
   setAutoSwitch: (enabled: boolean) => void;
-  setHomeSSID: (ssid: string) => void;
-  setHomeBSSID: (bssid: string) => void;
+  addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
+  updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
+  removeHomeNetwork: (id: string) => void;
+  setHomeNetworks: (networks: HomeNetwork[]) => void;
   setDashboardWidgets: (widgets: WidgetId[]) => void;
   addWidget: (id: WidgetId) => void;
   removeWidget: (id: WidgetId) => void;
@@ -172,6 +183,20 @@ function emptySecrets(): Record<ServiceId, ServiceSecrets> {
   return secrets;
 }
 
+function generateHomeNetworkId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function isHomeNetwork(value: unknown): value is HomeNetwork {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Partial<HomeNetwork>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.ssid === "string" &&
+    typeof v.bssid === "string"
+  );
+}
+
 const VALID_WIDGET_IDS = new Set<string>(DASHBOARD_WIDGET_IDS);
 
 function normalizeWidgetIds(ids: string[]): WidgetId[] {
@@ -207,8 +232,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   services: defaultServices(),
   secrets: emptySecrets(),
   autoSwitchNetwork: false,
-  homeSSID: "",
-  homeBSSID: "",
+  homeNetworks: [],
   dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
   widgetSettings: {},
   wolDevices: [],
@@ -263,8 +287,29 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
-    const homeSSID = getString(STORAGE_KEYS.homeSSID) ?? "";
-    const homeBSSID = getString(STORAGE_KEYS.homeBSSID) ?? "";
+
+    // Read the new array; if absent, migrate from legacy single-SSID keys so
+    // upgraders who never re-import keep their auto-switch configuration.
+    let homeNetworks: HomeNetwork[] = [];
+    const storedHomeNetworks = getJSON<HomeNetwork[]>(STORAGE_KEYS.homeNetworks);
+    if (Array.isArray(storedHomeNetworks)) {
+      homeNetworks = storedHomeNetworks.filter(isHomeNetwork);
+    } else {
+      const legacySsid = getString("app.homeSSID");
+      const legacyBssid = getString("app.homeBSSID");
+      if (legacySsid && legacySsid.length > 0) {
+        homeNetworks = [
+          {
+            id: "migrated-1",
+            ssid: legacySsid,
+            bssid: typeof legacyBssid === "string" ? legacyBssid : "",
+          },
+        ];
+      }
+      setJSON(STORAGE_KEYS.homeNetworks, homeNetworks);
+      if (legacySsid !== undefined) deleteKey("app.homeSSID");
+      if (legacyBssid !== undefined) deleteKey("app.homeBSSID");
+    }
 
     // Prefer the new key. If absent, fall back to the legacy dashboardOrder key
     // (one-time local migration for users upgrading from pre-widget builds).
@@ -316,8 +361,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
-      homeSSID,
-      homeBSSID,
+      homeNetworks,
       dashboardWidgets: normalizedWidgets,
       widgetSettings,
       wolDevices,
@@ -374,15 +418,47 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ autoSwitchNetwork: enabled });
   },
 
-  setHomeSSID: (ssid) => {
-    setString(STORAGE_KEYS.homeSSID, ssid);
-    set({ homeSSID: ssid });
+  addHomeNetwork: (network) => {
+    const created: HomeNetwork = {
+      id: generateHomeNetworkId(),
+      ssid: network.ssid.trim(),
+      bssid: normalizeBssid(network.bssid),
+    };
+    set((state) => {
+      const next = [...state.homeNetworks, created];
+      setJSON(STORAGE_KEYS.homeNetworks, next);
+      return { homeNetworks: next };
+    });
+    return created;
   },
 
-  setHomeBSSID: (bssid) => {
-    const normalized = bssid.trim().toLowerCase();
-    setString(STORAGE_KEYS.homeBSSID, normalized);
-    set({ homeBSSID: normalized });
+  updateHomeNetwork: (id, patch) => {
+    set((state) => {
+      const next = state.homeNetworks.map((n) =>
+        n.id === id
+          ? {
+              ...n,
+              ...(patch.ssid !== undefined ? { ssid: patch.ssid.trim() } : {}),
+              ...(patch.bssid !== undefined ? { bssid: normalizeBssid(patch.bssid) } : {}),
+            }
+          : n,
+      );
+      setJSON(STORAGE_KEYS.homeNetworks, next);
+      return { homeNetworks: next };
+    });
+  },
+
+  removeHomeNetwork: (id) => {
+    set((state) => {
+      const next = state.homeNetworks.filter((n) => n.id !== id);
+      setJSON(STORAGE_KEYS.homeNetworks, next);
+      return { homeNetworks: next };
+    });
+  },
+
+  setHomeNetworks: (networks) => {
+    setJSON(STORAGE_KEYS.homeNetworks, networks);
+    set({ homeNetworks: networks });
   },
 
   setDashboardWidgets: (widgets) => {
@@ -502,7 +578,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
-      homeSSID,
+      homeNetworks,
       dashboardWidgets,
       widgetSettings,
       wolDevices,
@@ -519,7 +595,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
-      homeSSID,
+      homeNetworks,
       dashboardWidgets,
       widgetSettings,
       backend: { url, sharedSecret, deviceId },
@@ -617,7 +693,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     // Restore app settings
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
-    setString(STORAGE_KEYS.homeSSID, payload.homeSSID ?? "");
+    const importedHomeNetworks = payload.homeNetworks ?? [];
+    setJSON(STORAGE_KEYS.homeNetworks, importedHomeNetworks);
     if (payload.dashboardWidgets) {
       setJSON(STORAGE_KEYS.dashboardWidgets, payload.dashboardWidgets);
     }
@@ -649,7 +726,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services: mergedServices,
       secrets: mergedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
-      homeSSID: payload.homeSSID ?? "",
+      homeNetworks: importedHomeNetworks,
       dashboardWidgets: payload.dashboardWidgets ?? DEFAULT_DASHBOARD_WIDGETS,
       widgetSettings: importedWidgetSettings,
       wolDevices: payload.wolDevices ?? [],

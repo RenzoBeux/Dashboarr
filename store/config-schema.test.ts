@@ -6,7 +6,7 @@ const baseValid = () => ({
   services: {},
   secrets: {},
   autoSwitchNetwork: false,
-  homeSSID: "",
+  homeNetworks: [],
   dashboardWidgets: [],
 });
 
@@ -67,16 +67,10 @@ describe("validateExportPayload — root shape", () => {
     ).toThrow(/autoSwitchNetwork/i);
   });
 
-  it("throws when homeSSID is longer than 64 chars", () => {
+  it("throws when homeNetworks is not an array", () => {
     expect(() =>
-      validateExportPayload({ ...baseValid(), homeSSID: "x".repeat(65) }),
-    ).toThrow(/homeSSID/i);
-  });
-
-  it("throws when homeBSSID is provided but not a string", () => {
-    expect(() =>
-      validateExportPayload({ ...baseValid(), homeBSSID: 42 as any }),
-    ).toThrow(/homeBSSID/i);
+      validateExportPayload({ ...baseValid(), homeNetworks: "nope" as any }),
+    ).toThrow(/homeNetworks/i);
   });
 
   it("throws when dashboardWidgets is not an array", () => {
@@ -308,6 +302,127 @@ describe("validateExportPayload — WOL devices", () => {
     expect(() =>
       validateExportPayload({ ...baseValid(), wolDevices: "nope" as any }),
     ).toThrow(/wolDevices/);
+  });
+});
+
+describe("validateExportPayload — homeNetworks", () => {
+  const baseNetwork = () => ({ id: "n1", ssid: "MyHome", bssid: "" });
+
+  it("accepts an empty array", () => {
+    const result = validateExportPayload({ ...baseValid(), homeNetworks: [] });
+    expect(result.homeNetworks).toEqual([]);
+  });
+
+  it("accepts a single SSID-only entry", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      homeNetworks: [baseNetwork()],
+    });
+    expect(result.homeNetworks).toEqual([{ id: "n1", ssid: "MyHome", bssid: "" }]);
+  });
+
+  it("accepts a mesh setup with multiple entries", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      homeNetworks: [
+        { id: "n1", ssid: "MyHome", bssid: "aa:bb:cc:11:22:33" },
+        { id: "n2", ssid: "MyHome-5G", bssid: "aa:bb:cc:11:22:34" },
+        { id: "n3", ssid: "Garage-AP", bssid: "" },
+      ],
+    });
+    expect(result.homeNetworks).toHaveLength(3);
+  });
+
+  it("rejects more than 20 entries", () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({
+      id: `n${i}`,
+      ssid: `Net${i}`,
+      bssid: "",
+    }));
+    expect(() =>
+      validateExportPayload({ ...baseValid(), homeNetworks: many }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("accepts exactly 20 entries (boundary)", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      id: `n${i}`,
+      ssid: `Net${i}`,
+      bssid: "",
+    }));
+    const result = validateExportPayload({ ...baseValid(), homeNetworks: many });
+    expect(result.homeNetworks).toHaveLength(20);
+  });
+
+  it("rejects an entry with empty id", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ ...baseNetwork(), id: "" }],
+      }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("rejects an entry with id longer than 128 chars", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ ...baseNetwork(), id: "x".repeat(129) }],
+      }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("rejects an entry with empty ssid", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ ...baseNetwork(), ssid: "" }],
+      }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("rejects an entry with ssid longer than 64 chars", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ ...baseNetwork(), ssid: "x".repeat(65) }],
+      }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("accepts an entry with ssid of exactly 64 chars (boundary)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      homeNetworks: [{ ...baseNetwork(), ssid: "x".repeat(64) }],
+    });
+    expect(result.homeNetworks[0].ssid).toHaveLength(64);
+  });
+
+  it("rejects an entry with bssid longer than 64 chars", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ ...baseNetwork(), bssid: "x".repeat(65) }],
+      }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("rejects an entry missing required fields", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ id: "n1", ssid: "MyHome" } as any],
+      }),
+    ).toThrow(/homeNetworks/i);
+  });
+
+  it("rejects when an entry's ssid is non-string", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        homeNetworks: [{ id: "n1", ssid: 42 as any, bssid: "" }],
+      }),
+    ).toThrow(/homeNetworks/i);
   });
 });
 

@@ -19,6 +19,7 @@ import "@/lib/expo-image-nativewind"; // side-effect: cssInterop on expo-image's
 import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
+import { useNetworkAutoSwitch } from "@/hooks/use-network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
@@ -111,6 +112,11 @@ function NotificationRouter() {
 
 function BackendHealthPoller() {
   useBackendHealth();
+  return null;
+}
+
+function NetworkAutoSwitcher() {
+  useNetworkAutoSwitch();
   return null;
 }
 
@@ -207,6 +213,9 @@ export default function RootLayout() {
               </SilentErrorBoundary>
               <SilentErrorBoundary label="backend-health">
                 <BackendHealthPoller />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="network-auto-switch">
+                <NetworkAutoSwitcher />
               </SilentErrorBoundary>
               <SilentErrorBoundary label="config-sync">
                 <ConfigSyncBridge />

@@ -19,8 +19,10 @@ import type { ExportPayload } from "@/store/config-store";
  *         backfills the new id, so this is a version stamp only)
  *   v10 — added customHeaders per service (in secrets) + globalCustomHeaders
  *         at the top level for reverse-proxy auth (Cloudflare Access etc.)
+ *   v11 — replaced single homeSSID/homeBSSID with homeNetworks: HomeNetwork[]
+ *         so mesh setups can mark every AP as "home"
  */
-export const CURRENT_CONFIG_VERSION = 10;
+export const CURRENT_CONFIG_VERSION = 11;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -138,6 +140,19 @@ const migrations: Record<number, (payload: any) => any> = {
         ? payload.globalCustomHeaders
         : {},
   }),
+
+  // v10 → v11: replace single homeSSID / optional homeBSSID with a list of
+  // HomeNetwork entries so mesh setups can register every AP. Empty SSID =>
+  // no networks (auto-switch was effectively unconfigured anyway). Old fields
+  // are dropped from the payload — the new key is the source of truth.
+  10: (payload) => {
+    const ssid = typeof payload.homeSSID === "string" ? payload.homeSSID : "";
+    const bssid = typeof payload.homeBSSID === "string" ? payload.homeBSSID : "";
+    const homeNetworks: { id: string; ssid: string; bssid: string }[] =
+      ssid.length > 0 ? [{ id: "migrated-1", ssid, bssid }] : [];
+    const { homeSSID: _s, homeBSSID: _b, ...rest } = payload;
+    return { ...rest, version: 11, homeNetworks };
+  },
 };
 
 /**

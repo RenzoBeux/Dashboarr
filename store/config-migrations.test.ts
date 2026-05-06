@@ -29,8 +29,7 @@ describe("migrateConfig — entry point", () => {
       services: { radarr: { enabled: true } },
       secrets: {},
       autoSwitchNetwork: false,
-      homeSSID: "",
-      homeBSSID: "",
+      homeNetworks: [],
       dashboardWidgets: ["calendar"],
       widgetSettings: {},
       wolDevices: [],
@@ -70,11 +69,15 @@ describe("v0 → v1 (pre-versioning fallback)", () => {
   });
 
   it("defaults each missing field to its empty/false value", () => {
-    const result = migrateConfig({ services: {} });
+    const result: any = migrateConfig({ services: {} });
     expect(result.services).toEqual({});
     expect(result.secrets).toEqual({});
     expect(result.autoSwitchNetwork).toBe(false);
-    expect(result.homeSSID).toBe("");
+    // v11 migration drops legacy homeSSID/homeBSSID and replaces them with the
+    // homeNetworks array (empty when no SSID was configured).
+    expect(result.homeNetworks).toEqual([]);
+    expect(result.homeSSID).toBeUndefined();
+    expect(result.homeBSSID).toBeUndefined();
   });
 
   it("preserves a populated services map verbatim through migration", () => {
@@ -303,34 +306,96 @@ describe("v4 → v5 (dashboardOrder → dashboardWidgets)", () => {
   });
 });
 
-describe("v5 → v6 (homeBSSID)", () => {
-  it("adds homeBSSID='' when not present", () => {
+describe("v5 → v6 (homeBSSID) — observed through to v11", () => {
+  // The v5→v6 step itself adds homeBSSID. v10→v11 then folds homeSSID +
+  // homeBSSID into the homeNetworks array. Since migrateConfig runs the whole
+  // chain, the only observable shape today is the post-v11 form.
+
+  it("produces an empty homeNetworks array when no homeSSID was set", () => {
     const result: any = migrateConfig({
       version: 5,
       services: {},
       dashboardWidgets: [],
     });
-    expect(result.homeBSSID).toBe("");
+    expect(result.homeNetworks).toEqual([]);
+    expect(result.homeBSSID).toBeUndefined();
   });
 
-  it("preserves a string homeBSSID", () => {
+  it("folds homeSSID + homeBSSID into a single homeNetworks entry", () => {
     const result: any = migrateConfig({
       version: 5,
       services: {},
       dashboardWidgets: [],
+      homeSSID: "MyWifi",
       homeBSSID: "aa:bb:cc:dd:ee:ff",
     });
-    expect(result.homeBSSID).toBe("aa:bb:cc:dd:ee:ff");
+    expect(result.homeNetworks).toEqual([
+      { id: "migrated-1", ssid: "MyWifi", bssid: "aa:bb:cc:dd:ee:ff" },
+    ]);
   });
 
-  it("replaces a non-string homeBSSID with ''", () => {
+  it("treats a non-string homeBSSID as empty when folding", () => {
     const result: any = migrateConfig({
       version: 5,
       services: {},
       dashboardWidgets: [],
+      homeSSID: "MyWifi",
       homeBSSID: 0 as any,
     });
-    expect(result.homeBSSID).toBe("");
+    expect(result.homeNetworks).toEqual([
+      { id: "migrated-1", ssid: "MyWifi", bssid: "" },
+    ]);
+  });
+});
+
+describe("v10 → v11 (homeSSID/homeBSSID → homeNetworks)", () => {
+  const baseV10 = () => ({
+    version: 10,
+    services: {},
+    secrets: {},
+    autoSwitchNetwork: false,
+    dashboardWidgets: [],
+    widgetSettings: {},
+    globalCustomHeaders: {},
+  });
+
+  it("produces an empty homeNetworks array when homeSSID is empty", () => {
+    const result: any = migrateConfig({ ...baseV10(), homeSSID: "", homeBSSID: "" });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.homeNetworks).toEqual([]);
+  });
+
+  it("produces a one-entry array when only homeSSID is set", () => {
+    const result: any = migrateConfig({ ...baseV10(), homeSSID: "MyWifi" });
+    expect(result.homeNetworks).toEqual([
+      { id: "migrated-1", ssid: "MyWifi", bssid: "" },
+    ]);
+  });
+
+  it("populates bssid when both homeSSID and homeBSSID are set", () => {
+    const result: any = migrateConfig({
+      ...baseV10(),
+      homeSSID: "MyWifi",
+      homeBSSID: "aa:bb:cc:dd:ee:ff",
+    });
+    expect(result.homeNetworks).toEqual([
+      { id: "migrated-1", ssid: "MyWifi", bssid: "aa:bb:cc:dd:ee:ff" },
+    ]);
+  });
+
+  it("treats a non-string homeSSID as empty (no entry created)", () => {
+    const result: any = migrateConfig({ ...baseV10(), homeSSID: 0 as any });
+    expect(result.homeNetworks).toEqual([]);
+  });
+
+  it("removes the legacy fields from the output payload", () => {
+    const result: any = migrateConfig({
+      ...baseV10(),
+      homeSSID: "MyWifi",
+      homeBSSID: "aa:bb:cc:dd:ee:ff",
+    });
+    expect(result.homeSSID).toBeUndefined();
+    expect(result.homeBSSID).toBeUndefined();
   });
 });
 
@@ -547,8 +612,11 @@ describe("end-to-end multi-step", () => {
     });
     // v4→v5 renamed and v6→v7 deduped/remapped
     expect(result.dashboardWidgets).toEqual(["calendar", "downloads"]);
-    // v5→v6 added homeBSSID
-    expect(result.homeBSSID).toBe("");
+    // v10→v11 replaced homeSSID/homeBSSID with homeNetworks. v0 had no SSID
+    // configured, so the array is empty and the legacy fields are gone.
+    expect(result.homeNetworks).toEqual([]);
+    expect(result.homeSSID).toBeUndefined();
+    expect(result.homeBSSID).toBeUndefined();
     // v6→v7 added widgetSettings
     expect(result.widgetSettings).toEqual({});
     // v7→v8 defaulted hapticsEnabled
@@ -583,7 +651,11 @@ describe("end-to-end multi-step", () => {
 
     expect(result.version).toBe(CURRENT_CONFIG_VERSION);
     expect(result.exportedAt).toBe("2025-06-01T00:00:00.000Z");
-    expect(result.homeSSID).toBe("MyWifi");
+    // v10→v11 folds the v3-vintage homeSSID into the new homeNetworks array.
+    expect(result.homeNetworks).toEqual([
+      { id: "migrated-1", ssid: "MyWifi", bssid: "" },
+    ]);
+    expect(result.homeSSID).toBeUndefined();
     expect(result.wolDevices).toHaveLength(1);
     expect(result.dashboardWidgets).toEqual(["service-health"]);
   });

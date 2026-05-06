@@ -77,8 +77,7 @@ export const WIDGET_ID_RENAMES: Record<string, WidgetId> = {
 export const STORAGE_KEYS = {
   services: "services",
   autoSwitchNetwork: "app.autoSwitchNetwork",
-  homeSSID: "app.homeSSID",
-  homeBSSID: "app.homeBSSID",
+  homeNetworks: "app.homeNetworks",
   dashboardWidgets: "app.dashboardWidgets",
   widgetSettings: "app.widgetSettings",
   // Legacy key — read-only fallback during one-time hydrate migration.

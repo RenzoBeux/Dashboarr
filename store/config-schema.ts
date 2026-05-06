@@ -2,6 +2,7 @@ import { SERVICE_IDS, DASHBOARD_WIDGET_IDS } from "@/lib/constants";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import type {
   ExportPayload,
+  HomeNetwork,
   ServiceConfig,
   ServiceSecrets,
   WakeOnLanDevice,
@@ -31,6 +32,7 @@ function isHttpUrlOrEmpty(v: unknown): v is string {
 // CR/LF in values closes off header-injection if someone hand-edits an export.
 const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
 const MAX_HEADERS_PER_SCOPE = 32;
+const MAX_HOME_NETWORKS = 20;
 
 function coerceHeaderMap(v: unknown): Record<string, string> | null {
   if (!isPlainObject(v)) return null;
@@ -99,6 +101,14 @@ function coerceWolDevice(v: unknown): WakeOnLanDevice | null {
   return out;
 }
 
+function coerceHomeNetwork(v: unknown): HomeNetwork | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (typeof v.ssid !== "string" || v.ssid.length === 0 || v.ssid.length > 64) return null;
+  if (typeof v.bssid !== "string" || v.bssid.length > 64) return null;
+  return { id: v.id, ssid: v.ssid, bssid: v.bssid };
+}
+
 function coerceNotificationSettings(v: unknown): NotificationSettings | null {
   if (!isPlainObject(v)) return null;
   const keys = [
@@ -149,9 +159,9 @@ export function validateExportPayload(raw: unknown): ExportPayload {
   if (!isPlainObject(raw.services)) throw new Error("Config services is missing or invalid");
   if (!isPlainObject(raw.secrets)) throw new Error("Config secrets is missing or invalid");
   if (typeof raw.autoSwitchNetwork !== "boolean") throw new Error("Config autoSwitchNetwork is invalid");
-  if (typeof raw.homeSSID !== "string" || raw.homeSSID.length > 64) throw new Error("Config homeSSID is invalid");
-  if (raw.homeBSSID !== undefined && (typeof raw.homeBSSID !== "string" || raw.homeBSSID.length > 64)) {
-    throw new Error("Config homeBSSID is invalid");
+  if (!Array.isArray(raw.homeNetworks)) throw new Error("Config homeNetworks is invalid");
+  if (raw.homeNetworks.length > MAX_HOME_NETWORKS) {
+    throw new Error("Config homeNetworks has too many entries");
   }
   if (!Array.isArray(raw.dashboardWidgets)) throw new Error("Config dashboardWidgets is invalid");
 
@@ -178,19 +188,22 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     }
   }
 
+  const homeNetworks: HomeNetwork[] = [];
+  for (const item of raw.homeNetworks) {
+    const coerced = coerceHomeNetwork(item);
+    if (!coerced) throw new Error("Config homeNetworks entry is invalid");
+    homeNetworks.push(coerced);
+  }
+
   const payload: ExportPayload = {
     version: raw.version,
     exportedAt: raw.exportedAt,
     services,
     secrets,
     autoSwitchNetwork: raw.autoSwitchNetwork,
-    homeSSID: raw.homeSSID,
+    homeNetworks,
     dashboardWidgets,
   };
-
-  if (typeof raw.homeBSSID === "string") {
-    payload.homeBSSID = raw.homeBSSID;
-  }
 
   if (raw.backend !== undefined && raw.backend !== null) {
     const coerced = coerceBackend(raw.backend);

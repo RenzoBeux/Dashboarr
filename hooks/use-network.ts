@@ -5,35 +5,39 @@ import { SERVICE_IDS } from "@/lib/constants";
 
 /**
  * Auto-switches all services between local/remote URLs based on WiFi identity.
- * When on the configured home network → local URLs, otherwise → remote URLs.
+ * Any configured `homeNetwork` entry that matches the live (ssid, bssid) → home.
  *
- * Matching rules:
- *   - If `homeBSSID` is set: require BOTH homeSSID and homeBSSID to match.
- *     A rogue AP with a cloned SSID but different BSSID will not pass.
- *   - If `homeBSSID` is empty (legacy / SSID-only): SSID match is sufficient
- *     (old behavior for backups made before v6).
+ * Per-entry matching:
+ *   - SSID must match exactly.
+ *   - If the entry has an empty `bssid`, SSID alone is enough.
+ *   - If the entry has a `bssid` set, it must match the live BSSID. If the OS
+ *     doesn't surface a BSSID on this build, the pinned entry fails closed —
+ *     don't trust local URLs without the AP fingerprint we asked for.
  */
 export function useNetworkAutoSwitch() {
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
-  const homeSSID = useConfigStore((s) => s.homeSSID);
-  const homeBSSID = useConfigStore((s) => s.homeBSSID);
+  const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const updateService = useConfigStore((s) => s.updateService);
 
   useEffect(() => {
-    if (!autoSwitchNetwork || !homeSSID) return;
+    if (!autoSwitchNetwork || homeNetworks.length === 0) return;
 
     const unsubscribe = NetInfo.addEventListener((state) => {
       if (state.type !== "wifi" || !state.details) {
-        // Not on WiFi — treat as "not home", use remote URLs.
         for (const id of SERVICE_IDS) updateService(id, { useRemote: true });
         return;
       }
 
-      const ssidMatch = state.details.ssid === homeSSID;
+      const currentSsid = state.details.ssid ?? "";
       const currentBssid =
         typeof state.details.bssid === "string" ? state.details.bssid.toLowerCase() : "";
-      const bssidMatch = homeBSSID ? currentBssid === homeBSSID : true;
-      const isHome = ssidMatch && bssidMatch;
+
+      const isHome = homeNetworks.some((n) => {
+        if (n.ssid !== currentSsid) return false;
+        if (!n.bssid) return true;
+        if (!currentBssid) return false;
+        return n.bssid === currentBssid;
+      });
 
       for (const id of SERVICE_IDS) {
         updateService(id, { useRemote: !isHome });
@@ -41,5 +45,5 @@ export function useNetworkAutoSwitch() {
     });
 
     return unsubscribe;
-  }, [autoSwitchNetwork, homeSSID, homeBSSID, updateService]);
+  }, [autoSwitchNetwork, homeNetworks, updateService]);
 }
