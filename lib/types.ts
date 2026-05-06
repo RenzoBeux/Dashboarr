@@ -195,6 +195,49 @@ export interface RadarrSearchResult {
   runtime: number;
 }
 
+// --- Interactive search (releases) ---
+
+// Shape returned by Radarr/Sonarr `/release` for interactive search. Most
+// fields are identical across the two — Sonarr just adds episode/season
+// mapping data. Both expose seeders/leechers only for torrent results.
+export interface ArrRelease {
+  guid: string;
+  indexerId: number;
+  indexer: string;
+  title: string;
+  size: number;
+  age: number;
+  ageHours: number;
+  ageMinutes?: number;
+  publishDate: string;
+  quality: {
+    quality: { id: number; name: string; source?: string; resolution?: number };
+    revision?: { version?: number; real?: number; isRepack?: boolean };
+  };
+  languages?: { id: number; name: string }[];
+  protocol: "torrent" | "usenet" | "unknown";
+  seeders?: number;
+  leechers?: number;
+  customFormatScore?: number;
+  rejected: boolean;
+  rejections?: string[];
+  downloadUrl?: string;
+  magnetUrl?: string;
+  infoUrl?: string;
+  releaseGroup?: string;
+}
+
+export type RadarrRelease = ArrRelease;
+
+export interface SonarrRelease extends ArrRelease {
+  mappedSeasonNumber?: number;
+  mappedEpisodeNumbers?: number[];
+  fullSeason?: boolean;
+  isAbsoluteNumbering?: boolean;
+  isDaily?: boolean;
+  episodeRequested?: boolean;
+}
+
 // --- Sonarr Types ---
 
 export interface SonarrSeries {

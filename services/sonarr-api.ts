@@ -7,7 +7,10 @@ import type {
   SonarrQueue,
   SonarrSearchResult,
   SonarrImage,
+  SonarrRelease,
 } from "@/lib/types";
+
+const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 // --- Image helpers ---
 
@@ -186,6 +189,37 @@ export function searchForEpisodes(episodeIds: number[]): Promise<void> {
   return serviceRequest<void>("sonarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "EpisodeSearch", episodeIds }),
+  });
+}
+
+// --- Interactive Release Search & Grab ---
+
+export function getReleasesForEpisode(
+  episodeId: number,
+): Promise<SonarrRelease[]> {
+  return serviceRequest<SonarrRelease[]>("sonarr", "/release", {
+    params: { episodeId },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+  });
+}
+
+export function getReleasesForSeason(
+  seriesId: number,
+  seasonNumber: number,
+): Promise<SonarrRelease[]> {
+  return serviceRequest<SonarrRelease[]>("sonarr", "/release", {
+    params: { seriesId, seasonNumber },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+  });
+}
+
+export function grabSonarrRelease(
+  guid: string,
+  indexerId: number,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", "/release", {
+    method: "POST",
+    body: JSON.stringify({ guid, indexerId }),
   });
 }
 

@@ -35,6 +35,16 @@ export type DownloadsSortKey =
   | "size-desc"
   | "added-desc";
 
+// Interactive search results — same axes for Radarr and Sonarr; one shared
+// preference is enough.
+export type ReleasesSortKey =
+  | "seeders-desc"
+  | "size-asc"
+  | "size-desc"
+  | "age-asc"
+  | "score-desc"
+  | "title-asc";
+
 interface SortPreferences {
   movies: MoviesSortKey;
   series: SeriesSortKey;
@@ -42,6 +52,7 @@ interface SortPreferences {
   jellyfinRecent: JellyfinRecentSortKey;
   requests: RequestsSortKey;
   downloads: DownloadsSortKey;
+  releases: ReleasesSortKey;
 }
 
 export const SORT_DEFAULTS: SortPreferences = {
@@ -51,6 +62,7 @@ export const SORT_DEFAULTS: SortPreferences = {
   jellyfinRecent: "added-desc",
   requests: "created-desc",
   downloads: "progress-desc",
+  releases: "seeders-desc",
 };
 
 interface SortStore extends SortPreferences {
@@ -61,6 +73,7 @@ interface SortStore extends SortPreferences {
   setJellyfinRecent: (v: JellyfinRecentSortKey) => void;
   setRequests: (v: RequestsSortKey) => void;
   setDownloads: (v: DownloadsSortKey) => void;
+  setReleases: (v: ReleasesSortKey) => void;
 }
 
 function snapshot(state: SortPreferences): SortPreferences {
@@ -71,6 +84,7 @@ function snapshot(state: SortPreferences): SortPreferences {
     jellyfinRecent: state.jellyfinRecent,
     requests: state.requests,
     downloads: state.downloads,
+    releases: state.releases,
   };
 }
 
@@ -108,5 +122,9 @@ export const useSortStore = create<SortStore>((set, get) => ({
   setDownloads: (downloads) => {
     set({ downloads });
     setJSON(STORAGE_KEY, snapshot({ ...get(), downloads }));
+  },
+  setReleases: (releases) => {
+    set({ releases });
+    setJSON(STORAGE_KEY, snapshot({ ...get(), releases }));
   },
 }));

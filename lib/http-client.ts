@@ -30,16 +30,37 @@ export function redactUrl(url: string): string {
 }
 
 export class HttpError extends Error {
+  // Parsed response body, if the server returned one. Useful for surfacing
+  // *arr error messages (e.g. `{ message: "Indexer not configured" }`) to
+  // the UI instead of the bare HTTP status.
+  public body?: unknown;
+
   constructor(
     public status: number,
     public statusText: string,
     public url: string,
+    body?: unknown,
   ) {
     const safe = redactUrl(url);
     super(`HTTP ${status} ${statusText} — ${safe}`);
     this.url = safe;
     this.name = "HttpError";
+    this.body = body;
   }
+}
+
+// *arr 4xx responses look like `{ message, description }` — surface that
+// message to the user when present, falling back to a string body, then to
+// the HTTP status line.
+export function getHttpErrorMessage(err: unknown): string | undefined {
+  if (!(err instanceof HttpError)) return undefined;
+  const body = err.body;
+  if (body && typeof body === "object" && "message" in body) {
+    const msg = (body as { message?: unknown }).message;
+    if (typeof msg === "string" && msg.length > 0) return msg;
+  }
+  if (typeof body === "string" && body.length > 0 && body.length < 300) return body;
+  return undefined;
 }
 
 export async function serviceRequest<T>(
@@ -112,7 +133,13 @@ export async function serviceRequest<T>(
     });
 
     if (!response.ok) {
-      throw new HttpError(response.status, response.statusText, url);
+      // The body stream can only be read once — clone before trying JSON so
+      // we can fall back to text() if the response isn't JSON.
+      const clone = response.clone();
+      const errorBody = await response
+        .json()
+        .catch(() => clone.text().catch(() => undefined));
+      throw new HttpError(response.status, response.statusText, url, errorBody);
     }
 
     const contentType = response.headers.get("content-type");

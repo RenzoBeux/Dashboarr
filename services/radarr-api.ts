@@ -5,7 +5,13 @@ import type {
   RadarrWantedMissing,
   RadarrSearchResult,
   RadarrImage,
+  RadarrRelease,
 } from "@/lib/types";
+
+// Interactive search hits indexers live and frequently exceeds the 15s
+// default timeout. Bump per-call to keep slow indexers from short-circuiting
+// the whole search.
+const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 // --- Image helpers ---
 
@@ -126,6 +132,25 @@ export function searchForMovie(movieId: number): Promise<void> {
   return serviceRequest<void>("radarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "MoviesSearch", movieIds: [movieId] }),
+  });
+}
+
+// --- Interactive Release Search & Grab ---
+
+export function getReleasesForMovie(movieId: number): Promise<RadarrRelease[]> {
+  return serviceRequest<RadarrRelease[]>("radarr", "/release", {
+    params: { movieId },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+  });
+}
+
+export function grabRadarrRelease(
+  guid: string,
+  indexerId: number,
+): Promise<void> {
+  return serviceRequest<void>("radarr", "/release", {
+    method: "POST",
+    body: JSON.stringify({ guid, indexerId }),
   });
 }
 

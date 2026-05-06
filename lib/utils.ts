@@ -106,3 +106,23 @@ export function formatResolution(resolution: string): string {
   if (height >= 480) return "480p";
   return resolution;
 }
+
+/**
+ * Compact age label for a release. Prefers ageHours/ageMinutes when fresh so
+ * "12m" / "3h" surface instead of "0d" for new uploads.
+ */
+export function formatReleaseAge(
+  ageDays: number,
+  ageHours?: number,
+  ageMinutes?: number,
+): string {
+  if (ageMinutes !== undefined && ageMinutes < 60) return `${Math.max(0, Math.round(ageMinutes))}m`;
+  if (ageHours !== undefined && ageHours < 24) return `${Math.max(0, Math.round(ageHours))}h`;
+  if (ageDays < 1) {
+    if (ageHours !== undefined) return `${Math.max(0, Math.round(ageHours))}h`;
+    return "<1d";
+  }
+  if (ageDays < 30) return `${Math.round(ageDays)}d`;
+  if (ageDays < 365) return `${Math.round(ageDays / 30)}mo`;
+  return `${(ageDays / 365).toFixed(1)}y`;
+}

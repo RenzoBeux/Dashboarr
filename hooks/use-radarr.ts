@@ -13,6 +13,8 @@ import {
   getQualityProfiles,
   getRootFolders,
   getTags,
+  getReleasesForMovie,
+  grabRadarrRelease,
 } from "@/services/radarr-api";
 import { toast } from "@/components/ui/toast";
 import type { RadarrMovie } from "@/lib/types";
@@ -20,6 +22,7 @@ import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getDateOffset } from "@/lib/utils";
+import { getHttpErrorMessage } from "@/lib/http-client";
 
 function useRadarrEnabled() {
   return useConfigStore((s) => s.services.radarr.enabled);
@@ -206,5 +209,36 @@ export function useRadarrTags() {
     queryFn: getTags,
     enabled,
     staleTime: Infinity,
+  });
+}
+
+// Interactive search is expensive (live indexer hit, often 30s+) — don't
+// auto-retry on transient failure, and keep the cache warm long enough that
+// back-navigation doesn't re-trigger.
+export function useRadarrReleases(movieId: number) {
+  const enabled = useRadarrEnabled();
+  return useQuery({
+    queryKey: ["radarr", "releases", movieId],
+    queryFn: () => getReleasesForMovie(movieId),
+    enabled: enabled && movieId > 0,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useGrabRadarrRelease() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ guid, indexerId }: { guid: string; indexerId: number }) =>
+      grabRadarrRelease(guid, indexerId),
+    onSuccess: () => {
+      toast("Sent to download client");
+      queryClient.invalidateQueries({ queryKey: ["radarr", "queue"] });
+    },
+    onError: (err) => {
+      toast(getHttpErrorMessage(err) ?? "Failed to grab release", "error");
+    },
   });
 }

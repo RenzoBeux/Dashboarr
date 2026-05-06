@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Alert } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Trash2, Star } from "lucide-react-native";
+import { Trash2, Star, Search } from "lucide-react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -158,6 +158,13 @@ export default function MovieDetailScreen() {
       )}
 
       {/* Actions */}
+      <Button
+        label="Search Releases"
+        variant="primary"
+        onPress={() => router.push(`/movie/releases/${movie.id}`)}
+        icon={<Search size={16} color="white" />}
+        className="mb-2"
+      />
       <Button
         label="Delete Movie"
         variant="danger"

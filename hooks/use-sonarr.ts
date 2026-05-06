@@ -16,12 +16,16 @@ import {
   getQualityProfiles,
   getRootFolders,
   getTags,
+  getReleasesForEpisode,
+  getReleasesForSeason,
+  grabSonarrRelease,
 } from "@/services/sonarr-api";
 import { toast } from "@/components/ui/toast";
 import type { SonarrSeries } from "@/lib/types";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getDateOffset } from "@/lib/utils";
+import { getHttpErrorMessage } from "@/lib/http-client";
 
 function useSonarrEnabled() {
   return useConfigStore((s) => s.services.sonarr.enabled);
@@ -221,5 +225,49 @@ export function useSonarrTags() {
     queryFn: getTags,
     enabled,
     staleTime: Infinity,
+  });
+}
+
+export function useSonarrReleasesForEpisode(episodeId: number) {
+  const enabled = useSonarrEnabled();
+  return useQuery({
+    queryKey: ["sonarr", "releases", "episode", episodeId],
+    queryFn: () => getReleasesForEpisode(episodeId),
+    enabled: enabled && episodeId > 0,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useSonarrReleasesForSeason(
+  seriesId: number,
+  seasonNumber: number,
+) {
+  const enabled = useSonarrEnabled();
+  return useQuery({
+    queryKey: ["sonarr", "releases", "season", seriesId, seasonNumber],
+    queryFn: () => getReleasesForSeason(seriesId, seasonNumber),
+    enabled: enabled && seriesId > 0 && seasonNumber >= 0,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useGrabSonarrRelease() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ guid, indexerId }: { guid: string; indexerId: number }) =>
+      grabSonarrRelease(guid, indexerId),
+    onSuccess: () => {
+      toast("Sent to download client");
+      queryClient.invalidateQueries({ queryKey: ["sonarr", "queue"] });
+    },
+    onError: (err) => {
+      toast(getHttpErrorMessage(err) ?? "Failed to grab release", "error");
+    },
   });
 }

@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
-import { ChevronDown, ChevronRight, Check, X } from "lucide-react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { ChevronDown, ChevronRight, Check, X, Search } from "lucide-react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -147,6 +147,7 @@ export default function SeriesDetailScreen() {
           .map((season) => (
             <SeasonAccordion
               key={season.seasonNumber}
+              seriesId={series.id}
               season={season}
               episodes={episodes?.filter(
                 (ep) => ep.seasonNumber === season.seasonNumber,
@@ -160,25 +161,29 @@ export default function SeriesDetailScreen() {
 }
 
 function SeasonAccordion({
+  seriesId,
   season,
   episodes,
   episodeFileMap,
 }: {
+  seriesId: number;
   season: SonarrSeason;
   episodes?: SonarrEpisode[];
   episodeFileMap: Map<number, SonarrEpisodeFile>;
 }) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
 
   return (
     <Card>
-      <Pressable
-        onPress={() => setExpanded(!expanded)}
-        className="flex-row items-center justify-between"
-      >
-        <View className="flex-row items-center gap-2">
+      <View className="flex-row items-center justify-between">
+        <Pressable
+          onPress={() => setExpanded(!expanded)}
+          hitSlop={4}
+          className="flex-row items-center gap-2 flex-1 active:opacity-70"
+        >
           {expanded ? (
             <ChevronDown size={16} color="#71717a" />
           ) : (
@@ -187,13 +192,26 @@ function SeasonAccordion({
           <Text className="text-zinc-200 text-sm font-medium">
             {season.seasonNumber === 0 ? "Specials" : `Season ${season.seasonNumber}`}
           </Text>
+        </Pressable>
+        <View className="flex-row items-center gap-3">
+          {stats && (
+            <Text className="text-zinc-500 text-xs">
+              {stats.episodeFileCount}/{stats.episodeCount}
+            </Text>
+          )}
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/series/releases/${seriesId}?seasonNumber=${season.seasonNumber}`,
+              )
+            }
+            hitSlop={8}
+            className="p-1 active:opacity-70"
+          >
+            <Search size={14} color="#a1a1aa" />
+          </Pressable>
         </View>
-        {stats && (
-          <Text className="text-zinc-500 text-xs">
-            {stats.episodeFileCount}/{stats.episodeCount}
-          </Text>
-        )}
-      </Pressable>
+      </View>
 
       {stats && <ProgressBar progress={progress} className="mt-2" />}
 
@@ -202,7 +220,12 @@ function SeasonAccordion({
           {episodes
             .sort((a, b) => a.episodeNumber - b.episodeNumber)
             .map((ep) => (
-              <EpisodeRow key={ep.id} episode={ep} episodeFile={ep.episodeFileId ? episodeFileMap.get(ep.episodeFileId) : undefined} />
+              <EpisodeRow
+                key={ep.id}
+                seriesId={seriesId}
+                episode={ep}
+                episodeFile={ep.episodeFileId ? episodeFileMap.get(ep.episodeFileId) : undefined}
+              />
             ))}
         </View>
       )}
@@ -210,7 +233,16 @@ function SeasonAccordion({
   );
 }
 
-function EpisodeRow({ episode, episodeFile }: { episode: SonarrEpisode; episodeFile?: SonarrEpisodeFile }) {
+function EpisodeRow({
+  seriesId,
+  episode,
+  episodeFile,
+}: {
+  seriesId: number;
+  episode: SonarrEpisode;
+  episodeFile?: SonarrEpisodeFile;
+}) {
+  const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored();
   const mediaInfo = episodeFile?.mediaInfo;
 
@@ -235,6 +267,15 @@ function EpisodeRow({ episode, episodeFile }: { episode: SonarrEpisode; episodeF
           <Text className="text-zinc-600 text-[10px]">{episode.airDate}</Text>
         ) : null}
       </View>
+      <Pressable
+        onPress={() =>
+          router.push(`/series/releases/${seriesId}?episodeId=${episode.id}`)
+        }
+        hitSlop={6}
+        className="p-1 active:opacity-70 mr-1"
+      >
+        <Search size={12} color="#a1a1aa" />
+      </Pressable>
       <Pressable
         onPress={() =>
           toggleMonitored.mutate({
