@@ -1,6 +1,7 @@
 import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Captions } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -77,7 +78,7 @@ export function BazarrWantedCard() {
         <PosterSkeletonRow count={3} />
       ) : display.length === 0 ? (
         <EmptyState
-          icon={<Captions size={32} color="#71717a" />}
+          icon={<Icon icon={Captions} size={32} color="#71717a" />}
           title="All subtitles in place"
         />
       ) : (
@@ -101,7 +102,7 @@ export function BazarrWantedCard() {
                 bottomOverlay={
                   <View className="bg-black/60 px-1.5 py-0.5">
                     <Text
-                      className="text-white text-[10px] font-semibold"
+                      className="text-white text-xs font-semibold"
                       numberOfLines={1}
                     >
                       {item.languages}

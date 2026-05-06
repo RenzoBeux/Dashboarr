@@ -23,12 +23,14 @@ import {
   ImageOff,
   Globe,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
+import { Select } from "@/components/ui/select";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
@@ -49,7 +51,7 @@ import {
   saveRememberedPassphrase,
 } from "@/lib/config-passphrase";
 
-const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
+const SERVICE_ICONS: Record<ServiceId, React.ComponentType<any>> = {
   qbittorrent: Download,
   radarr: Film,
   sonarr: Tv,
@@ -104,6 +106,8 @@ export default function SettingsScreen() {
   const disableDemoMode = useConfigStore((s) => s.disableDemoMode);
   const hapticsEnabled = useConfigStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useConfigStore((s) => s.setHapticsEnabled);
+  const uiScale = useConfigStore((s) => s.uiScale);
+  const setUiScale = useConfigStore((s) => s.setUiScale);
 
   const handleExport = async () => {
     const result = await requestPassphrase("export");
@@ -223,7 +227,7 @@ export default function SettingsScreen() {
       <Pressable onPress={() => router.push("/home-networks")} className="active:opacity-80 mb-4">
         <Card className="flex-row items-center">
           <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-            <Wifi size={20} color="#a1a1aa" />
+            <Icon icon={Wifi} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-100 text-base">Home Networks</Text>
@@ -239,14 +243,14 @@ export default function SettingsScreen() {
               </Text>
             )}
           </View>
-          <ChevronRight size={18} color="#71717a" />
+          <Icon icon={ChevronRight} size={18} color="#71717a" />
         </Card>
       </Pressable>
 
       <Pressable onPress={() => router.push("/wake-on-lan")} className="active:opacity-80 mb-4">
         <Card className="flex-row items-center">
           <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-            <Zap size={20} color="#a1a1aa" />
+            <Icon icon={Zap} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-100 text-base">Wake-on-LAN</Text>
@@ -256,14 +260,14 @@ export default function SettingsScreen() {
                 : "Wake devices on your network"}
             </Text>
           </View>
-          <ChevronRight size={18} color="#71717a" />
+          <Icon icon={ChevronRight} size={18} color="#71717a" />
         </Card>
       </Pressable>
 
       <Pressable onPress={() => router.push("/custom-headers")} className="active:opacity-80 mb-4">
         <Card className="flex-row items-center">
           <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-            <Globe size={20} color="#a1a1aa" />
+            <Icon icon={Globe} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-100 text-base">Custom Headers</Text>
@@ -273,7 +277,7 @@ export default function SettingsScreen() {
                 : "Add headers for reverse-proxy auth"}
             </Text>
           </View>
-          <ChevronRight size={18} color="#71717a" />
+          <Icon icon={ChevronRight} size={18} color="#71717a" />
         </Card>
       </Pressable>
 
@@ -287,13 +291,30 @@ export default function SettingsScreen() {
       </Card>
 
       <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
+        Accessibility
+      </Text>
+
+      <Card className="mb-4">
+        <Select<number>
+          label="UI Scale"
+          value={uiScale}
+          options={[
+            { value: 1, label: "Normal", description: "Default size" },
+            { value: 1.15, label: "Large", description: "+15% fonts, spacing, and icons" },
+            { value: 1.3, label: "Extra Large", description: "+30% fonts, spacing, and icons" },
+          ]}
+          onChange={(v) => setUiScale(v as 1 | 1.15 | 1.3)}
+        />
+      </Card>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
         Services
       </Text>
 
       <View className="gap-2">
         {SERVICE_IDS.map((id) => {
           const config = services[id];
-          const Icon = SERVICE_ICONS[id];
+          const ServiceIcon = SERVICE_ICONS[id];
 
           return (
             <Pressable
@@ -303,7 +324,7 @@ export default function SettingsScreen() {
             >
               <Card className="flex-row items-center">
                 <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-                  <Icon size={20} color="#a1a1aa" />
+                  <Icon icon={ServiceIcon} size={20} color="#a1a1aa" />
                 </View>
                 <View className="flex-1">
                   <Text className="text-zinc-100 text-base">{config.name}</Text>
@@ -319,7 +340,7 @@ export default function SettingsScreen() {
                   {config.enabled && (
                     <View className="w-2 h-2 rounded-full bg-success" />
                   )}
-                  <ChevronRight size={18} color="#71717a" />
+                  <Icon icon={ChevronRight} size={18} color="#71717a" />
                 </View>
               </Card>
             </Pressable>
@@ -336,7 +357,7 @@ export default function SettingsScreen() {
       <Pressable onPress={() => router.push("/backend")} className="active:opacity-80 mb-4">
         <Card className="flex-row items-center">
           <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-            <Cloud size={20} color="#a1a1aa" />
+            <Icon icon={Cloud} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-100 text-base">Backend</Text>
@@ -346,7 +367,7 @@ export default function SettingsScreen() {
           </View>
           <View className="flex-row items-center gap-2">
             <BackendStatusPill />
-            <ChevronRight size={18} color="#71717a" />
+            <Icon icon={ChevronRight} size={18} color="#71717a" />
           </View>
         </Card>
       </Pressable>
@@ -362,7 +383,7 @@ export default function SettingsScreen() {
           className="flex-1 active:opacity-80"
         >
           <Card className="flex-row items-center justify-center gap-2">
-            <Upload size={18} color="#a1a1aa" />
+            <Icon icon={Upload} size={18} color="#a1a1aa" />
             <Text className="text-zinc-100 text-base">Export</Text>
           </Card>
         </Pressable>
@@ -373,7 +394,7 @@ export default function SettingsScreen() {
           className="flex-1 active:opacity-80"
         >
           <Card className="flex-row items-center justify-center gap-2">
-            <FolderDown size={18} color="#a1a1aa" />
+            <Icon icon={FolderDown} size={18} color="#a1a1aa" />
             <Text className="text-zinc-100 text-base">Import</Text>
           </Card>
         </Pressable>
@@ -390,7 +411,7 @@ export default function SettingsScreen() {
       <Pressable onPress={handleClearImageCache} className="active:opacity-80 mb-4">
         <Card className="flex-row items-center">
           <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-            <ImageOff size={20} color="#a1a1aa" />
+            <Icon icon={ImageOff} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-100 text-base">Clear image cache</Text>
@@ -398,7 +419,7 @@ export default function SettingsScreen() {
               Free up disk space used by cached posters and backdrops
             </Text>
           </View>
-          <ChevronRight size={18} color="#71717a" />
+          <Icon icon={ChevronRight} size={18} color="#71717a" />
         </Card>
       </Pressable>
 

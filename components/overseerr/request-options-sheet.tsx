@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal, View, Text, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { Plus, Film, Tv } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -173,8 +174,7 @@ export function RequestOptionsSheet({
             {posterUrl ? (
               <Image
                 source={{ uri: posterUrl }}
-                className="rounded-lg bg-surface-light"
-                style={{ width: 80, height: 120 }}
+                className="rounded-lg bg-surface-light w-[5.7rem] h-[8.6rem]"
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 transition={200}
@@ -182,13 +182,12 @@ export function RequestOptionsSheet({
               />
             ) : (
               <View
-                className="rounded-lg bg-surface-light items-center justify-center"
-                style={{ width: 80, height: 120 }}
+                className="rounded-lg bg-surface-light items-center justify-center w-[5.7rem] h-[8.6rem]"
               >
                 {isTv ? (
-                  <Tv size={24} color="#71717a" />
+                  <Icon icon={Tv} size={24} color="#71717a" />
                 ) : (
-                  <Film size={24} color="#71717a" />
+                  <Icon icon={Film} size={24} color="#71717a" />
                 )}
               </View>
             )}
@@ -327,7 +326,7 @@ export function RequestOptionsSheet({
             onPress={handleSubmit}
             disabled={!canSubmit}
             loading={isPending}
-            icon={<Plus size={16} color="#fff" />}
+            icon={<Icon icon={Plus} size={16} color="#fff" />}
             size="lg"
             className="w-full"
           />

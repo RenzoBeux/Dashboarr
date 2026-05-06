@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   Check,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -36,6 +37,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatBytes } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { mediumHaptic } from "@/lib/haptics";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 
@@ -109,27 +111,27 @@ export default function MoviesScreen() {
     return [
       {
         label: "Search",
-        icon: <Search size={18} color="#a1a1aa" />,
+        icon: <Icon icon={Search} size={18} color="#a1a1aa" />,
         onPress: () => searchMutation.mutate(movie.id),
       },
       {
         label: movie.monitored ? "Unmonitor" : "Monitor",
         icon: movie.monitored ? (
-          <EyeOff size={18} color="#a1a1aa" />
+          <Icon icon={EyeOff} size={18} color="#a1a1aa" />
         ) : (
-          <Eye size={18} color="#a1a1aa" />
+          <Icon icon={Eye} size={18} color="#a1a1aa" />
         ),
         onPress: () =>
           toggleMonitor.mutate({ movieId: movie.id, monitored: !movie.monitored }),
       },
       {
         label: "Open Details",
-        icon: <Info size={18} color="#a1a1aa" />,
+        icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
         onPress: () => router.push(`/movie/${movie.id}`),
       },
       {
         label: "Delete",
-        icon: <Trash2 size={18} color="#ef4444" />,
+        icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
         variant: "danger",
         onPress: () => {
           Alert.alert("Delete Movie", `Delete "${movie.title}"?`, [
@@ -174,11 +176,16 @@ export default function MoviesScreen() {
           onPress={() => router.push("/movie/search")}
           className="p-2 active:opacity-70"
         >
-          <Search size={ICON.LG} color="#a1a1aa" />
+          <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
         </Pressable>
       </View>
 
-      <View className="flex-row gap-2 mb-4">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
         {(["library", "queue", "wanted"] as Tab[]).map((t) => (
           <FilterChip
             key={t}
@@ -187,7 +194,7 @@ export default function MoviesScreen() {
             onPress={() => setTab(t)}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {tab === "library" && (
         <View className="flex-row items-center gap-2 mb-4">
@@ -239,9 +246,9 @@ export default function MoviesScreen() {
           label: opt.label,
           icon:
             sort === opt.key ? (
-              <Check size={18} color="#3b82f6" />
+              <Icon icon={Check} size={18} color="#3b82f6" />
             ) : (
-              <ArrowUpDown size={18} color="#71717a" />
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
             ),
           onPress: () => setSort(opt.key),
         }))}
@@ -261,12 +268,13 @@ function MovieLibrary({
 }) {
   const { data: movies, isLoading } = useRadarrMovies();
   const router = useRouter();
+  const cellWidth = usePosterCellWidth();
 
   if (isLoading) {
     return (
       <View className="flex-row flex-wrap gap-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} className="w-[30%]">
+          <View key={i} style={{ width: cellWidth }}>
             <Skeleton width="100%" height={150} borderRadius={12} />
             <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
           </View>
@@ -275,7 +283,7 @@ function MovieLibrary({
     );
   }
   if (!movies?.length) {
-    return <EmptyState icon={<Film size={32} color="#71717a" />} title="No movies in library" />;
+    return <EmptyState icon={<Icon icon={Film} size={32} color="#71717a" />} title="No movies in library" />;
   }
 
   const filtered = movies.filter((m) => {
@@ -291,7 +299,7 @@ function MovieLibrary({
         : monitorFilter === "unmonitored"
           ? "No unmonitored movies"
           : "No movies in library";
-    return <EmptyState icon={<Film size={32} color="#71717a" />} title={title} />;
+    return <EmptyState icon={<Icon icon={Film} size={32} color="#71717a" />} title={title} />;
   }
 
   const sorted = [...filtered].sort((a, b) => compareMovies(a, b, sort));
@@ -321,13 +329,15 @@ function MoviePoster({
 }) {
   const poster = movie.images.find((i) => i.coverType === "poster");
   const { src, onError } = useServiceImage(poster, "radarr");
+  const cellWidth = usePosterCellWidth();
 
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
-      className="w-[30%] active:opacity-80"
+      style={{ width: cellWidth }}
+      className="active:opacity-80"
     >
       {src ? (
         <Image
@@ -341,13 +351,13 @@ function MoviePoster({
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Film size={24} color="#71717a" />
+          <Icon icon={Film} size={24} color="#71717a" />
         </View>
       )}
-      <Text className="text-zinc-300 text-xs mt-1" numberOfLines={1}>
+      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
         {movie.title}
       </Text>
-      <Text className="text-zinc-600 text-[10px]">{movie.year}</Text>
+      <Text className="text-zinc-600 text-xs">{movie.year}</Text>
     </Pressable>
   );
 }

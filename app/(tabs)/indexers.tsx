@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { View, Text, Pressable, Alert, Platform } from "react-native";
+import { View, Text, Pressable, Alert, Platform, ScrollView } from "react-native";
 import { toast } from "@/components/ui/toast";
 import { Search, Power, AlertTriangle, CheckCircle, XCircle } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -37,7 +38,12 @@ export default function IndexersScreen() {
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Indexers" online={prowlarrHealth?.online} />
 
-      <View className="flex-row gap-2 mb-4">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
         {(["indexers", "search", "stats"] as Tab[]).map((t) => (
           <FilterChip
             key={t}
@@ -46,7 +52,7 @@ export default function IndexersScreen() {
             onPress={() => setTab(t)}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {tab === "indexers" && <IndexerList />}
       {tab === "search" && <IndexerSearch />}
@@ -104,7 +110,7 @@ function IndexerList() {
               </View>
               <View className="flex-row items-center gap-2">
                 {isDisabled && (
-                  <AlertTriangle size={14} color="#ef4444" />
+                  <Icon icon={AlertTriangle} size={14} color="#ef4444" />
                 )}
                 <Badge
                   label={indexer.protocol}
@@ -117,7 +123,7 @@ function IndexerList() {
                   className="p-1.5 active:opacity-70"
                   hitSlop={6}
                 >
-                  <Power
+                  <Icon icon={Power}
                     size={16}
                     color={isEnabled ? "#22c55e" : "#71717a"}
                   />
@@ -233,7 +239,7 @@ function IndexerStats() {
 function StatItem({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
     <View>
-      <Text className="text-zinc-500 text-[10px]">{label}</Text>
+      <Text className="text-zinc-500 text-xs">{label}</Text>
       <Text className={`text-sm font-medium ${danger ? "text-danger" : "text-zinc-300"}`}>
         {value}
       </Text>

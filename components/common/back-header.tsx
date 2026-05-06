@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 
 interface BackHeaderProps {
   title?: string;
@@ -20,7 +21,7 @@ export function BackHeader({ title, right, onBack }: BackHeaderProps) {
         className="mr-3 active:opacity-70 p-1"
         hitSlop={8}
       >
-        <ArrowLeft size={22} color="#e4e4e7" />
+        <Icon icon={ArrowLeft} size={22} color="#e4e4e7" />
       </Pressable>
       {title ? (
         <Text

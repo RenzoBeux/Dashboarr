@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Tv, Film } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -166,13 +167,13 @@ export default function CalendarScreen() {
       <View className="flex-row items-center justify-between mb-3">
         <View className="flex-row items-center gap-1">
           <Pressable onPress={() => goMonth(-1)} className="p-2 active:opacity-70">
-            <ChevronLeft size={ICON.LG} color="#a1a1aa" />
+            <Icon icon={ChevronLeft} size={ICON.LG} color="#a1a1aa" />
           </Pressable>
-          <Text className="text-zinc-100 text-lg font-bold min-w-[170px] text-center">
+          <Text className="text-zinc-100 text-lg font-bold min-w-[12rem] text-center">
             {MONTH_NAMES[month]} {year}
           </Text>
           <Pressable onPress={() => goMonth(1)} className="p-2 active:opacity-70">
-            <ChevronRight size={ICON.LG} color="#a1a1aa" />
+            <Icon icon={ChevronRight} size={ICON.LG} color="#a1a1aa" />
           </Pressable>
         </View>
         <Pressable
@@ -184,7 +185,12 @@ export default function CalendarScreen() {
       </View>
 
       {/* Filters */}
-      <View className="flex-row gap-2 mb-3">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-3"
+      >
         {(["all", "tv", "movies"] as Filter[]).map((f) => (
           <FilterChip
             key={f}
@@ -193,7 +199,7 @@ export default function CalendarScreen() {
             onPress={() => setFilter(f)}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {/* Calendar grid */}
       <Card>
@@ -335,7 +341,7 @@ function EpisodeRow({
           />
         ) : (
           <View className="w-10 h-14 rounded-lg bg-surface-light items-center justify-center">
-            <Tv size={16} color="#71717a" />
+            <Icon icon={Tv} size={16} color="#71717a" />
           </View>
         )}
         <View
@@ -352,7 +358,7 @@ function EpisodeRow({
             {episode.title}
           </Text>
         </View>
-        <Tv size={14} color="#22c55e" />
+        <Icon icon={Tv} size={14} color="#22c55e" />
       </View>
     </Card>
   );
@@ -384,7 +390,7 @@ function MovieRow({
           />
         ) : (
           <View className="w-10 h-14 rounded-lg bg-surface-light items-center justify-center">
-            <Film size={16} color="#71717a" />
+            <Icon icon={Film} size={16} color="#71717a" />
           </View>
         )}
         <View
@@ -400,7 +406,7 @@ function MovieRow({
             {movie.year} — {releaseType}
           </Text>
         </View>
-        <Film size={14} color="#f59e0b" />
+        <Icon icon={Film} size={14} color="#f59e0b" />
       </View>
     </Card>
   );

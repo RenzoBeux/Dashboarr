@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { X } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   Easing,
   FadeInDown,
@@ -167,7 +168,7 @@ export function ActionSheet({
                         hitSlop={10}
                         className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
                       >
-                        <X size={ICON.SM} color="#a1a1aa" />
+                        <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
                       </Pressable>
                     </View>
                     <View className="h-px bg-border/60 mx-5 mb-1" />
@@ -235,7 +236,7 @@ function ActionRow({ action, onPress }: ActionRowProps) {
           </View>
         )}
         <Text
-          className={`flex-1 text-[15px] ${
+          className={`flex-1 text-base ${
             isDanger
               ? "text-danger font-semibold"
               : "text-zinc-100 font-medium"

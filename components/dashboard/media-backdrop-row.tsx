@@ -2,6 +2,8 @@ import { View, Text, Pressable } from "react-native";
 import { Image, type ImageSource } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Film, Tv, type LucideIcon } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
+import { useUiScale } from "@/hooks/use-ui-scale";
 
 export const BACKDROP_ROW_HEIGHT = 64;
 const POSTER_W = 44;
@@ -30,6 +32,10 @@ export function MediaBackdropRow({
 }: MediaBackdropRowProps) {
   const FallbackIcon =
     fallbackIcon ?? (mediaType === "tv" ? Tv : Film);
+  const scale = useUiScale();
+  const rowHeight = Math.round(BACKDROP_ROW_HEIGHT * scale);
+  const posterW = Math.round(POSTER_W * scale);
+  const posterH = Math.round(POSTER_H * scale);
 
   const posterSource = toSource(posterUrl);
   const backdropSource = toSource(backdropUrl);
@@ -39,7 +45,7 @@ export function MediaBackdropRow({
     <Pressable
       onPress={onPress}
       className="active:opacity-80 overflow-hidden rounded-xl bg-surface-light"
-      style={{ height: BACKDROP_ROW_HEIGHT }}
+      style={{ height: rowHeight }}
     >
       {backdropSource ? (
         <Image
@@ -80,7 +86,7 @@ export function MediaBackdropRow({
       <View className="flex-row items-center h-full px-2 gap-3">
         <View
           className="rounded-md overflow-hidden bg-surface"
-          style={{ width: POSTER_W, height: POSTER_H }}
+          style={{ width: posterW, height: posterH }}
         >
           {posterSource ? (
             <Image
@@ -93,7 +99,7 @@ export function MediaBackdropRow({
             />
           ) : (
             <View className="w-full h-full items-center justify-center">
-              <FallbackIcon size={18} color="#71717a" />
+              <Icon icon={FallbackIcon} size={18} color="#71717a" />
             </View>
           )}
         </View>

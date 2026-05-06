@@ -8,6 +8,7 @@ import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { rem } from "nativewind";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
@@ -132,6 +133,18 @@ const CONFIG_SYNC_DEBOUNCE_MS = 2000;
  * the paired backend after any change. Only active while the backend is
  * paired (has a shared secret) — unpairing unsubscribes automatically.
  */
+// NativeWind's `rem` is a global reactive observable; styles that resolve in
+// rem units (every Tailwind text-* size, padding, gap, rounded radius, etc.)
+// re-evaluate when it changes. Multiplying its base of 14 by uiScale gives us
+// app-wide accessibility scaling without touching individual components.
+function UiScaleBridge() {
+  const uiScale = useConfigStore((s) => s.uiScale);
+  useEffect(() => {
+    rem.set(14 * uiScale);
+  }, [uiScale]);
+  return null;
+}
+
 function ConfigSyncBridge() {
   const sharedSecret = useBackendStore((s) => s.sharedSecret);
   const backendHydrated = useBackendStore((s) => s.hydrated);
@@ -219,6 +232,9 @@ export default function RootLayout() {
               </SilentErrorBoundary>
               <SilentErrorBoundary label="config-sync">
                 <ConfigSyncBridge />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="ui-scale">
+                <UiScaleBridge />
               </SilentErrorBoundary>
               <SilentErrorBoundary label="app-update-checker">
                 <AppUpdateChecker />

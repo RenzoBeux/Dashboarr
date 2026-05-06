@@ -1,6 +1,7 @@
 import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { CalendarDays } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -130,7 +131,7 @@ export function CalendarCard() {
 
       {noSources ? (
         <EmptyState
-          icon={<CalendarDays size={32} color="#71717a" />}
+          icon={<Icon icon={CalendarDays} size={32} color="#71717a" />}
           title="No calendar sources"
           message={
             noServicesEnabled
@@ -142,7 +143,7 @@ export function CalendarCard() {
         <CalendarSkeleton />
       ) : grouped.length === 0 ? (
         <EmptyState
-          icon={<CalendarDays size={32} color="#71717a" />}
+          icon={<Icon icon={CalendarDays} size={32} color="#71717a" />}
           title={`Nothing in the next ${settings.daysAhead} days`}
         />
       ) : (

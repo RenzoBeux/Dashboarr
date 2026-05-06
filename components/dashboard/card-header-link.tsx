@@ -1,5 +1,6 @@
 import { View, Pressable } from "react-native";
 import { ChevronRight } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 
 interface CardHeaderLinkProps {
@@ -30,7 +31,7 @@ export function CardHeaderLink({
         hitSlop={8}
       >
         <CardTitle>{title}</CardTitle>
-        <ChevronRight size={18} color="#a1a1aa" />
+        <Icon icon={ChevronRight} size={18} color="#a1a1aa" />
       </Pressable>
       {trailing && <View className="flex-row gap-2">{trailing}</View>}
     </CardHeader>

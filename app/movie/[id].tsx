@@ -2,6 +2,7 @@ import { View, Text, ScrollView, Alert } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Trash2, Star, Search } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -123,7 +124,7 @@ export default function MovieDetailScreen() {
           </View>
           {movie.ratings.value > 0 && (
             <View className="flex-row items-center gap-1 mt-2">
-              <Star size={14} color="#f59e0b" fill="#f59e0b" />
+              <Icon icon={Star} size={14} color="#f59e0b" fill="#f59e0b" />
               <Text className="text-zinc-400 text-sm">
                 {movie.ratings.value.toFixed(1)}
               </Text>
@@ -162,7 +163,7 @@ export default function MovieDetailScreen() {
         label="Search Releases"
         variant="primary"
         onPress={() => router.push(`/movie/releases/${movie.id}`)}
-        icon={<Search size={16} color="white" />}
+        icon={<Icon icon={Search} size={16} color="white" />}
         className="mb-2"
       />
       <Button
@@ -170,7 +171,7 @@ export default function MovieDetailScreen() {
         variant="danger"
         onPress={handleDelete}
         loading={deleteMutation.isPending}
-        icon={<Trash2 size={16} color="white" />}
+        icon={<Icon icon={Trash2} size={16} color="white" />}
       />
     </ScreenWrapper>
   );

@@ -1,6 +1,7 @@
 import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Inbox, Check, Clock, X, type LucideIcon } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -80,7 +81,7 @@ export function OverseerrRequestsCard() {
         <PosterSkeletonRow count={4} />
       ) : display.length === 0 ? (
         <EmptyState
-          icon={<Inbox size={32} color="#71717a" />}
+          icon={<Icon icon={Inbox} size={32} color="#71717a" />}
           title={
             settings.statusFilter === "pending"
               ? "No pending requests"
@@ -119,7 +120,7 @@ function RequestPosterCard({
   showRequester: boolean;
   onPress: () => void;
 }) {
-  const Icon = REQUEST_STATUS_ICON[request.status] ?? Clock;
+  const StatusIcon = REQUEST_STATUS_ICON[request.status] ?? Clock;
   const statusBg = REQUEST_STATUS_BG[request.status] ?? "#71717a";
 
   const { data: mediaDetails } = useOverseerrMediaDetails(
@@ -141,7 +142,7 @@ function RequestPosterCard({
       posterUrl={posterUrl}
       title={title}
       subtitle={showRequester ? request.requestedBy.displayName : undefined}
-      cornerBadge={{ icon: Icon, color: statusBg }}
+      cornerBadge={{ icon: StatusIcon, color: statusBg }}
       mediaType={request.media.mediaType === "movie" ? "movie" : "tv"}
       onPress={onPress}
     />

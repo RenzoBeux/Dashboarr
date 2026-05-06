@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Search, AlertTriangle, X, Check } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { ArrRelease, SonarrRelease } from "@/lib/types";
 import { ReleaseListItem } from "@/components/common/release-list-item";
@@ -133,7 +134,7 @@ function ReleaseFlatList({
       ListEmptyComponent={
         <View className="mt-4">
           <EmptyState
-            icon={<Search size={24} color="#71717a" />}
+            icon={<Icon icon={Search} size={24} color="#71717a" />}
             title="No releases match filters"
             action={
               <Button
@@ -264,9 +265,9 @@ export function ReleasesPicker({ service, query }: ReleasesPickerProps) {
     label: SORT_LABELS[key],
     icon:
       sortKey === key ? (
-        <Check size={16} color="#3b82f6" />
+        <Icon icon={Check} size={16} color="#3b82f6" />
       ) : (
-        <View style={{ width: 16, height: 16 }} />
+        <View className="w-[1.15rem] h-[1.15rem]" />
       ),
     onPress: () => setSortKey(key),
   }));
@@ -380,7 +381,7 @@ export function ReleasesPicker({ service, query }: ReleasesPickerProps) {
             hitSlop={8}
             className="ml-2"
           >
-            <X size={14} color="#fde68a" />
+            <Icon icon={X} size={14} color="#fde68a" />
           </Pressable>
         </View>
       )}
@@ -390,7 +391,7 @@ export function ReleasesPicker({ service, query }: ReleasesPickerProps) {
         <View className="flex-1">
           {showSearchingMessage ? (
             <EmptyState
-              icon={<Search size={28} color="#71717a" />}
+              icon={<Icon icon={Search} size={28} color="#71717a" />}
               title="Searching indexers…"
               message={
                 showLongSearchingHint
@@ -408,14 +409,14 @@ export function ReleasesPicker({ service, query }: ReleasesPickerProps) {
         </View>
       ) : isError ? (
         <EmptyState
-          icon={<AlertTriangle size={28} color="#ef4444" />}
+          icon={<Icon icon={AlertTriangle} size={28} color="#ef4444" />}
           title="Search failed"
           message={getHttpErrorMessage(error) ?? error?.message ?? "Unknown error"}
           action={<Button label="Retry" onPress={handleRefresh} />}
         />
       ) : data && data.length === 0 ? (
         <EmptyState
-          icon={<Search size={28} color="#71717a" />}
+          icon={<Icon icon={Search} size={28} color="#71717a" />}
           title="No releases found"
           message="Indexers returned 0 results. Pull to retry or check Prowlarr."
         />

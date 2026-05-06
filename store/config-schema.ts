@@ -1,4 +1,4 @@
-import { SERVICE_IDS, DASHBOARD_WIDGET_IDS } from "@/lib/constants";
+import { SERVICE_IDS, DASHBOARD_WIDGET_IDS, UI_SCALES } from "@/lib/constants";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import type {
   ExportPayload,
@@ -253,6 +253,16 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     const headers = coerceHeaderMap(raw.globalCustomHeaders);
     if (!headers) throw new Error("Config globalCustomHeaders is invalid");
     payload.globalCustomHeaders = headers;
+  }
+
+  if (raw.uiScale !== undefined) {
+    if (
+      typeof raw.uiScale !== "number" ||
+      !(UI_SCALES as readonly number[]).includes(raw.uiScale)
+    ) {
+      throw new Error("Config uiScale is invalid");
+    }
+    payload.uiScale = raw.uiScale as ExportPayload["uiScale"];
   }
 
   return payload;

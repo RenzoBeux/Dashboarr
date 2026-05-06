@@ -1,6 +1,7 @@
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { Search, AlertTriangle } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -34,7 +35,7 @@ export function ProwlarrStatsCard() {
         <SkeletonCardContent rows={2} />
       ) : !indexers?.length ? (
         <EmptyState
-          icon={<Search size={32} color="#71717a" />}
+          icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="No indexers"
         />
       ) : (
@@ -57,7 +58,7 @@ export function ProwlarrStatsCard() {
                     }`}
                   />
                   <Text className="text-zinc-400 text-xs">{indexer.name}</Text>
-                  {isFailed && <AlertTriangle size={10} color="#ef4444" />}
+                  {isFailed && <Icon icon={AlertTriangle} size={10} color="#ef4444" />}
                 </View>
               );
             })}

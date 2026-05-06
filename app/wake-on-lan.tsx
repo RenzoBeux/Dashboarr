@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable, Alert } from "react-native";
 import { Zap, Plus, Pencil, Trash2, X } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
@@ -178,14 +179,14 @@ export default function WakeOnLanScreen() {
         title="Wake-on-LAN"
         right={
           <Pressable onPress={startAdd} className="active:opacity-70 p-1">
-            <Plus size={22} color="#3b82f6" />
+            <Icon icon={Plus} size={22} color="#3b82f6" />
           </Pressable>
         }
       />
 
       {!wolDevices.length ? (
         <View className="items-center justify-center py-20 gap-3">
-          <Zap size={40} color="#3f3f46" />
+          <Icon icon={Zap} size={40} color="#3f3f46" />
           <Text className="text-zinc-400 text-base text-center">
             No devices configured
           </Text>
@@ -195,7 +196,7 @@ export default function WakeOnLanScreen() {
           <Button
             label="Add Device"
             onPress={startAdd}
-            icon={<Plus size={16} color="#fff" />}
+            icon={<Icon icon={Plus} size={16} color="#fff" />}
             size="sm"
           />
         </View>
@@ -205,7 +206,7 @@ export default function WakeOnLanScreen() {
             <Card key={device.id} className="gap-3">
               <View className="flex-row items-center">
                 <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-                  <Zap size={20} color="#a1a1aa" />
+                  <Icon icon={Zap} size={20} color="#a1a1aa" />
                 </View>
                 <View className="flex-1">
                   <Text className="text-zinc-100 text-base font-medium">{device.name}</Text>
@@ -213,10 +214,10 @@ export default function WakeOnLanScreen() {
                 </View>
                 <View className="flex-row items-center gap-1">
                   <Pressable onPress={() => startEdit(device)} className="p-2 active:opacity-70">
-                    <Pencil size={16} color="#71717a" />
+                    <Icon icon={Pencil} size={16} color="#71717a" />
                   </Pressable>
                   <Pressable onPress={() => handleDelete(device)} className="p-2 active:opacity-70">
-                    <Trash2 size={16} color="#71717a" />
+                    <Icon icon={Trash2} size={16} color="#71717a" />
                   </Pressable>
                 </View>
               </View>
@@ -226,7 +227,7 @@ export default function WakeOnLanScreen() {
                 variant="outline"
                 size="sm"
                 loading={sendingId === device.id}
-                icon={<Zap size={14} color="#a1a1aa" />}
+                icon={<Icon icon={Zap} size={14} color="#a1a1aa" />}
               />
             </Card>
           ))}

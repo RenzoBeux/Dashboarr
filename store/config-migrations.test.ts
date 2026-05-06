@@ -399,6 +399,39 @@ describe("v10 → v11 (homeSSID/homeBSSID → homeNetworks)", () => {
   });
 });
 
+describe("v11 → v12 (uiScale)", () => {
+  const baseV11 = () => ({
+    version: 11,
+    services: {},
+    secrets: {},
+    autoSwitchNetwork: false,
+    homeNetworks: [],
+    dashboardWidgets: [],
+    widgetSettings: {},
+    globalCustomHeaders: {},
+  });
+
+  it("adds uiScale=1 when missing", () => {
+    const result: any = migrateConfig(baseV11());
+    expect(result.uiScale).toBe(1);
+  });
+
+  it("preserves a whitelisted uiScale", () => {
+    const result: any = migrateConfig({ ...baseV11(), uiScale: 1.3 });
+    expect(result.uiScale).toBe(1.3);
+  });
+
+  it("replaces an out-of-whitelist uiScale with the default", () => {
+    const result: any = migrateConfig({ ...baseV11(), uiScale: 2.5 });
+    expect(result.uiScale).toBe(1);
+  });
+
+  it("replaces a non-numeric uiScale with the default", () => {
+    const result: any = migrateConfig({ ...baseV11(), uiScale: "big" as any });
+    expect(result.uiScale).toBe(1);
+  });
+});
+
 describe("v6 → v7 (widget rename + settings)", () => {
   it("renames sonarr-calendar to calendar", () => {
     const result: any = migrateConfig({

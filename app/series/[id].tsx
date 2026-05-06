@@ -3,6 +3,7 @@ import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronDown, ChevronRight, Check, X, Search } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -185,9 +186,9 @@ function SeasonAccordion({
           className="flex-row items-center gap-2 flex-1 active:opacity-70"
         >
           {expanded ? (
-            <ChevronDown size={16} color="#71717a" />
+            <Icon icon={ChevronDown} size={16} color="#71717a" />
           ) : (
-            <ChevronRight size={16} color="#71717a" />
+            <Icon icon={ChevronRight} size={16} color="#71717a" />
           )}
           <Text className="text-zinc-200 text-sm font-medium">
             {season.seasonNumber === 0 ? "Specials" : `Season ${season.seasonNumber}`}
@@ -208,7 +209,7 @@ function SeasonAccordion({
             hitSlop={8}
             className="p-1 active:opacity-70"
           >
-            <Search size={14} color="#a1a1aa" />
+            <Icon icon={Search} size={14} color="#a1a1aa" />
           </Pressable>
         </View>
       </View>
@@ -259,12 +260,12 @@ function EpisodeRow({
           {episode.title}
         </Text>
         {mediaInfo ? (
-          <Text className="text-zinc-600 text-[10px]">
+          <Text className="text-zinc-600 text-xs">
             {formatResolution(mediaInfo.resolution)} · {mediaInfo.videoCodec} · {mediaInfo.audioCodec} {formatAudioChannels(mediaInfo.audioChannels)}
             {mediaInfo.videoDynamicRangeType ? ` · ${mediaInfo.videoDynamicRangeType}` : ""}
           </Text>
         ) : episode.airDate ? (
-          <Text className="text-zinc-600 text-[10px]">{episode.airDate}</Text>
+          <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
         ) : null}
       </View>
       <Pressable
@@ -274,7 +275,7 @@ function EpisodeRow({
         hitSlop={6}
         className="p-1 active:opacity-70 mr-1"
       >
-        <Search size={12} color="#a1a1aa" />
+        <Icon icon={Search} size={12} color="#a1a1aa" />
       </Pressable>
       <Pressable
         onPress={() =>
@@ -288,9 +289,9 @@ function EpisodeRow({
         hitSlop={6}
       >
         {episode.monitored ? (
-          <Check size={14} color="#3b82f6" />
+          <Icon icon={Check} size={14} color="#3b82f6" />
         ) : (
-          <X size={14} color="#71717a" />
+          <Icon icon={X} size={14} color="#71717a" />
         )}
       </Pressable>
     </View>

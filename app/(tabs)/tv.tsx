@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   Check,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode, relativeDate } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 
@@ -103,15 +105,15 @@ export default function TVScreen() {
       return [
         {
           label: "Search",
-          icon: <Search size={18} color="#a1a1aa" />,
+          icon: <Icon icon={Search} size={18} color="#a1a1aa" />,
           onPress: () => searchSeries.mutate(series.id),
         },
         {
           label: series.monitored ? "Unmonitor" : "Monitor",
           icon: series.monitored ? (
-            <EyeOff size={18} color="#a1a1aa" />
+            <Icon icon={EyeOff} size={18} color="#a1a1aa" />
           ) : (
-            <Eye size={18} color="#a1a1aa" />
+            <Icon icon={Eye} size={18} color="#a1a1aa" />
           ),
           onPress: () =>
             toggleMonitor.mutate({
@@ -121,12 +123,12 @@ export default function TVScreen() {
         },
         {
           label: "Open Details",
-          icon: <Info size={18} color="#a1a1aa" />,
+          icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
           onPress: () => router.push(`/series/${series.id}`),
         },
         {
           label: "Delete",
-          icon: <Trash2 size={18} color="#ef4444" />,
+          icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
           variant: "danger",
           onPress: () => {
             Alert.alert("Delete Series", `Delete "${series.title}"?`, [
@@ -153,12 +155,12 @@ export default function TVScreen() {
     return [
       {
         label: "Search Episode",
-        icon: <Search size={18} color="#a1a1aa" />,
+        icon: <Icon icon={Search} size={18} color="#a1a1aa" />,
         onPress: () => searchEpisodes.mutate([ep.id]),
       },
       {
         label: "Open Series Details",
-        icon: <Info size={18} color="#a1a1aa" />,
+        icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
         onPress: () => router.push(`/series/${ep.seriesId}`),
       },
     ];
@@ -196,11 +198,16 @@ export default function TVScreen() {
           onPress={() => router.push("/series/search")}
           className="p-2 active:opacity-70"
         >
-          <Search size={ICON.LG} color="#a1a1aa" />
+          <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
         </Pressable>
       </View>
 
-      <View className="flex-row gap-2 mb-4">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
         {(["library", "calendar"] as Tab[]).map((t) => (
           <FilterChip
             key={t}
@@ -209,7 +216,7 @@ export default function TVScreen() {
             onPress={() => setTab(t)}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {tab === "library" && (
         <View className="flex-row items-center gap-2 mb-4">
@@ -260,9 +267,9 @@ export default function TVScreen() {
           label: opt.label,
           icon:
             sort === opt.key ? (
-              <Check size={18} color="#3b82f6" />
+              <Icon icon={Check} size={18} color="#3b82f6" />
             ) : (
-              <ArrowUpDown size={18} color="#71717a" />
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
             ),
           onPress: () => setSort(opt.key),
         }))}
@@ -282,12 +289,13 @@ function SeriesLibrary({
 }) {
   const { data: series, isLoading } = useSonarrSeries();
   const router = useRouter();
+  const cellWidth = usePosterCellWidth();
 
   if (isLoading) {
     return (
       <View className="flex-row flex-wrap gap-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} className="w-[30%]">
+          <View key={i} style={{ width: cellWidth }}>
             <Skeleton width="100%" height={150} borderRadius={12} />
             <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
           </View>
@@ -296,7 +304,7 @@ function SeriesLibrary({
     );
   }
   if (!series?.length) {
-    return <EmptyState icon={<Tv size={32} color="#71717a" />} title="No shows in library" />;
+    return <EmptyState icon={<Icon icon={Tv} size={32} color="#71717a" />} title="No shows in library" />;
   }
 
   const filtered = series.filter((s) => {
@@ -312,7 +320,7 @@ function SeriesLibrary({
         : monitorFilter === "unmonitored"
           ? "No unmonitored shows"
           : "No shows in library";
-    return <EmptyState icon={<Tv size={32} color="#71717a" />} title={title} />;
+    return <EmptyState icon={<Icon icon={Tv} size={32} color="#71717a" />} title={title} />;
   }
 
   const sorted = [...filtered].sort((a, b) => compareSeries(a, b, sort));
@@ -342,13 +350,15 @@ function SeriesPoster({
 }) {
   const poster = series.images.find((i) => i.coverType === "poster");
   const { src, onError } = useServiceImage(poster, "sonarr");
+  const cellWidth = usePosterCellWidth();
 
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
-      className="w-[30%] active:opacity-80"
+      style={{ width: cellWidth }}
+      className="active:opacity-80"
     >
       {src ? (
         <Image
@@ -362,13 +372,13 @@ function SeriesPoster({
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Tv size={24} color="#71717a" />
+          <Icon icon={Tv} size={24} color="#71717a" />
         </View>
       )}
-      <Text className="text-zinc-300 text-xs mt-1" numberOfLines={1}>
+      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
         {series.title}
       </Text>
-      <Text className="text-zinc-600 text-[10px]">
+      <Text className="text-zinc-600 text-xs">
         {series.seasonCount} season{series.seasonCount !== 1 ? "s" : ""}
       </Text>
     </Pressable>

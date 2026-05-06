@@ -1,6 +1,7 @@
 import { View, Text, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { X } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 
 interface SheetHeaderProps {
   title: string;
@@ -17,7 +18,7 @@ export function SheetHeader({ title, onClose }: SheetHeaderProps) {
       <View className="flex-row items-center justify-between px-4 py-4">
         <Text className="text-zinc-100 text-lg font-semibold">{title}</Text>
         <Pressable onPress={onClose} className="p-1 active:opacity-70" hitSlop={8}>
-          <X size={22} color="#a1a1aa" />
+          <Icon icon={X} size={22} color="#a1a1aa" />
         </Pressable>
       </View>
     </SafeAreaView>

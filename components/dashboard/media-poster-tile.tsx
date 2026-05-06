@@ -1,6 +1,8 @@
 import { View, Text, Pressable } from "react-native";
 import { Image, type ImageSource } from "expo-image";
 import { Film, Tv, type LucideIcon } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
+import { useUiScale } from "@/hooks/use-ui-scale";
 
 export const POSTER_TILE_WIDTH = 110;
 export const POSTER_TILE_HEIGHT = 165;
@@ -43,6 +45,9 @@ export function MediaPosterTile({
 }: MediaPosterTileProps) {
   const FallbackIcon =
     fallbackIcon ?? (mediaType === "tv" ? Tv : Film);
+  const scale = useUiScale();
+  const scaledWidth = Math.round(width * scale);
+  const scaledHeight = Math.round(height * scale);
 
   const source: ImageSource | null =
     typeof posterUrl === "string"
@@ -58,11 +63,11 @@ export function MediaPosterTile({
       onPress={onPress}
       onLongPress={onLongPress}
       className="active:opacity-80"
-      style={{ width }}
+      style={{ width: scaledWidth }}
     >
       <View
         className="rounded-xl overflow-hidden bg-surface-light"
-        style={{ width, height }}
+        style={{ width: scaledWidth, height: scaledHeight }}
       >
         {source ? (
           <Image
@@ -75,7 +80,7 @@ export function MediaPosterTile({
           />
         ) : (
           <View className="w-full h-full items-center justify-center">
-            <FallbackIcon size={24} color="#71717a" />
+            <Icon icon={FallbackIcon} size={24} color="#71717a" />
           </View>
         )}
 
@@ -92,13 +97,13 @@ export function MediaPosterTile({
       </View>
 
       <Text
-        className="text-zinc-200 text-xs font-medium mt-1.5"
+        className="text-zinc-200 text-sm font-medium mt-1.5"
         numberOfLines={2}
       >
         {title}
       </Text>
       {subtitle && (
-        <Text className="text-zinc-500 text-[11px]" numberOfLines={1}>
+        <Text className="text-zinc-500 text-xs" numberOfLines={1}>
           {subtitle}
         </Text>
       )}
@@ -117,7 +122,7 @@ function CornerBadge({
     position === "top-right"
       ? "absolute top-1.5 right-1.5"
       : "absolute bottom-1.5 left-1.5";
-  const Icon = badge.icon;
+  const BadgeIcon = badge.icon;
   const hasLabel = !!badge.label;
   const interactive = !!badge.onPress;
   // Interactive badges get a slightly larger tap target.
@@ -130,9 +135,9 @@ function CornerBadge({
 
   const content = (
     <>
-      {Icon && <Icon size={iconSize} color="#fff" />}
+      {BadgeIcon && <Icon icon={BadgeIcon} size={iconSize} color="#fff" />}
       {hasLabel && (
-        <Text className="text-white text-[10px] font-semibold">
+        <Text className="text-white text-xs font-semibold">
           {badge.label}
         </Text>
       )}

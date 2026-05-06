@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal, View, Text, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { Tv, Plus } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
@@ -127,8 +128,7 @@ export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps
             {posterUrl ? (
               <Image
                 source={{ uri: posterUrl }}
-                className="rounded-lg bg-surface-light"
-                style={{ width: 80, height: 120 }}
+                className="rounded-lg bg-surface-light w-[5.7rem] h-[8.6rem]"
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 transition={200}
@@ -137,10 +137,9 @@ export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps
               />
             ) : (
               <View
-                className="rounded-lg bg-surface-light items-center justify-center"
-                style={{ width: 80, height: 120 }}
+                className="rounded-lg bg-surface-light items-center justify-center w-[5.7rem] h-[8.6rem]"
               >
-                <Tv size={24} color="#71717a" />
+                <Icon icon={Tv} size={24} color="#71717a" />
               </View>
             )}
             <View className="flex-1 justify-center">
@@ -245,7 +244,7 @@ export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps
             onPress={handleAdd}
             disabled={!canSubmit}
             loading={addSeries.isPending}
-            icon={<Plus size={16} color="#fff" />}
+            icon={<Icon icon={Plus} size={16} color="#fff" />}
             size="lg"
             className="w-full"
           />

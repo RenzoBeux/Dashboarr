@@ -1,6 +1,7 @@
 import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Play, Pause, Loader, MonitorPlay, Cog } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -64,7 +65,7 @@ export function TautulliActivityCard() {
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState
-          icon={<MonitorPlay size={32} color="#71717a" />}
+          icon={<Icon icon={MonitorPlay} size={32} color="#71717a" />}
           title="Nothing playing"
         />
       ) : (

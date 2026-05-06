@@ -1,6 +1,7 @@
 import { View, Text } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { ServerCrash } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
@@ -117,7 +118,7 @@ export function ServerStatsCard() {
         <SkeletonCardContent rows={2} />
       ) : showError ? (
         <View className="flex-row items-center gap-2 py-1">
-          <ServerCrash size={16} color="#71717a" />
+          <Icon icon={ServerCrash} size={16} color="#71717a" />
           <Text className="text-zinc-500 text-sm">Could not reach Glances</Text>
         </View>
       ) : (

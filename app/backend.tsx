@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator, Platform } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
@@ -237,9 +238,9 @@ export default function BackendScreen() {
               <Card className="gap-3 mb-4">
                 <View className="flex-row items-center gap-2">
                   {isHealthy ? (
-                    <Cloud size={18} color="#22c55e" />
+                    <Icon icon={Cloud} size={18} color="#22c55e" />
                   ) : (
-                    <CloudOff size={18} color="#f59e0b" />
+                    <Icon icon={CloudOff} size={18} color="#f59e0b" />
                   )}
                   <Text className="text-zinc-100 text-base font-medium">
                     {isHealthy ? "Connected" : "Offline"}
@@ -264,14 +265,14 @@ export default function BackendScreen() {
 
               <Pressable onPress={handleRotate} disabled={busy} className="active:opacity-80 mb-3">
                 <Card className="flex-row items-center justify-center gap-2">
-                  <RefreshCw size={16} color="#a1a1aa" />
+                  <Icon icon={RefreshCw} size={16} color="#a1a1aa" />
                   <Text className="text-zinc-200 text-base">Rotate secret</Text>
                 </Card>
               </Pressable>
 
               <Pressable onPress={handleUnpair} disabled={busy} className="active:opacity-80">
                 <Card className="flex-row items-center justify-center gap-2 bg-red-950/30 border border-red-900/50">
-                  <Unlink size={16} color="#f87171" />
+                  <Icon icon={Unlink} size={16} color="#f87171" />
                   <Text className="text-red-400 text-base">Unpair</Text>
                 </Card>
               </Pressable>
@@ -295,7 +296,7 @@ export default function BackendScreen() {
                 className="active:opacity-80 mb-3"
               >
                 <Card className="flex-row items-center justify-center gap-2">
-                  <QrCode size={18} color="#a1a1aa" />
+                  <Icon icon={QrCode} size={18} color="#a1a1aa" />
                   <Text className="text-zinc-100 text-base">Scan pairing QR</Text>
                 </Card>
               </Pressable>
@@ -306,7 +307,7 @@ export default function BackendScreen() {
                 className="active:opacity-80"
               >
                 <Card className="flex-row items-center justify-center gap-2">
-                  <Bell size={18} color="#a1a1aa" />
+                  <Icon icon={Bell} size={18} color="#a1a1aa" />
                   <Text className="text-zinc-100 text-base">Enter token manually</Text>
                 </Card>
               </Pressable>

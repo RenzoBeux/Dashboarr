@@ -1,6 +1,7 @@
 import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Film } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -40,7 +41,7 @@ export function RadarrQueueCard() {
         <PosterSkeletonRow count={4} showSubtitle />
       ) : records.length === 0 ? (
         <EmptyState
-          icon={<Film size={32} color="#71717a" />}
+          icon={<Icon icon={Film} size={32} color="#71717a" />}
           title="No movies in queue"
         />
       ) : (

@@ -11,6 +11,7 @@ import Animated, {
   FadeIn,
 } from "react-native-reanimated";
 import { Loader2 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 
 interface ProgressModalProps {
   visible: boolean;
@@ -63,7 +64,7 @@ export function ProgressModal({ visible, title, subtitle }: ProgressModalProps) 
               className="absolute w-20 h-20 rounded-full bg-primary/20"
             />
             <Animated.View style={spinnerStyle}>
-              <Loader2 size={52} color="#60a5fa" strokeWidth={2.25} />
+              <Icon icon={Loader2} size={52} color="#60a5fa" strokeWidth={2.25} />
             </Animated.View>
           </View>
 
@@ -79,7 +80,7 @@ export function ProgressModal({ visible, title, subtitle }: ProgressModalProps) 
               <Animated.Text
                 key={subtitle}
                 entering={FadeIn.duration(260)}
-                className="text-zinc-400 text-sm text-center leading-5 max-w-[280px]"
+                className="text-zinc-400 text-sm text-center leading-5 max-w-[20rem]"
               >
                 {subtitle}
               </Animated.Text>

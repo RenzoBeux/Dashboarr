@@ -87,7 +87,14 @@ export const STORAGE_KEYS = {
   demoMode: "app.demoMode",
   hapticsEnabled: "app.hapticsEnabled",
   globalCustomHeaders: "app.globalCustomHeaders",
+  uiScale: "app.uiScale",
 } as const;
+
+// Whitelisted UI scale multipliers. Kept as a const so the schema and the
+// settings UI agree on the allowed set.
+export const UI_SCALES = [1, 1.15, 1.3] as const;
+export type UiScale = (typeof UI_SCALES)[number];
+export const DEFAULT_UI_SCALE: UiScale = 1;
 
 // SecureStore key prefix
 export const SECRET_PREFIX = "secrets";

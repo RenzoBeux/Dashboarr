@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { X, Star, Check, Clock, Film, Tv, Plus } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { BlurView } from "expo-blur";
 import Animated, {
   useSharedValue,
@@ -97,7 +98,7 @@ export function MediaDetailModal({
               onPress={onClose}
               className="absolute top-12 right-4 bg-black/50 rounded-full p-2 active:opacity-70"
             >
-              <X size={20} color="#fff" />
+              <Icon icon={X} size={20} color="#fff" />
             </Pressable>
           </View>
 
@@ -109,8 +110,7 @@ export function MediaDetailModal({
                 <Animated.View style={posterFadeStyle}>
                   <Image
                     source={{ uri: posterUrl }}
-                    className="w-28 h-42 rounded-xl bg-surface-light"
-                    style={{ width: 112, height: 168 }}
+                    className="rounded-xl bg-surface-light w-[8rem] h-[12rem]"
                     contentFit="cover"
                     cachePolicy="memory-disk"
                     transition={200}
@@ -120,13 +120,12 @@ export function MediaDetailModal({
                 </Animated.View>
               ) : (
                 <View
-                  className="rounded-xl bg-surface-light items-center justify-center"
-                  style={{ width: 112, height: 168 }}
+                  className="rounded-xl bg-surface-light items-center justify-center w-[8rem] h-[12rem]"
                 >
                   {item.mediaType === "movie" ? (
-                    <Film size={32} color="#71717a" />
+                    <Icon icon={Film} size={32} color="#71717a" />
                   ) : (
-                    <Tv size={32} color="#71717a" />
+                    <Icon icon={Tv} size={32} color="#71717a" />
                   )}
                 </View>
               )}
@@ -150,7 +149,7 @@ export function MediaDetailModal({
                 <View className="flex-row items-center gap-3 mt-2">
                   {item.voteAverage > 0 && (
                     <View className="flex-row items-center gap-1">
-                      <Star size={14} color="#eab308" fill="#eab308" />
+                      <Icon icon={Star} size={14} color="#eab308" fill="#eab308" />
                       <Text className="text-yellow-500 text-sm font-medium">
                         {item.voteAverage.toFixed(1)}
                       </Text>
@@ -172,20 +171,20 @@ export function MediaDetailModal({
                 <Button
                   label={`Request ${item.mediaType === "movie" ? "Movie" : "TV Show"}`}
                   onPress={handleRequest}
-                  icon={<Plus size={16} color="#fff" />}
+                  icon={<Icon icon={Plus} size={16} color="#fff" />}
                   size="lg"
                   className="w-full"
                 />
               ) : isAvailable ? (
                 <View className="flex-row items-center justify-center gap-2 py-3 bg-green-600/10 rounded-xl border border-green-600/30">
-                  <Check size={18} color="#22c55e" />
+                  <Icon icon={Check} size={18} color="#22c55e" />
                   <Text className="text-green-500 font-medium">
                     Already Available
                   </Text>
                 </View>
               ) : (
                 <View className="flex-row items-center justify-center gap-2 py-3 bg-yellow-600/10 rounded-xl border border-yellow-600/30">
-                  <Clock size={18} color="#eab308" />
+                  <Icon icon={Clock} size={18} color="#eab308" />
                   <Text className="text-yellow-500 font-medium">
                     Already Requested
                   </Text>

@@ -9,6 +9,7 @@ import {
   Upload,
   CircleAlert,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
@@ -165,13 +166,13 @@ export function DownloadCard() {
         <PosterSkeletonRow count={4} showSubtitle />
       ) : isError ? (
         <EmptyState
-          icon={<AlertTriangle size={32} color="#f59e0b" />}
+          icon={<Icon icon={AlertTriangle} size={32} color="#f59e0b" />}
           title="Couldn't load downloads"
           message="Check qBittorrent is reachable and credentials are correct."
         />
       ) : displayTorrents.length === 0 ? (
         <EmptyState
-          icon={<CheckCircle size={32} color="#71717a" />}
+          icon={<Icon icon={CheckCircle} size={32} color="#71717a" />}
           title="Nothing to show"
         />
       ) : (

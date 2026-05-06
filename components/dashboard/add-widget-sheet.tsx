@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { LayoutGrid, Lock, Plus, X } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   Easing,
   FadeInDown,
@@ -149,7 +150,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
                     hitSlop={10}
                     className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
                   >
-                    <X size={ICON.SM} color="#a1a1aa" />
+                    <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
                   </Pressable>
                 </View>
               </View>
@@ -158,7 +159,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
             {available.length === 0 ? (
               <View className="items-center py-10 px-8">
                 <View className="w-14 h-14 rounded-full bg-surface-light items-center justify-center mb-3">
-                  <LayoutGrid size={24} color="#71717a" />
+                  <Icon icon={LayoutGrid} size={24} color="#71717a" />
                 </View>
                 <Text className="text-zinc-300 text-base font-medium">
                   You're all set
@@ -213,7 +214,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
 
 function SectionLabel({ label }: { label: string }) {
   return (
-    <Text className="text-zinc-500 text-[11px] font-semibold uppercase tracking-wider px-1 mb-2">
+    <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider px-1 mb-2">
       {label}
     </Text>
   );
@@ -226,7 +227,7 @@ interface EnabledRowProps {
 }
 
 function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
-  const Icon = widget.icon;
+  const WidgetIcon = widget.icon;
   const scale = useSharedValue(1);
   const style = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -248,7 +249,7 @@ function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
         className="flex-row items-center gap-3 bg-surface-light rounded-2xl px-3 py-3 border border-border/70"
       >
         <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center">
-          <Icon size={ICON.MD} color="#60a5fa" />
+          <Icon icon={WidgetIcon} size={ICON.MD} color="#60a5fa" />
         </View>
         <View className="flex-1">
           <Text className="text-zinc-100 text-sm font-semibold">
@@ -262,7 +263,7 @@ function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
           </Text>
         </View>
         <View className="w-7 h-7 rounded-full bg-primary/20 items-center justify-center">
-          <Plus size={ICON.SM} color="#60a5fa" />
+          <Icon icon={Plus} size={ICON.SM} color="#60a5fa" />
         </View>
       </Pressable>
     </Animated.View>
@@ -275,14 +276,14 @@ interface LockedRowProps {
 }
 
 function LockedRow({ widget, index }: LockedRowProps) {
-  const Icon = widget.icon;
+  const WidgetIcon = widget.icon;
   const serviceName =
     widget.service !== null ? SERVICE_DEFAULTS[widget.service].name : "service";
   return (
     <Animated.View entering={FadeInDown.delay(index * 35).duration(260)}>
       <View className="flex-row items-center gap-3 bg-surface-light/50 rounded-2xl px-3 py-3 border border-border/40">
         <View className="w-10 h-10 rounded-xl bg-surface-light items-center justify-center">
-          <Icon size={ICON.MD} color="#52525b" />
+          <Icon icon={WidgetIcon} size={ICON.MD} color="#52525b" />
         </View>
         <View className="flex-1">
           <Text className="text-zinc-400 text-sm font-semibold">
@@ -296,7 +297,7 @@ function LockedRow({ widget, index }: LockedRowProps) {
           </Text>
         </View>
         <View className="w-7 h-7 rounded-full bg-surface-light items-center justify-center border border-border">
-          <Lock size={ICON.XS} color="#71717a" />
+          <Icon icon={Lock} size={ICON.XS} color="#71717a" />
         </View>
       </View>
     </Animated.View>

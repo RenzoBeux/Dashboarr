@@ -677,6 +677,30 @@ describe("validateExportPayload — globalCustomHeaders", () => {
   });
 });
 
+describe("validateExportPayload — uiScale", () => {
+  it("accepts a whitelisted uiScale value", () => {
+    const result = validateExportPayload({ ...baseValid(), uiScale: 1.15 });
+    expect(result.uiScale).toBe(1.15);
+  });
+
+  it("omits uiScale from the result when absent in input", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.uiScale).toBeUndefined();
+  });
+
+  it("rejects an out-of-whitelist uiScale", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), uiScale: 99 }),
+    ).toThrow(/uiScale/);
+  });
+
+  it("rejects a non-numeric uiScale", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), uiScale: "big" as any }),
+    ).toThrow(/uiScale/);
+  });
+});
+
 describe("validateExportPayload — widget settings", () => {
   it("drops unknown widget IDs from widgetSettings", () => {
     const result = validateExportPayload({

@@ -1,6 +1,7 @@
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { Zap, Settings } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { WakeOnLanButton } from "@/components/common/wake-on-lan-button";
 import { useConfigStore } from "@/store/config-store";
@@ -22,7 +23,7 @@ export function WolDevicesCard() {
             className="p-1 active:opacity-70"
             hitSlop={6}
           >
-            <Settings size={ICON.SM} color="#71717a" />
+            <Icon icon={Settings} size={ICON.SM} color="#71717a" />
           </Pressable>
         </View>
       </CardHeader>

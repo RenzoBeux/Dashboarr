@@ -71,6 +71,39 @@ Notes:
 - Pull-to-refresh on all screens
 - Haptic feedback on key interactions
 
+## UI Scale (Accessibility) — MUST follow when writing any new UI
+
+The app exposes a global UI scale preference (1.0 / 1.15 / 1.3) wired via NativeWind v4's reactive `rem` observable. `app/_layout.tsx` calls `rem.set(14 * uiScale)` whenever the setting changes, which scales every rem-based style across the running app with no remount. **Every new UI element must scale with this setting.** The rules:
+
+- **`inlineRem: false` in `metro.config.js` is load-bearing.** With NativeWind's default `inlineRem: 14`, every `rem` value (`text-sm` = 0.875rem, `p-4` = 1rem, etc.) is statically multiplied by 14 at bundle time and becomes a frozen pixel value — `rem.set()` would do nothing. Setting `inlineRem: false` keeps rem as a runtime descriptor so styles re-resolve when the observable updates. Do not change this setting without first verifying every rem-based class still scales.
+
+- **Use standard Tailwind classes for sizing.** `text-sm`, `text-xs`, `text-base`, `text-lg`, `p-4`, `gap-3`, `mb-2`, `w-14`, `h-20`, `rounded-xl`, etc. all compile to rem and scale automatically.
+- **Never use literal-pixel arbitrary values.** No `text-[10px]`, `w-[80px]`, `h-[120px]`, `min-w-[170px]`. If you need a non-standard size, use rem arbitrary values: `text-[0.7rem]`, `w-[5.7rem]`, `min-w-[12rem]`.
+- **Never use inline `style={{ fontSize: N }}` / `style={{ width: N, height: N }}` with raw numbers.** Move to className with rem values, or — when the prop must stay numeric — multiply by `useUiScale()` from `hooks/use-ui-scale.ts` inside the component (see `MediaPosterTile`, `MediaBackdropRow`).
+- **Always wrap lucide icons with `<Icon icon={Foo} size={N} />`** from `components/ui/icon.tsx`. Raw `<Foo size={20} />` will not scale.
+- **Indirect lucide icons need wrapping too.** `const StateIcon = isPaused ? Pause : Play; <StateIcon size={14} />` is a bug — it must be `<Icon icon={StateIcon} size={14} />`. Same for `<FallbackIcon>`, `<ServiceIcon>`, `<MediaIcon>`, etc. Search `const \w*Icon\s*=` to audit.
+- **Don't shadow the `Icon` import.** If a local variable holds a lucide component, name it `XxxIcon` (e.g. `WidgetIcon`, `ToastIcon`), never `Icon`.
+- **Maps of lucide components** (e.g. `SERVICE_ICONS`, `ICON_MAP`) — type them as `Record<K, React.ComponentType<any>>`, not `Record<K, React.ElementType>` (which permits `string` and breaks the `<Icon>` wrapper's prop type).
+- **Wrap-grids that should drop columns at higher scale** (poster grids in movies/tv/plex/jellyfin/seerr) — use `usePosterCellWidth()` from `hooks/use-poster-cell.ts` and apply via inline `style={{ width: cellWidth }}`, NOT className percentages like `w-[30%]`. It returns a numeric pixel width: 3 cols at scale 1.0 and 2 cols at scale ≥ 1.15. With rem-scaled gaps and intrinsic text widths, RN/Yoga's flex-wrap with percentage children is unreliable and can collapse layouts to 1 column. Numeric pixel widths via `useWindowDimensions` + `useUiScale` are deterministic at every scale. Don't hardcode `w-[8rem]` or similar — that just shrinks/grows in place without reflowing.
+- **Wrap-grids of intrinsically-sized content** (chip/tag clouds, service-icon clouds) — no width set; items wrap naturally. Already correct.
+- **Horizontal-scroll rows** (e.g. dashboard rows, search results carousels) — fixed rem widths are correct. They get bigger via rem; they don't need to reflow column count.
+- **`Skeleton` placeholder widths/heights** — pass percentages (`width="100%"`) when possible. Numeric props go to inline style and won't scale; this is acceptable for brief loading shimmers but never for visible content.
+- **Tab bar in `app/(tabs)/_layout.tsx` is deliberately excluded** — React Navigation owns its `tabBarIcon` sizing. Don't wrap or scale those icons.
+- **When a numeric size is unavoidable on a third-party component** (Skeleton, lucide icons inside a shared primitive that takes a numeric `size` prop) — read `useUiScale()` and multiply at the call site. See `MediaPosterTile.scaledWidth`, `MediaBackdropRow.posterW`, `PosterSkeletonRow.w`.
+- **Hierarchy at higher scales:** when an item gets visually much bigger (e.g. a poster card grows from 30% to 47% width), bump its primary title one Tailwind tier (`text-xs` → `text-sm`, or `text-sm` → `text-base`) so the type stays anchored to the bigger frame. Keep secondary metadata one tier smaller for clear hierarchy.
+- **Horizontal rows of `FilterChip` (or any chip-like row) MUST be inside a horizontal `ScrollView`,** not a plain `<View className="flex-row">`. At higher uiScale chips grow with rem and easily overflow off-screen with no way to access the cut-off ones. Standard pattern:
+  ```tsx
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerClassName="gap-2"
+    className="mb-4"
+  >
+    {chips}
+  </ScrollView>
+  ```
+  Same applies to any horizontal list of items whose count or label length isn't tightly bounded — at higher scales they'll exceed the viewport and clip.
+
 ## Phase Plan
 ### Phase 1 — Core ✅
 - [x] qBittorrent: queue, pause, resume, delete, speed stats, progress

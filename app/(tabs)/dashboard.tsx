@@ -10,6 +10,7 @@ import {
   X,
   Plus,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -70,9 +71,9 @@ export default function DashboardScreen() {
             hitSlop={8}
           >
             {editMode ? (
-              <Check size={ICON.MD} color="#22c55e" />
+              <Icon icon={Check} size={ICON.MD} color="#22c55e" />
             ) : (
-              <Pencil size={ICON.MD} color="#71717a" />
+              <Icon icon={Pencil} size={ICON.MD} color="#71717a" />
             )}
           </TouchableOpacity>
         )}
@@ -119,7 +120,7 @@ export default function DashboardScreen() {
                     className="flex-row items-center justify-between mb-1 px-1"
                   >
                     <View className="flex-row items-center gap-1.5 flex-1">
-                      <GripVertical size={ICON.SM} color="#52525b" />
+                      <Icon icon={GripVertical} size={ICON.SM} color="#52525b" />
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
                         {label}
                       </Text>
@@ -131,7 +132,7 @@ export default function DashboardScreen() {
                         className="p-1"
                         hitSlop={6}
                       >
-                        <ChevronUp size={ICON.MD} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
+                        <Icon icon={ChevronUp} size={ICON.MD} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleMove(id, "down")}
@@ -139,7 +140,7 @@ export default function DashboardScreen() {
                         className="p-1"
                         hitSlop={6}
                       >
-                        <ChevronDown size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
+                        <Icon icon={ChevronDown} size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                       {settingsComponent && (
                         <TouchableOpacity
@@ -147,7 +148,7 @@ export default function DashboardScreen() {
                           className="p-1 ml-1"
                           hitSlop={6}
                         >
-                          <Settings size={ICON.MD} color="#60a5fa" />
+                          <Icon icon={Settings} size={ICON.MD} color="#60a5fa" />
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
@@ -155,7 +156,7 @@ export default function DashboardScreen() {
                         className="p-1 ml-1"
                         hitSlop={6}
                       >
-                        <X size={ICON.MD} color="#ef4444" />
+                        <Icon icon={X} size={ICON.MD} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
                   </Animated.View>
@@ -183,7 +184,7 @@ export default function DashboardScreen() {
                 onPress={openPicker}
                 className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
               >
-                <Plus size={ICON.MD} color="#a1a1aa" />
+                <Icon icon={Plus} size={ICON.MD} color="#a1a1aa" />
                 <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
               </TouchableOpacity>
             </Animated.View>

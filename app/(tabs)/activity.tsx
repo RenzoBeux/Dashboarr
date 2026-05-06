@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
 import {
   Play,
   Pause,
@@ -9,6 +9,7 @@ import {
   Wifi,
   ArrowDown,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +37,12 @@ export default function ActivityScreen() {
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Activity" online={tautulliHealth?.online} />
 
-      <View className="flex-row gap-2 mb-4">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
         {(["streams", "history"] as Tab[]).map((t) => (
           <FilterChip
             key={t}
@@ -45,7 +51,7 @@ export default function ActivityScreen() {
             onPress={() => setTab(t)}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {tab === "streams" && <ActiveStreams />}
       {tab === "history" && <HistoryList />}
@@ -93,7 +99,7 @@ function ActiveStreams() {
 
       {sessions.length === 0 ? (
         <EmptyState
-          icon={<Play size={32} color="#71717a" />}
+          icon={<Icon icon={Play} size={32} color="#71717a" />}
           title="No active streams"
           message="Nothing is playing right now"
         />
@@ -133,7 +139,7 @@ function SessionCard({ session }: { session: TautulliSession }) {
   return (
     <Card>
       <View className="flex-row items-center gap-2 mb-2">
-        <StateIcon size={16} color={stateColor} />
+        <Icon icon={StateIcon} size={16} color={stateColor} />
         <Text className="text-zinc-200 text-sm font-medium flex-1" numberOfLines={1}>
           {session.full_title}
         </Text>

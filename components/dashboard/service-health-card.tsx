@@ -11,12 +11,13 @@ import {
   Clapperboard,
   Captions,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { useConfigStore } from "@/store/config-store";
 
-const SERVICE_ICONS: Partial<Record<ServiceId, React.ElementType>> = {
+const SERVICE_ICONS: Partial<Record<ServiceId, React.ComponentType<any>>> = {
   qbittorrent: Download,
   radarr: Film,
   sonarr: Tv,
@@ -52,9 +53,9 @@ export function ServiceHealthCard() {
       </CardHeader>
       <View className="flex-row flex-wrap gap-4">
         {enabledServices.map((service) => {
-          const Icon = SERVICE_ICONS[service.id as ServiceId];
+          const ServiceIcon = SERVICE_ICONS[service.id as ServiceId];
           const route = SERVICE_ROUTES[service.id as ServiceId];
-          if (!Icon) return null;
+          if (!ServiceIcon) return null;
 
           return (
             <Pressable
@@ -65,7 +66,7 @@ export function ServiceHealthCard() {
             >
               <View className="relative">
                 <View className="bg-surface-light rounded-xl p-2.5">
-                  <Icon size={ICON.LG} color="#a1a1aa" />
+                  <Icon icon={ServiceIcon} size={ICON.LG} color="#a1a1aa" />
                 </View>
                 <View
                   className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${

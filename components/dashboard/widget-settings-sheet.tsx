@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { RotateCcw, X } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   Easing,
   runOnJS,
@@ -115,7 +116,7 @@ export function WidgetSettingsSheet({
     return null;
   }
 
-  const Icon = activeWidget.icon;
+  const WidgetIcon = activeWidget.icon;
   const SettingsComponent = activeWidget.settingsComponent;
 
   return (
@@ -150,7 +151,7 @@ export function WidgetSettingsSheet({
                 <View className="flex-row items-center justify-between px-5 pt-4 pb-3">
                   <View className="flex-row items-center flex-1 gap-3 pr-3">
                     <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center">
-                      <Icon size={ICON.MD} color="#60a5fa" />
+                      <Icon icon={WidgetIcon} size={ICON.MD} color="#60a5fa" />
                     </View>
                     <View className="flex-1">
                       <Text className="text-zinc-100 text-xl font-bold">
@@ -166,7 +167,7 @@ export function WidgetSettingsSheet({
                     hitSlop={10}
                     className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
                   >
-                    <X size={ICON.SM} color="#a1a1aa" />
+                    <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
                   </Pressable>
                 </View>
               </View>
@@ -192,7 +193,7 @@ export function WidgetSettingsSheet({
                     onPress={handleReset}
                     className="flex-row items-center justify-center gap-2 py-3 rounded-xl border border-border active:opacity-70"
                   >
-                    <RotateCcw size={ICON.SM} color="#a1a1aa" />
+                    <Icon icon={RotateCcw} size={ICON.SM} color="#a1a1aa" />
                     <Text className="text-zinc-300 text-sm font-medium">
                       Reset to defaults
                     </Text>

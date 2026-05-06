@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { X, AlertTriangle, Download, ExternalLink } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   Easing,
   runOnJS,
@@ -183,7 +184,7 @@ export function ReleaseDetailSheet({
                     hitSlop={10}
                     className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
                   >
-                    <X size={ICON.SM} color="#a1a1aa" />
+                    <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
                   </Pressable>
                 </View>
                 <View className="h-px bg-border/60 mx-5" />
@@ -298,7 +299,7 @@ export function ReleaseDetailSheet({
                 release.rejections.length > 0 && (
                   <View className="bg-red-950/60 border border-red-900 rounded-xl p-3 mb-3">
                     <View className="flex-row items-center gap-2 mb-2">
-                      <AlertTriangle size={14} color="#fca5a5" />
+                      <Icon icon={AlertTriangle} size={14} color="#fca5a5" />
                       <Text className="text-red-200 text-xs font-semibold uppercase tracking-wide">
                         Rejected by {service === "radarr" ? "Radarr" : "Sonarr"}
                       </Text>
@@ -316,9 +317,9 @@ export function ReleaseDetailSheet({
 
               {release.infoUrl && (
                 <View className="flex-row items-center gap-1 mb-3">
-                  <ExternalLink size={12} color="#71717a" />
+                  <Icon icon={ExternalLink} size={12} color="#71717a" />
                   <Text
-                    className="text-zinc-500 text-[11px] flex-1"
+                    className="text-zinc-500 text-xs flex-1"
                     numberOfLines={1}
                   >
                     {release.infoUrl}
@@ -342,7 +343,7 @@ export function ReleaseDetailSheet({
                 loading={grab.isPending}
                 icon={
                   grab.isPending ? undefined : (
-                    <Download size={16} color="white" />
+                    <Icon icon={Download} size={16} color="white" />
                   )
                 }
               />
@@ -371,7 +372,7 @@ function Stat({
         : "text-zinc-100";
   return (
     <View className="w-1/2 mb-2">
-      <Text className="text-zinc-500 text-[10px] font-semibold uppercase tracking-wide">
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wide">
         {label}
       </Text>
       <Text className={`${valueClass} text-sm font-medium mt-0.5`} numberOfLines={1}>

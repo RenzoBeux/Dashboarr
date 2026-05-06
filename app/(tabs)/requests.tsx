@@ -12,6 +12,7 @@ import {
   ListFilter,
   ArrowUpDown,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -31,6 +32,7 @@ import { ICON } from "@/lib/constants";
 import { successHaptic, errorHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
 import { PosterCard } from "@/components/overseerr/poster-card";
+import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { MediaDetailModal } from "@/components/overseerr/media-detail-modal";
 import {
   useOverseerrRequests,
@@ -137,17 +139,22 @@ export default function RequestsScreen() {
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Seerr" online={overseerrHealth?.online} />
 
-      <View className="flex-row gap-2 mb-4">
-        {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
+        {TAB_CONFIG.map(({ key, label, icon: TabIcon }) => (
           <FilterChip
             key={key}
             label={label}
             selected={tab === key}
             onPress={() => setTab(key)}
-            icon={<Icon size={14} color={tab === key ? "#fff" : "#a1a1aa"} />}
+            icon={<Icon icon={TabIcon} size={14} color={tab === key ? "#fff" : "#a1a1aa"} />}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {tab === "discover" && <DiscoverTab onItemPress={handleMediaPress} />}
       {tab === "search" && <SearchTab onItemPress={handleMediaPress} />}
@@ -236,13 +243,18 @@ function SearchTab({
             onPress={() => setQuery("")}
             className="bg-surface-light rounded-xl p-3 active:opacity-70"
           >
-            <X size={20} color="#a1a1aa" />
+            <Icon icon={X} size={20} color="#a1a1aa" />
           </Pressable>
         )}
       </View>
 
       {query.length >= 2 && (
-        <View className="flex-row gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="mb-4"
+        >
           {(["all", "movie", "tv"] as MediaTypeFilter[]).map((f) => (
             <FilterChip
               key={f}
@@ -251,7 +263,7 @@ function SearchTab({
               onPress={() => setMediaFilter(f)}
             />
           ))}
-        </View>
+        </ScrollView>
       )}
 
       {/* Loading */}
@@ -267,7 +279,7 @@ function SearchTab({
       {/* Prompt */}
       {query.length < 2 && !isLoading && (
         <EmptyState
-          icon={<Search size={32} color="#71717a" />}
+          icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="Search for media"
           message="Type at least 2 characters to search"
         />
@@ -299,11 +311,13 @@ function PosterGridItem({
   item: OverseerrMediaResult;
   onPress: (item: OverseerrMediaResult) => void;
 }) {
+  const cellWidth = usePosterCellWidth();
   return (
     <PosterCard
       item={item}
       onPress={onPress}
       size="sm"
+      widthOverride={cellWidth}
     />
   );
 }
@@ -378,9 +392,9 @@ function RequestsList() {
           label: opt.label,
           icon:
             sort === opt.key ? (
-              <Check size={18} color="#3b82f6" />
+              <Icon icon={Check} size={18} color="#3b82f6" />
             ) : (
-              <ArrowUpDown size={18} color="#71717a" />
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
             ),
           onPress: () => setSort(opt.key),
         }))}
@@ -444,14 +458,14 @@ function RequestCard({
           />
         ) : (
           <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
-            <MediaIcon size={20} color="#71717a" />
+            <Icon icon={MediaIcon} size={20} color="#71717a" />
           </View>
         )}
 
         <View className="flex-1 justify-center gap-1">
           <View className="flex-row items-center justify-between gap-2">
             <Text
-              className="text-zinc-200 text-sm font-medium flex-1"
+              className="text-zinc-200 text-base font-medium flex-1"
               numberOfLines={2}
             >
               {title}
@@ -476,8 +490,8 @@ function RequestCard({
                 hitSlop={8}
                 className={`flex-row items-center gap-1 bg-green-600/20 px-3.5 py-2 rounded-lg active:opacity-70 ${busy ? "opacity-50" : ""}`}
               >
-                <Check size={ICON.SM} color="#22c55e" />
-                <Text className="text-success text-xs font-medium">
+                <Icon icon={Check} size={ICON.SM} color="#22c55e" />
+                <Text className="text-success text-sm font-medium">
                   Approve
                 </Text>
               </Pressable>
@@ -490,8 +504,8 @@ function RequestCard({
                 hitSlop={8}
                 className={`flex-row items-center gap-1 bg-red-600/20 px-3.5 py-2 rounded-lg active:opacity-70 ${busy ? "opacity-50" : ""}`}
               >
-                <X size={ICON.SM} color="#ef4444" />
-                <Text className="text-danger text-xs font-medium">
+                <Icon icon={X} size={ICON.SM} color="#ef4444" />
+                <Text className="text-danger text-sm font-medium">
                   Decline
                 </Text>
               </Pressable>

@@ -23,7 +23,10 @@ import {
   DEFAULT_DASHBOARD_WIDGETS,
   WIDGET_ID_RENAMES,
   DASHBOARD_WIDGET_IDS,
+  UI_SCALES,
+  DEFAULT_UI_SCALE,
 } from "@/lib/constants";
+import type { UiScale } from "@/lib/constants";
 import { CURRENT_CONFIG_VERSION, migrateConfig } from "@/store/config-migrations";
 import { validateExportPayload } from "@/store/config-schema";
 import {
@@ -92,6 +95,8 @@ interface ConfigState {
   // Headers merged into every outgoing service request (Cloudflare Access etc.).
   // Per-service customHeaders override on top of these.
   globalCustomHeaders: Record<string, string>;
+  // Accessibility multiplier applied app-wide via NativeWind's rem observable.
+  uiScale: UiScale;
 }
 
 export interface ExportPayload {
@@ -115,6 +120,8 @@ export interface ExportPayload {
   hapticsEnabled?: boolean;
   // v10
   globalCustomHeaders?: Record<string, string>;
+  // v12
+  uiScale?: UiScale;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -143,6 +150,7 @@ interface ConfigActions {
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
+  setUiScale: (scale: UiScale) => void;
   getMergedHeaders: (id: ServiceId) => Record<string, string>;
   getActiveUrl: (id: ServiceId) => string;
   enableDemoMode: () => void;
@@ -240,6 +248,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   demoMode: false,
   hapticsEnabled: true,
   globalCustomHeaders: {},
+  uiScale: DEFAULT_UI_SCALE,
 
   hydrate: async () => {
     // Populate in-memory cache from AsyncStorage
@@ -350,6 +359,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const rawHaptics = getString(STORAGE_KEYS.hapticsEnabled);
     const hapticsEnabled = rawHaptics === undefined ? true : rawHaptics !== "false";
 
+    const storedUiScale = getJSON<number>(STORAGE_KEYS.uiScale);
+    const uiScale: UiScale =
+      typeof storedUiScale === "number" &&
+      (UI_SCALES as readonly number[]).includes(storedUiScale)
+        ? (storedUiScale as UiScale)
+        : DEFAULT_UI_SCALE;
+
     const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
     if (demoMode) {
       for (const id of SERVICE_IDS) {
@@ -368,6 +384,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       demoMode,
       hapticsEnabled,
       globalCustomHeaders,
+      uiScale,
       hydrated: true,
     });
   },
@@ -527,6 +544,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ globalCustomHeaders: headers });
   },
 
+  setUiScale: (scale) => {
+    if (!(UI_SCALES as readonly number[]).includes(scale)) return;
+    setJSON(STORAGE_KEYS.uiScale, scale);
+    set({ uiScale: scale });
+  },
+
   getMergedHeaders: (id) => {
     const state = get();
     return { ...state.globalCustomHeaders, ...(state.secrets[id]?.customHeaders ?? {}) };
@@ -584,6 +607,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       wolDevices,
       hapticsEnabled,
       globalCustomHeaders,
+      uiScale,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
     const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
@@ -603,6 +627,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       wolDevices,
       hapticsEnabled,
       globalCustomHeaders,
+      uiScale,
     };
 
     onStage?.("encrypting");
@@ -705,6 +730,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setBoolean(STORAGE_KEYS.hapticsEnabled, importedHapticsEnabled);
     const importedGlobalCustomHeaders = payload.globalCustomHeaders ?? {};
     setJSON(STORAGE_KEYS.globalCustomHeaders, importedGlobalCustomHeaders);
+    const importedUiScale: UiScale =
+      payload.uiScale && (UI_SCALES as readonly number[]).includes(payload.uiScale)
+        ? payload.uiScale
+        : DEFAULT_UI_SCALE;
+    setJSON(STORAGE_KEYS.uiScale, importedUiScale);
 
     // Restore backend pairing (v2+)
     if (payload.backend?.url && payload.backend?.sharedSecret) {
@@ -732,6 +762,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       wolDevices: payload.wolDevices ?? [],
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,
+      uiScale: importedUiScale,
     });
 
     return true;

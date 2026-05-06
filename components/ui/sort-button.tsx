@@ -1,5 +1,6 @@
 import { Pressable, Text, View } from "react-native";
 import { ArrowUpDown } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 
 interface SortButtonProps {
   onPress: () => void;
@@ -15,7 +16,7 @@ export function SortButton({ onPress, active }: SortButtonProps) {
         active ? "bg-primary/15" : "bg-surface-light"
       }`}
     >
-      <ArrowUpDown size={14} color={active ? "#3b82f6" : "#a1a1aa"} />
+      <Icon icon={ArrowUpDown} size={14} color={active ? "#3b82f6" : "#a1a1aa"} />
       <Text
         className={`text-sm font-medium ${
           active ? "text-primary" : "text-zinc-400"

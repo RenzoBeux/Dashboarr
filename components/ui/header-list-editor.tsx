@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Plus, Trash2 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/text-input";
 
 interface Row {
@@ -99,7 +100,7 @@ export function HeaderListEditor({
                   className="bg-surface-light rounded-xl p-3 mb-0.5 active:opacity-70"
                   accessibilityLabel="Remove header"
                 >
-                  <Trash2 size={18} color="#a1a1aa" />
+                  <Icon icon={Trash2} size={18} color="#a1a1aa" />
                 </Pressable>
               </View>
               <TextInput
@@ -121,7 +122,7 @@ export function HeaderListEditor({
           rows.length >= MAX_HEADERS ? "opacity-50" : "active:opacity-70"
         }`}
       >
-        <Plus size={16} color="#a1a1aa" />
+        <Icon icon={Plus} size={16} color="#a1a1aa" />
         <Text className="text-zinc-300 text-sm font-medium">Add header</Text>
       </Pressable>
 

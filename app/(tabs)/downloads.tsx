@@ -15,6 +15,7 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
 import { DemoBanner } from "@/components/common/demo-banner";
 import { Card } from "@/components/ui/card";
@@ -293,7 +294,7 @@ export default function DownloadsScreen() {
               altModeOn ? "bg-amber-600/20" : "bg-surface-light"
             }`}
           >
-            <Zap
+            <Icon icon={Zap}
               size={20}
               color={altModeOn ? "#f59e0b" : "#a1a1aa"}
               fill={altModeOn ? "#f59e0b" : "transparent"}
@@ -337,7 +338,7 @@ export default function DownloadsScreen() {
           variant="outline"
           size="sm"
           onPress={() => setShowAddModal(true)}
-          icon={<Plus size={16} color="#a1a1aa" />}
+          icon={<Icon icon={Plus} size={16} color="#a1a1aa" />}
           className="mb-4 self-start"
         />
       )}
@@ -446,9 +447,9 @@ export default function DownloadsScreen() {
           label: opt.label,
           icon:
             sort === opt.key ? (
-              <Check size={18} color="#3b82f6" />
+              <Icon icon={Check} size={18} color="#3b82f6" />
             ) : (
-              <ArrowUpDown size={18} color="#71717a" />
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
             ),
           onPress: () => setSort(opt.key),
         }))}
@@ -495,7 +496,7 @@ function SelectionBar({
           size="sm"
           onPress={onPause}
           disabled={busy || count === 0}
-          icon={<Pause size={14} color="#f59e0b" />}
+          icon={<Icon icon={Pause} size={14} color="#f59e0b" />}
           className="flex-1"
         />
         <Button
@@ -504,7 +505,7 @@ function SelectionBar({
           size="sm"
           onPress={onResume}
           disabled={busy || count === 0}
-          icon={<Play size={14} color="#3b82f6" />}
+          icon={<Icon icon={Play} size={14} color="#3b82f6" />}
           className="flex-1"
         />
         <Button
@@ -513,7 +514,7 @@ function SelectionBar({
           size="sm"
           onPress={onDelete}
           disabled={busy || count === 0}
-          icon={<Trash2 size={14} color="white" />}
+          icon={<Icon icon={Trash2} size={14} color="white" />}
           className="flex-1"
         />
       </View>
@@ -569,9 +570,9 @@ function TorrentListItem({
         {selectionMode && (
           <View className="mr-2 mt-0.5">
             {isSelected ? (
-              <CheckCircle2 size={18} color="#3b82f6" />
+              <Icon icon={CheckCircle2} size={18} color="#3b82f6" />
             ) : (
-              <Circle size={18} color="#71717a" />
+              <Icon icon={Circle} size={18} color="#71717a" />
             )}
           </View>
         )}
@@ -609,9 +610,9 @@ function TorrentListItem({
               hitSlop={6}
             >
               {isPaused ? (
-                <Play size={16} color="#3b82f6" />
+                <Icon icon={Play} size={16} color="#3b82f6" />
               ) : (
-                <Pause size={16} color="#f59e0b" />
+                <Icon icon={Pause} size={16} color="#f59e0b" />
               )}
             </Pressable>
             <Pressable
@@ -620,7 +621,7 @@ function TorrentListItem({
               className={`p-1.5 active:opacity-70 ${busy ? "opacity-50" : ""}`}
               hitSlop={6}
             >
-              <Trash2 size={16} color="#ef4444" />
+              <Icon icon={Trash2} size={16} color="#ef4444" />
             </Pressable>
           </View>
         )}

@@ -1,6 +1,7 @@
 import { Component } from "react";
 import { View, Text, Pressable } from "react-native";
 import { AlertTriangle } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import type { ErrorInfo, ReactNode } from "react";
 
 interface Props {
@@ -35,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <View className="flex-1 bg-background items-center justify-center px-6">
-          <AlertTriangle size={48} color="#ef4444" />
+          <Icon icon={AlertTriangle} size={48} color="#ef4444" />
           <Text className="text-zinc-100 text-lg font-bold mt-4 text-center">
             {this.props.fallbackTitle ?? "Something went wrong"}
           </Text>
@@ -112,7 +113,7 @@ export class CardErrorBoundary extends Component<
     if (this.state.hasError) {
       return (
         <View className="bg-surface rounded-2xl p-4 border border-border items-center py-6">
-          <AlertTriangle size={20} color="#71717a" />
+          <Icon icon={AlertTriangle} size={20} color="#71717a" />
           <Text className="text-zinc-500 text-sm mt-2">Failed to load</Text>
           <Pressable
             onPress={() => this.setState({ hasError: false })}

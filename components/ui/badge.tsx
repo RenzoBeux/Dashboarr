@@ -27,7 +27,7 @@ export function Badge({ label, variant = "default", count, className = "" }: Bad
     <View className={`flex-row items-center rounded-full px-2.5 py-0.5 ${VARIANT_CLASSES[variant]} ${className}`}>
       <Text className="text-white text-xs font-medium">{label}</Text>
       {count !== undefined && (
-        <View className="bg-white/20 rounded-full ml-1.5 px-1.5 min-w-[18px] items-center">
+        <View className="bg-white/20 rounded-full ml-1.5 px-1.5 min-w-[1.25rem] items-center">
           <Text className="text-white text-xs font-bold">{count}</Text>
         </View>
       )}

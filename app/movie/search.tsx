@@ -3,6 +3,7 @@ import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
 import { Film, Plus, Check, SlidersHorizontal } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
@@ -120,7 +121,7 @@ function SearchResultCard({
         />
       ) : (
         <View className="w-16 h-24 rounded-lg bg-surface-light items-center justify-center">
-          <Film size={20} color="#71717a" />
+          <Icon icon={Film} size={20} color="#71717a" />
         </View>
       )}
       <View className="flex-1 justify-center">
@@ -136,7 +137,7 @@ function SearchResultCard({
       </View>
       {alreadyAdded ? (
         <View className="self-center p-2">
-          <Check size={20} color="#22c55e" />
+          <Icon icon={Check} size={20} color="#22c55e" />
         </View>
       ) : (
         <View className="flex-row items-center self-center">
@@ -145,7 +146,7 @@ function SearchResultCard({
             className="p-2 active:opacity-70"
             hitSlop={4}
           >
-            <SlidersHorizontal size={18} color="#a1a1aa" />
+            <Icon icon={SlidersHorizontal} size={18} color="#a1a1aa" />
           </Pressable>
           <Pressable
             onPress={handleQuickAdd}
@@ -153,7 +154,7 @@ function SearchResultCard({
             disabled={addMovie.isPending}
             hitSlop={4}
           >
-            <Plus size={20} color="#3b82f6" />
+            <Icon icon={Plus} size={20} color="#3b82f6" />
           </Pressable>
         </View>
       )}

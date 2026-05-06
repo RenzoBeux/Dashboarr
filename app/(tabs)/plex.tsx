@@ -11,6 +11,7 @@ import {
   ArrowUpDown,
   Check,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import {
 } from "@/hooks/use-plex";
 import { getPlexImageUrl } from "@/services/plex-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
 import type { PlexSession, PlexMediaItem, PlexLibrary } from "@/lib/types";
@@ -122,9 +124,9 @@ export default function PlexScreen() {
           label: opt.label,
           icon:
             recentSort === opt.key ? (
-              <Check size={18} color="#3b82f6" />
+              <Icon icon={Check} size={18} color="#3b82f6" />
             ) : (
-              <ArrowUpDown size={18} color="#71717a" />
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
             ),
           onPress: () => setRecentSort(opt.key),
         }))}
@@ -140,7 +142,7 @@ function NowPlaying() {
   if (!sessions?.length) {
     return (
       <EmptyState
-        icon={<Play size={32} color="#71717a" />}
+        icon={<Icon icon={Play} size={32} color="#71717a" />}
         title="Nothing playing"
         message="No active Plex streams"
       />
@@ -197,12 +199,12 @@ function SessionCard({ session }: { session: PlexSession }) {
         />
       ) : (
         <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
-          <Play size={18} color="#71717a" />
+          <Icon icon={Play} size={18} color="#71717a" />
         </View>
       )}
       <View className="flex-1">
         <View className="flex-row items-center gap-1.5 mb-1">
-          <StateIcon size={14} color={stateColor} />
+          <Icon icon={StateIcon} size={14} color={stateColor} />
           <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
             {truncateText(title, 30)}
           </Text>
@@ -221,12 +223,13 @@ function SessionCard({ session }: { session: PlexSession }) {
 
 function RecentlyAdded({ sort }: { sort: PlexRecentSortKey }) {
   const { data: items, isLoading } = usePlexRecentlyAdded();
+  const cellWidth = usePosterCellWidth();
 
   if (isLoading) {
     return (
       <View className="flex-row flex-wrap gap-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} className="w-[30%]">
+          <View key={i} style={{ width: cellWidth }}>
             <Skeleton width="100%" height={150} borderRadius={12} />
             <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
           </View>
@@ -283,7 +286,7 @@ function OnDeck() {
               />
             ) : (
               <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
-                <Tv size={18} color="#71717a" />
+                <Icon icon={Tv} size={18} color="#71717a" />
               </View>
             )}
             <View className="flex-1 justify-center">
@@ -325,7 +328,7 @@ function Libraries() {
       {libraries.map((lib) => (
         <Card key={lib.key} className="flex-row items-center gap-3">
           <View className="bg-surface-light rounded-xl p-2.5">
-            <Library size={20} color="#a1a1aa" />
+            <Icon icon={Library} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-200 text-sm font-medium">{lib.title}</Text>
@@ -347,9 +350,10 @@ function MediaPoster({ item }: { item: PlexMediaItem }) {
     item.type === "episode"
       ? item.grandparentTitle || item.title
       : item.title;
+  const cellWidth = usePosterCellWidth();
 
   return (
-    <View className="w-[30%]">
+    <View style={{ width: cellWidth }}>
       {thumbUrl ? (
         <Image
           source={{ uri: thumbUrl }}
@@ -361,10 +365,10 @@ function MediaPoster({ item }: { item: PlexMediaItem }) {
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Play size={24} color="#71717a" />
+          <Icon icon={Play} size={24} color="#71717a" />
         </View>
       )}
-      <Text className="text-zinc-300 text-xs mt-1" numberOfLines={1}>
+      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
         {title}
       </Text>
     </View>

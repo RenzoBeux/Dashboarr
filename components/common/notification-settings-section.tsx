@@ -1,5 +1,6 @@
 import { View, Text } from "react-native";
 import { Bell } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Toggle } from "@/components/ui/toggle";
 import { useNotificationStore } from "@/store/notifications-store";
@@ -20,7 +21,7 @@ export function NotificationSettingsSection() {
       </Text>
       <Card className="gap-1">
         <View className="flex-row items-center gap-2 mb-1">
-          <Bell size={16} color="#a1a1aa" />
+          <Icon icon={Bell} size={16} color="#a1a1aa" />
           <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
             Local alerts
           </Text>

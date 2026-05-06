@@ -8,6 +8,7 @@ import {
   XCircle,
   CheckCheck,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import type { ArrRelease, SonarrRelease } from "@/lib/types";
 import { formatBytes, formatReleaseAge } from "@/lib/utils";
 import { getQualityColor } from "@/lib/quality-colors";
@@ -81,11 +82,11 @@ function ReleaseListItemImpl({
           </View>
           <View className="items-end gap-1">
             {isTorrent ? (
-              <HardDrive size={14} color="#a1a1aa" />
+              <Icon icon={HardDrive} size={14} color="#a1a1aa" />
             ) : (
-              <Cloud size={14} color="#a1a1aa" />
+              <Icon icon={Cloud} size={14} color="#a1a1aa" />
             )}
-            {release.rejected && <XCircle size={14} color="#ef4444" />}
+            {release.rejected && <Icon icon={XCircle} size={14} color="#ef4444" />}
           </View>
         </View>
 
@@ -96,7 +97,7 @@ function ReleaseListItemImpl({
             style={{ backgroundColor: qualityColor.bg }}
           >
             <Text
-              className="text-[10px] font-semibold"
+              className="text-xs font-semibold"
               style={{ color: qualityColor.text }}
             >
               {qualityName}
@@ -104,14 +105,14 @@ function ReleaseListItemImpl({
           </View>
           {isProper && (
             <View className="rounded-md px-1.5 py-0.5" style={{ backgroundColor: "#b45309" }}>
-              <Text className="text-[10px] font-semibold" style={{ color: "#fffbeb" }}>
+              <Text className="text-xs font-semibold" style={{ color: "#fffbeb" }}>
                 PROPER
               </Text>
             </View>
           )}
           {isRepack && (
             <View className="rounded-md px-1.5 py-0.5" style={{ backgroundColor: "#b45309" }}>
-              <Text className="text-[10px] font-semibold" style={{ color: "#fffbeb" }}>
+              <Text className="text-xs font-semibold" style={{ color: "#fffbeb" }}>
                 REPACK
               </Text>
             </View>
@@ -121,14 +122,14 @@ function ReleaseListItemImpl({
               className="rounded-md px-1.5 py-0.5 flex-row items-center gap-1"
               style={{ backgroundColor: "#5b21b6" }}
             >
-              <CheckCheck size={10} color="#ede9fe" />
-              <Text className="text-[10px] font-semibold" style={{ color: "#f5f3ff" }}>
+              <Icon icon={CheckCheck} size={10} color="#ede9fe" />
+              <Text className="text-xs font-semibold" style={{ color: "#f5f3ff" }}>
                 {episodeCount > 0 ? `Season Pack · ${episodeCount} ep` : "Season Pack"}
               </Text>
             </View>
           )}
           {release.releaseGroup && (
-            <Text className="text-[10px] text-zinc-500" numberOfLines={1}>
+            <Text className="text-xs text-zinc-500" numberOfLines={1}>
               {release.releaseGroup}
             </Text>
           )}
@@ -139,7 +140,7 @@ function ReleaseListItemImpl({
           <Text className="text-xs text-zinc-400">{formatBytes(release.size)}</Text>
           {isTorrent && (
             <View className="flex-row items-center gap-1">
-              <Users size={11} color="#a1a1aa" />
+              <Icon icon={Users} size={11} color="#a1a1aa" />
               <Text className={`text-xs font-medium ${seedHealthClass}`}>
                 {seeders}
               </Text>
@@ -159,7 +160,7 @@ function ReleaseListItemImpl({
 
       {release.rejected && release.rejections && release.rejections.length > 0 && (
         <Text
-          className="text-[11px] text-red-400 mt-1.5 leading-4"
+          className="text-xs text-red-400 mt-1.5 leading-4"
           numberOfLines={1}
         >
           Rejected: {release.rejections[0]}

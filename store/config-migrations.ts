@@ -1,4 +1,9 @@
-import { DEFAULT_DASHBOARD_WIDGETS, WIDGET_ID_RENAMES } from "@/lib/constants";
+import {
+  DEFAULT_DASHBOARD_WIDGETS,
+  WIDGET_ID_RENAMES,
+  UI_SCALES,
+  DEFAULT_UI_SCALE,
+} from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
 
 /**
@@ -21,8 +26,9 @@ import type { ExportPayload } from "@/store/config-store";
  *         at the top level for reverse-proxy auth (Cloudflare Access etc.)
  *   v11 — replaced single homeSSID/homeBSSID with homeNetworks: HomeNetwork[]
  *         so mesh setups can mark every AP as "home"
+ *   v12 — added uiScale (accessibility): app-wide font/spacing/icon multiplier
  */
-export const CURRENT_CONFIG_VERSION = 11;
+export const CURRENT_CONFIG_VERSION = 12;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -153,6 +159,18 @@ const migrations: Record<number, (payload: any) => any> = {
     const { homeSSID: _s, homeBSSID: _b, ...rest } = payload;
     return { ...rest, version: 11, homeNetworks };
   },
+
+  // v11 → v12: add uiScale (accessibility multiplier for fonts/spacing/icons).
+  // Pre-v12 backups never recorded it, so default to 1 (no scaling) which
+  // matches the prior behavior. Whitelist the value: anything outside the
+  // allowed set falls back to the default.
+  11: (payload) => ({
+    ...payload,
+    version: 12,
+    uiScale: (UI_SCALES as readonly number[]).includes(payload.uiScale)
+      ? payload.uiScale
+      : DEFAULT_UI_SCALE,
+  }),
 };
 
 /**

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Pressable, Alert, ActivityIndicator } from "react-native";
 import { Wifi, Plus, Pencil, Trash2 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
@@ -176,7 +177,7 @@ export default function HomeNetworksScreen() {
               {detecting ? (
                 <ActivityIndicator size={20} color="#a1a1aa" />
               ) : (
-                <Wifi size={20} color="#a1a1aa" />
+                <Icon icon={Wifi} size={20} color="#a1a1aa" />
               )}
             </Pressable>
           </View>
@@ -218,14 +219,14 @@ export default function HomeNetworksScreen() {
         title="Home Networks"
         right={
           <Pressable onPress={startAdd} className="active:opacity-70 p-1">
-            <Plus size={22} color="#3b82f6" />
+            <Icon icon={Plus} size={22} color="#3b82f6" />
           </Pressable>
         }
       />
 
       {!homeNetworks.length ? (
         <View className="items-center justify-center py-20 gap-3">
-          <Wifi size={40} color="#3f3f46" />
+          <Icon icon={Wifi} size={40} color="#3f3f46" />
           <Text className="text-zinc-400 text-base text-center">
             No home networks configured
           </Text>
@@ -238,14 +239,14 @@ export default function HomeNetworksScreen() {
               label="Add current WiFi"
               onPress={handleDetect}
               loading={detecting}
-              icon={<Wifi size={14} color="#fff" />}
+              icon={<Icon icon={Wifi} size={14} color="#fff" />}
               size="sm"
             />
             <Button
               label="Add manually"
               onPress={startAdd}
               variant="outline"
-              icon={<Plus size={14} color="#a1a1aa" />}
+              icon={<Icon icon={Plus} size={14} color="#a1a1aa" />}
               size="sm"
             />
           </View>
@@ -256,7 +257,7 @@ export default function HomeNetworksScreen() {
             <Card key={network.id} className="gap-2">
               <View className="flex-row items-center">
                 <View className="bg-surface-light rounded-xl p-2.5 mr-3">
-                  <Wifi size={20} color="#a1a1aa" />
+                  <Icon icon={Wifi} size={20} color="#a1a1aa" />
                 </View>
                 <View className="flex-1">
                   <Text className="text-zinc-100 text-base font-medium">
@@ -271,13 +272,13 @@ export default function HomeNetworksScreen() {
                     onPress={() => startEdit(network)}
                     className="p-2 active:opacity-70"
                   >
-                    <Pencil size={16} color="#71717a" />
+                    <Icon icon={Pencil} size={16} color="#71717a" />
                   </Pressable>
                   <Pressable
                     onPress={() => handleDelete(network)}
                     className="p-2 active:opacity-70"
                   >
-                    <Trash2 size={16} color="#71717a" />
+                    <Icon icon={Trash2} size={16} color="#71717a" />
                   </Pressable>
                 </View>
               </View>
@@ -289,7 +290,7 @@ export default function HomeNetworksScreen() {
               onPress={handleDetect}
               loading={detecting}
               variant="outline"
-              icon={<Wifi size={14} color="#a1a1aa" />}
+              icon={<Icon icon={Wifi} size={14} color="#a1a1aa" />}
               size="sm"
               className="flex-1"
             />
@@ -297,7 +298,7 @@ export default function HomeNetworksScreen() {
               label="Add manually"
               onPress={startAdd}
               variant="outline"
-              icon={<Plus size={14} color="#a1a1aa" />}
+              icon={<Icon icon={Plus} size={14} color="#a1a1aa" />}
               size="sm"
               className="flex-1"
             />

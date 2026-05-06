@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, View, Text, ScrollView, ActivityIndicator } from "react-native";
 import { Zap, ArrowDown, ArrowUp } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
@@ -143,8 +144,8 @@ export function SpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetProps) {
             <>
               <Card className="mb-4 gap-3">
                 <View className="flex-row items-center gap-2">
-                  <ArrowDown size={16} color="#3b82f6" />
-                  <ArrowUp size={16} color="#22c55e" />
+                  <Icon icon={ArrowDown} size={16} color="#3b82f6" />
+                  <Icon icon={ArrowUp} size={16} color="#22c55e" />
                   <Text className="text-zinc-300 text-sm font-semibold">
                     Global limits
                   </Text>
@@ -170,7 +171,7 @@ export function SpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetProps) {
 
               <Card className="mb-4 gap-3">
                 <View className="flex-row items-center gap-2">
-                  <Zap size={16} color="#f59e0b" />
+                  <Icon icon={Zap} size={16} color="#f59e0b" />
                   <Text className="text-zinc-300 text-sm font-semibold">
                     Alternative limits
                   </Text>

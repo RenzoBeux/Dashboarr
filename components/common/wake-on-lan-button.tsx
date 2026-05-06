@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Zap } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
@@ -49,7 +50,7 @@ export function WakeOnLanButton({
       variant={variant}
       size={size}
       loading={sending}
-      icon={<Zap size={14} color={variant === "primary" ? "#fff" : "#a1a1aa"} />}
+      icon={<Icon icon={Zap} size={14} color={variant === "primary" ? "#fff" : "#a1a1aa"} />}
       className={className}
     />
   );
