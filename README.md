@@ -118,67 +118,11 @@ The `release:*` scripts require the [GitHub CLI](https://cli.github.com/) (`gh`)
 
 ## Backend (Optional — Push Notifications)
 
-Dashboarr works fully without a backend, but if you want **real push notifications** (torrent completed, new episodes grabbed, request approved, etc.), you can self-host the companion backend.
+Dashboarr works fully without a backend. If you want **real push notifications** delivered to your phone's lock screen — torrent completed, new episodes grabbed, request approved, service offline — you can self-host the lightweight companion backend.
 
-The backend is a lightweight Fastify + SQLite server that:
-- **Polls** your *arr services on a schedule and detects state changes
-- **Receives webhooks** from Radarr, Sonarr, Seerr, Bazarr, and Tautulli
-- **Sends push notifications** to your phone via the Expo push service
-- **Pairs** with your device via QR code — no accounts needed
+The backend polls your services and ingests their webhooks, then fires Expo pushes to every paired device. It pairs with your phone via QR code (no accounts) and supports multiple instances per service kind.
 
-### Quick Start (Docker)
-
-```yaml
-# docker-compose.yml
-services:
-  dashboarr-backend:
-    build: ./backend/dashboarr-backend
-    # or use a pre-built image:
-    # image: ghcr.io/renzobeux/dashboarr-backend:latest
-    container_name: dashboarr-backend
-    restart: unless-stopped
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./data:/data
-    environment:
-      - NODE_ENV=production
-      - LOG_LEVEL=info
-      # Public URL your phone will use to reach the backend.
-      # When set the pairing QR encodes both the URL and token so the app
-      # can pair in a single scan. When omitted the QR only contains the
-      # token and you enter the URL manually in the app.
-      # - PUBLIC_URL=https://dashboarr.yourdomain.com
-      # Enable if behind a reverse proxy (Caddy, Nginx, Traefik) so
-      # rate limiting uses the real client IP from X-Forwarded-For.
-      # - TRUST_PROXY=true
-      # Poll Expo for push delivery receipts (rarely needed).
-      # - PUSH_RECEIPTS=true
-      # Consecutive failed health checks (30s each) before "service offline"
-      # notification. Default 3 (~1.5 min). Set to 10 for ~5 min tolerance.
-      # - OFFLINE_THRESHOLD=10
-      # Route service polls via remoteUrl instead of localUrl. The app's own
-      # useRemote flag is always ignored server-side. Default false (backend
-      # on LAN). Flip to true only if the backend lives off-LAN.
-      # - BACKEND_USE_REMOTE=false
-```
-
-```bash
-docker compose up -d
-```
-
-### Quick Start (Node.js)
-
-```bash
-cd backend/dashboarr-backend
-npm install
-npm run build
-npm start
-```
-
-Then open the Dashboarr app, go to **Settings → Backend**, enter your backend URL, and scan the pairing QR code.
-
-For full setup instructions, environment variables, webhook configuration, and more, see the [backend README](backend/dashboarr-backend/README.md).
+For setup, configuration, environment variables, webhook URLs, and per-instance push attribution, see the **[backend README](backend/dashboarr-backend/README.md)**.
 
 ## Configuration
 

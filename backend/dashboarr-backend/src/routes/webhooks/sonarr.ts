@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { dispatchPush } from "../../push/dispatcher.js";
-import { checkWebhookSecret } from "./shared.js";
+import {
+  checkWebhookSecret,
+  resolveWebhookInstance,
+  webhookTitlePrefix,
+} from "./shared.js";
 
 interface SonarrWebhookPayload {
   eventType?: string;
@@ -10,7 +14,10 @@ interface SonarrWebhookPayload {
   downloadId?: string;
 }
 
-type WebhookReq = FastifyRequest<{ Params: { secret?: string } }>;
+type WebhookReq = FastifyRequest<{
+  Params: { secret?: string };
+  Querystring: { instance?: string };
+}>;
 
 export async function sonarrWebhook(app: FastifyInstance): Promise<void> {
   const handler = async (request: WebhookReq, reply: FastifyReply) => {
@@ -19,10 +26,14 @@ export async function sonarrWebhook(app: FastifyInstance): Promise<void> {
     const payload = (request.body ?? {}) as SonarrWebhookPayload;
     recordWebhook("sonarr", payload);
 
+    const inst = resolveWebhookInstance(request, "sonarr");
+    const prefix = webhookTitlePrefix(inst, "sonarr");
+    const dedupeNs = inst ? inst.id : "any";
+
     if (payload.eventType === "Test") {
       await dispatchPush({
         category: "sonarrDownloaded",
-        title: "Sonarr webhook connected",
+        title: `${prefix}Sonarr webhook connected`,
         body: "Test notification received successfully",
         bypassCategory: true,
       });
@@ -40,16 +51,27 @@ export async function sonarrWebhook(app: FastifyInstance): Promise<void> {
       const title = `${payload.series.title}${suffix}`;
       await dispatchPush({
         category: "sonarrDownloaded",
-        title: "Episode downloaded",
+        title: `${prefix}Episode downloaded`,
         body: title,
-        data: { type: "sonarr", seriesId: payload.series.id, episodeId: firstEp?.id },
-        dedupeKey: `sonarr:webhook:${payload.downloadId ?? firstEp?.id ?? payload.series.id}`,
+        data: {
+          type: "sonarr",
+          seriesId: payload.series.id,
+          episodeId: firstEp?.id,
+          instanceId: inst?.id,
+        },
+        dedupeKey: `sonarr:webhook:${dedupeNs}:${payload.downloadId ?? firstEp?.id ?? payload.series.id}`,
       });
     }
 
     return { ok: true };
   };
 
-  app.post<{ Params: { secret?: string } }>("/webhooks/sonarr", handler);
-  app.post<{ Params: { secret?: string } }>("/webhooks/sonarr/:secret", handler);
+  app.post<{ Params: { secret?: string }; Querystring: { instance?: string } }>(
+    "/webhooks/sonarr",
+    handler,
+  );
+  app.post<{ Params: { secret?: string }; Querystring: { instance?: string } }>(
+    "/webhooks/sonarr/:secret",
+    handler,
+  );
 }

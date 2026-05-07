@@ -51,7 +51,19 @@ export interface BackendHealth {
   name: string;
   version: string;
   expoAuth: string;
-  pollers: { id: string; intervalMs: number; lastRunAt: number | null; lastError: string | null }[];
+  // Multi-instance backends: `id` is the per-instance UUID, `kind` is the
+  // service kind, `name` is the user-facing label. Older backends omit
+  // `kind`/`name` and put the kind in `id`. `useBackendHealth` only reads
+  // `ok` today, but the richer fields are available for any future UI that
+  // wants to surface backend-side per-instance polling status.
+  pollers: {
+    id: string;
+    kind?: string;
+    name?: string;
+    intervalMs: number;
+    lastRunAt: number | null;
+    lastError: string | null;
+  }[];
   uptimeMs: number;
 }
 
@@ -99,25 +111,38 @@ export function testPush(): Promise<void> {
 /**
  * Build a config payload from the app stores and push it to the backend.
  * Called on pairing and debounced after any config/notification change.
+ *
+ * Sends the multi-instance shape (`instances: [{ id, kind, ... }]`). The
+ * backend accepts both the new shape and the pre-multi-instance `services`
+ * shape — see backend/dashboarr-backend/src/routes/config.ts — so a backend
+ * that hasn't been upgraded yet won't reject this payload, it'll just
+ * normalize legacy single-instance entries internally.
  */
 export function pushConfigSnapshot(): Promise<void> {
   const configState = useConfigStore.getState();
   const notificationState = useNotificationStore.getState();
 
-  const services = SERVICE_IDS.map((id) => {
-    const config = configState.services[id];
-    const secrets = configState.secrets[id];
-    return {
-      id,
-      enabled: config.enabled,
-      name: config.name,
-      localUrl: config.localUrl,
-      remoteUrl: config.remoteUrl,
-      useRemote: config.useRemote,
-      apiKey: secrets.apiKey || undefined,
-      username: secrets.username || undefined,
-      password: secrets.password || undefined,
-    };
+  const instances = SERVICE_IDS.flatMap((kind) => {
+    const list = configState.serviceInstances[kind] ?? [];
+    return list.map((inst) => {
+      const secrets = configState.instanceSecrets[inst.id] ?? {
+        apiKey: "",
+        username: "",
+        password: "",
+      };
+      return {
+        id: inst.id,
+        kind,
+        enabled: inst.enabled,
+        name: inst.name,
+        localUrl: inst.localUrl,
+        remoteUrl: inst.remoteUrl,
+        useRemote: inst.useRemote,
+        apiKey: secrets.apiKey || undefined,
+        username: secrets.username || undefined,
+        password: secrets.password || undefined,
+      };
+    });
   });
 
   const { enabled, torrentCompleted, radarrDownloaded, sonarrDownloaded, serviceOffline, overseerrNewRequest } =
@@ -126,7 +151,7 @@ export function pushConfigSnapshot(): Promise<void> {
   return request<void>("/config", {
     method: "PUT",
     body: JSON.stringify({
-      services,
+      instances,
       notifications: {
         enabled,
         torrentCompleted,

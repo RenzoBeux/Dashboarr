@@ -1,4 +1,5 @@
-import type { StoredServiceConfig } from "../../db/repos/config.js";
+import { instanceToServiceConfig } from "../../db/repos/config.js";
+import type { StoredServiceInstance } from "../../db/repos/service-instance.js";
 import { getProwlarrIndexerStatuses } from "../../services/prowlarr.js";
 
 /**
@@ -7,6 +8,6 @@ import { getProwlarrIndexerStatuses } from "../../services/prowlarr.js";
  * notification category for "indexer failed" yet. Extend once a category is
  * added to NotificationSettings.
  */
-export async function pollProwlarr(config: StoredServiceConfig): Promise<void> {
-  await getProwlarrIndexerStatuses(config);
+export async function pollProwlarr(instance: StoredServiceInstance): Promise<void> {
+  await getProwlarrIndexerStatuses(instanceToServiceConfig(instance));
 }

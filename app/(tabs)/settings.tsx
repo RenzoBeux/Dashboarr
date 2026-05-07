@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { View, Text, Alert, BackHandler, Pressable } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
@@ -15,6 +16,7 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
+  Copy,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo } from "@/components/ui/service-logo";
@@ -27,6 +29,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { Select } from "@/components/ui/select";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
+import { useBackendStore } from "@/store/backend-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { ProgressModal } from "@/components/common/progress-modal";
@@ -50,6 +53,18 @@ import {
   loadRememberedPassphrase,
   saveRememberedPassphrase,
 } from "@/lib/config-passphrase";
+
+// Service kinds whose backend webhook integration uses ?instance=<uuid> to
+// attribute events to a specific instance. Other kinds (qbittorrent, prowlarr,
+// plex, jellyfin, glances) don't have a webhook integration, so the
+// instance-id helper card is hidden for them.
+const WEBHOOK_KINDS = new Set<ServiceId>([
+  "radarr",
+  "sonarr",
+  "tautulli",
+  "overseerr",
+  "bazarr",
+]);
 
 // Display name for the service kind (used in the main settings list, before
 // the user picks an instance). Each instance also carries its own editable
@@ -954,6 +969,8 @@ function ServiceEditor({
         />
       </Card>
 
+      <WebhookInstanceIdCard serviceId={serviceId} instanceId={instanceId} />
+
       <View className="flex-row gap-3 mb-4">
         <Button
           label="Test Connection"
@@ -988,5 +1005,60 @@ function ServiceEditor({
         onCancel={() => setConfirmDelete(false)}
       />
     </ScreenWrapper>
+  );
+}
+
+/**
+ * Read-only display of the instance UUID for webhook attribution. The user
+ * appends `?instance=<id>` to the webhook URL they paste into Radarr/Sonarr/
+ * etc., and the backend uses that to tag pushes with the instance name (e.g.
+ * "Radarr Seedbox: Movie X downloaded"). Hidden for kinds without a webhook
+ * integration, and hidden when no backend is paired (the id has no use
+ * standalone).
+ */
+function WebhookInstanceIdCard({
+  serviceId,
+  instanceId,
+}: {
+  serviceId: ServiceId;
+  instanceId: string;
+}) {
+  const backendUrl = useBackendStore((s) => s.url);
+
+  if (!WEBHOOK_KINDS.has(serviceId)) return null;
+  if (!backendUrl) return null;
+
+  const handleCopy = async () => {
+    await Clipboard.setStringAsync(instanceId);
+    brrrHaptic();
+    toast("Instance ID copied", "success");
+  };
+
+  return (
+    <Card className="gap-3 mb-4">
+      <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+        Webhook Attribution
+      </Text>
+      <Text className="text-zinc-400 text-xs leading-5">
+        Append <Text className="text-zinc-200">?instance=&lt;id&gt;</Text> to your
+        backend webhook URL in this service's notification settings so push
+        notifications can be tagged with this instance's name. Optional —
+        without it, pushes still arrive but aren't attributed.
+      </Text>
+      <Pressable
+        onPress={() => void handleCopy()}
+        className="flex-row items-center justify-between bg-surface-light rounded-xl p-3 active:opacity-70"
+      >
+        <Text
+          className="text-zinc-200 text-xs flex-1 mr-3"
+          numberOfLines={1}
+          ellipsizeMode="middle"
+          selectable
+        >
+          {instanceId}
+        </Text>
+        <Icon icon={Copy} size={16} color="#a1a1aa" />
+      </Pressable>
+    </Card>
   );
 }

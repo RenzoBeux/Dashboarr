@@ -39,12 +39,25 @@ The warning is surfaced in:
 2. It exposes an HTTP API, a pairing QR page, and webhook ingestion endpoints.
 3. You open Dashboarr → Settings → Backend on your phone, scan the pairing
    QR, and the phone exchanges its Expo push token for a durable shared secret.
-4. The app pushes its current service config to the backend (URLs, API keys,
-   notification toggles). The backend starts polling and/or waiting for
-   webhooks.
+4. The app pushes its current service config to the backend (every configured
+   instance per kind — URLs, API keys, notification toggles). The backend
+   spawns one poller per enabled instance and starts ingesting webhooks.
 5. When something happens — a download finishes, a service goes offline, a new
    Seerr request appears — the backend fires an Expo push that lands on
    your phone whether the app is running or not.
+
+### Multi-instance support
+
+Each service kind can have multiple instances (e.g. "Radarr Home" and "Radarr
+Seedbox"). The backend keys every poller, every state-tracking row, and every
+push dedupe key by the per-instance UUID, so two Radarrs grabbing the same
+release produce two distinct notifications instead of false-deduping each
+other. Push titles get the instance name prefix automatically when a kind has
+more than one enabled instance — single-instance setups stay terse.
+
+For incoming webhooks, attribution is opt-in via a `?instance=<uuid>` query
+param on the webhook URL — see [Per-instance webhook attribution](#per-instance-webhook-attribution)
+below.
 
 ### Trust chain
 
@@ -167,13 +180,13 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/pair/claim` | one-time token in body | Exchange token + push token for shared secret |
 | `POST` | `/device/register` | bearer | Refresh push token on reinstall |
 | `POST` | `/device/unregister` | bearer | Remove this device |
-| `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers |
+| `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers. Accepts the multi-instance shape `{ instances: [{ id, kind, … }], notifications }` and the legacy `{ services: [{ id, … }], notifications }` shape for back-compat |
 | `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices |
-| `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred) |
+| `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred). Optional `?instance=<uuid>` for per-instance attribution |
 | `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
-| `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook |
+| `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook. Optional `?instance=<uuid>` |
 | `POST` | `/webhooks/sonarr/:secret` | path | Sonarr back-compat |
-| `POST` | `/webhooks/overseerr` | header | Seerr webhook (path kept for back-compat) |
+| `POST` | `/webhooks/overseerr` | header | Seerr webhook. Optional `?instance=<uuid>` |
 | `POST` | `/webhooks/overseerr/:secret` | path | Seerr back-compat |
 | `POST` | `/webhooks/bazarr` | header | Bazarr webhook (logged only) |
 | `POST` | `/webhooks/bazarr/:secret` | path | Bazarr back-compat |
@@ -198,6 +211,55 @@ everything else at 120 req/min, all per source IP.
 
 ---
 
+## Per-instance webhook attribution
+
+By default a webhook URL like `/webhooks/radarr` is **kind-attributed** — when
+it fires, the push reads "Radarr: Movie X downloaded" regardless of which
+Radarr instance sent it. Single-instance setups need nothing more than that.
+
+If you have multiple instances of the same kind (e.g. "Radarr Home" and
+"Radarr Seedbox") and want pushes to say which one fired, append
+`?instance=<uuid>` to the webhook URL **in that service's notification
+settings**. Each Radarr's webhook config gets its own URL with its own
+instance UUID.
+
+```
+# Without attribution (kind-only):
+https://dashboarr.example.com/webhooks/radarr
+
+# With attribution (instance-tagged push):
+https://dashboarr.example.com/webhooks/radarr?instance=8b1f...c4d2
+```
+
+Where to find the instance UUID: in the Dashboarr app, open **Settings →
+&lt;service&gt; → &lt;instance&gt;**. The "Webhook Attribution" card shows the
+instance UUID with a tap-to-copy button. The card only appears when a backend
+is paired and the service has a webhook integration (Radarr, Sonarr, Seerr,
+Tautulli, Bazarr).
+
+The single shared `X-Dashboarr-Secret` (or `:secret` path segment) keeps
+working unchanged — the query param is a pure additive opt-in.
+
+What you get when attribution is on:
+
+- Push title gains the instance name prefix when the kind has &gt;1 enabled
+  instance: "Radarr Seedbox: Movie X downloaded".
+- Dedupe key is namespaced by instance UUID, so two Radarrs grabbing the same
+  release (same upstream `downloadId`) produce two pushes instead of false-
+  deduping each other.
+- The push payload includes `data.instanceId` for any future deep-linking
+  ("tap notification → open this instance").
+
+If the param is absent, malformed, or refers to a deleted/disabled instance,
+the backend silently degrades to kind-only attribution rather than rejecting
+the event — the upstream services don't retry on 4xx, so dropping a real event
+because of a stale URL would be worse than emitting a generic push.
+
+Tautulli and Bazarr webhooks accept the param too but only record events (no
+push), so attribution there is a no-op until those categories are added.
+
+---
+
 ## Notification event sources
 
 | Service | Webhook? | Polling? | Notes |
@@ -212,9 +274,13 @@ everything else at 120 req/min, all per source IP.
 | **Glances** | ❌ | ✅ 30s | Health-only; threshold alerts TBD |
 | **Plex** | ❌ | — | Nothing polled; reserved |
 
-Events are deduped across sources with keys like
-`event:qbt:completed:<hash>` and `event:radarr:webhook:<downloadId>` so a
-webhook and a poller can't double-fire the same download.
+Events are deduped per instance using keys that carry the instance UUID — e.g.
+`event:qbt:<instanceId>:completed:<hash>` for poller-driven pushes and
+`event:radarr:webhook:<instanceId-or-"any">:<downloadId>` for webhook-driven
+ones. The instance namespace prevents two enabled instances of the same kind
+from collapsing each other's events when they happen to share an upstream id
+(e.g. two Radarrs both grabbing the same release via the same qBittorrent
+hash).
 
 ---
 
@@ -231,11 +297,11 @@ curl -X POST http://localhost:4000/pair/claim \
   -d '{"token":"<from-logs>","expoPushToken":"ExponentPushToken[test]","platform":"ios"}'
 # → { "deviceId": "...", "sharedSecret": "..." }
 
-# 3. Push a config (minimal)
+# 3. Push a config (minimal — empty instances list is valid)
 curl -X PUT http://localhost:4000/config \
   -H "Authorization: Bearer <sharedSecret>" \
   -H 'Content-Type: application/json' \
-  -d '{"services":[],"notifications":{"enabled":true,"torrentCompleted":true,"radarrDownloaded":true,"sonarrDownloaded":true,"serviceOffline":true,"overseerrNewRequest":true}}'
+  -d '{"instances":[],"notifications":{"enabled":true,"torrentCompleted":true,"radarrDownloaded":true,"sonarrDownloaded":true,"serviceOffline":true,"overseerrNewRequest":true}}'
 
 # 4. Fire a test push (will log DeviceNotRegistered for the fake token)
 curl -X POST http://localhost:4000/notifications/test \
