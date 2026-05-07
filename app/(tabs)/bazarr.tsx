@@ -33,7 +33,7 @@ export default function BazarrScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Bazarr" online={bazarrHealth?.online} />
+      <ServiceHeader name="Bazarr" online={bazarrHealth?.online} serviceId="bazarr" />
 
       <ScrollView
         horizontal

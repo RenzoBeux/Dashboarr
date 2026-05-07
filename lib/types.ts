@@ -1011,9 +1011,24 @@ export interface BazarrProvider {
 
 // --- Shared Types ---
 
+// Health entry for a single configured instance — one kind can have many.
+export interface ServiceInstanceHealthStatus {
+  instanceId: string;
+  instanceName: string;
+  online: boolean;
+  responseTime?: number;
+}
+
+// Aggregated health for a service kind. The top-level `online`/`responseTime`
+// are derived from `instances` so existing consumers (`healthData.find(s => s.id ===
+// "tautulli").online`) keep working as if each kind were a singleton: the kind
+// is "online" when at least one of its instances is reachable, and shows the
+// fastest of those response times. Per-instance breakdown lives under
+// `instances` for the notification watcher and the service-health card.
 export interface ServiceHealthStatus {
   id: string;
   name: string;
   online: boolean;
   responseTime?: number;
+  instances: ServiceInstanceHealthStatus[];
 }

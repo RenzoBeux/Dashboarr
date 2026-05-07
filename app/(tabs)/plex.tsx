@@ -85,7 +85,7 @@ export default function PlexScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Plex" online={plexHealth?.online} />
+      <ServiceHeader name="Plex" online={plexHealth?.online} serviceId="plex" />
 
       <View className="flex-row items-center gap-2 mb-4">
         <ScrollView

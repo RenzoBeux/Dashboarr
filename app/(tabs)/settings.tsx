@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, Alert, BackHandler } from "react-native";
+import { View, Text, Alert, BackHandler, Pressable } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
@@ -21,7 +21,12 @@ import {
   Zap,
   ImageOff,
   Globe,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -37,7 +42,7 @@ import { ProgressModal } from "@/components/common/progress-modal";
 import { BackHeader } from "@/components/common/back-header";
 import { pingService } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
-import { SERVICE_IDS } from "@/lib/constants";
+import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import { validateServiceUrl } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
@@ -68,8 +73,37 @@ const SERVICE_ICONS: Record<ServiceId, React.ComponentType<any>> = {
   bazarr: Captions,
 };
 
+// Display name for the service kind (used in the main settings list, before
+// the user picks an instance). Each instance also carries its own editable
+// `name`, but the kind row needs a stable label.
+const SERVICE_DEFAULTS_KIND_LABEL: Record<ServiceId, string> = SERVICE_IDS.reduce(
+  (acc, id) => {
+    acc[id] = SERVICE_DEFAULTS[id].name;
+    return acc;
+  },
+  {} as Record<ServiceId, string>,
+);
+
+// Module-level singletons for the "absent" case in store selectors. Returning
+// `?? []` or `?? {}` from inside a Zustand selector creates a fresh reference
+// on every store update, which Zustand reads as "value changed" and triggers
+// a re-render — and if the consumer is a `useState`-bearing form like
+// ServiceEditor, that re-render kicks the selector again, etc., until React
+// throws "Maximum update depth exceeded". Using a stable empty value keeps
+// the selector idempotent across non-mutating store updates.
+const EMPTY_INSTANCES: import("@/store/config-store").ServiceInstance[] = [];
+const EMPTY_SECRETS: import("@/store/config-store").ServiceSecrets = {};
+
 export default function SettingsScreen() {
-  const [editingService, setEditingService] = useState<ServiceId | null>(null);
+  // Multi-instance settings has three views:
+  //   • main: list of service kinds with instance counts
+  //   • viewingService: list of instances for one kind (with add/edit/delete)
+  //   • editingInstance: per-instance editor (URL/auth/name/delete)
+  const [viewingService, setViewingService] = useState<ServiceId | null>(null);
+  const [editingInstance, setEditingInstance] = useState<{
+    serviceId: ServiceId;
+    instanceId: string;
+  } | null>(null);
   const [exportStage, setExportStage] = useState<ExportStage | null>(null);
   const [importStage, setImportStage] = useState<ImportStage | null>(null);
   const [passphraseRequest, setPassphraseRequest] = useState<{
@@ -97,7 +131,7 @@ export default function SettingsScreen() {
     }
   };
 
-  const services = useConfigStore((s) => s.services);
+  const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
   const setAutoSwitch = useConfigStore((s) => s.setAutoSwitch);
@@ -187,41 +221,67 @@ export default function SettingsScreen() {
     }
   };
 
-  if (editingService) {
+  if (editingInstance) {
     return (
       <ServiceEditor
-        serviceId={editingService}
-        onBack={() => setEditingService(null)}
+        serviceId={editingInstance.serviceId}
+        instanceId={editingInstance.instanceId}
+        onBack={() => setEditingInstance(null)}
+        onDeleted={() => setEditingInstance(null)}
       />
     );
   }
 
-  const enabledServiceIds = SERVICE_IDS.filter((id) => services[id].enabled);
-  const disabledServiceIds = SERVICE_IDS.filter((id) => !services[id].enabled);
+  if (viewingService) {
+    return (
+      <InstanceList
+        serviceId={viewingService}
+        onBack={() => setViewingService(null)}
+        onEditInstance={(instanceId) =>
+          setEditingInstance({ serviceId: viewingService, instanceId })
+        }
+      />
+    );
+  }
 
-  const renderServiceRow = (id: ServiceId) => {
-    const config = services[id];
+  const renderKindRow = (id: ServiceId) => {
     const ServiceIcon = SERVICE_ICONS[id];
-    const subtitle = config.enabled
-      ? config.useRemote
-        ? config.remoteUrl || "No remote URL"
-        : config.localUrl || "No local URL"
-      : "Tap to configure";
+    const list = serviceInstances[id] ?? [];
+    const enabledCount = list.filter((i) => i.enabled).length;
+    const subtitle =
+      list.length === 0
+        ? "Tap to add"
+        : list.length === 1
+          ? list[0].enabled
+            ? list[0].useRemote
+              ? list[0].remoteUrl || "No remote URL"
+              : list[0].localUrl || "No local URL"
+            : "Tap to configure"
+          : `${list.length} instances · ${enabledCount} enabled`;
     return (
       <SettingsRow
         key={id}
         icon={ServiceIcon}
-        label={config.name}
+        label={SERVICE_DEFAULTS_KIND_LABEL[id]}
         subtitle={subtitle}
-        onPress={() => setEditingService(id)}
+        onPress={() => setViewingService(id)}
         right={
-          config.enabled ? (
+          enabledCount > 0 ? (
             <View className="w-2 h-2 rounded-full bg-success" />
           ) : null
         }
       />
     );
   };
+
+  // Determine ordering: kinds with at least one enabled instance come first,
+  // matching the v12 "configured at top" UX.
+  const enabledKinds = SERVICE_IDS.filter((id) =>
+    (serviceInstances[id] ?? []).some((i) => i.enabled),
+  );
+  const disabledKinds = SERVICE_IDS.filter(
+    (id) => !(serviceInstances[id] ?? []).some((i) => i.enabled),
+  );
 
   return (
     <ScreenWrapper>
@@ -230,15 +290,15 @@ export default function SettingsScreen() {
       </Text>
 
       <SettingsGroup title="Services">
-        {enabledServiceIds.map(renderServiceRow)}
-        {disabledServiceIds.length > 0 && enabledServiceIds.length > 0 ? (
+        {enabledKinds.map(renderKindRow)}
+        {disabledKinds.length > 0 && enabledKinds.length > 0 ? (
           <View className="px-4 py-2 bg-surface-light/30">
             <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
               Not configured
             </Text>
           </View>
         ) : null}
-        {disabledServiceIds.map(renderServiceRow)}
+        {disabledKinds.map(renderKindRow)}
       </SettingsGroup>
 
       <SettingsGroup title="Network">
@@ -459,19 +519,218 @@ export default function SettingsScreen() {
   );
 }
 
-function ServiceEditor({
+function InstanceList({
   serviceId,
   onBack,
+  onEditInstance,
 }: {
   serviceId: ServiceId;
   onBack: () => void;
+  onEditInstance: (instanceId: string) => void;
 }) {
-  const config = useConfigStore((s) => s.services[serviceId]);
-  const secrets = useConfigStore((s) => s.secrets[serviceId]);
-  const updateService = useConfigStore((s) => s.updateService);
-  const updateSecrets = useConfigStore((s) => s.updateSecrets);
-  const toggleService = useConfigStore((s) => s.toggleService);
+  const instances = useConfigStore(
+    (s) => s.serviceInstances[serviceId] ?? EMPTY_INSTANCES,
+  );
+  const activeId = useConfigStore((s) => s.activeInstance[serviceId]);
+  const addInstance = useConfigStore((s) => s.addInstance);
+  const removeInstance = useConfigStore((s) => s.removeInstance);
+  const moveInstance = useConfigStore((s) => s.moveInstance);
+  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
 
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const handleAdd = () => {
+    // First instance for a kind takes the kind's default name; subsequent ones
+    // are auto-numbered to a unique label so the user has something to edit
+    // rather than a blank field.
+    const existing = instances.length;
+    const defaultName =
+      existing === 0 ? kindLabel : `${kindLabel} ${existing + 1}`;
+    const inst = addInstance(serviceId, { name: defaultName });
+    onEditInstance(inst.id);
+  };
+
+  const performDelete = async (instanceId: string) => {
+    setConfirmDelete(null);
+    if (serviceId === "qbittorrent") {
+      // Drop any cached qBit session for the deleted instance before its
+      // SecureStore row goes away.
+      await qbClearSession(instanceId);
+    }
+    await removeInstance(serviceId, instanceId);
+  };
+
+  return (
+    <ScreenWrapper>
+      <BackHeader title={kindLabel} onBack={onBack} />
+
+      <SettingsGroup
+        title={instances.length === 1 ? "Instance" : "Instances"}
+        footer={
+          instances.length > 1
+            ? "Tap an instance to edit. Use the arrows to reorder — the order here is the order shown in the per-tab switcher."
+            : undefined
+        }
+      >
+        {instances.map((inst, idx) => {
+          const subtitle = inst.enabled
+            ? inst.useRemote
+              ? inst.remoteUrl || "No remote URL"
+              : inst.localUrl || "No local URL"
+            : "Disabled";
+          const isActive = inst.id === activeId;
+          return (
+            <View
+              key={inst.id}
+              className="flex-row items-center border-b border-surface-light last:border-b-0"
+            >
+              <Pressable
+                onPress={() => onEditInstance(inst.id)}
+                className="flex-1 flex-row items-center px-4 py-3 active:opacity-70"
+              >
+                <View className="flex-1">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-zinc-100 text-base">{inst.name}</Text>
+                    {isActive && instances.length > 1 ? (
+                      <Text className="text-primary text-xs">• active</Text>
+                    ) : null}
+                  </View>
+                  <Text className="text-zinc-500 text-xs">{subtitle}</Text>
+                </View>
+                {inst.enabled ? (
+                  <View className="w-2 h-2 rounded-full bg-success mr-2" />
+                ) : null}
+              </Pressable>
+              {instances.length > 1 ? (
+                <View className="flex-row items-center pr-2">
+                  <Pressable
+                    onPress={() => moveInstance(serviceId, inst.id, "up")}
+                    disabled={idx === 0}
+                    hitSlop={6}
+                    className="p-2 active:opacity-60"
+                    style={{ opacity: idx === 0 ? 0.3 : 1 }}
+                  >
+                    <Icon icon={ArrowUp} size={16} color="#a1a1aa" />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => moveInstance(serviceId, inst.id, "down")}
+                    disabled={idx === instances.length - 1}
+                    hitSlop={6}
+                    className="p-2 active:opacity-60"
+                    style={{ opacity: idx === instances.length - 1 ? 0.3 : 1 }}
+                  >
+                    <Icon icon={ArrowDown} size={16} color="#a1a1aa" />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setConfirmDelete(inst.id)}
+                    hitSlop={6}
+                    className="p-2 active:opacity-60"
+                  >
+                    <Icon icon={Trash2} size={16} color="#f87171" />
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+        <SettingsRow
+          icon={Plus}
+          label={instances.length === 0 ? `Add ${kindLabel}` : `Add another instance`}
+          subtitle={
+            instances.length > 0
+              ? "Configure a second server of this kind"
+              : undefined
+          }
+          onPress={handleAdd}
+        />
+        {instances.length > 1 ? (
+          <View className="px-4 py-3 border-t border-surface-light">
+            <Text className="text-zinc-500 text-xs mb-2">
+              Active instance (used by tabs and notifications)
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {instances
+                .filter((i) => i.enabled)
+                .map((inst) => (
+                  <Pressable
+                    key={inst.id}
+                    onPress={() => setActiveInstance(serviceId, inst.id)}
+                    className={`px-3 py-1.5 rounded-full ${
+                      inst.id === activeId ? "bg-primary" : "bg-surface-light"
+                    }`}
+                  >
+                    <Text
+                      className={`text-sm font-medium ${
+                        inst.id === activeId ? "text-white" : "text-zinc-400"
+                      }`}
+                    >
+                      {inst.name}
+                    </Text>
+                  </Pressable>
+                ))}
+            </View>
+          </View>
+        ) : null}
+      </SettingsGroup>
+
+      <ConfirmModal
+        visible={confirmDelete !== null}
+        title="Delete instance"
+        message={
+          confirmDelete
+            ? `This will remove "${
+                instances.find((i) => i.id === confirmDelete)?.name ?? "this instance"
+              }" and its credentials. This cannot be undone.`
+            : ""
+        }
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={() => confirmDelete && void performDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+    </ScreenWrapper>
+  );
+}
+
+function ServiceEditor({
+  serviceId,
+  instanceId,
+  onBack,
+  onDeleted,
+}: {
+  serviceId: ServiceId;
+  instanceId: string;
+  onBack: () => void;
+  onDeleted: () => void;
+}) {
+  // The instance row is read directly off the multi-instance state. If the
+  // user deleted this instance from elsewhere mid-edit, we surface a
+  // not-found state instead of crashing on `.localUrl` of undefined.
+  const inst = useConfigStore((s) =>
+    (s.serviceInstances[serviceId] ?? EMPTY_INSTANCES).find((i) => i.id === instanceId),
+  );
+  const secrets = useConfigStore(
+    (s) => s.instanceSecrets[instanceId] ?? EMPTY_SECRETS,
+  );
+  const instancesForKind = useConfigStore(
+    (s) => s.serviceInstances[serviceId] ?? EMPTY_INSTANCES,
+  );
+  const updateInstance = useConfigStore((s) => s.updateInstance);
+  const updateInstanceSecrets = useConfigStore((s) => s.updateInstanceSecrets);
+  const toggleInstance = useConfigStore((s) => s.toggleInstance);
+  const removeInstance = useConfigStore((s) => s.removeInstance);
+
+  const config = inst ?? {
+    enabled: false,
+    name: SERVICE_DEFAULTS_KIND_LABEL[serviceId],
+    localUrl: "",
+    remoteUrl: "",
+    useRemote: false,
+  };
+
+  const [name, setName] = useState(config.name);
   const [localUrl, setLocalUrl] = useState(config.localUrl);
   const [remoteUrl, setRemoteUrl] = useState(config.remoteUrl);
   const [apiKey, setApiKey] = useState(secrets.apiKey ?? "");
@@ -481,6 +740,7 @@ function ServiceEditor({
     secrets.customHeaders ?? {},
   );
   const [testing, setTesting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isQB = serviceId === "qbittorrent" || serviceId === "glances";
 
@@ -488,6 +748,7 @@ function ServiceEditor({
   const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
 
   const isDirty =
+    name !== config.name ||
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
@@ -532,6 +793,12 @@ function ServiceEditor({
     });
 
   const handleSave = async () => {
+    if (!inst) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      toast("Name cannot be empty", "error");
+      return;
+    }
     const localResult = validateServiceUrl(localUrl, "local");
     if (localResult.kind === "invalid") {
       toast(localResult.message, "error");
@@ -561,17 +828,25 @@ function ServiceEditor({
       }
     }
 
-    updateService(serviceId, { localUrl, remoteUrl });
+    updateInstance(serviceId, instanceId, {
+      name: trimmedName,
+      localUrl,
+      remoteUrl,
+    });
     if (isQB) {
-      await updateSecrets(serviceId, { username, password, customHeaders });
+      await updateInstanceSecrets(instanceId, {
+        username,
+        password,
+        customHeaders,
+      });
     } else {
-      await updateSecrets(serviceId, { apiKey, customHeaders });
+      await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
     }
     // Drop the cached qBittorrent SID so the next request re-logs in with the
     // new URL or credentials. (glances reuses isQB for its u/p form but has
     // no session to clear.)
     if (serviceId === "qbittorrent") {
-      await qbClearSession();
+      await qbClearSession(instanceId);
     }
     onBack();
   };
@@ -579,7 +854,7 @@ function ServiceEditor({
   const handleTest = async () => {
     setTesting(true);
     const testUrl = config.useRemote ? remoteUrl : localUrl;
-    const responseTime = await pingService(serviceId, testUrl || undefined);
+    const responseTime = await pingService(serviceId, testUrl || undefined, instanceId);
     setTesting(false);
 
     if (responseTime !== null) {
@@ -588,6 +863,27 @@ function ServiceEditor({
       toast("Could not reach service. Check URL and network.", "error");
     }
   };
+
+  const performDelete = async () => {
+    setConfirmDelete(false);
+    if (serviceId === "qbittorrent") {
+      await qbClearSession(instanceId);
+    }
+    await removeInstance(serviceId, instanceId);
+    onDeleted();
+  };
+
+  if (!inst) {
+    // Edge case: instance was deleted while the editor was still mounted.
+    return (
+      <ScreenWrapper>
+        <BackHeader title="Not found" onBack={onBack} />
+        <Text className="text-zinc-400 text-sm">
+          This instance no longer exists. Tap back to return.
+        </Text>
+      </ScreenWrapper>
+    );
+  }
 
   return (
     <ScreenWrapper>
@@ -601,11 +897,17 @@ function ServiceEditor({
         }
       />
 
-      <Card className="mb-4">
+      <Card className="gap-4 mb-4">
+        <TextInput
+          label="Name"
+          placeholder={SERVICE_DEFAULTS_KIND_LABEL[serviceId]}
+          value={name}
+          onChangeText={setName}
+        />
         <Toggle
           label="Enabled"
           value={config.enabled}
-          onValueChange={() => toggleService(serviceId)}
+          onValueChange={() => toggleInstance(serviceId, instanceId)}
         />
       </Card>
 
@@ -627,7 +929,9 @@ function ServiceEditor({
         <Toggle
           label="Use Remote URL"
           value={config.useRemote}
-          onValueChange={(v) => updateService(serviceId, { useRemote: v })}
+          onValueChange={(v) =>
+            updateInstance(serviceId, instanceId, { useRemote: v })
+          }
         />
       </Card>
 
@@ -669,11 +973,11 @@ function ServiceEditor({
         <HeaderListEditor
           value={customHeaders}
           onChange={setCustomHeaders}
-          helperText="Sent on every request to this service. Combined with the global headers (Settings → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
+          helperText="Sent on every request to this instance. Combined with the global headers (Settings → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
         />
       </Card>
 
-      <View className="flex-row gap-3">
+      <View className="flex-row gap-3 mb-4">
         <Button
           label="Test Connection"
           onPress={handleTest}
@@ -681,12 +985,31 @@ function ServiceEditor({
           loading={testing}
           className="flex-1"
         />
-        <Button
-          label="Save"
-          onPress={handleSave}
-          className="flex-1"
-        />
+        <Button label="Save" onPress={handleSave} className="flex-1" />
       </View>
+
+      {/* Delete is only offered when the user has more than one instance of this
+          kind — kinds always carry at least one slot, so removing the only
+          instance would leave the kind in an unpopulated state and force the
+          user to re-create it. Better to let them disable instead. */}
+      {instancesForKind.length > 1 ? (
+        <Button
+          label="Delete instance"
+          onPress={() => setConfirmDelete(true)}
+          variant="outline"
+        />
+      ) : null}
+
+      <ConfirmModal
+        visible={confirmDelete}
+        title="Delete instance"
+        message={`This will remove "${config.name}" and its credentials. This cannot be undone.`}
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={() => void performDelete()}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </ScreenWrapper>
   );
 }

@@ -92,7 +92,7 @@ export default function JellyfinScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Jellyfin" online={jellyfinHealth?.online} />
+      <ServiceHeader name="Jellyfin" online={jellyfinHealth?.online} serviceId="jellyfin" />
 
       <View className="flex-row items-center gap-2 mb-4">
         <ScrollView

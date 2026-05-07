@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ICON, POLLING_INTERVALS } from "@/lib/constants";
 import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
-import { useConfigStore } from "@/store/config-store";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
@@ -105,31 +105,79 @@ export default function CalendarScreen() {
     setBoolean(INCLUDE_UNMONITORED_KEY, value);
   };
 
-  const sonarrEnabled = useConfigStore((s) => s.services.sonarr.enabled);
-  const radarrEnabled = useConfigStore((s) => s.services.radarr.enabled);
+  const sonarrInstances = useEnabledInstances("sonarr");
+  const radarrInstances = useEnabledInstances("radarr");
 
   const { start, end } = getMonthRange(year, month);
 
-  const { data: episodes, isLoading: loadingEp } = useQuery({
-    queryKey: ["sonarr", "calendar", start, end, includeUnmonitored],
-    queryFn: () =>
-      getSonarrCalendar(start, end, { unmonitored: includeUnmonitored }),
-    refetchInterval: POLLING_INTERVALS.calendar,
-    enabled: sonarrEnabled,
+  // Fan out the calendar query across every enabled Sonarr/Radarr instance.
+  // Each instance contributes its own slice of dates; we flatten and dedupe
+  // visually (no need to merge by id — different instances have different
+  // libraries, so duplicate ids across instances are still distinct shows).
+  const sonarrQueries = useQueries({
+    queries: sonarrInstances.map((inst) => ({
+      queryKey: [
+        "sonarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ] as const,
+      queryFn: () =>
+        getSonarrCalendar(start, end, { unmonitored: includeUnmonitored }, inst.id),
+      refetchInterval: POLLING_INTERVALS.calendar,
+    })),
   });
 
-  const { data: movies, isLoading: loadingMov } = useQuery({
-    queryKey: ["radarr", "calendar", start, end, includeUnmonitored],
-    queryFn: () =>
-      getRadarrCalendar(start, end, { unmonitored: includeUnmonitored }),
-    refetchInterval: POLLING_INTERVALS.calendar,
-    enabled: radarrEnabled,
+  const radarrQueries = useQueries({
+    queries: radarrInstances.map((inst) => ({
+      queryKey: [
+        "radarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ] as const,
+      queryFn: () =>
+        getRadarrCalendar(start, end, { unmonitored: includeUnmonitored }, inst.id),
+      refetchInterval: POLLING_INTERVALS.calendar,
+    })),
   });
 
-  const { refreshing, onRefresh } = usePullToRefresh([
-    ["sonarr", "calendar", start, end, includeUnmonitored],
-    ["radarr", "calendar", start, end, includeUnmonitored],
-  ]);
+  const episodes: SonarrCalendarEntry[] = sonarrQueries.flatMap(
+    (q) => q.data ?? [],
+  );
+  const movies: RadarrMovie[] = radarrQueries.flatMap((q) => q.data ?? []);
+  const loadingEp = sonarrQueries.length > 0 && sonarrQueries.some((q) => q.isLoading);
+  const loadingMov = radarrQueries.length > 0 && radarrQueries.some((q) => q.isLoading);
+
+  // Pull-to-refresh invalidates every per-instance calendar slot. Building
+  // these key lists from the live instance arrays guarantees we don't miss
+  // (or stale-refresh) an instance the user just added or disabled.
+  const refreshKeys = useMemo<unknown[][]>(
+    () => [
+      ...sonarrInstances.map((inst) => [
+        "sonarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ]),
+      ...radarrInstances.map((inst) => [
+        "radarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ]),
+    ],
+    [sonarrInstances, radarrInstances, start, end, includeUnmonitored],
+  );
+  const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
 
   // Build items map keyed by date
   const { itemsByDate, allItems } = useMemo(() => {
