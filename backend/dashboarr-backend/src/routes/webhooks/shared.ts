@@ -1,6 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { getWebhookSecret } from "../../db/repos/settings.js";
+import {
+  countEnabledInstancesByKind,
+  getServiceInstance,
+  type StoredServiceInstance,
+} from "../../db/repos/service-instance.js";
+import type { ServiceId } from "../../types.js";
 
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -11,6 +17,10 @@ function safeEqual(a: string, b: string): boolean {
 
 interface WebhookParams {
   secret?: string;
+}
+
+interface WebhookQuery {
+  instance?: string;
 }
 
 /**
@@ -36,4 +46,48 @@ export async function checkWebhookSecret(
     return false;
   }
   return true;
+}
+
+/**
+ * Resolve the optional `?instance=<uuid>` query param to the matching
+ * service_instance row, scoped to a service kind. Used by per-service webhook
+ * handlers to attribute the inbound event to a specific instance ("Radarr
+ * Seedbox: Movie X downloaded" instead of "Radarr: Movie X downloaded").
+ *
+ * Returns null in two cases — both treated as "kind-only attribution":
+ *  - The query param is absent (legacy webhook URL).
+ *  - The param is present but doesn't match any enabled instance of `kind`
+ *    (stale URL after the user deleted the instance, or kind mismatch from a
+ *    misconfigured webhook URL pasted into the wrong service).
+ *
+ * We deliberately don't 4xx on a missing/unknown instance — the secret has
+ * already been verified, the upstream service won't retry on a 4xx anyway,
+ * and dropping the event silently is worse than emitting a kind-only push.
+ */
+export function resolveWebhookInstance(
+  request: FastifyRequest<{ Querystring: WebhookQuery }>,
+  kind: ServiceId,
+): StoredServiceInstance | null {
+  const id = request.query.instance;
+  if (!id) return null;
+  const inst = getServiceInstance(id);
+  if (!inst) return null;
+  if (inst.serviceId !== kind) return null;
+  if (!inst.enabled) return null;
+  return inst;
+}
+
+/**
+ * Push title prefix for an attributed webhook event. Returns "" when there's
+ * only one enabled instance of the kind (the prefix would be redundant: "Radarr:
+ * Movie X" already implies the only Radarr) or when the instance isn't matched.
+ */
+export function webhookTitlePrefix(
+  instance: StoredServiceInstance | null,
+  kind: ServiceId,
+): string {
+  if (!instance) return "";
+  const count = countEnabledInstancesByKind().get(kind) ?? 0;
+  if (count <= 1) return "";
+  return `${instance.name}: `;
 }

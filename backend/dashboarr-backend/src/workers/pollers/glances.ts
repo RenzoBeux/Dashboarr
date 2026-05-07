@@ -1,4 +1,5 @@
-import type { StoredServiceConfig } from "../../db/repos/config.js";
+import { instanceToServiceConfig } from "../../db/repos/config.js";
+import type { StoredServiceInstance } from "../../db/repos/service-instance.js";
 import { getGlancesCpu, getGlancesFs, getGlancesMem } from "../../services/glances.js";
 
 /**
@@ -6,6 +7,7 @@ import { getGlancesCpu, getGlancesFs, getGlancesMem } from "../../services/glanc
  * online/offline signal via the generic health poller. Threshold-alerting
  * hooks will be added alongside a "serverHighLoad" notification category.
  */
-export async function pollGlances(config: StoredServiceConfig): Promise<void> {
-  await Promise.all([getGlancesCpu(config), getGlancesMem(config), getGlancesFs(config)]);
+export async function pollGlances(instance: StoredServiceInstance): Promise<void> {
+  const cfg = instanceToServiceConfig(instance);
+  await Promise.all([getGlancesCpu(cfg), getGlancesMem(cfg), getGlancesFs(cfg)]);
 }
