@@ -1,33 +1,10 @@
 import { View, Text, Pressable, Platform } from "react-native";
 import { useRouter } from "expo-router";
-import {
-  Download,
-  Film,
-  Tv,
-  Inbox,
-  BarChart3,
-  Search,
-  PlayCircle,
-  Clapperboard,
-  Captions,
-} from "lucide-react-native";
-import { Icon } from "@/components/ui/icon";
+import { ServiceLogo, hasServiceLogo } from "@/components/ui/service-logo";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { useConfigStore } from "@/store/config-store";
-
-const SERVICE_ICONS: Partial<Record<ServiceId, React.ComponentType<any>>> = {
-  qbittorrent: Download,
-  radarr: Film,
-  sonarr: Tv,
-  overseerr: Inbox,
-  tautulli: BarChart3,
-  prowlarr: Search,
-  plex: PlayCircle,
-  jellyfin: Clapperboard,
-  bazarr: Captions,
-};
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
@@ -41,7 +18,7 @@ export function ServiceHealthCard() {
   const router = useRouter();
 
   const enabledServices = services?.filter(
-    (s) => s.id in SERVICE_ICONS && configServices[s.id as ServiceId]?.enabled,
+    (s) => hasServiceLogo(s.id as ServiceId) && configServices[s.id as ServiceId]?.enabled,
   );
 
   if (!enabledServices?.length) return null;
@@ -53,9 +30,7 @@ export function ServiceHealthCard() {
       </CardHeader>
       <View className="flex-row flex-wrap gap-4">
         {enabledServices.map((service) => {
-          const ServiceIcon = SERVICE_ICONS[service.id as ServiceId];
           const route = SERVICE_ROUTES[service.id as ServiceId];
-          if (!ServiceIcon) return null;
 
           return (
             <Pressable
@@ -66,7 +41,11 @@ export function ServiceHealthCard() {
             >
               <View className="relative">
                 <View className="bg-surface-light rounded-xl p-2.5">
-                  <Icon icon={ServiceIcon} size={ICON.LG} color="#a1a1aa" />
+                  <ServiceLogo
+                    id={service.id as ServiceId}
+                    size={ICON.LG}
+                    online={service.online}
+                  />
                 </View>
                 <View
                   className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${

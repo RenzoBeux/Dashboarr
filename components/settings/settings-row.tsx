@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/icon";
 
 interface SettingsRowProps {
   icon?: ComponentType<any>;
+  leading?: ReactNode;
   label: string;
   subtitle?: string;
   subtitleTone?: "default" | "warn";
@@ -16,6 +17,7 @@ interface SettingsRowProps {
 
 export function SettingsRow({
   icon,
+  leading,
   label,
   subtitle,
   subtitleTone = "default",
@@ -30,7 +32,11 @@ export function SettingsRow({
     <View
       className={`flex-row items-center px-4 py-3 ${disabled ? "opacity-50" : ""}`}
     >
-      {icon ? (
+      {leading ? (
+        <View className="bg-surface-light rounded-xl p-2.5 mr-3 items-center justify-center">
+          {leading}
+        </View>
+      ) : icon ? (
         <View className="bg-surface-light rounded-xl p-2.5 mr-3">
           <Icon icon={icon} size={20} color="#a1a1aa" />
         </View>
