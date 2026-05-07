@@ -66,9 +66,15 @@ export function getEpisodeFiles(seriesId: number): Promise<SonarrEpisodeFile[]> 
 export function getCalendar(
   startDate: string,
   endDate: string,
+  options: { unmonitored?: boolean } = {},
 ): Promise<SonarrCalendarEntry[]> {
   return serviceRequest<SonarrCalendarEntry[]>("sonarr", "/calendar", {
-    params: { start: startDate, end: endDate, includeSeries: true },
+    params: {
+      start: startDate,
+      end: endDate,
+      includeSeries: true,
+      unmonitored: options.unmonitored ?? false,
+    },
   });
 }
 

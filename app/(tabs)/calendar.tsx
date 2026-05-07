@@ -3,7 +3,14 @@ import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Tv, Film } from "lucide-react-native";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Tv,
+  Film,
+  Eye,
+  EyeOff,
+} from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -18,7 +25,10 @@ import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { lightHaptic } from "@/lib/haptics";
+import { getBoolean, setBoolean } from "@/store/storage";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
+
+const INCLUDE_UNMONITORED_KEY = "ui.calendar.includeUnmonitored";
 
 type Filter = "all" | "tv" | "movies";
 
@@ -86,6 +96,14 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState(toDateKey(today));
   const [filter, setFilter] = useState<Filter>("all");
+  const [includeUnmonitored, setIncludeUnmonitoredState] = useState(() =>
+    getBoolean(INCLUDE_UNMONITORED_KEY),
+  );
+
+  const setIncludeUnmonitored = (value: boolean) => {
+    setIncludeUnmonitoredState(value);
+    setBoolean(INCLUDE_UNMONITORED_KEY, value);
+  };
 
   const sonarrEnabled = useConfigStore((s) => s.services.sonarr.enabled);
   const radarrEnabled = useConfigStore((s) => s.services.radarr.enabled);
@@ -93,22 +111,24 @@ export default function CalendarScreen() {
   const { start, end } = getMonthRange(year, month);
 
   const { data: episodes, isLoading: loadingEp } = useQuery({
-    queryKey: ["sonarr", "calendar", start, end],
-    queryFn: () => getSonarrCalendar(start, end),
+    queryKey: ["sonarr", "calendar", start, end, includeUnmonitored],
+    queryFn: () =>
+      getSonarrCalendar(start, end, { unmonitored: includeUnmonitored }),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled: sonarrEnabled,
   });
 
   const { data: movies, isLoading: loadingMov } = useQuery({
-    queryKey: ["radarr", "calendar", start, end],
-    queryFn: () => getRadarrCalendar(start, end),
+    queryKey: ["radarr", "calendar", start, end, includeUnmonitored],
+    queryFn: () =>
+      getRadarrCalendar(start, end, { unmonitored: includeUnmonitored }),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled: radarrEnabled,
   });
 
   const { refreshing, onRefresh } = usePullToRefresh([
-    ["sonarr", "calendar", start, end],
-    ["radarr", "calendar", start, end],
+    ["sonarr", "calendar", start, end, includeUnmonitored],
+    ["radarr", "calendar", start, end, includeUnmonitored],
   ]);
 
   // Build items map keyed by date
@@ -199,6 +219,21 @@ export default function CalendarScreen() {
             onPress={() => setFilter(f)}
           />
         ))}
+        <FilterChip
+          label="Include unmonitored"
+          selected={includeUnmonitored}
+          icon={
+            <Icon
+              icon={includeUnmonitored ? Eye : EyeOff}
+              size={14}
+              color={includeUnmonitored ? "#fff" : "#a1a1aa"}
+            />
+          }
+          onPress={() => {
+            lightHaptic();
+            setIncludeUnmonitored(!includeUnmonitored);
+          }}
+        />
       </ScrollView>
 
       {/* Calendar grid */}

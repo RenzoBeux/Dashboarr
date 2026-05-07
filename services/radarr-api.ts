@@ -171,9 +171,14 @@ export function toggleMovieMonitored(
 export function getCalendar(
   startDate: string,
   endDate: string,
+  options: { unmonitored?: boolean } = {},
 ): Promise<RadarrMovie[]> {
   return serviceRequest<RadarrMovie[]>("radarr", "/calendar", {
-    params: { start: startDate, end: endDate },
+    params: {
+      start: startDate,
+      end: endDate,
+      unmonitored: options.unmonitored ?? false,
+    },
   });
 }
 
