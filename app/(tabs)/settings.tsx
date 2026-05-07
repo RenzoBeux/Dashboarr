@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, Alert, BackHandler, Pressable } from "react-native";
+import { View, Text, Alert, BackHandler, Pressable, Linking, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
@@ -17,6 +17,8 @@ import {
   ArrowUp,
   ArrowDown,
   Copy,
+  Github,
+  Bug,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo } from "@/components/ui/service-logo";
@@ -41,6 +43,12 @@ import type { ServiceId } from "@/lib/constants";
 import { validateServiceUrl } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { AppVersionCard } from "@/components/common/app-version-card";
+import {
+  NATIVE_VERSION,
+  RUNTIME_VERSION,
+  UPDATE_CHANNEL,
+  getCurrentUpdateId,
+} from "@/lib/app-version";
 import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
 import type { PassphraseMode, PassphraseResult } from "@/components/common/passphrase-prompt";
 import { ConfirmModal } from "@/components/common/confirm-modal";
@@ -76,6 +84,31 @@ const SERVICE_DEFAULTS_KIND_LABEL: Record<ServiceId, string> = SERVICE_IDS.reduc
   },
   {} as Record<ServiceId, string>,
 );
+
+// Uses GitHub's `?body=` query param (URL-encoded) to pre-fill the new-issue form.
+function buildIssueUrl(): string {
+  const updateId = getCurrentUpdateId() ?? "embedded";
+  const lines = [
+    "## Describe the issue",
+    "",
+    "",
+    "## Steps to reproduce",
+    "",
+    "",
+    "## Expected behavior",
+    "",
+    "",
+    "---",
+    "**Environment** (auto-filled — please keep)",
+    `- App version: ${NATIVE_VERSION}`,
+    `- Runtime: ${RUNTIME_VERSION}`,
+    `- Update: ${updateId}`,
+    ...(UPDATE_CHANNEL ? [`- Channel: ${UPDATE_CHANNEL}`] : []),
+    `- Platform: ${Platform.OS} ${String(Platform.Version)}`,
+  ];
+  const body = encodeURIComponent(lines.join("\n"));
+  return `https://github.com/renzobeux/Dashboarr/issues/new?body=${body}`;
+}
 
 // Module-level singletons for the "absent" case in store selectors. Returning
 // `?? []` or `?? {}` from inside a Zustand selector creates a fresh reference
@@ -450,6 +483,24 @@ export default function SettingsScreen() {
               void disableDemoMode();
             }
           }}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="About"
+        footer="Dashboarr is open-source under GPL-3.0. Contributions and bug reports are welcome."
+      >
+        <SettingsRow
+          icon={Github}
+          label="View on GitHub"
+          subtitle="github.com/renzobeux/Dashboarr"
+          onPress={() => void Linking.openURL("https://github.com/renzobeux/Dashboarr")}
+        />
+        <SettingsRow
+          icon={Bug}
+          label="Report an issue"
+          subtitle="Open a new issue on GitHub"
+          onPress={() => void Linking.openURL(buildIssueUrl())}
         />
       </SettingsGroup>
 
