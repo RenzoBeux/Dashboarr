@@ -15,6 +15,7 @@ import {
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatEpisodeCode, relativeDate, getDateOffset } from "@/lib/utils";
 import {
@@ -120,12 +121,15 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
       : [],
   });
 
-  const episodesLoading =
-    sonarrQueries.length > 0 && sonarrQueries.some((q) => q.isLoading);
-  const moviesLoading =
-    radarrQueries.length > 0 && radarrQueries.some((q) => q.isLoading);
+  // Initial-load gate per kind — see lib/multi-instance-query.ts. The skeleton
+  // shows only while we're truly cold across both kinds; a single failing
+  // instance just contributes nothing to the merged calendar instead of
+  // flickering the card every refetch tick.
+  const sonarrState = aggregateMultiInstanceState(sonarrQueries);
+  const radarrState = aggregateMultiInstanceState(radarrQueries);
   const isLoading =
-    (showSonarr && episodesLoading) || (showRadarr && moviesLoading);
+    (showSonarr && !sonarrState.hasAnyData && sonarrState.isInitialLoading) ||
+    (showRadarr && !radarrState.hasAnyData && radarrState.isInitialLoading);
 
   const todayIso = new Date().toISOString().split("T")[0];
   const horizon = new Date();

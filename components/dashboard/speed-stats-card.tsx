@@ -14,6 +14,7 @@ import {
   type SpeedStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/speed-stats-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 
 export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
@@ -35,9 +36,13 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
+  // Show the skeleton only on the very first cold load; once any instance has
+  // returned a transfer snapshot, keep rendering the summed pill even if one
+  // qBit later goes offline. The sum gracefully drops to the live instances'
+  // contributions instead of flickering back to skeleton on each retry.
+  const { isInitialLoading } = aggregateMultiInstanceState(queries);
 
-  if (isLoading || instances.length === 0) {
+  if (isInitialLoading || instances.length === 0) {
     return (
       <Card className="flex-row gap-3">
         <View className="flex-1 flex-row items-center gap-3 rounded-xl p-3 bg-blue-600/10">

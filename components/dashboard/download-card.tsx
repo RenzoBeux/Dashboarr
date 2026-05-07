@@ -26,6 +26,7 @@ import {
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
 import {
@@ -175,8 +176,10 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   if (settings.showPaused) allowedGroups.add("paused");
   if (settings.showErrored) allowedGroups.add("errored");
 
-  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
-  const isError = queries.length > 0 && queries.every((q) => q.isError);
+  // Skeleton only when no instance has produced data yet; once any instance is
+  // back, render whatever we have so a single failing qBit doesn't flicker the
+  // card every refetch tick. See lib/multi-instance-query.ts for the rationale.
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
   // Tag each torrent with its source instance so per-tile actions know which
   // qBittorrent to call for pause/resume.
   const aggregated: AggregatedTorrent[] = queries.flatMap((q, i) =>
@@ -216,9 +219,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
         <Text className="text-zinc-500 text-sm py-1">
           All states hidden — enable one in the widget settings.
         </Text>
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={4} showSubtitle />
-      ) : isError ? (
+      ) : isAllErrored ? (
         <EmptyState
           icon={<Icon icon={AlertTriangle} size={32} color="#f59e0b" />}
           title="Couldn't load downloads"

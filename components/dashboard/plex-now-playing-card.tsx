@@ -15,6 +15,7 @@ import {
   type PlexNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/plex-now-playing-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -55,7 +56,10 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
       refetchInterval: POLLING_INTERVALS.activeTorrents,
     })),
   });
-  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
+  // Initial-load gate only — see lib/multi-instance-query.ts. Once any Plex
+  // returns sessions we keep rendering them across refetches even if a sibling
+  // instance is currently failing.
+  const { isInitialLoading } = aggregateMultiInstanceState(queries);
 
   const hiddenUsers = parseHiddenUsers(settings.hideUsers);
   // Tag every session with its source instance so per-tile poster URLs hit
@@ -97,7 +101,7 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={PlayCircle} size={32} color="#71717a" />}
           title="No Plex instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState
