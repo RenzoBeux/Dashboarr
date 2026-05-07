@@ -29,7 +29,11 @@ import {
   DEFAULT_UI_SCALE,
 } from "@/lib/constants";
 import type { UiScale } from "@/lib/constants";
-import { CURRENT_CONFIG_VERSION, migrateConfig } from "@/store/config-migrations";
+import {
+  CURRENT_CONFIG_VERSION,
+  migrateConfig,
+  migrateSlotSettingsBindings,
+} from "@/store/config-migrations";
 import { validateExportPayload } from "@/store/config-schema";
 import {
   decryptEnvelope,
@@ -402,7 +406,10 @@ function buildLegacyDashboard(
       const settings = legacySettings[widgetId];
       const slot: WidgetSlot = { id: generateInstanceId(), widgetId };
       if (settings && Object.keys(settings).length > 0) {
-        slot.settings = { ...settings };
+        // Pre-v14 widgetSettings carried scalar `instanceId` — fold the v15
+        // rename in here so users coming from v13 land on the new shape in a
+        // single hydrate pass.
+        slot.settings = migrateSlotSettingsBindings({ ...settings });
       }
       return slot;
     }),
@@ -694,7 +701,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
             if (!VALID_WIDGET_IDS.has(remapped)) continue;
             const slot: WidgetSlot = { id: w.id, widgetId: remapped as WidgetId };
             if (isPlainObject(w.settings)) {
-              slot.settings = w.settings as WidgetSlotSettings;
+              // Apply the v14→v15 binding-field rename to locally-persisted
+              // dashboards too — without this, an upgrading user's stored
+              // `instanceId` keys would never get rewritten unless they
+              // re-imported their config.
+              const migrated = migrateSlotSettingsBindings(
+                w.settings as Record<string, unknown>,
+              );
+              if (migrated !== w.settings) {
+                dashboardsNeedPersist = true;
+              }
+              slot.settings = migrated as WidgetSlotSettings;
             }
             widgets.push(slot);
           }

@@ -9,16 +9,16 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface ServerStatsSettingsValue extends Record<string, unknown> {
-  // Which Glances instance to read from. "all" stacks per-host blocks; a UUID
-  // pins to one host.
-  instanceId: InstanceBindingValue;
+  // Which Glances instances to read from. "all" stacks per-host blocks; an
+  // array of UUIDs stacks just those hosts.
+  instanceIds: InstanceBindingValue;
   showCpu: boolean;
   showRam: boolean;
   showDisks: boolean;
 }
 
 export const SERVER_STATS_DEFAULT_SETTINGS: ServerStatsSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
   showCpu: true,
   showRam: true,
   showDisks: true,
@@ -34,8 +34,8 @@ export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="glances"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">

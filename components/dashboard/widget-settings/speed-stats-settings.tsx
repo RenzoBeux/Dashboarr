@@ -8,13 +8,13 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface SpeedStatsSettingsValue extends Record<string, unknown> {
-  // Which qBittorrent instance to graph. "all" sums every enabled instance's
-  // speeds into one card; a UUID pins to one server.
-  instanceId: InstanceBindingValue;
+  // Which qBittorrent instances to graph. "all" sums every enabled instance's
+  // speeds into one card; an array of UUIDs sums just those servers.
+  instanceIds: InstanceBindingValue;
 }
 
 export const SPEED_STATS_DEFAULT_SETTINGS: SpeedStatsSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
 };
 
 export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -27,8 +27,8 @@ export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="qbittorrent"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
     </View>
   );

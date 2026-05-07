@@ -18,7 +18,7 @@ import {
   RADARR_QUEUE_DEFAULT_SETTINGS,
   type RadarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/radarr-queue-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -33,12 +33,9 @@ export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
     RADARR_QUEUE_DEFAULT_SETTINGS,
   );
   // Aggregate queue + wanted counts across every enabled Radarr instance, or
-  // narrow to a single one based on the slot's instance binding.
+  // narrow to the bound subset based on the slot's instance binding.
   const allInstances = useEnabledInstances("radarr");
-  const instances =
-    settings.instanceId === INSTANCE_BINDING_ALL
-      ? allInstances
-      : allInstances.filter((i) => i.id === settings.instanceId);
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
   const queueQueries = useQueries({
     queries: instances.map((inst) => ({

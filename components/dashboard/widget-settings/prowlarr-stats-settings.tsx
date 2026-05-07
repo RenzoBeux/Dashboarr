@@ -8,11 +8,11 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface ProwlarrStatsSettingsValue extends Record<string, unknown> {
-  instanceId: InstanceBindingValue;
+  instanceIds: InstanceBindingValue;
 }
 
 export const PROWLARR_STATS_DEFAULT_SETTINGS: ProwlarrStatsSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
 };
 
 export function ProwlarrStatsSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -25,8 +25,8 @@ export function ProwlarrStatsSettings({ slotId }: WidgetSettingsComponentProps) 
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="prowlarr"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
     </View>
   );

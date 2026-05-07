@@ -900,6 +900,100 @@ describe("v13 → v14 (multi-dashboard + per-slot settings)", () => {
   });
 });
 
+describe("v14 → v15 (multi-select widget instance binding)", () => {
+  // A v14 payload with one slot per widget kind whose binding fields exercise
+  // every legacy shape the migration has to handle.
+  const v14WithBindings = (slotSettings: Record<string, unknown>) => ({
+    version: 14,
+    services: {},
+    secrets: {},
+    activeInstance: {},
+    autoSwitchNetwork: false,
+    homeNetworks: [],
+    dashboards: [
+      {
+        id: "dash-1",
+        name: "Default",
+        widgets: [{ id: "slot-1", widgetId: "downloads", settings: slotSettings }],
+      },
+    ],
+    activeDashboardId: "dash-1",
+    globalCustomHeaders: {},
+    uiScale: 1,
+  });
+
+  const slotSettingsAfter = (result: any) =>
+    result.dashboards[0].widgets[0].settings as Record<string, unknown>;
+
+  it("renames scalar instanceId to a single-element instanceIds array", () => {
+    const result: any = migrateConfig(
+      v14WithBindings({ instanceId: "uuid-abc", maxItems: 5 }),
+    );
+    expect(slotSettingsAfter(result)).toEqual({
+      instanceIds: ["uuid-abc"],
+      maxItems: 5,
+    });
+  });
+
+  it("preserves the 'all' sentinel verbatim", () => {
+    const result: any = migrateConfig(v14WithBindings({ instanceId: "all" }));
+    expect(slotSettingsAfter(result)).toEqual({ instanceIds: "all" });
+  });
+
+  it("renames calendar's sonarrInstanceId and radarrInstanceId both", () => {
+    const result: any = migrateConfig(v14WithBindings({
+      sonarrInstanceId: "uuid-sonarr",
+      radarrInstanceId: "all",
+      daysAhead: 7,
+    }));
+    expect(slotSettingsAfter(result)).toEqual({
+      sonarrInstanceIds: ["uuid-sonarr"],
+      radarrInstanceIds: "all",
+      daysAhead: 7,
+    });
+  });
+
+  it("falls back to 'all' when the legacy value is malformed", () => {
+    const result: any = migrateConfig(v14WithBindings({ instanceId: 42 }));
+    expect(slotSettingsAfter(result)).toEqual({ instanceIds: "all" });
+  });
+
+  it("leaves slot settings without binding fields untouched", () => {
+    const result: any = migrateConfig(v14WithBindings({ daysAhead: 30 }));
+    expect(slotSettingsAfter(result)).toEqual({ daysAhead: 30 });
+  });
+
+  it("leaves slots with no settings untouched", () => {
+    const payload: any = {
+      version: 14,
+      services: {},
+      secrets: {},
+      activeInstance: {},
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [
+        {
+          id: "dash-1",
+          name: "Default",
+          widgets: [{ id: "slot-1", widgetId: "downloads" }],
+        },
+      ],
+      activeDashboardId: "dash-1",
+      globalCustomHeaders: {},
+      uiScale: 1,
+    };
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards[0].widgets[0].settings).toBeUndefined();
+  });
+
+  it("drops the legacy key when the new key is already present", () => {
+    const result: any = migrateConfig(
+      v14WithBindings({ instanceId: "stale", instanceIds: ["winner"] }),
+    );
+    expect(slotSettingsAfter(result)).toEqual({ instanceIds: ["winner"] });
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {

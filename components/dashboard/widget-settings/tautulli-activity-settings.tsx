@@ -11,7 +11,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface TautulliActivitySettingsValue extends Record<string, unknown> {
-  instanceId: InstanceBindingValue;
+  instanceIds: InstanceBindingValue;
   maxItems: number;
   hideUsers: string;
   showBitrate: boolean;
@@ -21,7 +21,7 @@ export interface TautulliActivitySettingsValue extends Record<string, unknown> {
 }
 
 export const TAUTULLI_ACTIVITY_DEFAULT_SETTINGS: TautulliActivitySettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 3,
   hideUsers: "",
   showBitrate: false,
@@ -46,8 +46,8 @@ export function TautulliActivitySettings({ slotId }: WidgetSettingsComponentProp
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="tautulli"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">

@@ -11,7 +11,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface JellyfinNowPlayingSettingsValue extends Record<string, unknown> {
-  instanceId: InstanceBindingValue;
+  instanceIds: InstanceBindingValue;
   maxItems: number;
   hideLocalPlays: boolean;
   hideUsers: string;
@@ -21,7 +21,7 @@ export interface JellyfinNowPlayingSettingsValue extends Record<string, unknown>
 }
 
 export const JELLYFIN_NOW_PLAYING_DEFAULT_SETTINGS: JellyfinNowPlayingSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 3,
   hideLocalPlays: false,
   hideUsers: "",
@@ -46,8 +46,8 @@ export function JellyfinNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="jellyfin"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
