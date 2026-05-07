@@ -11,7 +11,12 @@ import type {
   PlexSessionsResponse,
 } from "@/lib/types";
 
-async function plexRequest<T>(path: string): Promise<T> {
+// Plex doesn't share serviceRequest's auth dispatch (it injects the token via
+// query string instead of a header so plain <Image> tags can load thumbnails),
+// so we keep a per-instance helper here. Pass `instanceId` to target a
+// specific Plex; omit it to use the active one.
+
+async function plexRequest<T>(path: string, instanceId?: string): Promise<T> {
   const store = useConfigStore.getState();
 
   if (store.demoMode) {
@@ -19,12 +24,15 @@ async function plexRequest<T>(path: string): Promise<T> {
     return (getDemoPlexResponse(path) ?? undefined) as T;
   }
 
-  const config = store.services.plex;
-  const secrets = store.secrets.plex;
+  const targetId = instanceId ?? store.getActiveInstanceId("plex");
+  if (!targetId) throw new Error("No Plex instance configured");
+  const inst = store.getInstance("plex", targetId);
+  if (!inst) throw new Error(`Plex instance ${targetId} not found`);
+  const secrets = store.instanceSecrets[targetId] ?? {};
 
-  if (!config.enabled) throw new Error("Plex is not enabled");
+  if (!inst.enabled) throw new Error("Plex is not enabled");
 
-  const baseUrl = store.getActiveUrl("plex");
+  const baseUrl = store.getActiveUrl("plex", targetId);
   if (!baseUrl) throw new Error("No URL configured for Plex");
 
   const url = new URL(
@@ -37,7 +45,7 @@ async function plexRequest<T>(path: string): Promise<T> {
   // Custom headers first, then Plex's required Accept — Accept wins if the
   // user sets it themselves (rare but harmless).
   const headers = new Headers();
-  const customHeaders = store.getMergedHeaders("plex");
+  const customHeaders = store.getMergedHeaders("plex", targetId);
   for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
   headers.set("Accept", "application/json");
 
@@ -58,8 +66,8 @@ async function plexRequest<T>(path: string): Promise<T> {
 
 // --- Libraries ---
 
-export async function getLibraries(): Promise<PlexLibrary[]> {
-  const data = await plexRequest<PlexLibrariesResponse>("/library/sections");
+export async function getLibraries(instanceId?: string): Promise<PlexLibrary[]> {
+  const data = await plexRequest<PlexLibrariesResponse>("/library/sections", instanceId);
   return data.MediaContainer.Directory;
 }
 
@@ -69,9 +77,11 @@ export async function getLibraryContents(
   sectionKey: string,
   start = 0,
   size = 50,
+  instanceId?: string,
 ): Promise<{ items: PlexMediaItem[]; totalSize: number }> {
   const data = await plexRequest<PlexMediaContainer<PlexMediaItem>>(
     `/library/sections/${sectionKey}/all?X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}`,
+    instanceId,
   );
   return {
     items: data.MediaContainer.Metadata ?? [],
@@ -84,35 +94,44 @@ export async function getLibraryContents(
 export async function getRecentlyAdded(
   sectionKey?: string,
   count = 20,
+  instanceId?: string,
 ): Promise<PlexMediaItem[]> {
   const path = sectionKey
     ? `/library/sections/${sectionKey}/recentlyAdded?X-Plex-Container-Size=${count}`
     : `/library/recentlyAdded?X-Plex-Container-Size=${count}`;
-  const data = await plexRequest<PlexMediaContainer<PlexMediaItem>>(path);
+  const data = await plexRequest<PlexMediaContainer<PlexMediaItem>>(path, instanceId);
   return data.MediaContainer.Metadata ?? [];
 }
 
 // --- On Deck ---
 
-export async function getOnDeck(count = 20): Promise<PlexMediaItem[]> {
+export async function getOnDeck(
+  count = 20,
+  instanceId?: string,
+): Promise<PlexMediaItem[]> {
   const data = await plexRequest<PlexMediaContainer<PlexMediaItem>>(
     `/library/onDeck?X-Plex-Container-Size=${count}`,
+    instanceId,
   );
   return data.MediaContainer.Metadata ?? [];
 }
 
 // --- Now Playing (Sessions) ---
 
-export async function getSessions(): Promise<PlexSession[]> {
-  const data = await plexRequest<PlexSessionsResponse>("/status/sessions");
+export async function getSessions(instanceId?: string): Promise<PlexSession[]> {
+  const data = await plexRequest<PlexSessionsResponse>("/status/sessions", instanceId);
   return data.MediaContainer.Metadata ?? [];
 }
 
 // --- Media Metadata ---
 
-export async function getMetadata(ratingKey: string): Promise<PlexMediaItem | null> {
+export async function getMetadata(
+  ratingKey: string,
+  instanceId?: string,
+): Promise<PlexMediaItem | null> {
   const data = await plexRequest<PlexMediaContainer<PlexMediaItem>>(
     `/library/metadata/${ratingKey}`,
+    instanceId,
   );
   return data.MediaContainer.Metadata?.[0] ?? null;
 }
@@ -123,11 +142,14 @@ export function getPlexImageUrl(
   thumbPath: string | undefined | null,
   width = 300,
   height = 450,
+  instanceId?: string,
 ): string | null {
   if (!thumbPath) return null;
   const store = useConfigStore.getState();
-  const baseUrl = store.getActiveUrl("plex");
-  const secrets = store.secrets.plex;
+  const targetId = instanceId ?? store.getActiveInstanceId("plex");
+  if (!targetId) return null;
+  const baseUrl = store.getActiveUrl("plex", targetId);
+  const secrets = store.instanceSecrets[targetId] ?? {};
   const trimmed = baseUrl.replace(/\/+$/, "");
   return `${trimmed}/photo/:/transcode?width=${width}&height=${height}&minSize=1&url=${encodeURIComponent(thumbPath)}&X-Plex-Token=${secrets.apiKey}`;
 }
@@ -138,8 +160,9 @@ export function getPlexImageSource(
   thumbPath: string | undefined | null,
   width = 300,
   height = 450,
+  instanceId?: string,
 ): { uri: string; cacheKey: string } | null {
-  const uri = getPlexImageUrl(thumbPath, width, height);
+  const uri = getPlexImageUrl(thumbPath, width, height, instanceId);
   if (!uri) return null;
   const cacheKey = uri.replace(/[?&]X-Plex-Token=[^&]*/g, "");
   return { uri, cacheKey };

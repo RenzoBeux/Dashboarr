@@ -11,6 +11,11 @@ const DEFAULT_TIMEOUT = 15000;
 interface RequestOptions extends Omit<RequestInit, "signal"> {
   timeout?: number;
   params?: Record<string, string | number | boolean>;
+  // Target a specific service instance. When omitted, the active instance for
+  // the kind is used (legacy single-instance behavior). Step 3 threads this
+  // explicitly from the hooks layer so multi-instance setups can route each
+  // request to the right server.
+  instanceId?: string;
 }
 
 const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token"];
@@ -68,7 +73,7 @@ export async function serviceRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { timeout = DEFAULT_TIMEOUT, params, ...fetchOptions } = options;
+  const { timeout = DEFAULT_TIMEOUT, params, instanceId, ...fetchOptions } = options;
   const store = useConfigStore.getState();
 
   if (store.demoMode) {
@@ -76,15 +81,22 @@ export async function serviceRequest<T>(
     return (getDemoResponse(serviceId, path) ?? undefined) as T;
   }
 
-  const config = store.services[serviceId];
-  const secrets = store.secrets[serviceId];
+  const targetId = instanceId ?? store.getActiveInstanceId(serviceId);
+  if (!targetId) {
+    throw new Error(`Service ${serviceId} has no configured instance`);
+  }
+  const inst = store.getInstance(serviceId, targetId);
+  if (!inst) {
+    throw new Error(`Instance ${targetId} for ${serviceId} not found`);
+  }
+  const secrets = store.instanceSecrets[targetId] ?? {};
   const defaults = SERVICE_DEFAULTS[serviceId];
 
-  if (!config.enabled) {
+  if (!inst.enabled) {
     throw new Error(`Service ${serviceId} is not enabled`);
   }
 
-  const baseUrl = store.getActiveUrl(serviceId);
+  const baseUrl = store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) {
     throw new Error(`No URL configured for ${serviceId}`);
   }
@@ -93,11 +105,11 @@ export async function serviceRequest<T>(
 
   const headers = new Headers(fetchOptions.headers);
 
-  // Apply user-supplied custom headers (global + per-service merged) FIRST so
+  // Apply user-supplied custom headers (global + per-instance merged) FIRST so
   // service auth headers below can overwrite on collision. Reverse-proxy
   // headers like CF-Access-Client-Id rarely collide; this just guards the
   // user from accidentally pasting `X-Api-Key` and breaking service auth.
-  const customHeaders = store.getMergedHeaders(serviceId);
+  const customHeaders = store.getMergedHeaders(serviceId, targetId);
   for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
 
   // Inject auth headers based on service type
@@ -163,14 +175,22 @@ export async function serviceRequest<T>(
 /**
  * Ping a service to check connectivity. Returns response time in ms or null if offline.
  * Pass `urlOverride` to test a specific URL (e.g. unsaved form value) instead of the stored one.
+ * Pass `instanceId` to ping a specific instance instead of the active one.
  */
-export async function pingService(serviceId: ServiceId, urlOverride?: string): Promise<number | null> {
+export async function pingService(
+  serviceId: ServiceId,
+  urlOverride?: string,
+  instanceId?: string,
+): Promise<number | null> {
   const store = useConfigStore.getState();
-  const config = store.services[serviceId];
-  const secrets = store.secrets[serviceId];
+  const targetId = instanceId ?? store.getActiveInstanceId(serviceId);
+  if (!targetId) return null;
+  const inst = store.getInstance(serviceId, targetId);
+  if (!inst) return null;
+  const secrets = store.instanceSecrets[targetId] ?? {};
   const defaults = SERVICE_DEFAULTS[serviceId];
 
-  const baseUrl = urlOverride ?? store.getActiveUrl(serviceId);
+  const baseUrl = urlOverride ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) return null;
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
@@ -179,7 +199,7 @@ export async function pingService(serviceId: ServiceId, urlOverride?: string): P
 
   // Same custom-then-auth ordering as serviceRequest so the proxy lets the
   // ping through and service auth still wins on collision.
-  const customHeaders = store.getMergedHeaders(serviceId);
+  const customHeaders = store.getMergedHeaders(serviceId, targetId);
   for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
 
   if (serviceId === "plex") {

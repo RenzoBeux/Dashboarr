@@ -8,73 +8,71 @@ import {
   searchWantedMovie,
   searchWantedEpisode,
 } from "@/services/bazarr-api";
-import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
-function useBazarrEnabled() {
-  return useConfigStore((s) => s.services.bazarr.enabled);
-}
-
-export function useBazarrWantedMovies() {
-  const enabled = useBazarrEnabled();
+export function useBazarrWantedMovies(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bazarr", instanceId);
   return useQuery({
-    queryKey: ["bazarr", "wanted", "movies"],
-    queryFn: () => getWantedMovies(0, 50),
+    queryKey: ["bazarr", id, "wanted", "movies"],
+    queryFn: () => getWantedMovies(0, 50, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useBazarrWantedEpisodes() {
-  const enabled = useBazarrEnabled();
+export function useBazarrWantedEpisodes(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bazarr", instanceId);
   return useQuery({
-    queryKey: ["bazarr", "wanted", "episodes"],
-    queryFn: () => getWantedEpisodes(0, 50),
+    queryKey: ["bazarr", id, "wanted", "episodes"],
+    queryFn: () => getWantedEpisodes(0, 50, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useBazarrMovieHistory() {
-  const enabled = useBazarrEnabled();
+export function useBazarrMovieHistory(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bazarr", instanceId);
   return useQuery({
-    queryKey: ["bazarr", "history", "movies"],
-    queryFn: () => getMovieHistory(0, 25),
-    enabled,
+    queryKey: ["bazarr", id, "history", "movies"],
+    queryFn: () => getMovieHistory(0, 25, id ?? undefined),
+    enabled: enabled && !!id,
   });
 }
 
-export function useBazarrEpisodeHistory() {
-  const enabled = useBazarrEnabled();
+export function useBazarrEpisodeHistory(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bazarr", instanceId);
   return useQuery({
-    queryKey: ["bazarr", "history", "episodes"],
-    queryFn: () => getEpisodeHistory(0, 25),
-    enabled,
+    queryKey: ["bazarr", id, "history", "episodes"],
+    queryFn: () => getEpisodeHistory(0, 25, id ?? undefined),
+    enabled: enabled && !!id,
   });
 }
 
-export function useBazarrProviders() {
-  const enabled = useBazarrEnabled();
+export function useBazarrProviders(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bazarr", instanceId);
   return useQuery({
-    queryKey: ["bazarr", "providers"],
-    queryFn: getProviders,
+    queryKey: ["bazarr", id, "providers"],
+    queryFn: () => getProviders(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.serviceHealth,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useSearchWantedMovie() {
+export function useSearchWantedMovie(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("bazarr", instanceId);
   return useMutation({
-    mutationFn: (radarrid: number) => searchWantedMovie(radarrid),
+    mutationFn: (radarrid: number) => searchWantedMovie(radarrid, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bazarr", "wanted", "movies"] });
+      queryClient.invalidateQueries({ queryKey: ["bazarr", id, "wanted", "movies"] });
     },
   });
 }
 
-export function useSearchWantedEpisode() {
+export function useSearchWantedEpisode(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("bazarr", instanceId);
   return useMutation({
     mutationFn: ({
       seriesId,
@@ -82,9 +80,9 @@ export function useSearchWantedEpisode() {
     }: {
       seriesId: number;
       episodeId: number;
-    }) => searchWantedEpisode(seriesId, episodeId),
+    }) => searchWantedEpisode(seriesId, episodeId, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bazarr", "wanted", "episodes"] });
+      queryClient.invalidateQueries({ queryKey: ["bazarr", id, "wanted", "episodes"] });
     },
   });
 }

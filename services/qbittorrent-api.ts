@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import { buildUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
-import { SERVICE_DEFAULTS } from "@/lib/constants";
+import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
 import type {
   QBTransferInfo,
@@ -12,62 +12,79 @@ import type {
   QBSpeedPreferences,
 } from "@/lib/types";
 
-// Session cookie management. Kept in a closure (not a module-level `let`) so
-// it isn't trivially enumerable from outside this file, and persisted in
-// SecureStore (Keychain / Keystore) so we don't need to re-authenticate on
-// every cold start.
-const SESSION_COOKIE_KEY = "secrets.qbittorrent.sessionCookie";
-
 // iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
 // lives in the native jar and we can't read the SID from JS. Android's OkHttp
 // CookieJar usually also consumes Set-Cookie before fetch exposes it, so we
 // fall back to the same sentinel approach when we can't parse the SID.
 const NATIVE_JAR_SENTINEL = "__native_cookie_jar__";
 
-const cookieStore = (() => {
-  let cached: string | null = null;
-  let loaded = false;
-  let loginPromise: Promise<boolean> | null = null;
+interface CookieEntry {
+  cached: string | null;
+  loaded: boolean;
+  loginPromise: Promise<boolean> | null;
+}
 
-  return {
-    async get(): Promise<string | null> {
-      if (!loaded) {
-        cached = await getSecret(SESSION_COOKIE_KEY);
-        loaded = true;
-      }
-      return cached;
-    },
-    async set(value: string | null): Promise<void> {
-      cached = value;
-      loaded = true;
-      if (value) await setSecret(SESSION_COOKIE_KEY, value);
-      else await deleteSecret(SESSION_COOKIE_KEY);
-    },
-    /** Dedup concurrent login attempts so we only hit /auth/login once. */
-    getLoginPromise() {
-      return loginPromise;
-    },
-    setLoginPromise(p: Promise<boolean> | null) {
-      loginPromise = p;
-    },
-  };
-})();
+// One CookieEntry per qBittorrent instance UUID, so two simultaneously-
+// configured qBits keep separate session state. Persisted to SecureStore under
+// `secrets.${instanceId}.sessionCookie`.
+const cookieStores = new Map<string, CookieEntry>();
+
+function sessionKeyFor(instanceId: string): string {
+  return `${SECRET_PREFIX}.${instanceId}.sessionCookie`;
+}
+
+function getEntry(instanceId: string): CookieEntry {
+  let entry = cookieStores.get(instanceId);
+  if (!entry) {
+    entry = { cached: null, loaded: false, loginPromise: null };
+    cookieStores.set(instanceId, entry);
+  }
+  return entry;
+}
+
+async function getCookie(instanceId: string): Promise<string | null> {
+  const entry = getEntry(instanceId);
+  if (!entry.loaded) {
+    entry.cached = await getSecret(sessionKeyFor(instanceId));
+    entry.loaded = true;
+  }
+  return entry.cached;
+}
+
+async function setCookie(instanceId: string, value: string | null): Promise<void> {
+  const entry = getEntry(instanceId);
+  entry.cached = value;
+  entry.loaded = true;
+  if (value) await setSecret(sessionKeyFor(instanceId), value);
+  else await deleteSecret(sessionKeyFor(instanceId));
+}
+
+// Resolve which qBittorrent instance to talk to. The hooks layer (step 3) will
+// thread instanceId explicitly; until then, callers default to the active
+// qBittorrent picked by the user (or the first instance if none is active).
+function resolveQbInstanceId(instanceId?: string): string {
+  if (instanceId) return instanceId;
+  const id = useConfigStore.getState().getActiveInstanceId("qbittorrent");
+  if (!id) throw new Error("No qBittorrent instance configured");
+  return id;
+}
 
 /**
  * Authenticate with qBittorrent using username/password.
  * Must be called before any other qBittorrent API call.
  */
-export async function qbLogin(): Promise<boolean> {
+export async function qbLogin(instanceId?: string): Promise<boolean> {
+  const id = resolveQbInstanceId(instanceId);
   const store = useConfigStore.getState();
-  const secrets = store.secrets.qbittorrent;
-  const baseUrl = store.getActiveUrl("qbittorrent");
+  const secrets = store.instanceSecrets[id] ?? {};
+  const baseUrl = store.getActiveUrl("qbittorrent", id);
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 
   // Custom headers first so the reverse proxy lets /auth/login through; then
   // the form Content-Type wins. We deliberately ignore a user-supplied
   // `Cookie` so the platform jar can populate SID on the response.
   const headers = new Headers();
-  const customHeaders = store.getMergedHeaders("qbittorrent");
+  const customHeaders = store.getMergedHeaders("qbittorrent", id);
   for (const [k, v] of Object.entries(customHeaders)) {
     if (k.toLowerCase() === "cookie") continue;
     headers.set(k, v);
@@ -91,14 +108,14 @@ export async function qbLogin(): Promise<boolean> {
   // and will auto-attach it on subsequent requests — record a sentinel so
   // ensureAuth() knows we've authenticated.
   if (Platform.OS !== "ios") {
-    const setCookie = response.headers.get("set-cookie");
-    const match = setCookie?.match(/SID=([^;]+)/);
+    const setCookieHeader = response.headers.get("set-cookie");
+    const match = setCookieHeader?.match(/SID=([^;]+)/);
     if (match?.[1]) {
-      await cookieStore.set(match[1]);
+      await setCookie(id, match[1]);
       return true;
     }
   }
-  await cookieStore.set(NATIVE_JAR_SENTINEL);
+  await setCookie(id, NATIVE_JAR_SENTINEL);
   return true;
 }
 
@@ -106,20 +123,20 @@ export async function qbLogin(): Promise<boolean> {
  * Ensure we have an active session before making requests.
  * Deduplicates concurrent login attempts.
  */
-async function ensureAuth(): Promise<void> {
-  if (await cookieStore.get()) return;
-  const existing = cookieStore.getLoginPromise();
-  if (existing) {
-    await existing;
+async function ensureAuth(instanceId: string): Promise<void> {
+  if (await getCookie(instanceId)) return;
+  const entry = getEntry(instanceId);
+  if (entry.loginPromise) {
+    await entry.loginPromise;
     return;
   }
-  const p = qbLogin();
-  cookieStore.setLoginPromise(p);
+  const p = qbLogin(instanceId);
+  entry.loginPromise = p;
   try {
     const ok = await p;
     if (!ok) throw new Error("qBittorrent authentication failed");
   } finally {
-    cookieStore.setLoginPromise(null);
+    entry.loginPromise = null;
   }
 }
 
@@ -138,7 +155,12 @@ function applyCookie(headers: Headers, cookie: string | null): void {
   }
 }
 
-async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
+async function qbRequest<T>(
+  path: string,
+  options?: RequestInit,
+  instanceId?: string,
+): Promise<T> {
+  const id = resolveQbInstanceId(instanceId);
   const store = useConfigStore.getState();
 
   if (store.demoMode) {
@@ -146,27 +168,28 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
     return (getDemoResponse("qbittorrent", path) ?? undefined) as T;
   }
 
-  if (!store.services.qbittorrent.enabled) {
+  const inst = store.getInstance("qbittorrent", id);
+  if (!inst?.enabled) {
     throw new Error("qBittorrent is not enabled");
   }
-  const baseUrl = store.getActiveUrl("qbittorrent");
+  const baseUrl = store.getActiveUrl("qbittorrent", id);
   if (!baseUrl) throw new Error("No URL configured for qBittorrent");
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 
   // Auto-login on first request
-  await ensureAuth();
+  await ensureAuth(id);
 
   const headers = new Headers(options?.headers);
 
   // Apply custom headers FIRST. We skip `Cookie` so the user can't accidentally
   // clobber the SID; applyCookie() then sets/replaces the Cookie header itself.
-  const customHeaders = store.getMergedHeaders("qbittorrent");
+  const customHeaders = store.getMergedHeaders("qbittorrent", id);
   for (const [k, v] of Object.entries(customHeaders)) {
     if (k.toLowerCase() === "cookie") continue;
     headers.set(k, v);
   }
 
-  applyCookie(headers, await cookieStore.get());
+  applyCookie(headers, await getCookie(id));
 
   const response = await fetch(buildUrl(baseUrl, apiBase, path), {
     ...options,
@@ -175,9 +198,9 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
   // Re-authenticate if session expired
   if (response.status === 403) {
-    await cookieStore.set(null);
-    await ensureAuth();
-    applyCookie(headers, await cookieStore.get());
+    await setCookie(id, null);
+    await ensureAuth(id);
+    applyCookie(headers, await getCookie(id));
     const retry = await fetch(buildUrl(baseUrl, apiBase, path), {
       ...options,
       headers,
@@ -193,16 +216,29 @@ async function qbRequest<T>(path: string, options?: RequestInit): Promise<T> {
 /**
  * Clear the stored qBittorrent session cookie. Call on sign-out or after the
  * user changes their qBittorrent password so we don't try to reuse a
- * now-invalid session.
+ * now-invalid session. With no `instanceId`, clears every cached instance —
+ * useful when the user has just rotated credentials and wants a clean slate.
  */
-export async function qbClearSession(): Promise<void> {
-  await cookieStore.set(null);
+export async function qbClearSession(instanceId?: string): Promise<void> {
+  if (instanceId) {
+    await setCookie(instanceId, null);
+    return;
+  }
+  // Clear every known instance's cache + storage.
+  const store = useConfigStore.getState();
+  const ids = (store.serviceInstances.qbittorrent ?? []).map((i) => i.id);
+  // Include any cookieStores keys we might have for instances not currently in
+  // the store (e.g. after a deletion that didn't clean up).
+  for (const id of cookieStores.keys()) ids.push(id);
+  for (const id of new Set(ids)) {
+    await setCookie(id, null);
+  }
 }
 
 // --- Transfer Info ---
 
-export function getTransferInfo(): Promise<QBTransferInfo> {
-  return qbRequest<QBTransferInfo>("/transfer/info");
+export function getTransferInfo(instanceId?: string): Promise<QBTransferInfo> {
+  return qbRequest<QBTransferInfo>("/transfer/info", undefined, instanceId);
 }
 
 // --- Torrents ---
@@ -232,7 +268,10 @@ export interface GetTorrentsOptions {
   hashes?: string[];
 }
 
-export function getTorrents(options: GetTorrentsOptions = {}): Promise<QBTorrent[]> {
+export function getTorrents(
+  options: GetTorrentsOptions = {},
+  instanceId?: string,
+): Promise<QBTorrent[]> {
   const params = new URLSearchParams();
   if (options.filter) params.set("filter", options.filter);
   if (options.category !== undefined) params.set("category", options.category);
@@ -245,15 +284,29 @@ export function getTorrents(options: GetTorrentsOptions = {}): Promise<QBTorrent
     params.set("hashes", options.hashes.join("|"));
   }
   const query = params.toString();
-  return qbRequest<QBTorrent[]>(`/torrents/info${query ? `?${query}` : ""}`);
+  return qbRequest<QBTorrent[]>(
+    `/torrents/info${query ? `?${query}` : ""}`,
+    undefined,
+    instanceId,
+  );
 }
 
-export function getTorrentFiles(hash: string): Promise<QBTorrentFile[]> {
-  return qbRequest<QBTorrentFile[]>(`/torrents/files?hash=${hash}`);
+export function getTorrentFiles(
+  hash: string,
+  instanceId?: string,
+): Promise<QBTorrentFile[]> {
+  return qbRequest<QBTorrentFile[]>(`/torrents/files?hash=${hash}`, undefined, instanceId);
 }
 
-export function getTorrentTrackers(hash: string): Promise<QBTorrentTracker[]> {
-  return qbRequest<QBTorrentTracker[]>(`/torrents/trackers?hash=${hash}`);
+export function getTorrentTrackers(
+  hash: string,
+  instanceId?: string,
+): Promise<QBTorrentTracker[]> {
+  return qbRequest<QBTorrentTracker[]>(
+    `/torrents/trackers?hash=${hash}`,
+    undefined,
+    instanceId,
+  );
 }
 
 // --- Torrent Actions ---
@@ -265,98 +318,151 @@ async function qbActionWithFallback(
   primary: string,
   legacy: string,
   body: string,
+  instanceId?: string,
 ): Promise<void> {
   try {
-    await qbRequest(primary, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.message.endsWith(": 404")) {
-      await qbRequest(legacy, {
+    await qbRequest(
+      primary,
+      {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
-      });
+      },
+      instanceId,
+    );
+  } catch (err) {
+    if (err instanceof Error && err.message.endsWith(": 404")) {
+      await qbRequest(
+        legacy,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        },
+        instanceId,
+      );
       return;
     }
     throw err;
   }
 }
 
-export function pauseTorrents(hashes: string[]): Promise<void> {
+export function pauseTorrents(
+  hashes: string[],
+  instanceId?: string,
+): Promise<void> {
   return qbActionWithFallback(
     "/torrents/stop",
     "/torrents/pause",
     `hashes=${hashes.join("|")}`,
+    instanceId,
   );
 }
 
-export function resumeTorrents(hashes: string[]): Promise<void> {
+export function resumeTorrents(
+  hashes: string[],
+  instanceId?: string,
+): Promise<void> {
   return qbActionWithFallback(
     "/torrents/start",
     "/torrents/resume",
     `hashes=${hashes.join("|")}`,
+    instanceId,
   );
 }
 
 export function deleteTorrents(
   hashes: string[],
   deleteFiles = false,
+  instanceId?: string,
 ): Promise<void> {
-  return qbRequest("/torrents/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `hashes=${hashes.join("|")}&deleteFiles=${deleteFiles}`,
-  });
+  return qbRequest(
+    "/torrents/delete",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `hashes=${hashes.join("|")}&deleteFiles=${deleteFiles}`,
+    },
+    instanceId,
+  );
 }
 
-export function addTorrentMagnet(magnetUri: string): Promise<void> {
-  return qbRequest("/torrents/add", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `urls=${encodeURIComponent(magnetUri)}`,
-  });
+export function addTorrentMagnet(
+  magnetUri: string,
+  instanceId?: string,
+): Promise<void> {
+  return qbRequest(
+    "/torrents/add",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `urls=${encodeURIComponent(magnetUri)}`,
+    },
+    instanceId,
+  );
 }
 
 // --- Speed Limits ---
 
 // /transfer/setDownloadLimit and /setUploadLimit take bytes/s. 0 = unlimited.
-export function setDownloadLimit(bytesPerSec: number): Promise<void> {
-  return qbRequest("/transfer/setDownloadLimit", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `limit=${Math.max(0, Math.round(bytesPerSec))}`,
-  });
+export function setDownloadLimit(
+  bytesPerSec: number,
+  instanceId?: string,
+): Promise<void> {
+  return qbRequest(
+    "/transfer/setDownloadLimit",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `limit=${Math.max(0, Math.round(bytesPerSec))}`,
+    },
+    instanceId,
+  );
 }
 
-export function setUploadLimit(bytesPerSec: number): Promise<void> {
-  return qbRequest("/transfer/setUploadLimit", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `limit=${Math.max(0, Math.round(bytesPerSec))}`,
-  });
+export function setUploadLimit(
+  bytesPerSec: number,
+  instanceId?: string,
+): Promise<void> {
+  return qbRequest(
+    "/transfer/setUploadLimit",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `limit=${Math.max(0, Math.round(bytesPerSec))}`,
+    },
+    instanceId,
+  );
 }
 
 // --- Alternative Speed Mode ---
 
 // /transfer/speedLimitsMode returns "0" (off) or "1" (on) as plain text.
-export async function getSpeedLimitsMode(): Promise<boolean> {
-  const raw = await qbRequest<string>("/transfer/speedLimitsMode");
+export async function getSpeedLimitsMode(instanceId?: string): Promise<boolean> {
+  const raw = await qbRequest<string>("/transfer/speedLimitsMode", undefined, instanceId);
   return String(raw).trim() === "1";
 }
 
-export function toggleSpeedLimitsMode(): Promise<void> {
-  return qbRequest("/transfer/toggleSpeedLimitsMode", { method: "POST" });
+export function toggleSpeedLimitsMode(instanceId?: string): Promise<void> {
+  return qbRequest(
+    "/transfer/toggleSpeedLimitsMode",
+    { method: "POST" },
+    instanceId,
+  );
 }
 
 // /app/preferences exposes alt_dl_limit / alt_up_limit (and global dl_limit /
 // up_limit) in bytes/s. 0 = unlimited. The wiki claims KiB/s but the real API
 // returns bytes — verified against a running instance (9216 == "9 KiB/s" in
 // the desktop UI).
-export async function getSpeedPreferences(): Promise<QBSpeedPreferences> {
-  const prefs = await qbRequest<Record<string, unknown>>("/app/preferences");
+export async function getSpeedPreferences(
+  instanceId?: string,
+): Promise<QBSpeedPreferences> {
+  const prefs = await qbRequest<Record<string, unknown>>(
+    "/app/preferences",
+    undefined,
+    instanceId,
+  );
   const num = (key: string) => {
     const v = prefs[key];
     return typeof v === "number" && v > 0 ? v : 0;
@@ -370,10 +476,10 @@ export async function getSpeedPreferences(): Promise<QBSpeedPreferences> {
 }
 
 // Set alt limits via /app/setPreferences. Values are bytes/s; 0 = unlimited.
-export function setAltSpeedLimits(limits: {
-  dl?: number;
-  up?: number;
-}): Promise<void> {
+export function setAltSpeedLimits(
+  limits: { dl?: number; up?: number },
+  instanceId?: string,
+): Promise<void> {
   const sanitized: Record<string, number> = {};
   if (limits.dl !== undefined) {
     sanitized.alt_dl_limit = Math.max(0, Math.round(limits.dl));
@@ -381,9 +487,13 @@ export function setAltSpeedLimits(limits: {
   if (limits.up !== undefined) {
     sanitized.alt_up_limit = Math.max(0, Math.round(limits.up));
   }
-  return qbRequest("/app/setPreferences", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `json=${encodeURIComponent(JSON.stringify(sanitized))}`,
-  });
+  return qbRequest(
+    "/app/setPreferences",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `json=${encodeURIComponent(JSON.stringify(sanitized))}`,
+    },
+    instanceId,
+  );
 }
