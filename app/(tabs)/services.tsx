@@ -1,37 +1,13 @@
 import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
-import {
-  Download,
-  Film,
-  Tv,
-  Inbox,
-  BarChart3,
-  Search,
-  PlayCircle,
-  Clapperboard,
-  Server,
-  Captions,
-  Zap,
-} from "lucide-react-native";
+import { Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
-
-const SERVICE_ICONS: Record<ServiceId, React.ComponentType<any>> = {
-  qbittorrent: Download,
-  radarr: Film,
-  sonarr: Tv,
-  overseerr: Inbox,
-  tautulli: BarChart3,
-  prowlarr: Search,
-  plex: PlayCircle,
-  jellyfin: Clapperboard,
-  glances: Server,
-  bazarr: Captions,
-};
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
@@ -83,7 +59,6 @@ export default function ServicesScreen() {
       </View>
       <View className="flex-row flex-wrap gap-3">
         {enabledServices.map((id) => {
-          const ServiceIcon = SERVICE_ICONS[id];
           const service = services[id];
           const status = health?.find((h) => h.id === id);
           const online = status?.online ?? false;
@@ -96,7 +71,7 @@ export default function ServicesScreen() {
             >
               <View className="relative">
                 <View className="bg-surface-light rounded-xl p-3">
-                  <Icon icon={ServiceIcon} size={28} color="#a1a1aa" />
+                  <ServiceLogo id={id} size={28} online={online} />
                 </View>
                 <View
                   className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${

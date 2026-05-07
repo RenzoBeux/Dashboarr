@@ -4,16 +4,6 @@ import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
 import {
-  Download,
-  Film,
-  Tv,
-  Inbox,
-  BarChart3,
-  Search,
-  PlayCircle,
-  Clapperboard,
-  Server,
-  Captions,
   Upload,
   FolderDown,
   Wifi,
@@ -27,6 +17,7 @@ import {
   ArrowDown,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { ServiceLogo } from "@/components/ui/service-logo";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -59,19 +50,6 @@ import {
   loadRememberedPassphrase,
   saveRememberedPassphrase,
 } from "@/lib/config-passphrase";
-
-const SERVICE_ICONS: Record<ServiceId, React.ComponentType<any>> = {
-  qbittorrent: Download,
-  radarr: Film,
-  sonarr: Tv,
-  overseerr: Inbox,
-  tautulli: BarChart3,
-  prowlarr: Search,
-  plex: PlayCircle,
-  jellyfin: Clapperboard,
-  glances: Server,
-  bazarr: Captions,
-};
 
 // Display name for the service kind (used in the main settings list, before
 // the user picks an instance). Each instance also carries its own editable
@@ -245,7 +223,6 @@ export default function SettingsScreen() {
   }
 
   const renderKindRow = (id: ServiceId) => {
-    const ServiceIcon = SERVICE_ICONS[id];
     const list = serviceInstances[id] ?? [];
     const enabledCount = list.filter((i) => i.enabled).length;
     const subtitle =
@@ -261,7 +238,7 @@ export default function SettingsScreen() {
     return (
       <SettingsRow
         key={id}
-        icon={ServiceIcon}
+        leading={<ServiceLogo id={id} size={20} />}
         label={SERVICE_DEFAULTS_KIND_LABEL[id]}
         subtitle={subtitle}
         onPress={() => setViewingService(id)}
