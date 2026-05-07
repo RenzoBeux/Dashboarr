@@ -7,65 +7,72 @@ import {
   getSessions,
   getMetadata,
 } from "@/services/plex-api";
-import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
-function usePlexEnabled() {
-  return useConfigStore((s) => s.services.plex.enabled);
-}
-
-export function usePlexLibraries() {
-  const enabled = usePlexEnabled();
+export function usePlexLibraries(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
   return useQuery({
-    queryKey: ["plex", "libraries"],
-    queryFn: getLibraries,
-    enabled,
+    queryKey: ["plex", id, "libraries"],
+    queryFn: () => getLibraries(id ?? undefined),
+    enabled: enabled && !!id,
     staleTime: 300000,
   });
 }
 
-export function usePlexLibraryContents(sectionKey: string, start = 0, size = 50) {
+export function usePlexLibraryContents(
+  sectionKey: string,
+  start = 0,
+  size = 50,
+  instanceId?: string,
+) {
+  const { instanceId: id } = useInstanceTarget("plex", instanceId);
   return useQuery({
-    queryKey: ["plex", "library", sectionKey, start, size],
-    queryFn: () => getLibraryContents(sectionKey, start, size),
-    enabled: !!sectionKey,
+    queryKey: ["plex", id, "library", sectionKey, start, size],
+    queryFn: () => getLibraryContents(sectionKey, start, size, id ?? undefined),
+    enabled: !!sectionKey && !!id,
   });
 }
 
-export function usePlexRecentlyAdded(sectionKey?: string, count = 20) {
-  const enabled = usePlexEnabled();
+export function usePlexRecentlyAdded(
+  sectionKey?: string,
+  count = 20,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
   return useQuery({
-    queryKey: ["plex", "recentlyAdded", sectionKey],
-    queryFn: () => getRecentlyAdded(sectionKey, count),
+    queryKey: ["plex", id, "recentlyAdded", sectionKey],
+    queryFn: () => getRecentlyAdded(sectionKey, count, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function usePlexOnDeck() {
-  const enabled = usePlexEnabled();
+export function usePlexOnDeck(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
   return useQuery({
-    queryKey: ["plex", "onDeck"],
-    queryFn: () => getOnDeck(),
+    queryKey: ["plex", id, "onDeck"],
+    queryFn: () => getOnDeck(20, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function usePlexSessions() {
-  const enabled = usePlexEnabled();
+export function usePlexSessions(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
   return useQuery({
-    queryKey: ["plex", "sessions"],
-    queryFn: getSessions,
+    queryKey: ["plex", id, "sessions"],
+    queryFn: () => getSessions(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.activeTorrents, // 5s
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function usePlexMetadata(ratingKey: string) {
+export function usePlexMetadata(ratingKey: string, instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("plex", instanceId);
   return useQuery({
-    queryKey: ["plex", "metadata", ratingKey],
-    queryFn: () => getMetadata(ratingKey),
-    enabled: !!ratingKey,
+    queryKey: ["plex", id, "metadata", ratingKey],
+    queryFn: () => getMetadata(ratingKey, id ?? undefined),
+    enabled: !!ratingKey && !!id,
   });
 }

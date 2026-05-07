@@ -1,70 +1,66 @@
 import { useQuery } from "@tanstack/react-query";
 import { getCpu, getPerCpu, getLoad, getMem, getFs, getDiskIO } from "@/services/glances-api";
-import { useConfigStore } from "@/store/config-store";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 const FAST_POLL = 5000;
 const SLOW_POLL = 30000;
 
-function useGlancesEnabled() {
-  return useConfigStore((s) => s.services.glances.enabled);
-}
-
-export function useGlancesCpu() {
-  const enabled = useGlancesEnabled();
+export function useGlancesCpu(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
-    queryKey: ["glances", "cpu"],
-    queryFn: getCpu,
+    queryKey: ["glances", id, "cpu"],
+    queryFn: () => getCpu(id ?? undefined),
     refetchInterval: FAST_POLL,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useGlancesPerCpu() {
-  const enabled = useGlancesEnabled();
+export function useGlancesPerCpu(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
-    queryKey: ["glances", "percpu"],
-    queryFn: getPerCpu,
+    queryKey: ["glances", id, "percpu"],
+    queryFn: () => getPerCpu(id ?? undefined),
     refetchInterval: FAST_POLL,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useGlancesLoad() {
-  const enabled = useGlancesEnabled();
+export function useGlancesLoad(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
-    queryKey: ["glances", "load"],
-    queryFn: getLoad,
+    queryKey: ["glances", id, "load"],
+    queryFn: () => getLoad(id ?? undefined),
     refetchInterval: FAST_POLL,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useGlancesMem() {
-  const enabled = useGlancesEnabled();
+export function useGlancesMem(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
-    queryKey: ["glances", "mem"],
-    queryFn: getMem,
+    queryKey: ["glances", id, "mem"],
+    queryFn: () => getMem(id ?? undefined),
     refetchInterval: FAST_POLL,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useGlancesFs() {
-  const enabled = useGlancesEnabled();
+export function useGlancesFs(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
-    queryKey: ["glances", "fs"],
-    queryFn: getFs,
+    queryKey: ["glances", id, "fs"],
+    queryFn: () => getFs(id ?? undefined),
     refetchInterval: SLOW_POLL,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useGlancesDiskIO() {
-  const enabled = useGlancesEnabled();
+export function useGlancesDiskIO(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
-    queryKey: ["glances", "diskio"],
-    queryFn: getDiskIO,
+    queryKey: ["glances", id, "diskio"],
+    queryFn: () => getDiskIO(id ?? undefined),
     refetchInterval: FAST_POLL,
-    enabled,
+    enabled: enabled && !!id,
   });
 }

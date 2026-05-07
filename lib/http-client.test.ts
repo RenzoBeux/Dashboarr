@@ -10,48 +10,99 @@ jest.mock("@/store/config-store", () => ({
   },
 }));
 
-interface FakeServiceConfig {
+interface FakeInstance {
+  id: string;
   enabled: boolean;
+  name: string;
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
 }
 
-interface FakeState {
-  demoMode: boolean;
-  services: Record<string, FakeServiceConfig>;
-  secrets: Record<string, { apiKey?: string; username?: string; password?: string; customHeaders?: Record<string, string> }>;
-  globalCustomHeaders: Record<string, string>;
-  getActiveUrl: (id: string) => string;
-  getMergedHeaders: (id: string) => Record<string, string>;
+interface FakeSecrets {
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  customHeaders?: Record<string, string>;
 }
 
+// Mock the v13 multi-instance store shape. Each service kind owns an array of
+// instances; secrets and the active-instance pointer are keyed by instance UUID.
+// Convenience aliases (`secrets[serviceId]`) point at the active instance's
+// secret bag so each test can write `mockStateRef.current.secrets.radarr.X`
+// without having to know the synthetic UUID.
+interface FakeState {
+  demoMode: boolean;
+  serviceInstances: Record<string, FakeInstance[]>;
+  instanceSecrets: Record<string, FakeSecrets>;
+  activeInstance: Record<string, string | null>;
+  // Active-instance projections kept in sync with the underlying maps.
+  secrets: Record<string, FakeSecrets>;
+  globalCustomHeaders: Record<string, string>;
+  getActiveInstanceId: (id: string) => string | null;
+  getInstance: (id: string, instanceId: string) => FakeInstance | undefined;
+  getActiveUrl: (id: string, instanceId?: string) => string;
+  getMergedHeaders: (id: string, instanceId?: string) => Record<string, string>;
+}
+
+const FIXTURE_KINDS = [
+  { id: "radarr", url: "http://radarr.local:7878", secrets: { apiKey: "radarr-key" } },
+  { id: "sonarr", url: "http://sonarr.local:8989", secrets: { apiKey: "sonarr-key" } },
+  { id: "plex", url: "http://plex.local:32400", secrets: { apiKey: "plex-token" } },
+  { id: "jellyfin", url: "http://jelly.local:8096", secrets: { apiKey: "jelly-token" } },
+  { id: "glances", url: "http://glances.local:61208", secrets: { username: "u", password: "p" } },
+];
+
 function makeState(overrides: Partial<FakeState> = {}): FakeState {
+  const serviceInstances: Record<string, FakeInstance[]> = {};
+  const instanceSecrets: Record<string, FakeSecrets> = {};
+  const activeInstance: Record<string, string | null> = {};
+  const secrets: Record<string, FakeSecrets> = {};
+
+  for (const f of FIXTURE_KINDS) {
+    const uuid = `${f.id}-uuid`;
+    serviceInstances[f.id] = [
+      {
+        id: uuid,
+        enabled: true,
+        name: f.id,
+        localUrl: f.url,
+        remoteUrl: "",
+        useRemote: false,
+      },
+    ];
+    instanceSecrets[uuid] = { ...f.secrets };
+    activeInstance[f.id] = uuid;
+    secrets[f.id] = instanceSecrets[uuid];
+  }
+
   const state: FakeState = {
     demoMode: false,
-    services: {
-      radarr: { enabled: true, localUrl: "http://radarr.local:7878", remoteUrl: "", useRemote: false },
-      sonarr: { enabled: true, localUrl: "http://sonarr.local:8989", remoteUrl: "", useRemote: false },
-      plex: { enabled: true, localUrl: "http://plex.local:32400", remoteUrl: "", useRemote: false },
-      jellyfin: { enabled: true, localUrl: "http://jelly.local:8096", remoteUrl: "", useRemote: false },
-      glances: { enabled: true, localUrl: "http://glances.local:61208", remoteUrl: "", useRemote: false },
-    },
-    secrets: {
-      radarr: { apiKey: "radarr-key" },
-      sonarr: { apiKey: "sonarr-key" },
-      plex: { apiKey: "plex-token" },
-      jellyfin: { apiKey: "jelly-token" },
-      glances: { username: "u", password: "p" },
-    },
+    serviceInstances,
+    instanceSecrets,
+    activeInstance,
+    secrets,
     globalCustomHeaders: {},
-    getActiveUrl(id) {
-      return this.services[id]?.localUrl ?? "";
+    getActiveInstanceId(id) {
+      return this.activeInstance[id] ?? this.serviceInstances[id]?.[0]?.id ?? null;
     },
-    getMergedHeaders(id) {
-      return {
-        ...this.globalCustomHeaders,
-        ...(this.secrets[id]?.customHeaders ?? {}),
-      };
+    getInstance(id, instanceId) {
+      return this.serviceInstances[id]?.find((i) => i.id === instanceId);
+    },
+    getActiveUrl(id, instanceId) {
+      const list = this.serviceInstances[id] ?? [];
+      const targetId = instanceId ?? this.activeInstance[id] ?? list[0]?.id;
+      const inst = list.find((i) => i.id === targetId);
+      if (!inst) return "";
+      return inst.useRemote ? inst.remoteUrl : inst.localUrl;
+    },
+    getMergedHeaders(id, instanceId) {
+      const targetId =
+        instanceId ?? this.activeInstance[id] ?? this.serviceInstances[id]?.[0]?.id;
+      const perInstance = targetId
+        ? this.instanceSecrets[targetId]?.customHeaders
+        : undefined;
+      return { ...this.globalCustomHeaders, ...(perInstance ?? {}) };
     },
     ...overrides,
   };

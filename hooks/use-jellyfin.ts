@@ -6,66 +6,66 @@ import {
   getSessions,
   resolveUserId,
 } from "@/services/jellyfin-api";
-import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
-
-export function useJellyfinEnabled() {
-  return useConfigStore((s) => s.services.jellyfin.enabled);
-}
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 // Resolves the userId tied to the configured API key. User-scoped queries
 // gate on this so they don't fire with an undefined user. Cached for 5min —
 // the binding rarely changes within a session.
-export function useJellyfinUserId() {
-  const enabled = useJellyfinEnabled();
+export function useJellyfinUserId(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("jellyfin", instanceId);
   return useQuery({
-    queryKey: ["jellyfin", "userId"],
-    queryFn: resolveUserId,
-    enabled,
+    queryKey: ["jellyfin", id, "userId"],
+    queryFn: () => resolveUserId(id ?? undefined),
+    enabled: enabled && !!id,
     staleTime: 300000,
     gcTime: 600000,
   });
 }
 
-export function useJellyfinLibraries() {
-  const enabled = useJellyfinEnabled();
-  const { data: userId } = useJellyfinUserId();
+export function useJellyfinLibraries(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("jellyfin", instanceId);
+  const { data: userId } = useJellyfinUserId(instanceId);
   return useQuery({
-    queryKey: ["jellyfin", "libraries", userId],
-    queryFn: () => getLibraries(userId!),
-    enabled: enabled && !!userId,
+    queryKey: ["jellyfin", id, "libraries", userId],
+    queryFn: () => getLibraries(userId!, id ?? undefined),
+    enabled: enabled && !!userId && !!id,
     staleTime: 300000,
   });
 }
 
-export function useJellyfinRecentlyAdded(parentId?: string, count = 20) {
-  const enabled = useJellyfinEnabled();
-  const { data: userId } = useJellyfinUserId();
+export function useJellyfinRecentlyAdded(
+  parentId?: string,
+  count = 20,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("jellyfin", instanceId);
+  const { data: userId } = useJellyfinUserId(instanceId);
   return useQuery({
-    queryKey: ["jellyfin", "recentlyAdded", userId, parentId ?? null],
-    queryFn: () => getRecentlyAdded(userId!, parentId, count),
+    queryKey: ["jellyfin", id, "recentlyAdded", userId, parentId ?? null],
+    queryFn: () => getRecentlyAdded(userId!, parentId, count, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
-    enabled: enabled && !!userId,
+    enabled: enabled && !!userId && !!id,
   });
 }
 
-export function useJellyfinResumeItems(count = 20) {
-  const enabled = useJellyfinEnabled();
-  const { data: userId } = useJellyfinUserId();
+export function useJellyfinResumeItems(count = 20, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("jellyfin", instanceId);
+  const { data: userId } = useJellyfinUserId(instanceId);
   return useQuery({
-    queryKey: ["jellyfin", "resume", userId],
-    queryFn: () => getResumeItems(userId!, count),
+    queryKey: ["jellyfin", id, "resume", userId],
+    queryFn: () => getResumeItems(userId!, count, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
-    enabled: enabled && !!userId,
+    enabled: enabled && !!userId && !!id,
   });
 }
 
-export function useJellyfinSessions() {
-  const enabled = useJellyfinEnabled();
+export function useJellyfinSessions(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("jellyfin", instanceId);
   return useQuery({
-    queryKey: ["jellyfin", "sessions"],
-    queryFn: getSessions,
+    queryKey: ["jellyfin", id, "sessions"],
+    queryFn: () => getSessions(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.activeTorrents, // 5s — same cadence as Plex now-playing
-    enabled,
+    enabled: enabled && !!id,
   });
 }

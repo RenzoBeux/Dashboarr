@@ -20,6 +20,10 @@ export interface OverseerrRequestOptions {
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
+// Per-instance routing: every function takes an optional `instanceId` that
+// scopes the request to a specific Seerr instance. When omitted, the user's
+// active Seerr is used (legacy single-instance behavior).
+
 // --- Requests ---
 
 // Overseerr's OpenAPI schema rejects unknown query params via
@@ -30,6 +34,7 @@ export function getRequests(
   pageSize = 20,
   filter?: "all" | "approved" | "pending" | "processing" | "available",
   sort: "added" | "modified" = "added",
+  instanceId?: string,
 ): Promise<OverseerrRequestsResponse> {
   return serviceRequest<OverseerrRequestsResponse>("overseerr", "/request", {
     params: {
@@ -38,11 +43,14 @@ export function getRequests(
       sort,
       ...(filter && filter !== "all" ? { filter } : {}),
     },
+    instanceId,
   });
 }
 
-export function getRequestCount(): Promise<OverseerrRequestCount> {
-  return serviceRequest<OverseerrRequestCount>("overseerr", "/request/count");
+export function getRequestCount(instanceId?: string): Promise<OverseerrRequestCount> {
+  return serviceRequest<OverseerrRequestCount>("overseerr", "/request/count", {
+    instanceId,
+  });
 }
 
 // --- Search ---
@@ -50,40 +58,62 @@ export function getRequestCount(): Promise<OverseerrRequestCount> {
 export function searchMedia(
   query: string,
   page = 1,
+  instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
   return serviceRequest<OverseerrSearchResponse>("overseerr", "/search", {
     params: { query, page },
+    instanceId,
   });
 }
 
 // --- Trending / Discover ---
 
-export function getTrending(page = 1): Promise<OverseerrSearchResponse> {
+export function getTrending(
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
   return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/trending", {
     params: { page },
+    instanceId,
   });
 }
 
-export function getPopularMovies(page = 1): Promise<OverseerrSearchResponse> {
+export function getPopularMovies(
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
   return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/movies", {
     params: { page },
+    instanceId,
   });
 }
 
-export function getPopularTV(page = 1): Promise<OverseerrSearchResponse> {
+export function getPopularTV(
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
   return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/tv", {
     params: { page },
+    instanceId,
   });
 }
 
-export function getUpcomingMovies(page = 1): Promise<OverseerrSearchResponse> {
+export function getUpcomingMovies(
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
   return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/movies/upcoming", {
     params: { page },
+    instanceId,
   });
 }
 
-export function getRecentlyAdded(): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/recently-added");
+export function getRecentlyAdded(
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/recently-added", {
+    instanceId,
+  });
 }
 
 // --- Request Media ---
@@ -91,6 +121,7 @@ export function getRecentlyAdded(): Promise<OverseerrSearchResponse> {
 export function requestMovie(
   tmdbId: number,
   options?: OverseerrRequestOptions,
+  instanceId?: string,
 ): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", "/request", {
     method: "POST",
@@ -99,6 +130,7 @@ export function requestMovie(
       mediaId: tmdbId,
       ...options,
     }),
+    instanceId,
   });
 }
 
@@ -108,6 +140,7 @@ export function requestTV(
   tmdbId: number,
   seasons: number[] | "all" = "all",
   options?: OverseerrRequestOptions,
+  instanceId?: string,
 ): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", "/request", {
     method: "POST",
@@ -117,61 +150,95 @@ export function requestTV(
       seasons,
       ...options,
     }),
+    instanceId,
   });
 }
 
 // --- Approve / Decline ---
 
-export function approveRequest(requestId: number): Promise<OverseerrRequest> {
+export function approveRequest(
+  requestId: number,
+  instanceId?: string,
+): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", `/request/${requestId}/approve`, {
     method: "POST",
+    instanceId,
   });
 }
 
-export function declineRequest(requestId: number): Promise<OverseerrRequest> {
+export function declineRequest(
+  requestId: number,
+  instanceId?: string,
+): Promise<OverseerrRequest> {
   return serviceRequest<OverseerrRequest>("overseerr", `/request/${requestId}/decline`, {
     method: "POST",
+    instanceId,
   });
 }
 
 // --- Media Details ---
 
-export function getMovieDetails(tmdbId: number): Promise<OverseerrMovieDetails> {
-  return serviceRequest<OverseerrMovieDetails>("overseerr", `/movie/${tmdbId}`);
+export function getMovieDetails(
+  tmdbId: number,
+  instanceId?: string,
+): Promise<OverseerrMovieDetails> {
+  return serviceRequest<OverseerrMovieDetails>("overseerr", `/movie/${tmdbId}`, {
+    instanceId,
+  });
 }
 
-export function getTVDetails(tmdbId: number): Promise<OverseerrTVDetails> {
-  return serviceRequest<OverseerrTVDetails>("overseerr", `/tv/${tmdbId}`);
+export function getTVDetails(
+  tmdbId: number,
+  instanceId?: string,
+): Promise<OverseerrTVDetails> {
+  return serviceRequest<OverseerrTVDetails>("overseerr", `/tv/${tmdbId}`, {
+    instanceId,
+  });
 }
 
 // --- Delete Media (resets Overseerr status so it can be re-requested) ---
 
-export function deleteMedia(mediaId: number): Promise<void> {
+export function deleteMedia(mediaId: number, instanceId?: string): Promise<void> {
   return serviceRequest<void>("overseerr", `/media/${mediaId}`, {
     method: "DELETE",
+    instanceId,
   });
 }
 
 // --- Service discovery (Radarr/Sonarr instances configured in Seerr) ---
 
-export function getOverseerrRadarrServers(): Promise<OverseerrServerInfo[]> {
-  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/radarr");
+export function getOverseerrRadarrServers(
+  instanceId?: string,
+): Promise<OverseerrServerInfo[]> {
+  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/radarr", {
+    instanceId,
+  });
 }
 
-export function getOverseerrSonarrServers(): Promise<OverseerrServerInfo[]> {
-  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/sonarr");
+export function getOverseerrSonarrServers(
+  instanceId?: string,
+): Promise<OverseerrServerInfo[]> {
+  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/sonarr", {
+    instanceId,
+  });
 }
 
 export function getOverseerrRadarrServerDetails(
   id: number,
+  instanceId?: string,
 ): Promise<OverseerrServerDetails> {
-  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/radarr/${id}`);
+  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/radarr/${id}`, {
+    instanceId,
+  });
 }
 
 export function getOverseerrSonarrServerDetails(
   id: number,
+  instanceId?: string,
 ): Promise<OverseerrServerDetails> {
-  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/sonarr/${id}`);
+  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/sonarr/${id}`, {
+    instanceId,
+  });
 }
 
 // --- Helpers ---

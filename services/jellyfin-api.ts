@@ -19,14 +19,18 @@ export function isJellyfinTranscoding(session: JellyfinSession): boolean {
   return info.IsVideoDirect === false || info.IsAudioDirect === false;
 }
 
+// Per-instance routing: every function takes an optional `instanceId` to
+// scope the request to a specific Jellyfin instance. When omitted, the user's
+// active Jellyfin is used (legacy single-instance behavior).
+
 // --- Users ---
 
-export async function getCurrentUser(): Promise<JellyfinUser> {
-  return serviceRequest<JellyfinUser>("jellyfin", "/Users/Me");
+export async function getCurrentUser(instanceId?: string): Promise<JellyfinUser> {
+  return serviceRequest<JellyfinUser>("jellyfin", "/Users/Me", { instanceId });
 }
 
-export async function getUsers(): Promise<JellyfinUser[]> {
-  return serviceRequest<JellyfinUser[]>("jellyfin", "/Users");
+export async function getUsers(instanceId?: string): Promise<JellyfinUser[]> {
+  return serviceRequest<JellyfinUser[]>("jellyfin", "/Users", { instanceId });
 }
 
 // Resolve the userId associated with the configured API key. Tries the cheap
@@ -34,15 +38,15 @@ export async function getUsers(): Promise<JellyfinUser[]> {
 // scanning `/Users` and picking the first non-disabled administrator. Used by
 // the hook layer so user-scoped queries can run without making the user paste
 // a userId into the config form.
-export async function resolveUserId(): Promise<string | null> {
+export async function resolveUserId(instanceId?: string): Promise<string | null> {
   try {
-    const me = await getCurrentUser();
+    const me = await getCurrentUser(instanceId);
     if (me?.Id) return me.Id;
   } catch {
     // ignore — fall through to /Users
   }
   try {
-    const users = await getUsers();
+    const users = await getUsers(instanceId);
     const admin = users.find((u) => u.Policy?.IsAdministrator && !u.Policy?.IsDisabled);
     if (admin) return admin.Id;
     const enabled = users.find((u) => !u.Policy?.IsDisabled);
@@ -54,10 +58,14 @@ export async function resolveUserId(): Promise<string | null> {
 
 // --- Libraries ---
 
-export async function getLibraries(userId: string): Promise<JellyfinLibrary[]> {
+export async function getLibraries(
+  userId: string,
+  instanceId?: string,
+): Promise<JellyfinLibrary[]> {
   const data = await serviceRequest<JellyfinItemsResponse>(
     "jellyfin",
     `/Users/${encodeURIComponent(userId)}/Views`,
+    { instanceId },
   );
   return (data.Items ?? []) as unknown as JellyfinLibrary[];
 }
@@ -68,6 +76,7 @@ export async function getRecentlyAdded(
   userId: string,
   parentId?: string,
   count = 20,
+  instanceId?: string,
 ): Promise<JellyfinItem[]> {
   const params: Record<string, string | number | boolean> = {
     Limit: count,
@@ -77,7 +86,7 @@ export async function getRecentlyAdded(
   return serviceRequest<JellyfinItem[]>(
     "jellyfin",
     `/Users/${encodeURIComponent(userId)}/Items/Latest`,
-    { params },
+    { params, instanceId },
   );
 }
 
@@ -86,6 +95,7 @@ export async function getRecentlyAdded(
 export async function getResumeItems(
   userId: string,
   count = 20,
+  instanceId?: string,
 ): Promise<JellyfinItem[]> {
   const data = await serviceRequest<JellyfinItemsResponse>(
     "jellyfin",
@@ -96,6 +106,7 @@ export async function getResumeItems(
         MediaTypes: "Video",
         Fields: "PrimaryImageAspectRatio,ProductionYear",
       },
+      instanceId,
     },
   );
   return data.Items ?? [];
@@ -103,11 +114,12 @@ export async function getResumeItems(
 
 // --- Now Playing (Sessions) ---
 
-export async function getSessions(): Promise<JellyfinSession[]> {
+export async function getSessions(instanceId?: string): Promise<JellyfinSession[]> {
   // Server-wide endpoint — returns every connected session, not just the
   // current user's. Filter on the client if/when needed.
   const data = await serviceRequest<JellyfinSession[]>("jellyfin", "/Sessions", {
     params: { ActiveWithinSeconds: 960 },
+    instanceId,
   });
   // Only keep sessions that are actually playing something; idle clients also
   // show up in /Sessions.
@@ -127,11 +139,14 @@ export function getJellyfinImageUrl(
   type: "Primary" | "Backdrop" | "Thumb" = "Primary",
   width = 300,
   height = 450,
+  instanceId?: string,
 ): string | null {
   if (!item) return null;
   const store = useConfigStore.getState();
-  const baseUrl = store.getActiveUrl("jellyfin");
-  const secrets = store.secrets.jellyfin;
+  const targetId = instanceId ?? store.getActiveInstanceId("jellyfin");
+  if (!targetId) return null;
+  const baseUrl = store.getActiveUrl("jellyfin", targetId);
+  const secrets = store.instanceSecrets[targetId] ?? {};
   if (!baseUrl) return null;
   const trimmed = baseUrl.replace(/\/+$/, "");
 
@@ -175,8 +190,9 @@ export function getJellyfinImageSource(
   type: "Primary" | "Backdrop" | "Thumb" = "Primary",
   width = 300,
   height = 450,
+  instanceId?: string,
 ): { uri: string; cacheKey: string } | null {
-  const uri = getJellyfinImageUrl(item, type, width, height);
+  const uri = getJellyfinImageUrl(item, type, width, height, instanceId);
   if (!uri) return null;
   const cacheKey = uri.replace(/[?&]api_key=[^&]*/g, "");
   return { uri, cacheKey };

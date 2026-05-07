@@ -1,38 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
 import { getActivity, getHistory, getLibraryStats } from "@/services/tautulli-api";
-import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
-function useTautulliEnabled() {
-  return useConfigStore((s) => s.services.tautulli.enabled);
-}
-
-export function useTautulliActivity() {
-  const enabled = useTautulliEnabled();
+export function useTautulliActivity(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("tautulli", instanceId);
   return useQuery({
-    queryKey: ["tautulli", "activity"],
-    queryFn: getActivity,
+    queryKey: ["tautulli", id, "activity"],
+    queryFn: () => getActivity(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.activeTorrents, // 5s — active streams need fast updates
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useTautulliHistory(length = 20) {
-  const enabled = useTautulliEnabled();
+export function useTautulliHistory(length = 20, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("tautulli", instanceId);
   return useQuery({
-    queryKey: ["tautulli", "history", length],
-    queryFn: () => getHistory(length),
+    queryKey: ["tautulli", id, "history", length],
+    queryFn: () => getHistory(length, 0, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar, // 60s
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useTautulliLibraryStats() {
-  const enabled = useTautulliEnabled();
+export function useTautulliLibraryStats(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("tautulli", instanceId);
   return useQuery({
-    queryKey: ["tautulli", "libraryStats"],
-    queryFn: getLibraryStats,
-    enabled,
+    queryKey: ["tautulli", id, "libraryStats"],
+    queryFn: () => getLibraryStats(id ?? undefined),
+    enabled: enabled && !!id,
     staleTime: 300000, // 5 min — library sizes don't change fast
   });
 }
