@@ -271,7 +271,7 @@ export default function DownloadsScreen() {
     />
   ) : (
     <>
-      <ServiceHeader name="Downloads" online={qbHealth?.online} />
+      <ServiceHeader name="Downloads" online={qbHealth?.online} serviceId="qbittorrent" />
 
       {/* Speed Summary */}
       {transfer && (

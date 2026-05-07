@@ -193,7 +193,7 @@ export default function TVScreen() {
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <View className="flex-row items-center justify-between">
-        <ServiceHeader name="TV Shows" online={sonarrHealth?.online} />
+        <ServiceHeader name="TV Shows" online={sonarrHealth?.online} serviceId="sonarr" />
         <Pressable
           onPress={() => router.push("/series/search")}
           className="p-2 active:opacity-70"

@@ -1,0 +1,364 @@
+import { useEffect, useRef } from "react";
+import {
+  useDownloadingTorrentsForWatcher,
+} from "@/hooks/use-qbittorrent";
+import { getTorrents } from "@/services/qbittorrent-api";
+import { useRadarrQueue } from "@/hooks/use-radarr";
+import { useSonarrQueue } from "@/hooks/use-sonarr";
+import { useServiceHealth } from "@/hooks/use-service-health";
+import { useOverseerrRequests } from "@/hooks/use-overseerr";
+import { useNotificationStore } from "@/store/notifications-store";
+import { useBackendStore } from "@/store/backend-store";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { sendLocalNotification } from "@/lib/notifications";
+import { toast } from "@/components/ui/toast";
+import type { QBTorrent, TorrentState } from "@/lib/types";
+
+// Post-download states. `pausedUP`/`stoppedUP` cover qBT 4.x and 5.x naming.
+// Excluding pausedDL/stoppedDL here is what stops a pause from being mistaken
+// for a completion.
+const COMPLETED_STATES: TorrentState[] = [
+  "uploading",
+  "pausedUP",
+  "stoppedUP",
+  "queuedUP",
+  "stalledUP",
+  "checkingUP",
+  "forcedUP",
+];
+
+function isCompletedState(state: TorrentState): boolean {
+  return COMPLETED_STATES.includes(state);
+}
+
+// Used by the watcher children to decide whether to fire local notifications.
+// All four conditions must be met: notifications hydrated + globally enabled
+// + the per-kind toggle on + no backend currently pushing.
+interface BaseGate {
+  hydrated: boolean;
+  enabled: boolean;
+  backendActive: boolean;
+}
+
+/**
+ * Renders one watcher child per (kind, enabled instance) pair so each
+ * instance owns its own polling cadence and previous-state ref. Children all
+ * return null — they exist purely to scope hooks per instance, which the
+ * single-effect approach can't do without breaking the rules of hooks.
+ *
+ * Must be rendered inside a QueryClientProvider.
+ */
+export function NotificationWatchers() {
+  const hydrated = useNotificationStore((s) => s.hydrated);
+  const enabled = useNotificationStore((s) => s.enabled);
+  const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
+  const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
+  const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
+  const serviceOffline = useNotificationStore((s) => s.serviceOffline);
+  const overseerrNewRequest = useNotificationStore((s) => s.overseerrNewRequest);
+
+  // When a backend is paired AND currently reachable, defer notifications to
+  // it so the user doesn't get double-notified (one local, one push). If the
+  // backend goes offline (2 consecutive /health failures), `backendActive`
+  // flips back to false and local watchers take over again.
+  const backendActive = useBackendStore(
+    (s) => s.hydrated && !!s.sharedSecret && !!s.url && s.isHealthy,
+  );
+
+  const gate: BaseGate = { hydrated, enabled, backendActive };
+
+  const qbInstances = useEnabledInstances("qbittorrent");
+  const radarrInstances = useEnabledInstances("radarr");
+  const sonarrInstances = useEnabledInstances("sonarr");
+  const overseerrInstances = useEnabledInstances("overseerr");
+
+  return (
+    <>
+      {qbInstances.map((inst) => (
+        <QbDownloadWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && torrentCompleted}
+        />
+      ))}
+      {radarrInstances.map((inst) => (
+        <RadarrQueueWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && radarrDownloaded}
+        />
+      ))}
+      {sonarrInstances.map((inst) => (
+        <SonarrQueueWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && sonarrDownloaded}
+        />
+      ))}
+      {overseerrInstances.map((inst) => (
+        <OverseerrRequestWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && overseerrNewRequest}
+        />
+      ))}
+      <ServiceHealthWatcher gate={gate} active={serviceOffline} />
+    </>
+  );
+}
+
+// --- qBittorrent: torrent downloading → completed ---
+// We only fetch torrents currently in a downloading state (a small slice
+// even on huge libraries). When a hash leaves that set, we do a targeted
+// verification fetch by hash to disambiguate completion (notify) from
+// pause/delete (don't notify). The watcher query stays fully disabled
+// unless notifications are on, qBT is enabled, completions are wanted,
+// and the backend isn't already pushing — so the cost is zero at rest.
+function QbDownloadWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: downloading } = useDownloadingTorrentsForWatcher(active, instanceId);
+  const prevDownloading = useRef<Map<string, QBTorrent>>(new Map());
+
+  // Reset the baseline whenever the watcher goes inactive so the next active
+  // poll doesn't compare against a stale snapshot from before the gap.
+  useEffect(() => {
+    if (!active) prevDownloading.current = new Map();
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (!Array.isArray(downloading)) return;
+
+    const currMap = new Map(downloading.map((t) => [t.hash, t]));
+    const prev = prevDownloading.current;
+    prevDownloading.current = currMap;
+
+    const departed: QBTorrent[] = [];
+    for (const [hash, t] of prev) {
+      if (!currMap.has(hash)) departed.push(t);
+    }
+    if (departed.length === 0) return;
+
+    // Disappearance from the downloading set could mean the torrent was
+    // paused, deleted, or actually completed — verify with one targeted
+    // fetch before notifying.
+    void (async () => {
+      try {
+        const list = await getTorrents(
+          { hashes: departed.map((t) => t.hash) },
+          instanceId,
+        );
+        const stateByHash = new Map(list.map((t) => [t.hash, t.state]));
+        for (const t of departed) {
+          const newState = stateByHash.get(t.hash);
+          if (newState && isCompletedState(newState)) {
+            sendLocalNotification({
+              title: "Download complete",
+              body: t.name,
+              data: { type: "torrent", hash: t.hash, instanceId },
+            });
+          }
+        }
+      } catch {
+        // Best-effort — if verification fails, skip the notification rather
+        // than risk a false positive.
+      }
+    })();
+  }, [downloading, active, instanceId]);
+
+  return null;
+}
+
+// --- Radarr: queue item disappears (success only) ---
+function RadarrQueueWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: radarrQueue } = useRadarrQueue(instanceId);
+  const prevQueue = useRef<Map<number, { title: string; status?: string }> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!active) {
+      prevQueue.current = null;
+      return;
+    }
+    if (!Array.isArray(radarrQueue?.records)) return;
+    const prev = prevQueue.current;
+    const currentMap = new Map(
+      radarrQueue.records.map((r) => [
+        r.id,
+        { title: r.title, status: r.trackedDownloadStatus },
+      ]),
+    );
+    if (prev !== null) {
+      for (const [id, item] of prev) {
+        if (!currentMap.has(id) && item.status !== "error") {
+          sendLocalNotification({
+            title: "Movie downloaded",
+            body: item.title,
+            data: { type: "radarr", queueId: id, instanceId },
+          });
+        }
+      }
+    }
+    prevQueue.current = currentMap;
+  }, [radarrQueue, active, instanceId]);
+
+  return null;
+}
+
+// --- Sonarr: queue item disappears (success only) ---
+function SonarrQueueWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: sonarrQueue } = useSonarrQueue(instanceId);
+  const prevQueue = useRef<Map<number, { title: string; status?: string }> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!active) {
+      prevQueue.current = null;
+      return;
+    }
+    if (!Array.isArray(sonarrQueue?.records)) return;
+    const prev = prevQueue.current;
+    const currentMap = new Map(
+      sonarrQueue.records.map((r) => [
+        r.id,
+        { title: r.title, status: r.trackedDownloadStatus },
+      ]),
+    );
+    if (prev !== null) {
+      for (const [id, item] of prev) {
+        if (!currentMap.has(id) && item.status !== "error") {
+          sendLocalNotification({
+            title: "Episode downloaded",
+            body: item.title,
+            data: { type: "sonarr", queueId: id, instanceId },
+          });
+        }
+      }
+    }
+    prevQueue.current = currentMap;
+  }, [sonarrQueue, active, instanceId]);
+
+  return null;
+}
+
+// --- Service health: any instance online → offline ---
+// Per-instance: fire one notification per (kind, instance) that goes offline.
+// The instance name lands in the body so multi-instance setups can tell
+// "Radarr (4K) is offline" from "Radarr (1080p) is offline".
+function ServiceHealthWatcher({
+  gate,
+  active,
+}: {
+  gate: BaseGate;
+  active: boolean;
+}) {
+  const { data: health } = useServiceHealth();
+  const prevHealth = useRef<Map<string, boolean> | null>(null);
+
+  useEffect(() => {
+    if (gate.backendActive) return;
+    if (!gate.hydrated || !gate.enabled || !active) return;
+    if (!Array.isArray(health)) return;
+    const prev = prevHealth.current;
+    const currentMap = new Map<string, boolean>();
+    for (const kind of health) {
+      for (const inst of kind.instances) {
+        const key = `${kind.id}:${inst.instanceId}`;
+        currentMap.set(key, inst.online);
+        if (prev !== null) {
+          const wasOnline = prev.get(key);
+          if (wasOnline === true && inst.online === false) {
+            sendLocalNotification({
+              title: "Service offline",
+              body: `${inst.instanceName} is unreachable`,
+              data: {
+                type: "health",
+                serviceId: kind.id,
+                instanceId: inst.instanceId,
+              },
+            });
+          }
+        }
+      }
+    }
+    prevHealth.current = currentMap;
+  }, [health, gate.backendActive, gate.hydrated, gate.enabled, active]);
+
+  return null;
+}
+
+// --- Overseerr: new pending request ---
+function OverseerrRequestWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: overseerrRequests } = useOverseerrRequests(
+    1,
+    "pending",
+    "added",
+    instanceId,
+  );
+  const prevRequestIds = useRef<Set<number> | null>(null);
+  const overseerrShapeWarned = useRef(false);
+
+  // Surface a one-shot toast when Overseerr returns a body that isn't shaped
+  // like { results: [...] } — usually a reverse-proxy auth challenge or a URL
+  // that doesn't actually point at Overseerr. Without this the user just sees
+  // empty screens with no clue why.
+  useEffect(() => {
+    if (overseerrShapeWarned.current) return;
+    if (overseerrRequests === undefined) return;
+    if (Array.isArray(overseerrRequests?.results)) return;
+    overseerrShapeWarned.current = true;
+    toast(
+      "Seerr returned an unexpected response. Check the URL and API key.",
+      "error",
+    );
+  }, [overseerrRequests]);
+
+  useEffect(() => {
+    if (!active) {
+      prevRequestIds.current = null;
+      return;
+    }
+    if (!Array.isArray(overseerrRequests?.results)) return;
+    const currentIds = new Set(overseerrRequests.results.map((r) => r.id));
+    const prev = prevRequestIds.current;
+    if (prev !== null) {
+      for (const req of overseerrRequests.results) {
+        if (!prev.has(req.id)) {
+          sendLocalNotification({
+            title: "New request",
+            body: `${req.requestedBy.displayName} requested a ${req.media.mediaType}`,
+            data: { type: "overseerr", requestId: req.id, instanceId },
+          });
+        }
+      }
+    }
+    prevRequestIds.current = currentIds;
+  }, [overseerrRequests, active, instanceId]);
+
+  return null;
+}

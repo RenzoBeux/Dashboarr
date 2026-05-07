@@ -171,7 +171,7 @@ export default function MoviesScreen() {
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <View className="flex-row items-center justify-between">
-        <ServiceHeader name="Movies" online={radarrHealth?.online} />
+        <ServiceHeader name="Movies" online={radarrHealth?.online} serviceId="radarr" />
         <Pressable
           onPress={() => router.push("/movie/search")}
           className="p-2 active:opacity-70"

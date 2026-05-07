@@ -35,7 +35,7 @@ export default function ActivityScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Activity" online={tautulliHealth?.online} />
+      <ServiceHeader name="Activity" online={tautulliHealth?.online} serviceId="tautulli" />
 
       <ScrollView
         horizontal

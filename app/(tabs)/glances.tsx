@@ -39,7 +39,7 @@ export default function GlancesScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Server" online={glancesHealth?.online} />
+      <ServiceHeader name="Server" online={glancesHealth?.online} serviceId="glances" />
       <View className="gap-4">
         <CpuCard />
         <MemoryCard />

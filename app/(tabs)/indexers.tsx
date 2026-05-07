@@ -36,7 +36,7 @@ export default function IndexersScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Indexers" online={prowlarrHealth?.online} />
+      <ServiceHeader name="Indexers" online={prowlarrHealth?.online} serviceId="prowlarr" />
 
       <ScrollView
         horizontal

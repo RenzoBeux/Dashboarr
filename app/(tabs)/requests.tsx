@@ -137,7 +137,7 @@ export default function RequestsScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Seerr" online={overseerrHealth?.online} />
+      <ServiceHeader name="Seerr" online={overseerrHealth?.online} serviceId="overseerr" />
 
       <ScrollView
         horizontal

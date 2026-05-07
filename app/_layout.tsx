@@ -17,7 +17,7 @@ import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
 import "@/lib/expo-image-nativewind"; // side-effect: cssInterop on expo-image's Image
-import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
+import { NotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
 import { useNetworkAutoSwitch } from "@/hooks/use-network";
@@ -29,11 +29,6 @@ import "../global.css";
 // Pause/resume polling based on app state
 function onAppStateChange(status: AppStateStatus) {
   focusManager.setFocused(status === "active");
-}
-
-function NotificationWatchers() {
-  useNotificationWatchers();
-  return null;
 }
 
 // Notification payloads come from a paired backend. The backend is trusted,
