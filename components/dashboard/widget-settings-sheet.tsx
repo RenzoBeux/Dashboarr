@@ -31,7 +31,7 @@ import {
   WIDGET_REGISTRY,
   type WidgetDefinition,
 } from "@/components/dashboard/widget-registry";
-import type { WidgetId } from "@/lib/constants";
+import type { WidgetSlot } from "@/store/config-store";
 import { GlassSurface } from "@/components/ui/glass-surface";
 
 const { height: SCREEN_H } = Dimensions.get("window");
@@ -39,34 +39,53 @@ const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
 const OFFSCREEN = SHEET_MAX_HEIGHT + 120;
 
 interface WidgetSettingsSheetProps {
-  widgetId: WidgetId | null;
+  slotId: string | null;
   onClose: () => void;
 }
 
 export function WidgetSettingsSheet({
-  widgetId,
+  slotId,
   onClose,
 }: WidgetSettingsSheetProps) {
   const insets = useSafeAreaInsets();
-  const resetWidgetSettings = useConfigStore((s) => s.resetWidgetSettings);
-  const hasSettings = useConfigStore(
-    (s) => widgetId !== null && widgetId in s.widgetSettings,
-  );
+  const resetSlotSettings = useConfigStore((s) => s.resetSlotSettings);
+  // True when the slot has any persisted overrides — drives whether the
+  // "Reset to defaults" button is shown.
+  const hasSettings = useConfigStore((s) => {
+    if (!slotId) return false;
+    for (const d of s.dashboards) {
+      const slot = d.widgets.find((w) => w.id === slotId);
+      if (slot) return slot.settings !== undefined;
+    }
+    return false;
+  });
+  const slot = useConfigStore((s) => {
+    if (!slotId) return undefined;
+    for (const d of s.dashboards) {
+      const found = d.widgets.find((w) => w.id === slotId);
+      if (found) return found;
+    }
+    return undefined;
+  });
 
   const [mounted, setMounted] = useState(false);
-  // Cache the last visible widget so the sheet can render its definition
-  // through the closing animation, even after `widgetId` becomes null.
-  const [activeWidget, setActiveWidget] = useState<WidgetDefinition | null>(null);
+  // Cache the last visible slot+widget so the sheet can render its definition
+  // through the closing animation, even after `slotId` becomes null.
+  const [activeSlot, setActiveSlot] = useState<{
+    slot: WidgetSlot;
+    widget: WidgetDefinition;
+  } | null>(null);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
-  const visible = widgetId !== null;
+  const visible = slotId !== null;
 
   useEffect(() => {
-    if (widgetId) {
-      setActiveWidget(WIDGET_REGISTRY[widgetId] ?? null);
+    if (slot) {
+      const widget = WIDGET_REGISTRY[slot.widgetId];
+      if (widget) setActiveSlot({ slot, widget });
     }
-  }, [widgetId]);
+  }, [slot]);
 
   useEffect(() => {
     if (visible) {
@@ -107,17 +126,17 @@ export function WidgetSettingsSheet({
     });
 
   function handleReset() {
-    if (!activeWidget) return;
+    if (!activeSlot) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    resetWidgetSettings(activeWidget.id);
+    resetSlotSettings(activeSlot.slot.id);
   }
 
-  if (!activeWidget) {
+  if (!activeSlot) {
     return null;
   }
 
-  const WidgetIcon = activeWidget.icon;
-  const SettingsComponent = activeWidget.settingsComponent;
+  const WidgetIcon = activeSlot.widget.icon;
+  const SettingsComponent = activeSlot.widget.settingsComponent;
 
   return (
     <Modal
@@ -155,7 +174,7 @@ export function WidgetSettingsSheet({
                     </View>
                     <View className="flex-1">
                       <Text className="text-zinc-100 text-xl font-bold">
-                        {activeWidget.label}
+                        {activeSlot.widget.label}
                       </Text>
                       <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
                         Widget settings
@@ -178,7 +197,7 @@ export function WidgetSettingsSheet({
               showsVerticalScrollIndicator={false}
             >
               {SettingsComponent ? (
-                <SettingsComponent onClose={onClose} />
+                <SettingsComponent slotId={activeSlot.slot.id} onClose={onClose} />
               ) : (
                 <View className="px-4 py-6 items-center">
                   <Text className="text-zinc-400 text-sm text-center">

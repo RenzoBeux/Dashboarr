@@ -1,17 +1,21 @@
 import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Play, Pause, Loader, MonitorPlay, Cog } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useTautulliActivity } from "@/hooks/use-tautulli";
-import { getTautulliImageSource } from "@/services/tautulli-api";
+import { getActivity, getTautulliImageSource } from "@/services/tautulli-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   type TautulliActivitySettingsValue,
 } from "@/components/dashboard/widget-settings/tautulli-activity-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -29,19 +33,43 @@ function parseHiddenUsers(value: string): Set<string> {
   );
 }
 
-export function TautulliActivityCard() {
+export function TautulliActivityCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<TautulliActivitySettingsValue>(
-    "tautulli-activity",
+    slotId,
     TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   );
-  const { data: activity, isLoading } = useTautulliActivity();
+  const allInstances = useEnabledInstances("tautulli");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
   const router = useRouter();
 
-  const allSessions = activity?.sessions ?? [];
+  // Fan out across the resolved Tautulli instances. Sessions from each get
+  // tagged with their source instance so the React key stays unique even when
+  // session_key collides across hosts.
+  const queries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["tautulli", inst.id, "activity"] as const,
+      queryFn: () => getActivity(inst.id),
+      refetchInterval: POLLING_INTERVALS.activeTorrents,
+    })),
+  });
+
+  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
+
+  const allSessions = queries.flatMap((q, i) =>
+    (q.data?.sessions ?? []).map((s) => ({ session: s, instanceId: instances[i].id })),
+  );
   const hiddenUsers = parseHiddenUsers(settings.hideUsers);
   const sessions = hiddenUsers.size
-    ? allSessions.filter((s) => !hiddenUsers.has(s.user.toLowerCase()))
+    ? allSessions.filter(({ session }) => !hiddenUsers.has(session.user.toLowerCase()))
     : allSessions;
+
+  const totalBandwidth = queries.reduce(
+    (acc, q) => acc + (q.data?.total_bandwidth ?? 0),
+    0,
+  );
 
   const display = sessions.slice(0, settings.maxItems);
   const hasMore = sessions.length > settings.maxItems;
@@ -61,7 +89,12 @@ export function TautulliActivityCard() {
         }
       />
 
-      {isLoading ? (
+      {instances.length === 0 ? (
+        <EmptyState
+          icon={<Icon icon={MonitorPlay} size={32} color="#71717a" />}
+          title="No Tautulli instances enabled"
+        />
+      ) : isLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState
@@ -74,10 +107,11 @@ export function TautulliActivityCard() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 12 }}
         >
-          {display.map((session) => (
+          {display.map(({ session, instanceId }) => (
             <TautulliSessionTile
-              key={session.session_key}
+              key={`${instanceId}:${session.session_key}`}
               session={session}
+              instanceId={instanceId}
               settings={settings}
             />
           ))}
@@ -87,10 +121,10 @@ export function TautulliActivityCard() {
         </ScrollView>
       )}
 
-      {settings.showBandwidthSummary && sessions.length > 0 && activity && (
+      {settings.showBandwidthSummary && sessions.length > 0 && (
         <View className="flex-row gap-3 mt-3 pt-3 border-t border-border/50">
           <Text className="text-zinc-500 text-xs">
-            Bandwidth: {formatBytes(activity.total_bandwidth * 1000)}/s
+            Bandwidth: {formatBytes(totalBandwidth * 1000)}/s
           </Text>
         </View>
       )}
@@ -100,9 +134,11 @@ export function TautulliActivityCard() {
 
 function TautulliSessionTile({
   session,
+  instanceId,
   settings,
 }: {
   session: TautulliSession;
+  instanceId: string;
   settings: TautulliActivitySettingsValue;
 }) {
   const progress = parseInt(session.progress_percent, 10) / 100;
@@ -122,7 +158,7 @@ function TautulliSessionTile({
       ? session.grandparent_rating_key
       : session.rating_key;
   const posterSource = ratingKey
-    ? getTautulliImageSource(ratingKey, 220, 330)
+    ? getTautulliImageSource(ratingKey, 220, 330, instanceId)
     : null;
 
   const subtitle = settings.showUserAndDevice

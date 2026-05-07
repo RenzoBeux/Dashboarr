@@ -23,10 +23,13 @@ describe("migrateConfig — entry point", () => {
   });
 
   it("returns payload unchanged when already at CURRENT_CONFIG_VERSION", () => {
+    // v14 shape: dashboards/activeDashboardId carry layout; per-slot settings
+    // live on the slot itself.
+    const dashboardId = "11111111-1111-1111-1111-111111111111";
+    const slotId = "22222222-2222-2222-2222-222222222222";
     const input = {
       version: CURRENT_CONFIG_VERSION,
       exportedAt: "2026-04-27T00:00:00.000Z",
-      // v13 shape: services is Record<ServiceId, ServiceInstance[]>
       services: {
         radarr: [
           {
@@ -43,14 +46,21 @@ describe("migrateConfig — entry point", () => {
       activeInstance: { radarr: "uuid-radarr-1" },
       autoSwitchNetwork: false,
       homeNetworks: [],
-      dashboardWidgets: ["calendar"],
-      widgetSettings: {},
+      dashboards: [
+        {
+          id: dashboardId,
+          name: "Default",
+          widgets: [{ id: slotId, widgetId: "calendar" }],
+        },
+      ],
+      activeDashboardId: dashboardId,
       wolDevices: [],
     };
-    const result = migrateConfig({ ...input });
+    const result: any = migrateConfig({ ...input });
     expect(result.version).toBe(CURRENT_CONFIG_VERSION);
     expect(result.services).toEqual(input.services);
-    expect(result.dashboardWidgets).toEqual(["calendar"]);
+    expect(result.dashboards).toEqual(input.dashboards);
+    expect(result.activeDashboardId).toBe(dashboardId);
   });
 
   it("throws when final payload has services as null", () => {
@@ -294,20 +304,27 @@ describe("v3 → v4 (single → array of WOL devices)", () => {
   });
 });
 
-describe("v4 → v5 (dashboardOrder → dashboardWidgets)", () => {
-  it("renames a non-empty dashboardOrder to dashboardWidgets", () => {
+// After v14 the migration chain folds dashboardWidgets/widgetSettings into a
+// per-slot dashboards array. These helpers extract the widget-id list from the
+// auto-built Default dashboard so existing assertions stay readable.
+const widgetIdsOf = (result: any) =>
+  result.dashboards[0].widgets.map((w: any) => w.widgetId);
+
+describe("v4 → v5 (dashboardOrder → dashboardWidgets, observed via v14)", () => {
+  it("renames a non-empty dashboardOrder and folds it onto the Default dashboard", () => {
     const result: any = migrateConfig({
       version: 4,
       services: {},
       dashboardOrder: ["service-health", "downloads"],
     });
-    expect(result.dashboardWidgets).toEqual(["service-health", "downloads"]);
+    expect(widgetIdsOf(result)).toEqual(["service-health", "downloads"]);
     expect(result.dashboardOrder).toBeUndefined();
+    expect(result.dashboardWidgets).toBeUndefined();
   });
 
   it("falls back to DEFAULT_DASHBOARD_WIDGETS when dashboardOrder is missing", () => {
     const result: any = migrateConfig({ version: 4, services: {} });
-    expect(result.dashboardWidgets).toEqual(DEFAULT_DASHBOARD_WIDGETS);
+    expect(widgetIdsOf(result)).toEqual(DEFAULT_DASHBOARD_WIDGETS);
   });
 
   it("falls back to DEFAULT_DASHBOARD_WIDGETS when dashboardOrder is empty", () => {
@@ -316,7 +333,7 @@ describe("v4 → v5 (dashboardOrder → dashboardWidgets)", () => {
       services: {},
       dashboardOrder: [],
     });
-    expect(result.dashboardWidgets).toEqual(DEFAULT_DASHBOARD_WIDGETS);
+    expect(widgetIdsOf(result)).toEqual(DEFAULT_DASHBOARD_WIDGETS);
   });
 
   it("falls back to DEFAULT_DASHBOARD_WIDGETS when dashboardOrder is not an array", () => {
@@ -325,7 +342,7 @@ describe("v4 → v5 (dashboardOrder → dashboardWidgets)", () => {
       services: {},
       dashboardOrder: "service-health" as any,
     });
-    expect(result.dashboardWidgets).toEqual(DEFAULT_DASHBOARD_WIDGETS);
+    expect(widgetIdsOf(result)).toEqual(DEFAULT_DASHBOARD_WIDGETS);
   });
 });
 
@@ -455,29 +472,25 @@ describe("v11 → v12 (uiScale)", () => {
   });
 });
 
-describe("v6 → v7 (widget rename + settings)", () => {
-  it("renames sonarr-calendar to calendar", () => {
+describe("v6 → v7 (widget rename + settings, observed via v14)", () => {
+  it("renames sonarr-calendar to calendar inside the Default dashboard", () => {
     const result: any = migrateConfig({
       version: 6,
       services: {},
       dashboardWidgets: ["sonarr-calendar", "downloads"],
     });
-    expect(result.dashboardWidgets).toEqual(["calendar", "downloads"]);
+    expect(widgetIdsOf(result)).toEqual(["calendar", "downloads"]);
   });
 
   it("dedupes when both sonarr-calendar AND calendar are present", () => {
+    // The v6→v7 step renames+dedupes; v14 then folds the remaining ids into
+    // slots. Both calendar references collapse into one slot.
     const result: any = migrateConfig({
       version: 6,
       services: {},
       dashboardWidgets: ["sonarr-calendar", "downloads", "calendar"],
     });
-    // After remapping sonarr-calendar→calendar, both collapse into one entry,
-    // preserving the FIRST occurrence position.
-    expect(result.dashboardWidgets).toEqual(["calendar", "downloads"]);
-    const calendarCount = result.dashboardWidgets.filter(
-      (id: string) => id === "calendar",
-    ).length;
-    expect(calendarCount).toBe(1);
+    expect(widgetIdsOf(result)).toEqual(["calendar", "downloads"]);
   });
 
   it("preserves order when only sonarr-calendar is present", () => {
@@ -486,7 +499,7 @@ describe("v6 → v7 (widget rename + settings)", () => {
       services: {},
       dashboardWidgets: ["downloads", "sonarr-calendar", "service-health"],
     });
-    expect(result.dashboardWidgets).toEqual([
+    expect(widgetIdsOf(result)).toEqual([
       "downloads",
       "calendar",
       "service-health",
@@ -499,25 +512,31 @@ describe("v6 → v7 (widget rename + settings)", () => {
       services: {},
       dashboardWidgets: ["downloads", 42, null, "calendar"] as any,
     });
-    expect(result.dashboardWidgets).toEqual(["downloads", "calendar"]);
+    expect(widgetIdsOf(result)).toEqual(["downloads", "calendar"]);
   });
 
-  it("falls back to empty array when dashboardWidgets is not an array", () => {
+  it("falls back to empty Default dashboard when dashboardWidgets is not an array", () => {
     const result: any = migrateConfig({
       version: 6,
       services: {},
       dashboardWidgets: "service-health" as any,
     });
-    expect(result.dashboardWidgets).toEqual([]);
+    expect(result.dashboards).toHaveLength(1);
+    expect(result.dashboards[0].widgets).toEqual([]);
   });
 
-  it("adds widgetSettings={} on every v7 payload", () => {
+  it("v14 fold: every Default-dashboard slot has no settings unless v7 had them", () => {
     const result: any = migrateConfig({
       version: 6,
       services: {},
       dashboardWidgets: ["calendar"],
     });
-    expect(result.widgetSettings).toEqual({});
+    // v6→v7 set widgetSettings={}, then v13→v14 ran with no settings to copy,
+    // so the resulting slot has settings undefined.
+    expect(result.dashboards[0].widgets).toEqual([
+      { id: expect.any(String), widgetId: "calendar" },
+    ]);
+    expect(result.widgetSettings).toBeUndefined();
   });
 });
 
@@ -784,6 +803,103 @@ describe("v12 → v13 (multi-instance)", () => {
   });
 });
 
+describe("v13 → v14 (multi-dashboard + per-slot settings)", () => {
+  const baseV13 = () => ({
+    version: 13,
+    services: {},
+    secrets: {},
+    activeInstance: {},
+    autoSwitchNetwork: false,
+    homeNetworks: [],
+    dashboardWidgets: [],
+    widgetSettings: {},
+    globalCustomHeaders: {},
+    uiScale: 1,
+  });
+
+  it("folds dashboardWidgets into a single Default dashboard", () => {
+    const result: any = migrateConfig({
+      ...baseV13(),
+      dashboardWidgets: ["service-health", "calendar"],
+    });
+    expect(result.dashboards).toHaveLength(1);
+    expect(result.dashboards[0].name).toBe("Default");
+    expect(result.dashboards[0].widgets.map((w: any) => w.widgetId)).toEqual([
+      "service-health",
+      "calendar",
+    ]);
+    expect(result.activeDashboardId).toBe(result.dashboards[0].id);
+  });
+
+  it("copies per-WidgetId settings onto matching slots", () => {
+    const result: any = migrateConfig({
+      ...baseV13(),
+      dashboardWidgets: ["calendar", "downloads"],
+      widgetSettings: {
+        calendar: { daysAhead: 14 },
+        downloads: { maxItems: 10 },
+      },
+    });
+    const calendarSlot = result.dashboards[0].widgets.find(
+      (w: any) => w.widgetId === "calendar",
+    );
+    const downloadsSlot = result.dashboards[0].widgets.find(
+      (w: any) => w.widgetId === "downloads",
+    );
+    expect(calendarSlot.settings).toEqual({ daysAhead: 14 });
+    expect(downloadsSlot.settings).toEqual({ maxItems: 10 });
+  });
+
+  it("omits settings on slots whose widget had no legacy settings entry", () => {
+    const result: any = migrateConfig({
+      ...baseV13(),
+      dashboardWidgets: ["calendar", "downloads"],
+      widgetSettings: { calendar: { daysAhead: 14 } },
+    });
+    const downloadsSlot = result.dashboards[0].widgets.find(
+      (w: any) => w.widgetId === "downloads",
+    );
+    expect(downloadsSlot.settings).toBeUndefined();
+  });
+
+  it("omits settings when the legacy entry is an empty object", () => {
+    const result: any = migrateConfig({
+      ...baseV13(),
+      dashboardWidgets: ["calendar"],
+      widgetSettings: { calendar: {} },
+    });
+    expect(result.dashboards[0].widgets[0].settings).toBeUndefined();
+  });
+
+  it("drops the legacy dashboardWidgets and widgetSettings keys", () => {
+    const result: any = migrateConfig({
+      ...baseV13(),
+      dashboardWidgets: ["calendar"],
+      widgetSettings: { calendar: { daysAhead: 14 } },
+    });
+    expect(result.dashboardWidgets).toBeUndefined();
+    expect(result.widgetSettings).toBeUndefined();
+  });
+
+  it("produces an empty Default dashboard when dashboardWidgets is missing", () => {
+    const result: any = migrateConfig({ ...baseV13(), dashboardWidgets: undefined });
+    expect(result.dashboards).toHaveLength(1);
+    expect(result.dashboards[0].widgets).toEqual([]);
+  });
+
+  it("assigns distinct UUIDs to dashboard and each slot", () => {
+    const result: any = migrateConfig({
+      ...baseV13(),
+      dashboardWidgets: ["calendar", "downloads", "service-health"],
+    });
+    const dashboardId = result.dashboards[0].id;
+    const slotIds = result.dashboards[0].widgets.map((w: any) => w.id);
+    expect(typeof dashboardId).toBe("string");
+    expect(dashboardId.length).toBeGreaterThan(8);
+    expect(new Set([dashboardId, ...slotIds]).size).toBe(4);
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {
@@ -833,15 +949,16 @@ describe("end-to-end multi-step", () => {
       broadcastAddress: "192.168.1.255",
       port: 9,
     });
-    // v4→v5 renamed and v6→v7 deduped/remapped
-    expect(result.dashboardWidgets).toEqual(["calendar", "downloads"]);
+    // v4→v5 renamed and v6→v7 deduped/remapped, then v13→v14 folded the list
+    // into the Default dashboard's slots.
+    expect(widgetIdsOf(result)).toEqual(["calendar", "downloads"]);
     // v10→v11 replaced homeSSID/homeBSSID with homeNetworks. v0 had no SSID
     // configured, so the array is empty and the legacy fields are gone.
     expect(result.homeNetworks).toEqual([]);
     expect(result.homeSSID).toBeUndefined();
     expect(result.homeBSSID).toBeUndefined();
-    // v6→v7 added widgetSettings
-    expect(result.widgetSettings).toEqual({});
+    // v13→v14 dropped widgetSettings; per-slot settings live on the slot now.
+    expect(result.widgetSettings).toBeUndefined();
     // v7→v8 defaulted hapticsEnabled
     expect(result.hapticsEnabled).toBe(true);
     // v12→v13 re-keyed `secrets.radarr.apiKey` under the migrated radarr UUID
@@ -884,7 +1001,7 @@ describe("end-to-end multi-step", () => {
     ]);
     expect(result.homeSSID).toBeUndefined();
     expect(result.wolDevices).toHaveLength(1);
-    expect(result.dashboardWidgets).toEqual(["service-health"]);
+    expect(widgetIdsOf(result)).toEqual(["service-health"]);
   });
 
   it("preserves user-provided service and secret data through the whole chain", () => {

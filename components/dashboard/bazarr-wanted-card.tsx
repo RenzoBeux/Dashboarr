@@ -1,15 +1,22 @@
 import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Captions } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  useBazarrWantedMovies,
-  useBazarrWantedEpisodes,
-} from "@/hooks/use-bazarr";
+import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useBazarrPosters } from "@/hooks/use-bazarr-posters";
+import { POLLING_INTERVALS } from "@/lib/constants";
+import {
+  BAZARR_WANTED_DEFAULT_SETTINGS,
+  type BazarrWantedSettingsValue,
+} from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
@@ -25,16 +32,46 @@ interface PreviewItem {
 
 const MAX_PREVIEW = 5;
 
-export function BazarrWantedCard() {
-  const { data: movies, isLoading: moviesLoading } = useBazarrWantedMovies();
-  const { data: episodes, isLoading: episodesLoading } = useBazarrWantedEpisodes();
+export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
+  const { settings } = useWidgetSettings<BazarrWantedSettingsValue>(
+    slotId,
+    BAZARR_WANTED_DEFAULT_SETTINGS,
+  );
+  const allInstances = useEnabledInstances("bazarr");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
   const router = useRouter();
 
-  const isLoading = moviesLoading || episodesLoading;
-  const totalMissing = (movies?.total ?? 0) + (episodes?.total ?? 0);
+  const movieQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["bazarr", inst.id, "wanted", "movies"] as const,
+      queryFn: () => getWantedMovies(0, 50, inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+  const episodeQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["bazarr", inst.id, "wanted", "episodes"] as const,
+      queryFn: () => getWantedEpisodes(0, 50, inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
 
-  const movieList = movies?.data?.slice(0, 3) ?? [];
-  const episodeList = episodes?.data?.slice(0, 3) ?? [];
+  const isLoading =
+    (movieQueries.length > 0 && movieQueries.some((q) => q.isLoading)) ||
+    (episodeQueries.length > 0 && episodeQueries.some((q) => q.isLoading));
+  const totalMissing =
+    movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0) +
+    episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+
+  const movieList = movieQueries
+    .flatMap((q) => q.data?.data ?? [])
+    .slice(0, 3);
+  const episodeList = episodeQueries
+    .flatMap((q) => q.data?.data ?? [])
+    .slice(0, 3);
   const posterMap = useBazarrPosters(movieList, episodeList);
 
   const previewItems: PreviewItem[] = [];
@@ -74,7 +111,12 @@ export function BazarrWantedCard() {
         }
       />
 
-      {isLoading ? (
+      {instances.length === 0 ? (
+        <EmptyState
+          icon={<Icon icon={Captions} size={32} color="#71717a" />}
+          title="No Bazarr instances enabled"
+        />
+      ) : isLoading ? (
         <PosterSkeletonRow count={3} />
       ) : display.length === 0 ? (
         <EmptyState

@@ -1,23 +1,29 @@
 import { View, Text } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { ServerCrash } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { useGlancesCpu, useGlancesMem, useGlancesFs } from "@/hooks/use-glances";
+import { getCpu, getMem, getFs } from "@/services/glances-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import {
   SERVER_STATS_DEFAULT_SETTINGS,
   type ServerStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/server-stats-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
 import type { GlancesFsItem } from "@/lib/types";
+import type { ServiceInstance } from "@/store/config-store";
 
 const RING_SIZE = 80;
 const STROKE_WIDTH = 8;
 const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const FAST_POLL = 5000;
 
 function ringColor(percent: number): string {
   if (percent >= 85) return "#ef4444";
@@ -39,7 +45,6 @@ function RingChart({ percent, label }: { percent: number; label: string }) {
     <View className="items-center gap-1">
       <View style={{ width: RING_SIZE, height: RING_SIZE }}>
         <Svg width={RING_SIZE} height={RING_SIZE}>
-          {/* Track */}
           <Circle
             cx={RING_SIZE / 2}
             cy={RING_SIZE / 2}
@@ -48,7 +53,6 @@ function RingChart({ percent, label }: { percent: number; label: string }) {
             strokeWidth={STROKE_WIDTH}
             fill="none"
           />
-          {/* Progress */}
           <Circle
             cx={RING_SIZE / 2}
             cy={RING_SIZE / 2}
@@ -63,7 +67,6 @@ function RingChart({ percent, label }: { percent: number; label: string }) {
             origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
           />
         </Svg>
-        {/* Center label */}
         <View className="absolute inset-0 items-center justify-center">
           <Text style={{ color }} className="text-sm font-bold">
             {percent.toFixed(0)}%
@@ -75,18 +78,82 @@ function RingChart({ percent, label }: { percent: number; label: string }) {
   );
 }
 
-export function ServerStatsCard() {
+export function ServerStatsCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<ServerStatsSettingsValue>(
-    "server-stats",
+    slotId,
     SERVER_STATS_DEFAULT_SETTINGS,
   );
 
-  const cpuQuery = useGlancesCpu();
-  const memQuery = useGlancesMem();
-  const fsQuery = useGlancesFs();
+  const allInstances = useEnabledInstances("glances");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
 
-  // Skip loading/error states for sections the user has hidden so a disabled
-  // section can never block the rest of the card from rendering.
+  const allHidden = !settings.showCpu && !settings.showRam && !settings.showDisks;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Server</CardTitle>
+      </CardHeader>
+
+      {allHidden ? (
+        <Text className="text-zinc-500 text-sm py-1">
+          All sections hidden — enable one in the widget settings.
+        </Text>
+      ) : instances.length === 0 ? (
+        <View className="flex-row items-center gap-2 py-1">
+          <Icon icon={ServerCrash} size={16} color="#71717a" />
+          <Text className="text-zinc-500 text-sm">No Glances instances enabled</Text>
+        </View>
+      ) : (
+        <View className="gap-5">
+          {instances.map((inst) => (
+            <InstanceBlock
+              key={inst.id}
+              instance={inst}
+              settings={settings}
+              showName={instances.length > 1}
+            />
+          ))}
+        </View>
+      )}
+    </Card>
+  );
+}
+
+interface InstanceBlockProps {
+  instance: ServiceInstance;
+  settings: ServerStatsSettingsValue;
+  showName: boolean;
+}
+
+function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
+  // Each section has its own query so a flaky host doesn't block the others.
+  const queries = useQueries({
+    queries: [
+      {
+        queryKey: ["glances", instance.id, "cpu"] as const,
+        queryFn: () => getCpu(instance.id),
+        refetchInterval: FAST_POLL,
+        enabled: settings.showCpu,
+      },
+      {
+        queryKey: ["glances", instance.id, "mem"] as const,
+        queryFn: () => getMem(instance.id),
+        refetchInterval: FAST_POLL,
+        enabled: settings.showRam,
+      },
+      {
+        queryKey: ["glances", instance.id, "fs"] as const,
+        queryFn: () => getFs(instance.id),
+        refetchInterval: FAST_POLL,
+        enabled: settings.showDisks,
+      },
+    ],
+  });
+  const [cpuQuery, memQuery, fsQuery] = queries;
   const cpu = settings.showCpu ? cpuQuery.data : undefined;
   const mem = settings.showRam ? memQuery.data : undefined;
   const fs = settings.showDisks ? fsQuery.data : undefined;
@@ -102,19 +169,15 @@ export function ServerStatsCard() {
     ((settings.showCpu && cpuQuery.isError) ||
       (settings.showRam && memQuery.isError) ||
       (settings.showDisks && fsQuery.isError));
-  const allHidden = !settings.showCpu && !settings.showRam && !settings.showDisks;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Server</CardTitle>
-      </CardHeader>
-
-      {allHidden ? (
-        <Text className="text-zinc-500 text-sm py-1">
-          All sections hidden — enable one in the widget settings.
+    <View className="gap-3">
+      {showName && (
+        <Text className="text-zinc-400 text-xs uppercase tracking-wider">
+          {instance.name}
         </Text>
-      ) : isLoading ? (
+      )}
+      {isLoading ? (
         <SkeletonCardContent rows={2} />
       ) : showError ? (
         <View className="flex-row items-center gap-2 py-1">
@@ -139,7 +202,7 @@ export function ServerStatsCard() {
           )}
         </View>
       )}
-    </Card>
+    </View>
   );
 }
 

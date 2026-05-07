@@ -25,6 +25,8 @@ import {
   type DownloadsSettingsValue,
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
 import {
   getTorrents,
@@ -131,9 +133,9 @@ interface AggregatedTorrent {
   instanceId: string;
 }
 
-export function DownloadCard() {
+export function DownloadCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<DownloadsSettingsValue>(
-    "downloads",
+    slotId,
     DOWNLOADS_DEFAULT_SETTINGS,
   );
   const { sort, reverse } = sortByToQB(settings.sortBy);
@@ -143,11 +145,16 @@ export function DownloadCard() {
     reverse,
     limit: DASHBOARD_FETCH_LIMIT,
   };
-  // Aggregate across all enabled qBittorrent instances. Each instance keeps
-  // its own cache slot via the [serviceId, instanceId, …] queryKey shape that
-  // every per-service hook adopted in step 3, so two qBits don't trample each
-  // other's data even though we're driving them from the same component.
-  const instances = useEnabledInstances("qbittorrent");
+  // Aggregate across all enabled qBittorrent instances when bound to "all";
+  // narrow to a single enabled instance otherwise. Each instance keeps its
+  // own cache slot via the [serviceId, instanceId, …] queryKey shape that
+  // every per-service hook adopted, so two qBits don't trample each other's
+  // data even though we're driving them from the same component.
+  const allInstances = useEnabledInstances("qbittorrent");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
   const queries = useQueries({
     queries: instances.map((inst) => ({
       queryKey: [

@@ -1,16 +1,22 @@
 import { validateExportPayload } from "./config-schema";
 
 const TEST_INSTANCE_ID = "11111111-1111-1111-1111-111111111111";
+const TEST_DASHBOARD_ID = "22222222-2222-2222-2222-222222222222";
 
 const baseValid = () => ({
-  version: 13,
+  version: 14,
   exportedAt: "2026-04-27T00:00:00.000Z",
   services: {},
   secrets: {},
   activeInstance: {},
   autoSwitchNetwork: false,
   homeNetworks: [],
-  dashboardWidgets: [],
+  // v14: dashboards is required and must be non-empty. Every test below builds
+  // on top of this minimal one-dashboard, zero-widget shape unless it overrides.
+  dashboards: [
+    { id: TEST_DASHBOARD_ID, name: "Default", widgets: [] },
+  ],
+  activeDashboardId: TEST_DASHBOARD_ID,
 });
 
 // v13: every service entry is a ServiceInstance carrying a UUID id. Tests that
@@ -81,15 +87,23 @@ describe("validateExportPayload — root shape", () => {
     ).toThrow(/homeNetworks/i);
   });
 
-  it("throws when dashboardWidgets is not an array", () => {
+  it("throws when dashboards is not an array", () => {
     expect(() =>
-      validateExportPayload({ ...baseValid(), dashboardWidgets: "calendar" as any }),
-    ).toThrow(/dashboardWidgets/i);
+      validateExportPayload({ ...baseValid(), dashboards: "Default" as any }),
+    ).toThrow(/dashboards/i);
+  });
+
+  it("throws when dashboards is empty", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), dashboards: [] }),
+    ).toThrow(/dashboards/i);
   });
 
   it("accepts a minimally valid payload", () => {
     const result = validateExportPayload(baseValid());
-    expect(result.version).toBe(13);
+    expect(result.version).toBe(14);
+    expect(result.dashboards).toHaveLength(1);
+    expect(result.activeDashboardId).toBe(TEST_DASHBOARD_ID);
   });
 });
 
@@ -622,21 +636,86 @@ describe("validateExportPayload — backend", () => {
   });
 });
 
-describe("validateExportPayload — widget IDs (silent drop)", () => {
-  it("drops unknown widget IDs without throwing", () => {
+describe("validateExportPayload — dashboards (slot widget IDs silent drop)", () => {
+  it("drops slots whose widgetId is unknown without throwing", () => {
     const result = validateExportPayload({
       ...baseValid(),
-      dashboardWidgets: ["service-health", "future-widget", "calendar"],
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [
+            { id: "slot-a", widgetId: "service-health" },
+            { id: "slot-b", widgetId: "future-widget" },
+            { id: "slot-c", widgetId: "calendar" },
+          ],
+        },
+      ],
     });
-    expect(result.dashboardWidgets).toEqual(["service-health", "calendar"]);
+    expect(result.dashboards[0].widgets.map((w) => w.widgetId)).toEqual([
+      "service-health",
+      "calendar",
+    ]);
   });
 
-  it("preserves order of known widget IDs", () => {
+  it("preserves slot order across known widget IDs", () => {
     const result = validateExportPayload({
       ...baseValid(),
-      dashboardWidgets: ["calendar", "downloads", "service-health"],
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [
+            { id: "slot-a", widgetId: "calendar" },
+            { id: "slot-b", widgetId: "downloads" },
+            { id: "slot-c", widgetId: "service-health" },
+          ],
+        },
+      ],
     });
-    expect(result.dashboardWidgets).toEqual(["calendar", "downloads", "service-health"]);
+    expect(result.dashboards[0].widgets.map((w) => w.widgetId)).toEqual([
+      "calendar",
+      "downloads",
+      "service-health",
+    ]);
+  });
+
+  it("rejects duplicate slot ids across the whole list", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [
+              { id: "shared", widgetId: "calendar" },
+              { id: "shared", widgetId: "downloads" },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/duplicate slot id/);
+  });
+
+  it("rejects duplicate dashboard ids", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          { id: TEST_DASHBOARD_ID, name: "A", widgets: [] },
+          { id: TEST_DASHBOARD_ID, name: "B", widgets: [] },
+        ],
+      }),
+    ).toThrow(/duplicate id/);
+  });
+
+  it("falls back activeDashboardId to dashboards[0] when stored id doesn't match", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      activeDashboardId: "missing-id",
+    });
+    expect(result.activeDashboardId).toBe(TEST_DASHBOARD_ID);
   });
 });
 
@@ -815,31 +894,50 @@ describe("validateExportPayload — uiScale", () => {
   });
 });
 
-describe("validateExportPayload — widget settings", () => {
-  it("drops unknown widget IDs from widgetSettings", () => {
+describe("validateExportPayload — slot settings", () => {
+  it("preserves a slot's settings object verbatim", () => {
     const result = validateExportPayload({
       ...baseValid(),
-      widgetSettings: {
-        calendar: { foo: 1 },
-        "unknown-future-widget": { bar: 2 },
-      } as any,
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [
+            { id: "slot-cal", widgetId: "calendar", settings: { foo: 1 } },
+          ],
+        },
+      ],
     });
-    expect(result.widgetSettings?.calendar).toEqual({ foo: 1 });
-    expect((result.widgetSettings as any)?.["unknown-future-widget"]).toBeUndefined();
+    expect(result.dashboards[0].widgets[0].settings).toEqual({ foo: 1 });
   });
 
-  it("rejects widgetSettings entries that are not objects", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        widgetSettings: { calendar: "not-an-object" } as any,
-      }),
-    ).toThrow(/widgetSettings/);
+  it("drops the slot when settings is not an object", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [
+            { id: "slot-cal", widgetId: "calendar", settings: "nope" as any },
+          ],
+        },
+      ],
+    });
+    expect(result.dashboards[0].widgets).toEqual([]);
   });
 
-  it("rejects widgetSettings root that is not an object", () => {
-    expect(() =>
-      validateExportPayload({ ...baseValid(), widgetSettings: [] as any }),
-    ).toThrow(/widgetSettings/);
+  it("treats absent settings as the slot having no overrides", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [{ id: "slot-cal", widgetId: "calendar" }],
+        },
+      ],
+    });
+    expect(result.dashboards[0].widgets[0].settings).toBeUndefined();
   });
 });

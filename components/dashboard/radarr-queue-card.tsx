@@ -12,20 +12,33 @@ import {
   getRadarrPoster,
 } from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import {
+  RADARR_QUEUE_DEFAULT_SETTINGS,
+  type RadarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 
-const MAX_ITEMS = 5;
-
-export function RadarrQueueCard() {
+export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
   const router = useRouter();
-  // Aggregate queue + wanted counts across every enabled Radarr instance.
-  // Each instance's data is cached under its own UUID-keyed query slot.
-  const instances = useEnabledInstances("radarr");
+  const { settings } = useWidgetSettings<RadarrQueueSettingsValue>(
+    slotId,
+    RADARR_QUEUE_DEFAULT_SETTINGS,
+  );
+  // Aggregate queue + wanted counts across every enabled Radarr instance, or
+  // narrow to a single one based on the slot's instance binding.
+  const allInstances = useEnabledInstances("radarr");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
 
   const queueQueries = useQueries({
     queries: instances.map((inst) => ({
@@ -54,8 +67,8 @@ export function RadarrQueueCard() {
     (acc, q) => acc + (q.data?.totalRecords ?? 0),
     0,
   );
-  const display = records.slice(0, MAX_ITEMS);
-  const hasMore = records.length > MAX_ITEMS;
+  const display = records.slice(0, settings.maxItems);
+  const hasMore = records.length > settings.maxItems;
 
   return (
     <Card>

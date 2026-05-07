@@ -1,12 +1,13 @@
 import { SERVICE_IDS, DASHBOARD_WIDGET_IDS, UI_SCALES } from "@/lib/constants";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import type {
+  Dashboard,
   ExportPayload,
   HomeNetwork,
   ServiceInstance,
   ServiceSecrets,
   WakeOnLanDevice,
-  WidgetSettingsMap,
+  WidgetSlot,
 } from "@/store/config-store";
 import type { NotificationSettings } from "@/store/notifications-store";
 
@@ -111,6 +112,33 @@ function coerceHomeNetwork(v: unknown): HomeNetwork | null {
   return { id: v.id, ssid: v.ssid, bssid: v.bssid };
 }
 
+function coerceWidgetSlot(v: unknown): WidgetSlot | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (typeof v.widgetId !== "string") return null;
+  if (!WIDGET_ID_SET.has(v.widgetId)) return null;
+  const slot: WidgetSlot = { id: v.id, widgetId: v.widgetId as WidgetId };
+  if (v.settings !== undefined && v.settings !== null) {
+    if (!isPlainObject(v.settings)) return null;
+    slot.settings = v.settings as Record<string, unknown>;
+  }
+  return slot;
+}
+
+function coerceDashboard(v: unknown): Dashboard | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (typeof v.name !== "string" || v.name.length === 0 || v.name.length > 200) return null;
+  if (!Array.isArray(v.widgets)) return null;
+  const widgets: WidgetSlot[] = [];
+  for (const w of v.widgets) {
+    const slot = coerceWidgetSlot(w);
+    if (!slot) continue;
+    widgets.push(slot);
+  }
+  return { id: v.id, name: v.name, widgets };
+}
+
 function coerceNotificationSettings(v: unknown): NotificationSettings | null {
   if (!isPlainObject(v)) return null;
   const keys = [
@@ -165,7 +193,7 @@ export function validateExportPayload(raw: unknown): ExportPayload {
   if (raw.homeNetworks.length > MAX_HOME_NETWORKS) {
     throw new Error("Config homeNetworks has too many entries");
   }
-  if (!Array.isArray(raw.dashboardWidgets)) throw new Error("Config dashboardWidgets is invalid");
+  if (!Array.isArray(raw.dashboards)) throw new Error("Config dashboards is invalid");
 
   // v13: services is Record<ServiceId, ServiceInstance[]>. Reject entries that
   // aren't arrays so a downgrade-then-upgrade payload (or a hand-edited file)
@@ -220,11 +248,37 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     activeInstance[id] = list.some((i) => i.id === v) ? v : (list[0]?.id ?? null);
   }
 
-  const dashboardWidgets: WidgetId[] = [];
-  for (const item of raw.dashboardWidgets) {
-    if (typeof item === "string" && WIDGET_ID_SET.has(item)) {
-      dashboardWidgets.push(item as WidgetId);
+  // v14: dashboards is the source of truth. Each entry must coerce cleanly;
+  // unknown widget ids inside slots are dropped silently (forward-compat).
+  // Duplicate slot ids across the whole list are rejected so the slot-keyed
+  // settings store can't accidentally collapse two slots into one.
+  const dashboards: Dashboard[] = [];
+  const seenDashboardIds = new Set<string>();
+  const seenSlotIdsGlobal = new Set<string>();
+  for (const item of raw.dashboards) {
+    const coerced = coerceDashboard(item);
+    if (!coerced) throw new Error("Config dashboards entry is invalid");
+    if (seenDashboardIds.has(coerced.id)) {
+      throw new Error("Config dashboards has duplicate id");
     }
+    seenDashboardIds.add(coerced.id);
+    for (const slot of coerced.widgets) {
+      if (seenSlotIdsGlobal.has(slot.id)) {
+        throw new Error("Config dashboards has duplicate slot id");
+      }
+      seenSlotIdsGlobal.add(slot.id);
+    }
+    dashboards.push(coerced);
+  }
+  if (dashboards.length === 0) throw new Error("Config dashboards is empty");
+
+  let activeDashboardId: string;
+  if (typeof raw.activeDashboardId !== "string") {
+    activeDashboardId = dashboards[0].id;
+  } else if (dashboards.some((d) => d.id === raw.activeDashboardId)) {
+    activeDashboardId = raw.activeDashboardId;
+  } else {
+    activeDashboardId = dashboards[0].id;
   }
 
   const homeNetworks: HomeNetwork[] = [];
@@ -242,7 +296,8 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     activeInstance,
     autoSwitchNetwork: raw.autoSwitchNetwork,
     homeNetworks,
-    dashboardWidgets,
+    dashboards,
+    activeDashboardId,
   };
 
   if (raw.backend !== undefined && raw.backend !== null) {
@@ -266,22 +321,6 @@ export function validateExportPayload(raw: unknown): ExportPayload {
       devices.push(coerced);
     }
     payload.wolDevices = devices;
-  }
-
-  if (raw.widgetSettings !== undefined && raw.widgetSettings !== null) {
-    if (!isPlainObject(raw.widgetSettings)) {
-      throw new Error("Config widgetSettings is invalid");
-    }
-    const settings: WidgetSettingsMap = {};
-    for (const [id, value] of Object.entries(raw.widgetSettings)) {
-      // Drop unknown widget ids (forward-compatibility) and require object
-      // values; specific shape is enforced by the widget registry's defaults
-      // when the values are read.
-      if (!WIDGET_ID_SET.has(id)) continue;
-      if (!isPlainObject(value)) throw new Error(`Config widgetSettings.${id} is invalid`);
-      settings[id as WidgetId] = value as Record<string, unknown>;
-    }
-    payload.widgetSettings = settings;
   }
 
   if (raw.hapticsEnabled !== undefined) {

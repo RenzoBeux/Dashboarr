@@ -44,7 +44,6 @@ interface AddWidgetSheetProps {
 }
 
 export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
-  const dashboardWidgets = useConfigStore((s) => s.dashboardWidgets);
   const services = useConfigStore((s) => s.services);
   const addWidget = useConfigStore((s) => s.addWidget);
   const insets = useSafeAreaInsets();
@@ -53,7 +52,11 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
-  const available = getAvailableWidgets(dashboardWidgets);
+  // With per-slot dashboards the same widget can be placed multiple times
+  // (different instance bindings), so the picker lists every registered widget.
+  // Locked widgets are still shown — just below the available ones — so users
+  // discover what they could enable in Settings.
+  const available = getAvailableWidgets();
   const enabled = available.filter(
     (w) => w.service === null || services[w.service].enabled,
   );
@@ -140,9 +143,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
                       Add widget
                     </Text>
                     <Text className="text-zinc-500 text-xs mt-0.5">
-                      {available.length === 0
-                        ? "All widgets are on your dashboard"
-                        : `${available.length} widget${available.length === 1 ? "" : "s"} available`}
+                      {`${enabled.length} widget${enabled.length === 1 ? "" : "s"} available`}
                     </Text>
                   </View>
                   <Pressable

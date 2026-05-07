@@ -17,6 +17,10 @@ export function ServiceHealthCard() {
   const configServices = useConfigStore((s) => s.services);
   const router = useRouter();
 
+  // Surfaces health for every kind that has at least one enabled instance.
+  // The backend health endpoint still keys by ServiceId today, so a kind with
+  // multiple instances reports a single aggregated status — good enough for
+  // the dashboard glance. Per-instance health pings would be a follow-up.
   const enabledServices = services?.filter(
     (s) => hasServiceLogo(s.id as ServiceId) && configServices[s.id as ServiceId]?.enabled,
   );

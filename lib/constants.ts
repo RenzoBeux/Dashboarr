@@ -60,12 +60,17 @@ export const DASHBOARD_WIDGET_IDS = [
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
 
-// Curated initial set for fresh installs. Users add more via the picker.
+// Curated initial set of widgets for the Default dashboard on fresh installs.
+// Users add more via the picker, or create extra dashboards.
 export const DEFAULT_DASHBOARD_WIDGETS: WidgetId[] = [
   "service-health",
   "radarr-queue",
   "calendar",
 ];
+
+// Display name for the auto-created first dashboard. Surfaced verbatim in the
+// dashboard picker on fresh installs and after legacy migration.
+export const DEFAULT_DASHBOARD_NAME = "Default";
 
 // Old widget ids that have been renamed. Hydrate + import use this to remap
 // stored values so users keep their dashboard layout across upgrades.
@@ -78,9 +83,16 @@ export const STORAGE_KEYS = {
   services: "services",
   autoSwitchNetwork: "app.autoSwitchNetwork",
   homeNetworks: "app.homeNetworks",
-  dashboardWidgets: "app.dashboardWidgets",
-  widgetSettings: "app.widgetSettings",
-  // Legacy key — read-only fallback during one-time hydrate migration.
+  // v14: per-user named dashboards, each with their own widget slots and
+  // per-slot settings (so the same widget can appear with different instance
+  // bindings on different dashboards).
+  dashboards: "app.dashboards",
+  activeDashboardId: "app.activeDashboardId",
+  // Legacy keys — read-only fallback during one-time hydrate migration into
+  // `dashboards`. Cleared after the migration runs.
+  dashboardWidgetsLegacy: "app.dashboardWidgets",
+  widgetSettingsLegacy: "app.widgetSettings",
+  // Legacy key — read-only fallback for pre-widget-id dashboards.
   dashboardOrderLegacy: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
   wolDevices: "app.wolDevices",
