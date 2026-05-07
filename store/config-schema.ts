@@ -3,7 +3,7 @@ import type { ServiceId, WidgetId } from "@/lib/constants";
 import type {
   ExportPayload,
   HomeNetwork,
-  ServiceConfig,
+  ServiceInstance,
   ServiceSecrets,
   WakeOnLanDevice,
   WidgetSettingsMap,
@@ -49,14 +49,16 @@ function coerceHeaderMap(v: unknown): Record<string, string> | null {
   return out;
 }
 
-function coerceServiceConfig(v: unknown): ServiceConfig | null {
+function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
   if (typeof v.enabled !== "boolean") return null;
   if (typeof v.name !== "string" || v.name.length > 200) return null;
   if (!isHttpUrlOrEmpty(v.localUrl)) return null;
   if (!isHttpUrlOrEmpty(v.remoteUrl)) return null;
   if (typeof v.useRemote !== "boolean") return null;
   return {
+    id: v.id,
     enabled: v.enabled,
     name: v.name,
     localUrl: v.localUrl,
@@ -165,20 +167,57 @@ export function validateExportPayload(raw: unknown): ExportPayload {
   }
   if (!Array.isArray(raw.dashboardWidgets)) throw new Error("Config dashboardWidgets is invalid");
 
-  const services = {} as Record<ServiceId, ServiceConfig>;
+  // v13: services is Record<ServiceId, ServiceInstance[]>. Reject entries that
+  // aren't arrays so a downgrade-then-upgrade payload (or a hand-edited file)
+  // can't slip through with the old singleton shape.
+  const services = {} as Record<ServiceId, ServiceInstance[]>;
+  const seenInstanceIds = new Set<string>();
   for (const [id, value] of Object.entries(raw.services)) {
     if (!SERVICE_ID_SET.has(id)) continue;
-    const coerced = coerceServiceConfig(value);
-    if (!coerced) throw new Error(`Config services.${id} is invalid`);
-    services[id as ServiceId] = coerced;
+    if (!Array.isArray(value)) throw new Error(`Config services.${id} is invalid`);
+    const list: ServiceInstance[] = [];
+    for (const entry of value) {
+      const coerced = coerceServiceInstance(entry);
+      if (!coerced) throw new Error(`Config services.${id} entry is invalid`);
+      // Instance UUIDs must be globally unique — the secrets/widget-settings
+      // maps key off them, and a duplicate would silently merge configs.
+      if (seenInstanceIds.has(coerced.id)) {
+        throw new Error(`Config services.${id} has duplicate instance id`);
+      }
+      seenInstanceIds.add(coerced.id);
+      list.push(coerced);
+    }
+    services[id as ServiceId] = list;
   }
 
-  const secrets = {} as Record<ServiceId, ServiceSecrets>;
-  for (const [id, value] of Object.entries(raw.secrets)) {
-    if (!SERVICE_ID_SET.has(id)) continue;
+  // v13: secrets keyed by instance UUID, not ServiceId. Drop entries whose
+  // UUID doesn't appear in the services list (forward-compatible orphan cleanup).
+  const secrets: Record<string, ServiceSecrets> = {};
+  for (const [uuid, value] of Object.entries(raw.secrets)) {
+    if (!seenInstanceIds.has(uuid)) continue;
     const coerced = coerceServiceSecrets(value);
-    if (!coerced) throw new Error(`Config secrets.${id} is invalid`);
-    secrets[id as ServiceId] = coerced;
+    if (!coerced) throw new Error(`Config secrets.${uuid} is invalid`);
+    secrets[uuid] = coerced;
+  }
+
+  // v13: activeInstance is Record<ServiceId, string | null>. Validate that
+  // every referenced UUID exists in the services list for that kind.
+  if (raw.activeInstance !== undefined && !isPlainObject(raw.activeInstance)) {
+    throw new Error("Config activeInstance is invalid");
+  }
+  const activeInstance = {} as Record<ServiceId, string | null>;
+  const rawActive = (raw.activeInstance as Record<string, unknown> | undefined) ?? {};
+  for (const id of SERVICE_IDS) {
+    const v = rawActive[id];
+    if (v === null || v === undefined) {
+      activeInstance[id] = null;
+      continue;
+    }
+    if (typeof v !== "string") {
+      throw new Error(`Config activeInstance.${id} is invalid`);
+    }
+    const list = services[id] ?? [];
+    activeInstance[id] = list.some((i) => i.id === v) ? v : (list[0]?.id ?? null);
   }
 
   const dashboardWidgets: WidgetId[] = [];
@@ -200,6 +239,7 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     exportedAt: raw.exportedAt,
     services,
     secrets,
+    activeInstance,
     autoSwitchNetwork: raw.autoSwitchNetwork,
     homeNetworks,
     dashboardWidgets,

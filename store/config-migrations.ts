@@ -5,6 +5,7 @@ import {
   DEFAULT_UI_SCALE,
 } from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
+import { generateInstanceId } from "@/lib/uuid";
 
 /**
  * Bump this when the export schema changes and add a matching migration.
@@ -27,8 +28,13 @@ import type { ExportPayload } from "@/store/config-store";
  *   v11 — replaced single homeSSID/homeBSSID with homeNetworks: HomeNetwork[]
  *         so mesh setups can mark every AP as "home"
  *   v12 — added uiScale (accessibility): app-wide font/spacing/icon multiplier
+ *   v13 — multi-instance services: services becomes Record<ServiceId,
+ *         ServiceInstance[]> where each instance carries a stable UUID id;
+ *         secrets re-keyed by instance UUID instead of ServiceId; new
+ *         activeInstance: Record<ServiceId, string | null> tracks the
+ *         currently-selected instance per service kind.
  */
-export const CURRENT_CONFIG_VERSION = 12;
+export const CURRENT_CONFIG_VERSION = 13;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -171,6 +177,37 @@ const migrations: Record<number, (payload: any) => any> = {
       ? payload.uiScale
       : DEFAULT_UI_SCALE,
   }),
+
+  // v12 → v13: multi-instance services. Each entry in `services` becomes a
+  // single-element array of ServiceInstance with a generated UUID; secrets
+  // get re-keyed from `secrets[serviceId]` to `secrets[uuid]` using the same
+  // UUID; activeInstance[serviceId] is initialized to that UUID so existing
+  // consumers see the same data they did before.
+  12: (payload) => {
+    const oldServices = (payload.services && typeof payload.services === "object"
+      ? payload.services
+      : {}) as Record<string, any>;
+    const oldSecrets = (payload.secrets && typeof payload.secrets === "object"
+      ? payload.secrets
+      : {}) as Record<string, any>;
+
+    const services: Record<string, any[]> = {};
+    const secrets: Record<string, any> = {};
+    const activeInstance: Record<string, string | null> = {};
+
+    for (const [serviceId, cfg] of Object.entries(oldServices)) {
+      if (!cfg || typeof cfg !== "object") continue;
+      const uuid = generateInstanceId();
+      services[serviceId] = [{ id: uuid, ...cfg }];
+      activeInstance[serviceId] = uuid;
+      const s = oldSecrets[serviceId];
+      if (s && typeof s === "object") {
+        secrets[uuid] = s;
+      }
+    }
+
+    return { ...payload, version: 13, services, secrets, activeInstance };
+  },
 };
 
 /**
