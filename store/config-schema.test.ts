@@ -1,21 +1,29 @@
 import { validateExportPayload } from "./config-schema";
 
+const TEST_INSTANCE_ID = "11111111-1111-1111-1111-111111111111";
+
 const baseValid = () => ({
-  version: 7,
+  version: 13,
   exportedAt: "2026-04-27T00:00:00.000Z",
   services: {},
   secrets: {},
+  activeInstance: {},
   autoSwitchNetwork: false,
   homeNetworks: [],
   dashboardWidgets: [],
 });
 
-const validService = () => ({
+// v13: every service entry is a ServiceInstance carrying a UUID id. Tests that
+// configure a single radarr instance use this helper, then wrap the result in
+// an array to match the new Record<ServiceId, ServiceInstance[]> shape.
+const validInstance = (overrides: Record<string, unknown> = {}) => ({
+  id: TEST_INSTANCE_ID,
   enabled: true,
   name: "Radarr",
   localUrl: "http://192.168.1.10:7878",
   remoteUrl: "https://radarr.example.com",
   useRemote: false,
+  ...overrides,
 });
 
 describe("validateExportPayload — root shape", () => {
@@ -81,25 +89,44 @@ describe("validateExportPayload — root shape", () => {
 
   it("accepts a minimally valid payload", () => {
     const result = validateExportPayload(baseValid());
-    expect(result.version).toBe(7);
+    expect(result.version).toBe(13);
   });
 });
 
-describe("validateExportPayload — service config coercion", () => {
-  it("rejects a service whose enabled is not a boolean", () => {
+describe("validateExportPayload — service instance coercion", () => {
+  it("rejects when a service kind's value is not an array (v12 singleton shape)", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        services: { radarr: { ...validService(), enabled: "true" as any } },
+        services: { radarr: validInstance() } as any,
       }),
     ).toThrow(/services\.radarr/);
   });
 
-  it("rejects a service whose name exceeds 200 chars", () => {
+  it("rejects an instance whose id is missing", () => {
+    const { id, ...inst } = validInstance();
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        services: { radarr: { ...validService(), name: "x".repeat(201) } },
+        services: { radarr: [inst] },
+      }),
+    ).toThrow(/services\.radarr/);
+  });
+
+  it("rejects an instance whose enabled is not a boolean", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        services: { radarr: [validInstance({ enabled: "true" })] },
+      }),
+    ).toThrow(/services\.radarr/);
+  });
+
+  it("rejects an instance whose name exceeds 200 chars", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        services: { radarr: [validInstance({ name: "x".repeat(201) })] },
       }),
     ).toThrow(/services\.radarr/);
   });
@@ -108,7 +135,7 @@ describe("validateExportPayload — service config coercion", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        services: { radarr: { ...validService(), localUrl: "ftp://x" } },
+        services: { radarr: [validInstance({ localUrl: "ftp://x" })] },
       }),
     ).toThrow(/services\.radarr/);
   });
@@ -117,7 +144,7 @@ describe("validateExportPayload — service config coercion", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        services: { radarr: { ...validService(), remoteUrl: "javascript:alert(1)" } },
+        services: { radarr: [validInstance({ remoteUrl: "javascript:alert(1)" })] },
       }),
     ).toThrow(/services\.radarr/);
   });
@@ -126,7 +153,7 @@ describe("validateExportPayload — service config coercion", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        services: { radarr: { ...validService(), localUrl: "file:///etc/passwd" } },
+        services: { radarr: [validInstance({ localUrl: "file:///etc/passwd" })] },
       }),
     ).toThrow(/services\.radarr/);
   });
@@ -135,31 +162,72 @@ describe("validateExportPayload — service config coercion", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        services: { radarr: { ...validService(), useRemote: "true" as any } },
+        services: { radarr: [validInstance({ useRemote: "true" })] },
       }),
     ).toThrow(/services\.radarr/);
+  });
+
+  it("rejects duplicate instance ids across the same kind", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        services: {
+          radarr: [
+            validInstance(),
+            validInstance({ name: "Second" }),
+          ],
+        },
+      }),
+    ).toThrow(/duplicate instance id/);
+  });
+
+  it("rejects duplicate instance ids across different kinds", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        services: {
+          radarr: [validInstance()],
+          sonarr: [validInstance({ name: "Sonarr" })],
+        },
+      }),
+    ).toThrow(/duplicate instance id/);
   });
 
   it("accepts empty-string URLs (user hasn't configured them yet)", () => {
     const result = validateExportPayload({
       ...baseValid(),
       services: {
-        radarr: { ...validService(), localUrl: "", remoteUrl: "" },
+        radarr: [validInstance({ localUrl: "", remoteUrl: "" })],
       },
     });
-    expect(result.services.radarr.localUrl).toBe("");
-    expect(result.services.radarr.remoteUrl).toBe("");
+    expect(result.services.radarr[0].localUrl).toBe("");
+    expect(result.services.radarr[0].remoteUrl).toBe("");
   });
 
   it("accepts both http:// and https:// schemes", () => {
     const result = validateExportPayload({
       ...baseValid(),
       services: {
-        radarr: { ...validService(), localUrl: "http://x", remoteUrl: "https://x" },
+        radarr: [validInstance({ localUrl: "http://x", remoteUrl: "https://x" })],
       },
     });
-    expect(result.services.radarr.localUrl).toBe("http://x");
-    expect(result.services.radarr.remoteUrl).toBe("https://x");
+    expect(result.services.radarr[0].localUrl).toBe("http://x");
+    expect(result.services.radarr[0].remoteUrl).toBe("https://x");
+  });
+
+  it("accepts multiple instances of the same kind with distinct ids", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        radarr: [
+          validInstance({ id: "uuid-a", name: "Radarr 4K" }),
+          validInstance({ id: "uuid-b", name: "Radarr 1080p" }),
+        ],
+      },
+    });
+    expect(result.services.radarr).toHaveLength(2);
+    expect(result.services.radarr[0].name).toBe("Radarr 4K");
+    expect(result.services.radarr[1].name).toBe("Radarr 1080p");
   });
 });
 
@@ -167,7 +235,7 @@ describe("validateExportPayload — service IDs (forward-compat silent drop)", (
   it("drops services with unknown IDs without throwing", () => {
     const result = validateExportPayload({
       ...baseValid(),
-      services: { unknownFutureService: validService() } as any,
+      services: { unknownFutureService: [validInstance()] } as any,
     });
     expect(result.services).toEqual({});
   });
@@ -176,8 +244,8 @@ describe("validateExportPayload — service IDs (forward-compat silent drop)", (
     const result = validateExportPayload({
       ...baseValid(),
       services: {
-        radarr: validService(),
-        unknownFutureService: validService(),
+        radarr: [validInstance()],
+        unknownFutureService: [validInstance({ id: "other-uuid" })],
       } as any,
     });
     expect(result.services.radarr).toBeDefined();
@@ -186,38 +254,94 @@ describe("validateExportPayload — service IDs (forward-compat silent drop)", (
 });
 
 describe("validateExportPayload — service secrets", () => {
+  // v13: secrets are keyed by instance UUID, not ServiceId. Tests pair an
+  // instance UUID in `services` with the same UUID in `secrets`.
+  const withInstance = (s: Record<string, unknown>) => ({
+    ...baseValid(),
+    services: { radarr: [validInstance()] },
+    secrets: { [TEST_INSTANCE_ID]: s },
+  });
+
   it("drops null/undefined apiKey, username, password", () => {
-    const result = validateExportPayload({
-      ...baseValid(),
-      secrets: { radarr: { apiKey: null, username: undefined } as any },
-    });
-    expect(result.secrets.radarr).toEqual({});
+    const result = validateExportPayload(
+      withInstance({ apiKey: null, username: undefined } as any),
+    );
+    expect(result.secrets[TEST_INSTANCE_ID]).toEqual({});
   });
 
   it("rejects an apiKey longer than 4096 chars", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { apiKey: "x".repeat(4097) } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(withInstance({ apiKey: "x".repeat(4097) })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("accepts an apiKey of exactly 4096 chars (boundary)", () => {
-    const result = validateExportPayload({
-      ...baseValid(),
-      secrets: { radarr: { apiKey: "x".repeat(4096) } },
-    });
-    expect(result.secrets.radarr?.apiKey).toHaveLength(4096);
+    const result = validateExportPayload(
+      withInstance({ apiKey: "x".repeat(4096) }),
+    );
+    expect(result.secrets[TEST_INSTANCE_ID]?.apiKey).toHaveLength(4096);
   });
 
   it("rejects a non-string apiKey", () => {
     expect(() =>
+      validateExportPayload(withInstance({ apiKey: 42 as any })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
+  });
+
+  it("drops orphaned secrets whose UUID has no matching instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { radarr: [validInstance()] },
+      secrets: {
+        [TEST_INSTANCE_ID]: { apiKey: "kept" },
+        "orphan-uuid": { apiKey: "dropped" },
+      },
+    });
+    expect(result.secrets[TEST_INSTANCE_ID]?.apiKey).toBe("kept");
+    expect((result.secrets as any)["orphan-uuid"]).toBeUndefined();
+  });
+});
+
+describe("validateExportPayload — activeInstance", () => {
+  it("defaults to null for kinds with no instances", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.activeInstance.radarr).toBeNull();
+  });
+
+  it("falls back to first instance when stored UUID doesn't match any instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { radarr: [validInstance()] },
+      activeInstance: { radarr: "stale-uuid-from-deleted-instance" },
+    });
+    expect(result.activeInstance.radarr).toBe(TEST_INSTANCE_ID);
+  });
+
+  it("preserves a valid stored UUID", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { radarr: [validInstance()] },
+      activeInstance: { radarr: TEST_INSTANCE_ID },
+    });
+    expect(result.activeInstance.radarr).toBe(TEST_INSTANCE_ID);
+  });
+
+  it("rejects a non-string activeInstance value", () => {
+    expect(() =>
       validateExportPayload({
         ...baseValid(),
-        secrets: { radarr: { apiKey: 42 as any } },
+        activeInstance: { radarr: 42 } as any,
       }),
-    ).toThrow(/secrets\.radarr/);
+    ).toThrow(/activeInstance\.radarr/);
+  });
+
+  it("rejects activeInstance that is not a plain object", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        activeInstance: ["radarr"] as any,
+      }),
+    ).toThrow(/activeInstance/);
   });
 });
 
@@ -540,107 +664,97 @@ describe("validateExportPayload — hapticsEnabled", () => {
 });
 
 describe("validateExportPayload — service customHeaders", () => {
+  // Each test pairs a single-instance services entry with secrets keyed by
+  // that instance's UUID, mirroring the v13 storage shape.
+  const withInstance = (s: Record<string, unknown>) => ({
+    ...baseValid(),
+    services: { radarr: [validInstance()] },
+    secrets: { [TEST_INSTANCE_ID]: s },
+  });
+
   it("accepts a typical reverse-proxy header pair", () => {
-    const result = validateExportPayload({
-      ...baseValid(),
-      secrets: {
-        radarr: {
-          apiKey: "abc",
-          customHeaders: {
-            "CF-Access-Client-Id": "id",
-            "CF-Access-Client-Secret": "secret",
-          },
+    const result = validateExportPayload(
+      withInstance({
+        apiKey: "abc",
+        customHeaders: {
+          "CF-Access-Client-Id": "id",
+          "CF-Access-Client-Secret": "secret",
         },
-      },
-    });
-    expect(result.secrets.radarr?.customHeaders).toEqual({
+      }),
+    );
+    expect(result.secrets[TEST_INSTANCE_ID]?.customHeaders).toEqual({
       "CF-Access-Client-Id": "id",
       "CF-Access-Client-Secret": "secret",
     });
   });
 
   it("drops an empty header map (so consumers see undefined, not {})", () => {
-    const result = validateExportPayload({
-      ...baseValid(),
-      secrets: { radarr: { customHeaders: {} } },
-    });
-    expect(result.secrets.radarr?.customHeaders).toBeUndefined();
+    const result = validateExportPayload(withInstance({ customHeaders: {} }));
+    expect(result.secrets[TEST_INSTANCE_ID]?.customHeaders).toBeUndefined();
   });
 
   it("rejects a header name with a space (CRLF-injection vector)", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: { "Bad Header": "x" } } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(
+        withInstance({ customHeaders: { "Bad Header": "x" } }),
+      ),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects a header name containing : (would corrupt the wire format)", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: { "X-Bad:Name": "x" } } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(
+        withInstance({ customHeaders: { "X-Bad:Name": "x" } }),
+      ),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects an empty header name", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: { "": "x" } } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(withInstance({ customHeaders: { "": "x" } })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects a header value containing CR or LF (header-splitting vector)", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: {
-          radarr: { customHeaders: { "X-Foo": "ok\r\nX-Injected: bad" } },
-        },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(
+        withInstance({
+          customHeaders: { "X-Foo": "ok\r\nX-Injected: bad" },
+        }),
+      ),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects a header value longer than 4096 chars", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: { "X-Foo": "x".repeat(4097) } } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(
+        withInstance({ customHeaders: { "X-Foo": "x".repeat(4097) } }),
+      ),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects more than 32 headers", () => {
     const many: Record<string, string> = {};
     for (let i = 0; i < 33; i++) many[`X-Header-${i}`] = "v";
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: many } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(withInstance({ customHeaders: many })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects customHeaders that is not a plain object", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: "not-an-object" as any } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(
+        withInstance({ customHeaders: "not-an-object" as any }),
+      ),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
   it("rejects a non-string header value (e.g. numeric)", () => {
     expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        secrets: { radarr: { customHeaders: { "X-Foo": 42 as any } } },
-      }),
-    ).toThrow(/secrets\.radarr/);
+      validateExportPayload(
+        withInstance({ customHeaders: { "X-Foo": 42 as any } }),
+      ),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 });
 

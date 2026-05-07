@@ -26,8 +26,21 @@ describe("migrateConfig — entry point", () => {
     const input = {
       version: CURRENT_CONFIG_VERSION,
       exportedAt: "2026-04-27T00:00:00.000Z",
-      services: { radarr: { enabled: true } },
+      // v13 shape: services is Record<ServiceId, ServiceInstance[]>
+      services: {
+        radarr: [
+          {
+            id: "uuid-radarr-1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
       secrets: {},
+      activeInstance: { radarr: "uuid-radarr-1" },
       autoSwitchNetwork: false,
       homeNetworks: [],
       dashboardWidgets: ["calendar"],
@@ -80,12 +93,22 @@ describe("v0 → v1 (pre-versioning fallback)", () => {
     expect(result.homeBSSID).toBeUndefined();
   });
 
-  it("preserves a populated services map verbatim through migration", () => {
+  it("wraps a populated services map into the v13 instance-array shape", () => {
     const services = {
       radarr: { enabled: true, name: "Radarr", localUrl: "http://radarr" },
     };
-    const result = migrateConfig({ services });
-    expect(result.services).toEqual(services);
+    const result: any = migrateConfig({ services });
+    // v12 → v13: every kind's singleton becomes a one-element array, with a
+    // freshly-generated UUID id. The user's other fields are preserved verbatim.
+    expect(Array.isArray(result.services.radarr)).toBe(true);
+    expect(result.services.radarr).toHaveLength(1);
+    expect(result.services.radarr[0]).toMatchObject({
+      enabled: true,
+      name: "Radarr",
+      localUrl: "http://radarr",
+    });
+    expect(typeof result.services.radarr[0].id).toBe("string");
+    expect(result.services.radarr[0].id.length).toBeGreaterThan(0);
   });
 
   it("guards against ?? vs || regression: autoSwitchNetwork:false stays false", () => {
@@ -137,8 +160,8 @@ describe("v2 → v3 (per-service WOL → global)", () => {
         radarr: { enabled: true, wakeOnLan: { mac: "aa:bb:cc:dd:ee:ff" } },
       },
     });
-    expect(result.services.radarr.wakeOnLan).toBeUndefined();
-    expect(result.services.radarr.enabled).toBe(true);
+    expect(result.services.radarr[0].wakeOnLan).toBeUndefined();
+    expect(result.services.radarr[0].enabled).toBe(true);
   });
 
   it("picks the FIRST encountered wakeOnLan when multiple services have one", () => {
@@ -540,7 +563,8 @@ describe("v8 → v9 (jellyfin stamp)", () => {
       dashboardWidgets: ["calendar"],
       hapticsEnabled: false,
     });
-    expect(result.services.radarr.enabled).toBe(true);
+    // v12 → v13 wraps the singleton; .enabled now lives on the first element.
+    expect(result.services.radarr[0].enabled).toBe(true);
     expect(result.hapticsEnabled).toBe(false);
   });
 });
@@ -588,9 +612,175 @@ describe("v9 → v10 (custom headers)", () => {
       dashboardWidgets: [],
       widgetSettings: {},
     });
-    expect(result.secrets.radarr.customHeaders).toEqual({
+    // v12 → v13 re-keys secrets from `secrets[serviceId]` to `secrets[uuid]`,
+    // using the UUID assigned to the migrated instance for that kind. Since
+    // there's no radarr instance in `services` here, the orphaned secret is
+    // dropped — this matches the migration contract: secrets follow instances.
+    // We only need to verify that customHeaders aren't mangled when they DO
+    // travel along with an instance.
+    const withInstance: any = migrateConfig({
+      version: 9,
+      services: {
+        radarr: {
+          enabled: true,
+          name: "Radarr",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      },
+      secrets: {
+        radarr: { apiKey: "k", customHeaders: { Authorization: "Bearer x" } },
+      },
+      dashboardWidgets: [],
+      widgetSettings: {},
+    });
+    const radarrUuid = withInstance.services.radarr[0].id;
+    expect(withInstance.secrets[radarrUuid].customHeaders).toEqual({
       Authorization: "Bearer x",
     });
+  });
+});
+
+describe("v12 → v13 (multi-instance)", () => {
+  const baseV12 = () => ({
+    version: 12,
+    services: {},
+    secrets: {},
+    autoSwitchNetwork: false,
+    homeNetworks: [],
+    dashboardWidgets: [],
+    widgetSettings: {},
+    globalCustomHeaders: {},
+    uiScale: 1,
+  });
+
+  it("wraps each kind's singleton into a one-element ServiceInstance array", () => {
+    const result: any = migrateConfig({
+      ...baseV12(),
+      services: {
+        qbittorrent: {
+          enabled: true,
+          name: "qBit",
+          localUrl: "http://qb",
+          remoteUrl: "",
+          useRemote: false,
+        },
+        radarr: {
+          enabled: false,
+          name: "Radarr",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      },
+    });
+    expect(Array.isArray(result.services.qbittorrent)).toBe(true);
+    expect(result.services.qbittorrent).toHaveLength(1);
+    expect(result.services.qbittorrent[0].name).toBe("qBit");
+    expect(result.services.radarr).toHaveLength(1);
+    expect(result.services.radarr[0].enabled).toBe(false);
+  });
+
+  it("assigns a non-empty UUID to every wrapped instance", () => {
+    const result: any = migrateConfig({
+      ...baseV12(),
+      services: {
+        sonarr: {
+          enabled: true,
+          name: "Sonarr",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      },
+    });
+    const id = result.services.sonarr[0].id;
+    expect(typeof id).toBe("string");
+    expect(id.length).toBeGreaterThan(8);
+  });
+
+  it("re-keys per-service secrets to the new instance UUID", () => {
+    const result: any = migrateConfig({
+      ...baseV12(),
+      services: {
+        radarr: {
+          enabled: true,
+          name: "Radarr",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      },
+      secrets: {
+        radarr: { apiKey: "abc-123" },
+      },
+    });
+    const uuid = result.services.radarr[0].id;
+    // Old `secrets.radarr` slot is gone; the value lives under the UUID now.
+    expect(result.secrets.radarr).toBeUndefined();
+    expect(result.secrets[uuid]).toEqual({ apiKey: "abc-123" });
+  });
+
+  it("initializes activeInstance to the migrated UUID for every kind", () => {
+    const result: any = migrateConfig({
+      ...baseV12(),
+      services: {
+        qbittorrent: {
+          enabled: true,
+          name: "qBit",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+        },
+        radarr: {
+          enabled: false,
+          name: "Radarr",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      },
+    });
+    expect(result.activeInstance.qbittorrent).toBe(
+      result.services.qbittorrent[0].id,
+    );
+    expect(result.activeInstance.radarr).toBe(result.services.radarr[0].id);
+  });
+
+  it("drops orphaned secrets whose serviceId has no matching service entry", () => {
+    const result: any = migrateConfig({
+      ...baseV12(),
+      services: {},
+      secrets: { radarr: { apiKey: "stranded" } },
+    });
+    // No radarr in services → no UUID assigned → orphan secret is silently
+    // dropped. This is the right call: a paired services+secrets export should
+    // never have one without the other, and keeping the legacy slot would
+    // poison the new UUID-keyed map.
+    expect(result.secrets).toEqual({});
+  });
+
+  it("produces an empty activeInstance map when services is empty", () => {
+    const result: any = migrateConfig({ ...baseV12(), services: {} });
+    expect(result.activeInstance).toEqual({});
+  });
+
+  it("assigns distinct UUIDs across kinds (no collisions)", () => {
+    const result: any = migrateConfig({
+      ...baseV12(),
+      services: {
+        qbittorrent: { enabled: true, name: "q", localUrl: "", remoteUrl: "", useRemote: false },
+        radarr: { enabled: true, name: "r", localUrl: "", remoteUrl: "", useRemote: false },
+        sonarr: { enabled: true, name: "s", localUrl: "", remoteUrl: "", useRemote: false },
+      },
+    });
+    const ids = [
+      result.services.qbittorrent[0].id,
+      result.services.radarr[0].id,
+      result.services.sonarr[0].id,
+    ];
+    expect(new Set(ids).size).toBe(3);
   });
 });
 
@@ -632,8 +822,8 @@ describe("end-to-end multi-step", () => {
     expect(result.backend).toBeNull();
     expect(result.notificationSettings).toBeNull();
     // v2→v3 stripped wakeOnLan from radarr
-    expect(result.services.radarr.wakeOnLan).toBeUndefined();
-    expect(result.services.radarr.enabled).toBe(true);
+    expect(result.services.radarr[0].wakeOnLan).toBeUndefined();
+    expect(result.services.radarr[0].enabled).toBe(true);
     // v3→v4 produced the array entry
     expect(result.wolDevices).toHaveLength(1);
     expect(result.wolDevices[0]).toEqual({
@@ -654,8 +844,12 @@ describe("end-to-end multi-step", () => {
     expect(result.widgetSettings).toEqual({});
     // v7→v8 defaulted hapticsEnabled
     expect(result.hapticsEnabled).toBe(true);
-    // user data preserved
-    expect(result.secrets).toEqual({ radarr: { apiKey: "k1" } });
+    // v12→v13 re-keyed `secrets.radarr.apiKey` under the migrated radarr UUID
+    // and initialized activeInstance for every kind that has a service entry.
+    const radarrUuid = result.services.radarr[0].id;
+    expect(result.secrets[radarrUuid]).toEqual({ apiKey: "k1" });
+    expect(result.secrets.radarr).toBeUndefined();
+    expect(result.activeInstance.radarr).toBe(radarrUuid);
   });
 
   it("upgrades a v3 fixture (typical post-v3 build) to the current version without touching steps 0-2", () => {
@@ -708,7 +902,23 @@ describe("end-to-end multi-step", () => {
       radarr: { apiKey: "abc123" },
     };
     const result: any = migrateConfig({ services, secrets });
-    expect(result.services).toEqual(services);
-    expect(result.secrets).toEqual(secrets);
+    // v12 → v13 wraps each kind in an array with a UUID.
+    expect(result.services.qbittorrent).toHaveLength(1);
+    expect(result.services.qbittorrent[0]).toMatchObject({
+      enabled: true,
+      name: "qBittorrent",
+      localUrl: "http://192.168.1.10:8080",
+      remoteUrl: "https://qb.example.com",
+      useRemote: false,
+    });
+    // qbittorrent secrets follow the qbittorrent instance to its UUID slot.
+    const qbUuid = result.services.qbittorrent[0].id;
+    expect(result.secrets[qbUuid]).toEqual({
+      username: "admin",
+      password: "hunter2",
+    });
+    // The radarr secret is dropped because no radarr service entry exists.
+    expect(result.secrets.radarr).toBeUndefined();
+    expect(Object.keys(result.secrets)).toEqual([qbUuid]);
   });
 });

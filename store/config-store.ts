@@ -40,6 +40,7 @@ import { queryClient } from "@/lib/query-client";
 import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
+import { generateInstanceId } from "@/lib/uuid";
 
 export interface WakeOnLanDevice {
   id: string;
@@ -58,12 +59,23 @@ export interface HomeNetwork {
   bssid: string;
 }
 
+// Per-service connection config (URLs, enabled flag, display name). One
+// ServiceInstance row exists per configured server — users can have multiple
+// rows of the same kind (e.g. two qBittorrents).
 export interface ServiceConfig {
   enabled: boolean;
   name: string;
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+}
+
+// A configured service instance: a ServiceConfig plus a stable UUID `id` that
+// keys per-instance secrets, query cache, and per-instance widget bindings.
+// The UUID is generated on instance creation and is preserved across renames,
+// reorders, and exports/imports.
+export interface ServiceInstance extends ServiceConfig {
+  id: string;
 }
 
 export interface ServiceSecrets {
@@ -82,8 +94,24 @@ export interface ServiceSecrets {
 export type WidgetSettingsMap = Partial<Record<WidgetId, Record<string, unknown>>>;
 
 interface ConfigState {
+  // Authoritative multi-instance state (v13+). One array of ServiceInstance
+  // entries per kind; each carries its own UUID, URLs, and enabled flag.
+  serviceInstances: Record<ServiceId, ServiceInstance[]>;
+  // Secrets keyed by instance UUID, not ServiceId. One row per ServiceInstance.id.
+  instanceSecrets: Record<string, ServiceSecrets>;
+  // Currently-selected instance per service kind. Persisted across restarts so
+  // the per-service tab remembers the user's pick. Null means no instances
+  // configured.
+  activeInstance: Record<ServiceId, string | null>;
+
+  // Legacy single-instance views of the active instance, keyed by ServiceId.
+  // Computed from serviceInstances + instanceSecrets + activeInstance after
+  // every mutation so existing consumers that read state.services[id] /
+  // state.secrets[id] keep working until they're migrated to be instance-aware
+  // in later steps.
   services: Record<ServiceId, ServiceConfig>;
   secrets: Record<ServiceId, ServiceSecrets>;
+
   autoSwitchNetwork: boolean;
   homeNetworks: HomeNetwork[];
   dashboardWidgets: WidgetId[];
@@ -102,8 +130,12 @@ interface ConfigState {
 export interface ExportPayload {
   version: number;
   exportedAt: string;
-  services: Record<ServiceId, ServiceConfig>;
-  secrets: Record<ServiceId, ServiceSecrets>;
+  // v13: array of ServiceInstance per kind, each carrying a UUID id.
+  services: Record<ServiceId, ServiceInstance[]>;
+  // v13: keyed by instance UUID, not ServiceId.
+  secrets: Record<string, ServiceSecrets>;
+  // v13: currently-active instance UUID per kind.
+  activeInstance: Record<ServiceId, string | null>;
   autoSwitchNetwork: boolean;
   // v11 — replaces homeSSID/homeBSSID with a per-AP list so mesh setups can
   // register every SSID/BSSID pair the user considers "home".
@@ -133,9 +165,35 @@ const yieldToPaint = () => new Promise<void>((resolve) => setTimeout(resolve, 16
 
 interface ConfigActions {
   hydrate: () => Promise<void>;
+
+  // Multi-instance (v13+) actions. Operate by UUID so renames/reorders don't
+  // invalidate references.
+  addInstance: (
+    id: ServiceId,
+    init?: Partial<Omit<ServiceInstance, "id">>,
+  ) => ServiceInstance;
+  removeInstance: (id: ServiceId, instanceId: string) => Promise<void>;
+  updateInstance: (
+    id: ServiceId,
+    instanceId: string,
+    patch: Partial<Omit<ServiceInstance, "id">>,
+  ) => void;
+  toggleInstance: (id: ServiceId, instanceId: string) => void;
+  moveInstance: (id: ServiceId, instanceId: string, direction: "up" | "down") => void;
+  setActiveInstance: (id: ServiceId, instanceId: string | null) => void;
+  updateInstanceSecrets: (
+    instanceId: string,
+    secrets: Partial<ServiceSecrets>,
+  ) => Promise<void>;
+
+  // Legacy single-instance helpers. These operate on the active instance for
+  // the given kind and exist so consumers that haven't been migrated to be
+  // instance-aware keep working. They'll be retired once the rest of the
+  // codebase passes instanceId explicitly.
   updateService: (id: ServiceId, config: Partial<ServiceConfig>) => void;
   toggleService: (id: ServiceId) => void;
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
+
   setAutoSwitch: (enabled: boolean) => void;
   addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
@@ -151,8 +209,15 @@ interface ConfigActions {
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
-  getMergedHeaders: (id: ServiceId) => Record<string, string>;
-  getActiveUrl: (id: ServiceId) => string;
+
+  // Lookup helpers. instanceId is optional — when omitted, the active instance
+  // for that kind is used (legacy single-instance behavior).
+  getInstance: (id: ServiceId, instanceId: string) => ServiceInstance | undefined;
+  getActiveInstanceId: (id: ServiceId) => string | null;
+  getEnabledInstances: (id: ServiceId) => ServiceInstance[];
+  getMergedHeaders: (id: ServiceId, instanceId?: string) => Record<string, string>;
+  getActiveUrl: (id: ServiceId, instanceId?: string) => string;
+
   enableDemoMode: () => void;
   disableDemoMode: () => Promise<void>;
   exportConfig: (passphrase: string, onStage?: (stage: ExportStage) => void) => Promise<void>;
@@ -175,20 +240,83 @@ function defaultServiceConfig(id: ServiceId): ServiceConfig {
   };
 }
 
-function defaultServices(): Record<ServiceId, ServiceConfig> {
-  const services = {} as Record<ServiceId, ServiceConfig>;
-  for (const id of SERVICE_IDS) {
-    services[id] = defaultServiceConfig(id);
-  }
-  return services;
+// Build a single ServiceInstance with a freshly-generated UUID and the given
+// (optional) overrides on top of the kind defaults.
+function makeInstance(
+  id: ServiceId,
+  init?: Partial<Omit<ServiceInstance, "id">>,
+): ServiceInstance {
+  return { id: generateInstanceId(), ...defaultServiceConfig(id), ...(init ?? {}) };
 }
 
-function emptySecrets(): Record<ServiceId, ServiceSecrets> {
+// Default state for a fresh install: each kind starts with one disabled
+// instance carrying default URLs/credentials, mirroring the v12 UX where every
+// service had a slot ready in settings.
+function defaultInstances(): Record<ServiceId, ServiceInstance[]> {
+  const out = {} as Record<ServiceId, ServiceInstance[]>;
+  for (const id of SERVICE_IDS) {
+    out[id] = [makeInstance(id)];
+  }
+  return out;
+}
+
+function defaultActiveInstance(
+  instances: Record<ServiceId, ServiceInstance[]>,
+): Record<ServiceId, string | null> {
+  const out = {} as Record<ServiceId, string | null>;
+  for (const id of SERVICE_IDS) {
+    out[id] = instances[id][0]?.id ?? null;
+  }
+  return out;
+}
+
+function emptyLegacySecrets(): Record<ServiceId, ServiceSecrets> {
   const secrets = {} as Record<ServiceId, ServiceSecrets>;
   for (const id of SERVICE_IDS) {
     secrets[id] = {};
   }
   return secrets;
+}
+
+// Project the multi-instance state down to the legacy `services[serviceId]`
+// shape consumers still read. Picks the active instance per kind, falling
+// back to the first instance, then to default-shaped (disabled) config.
+function deriveLegacyServices(
+  instances: Record<ServiceId, ServiceInstance[]>,
+  activeInstance: Record<ServiceId, string | null>,
+): Record<ServiceId, ServiceConfig> {
+  const out = {} as Record<ServiceId, ServiceConfig>;
+  for (const id of SERVICE_IDS) {
+    const list = instances[id] ?? [];
+    const activeId = activeInstance[id] ?? list[0]?.id ?? null;
+    const inst = activeId ? list.find((i) => i.id === activeId) : list[0];
+    if (inst) {
+      const { id: _id, ...cfg } = inst;
+      out[id] = cfg;
+    } else {
+      out[id] = defaultServiceConfig(id);
+    }
+  }
+  return out;
+}
+
+// Project the multi-instance state down to the legacy `secrets[serviceId]`
+// shape consumers still read. Picks the active instance's secrets per kind,
+// falling back to the first instance, then to {}.
+function deriveLegacySecrets(
+  instances: Record<ServiceId, ServiceInstance[]>,
+  instanceSecrets: Record<string, ServiceSecrets>,
+  activeInstance: Record<ServiceId, string | null>,
+): Record<ServiceId, ServiceSecrets> {
+  const out = emptyLegacySecrets();
+  for (const id of SERVICE_IDS) {
+    const list = instances[id] ?? [];
+    const activeId = activeInstance[id] ?? list[0]?.id ?? null;
+    if (activeId && instanceSecrets[activeId]) {
+      out[id] = instanceSecrets[activeId];
+    }
+  }
+  return out;
 }
 
 function generateHomeNetworkId(): string {
@@ -202,6 +330,22 @@ function isHomeNetwork(value: unknown): value is HomeNetwork {
     typeof v.id === "string" &&
     typeof v.ssid === "string" &&
     typeof v.bssid === "string"
+  );
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isServiceInstance(v: unknown): v is ServiceInstance {
+  if (!isPlainObject(v)) return false;
+  return (
+    typeof v.id === "string" &&
+    typeof v.enabled === "boolean" &&
+    typeof v.name === "string" &&
+    typeof v.localUrl === "string" &&
+    typeof v.remoteUrl === "string" &&
+    typeof v.useRemote === "boolean"
   );
 }
 
@@ -236,9 +380,17 @@ function remapWidgetSettings(
   return out;
 }
 
+const ACTIVE_INSTANCE_KEY = "app.activeInstance";
+
+const initialInstances = defaultInstances();
+const initialActiveInstance = defaultActiveInstance(initialInstances);
+
 export const useConfigStore = create<ConfigStore>((set, get) => ({
-  services: defaultServices(),
-  secrets: emptySecrets(),
+  serviceInstances: initialInstances,
+  instanceSecrets: {},
+  activeInstance: initialActiveInstance,
+  services: deriveLegacyServices(initialInstances, initialActiveInstance),
+  secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
   homeNetworks: [],
   dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
@@ -254,28 +406,73 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Populate in-memory cache from AsyncStorage
     await initStorage();
 
-    // Load service configs
-    const services = { ...defaultServices() };
+    // Read the new array shape; if absent or shaped like the v12 singleton,
+    // build a one-element array around it and persist back so the migration is
+    // a one-time cost. Generated UUIDs are stable across restarts.
+    const instances = {} as Record<ServiceId, ServiceInstance[]>;
+    const legacyToInstanceId: Record<ServiceId, string | null> = {} as Record<
+      ServiceId,
+      string | null
+    >;
+    let needsServicesPersist = false;
     for (const id of SERVICE_IDS) {
-      const stored = getJSON<ServiceConfig>(`${STORAGE_KEYS.services}.${id}`);
-      if (stored) {
-        services[id] = { ...defaultServiceConfig(id), ...stored };
+      const stored = getJSON<unknown>(`${STORAGE_KEYS.services}.${id}`);
+      let list: ServiceInstance[] = [];
+      if (Array.isArray(stored)) {
+        for (const entry of stored) {
+          if (isServiceInstance(entry)) list.push(entry);
+        }
+      } else if (isPlainObject(stored)) {
+        // v12 legacy singleton — wrap into a single-instance array.
+        const cfg = {
+          ...defaultServiceConfig(id),
+          ...stored,
+        } as ServiceConfig;
+        const inst: ServiceInstance = { id: generateInstanceId(), ...cfg };
+        list = [inst];
+        legacyToInstanceId[id] = inst.id;
+        needsServicesPersist = true;
       }
-    }
-    // Existing users have the legacy default "Overseerr" in AsyncStorage; show
-    // the current default ("Seerr") instead. Custom names set by the user are
-    // preserved (only the verbatim legacy default is replaced).
-    if (services.overseerr.name === "Overseerr") {
-      services.overseerr.name = SERVICE_DEFAULTS.overseerr.name;
+      if (list.length === 0) {
+        // Fresh install (or fully-empty entry) — seed with one disabled instance
+        // so the settings UI has a slot to fill, matching the v12 default UX.
+        list = [makeInstance(id)];
+        needsServicesPersist = true;
+      }
+      instances[id] = list;
     }
 
-    // Load secrets from SecureStore
-    const secrets = { ...emptySecrets() };
-    for (const id of SERVICE_IDS) {
-      const apiKey = await getSecret(`${SECRET_PREFIX}.${id}.apiKey`);
-      const username = await getSecret(`${SECRET_PREFIX}.${id}.username`);
-      const password = await getSecret(`${SECRET_PREFIX}.${id}.password`);
-      const customHeadersRaw = await getSecret(`${SECRET_PREFIX}.${id}.customHeaders`);
+    // Existing users had the legacy default "Overseerr" in AsyncStorage; show
+    // the current default ("Seerr") instead. Custom names set by the user are
+    // preserved (only the verbatim legacy default is replaced).
+    for (const inst of instances.overseerr) {
+      if (inst.name === "Overseerr") {
+        inst.name = SERVICE_DEFAULTS.overseerr.name;
+        needsServicesPersist = true;
+      }
+    }
+
+    if (needsServicesPersist) {
+      for (const id of SERVICE_IDS) {
+        setJSON(`${STORAGE_KEYS.services}.${id}`, instances[id]);
+      }
+    }
+
+    // Load secrets keyed by instance UUID. Also handles the v12 → v13 SecureStore
+    // re-key: if a legacy `secrets.${serviceId}.*` key is found and the kind
+    // had its singleton wrapped above, copy values to the new UUID-keyed slot
+    // and delete the legacy ones so we don't keep duplicate secrets around.
+    const instanceSecrets: Record<string, ServiceSecrets> = {};
+
+    async function readSecretsForKey(
+      key: string,
+    ): Promise<ServiceSecrets | null> {
+      const apiKey = await getSecret(`${SECRET_PREFIX}.${key}.apiKey`);
+      const username = await getSecret(`${SECRET_PREFIX}.${key}.username`);
+      const password = await getSecret(`${SECRET_PREFIX}.${key}.password`);
+      const customHeadersRaw = await getSecret(
+        `${SECRET_PREFIX}.${key}.customHeaders`,
+      );
       let customHeaders: Record<string, string> | undefined;
       if (customHeadersRaw) {
         try {
@@ -287,12 +484,77 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           // Corrupt entry — drop it so the user can re-enter rather than crash.
         }
       }
-      secrets[id] = {
+      const out: ServiceSecrets = {
         ...(apiKey ? { apiKey } : {}),
         ...(username ? { username } : {}),
         ...(password ? { password } : {}),
         ...(customHeaders ? { customHeaders } : {}),
       };
+      const empty =
+        !out.apiKey && !out.username && !out.password && !out.customHeaders;
+      return empty ? null : out;
+    }
+
+    async function deleteSecretsForKey(key: string): Promise<void> {
+      await deleteSecret(`${SECRET_PREFIX}.${key}.apiKey`);
+      await deleteSecret(`${SECRET_PREFIX}.${key}.username`);
+      await deleteSecret(`${SECRET_PREFIX}.${key}.password`);
+      await deleteSecret(`${SECRET_PREFIX}.${key}.customHeaders`);
+    }
+
+    async function writeSecretsForKey(
+      key: string,
+      s: ServiceSecrets,
+    ): Promise<void> {
+      if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${key}.apiKey`, s.apiKey);
+      if (s.username)
+        await setSecret(`${SECRET_PREFIX}.${key}.username`, s.username);
+      if (s.password)
+        await setSecret(`${SECRET_PREFIX}.${key}.password`, s.password);
+      if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
+        await setSecret(
+          `${SECRET_PREFIX}.${key}.customHeaders`,
+          JSON.stringify(s.customHeaders),
+        );
+      }
+    }
+
+    // First, migrate any v12 legacy secrets to the new UUID slots.
+    for (const id of SERVICE_IDS) {
+      const newInstanceId = legacyToInstanceId[id];
+      if (!newInstanceId) continue;
+      const legacy = await readSecretsForKey(id);
+      if (legacy) {
+        await writeSecretsForKey(newInstanceId, legacy);
+      }
+      await deleteSecretsForKey(id);
+    }
+
+    // Then load secrets for every known instance UUID across all kinds.
+    for (const id of SERVICE_IDS) {
+      for (const inst of instances[id]) {
+        const s = await readSecretsForKey(inst.id);
+        if (s) instanceSecrets[inst.id] = s;
+      }
+    }
+
+    // Active instance per kind: prefer stored value, fall back to the first
+    // instance for that kind (matches the v12 single-instance behavior).
+    const storedActive = getJSON<Record<string, unknown>>(ACTIVE_INSTANCE_KEY) ?? {};
+    const activeInstance = {} as Record<ServiceId, string | null>;
+    let activeChanged = false;
+    for (const id of SERVICE_IDS) {
+      const raw = storedActive[id];
+      const list = instances[id];
+      if (typeof raw === "string" && list.some((i) => i.id === raw)) {
+        activeInstance[id] = raw;
+      } else {
+        activeInstance[id] = list[0]?.id ?? null;
+        activeChanged = true;
+      }
+    }
+    if (activeChanged) {
+      setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
     }
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
@@ -368,12 +630,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
     if (demoMode) {
+      // Replace each kind's instances with a single demo instance so the
+      // dashboard has data without touching real configs.
       for (const id of SERVICE_IDS) {
-        services[id] = { ...defaultServiceConfig(id), enabled: true, localUrl: "http://demo.local", remoteUrl: "" };
+        const demoInst: ServiceInstance = {
+          id: generateInstanceId(),
+          ...defaultServiceConfig(id),
+          enabled: true,
+          localUrl: "http://demo.local",
+          remoteUrl: "",
+        };
+        instances[id] = [demoInst];
+        activeInstance[id] = demoInst.id;
       }
     }
 
+    const secrets = deriveLegacySecrets(instances, instanceSecrets, activeInstance);
+    const services = deriveLegacyServices(instances, activeInstance);
+
     set({
+      serviceInstances: instances,
+      instanceSecrets,
+      activeInstance,
       services,
       secrets,
       autoSwitchNetwork,
@@ -389,23 +667,124 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
   },
 
-  updateService: (id, config) => {
+  // --- Multi-instance actions ---
+
+  addInstance: (id, init) => {
+    const inst = makeInstance(id, init);
     set((state) => {
-      const updated = { ...state.services[id], ...config };
-      const services = { ...state.services, [id]: updated };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, updated);
-      return { services };
+      const list = [...(state.serviceInstances[id] ?? []), inst];
+      const serviceInstances = { ...state.serviceInstances, [id]: list };
+      // First instance for this kind also becomes the active selection.
+      const nextActive = state.activeInstance[id] ?? inst.id;
+      const activeInstance = { ...state.activeInstance, [id]: nextActive };
+      setJSON(`${STORAGE_KEYS.services}.${id}`, list);
+      if (nextActive !== state.activeInstance[id]) {
+        setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
+      }
+      const services = deriveLegacyServices(serviceInstances, activeInstance);
+      const secrets = deriveLegacySecrets(
+        serviceInstances,
+        state.instanceSecrets,
+        activeInstance,
+      );
+      return { serviceInstances, activeInstance, services, secrets };
+    });
+    return inst;
+  },
+
+  removeInstance: async (id, instanceId) => {
+    // Clear SecureStore entries for this instance before mutating state so a
+    // crash mid-delete doesn't leave orphaned secrets behind.
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.username`);
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.password`);
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customHeaders`);
+
+    set((state) => {
+      const list = (state.serviceInstances[id] ?? []).filter((i) => i.id !== instanceId);
+      const serviceInstances = { ...state.serviceInstances, [id]: list };
+      const { [instanceId]: _removed, ...instanceSecrets } = state.instanceSecrets;
+      const activeInstance = { ...state.activeInstance };
+      if (activeInstance[id] === instanceId) {
+        activeInstance[id] = list[0]?.id ?? null;
+      }
+      setJSON(`${STORAGE_KEYS.services}.${id}`, list);
+      setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
+      const services = deriveLegacyServices(serviceInstances, activeInstance);
+      const secrets = deriveLegacySecrets(
+        serviceInstances,
+        instanceSecrets,
+        activeInstance,
+      );
+      return { serviceInstances, instanceSecrets, activeInstance, services, secrets };
     });
   },
 
-  toggleService: (id) => {
-    const current = get().services[id];
-    get().updateService(id, { enabled: !current.enabled });
+  updateInstance: (id, instanceId, patch) => {
+    set((state) => {
+      const list = state.serviceInstances[id] ?? [];
+      const idx = list.findIndex((i) => i.id === instanceId);
+      if (idx === -1) return state;
+      const next = [...list];
+      next[idx] = { ...next[idx], ...patch, id: next[idx].id };
+      const serviceInstances = { ...state.serviceInstances, [id]: next };
+      setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      const services = deriveLegacyServices(serviceInstances, state.activeInstance);
+      const secrets = deriveLegacySecrets(
+        serviceInstances,
+        state.instanceSecrets,
+        state.activeInstance,
+      );
+      return { serviceInstances, services, secrets };
+    });
   },
 
-  updateSecrets: async (id, newSecrets) => {
+  toggleInstance: (id, instanceId) => {
+    const list = get().serviceInstances[id] ?? [];
+    const inst = list.find((i) => i.id === instanceId);
+    if (!inst) return;
+    get().updateInstance(id, instanceId, { enabled: !inst.enabled });
+  },
+
+  moveInstance: (id, instanceId, direction) => {
+    set((state) => {
+      const list = state.serviceInstances[id] ?? [];
+      const idx = list.findIndex((i) => i.id === instanceId);
+      if (idx === -1) return state;
+      const target = direction === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= list.length) return state;
+      const next = [...list];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      const serviceInstances = { ...state.serviceInstances, [id]: next };
+      setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      const services = deriveLegacyServices(serviceInstances, state.activeInstance);
+      return { serviceInstances, services };
+    });
+  },
+
+  setActiveInstance: (id, instanceId) => {
+    set((state) => {
+      const list = state.serviceInstances[id] ?? [];
+      // Reject ids that don't refer to an existing instance — keeps state
+      // consistent if a stale UUID slips through (e.g. from a prop).
+      if (instanceId !== null && !list.some((i) => i.id === instanceId)) {
+        return state;
+      }
+      const activeInstance = { ...state.activeInstance, [id]: instanceId };
+      setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
+      const services = deriveLegacyServices(state.serviceInstances, activeInstance);
+      const secrets = deriveLegacySecrets(
+        state.serviceInstances,
+        state.instanceSecrets,
+        activeInstance,
+      );
+      return { activeInstance, services, secrets };
+    });
+  },
+
+  updateInstanceSecrets: async (instanceId, newSecrets) => {
     for (const [key, value] of Object.entries(newSecrets)) {
-      const storageKey = `${SECRET_PREFIX}.${id}.${key}`;
+      const storageKey = `${SECRET_PREFIX}.${instanceId}.${key}`;
       if (key === "customHeaders") {
         // Stored as a JSON string so SecureStore (string-only) can hold it.
         const map = value as Record<string, string> | undefined;
@@ -421,13 +800,45 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
     }
     set((state) => {
+      const merged: ServiceSecrets = {
+        ...(state.instanceSecrets[instanceId] ?? {}),
+        ...newSecrets,
+      };
       // Drop empty customHeaders so consumers don't have to dance around {}.
-      const merged: ServiceSecrets = { ...state.secrets[id], ...newSecrets };
       if (merged.customHeaders && Object.keys(merged.customHeaders).length === 0) {
         delete merged.customHeaders;
       }
-      return { secrets: { ...state.secrets, [id]: merged } };
+      const instanceSecrets = { ...state.instanceSecrets, [instanceId]: merged };
+      const secrets = deriveLegacySecrets(
+        state.serviceInstances,
+        instanceSecrets,
+        state.activeInstance,
+      );
+      return { instanceSecrets, secrets };
     });
+  },
+
+  // --- Legacy single-instance shims ---
+
+  updateService: (id, config) => {
+    const activeId =
+      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
+    if (!activeId) return;
+    get().updateInstance(id, activeId, config);
+  },
+
+  toggleService: (id) => {
+    const activeId =
+      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
+    if (!activeId) return;
+    get().toggleInstance(id, activeId);
+  },
+
+  updateSecrets: async (id, newSecrets) => {
+    const activeId =
+      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
+    if (!activeId) return;
+    await get().updateInstanceSecrets(activeId, newSecrets);
   },
 
   setAutoSwitch: (enabled) => {
@@ -550,23 +961,65 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ uiScale: scale });
   },
 
-  getMergedHeaders: (id) => {
-    const state = get();
-    return { ...state.globalCustomHeaders, ...(state.secrets[id]?.customHeaders ?? {}) };
+  // --- Lookup helpers ---
+
+  getInstance: (id, instanceId) => {
+    return get().serviceInstances[id]?.find((i) => i.id === instanceId);
   },
 
-  getActiveUrl: (id) => {
-    const service = get().services[id];
-    return service.useRemote ? service.remoteUrl : service.localUrl;
+  getActiveInstanceId: (id) => {
+    const state = get();
+    return state.activeInstance[id] ?? state.serviceInstances[id]?.[0]?.id ?? null;
+  },
+
+  getEnabledInstances: (id) => {
+    return (get().serviceInstances[id] ?? []).filter((i) => i.enabled);
+  },
+
+  getMergedHeaders: (id, instanceId) => {
+    const state = get();
+    const targetId =
+      instanceId ?? state.activeInstance[id] ?? state.serviceInstances[id]?.[0]?.id;
+    const perInstance = targetId
+      ? state.instanceSecrets[targetId]?.customHeaders
+      : undefined;
+    return { ...state.globalCustomHeaders, ...(perInstance ?? {}) };
+  },
+
+  getActiveUrl: (id, instanceId) => {
+    const state = get();
+    const list = state.serviceInstances[id] ?? [];
+    const targetId = instanceId ?? state.activeInstance[id] ?? list[0]?.id;
+    const inst = list.find((i) => i.id === targetId);
+    if (!inst) return "";
+    return inst.useRemote ? inst.remoteUrl : inst.localUrl;
   },
 
   enableDemoMode: () => {
     setBoolean(STORAGE_KEYS.demoMode, true);
-    const demoServices: Record<ServiceId, ServiceConfig> = {} as Record<ServiceId, ServiceConfig>;
+    const demoInstances = {} as Record<ServiceId, ServiceInstance[]>;
+    const demoActive = {} as Record<ServiceId, string | null>;
     for (const id of SERVICE_IDS) {
-      demoServices[id] = { ...defaultServiceConfig(id), enabled: true, localUrl: "http://demo.local", remoteUrl: "" };
+      const inst: ServiceInstance = {
+        id: generateInstanceId(),
+        ...defaultServiceConfig(id),
+        enabled: true,
+        localUrl: "http://demo.local",
+        remoteUrl: "",
+      };
+      demoInstances[id] = [inst];
+      demoActive[id] = inst.id;
     }
-    set({ demoMode: true, services: demoServices });
+    const secrets = deriveLegacySecrets(demoInstances, {}, demoActive);
+    const services = deriveLegacyServices(demoInstances, demoActive);
+    set({
+      demoMode: true,
+      serviceInstances: demoInstances,
+      instanceSecrets: {},
+      activeInstance: demoActive,
+      services,
+      secrets,
+    });
     queryClient.clear();
   },
 
@@ -598,8 +1051,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     const {
-      services,
-      secrets,
+      serviceInstances,
+      instanceSecrets,
+      activeInstance,
       autoSwitchNetwork,
       homeNetworks,
       dashboardWidgets,
@@ -616,8 +1070,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const payload: ExportPayload = {
       version: CURRENT_CONFIG_VERSION,
       exportedAt: new Date().toISOString(),
-      services,
-      secrets,
+      services: serviceInstances,
+      secrets: instanceSecrets,
+      activeInstance,
       autoSwitchNetwork,
       homeNetworks,
       dashboardWidgets,
@@ -688,33 +1143,62 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const migrated = migrateConfig(raw);
     const payload = validateExportPayload(migrated);
 
-    // Merge imported services over defaults so missing services get defaults
-    const mergedServices = defaultServices();
+    // Wipe any existing per-instance SecureStore entries before restoring so
+    // we never leak secrets from a previous configuration that the imported
+    // backup didn't replace.
+    const currentInstanceIds = new Set<string>();
     for (const id of SERVICE_IDS) {
-      if (payload.services[id]) {
-        mergedServices[id] = { ...defaultServiceConfig(id), ...payload.services[id] };
-        setJSON(`${STORAGE_KEYS.services}.${id}`, mergedServices[id]);
+      for (const inst of get().serviceInstances[id] ?? []) {
+        currentInstanceIds.add(inst.id);
+      }
+    }
+    for (const oldId of currentInstanceIds) {
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.apiKey`);
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.username`);
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.password`);
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.customHeaders`);
+    }
+
+    // Merge imported services over fresh defaults so every kind keeps a slot
+    // in settings even if the backup omits one.
+    const mergedInstances = defaultInstances();
+    for (const id of SERVICE_IDS) {
+      const list = payload.services[id];
+      if (Array.isArray(list) && list.length > 0) {
+        mergedInstances[id] = list;
+      }
+      setJSON(`${STORAGE_KEYS.services}.${id}`, mergedInstances[id]);
+    }
+
+    // Restore secrets keyed by instance UUID.
+    const mergedSecrets: Record<string, ServiceSecrets> = {};
+    for (const [uuid, s] of Object.entries(payload.secrets ?? {})) {
+      if (!s) continue;
+      mergedSecrets[uuid] = s;
+      if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${uuid}.apiKey`, s.apiKey);
+      if (s.username) await setSecret(`${SECRET_PREFIX}.${uuid}.username`, s.username);
+      if (s.password) await setSecret(`${SECRET_PREFIX}.${uuid}.password`, s.password);
+      if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
+        await setSecret(
+          `${SECRET_PREFIX}.${uuid}.customHeaders`,
+          JSON.stringify(s.customHeaders),
+        );
       }
     }
 
-    // Restore secrets
-    const mergedSecrets = emptySecrets();
+    // Restore active instance per kind, validating every UUID still exists in
+    // the merged services list.
+    const mergedActiveInstance = {} as Record<ServiceId, string | null>;
     for (const id of SERVICE_IDS) {
-      const s = payload.secrets?.[id];
-      if (!s) continue;
-      mergedSecrets[id] = s;
-      if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${id}.apiKey`, s.apiKey);
-      if (s.username) await setSecret(`${SECRET_PREFIX}.${id}.username`, s.username);
-      if (s.password) await setSecret(`${SECRET_PREFIX}.${id}.password`, s.password);
-      if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
-        await setSecret(
-          `${SECRET_PREFIX}.${id}.customHeaders`,
-          JSON.stringify(s.customHeaders),
-        );
+      const list = mergedInstances[id];
+      const stored = payload.activeInstance?.[id] ?? null;
+      if (typeof stored === "string" && list.some((i) => i.id === stored)) {
+        mergedActiveInstance[id] = stored;
       } else {
-        await deleteSecret(`${SECRET_PREFIX}.${id}.customHeaders`);
+        mergedActiveInstance[id] = list[0]?.id ?? null;
       }
     }
+    setJSON(ACTIVE_INSTANCE_KEY, mergedActiveInstance);
 
     // Restore app settings
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
@@ -751,10 +1235,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       useNotificationStore.getState().hydrate();
     }
 
+    const derivedSecrets = deriveLegacySecrets(
+      mergedInstances,
+      mergedSecrets,
+      mergedActiveInstance,
+    );
+    const derivedServices = deriveLegacyServices(mergedInstances, mergedActiveInstance);
+
     // Reload everything into the store
     set({
-      services: mergedServices,
-      secrets: mergedSecrets,
+      serviceInstances: mergedInstances,
+      instanceSecrets: mergedSecrets,
+      activeInstance: mergedActiveInstance,
+      services: derivedServices,
+      secrets: derivedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeNetworks: importedHomeNetworks,
       dashboardWidgets: payload.dashboardWidgets ?? DEFAULT_DASHBOARD_WIDGETS,
