@@ -3,10 +3,18 @@ import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
+import {
+  InstancePickerRow,
+  INSTANCE_BINDING_ALL,
+  type InstanceBindingValue,
+} from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export type DownloadsSortBy = "speed" | "progress" | "eta" | "added";
 
 export interface DownloadsSettingsValue extends Record<string, unknown> {
+  // Which qBittorrent instance this widget shows. "all" aggregates every
+  // enabled instance; a UUID pins to one. Defaults to "all".
+  instanceId: InstanceBindingValue;
   maxItems: number;
   showDownloading: boolean;
   showSeeding: boolean;
@@ -16,6 +24,7 @@ export interface DownloadsSettingsValue extends Record<string, unknown> {
 }
 
 export const DOWNLOADS_DEFAULT_SETTINGS: DownloadsSettingsValue = {
+  instanceId: INSTANCE_BINDING_ALL,
   maxItems: 5,
   showDownloading: true,
   showSeeding: true,
@@ -38,14 +47,19 @@ const SORT_OPTIONS: { value: DownloadsSortBy; label: string }[] = [
   { value: "added", label: "Recent" },
 ];
 
-export function DownloadsSettings(_props: WidgetSettingsComponentProps) {
+export function DownloadsSettings({ slotId }: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<DownloadsSettingsValue>(
-    "downloads",
+    slotId,
     DOWNLOADS_DEFAULT_SETTINGS,
   );
 
   return (
     <View className="px-4 py-2 gap-5">
+      <InstancePickerRow
+        serviceId="qbittorrent"
+        value={settings.instanceId}
+        onChange={(instanceId) => update({ instanceId })}
+      />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
           Show states

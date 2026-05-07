@@ -1,21 +1,32 @@
 import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { CalendarDays } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSonarrCalendar } from "@/hooks/use-sonarr";
-import { useRadarrCalendar } from "@/hooks/use-radarr";
 import { useConfigStore } from "@/store/config-store";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   CALENDAR_DEFAULT_SETTINGS,
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
-import { formatEpisodeCode, relativeDate } from "@/lib/utils";
-import { getSonarrPoster, getSonarrFanart } from "@/services/sonarr-api";
-import { getRadarrPoster, getRadarrFanart } from "@/services/radarr-api";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
+import { formatEpisodeCode, relativeDate, getDateOffset } from "@/lib/utils";
+import {
+  getCalendar as getSonarrCalendar,
+  getSonarrPoster,
+  getSonarrFanart,
+} from "@/services/sonarr-api";
+import {
+  getCalendar as getRadarrCalendar,
+  getRadarrPoster,
+  getRadarrFanart,
+} from "@/services/radarr-api";
 import {
   MediaBackdropRow,
   BACKDROP_ROW_HEIGHT,
@@ -62,10 +73,10 @@ function isToday(dateString: string): boolean {
   return dateString === today;
 }
 
-export function CalendarCard() {
+export function CalendarCard({ slotId }: WidgetComponentProps) {
   const router = useRouter();
   const { settings } = useWidgetSettings<CalendarSettingsValue>(
-    "calendar",
+    slotId,
     CALENDAR_DEFAULT_SETTINGS,
   );
   const sonarrEnabled = useConfigStore((s) => s.services.sonarr.enabled);
@@ -74,13 +85,45 @@ export function CalendarCard() {
   const showSonarr = settings.includeSonarr && sonarrEnabled;
   const showRadarr = settings.includeRadarr && radarrEnabled;
 
-  const { data: episodes, isLoading: episodesLoading } = useSonarrCalendar(
-    settings.daysAhead,
-  );
-  const { data: movies, isLoading: moviesLoading } = useRadarrCalendar(
-    settings.daysAhead,
-  );
+  const allSonarrInstances = useEnabledInstances("sonarr");
+  const allRadarrInstances = useEnabledInstances("radarr");
+  const sonarrInstances =
+    settings.sonarrInstanceId === INSTANCE_BINDING_ALL
+      ? allSonarrInstances
+      : allSonarrInstances.filter((i) => i.id === settings.sonarrInstanceId);
+  const radarrInstances =
+    settings.radarrInstanceId === INSTANCE_BINDING_ALL
+      ? allRadarrInstances
+      : allRadarrInstances.filter((i) => i.id === settings.radarrInstanceId);
 
+  // Fan out the calendar fetch across each resolved instance per kind. The
+  // instance id is folded into the query key so two Sonarrs don't trample
+  // each other's cached calendar.
+  const start = getDateOffset(0);
+  const end = getDateOffset(settings.daysAhead);
+  const sonarrQueries = useQueries({
+    queries: showSonarr
+      ? sonarrInstances.map((inst) => ({
+          queryKey: ["sonarr", inst.id, "calendar", settings.daysAhead] as const,
+          queryFn: () => getSonarrCalendar(start, end, {}, inst.id),
+          refetchInterval: POLLING_INTERVALS.calendar,
+        }))
+      : [],
+  });
+  const radarrQueries = useQueries({
+    queries: showRadarr
+      ? radarrInstances.map((inst) => ({
+          queryKey: ["radarr", inst.id, "calendar", settings.daysAhead] as const,
+          queryFn: () => getRadarrCalendar(start, end, {}, inst.id),
+          refetchInterval: POLLING_INTERVALS.calendar,
+        }))
+      : [],
+  });
+
+  const episodesLoading =
+    sonarrQueries.length > 0 && sonarrQueries.some((q) => q.isLoading);
+  const moviesLoading =
+    radarrQueries.length > 0 && radarrQueries.some((q) => q.isLoading);
   const isLoading =
     (showSonarr && episodesLoading) || (showRadarr && moviesLoading);
 
@@ -90,20 +133,24 @@ export function CalendarCard() {
   const horizonIso = horizon.toISOString().split("T")[0];
 
   const items: CalendarItem[] = [];
-  if (showSonarr && episodes) {
-    for (const ep of episodes) {
-      const date = isoDate(ep.airDate);
-      if (date < todayIso || date > horizonIso) continue;
-      items.push({ kind: "episode", date, entry: ep });
+  if (showSonarr) {
+    for (const q of sonarrQueries) {
+      for (const ep of q.data ?? []) {
+        const date = isoDate(ep.airDate);
+        if (date < todayIso || date > horizonIso) continue;
+        items.push({ kind: "episode", date, entry: ep });
+      }
     }
   }
-  if (showRadarr && movies) {
-    for (const movie of movies) {
-      const raw = pickRadarrDate(movie, settings.radarrReleaseType);
-      if (!raw) continue;
-      const date = isoDate(raw);
-      if (date < todayIso || date > horizonIso) continue;
-      items.push({ kind: "movie", date, movie });
+  if (showRadarr) {
+    for (const q of radarrQueries) {
+      for (const movie of q.data ?? []) {
+        const raw = pickRadarrDate(movie, settings.radarrReleaseType);
+        if (!raw) continue;
+        const date = isoDate(raw);
+        if (date < todayIso || date > horizonIso) continue;
+        items.push({ kind: "movie", date, movie });
+      }
     }
   }
 

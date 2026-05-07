@@ -1,23 +1,34 @@
 import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Inbox, Check, Clock, X, type LucideIcon } from "lucide-react-native";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
-  useOverseerrRequests,
-  useOverseerrRequestCount,
-  useOverseerrMediaDetails,
-} from "@/hooks/use-overseerr";
+  getRequests,
+  getRequestCount,
+  getMovieDetails,
+  getTVDetails,
+  getPosterUrl,
+} from "@/services/overseerr-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
-import { getPosterUrl } from "@/services/overseerr-api";
-import type { OverseerrRequest } from "@/lib/types";
+import { POLLING_INTERVALS } from "@/lib/constants";
+import type {
+  OverseerrRequest,
+  OverseerrMovieDetails,
+  OverseerrTVDetails,
+  OverseerrMediaType,
+} from "@/lib/types";
 import {
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   type OverseerrRequestsSettingsValue,
   type OverseerrStatusFilter,
 } from "@/components/dashboard/widget-settings/overseerr-requests-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
@@ -50,18 +61,55 @@ function statusMatches(status: number, filter: OverseerrStatusFilter): boolean {
   }
 }
 
-export function OverseerrRequestsCard() {
+export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<OverseerrRequestsSettingsValue>(
-    "overseerr-requests",
+    slotId,
     OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   );
-  const { data, isLoading } = useOverseerrRequests(1, apiFilterFor(settings.statusFilter));
-  const { data: counts } = useOverseerrRequestCount();
+  const allInstances = useEnabledInstances("overseerr");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
   const router = useRouter();
 
-  const allResults = data?.results ?? [];
-  const filtered = allResults.filter((req) => statusMatches(req.status, settings.statusFilter));
+  // Fan out requests + counts across the resolved instances. Each request is
+  // tagged with its source instance so per-tile media-detail lookups hit the
+  // right Seerr (TMDB ids are global but the auth + base URL aren't).
+  const requestQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: [
+        "overseerr",
+        inst.id,
+        "requests",
+        1,
+        apiFilterFor(settings.statusFilter),
+      ] as const,
+      queryFn: () => getRequests(1, 20, apiFilterFor(settings.statusFilter), "added", inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  const countQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["overseerr", inst.id, "requestCount"] as const,
+      queryFn: () => getRequestCount(inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  const isLoading = requestQueries.length > 0 && requestQueries.some((q) => q.isLoading);
+  const allResults = requestQueries.flatMap((q, i) =>
+    (q.data?.results ?? []).map((req) => ({ request: req, instanceId: instances[i].id })),
+  );
+  const filtered = allResults.filter(({ request }) =>
+    statusMatches(request.status, settings.statusFilter),
+  );
   const display = filtered.slice(0, settings.maxItems);
+  const pendingCount = countQueries.reduce(
+    (acc, q) => acc + (q.data?.pending ?? 0),
+    0,
+  );
 
   const goToRequests = () => router.push("/(tabs)/requests?tab=requests");
 
@@ -71,13 +119,18 @@ export function OverseerrRequestsCard() {
         title="Requests"
         onPress={goToRequests}
         trailing={
-          counts && counts.pending > 0 ? (
-            <Badge label="Pending" variant="warning" count={counts.pending} />
+          pendingCount > 0 ? (
+            <Badge label="Pending" variant="warning" count={pendingCount} />
           ) : null
         }
       />
 
-      {isLoading ? (
+      {instances.length === 0 ? (
+        <EmptyState
+          icon={<Icon icon={Inbox} size={32} color="#71717a" />}
+          title="No Seerr instances enabled"
+        />
+      ) : isLoading ? (
         <PosterSkeletonRow count={4} />
       ) : display.length === 0 ? (
         <EmptyState
@@ -94,10 +147,11 @@ export function OverseerrRequestsCard() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 12 }}
         >
-          {display.map((req) => (
+          {display.map(({ request, instanceId }) => (
             <RequestPosterCard
-              key={req.id}
-              request={req}
+              key={`${instanceId}:${request.id}`}
+              request={request}
+              instanceId={instanceId}
               showRequester={settings.showRequester}
               onPress={goToRequests}
             />
@@ -113,20 +167,35 @@ export function OverseerrRequestsCard() {
 
 function RequestPosterCard({
   request,
+  instanceId,
   showRequester,
   onPress,
 }: {
   request: OverseerrRequest;
+  instanceId: string;
   showRequester: boolean;
   onPress: () => void;
 }) {
   const StatusIcon = REQUEST_STATUS_ICON[request.status] ?? Clock;
   const statusBg = REQUEST_STATUS_BG[request.status] ?? "#71717a";
 
-  const { data: mediaDetails } = useOverseerrMediaDetails(
-    request.media.tmdbId,
-    request.media.mediaType,
-  );
+  // Each Seerr maintains its own metadata so the media-detail call must hit
+  // the same instance the request came from. Using useQuery directly here so
+  // the per-tile binding doesn't require a hook variant.
+  const { data: mediaDetails } = useQuery<OverseerrMovieDetails | OverseerrTVDetails>({
+    queryKey: [
+      "overseerr",
+      instanceId,
+      "mediaDetails",
+      request.media.mediaType as OverseerrMediaType,
+      request.media.tmdbId,
+    ],
+    queryFn: () =>
+      request.media.mediaType === "movie"
+        ? getMovieDetails(request.media.tmdbId, instanceId)
+        : getTVDetails(request.media.tmdbId, instanceId),
+    staleTime: 60 * 60 * 1000,
+  });
 
   const details = mediaDetails as
     | { title?: string; name?: string; posterPath?: string }
@@ -148,4 +217,3 @@ function RequestPosterCard({
     />
   );
 }
-

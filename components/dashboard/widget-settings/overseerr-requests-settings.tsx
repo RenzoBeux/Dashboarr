@@ -3,16 +3,23 @@ import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
+import {
+  InstancePickerRow,
+  INSTANCE_BINDING_ALL,
+  type InstanceBindingValue,
+} from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export type OverseerrStatusFilter = "pending" | "pending-approved" | "all";
 
 export interface OverseerrRequestsSettingsValue extends Record<string, unknown> {
+  instanceId: InstanceBindingValue;
   statusFilter: OverseerrStatusFilter;
   maxItems: number;
   showRequester: boolean;
 }
 
 export const OVERSEERR_REQUESTS_DEFAULT_SETTINGS: OverseerrRequestsSettingsValue = {
+  instanceId: INSTANCE_BINDING_ALL,
   statusFilter: "pending",
   maxItems: 5,
   showRequester: true,
@@ -31,14 +38,19 @@ const MAX_OPTIONS: { value: number; label: string }[] = [
   { value: 20, label: "20" },
 ];
 
-export function OverseerrRequestsSettings(_props: WidgetSettingsComponentProps) {
+export function OverseerrRequestsSettings({ slotId }: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<OverseerrRequestsSettingsValue>(
-    "overseerr-requests",
+    slotId,
     OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   );
 
   return (
     <View className="px-4 py-2 gap-5">
+      <InstancePickerRow
+        serviceId="overseerr"
+        value={settings.instanceId}
+        onChange={(instanceId) => update({ instanceId })}
+      />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
           Status

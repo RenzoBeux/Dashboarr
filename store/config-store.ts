@@ -10,6 +10,7 @@ import {
   getBoolean,
   setBoolean,
   getString,
+  setString,
   getSecret,
   setSecret,
   deleteSecret,
@@ -21,6 +22,7 @@ import {
   STORAGE_KEYS,
   SECRET_PREFIX,
   DEFAULT_DASHBOARD_WIDGETS,
+  DEFAULT_DASHBOARD_NAME,
   WIDGET_ID_RENAMES,
   DASHBOARD_WIDGET_IDS,
   UI_SCALES,
@@ -88,9 +90,35 @@ export interface ServiceSecrets {
   customHeaders?: Record<string, string>;
 }
 
-// Per-widget settings live as an opaque record keyed by widget id. The widget
+// Per-slot settings live as an opaque record on the slot itself. The widget
 // registry owns the shape (via defaultSettings) — the store just persists what
 // each widget hands back. Values must be plain JSON-serializable objects.
+export type WidgetSlotSettings = Record<string, unknown>;
+
+// One widget on a dashboard. Carries a stable UUID `id` so settings stay tied
+// to this specific placement even if the user removes the widget and re-adds
+// it later (which gets a fresh slot id and so a fresh empty settings record).
+// `widgetId` keys into WIDGET_REGISTRY for the component/icon/defaults.
+export interface WidgetSlot {
+  id: string;
+  widgetId: WidgetId;
+  settings?: WidgetSlotSettings;
+}
+
+// A user-named dashboard. Each user has at least one (the auto-created
+// "Default"). The active one — selected via `activeDashboardId` — is what the
+// dashboard screen renders. Slot ids are globally unique across all dashboards
+// because they live in our memory at the same time and the slot-keyed query
+// cache would otherwise collide.
+export interface Dashboard {
+  id: string;
+  name: string;
+  widgets: WidgetSlot[];
+}
+
+// Legacy widget-settings shape carried by v13 exports. v13→v14 migration folds
+// these into per-slot settings on the auto-built Default dashboard. We still
+// export the type so the v14 export migration can reference it.
 export type WidgetSettingsMap = Partial<Record<WidgetId, Record<string, unknown>>>;
 
 interface ConfigState {
@@ -114,8 +142,14 @@ interface ConfigState {
 
   autoSwitchNetwork: boolean;
   homeNetworks: HomeNetwork[];
-  dashboardWidgets: WidgetId[];
-  widgetSettings: WidgetSettingsMap;
+  // v14: per-user named dashboards. The active one is rendered. Each dashboard
+  // owns an ordered list of WidgetSlot entries; per-widget settings live on
+  // the slot, not in a global map keyed by WidgetId. This is what lets the
+  // same widget appear with different instance bindings on different
+  // dashboards (e.g. Downloads bound to qBit-Home on "Home", qBit-Cabin on
+  // "Cabin").
+  dashboards: Dashboard[];
+  activeDashboardId: string;
   wolDevices: WakeOnLanDevice[];
   hydrated: boolean;
   demoMode: boolean;
@@ -140,14 +174,15 @@ export interface ExportPayload {
   // v11 — replaces homeSSID/homeBSSID with a per-AP list so mesh setups can
   // register every SSID/BSSID pair the user considers "home".
   homeNetworks: HomeNetwork[];
-  dashboardWidgets: WidgetId[];
+  // v14: per-user named dashboards with per-slot settings. Replaces the v7-v13
+  // `dashboardWidgets: WidgetId[]` + `widgetSettings: Record<WidgetId, …>`.
+  dashboards: Dashboard[];
+  activeDashboardId: string;
   // v2
   backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
   notificationSettings?: NotificationSettings;
   // v4
   wolDevices?: WakeOnLanDevice[];
-  // v7
-  widgetSettings?: WidgetSettingsMap;
   // v8
   hapticsEnabled?: boolean;
   // v10
@@ -199,12 +234,24 @@ interface ConfigActions {
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
   removeHomeNetwork: (id: string) => void;
   setHomeNetworks: (networks: HomeNetwork[]) => void;
-  setDashboardWidgets: (widgets: WidgetId[]) => void;
-  addWidget: (id: WidgetId) => void;
-  removeWidget: (id: WidgetId) => void;
-  moveWidget: (id: WidgetId, direction: "up" | "down") => void;
-  setWidgetSettings: (id: WidgetId, settings: Record<string, unknown>) => void;
-  resetWidgetSettings: (id: WidgetId) => void;
+
+  // Dashboards (v14+). Operate on the named dashboard list. Removing the last
+  // dashboard is rejected by the action — every install always has at least
+  // one dashboard so the screen never has nothing to render.
+  addDashboard: (name: string) => Dashboard;
+  removeDashboard: (dashboardId: string) => void;
+  renameDashboard: (dashboardId: string, name: string) => void;
+  setActiveDashboard: (dashboardId: string) => void;
+  moveDashboard: (dashboardId: string, direction: "up" | "down") => void;
+
+  // Slots (v14+). Operate on the active dashboard's widget list. addWidget
+  // returns the new slot so callers can reference it (e.g. open settings sheet).
+  addWidget: (widgetId: WidgetId) => WidgetSlot | null;
+  removeSlot: (slotId: string) => void;
+  moveSlot: (slotId: string, direction: "up" | "down") => void;
+  setSlotSettings: (slotId: string, settings: WidgetSlotSettings) => void;
+  resetSlotSettings: (slotId: string) => void;
+
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
@@ -217,6 +264,12 @@ interface ConfigActions {
   getEnabledInstances: (id: ServiceId) => ServiceInstance[];
   getMergedHeaders: (id: ServiceId, instanceId?: string) => Record<string, string>;
   getActiveUrl: (id: ServiceId, instanceId?: string) => string;
+
+  // Dashboard/slot lookups. Used by the dashboard screen + widget settings
+  // sheet to resolve a slot from its UUID without re-deriving the active
+  // dashboard each time.
+  getActiveDashboard: () => Dashboard | undefined;
+  getSlot: (slotId: string) => WidgetSlot | undefined;
 
   enableDemoMode: () => void;
   disableDemoMode: () => Promise<void>;
@@ -319,6 +372,43 @@ function deriveLegacySecrets(
   return out;
 }
 
+// Build the auto-created Default dashboard for a fresh install. Each entry in
+// DEFAULT_DASHBOARD_WIDGETS becomes a slot with a generated UUID and no
+// per-slot settings (widgets fall back to their registry-declared defaults).
+function defaultDashboards(): Dashboard[] {
+  return [
+    {
+      id: generateInstanceId(),
+      name: DEFAULT_DASHBOARD_NAME,
+      widgets: DEFAULT_DASHBOARD_WIDGETS.map((widgetId) => ({
+        id: generateInstanceId(),
+        widgetId,
+      })),
+    },
+  ];
+}
+
+// Convert a flat legacy widget id list + per-WidgetId settings map into a
+// single Dashboard with one slot per widget. Used by both hydrate and the
+// v13→v14 export migration so the two paths produce identical shapes.
+function buildLegacyDashboard(
+  widgetIds: WidgetId[],
+  legacySettings: Partial<Record<WidgetId, Record<string, unknown>>>,
+): Dashboard {
+  return {
+    id: generateInstanceId(),
+    name: DEFAULT_DASHBOARD_NAME,
+    widgets: widgetIds.map((widgetId) => {
+      const settings = legacySettings[widgetId];
+      const slot: WidgetSlot = { id: generateInstanceId(), widgetId };
+      if (settings && Object.keys(settings).length > 0) {
+        slot.settings = { ...settings };
+      }
+      return slot;
+    }),
+  };
+}
+
 function generateHomeNetworkId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -384,6 +474,7 @@ const ACTIVE_INSTANCE_KEY = "app.activeInstance";
 
 const initialInstances = defaultInstances();
 const initialActiveInstance = defaultActiveInstance(initialInstances);
+const initialDashboards = defaultDashboards();
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
@@ -393,8 +484,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
   homeNetworks: [],
-  dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
-  widgetSettings: {},
+  dashboards: initialDashboards,
+  activeDashboardId: initialDashboards[0].id,
   wolDevices: [],
   hydrated: false,
   demoMode: false,
@@ -582,34 +673,79 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       if (legacyBssid !== undefined) deleteKey("app.homeBSSID");
     }
 
-    // Prefer the new key. If absent, fall back to the legacy dashboardOrder key
-    // (one-time local migration for users upgrading from pre-widget builds).
-    let rawWidgets = getJSON<string[]>(STORAGE_KEYS.dashboardWidgets);
-    let widgetsCameFromStorage = !!rawWidgets;
-    if (!rawWidgets) {
-      const legacy = getJSON<string[]>(STORAGE_KEYS.dashboardOrderLegacy);
-      if (legacy && legacy.length > 0) {
-        rawWidgets = legacy;
-        deleteKey(STORAGE_KEYS.dashboardOrderLegacy);
-      } else {
-        rawWidgets = [...DEFAULT_DASHBOARD_WIDGETS];
+    // v14: dashboards are the source of truth. If the new key is present and
+    // valid, use it. Otherwise fold legacy `dashboardWidgets` + `widgetSettings`
+    // into a single Default dashboard so upgrading users keep their layout and
+    // per-widget settings without re-doing them.
+    let dashboards: Dashboard[] = [];
+    let activeDashboardId = "";
+    let dashboardsNeedPersist = false;
+
+    const storedDashboards = getJSON<unknown>(STORAGE_KEYS.dashboards);
+    if (Array.isArray(storedDashboards)) {
+      for (const d of storedDashboards) {
+        if (!isPlainObject(d)) continue;
+        const widgets: WidgetSlot[] = [];
+        if (Array.isArray(d.widgets)) {
+          for (const w of d.widgets) {
+            if (!isPlainObject(w)) continue;
+            if (typeof w.id !== "string" || typeof w.widgetId !== "string") continue;
+            const remapped = WIDGET_ID_RENAMES[w.widgetId] ?? w.widgetId;
+            if (!VALID_WIDGET_IDS.has(remapped)) continue;
+            const slot: WidgetSlot = { id: w.id, widgetId: remapped as WidgetId };
+            if (isPlainObject(w.settings)) {
+              slot.settings = w.settings as WidgetSlotSettings;
+            }
+            widgets.push(slot);
+          }
+        }
+        if (typeof d.id === "string" && typeof d.name === "string") {
+          dashboards.push({ id: d.id, name: d.name, widgets });
+        }
       }
     }
-    const normalizedWidgets = normalizeWidgetIds(rawWidgets);
-    const widgetsChanged =
-      !widgetsCameFromStorage ||
-      normalizedWidgets.length !== rawWidgets.length ||
-      normalizedWidgets.some((id, i) => id !== rawWidgets![i]);
-    if (widgetsChanged) {
-      setJSON(STORAGE_KEYS.dashboardWidgets, normalizedWidgets);
+
+    if (dashboards.length === 0) {
+      // Migrate from v13: read legacy widget list + settings map and fold them
+      // into a single Default dashboard. Honor the v6→v7 widget id renames and
+      // v5 fallback for users coming from pre-widget builds.
+      let legacyWidgets = getJSON<string[]>(STORAGE_KEYS.dashboardWidgetsLegacy);
+      if (!legacyWidgets) {
+        const olderLegacy = getJSON<string[]>(STORAGE_KEYS.dashboardOrderLegacy);
+        if (olderLegacy && olderLegacy.length > 0) {
+          legacyWidgets = olderLegacy;
+        } else {
+          legacyWidgets = [...DEFAULT_DASHBOARD_WIDGETS];
+        }
+      }
+      const normalizedWidgets = normalizeWidgetIds(legacyWidgets);
+      const legacySettingsRaw =
+        getJSON<Record<string, Record<string, unknown>>>(
+          STORAGE_KEYS.widgetSettingsLegacy,
+        ) ?? {};
+      const legacySettings = remapWidgetSettings(legacySettingsRaw);
+      dashboards = [buildLegacyDashboard(normalizedWidgets, legacySettings)];
+      activeDashboardId = dashboards[0].id;
+      dashboardsNeedPersist = true;
+
+      // Drop legacy keys so a downgrade-then-upgrade can't resurrect them.
+      deleteKey(STORAGE_KEYS.dashboardWidgetsLegacy);
+      deleteKey(STORAGE_KEYS.widgetSettingsLegacy);
+      deleteKey(STORAGE_KEYS.dashboardOrderLegacy);
+    } else {
+      const storedActive = getString(STORAGE_KEYS.activeDashboardId);
+      if (storedActive && dashboards.some((d) => d.id === storedActive)) {
+        activeDashboardId = storedActive;
+      } else {
+        activeDashboardId = dashboards[0].id;
+        dashboardsNeedPersist = true;
+      }
     }
 
-    // Load per-widget settings, remapping legacy widget ids and dropping any
-    // unknown ones so a downgrade-then-upgrade can't leave orphaned entries.
-    const storedSettings = getJSON<Record<string, Record<string, unknown>>>(
-      STORAGE_KEYS.widgetSettings,
-    ) ?? {};
-    const widgetSettings = remapWidgetSettings(storedSettings);
+    if (dashboardsNeedPersist) {
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      setString(STORAGE_KEYS.activeDashboardId, activeDashboardId);
+    }
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
     const globalCustomHeaders =
@@ -656,8 +792,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       secrets,
       autoSwitchNetwork,
       homeNetworks,
-      dashboardWidgets: normalizedWidgets,
-      widgetSettings,
+      dashboards,
+      activeDashboardId,
       wolDevices,
       demoMode,
       hapticsEnabled,
@@ -889,55 +1025,152 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ homeNetworks: networks });
   },
 
-  setDashboardWidgets: (widgets) => {
-    setJSON(STORAGE_KEYS.dashboardWidgets, widgets);
-    set({ dashboardWidgets: widgets });
-  },
+  // --- Dashboards (v14+) ---
 
-  addWidget: (id) => {
-    const { dashboardWidgets } = get();
-    if (dashboardWidgets.includes(id)) return;
-    const next = [...dashboardWidgets, id];
-    setJSON(STORAGE_KEYS.dashboardWidgets, next);
-    set({ dashboardWidgets: next });
-  },
-
-  removeWidget: (id) => {
-    const { dashboardWidgets } = get();
-    if (!dashboardWidgets.includes(id)) return;
-    const next = dashboardWidgets.filter((w) => w !== id);
-    setJSON(STORAGE_KEYS.dashboardWidgets, next);
-    set({ dashboardWidgets: next });
-  },
-
-  moveWidget: (id, direction) => {
-    const { dashboardWidgets } = get();
-    const index = dashboardWidgets.indexOf(id);
-    if (index === -1) return;
-    const target = direction === "up" ? index - 1 : index + 1;
-    if (target < 0 || target >= dashboardWidgets.length) return;
-    const next = [...dashboardWidgets];
-    [next[index], next[target]] = [next[target], next[index]];
-    setJSON(STORAGE_KEYS.dashboardWidgets, next);
-    set({ dashboardWidgets: next });
-  },
-
-  setWidgetSettings: (id, settings) => {
-    const next: WidgetSettingsMap = {
-      ...get().widgetSettings,
-      [id]: { ...settings },
+  addDashboard: (name) => {
+    const dashboard: Dashboard = {
+      id: generateInstanceId(),
+      name: name.trim() || DEFAULT_DASHBOARD_NAME,
+      widgets: [],
     };
-    setJSON(STORAGE_KEYS.widgetSettings, next);
-    set({ widgetSettings: next });
+    set((state) => {
+      const dashboards = [...state.dashboards, dashboard];
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+    return dashboard;
   },
 
-  resetWidgetSettings: (id) => {
-    const current = get().widgetSettings;
-    if (!(id in current)) return;
-    const next: WidgetSettingsMap = { ...current };
-    delete next[id];
-    setJSON(STORAGE_KEYS.widgetSettings, next);
-    set({ widgetSettings: next });
+  removeDashboard: (dashboardId) => {
+    set((state) => {
+      // Refuse to delete the last dashboard — the screen always needs one.
+      if (state.dashboards.length <= 1) return state;
+      const dashboards = state.dashboards.filter((d) => d.id !== dashboardId);
+      if (dashboards.length === state.dashboards.length) return state;
+      let activeDashboardId = state.activeDashboardId;
+      if (activeDashboardId === dashboardId) {
+        activeDashboardId = dashboards[0].id;
+        setString(STORAGE_KEYS.activeDashboardId, activeDashboardId);
+      }
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards, activeDashboardId };
+    });
+  },
+
+  renameDashboard: (dashboardId, name) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) =>
+        d.id === dashboardId ? { ...d, name: name.trim() || d.name } : d,
+      );
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setActiveDashboard: (dashboardId) => {
+    set((state) => {
+      if (!state.dashboards.some((d) => d.id === dashboardId)) return state;
+      setString(STORAGE_KEYS.activeDashboardId, dashboardId);
+      return { activeDashboardId: dashboardId };
+    });
+  },
+
+  moveDashboard: (dashboardId, direction) => {
+    set((state) => {
+      const idx = state.dashboards.findIndex((d) => d.id === dashboardId);
+      if (idx === -1) return state;
+      const target = direction === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= state.dashboards.length) return state;
+      const dashboards = [...state.dashboards];
+      [dashboards[idx], dashboards[target]] = [dashboards[target], dashboards[idx]];
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  // --- Slots (v14+) ---
+
+  addWidget: (widgetId) => {
+    const slot: WidgetSlot = { id: generateInstanceId(), widgetId };
+    let added = false;
+    set((state) => {
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== state.activeDashboardId) return d;
+        added = true;
+        return { ...d, widgets: [...d.widgets, slot] };
+      });
+      if (!added) return state;
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+    return added ? slot : null;
+  },
+
+  removeSlot: (slotId) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== state.activeDashboardId) return d;
+        return { ...d, widgets: d.widgets.filter((w) => w.id !== slotId) };
+      });
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  moveSlot: (slotId, direction) => {
+    set((state) => {
+      let mutated = false;
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== state.activeDashboardId) return d;
+        const idx = d.widgets.findIndex((w) => w.id === slotId);
+        if (idx === -1) return d;
+        const target = direction === "up" ? idx - 1 : idx + 1;
+        if (target < 0 || target >= d.widgets.length) return d;
+        const widgets = [...d.widgets];
+        [widgets[idx], widgets[target]] = [widgets[target], widgets[idx]];
+        mutated = true;
+        return { ...d, widgets };
+      });
+      if (!mutated) return state;
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setSlotSettings: (slotId, settings) => {
+    set((state) => {
+      let mutated = false;
+      const dashboards = state.dashboards.map((d) => {
+        const idx = d.widgets.findIndex((w) => w.id === slotId);
+        if (idx === -1) return d;
+        const widgets = [...d.widgets];
+        widgets[idx] = { ...widgets[idx], settings: { ...settings } };
+        mutated = true;
+        return { ...d, widgets };
+      });
+      if (!mutated) return state;
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  resetSlotSettings: (slotId) => {
+    set((state) => {
+      let mutated = false;
+      const dashboards = state.dashboards.map((d) => {
+        const idx = d.widgets.findIndex((w) => w.id === slotId);
+        if (idx === -1) return d;
+        if (!d.widgets[idx].settings) return d;
+        const widgets = [...d.widgets];
+        const { settings: _drop, ...rest } = widgets[idx];
+        widgets[idx] = rest;
+        mutated = true;
+        return { ...d, widgets };
+      });
+      if (!mutated) return state;
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
   },
 
   setWolDevices: (devices) => {
@@ -993,6 +1226,22 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const inst = list.find((i) => i.id === targetId);
     if (!inst) return "";
     return inst.useRemote ? inst.remoteUrl : inst.localUrl;
+  },
+
+  getActiveDashboard: () => {
+    const state = get();
+    return (
+      state.dashboards.find((d) => d.id === state.activeDashboardId) ??
+      state.dashboards[0]
+    );
+  },
+
+  getSlot: (slotId) => {
+    for (const d of get().dashboards) {
+      const slot = d.widgets.find((w) => w.id === slotId);
+      if (slot) return slot;
+    }
+    return undefined;
   },
 
   enableDemoMode: () => {
@@ -1056,8 +1305,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       activeInstance,
       autoSwitchNetwork,
       homeNetworks,
-      dashboardWidgets,
-      widgetSettings,
+      dashboards,
+      activeDashboardId,
       wolDevices,
       hapticsEnabled,
       globalCustomHeaders,
@@ -1075,8 +1324,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       activeInstance,
       autoSwitchNetwork,
       homeNetworks,
-      dashboardWidgets,
-      widgetSettings,
+      dashboards,
+      activeDashboardId,
       backend: { url, sharedSecret, deviceId },
       notificationSettings: notifSettings,
       wolDevices,
@@ -1204,11 +1453,27 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
     const importedHomeNetworks = payload.homeNetworks ?? [];
     setJSON(STORAGE_KEYS.homeNetworks, importedHomeNetworks);
-    if (payload.dashboardWidgets) {
-      setJSON(STORAGE_KEYS.dashboardWidgets, payload.dashboardWidgets);
-    }
-    const importedWidgetSettings = payload.widgetSettings ?? {};
-    setJSON(STORAGE_KEYS.widgetSettings, importedWidgetSettings);
+
+    // Dashboards (v14): trust the migrated payload — the migration chain has
+    // already folded any legacy widgetSettings/dashboardWidgets into a single
+    // Default dashboard. If the post-migration payload is somehow empty we
+    // seed a fresh Default so the dashboard screen always has something.
+    const importedDashboards: Dashboard[] =
+      Array.isArray(payload.dashboards) && payload.dashboards.length > 0
+        ? payload.dashboards
+        : defaultDashboards();
+    const importedActiveDashboardId =
+      typeof payload.activeDashboardId === "string" &&
+      importedDashboards.some((d) => d.id === payload.activeDashboardId)
+        ? payload.activeDashboardId
+        : importedDashboards[0].id;
+    setJSON(STORAGE_KEYS.dashboards, importedDashboards);
+    setString(STORAGE_KEYS.activeDashboardId, importedActiveDashboardId);
+    // Drop legacy keys from any prior install so they don't shadow the new
+    // dashboards on next hydrate.
+    deleteKey(STORAGE_KEYS.dashboardWidgetsLegacy);
+    deleteKey(STORAGE_KEYS.widgetSettingsLegacy);
+
     setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
     const importedHapticsEnabled = payload.hapticsEnabled ?? true;
     setBoolean(STORAGE_KEYS.hapticsEnabled, importedHapticsEnabled);
@@ -1251,8 +1516,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       secrets: derivedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeNetworks: importedHomeNetworks,
-      dashboardWidgets: payload.dashboardWidgets ?? DEFAULT_DASHBOARD_WIDGETS,
-      widgetSettings: importedWidgetSettings,
+      dashboards: importedDashboards,
+      activeDashboardId: importedActiveDashboardId,
       wolDevices: payload.wolDevices ?? [],
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,

@@ -1,5 +1,6 @@
 import {
   DEFAULT_DASHBOARD_WIDGETS,
+  DEFAULT_DASHBOARD_NAME,
   WIDGET_ID_RENAMES,
   UI_SCALES,
   DEFAULT_UI_SCALE,
@@ -33,8 +34,14 @@ import { generateInstanceId } from "@/lib/uuid";
  *         secrets re-keyed by instance UUID instead of ServiceId; new
  *         activeInstance: Record<ServiceId, string | null> tracks the
  *         currently-selected instance per service kind.
+ *   v14 — multi-dashboard + per-slot widget settings. Replaces flat
+ *         dashboardWidgets: WidgetId[] + widgetSettings: Record<WidgetId, …>
+ *         with dashboards: Dashboard[] (each with a UUID id, a name, and an
+ *         ordered WidgetSlot[] where each slot has its own UUID + per-slot
+ *         settings) and activeDashboardId: string. The migration folds legacy
+ *         widget list + settings map into a single Default dashboard.
  */
-export const CURRENT_CONFIG_VERSION = 13;
+export const CURRENT_CONFIG_VERSION = 14;
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -207,6 +214,44 @@ const migrations: Record<number, (payload: any) => any> = {
     }
 
     return { ...payload, version: 13, services, secrets, activeInstance };
+  },
+
+  // v13 → v14: multi-dashboard + per-slot settings. Folds legacy
+  // dashboardWidgets: WidgetId[] + widgetSettings: Record<WidgetId, …> into a
+  // single Default dashboard with one slot per widget id, copying the legacy
+  // per-WidgetId settings onto each slot. Drops the now-redundant top-level
+  // dashboardWidgets / widgetSettings fields.
+  13: (payload) => {
+    const widgetIds: string[] = Array.isArray(payload.dashboardWidgets)
+      ? payload.dashboardWidgets.filter((id: unknown): id is string => typeof id === "string")
+      : [];
+    const legacySettings: Record<string, Record<string, unknown>> =
+      payload.widgetSettings && typeof payload.widgetSettings === "object" && !Array.isArray(payload.widgetSettings)
+        ? payload.widgetSettings
+        : {};
+
+    const widgets = widgetIds.map((widgetId) => {
+      const settings = legacySettings[widgetId];
+      const slot: any = { id: generateInstanceId(), widgetId };
+      if (settings && typeof settings === "object" && Object.keys(settings).length > 0) {
+        slot.settings = { ...settings };
+      }
+      return slot;
+    });
+
+    const dashboard = {
+      id: generateInstanceId(),
+      name: DEFAULT_DASHBOARD_NAME,
+      widgets,
+    };
+
+    const { dashboardWidgets: _dw, widgetSettings: _ws, ...rest } = payload;
+    return {
+      ...rest,
+      version: 14,
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+    };
   },
 };
 

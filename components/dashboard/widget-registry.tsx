@@ -62,9 +62,38 @@ import {
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   type OverseerrRequestsSettingsValue,
 } from "@/components/dashboard/widget-settings/overseerr-requests-settings";
+import {
+  SpeedStatsSettings,
+  SPEED_STATS_DEFAULT_SETTINGS,
+  type SpeedStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/speed-stats-settings";
+import {
+  RadarrQueueSettings,
+  RADARR_QUEUE_DEFAULT_SETTINGS,
+  type RadarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import {
+  ProwlarrStatsSettings,
+  PROWLARR_STATS_DEFAULT_SETTINGS,
+  type ProwlarrStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/prowlarr-stats-settings";
+import {
+  BazarrWantedSettings,
+  BAZARR_WANTED_DEFAULT_SETTINGS,
+  type BazarrWantedSettingsValue,
+} from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
+// Every widget component receives the id of its slot in the active dashboard.
+// The slot id keys per-slot settings (via useWidgetSettings) and lets two
+// instances of the same widget on different dashboards keep distinct settings
+// (e.g. Downloads bound to qBit-Home vs qBit-Cabin).
+export interface WidgetComponentProps {
+  slotId: string;
+}
+
 export interface WidgetSettingsComponentProps {
+  slotId: string;
   onClose: () => void;
 }
 
@@ -77,7 +106,7 @@ export interface WidgetDefinition {
   // regardless of which services are enabled (e.g. service-health, calendar
   // which can show Sonarr, Radarr, or both).
   service: ServiceId | null;
-  component: React.ComponentType;
+  component: React.ComponentType<WidgetComponentProps>;
   // If provided, the dashboard renders a gear icon in edit mode that opens
   // this component inside the WidgetSettingsSheet.
   settingsComponent?: React.ComponentType<WidgetSettingsComponentProps>;
@@ -113,6 +142,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Gauge,
     service: "qbittorrent",
     component: SpeedStatsCard,
+    settingsComponent: SpeedStatsSettings,
+    defaultSettings: SPEED_STATS_DEFAULT_SETTINGS,
   },
   "downloads": {
     id: "downloads",
@@ -131,6 +162,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Film,
     service: "radarr",
     component: RadarrQueueCard,
+    settingsComponent: RadarrQueueSettings,
+    defaultSettings: RADARR_QUEUE_DEFAULT_SETTINGS,
   },
   "calendar": {
     id: "calendar",
@@ -189,6 +222,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Radar,
     service: "prowlarr",
     component: ProwlarrStatsCard,
+    settingsComponent: ProwlarrStatsSettings,
+    defaultSettings: PROWLARR_STATS_DEFAULT_SETTINGS,
   },
   "bazarr-wanted": {
     id: "bazarr-wanted",
@@ -197,6 +232,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Captions,
     service: "bazarr",
     component: BazarrWantedCard,
+    settingsComponent: BazarrWantedSettings,
+    defaultSettings: BAZARR_WANTED_DEFAULT_SETTINGS,
   },
   "wol-devices": {
     id: "wol-devices",
@@ -208,11 +245,12 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   },
 };
 
-export function getAvailableWidgets(currentIds: WidgetId[]): WidgetDefinition[] {
-  const current = new Set(currentIds);
-  return DASHBOARD_WIDGET_IDS.filter((id) => !current.has(id)).map(
-    (id) => WIDGET_REGISTRY[id],
-  );
+// Lists widgets the user can still add. With per-slot dashboards a user can
+// place the same widget more than once (e.g. two Downloads cards bound to
+// different qBit instances), so we list every registered widget and let the
+// store deduplicate via slot ids.
+export function getAvailableWidgets(): WidgetDefinition[] {
+  return DASHBOARD_WIDGET_IDS.map((id) => WIDGET_REGISTRY[id]);
 }
 
 export type {
@@ -223,4 +261,8 @@ export type {
   JellyfinNowPlayingSettingsValue,
   TautulliActivitySettingsValue,
   OverseerrRequestsSettingsValue,
+  SpeedStatsSettingsValue,
+  RadarrQueueSettingsValue,
+  ProwlarrStatsSettingsValue,
+  BazarrWantedSettingsValue,
 };

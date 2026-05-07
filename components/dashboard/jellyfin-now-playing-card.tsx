@@ -1,21 +1,26 @@
 import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Play, Pause, Loader, PlayCircle, Cog } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useJellyfinSessions } from "@/hooks/use-jellyfin";
 import {
+  getSessions,
   isJellyfinTranscoding,
   ticksToMs,
   getJellyfinImageSource,
 } from "@/services/jellyfin-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   JELLYFIN_NOW_PLAYING_DEFAULT_SETTINGS,
   type JellyfinNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/jellyfin-now-playing-settings";
+import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
@@ -60,17 +65,32 @@ function isLocalEndpoint(remote: string | undefined): boolean {
   return false;
 }
 
-export function JellyfinNowPlayingCard() {
+export function JellyfinNowPlayingCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<JellyfinNowPlayingSettingsValue>(
-    "jellyfin-now-playing",
+    slotId,
     JELLYFIN_NOW_PLAYING_DEFAULT_SETTINGS,
   );
-  const { data: sessions, isLoading } = useJellyfinSessions();
+  const allInstances = useEnabledInstances("jellyfin");
+  const instances =
+    settings.instanceId === INSTANCE_BINDING_ALL
+      ? allInstances
+      : allInstances.filter((i) => i.id === settings.instanceId);
   const router = useRouter();
 
-  const hiddenUsers = parseHiddenUsers(settings.hideUsers);
+  const queries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["jellyfin", inst.id, "sessions"] as const,
+      queryFn: () => getSessions(inst.id),
+      refetchInterval: POLLING_INTERVALS.activeTorrents,
+    })),
+  });
+  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
 
-  const filtered = (sessions ?? []).filter((session) => {
+  const hiddenUsers = parseHiddenUsers(settings.hideUsers);
+  const allSessions = queries.flatMap((q, i) =>
+    (q.data ?? []).map((s) => ({ session: s, instanceId: instances[i].id })),
+  );
+  const filtered = allSessions.filter(({ session }) => {
     if (settings.hideLocalPlays && isLocalEndpoint(session.RemoteEndPoint)) return false;
     const userName = session.UserName?.toLowerCase();
     if (hiddenUsers.size > 0 && userName && hiddenUsers.has(userName)) {
@@ -97,7 +117,12 @@ export function JellyfinNowPlayingCard() {
         }
       />
 
-      {isLoading ? (
+      {instances.length === 0 ? (
+        <EmptyState
+          icon={<Icon icon={PlayCircle} size={32} color="#71717a" />}
+          title="No Jellyfin instances enabled"
+        />
+      ) : isLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState
@@ -110,10 +135,11 @@ export function JellyfinNowPlayingCard() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 12 }}
         >
-          {display.map((session) => (
+          {display.map(({ session, instanceId }) => (
             <JellyfinSessionTile
-              key={session.Id}
+              key={`${instanceId}:${session.Id}`}
               session={session}
+              instanceId={instanceId}
               settings={settings}
             />
           ))}
@@ -128,9 +154,11 @@ export function JellyfinNowPlayingCard() {
 
 function JellyfinSessionTile({
   session,
+  instanceId,
   settings,
 }: {
   session: JellyfinSession;
+  instanceId: string;
   settings: JellyfinNowPlayingSettingsValue;
 }) {
   const item = session.NowPlayingItem;
@@ -148,7 +176,7 @@ function JellyfinSessionTile({
       ? `${item.SeriesName} — ${item.Name}`
       : (item?.Name ?? "Unknown");
 
-  const posterSource = getJellyfinImageSource(item ?? null, "Primary", 220, 330);
+  const posterSource = getJellyfinImageSource(item ?? null, "Primary", 220, 330, instanceId);
 
   const subtitle =
     settings.showUserAndDevice && (session.UserName || session.Client)
