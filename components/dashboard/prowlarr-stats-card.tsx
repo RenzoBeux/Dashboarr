@@ -16,6 +16,7 @@ import {
   type ProwlarrStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/prowlarr-stats-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 
 export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
@@ -41,7 +42,9 @@ export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const isLoading = indexerQueries.length > 0 && indexerQueries.some((q) => q.isLoading);
+  // Initial-load gate only on the indexer queries — see lib/multi-instance-query.ts.
+  // A failing instance's status query just contributes an empty failure set.
+  const { isInitialLoading } = aggregateMultiInstanceState(indexerQueries);
 
   // Tag indexers with their source instance — Prowlarr indexer ids are
   // per-instance, so dedupe by composite key instead of bare id.
@@ -82,7 +85,7 @@ export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="No Prowlarr instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <SkeletonCardContent rows={2} />
       ) : enabled.length === 0 ? (
         <EmptyState

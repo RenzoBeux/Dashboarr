@@ -15,6 +15,7 @@ import {
   type TautulliActivitySettingsValue,
 } from "@/components/dashboard/widget-settings/tautulli-activity-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
@@ -53,7 +54,10 @@ export function TautulliActivityCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
+  // Initial-load gate only — see lib/multi-instance-query.ts. We keep the
+  // already-loaded sessions visible across refetches even if a sibling
+  // Tautulli is currently failing.
+  const { isInitialLoading } = aggregateMultiInstanceState(queries);
 
   const allSessions = queries.flatMap((q, i) =>
     (q.data?.sessions ?? []).map((s) => ({ session: s, instanceId: instances[i].id })),
@@ -91,7 +95,7 @@ export function TautulliActivityCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={MonitorPlay} size={32} color="#71717a" />}
           title="No Tautulli instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState

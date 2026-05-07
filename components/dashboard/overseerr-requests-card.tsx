@@ -28,6 +28,7 @@ import {
   type OverseerrStatusFilter,
 } from "@/components/dashboard/widget-settings/overseerr-requests-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -95,7 +96,9 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const isLoading = requestQueries.length > 0 && requestQueries.some((q) => q.isLoading);
+  // Initial-load gate only on the request queries — see lib/multi-instance-query.ts.
+  // The pending-count summary just contributes 0 from a failing instance.
+  const { isInitialLoading } = aggregateMultiInstanceState(requestQueries);
   const allResults = requestQueries.flatMap((q, i) =>
     (q.data?.results ?? []).map((req) => ({ request: req, instanceId: instances[i].id })),
   );
@@ -127,7 +130,7 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={Inbox} size={32} color="#71717a" />}
           title="No Seerr instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={4} />
       ) : display.length === 0 ? (
         <EmptyState

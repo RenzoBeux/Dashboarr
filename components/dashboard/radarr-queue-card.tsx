@@ -19,6 +19,7 @@ import {
   type RadarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/radarr-queue-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -53,7 +54,10 @@ export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const isLoading = queueQueries.length > 0 && queueQueries.some((q) => q.isLoading);
+  // Initial-load gate only on the queue queries — see lib/multi-instance-query.ts.
+  // Wanted counts are summed; a single failing instance just contributes 0 and
+  // the rest of the badge stays accurate.
+  const { isInitialLoading } = aggregateMultiInstanceState(queueQueries);
   // Tag every queue record with its source instance so the per-tile router
   // push uses the right Radarr's movie id space (Radarr ids aren't unique
   // across instances).
@@ -84,7 +88,7 @@ export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={Film} size={32} color="#71717a" />}
           title="No Radarr instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={4} showSubtitle />
       ) : records.length === 0 ? (
         <EmptyState

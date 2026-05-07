@@ -16,6 +16,7 @@ import {
   type BazarrWantedSettingsValue,
 } from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -56,9 +57,15 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const isLoading =
-    (movieQueries.length > 0 && movieQueries.some((q) => q.isLoading)) ||
-    (episodeQueries.length > 0 && episodeQueries.some((q) => q.isLoading));
+  // Initial-load gate only — see lib/multi-instance-query.ts. We OR the
+  // movies/episodes streams: if either has produced data we can render the
+  // preview. A failing instance just contributes nothing to the totals.
+  const movieState = aggregateMultiInstanceState(movieQueries);
+  const episodeState = aggregateMultiInstanceState(episodeQueries);
+  const isInitialLoading =
+    !movieState.hasAnyData &&
+    !episodeState.hasAnyData &&
+    (movieState.isInitialLoading || episodeState.isInitialLoading);
   const totalMissing =
     movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0) +
     episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
@@ -113,7 +120,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={Captions} size={32} color="#71717a" />}
           title="No Bazarr instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={3} />
       ) : display.length === 0 ? (
         <EmptyState

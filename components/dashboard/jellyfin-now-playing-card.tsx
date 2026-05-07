@@ -20,6 +20,7 @@ import {
   type JellyfinNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/jellyfin-now-playing-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -81,7 +82,10 @@ export function JellyfinNowPlayingCard({ slotId }: WidgetComponentProps) {
       refetchInterval: POLLING_INTERVALS.activeTorrents,
     })),
   });
-  const isLoading = queries.length > 0 && queries.some((q) => q.isLoading);
+  // Initial-load gate only — once any instance returns sessions, render them
+  // even if a sibling instance is currently failing its retry loop. Prevents
+  // the "one offline Jellyfin flickers the card every 5s" problem.
+  const { isInitialLoading } = aggregateMultiInstanceState(queries);
 
   const hiddenUsers = parseHiddenUsers(settings.hideUsers);
   const allSessions = queries.flatMap((q, i) =>
@@ -119,7 +123,7 @@ export function JellyfinNowPlayingCard({ slotId }: WidgetComponentProps) {
           icon={<Icon icon={PlayCircle} size={32} color="#71717a" />}
           title="No Jellyfin instances enabled"
         />
-      ) : isLoading ? (
+      ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
         <EmptyState

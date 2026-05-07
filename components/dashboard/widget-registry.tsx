@@ -33,6 +33,11 @@ import {
   type ServerStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/server-stats-settings";
 import {
+  ServiceHealthSettings,
+  SERVICE_HEALTH_DEFAULT_SETTINGS,
+  type ServiceHealthSettingsValue,
+} from "@/components/dashboard/widget-settings/service-health-settings";
+import {
   CalendarSettings,
   CALENDAR_DEFAULT_SETTINGS,
   type CalendarSettingsValue,
@@ -124,6 +129,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: HeartPulse,
     service: null,
     component: ServiceHealthCard,
+    settingsComponent: ServiceHealthSettings,
+    defaultSettings: SERVICE_HEALTH_DEFAULT_SETTINGS,
   },
   "server-stats": {
     id: "server-stats",
@@ -255,6 +262,7 @@ export function getAvailableWidgets(): WidgetDefinition[] {
 
 export type {
   ServerStatsSettingsValue,
+  ServiceHealthSettingsValue,
   CalendarSettingsValue,
   DownloadsSettingsValue,
   PlexNowPlayingSettingsValue,
