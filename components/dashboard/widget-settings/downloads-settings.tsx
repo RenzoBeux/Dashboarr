@@ -12,9 +12,9 @@ import {
 export type DownloadsSortBy = "speed" | "progress" | "eta" | "added";
 
 export interface DownloadsSettingsValue extends Record<string, unknown> {
-  // Which qBittorrent instance this widget shows. "all" aggregates every
-  // enabled instance; a UUID pins to one. Defaults to "all".
-  instanceId: InstanceBindingValue;
+  // Which qBittorrent instances this widget shows. "all" aggregates every
+  // enabled instance; an array of UUIDs aggregates just those. Defaults to "all".
+  instanceIds: InstanceBindingValue;
   maxItems: number;
   showDownloading: boolean;
   showSeeding: boolean;
@@ -24,7 +24,7 @@ export interface DownloadsSettingsValue extends Record<string, unknown> {
 }
 
 export const DOWNLOADS_DEFAULT_SETTINGS: DownloadsSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 5,
   showDownloading: true,
   showSeeding: true,
@@ -57,8 +57,8 @@ export function DownloadsSettings({ slotId }: WidgetSettingsComponentProps) {
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="qbittorrent"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">

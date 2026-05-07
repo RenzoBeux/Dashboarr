@@ -12,9 +12,10 @@ import {
 
 export interface CalendarSettingsValue extends Record<string, unknown> {
   // Independent per-service bindings — calendar can fan out across two
-  // Sonarrs while pinning to one Radarr (or vice versa).
-  sonarrInstanceId: InstanceBindingValue;
-  radarrInstanceId: InstanceBindingValue;
+  // Sonarrs while pinning to one Radarr (or vice versa). Each side accepts
+  // either the "all" sentinel or an array of instance UUIDs.
+  sonarrInstanceIds: InstanceBindingValue;
+  radarrInstanceIds: InstanceBindingValue;
   includeSonarr: boolean;
   includeRadarr: boolean;
   daysAhead: number;
@@ -22,8 +23,8 @@ export interface CalendarSettingsValue extends Record<string, unknown> {
 }
 
 export const CALENDAR_DEFAULT_SETTINGS: CalendarSettingsValue = {
-  sonarrInstanceId: INSTANCE_BINDING_ALL,
-  radarrInstanceId: INSTANCE_BINDING_ALL,
+  sonarrInstanceIds: INSTANCE_BINDING_ALL,
+  radarrInstanceIds: INSTANCE_BINDING_ALL,
   includeSonarr: true,
   includeRadarr: true,
   daysAhead: 7,
@@ -93,8 +94,8 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
         <InstancePickerRow
           serviceId="sonarr"
           label="Sonarr instance"
-          value={settings.sonarrInstanceId}
-          onChange={(sonarrInstanceId) => update({ sonarrInstanceId })}
+          value={settings.sonarrInstanceIds}
+          onChange={(sonarrInstanceIds) => update({ sonarrInstanceIds })}
         />
       )}
 
@@ -102,8 +103,8 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
         <InstancePickerRow
           serviceId="radarr"
           label="Radarr instance"
-          value={settings.radarrInstanceId}
-          onChange={(radarrInstanceId) => update({ radarrInstanceId })}
+          value={settings.radarrInstanceIds}
+          onChange={(radarrInstanceIds) => update({ radarrInstanceIds })}
         />
       )}
 

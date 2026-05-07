@@ -9,12 +9,12 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface RadarrQueueSettingsValue extends Record<string, unknown> {
-  instanceId: InstanceBindingValue;
+  instanceIds: InstanceBindingValue;
   maxItems: number;
 }
 
 export const RADARR_QUEUE_DEFAULT_SETTINGS: RadarrQueueSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 5,
 };
 
@@ -35,8 +35,8 @@ export function RadarrQueueSettings({ slotId }: WidgetSettingsComponentProps) {
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="radarr"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">

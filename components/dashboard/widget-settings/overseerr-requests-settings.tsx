@@ -12,14 +12,14 @@ import {
 export type OverseerrStatusFilter = "pending" | "pending-approved" | "all";
 
 export interface OverseerrRequestsSettingsValue extends Record<string, unknown> {
-  instanceId: InstanceBindingValue;
+  instanceIds: InstanceBindingValue;
   statusFilter: OverseerrStatusFilter;
   maxItems: number;
   showRequester: boolean;
 }
 
 export const OVERSEERR_REQUESTS_DEFAULT_SETTINGS: OverseerrRequestsSettingsValue = {
-  instanceId: INSTANCE_BINDING_ALL,
+  instanceIds: INSTANCE_BINDING_ALL,
   statusFilter: "pending",
   maxItems: 5,
   showRequester: true,
@@ -48,8 +48,8 @@ export function OverseerrRequestsSettings({ slotId }: WidgetSettingsComponentPro
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
         serviceId="overseerr"
-        value={settings.instanceId}
-        onChange={(instanceId) => update({ instanceId })}
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
       />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">

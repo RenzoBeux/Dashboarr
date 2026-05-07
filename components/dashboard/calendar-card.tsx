@@ -14,7 +14,7 @@ import {
   CALENDAR_DEFAULT_SETTINGS,
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatEpisodeCode, relativeDate, getDateOffset } from "@/lib/utils";
 import {
@@ -87,14 +87,14 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
 
   const allSonarrInstances = useEnabledInstances("sonarr");
   const allRadarrInstances = useEnabledInstances("radarr");
-  const sonarrInstances =
-    settings.sonarrInstanceId === INSTANCE_BINDING_ALL
-      ? allSonarrInstances
-      : allSonarrInstances.filter((i) => i.id === settings.sonarrInstanceId);
-  const radarrInstances =
-    settings.radarrInstanceId === INSTANCE_BINDING_ALL
-      ? allRadarrInstances
-      : allRadarrInstances.filter((i) => i.id === settings.radarrInstanceId);
+  const sonarrInstances = resolveBoundInstances(
+    settings.sonarrInstanceIds,
+    allSonarrInstances,
+  );
+  const radarrInstances = resolveBoundInstances(
+    settings.radarrInstanceIds,
+    allRadarrInstances,
+  );
 
   // Fan out the calendar fetch across each resolved instance per kind. The
   // instance id is folded into the query key so two Sonarrs don't trample

@@ -14,7 +14,7 @@ import {
   PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
   type PlexNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/plex-now-playing-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -45,10 +45,7 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
     PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
   );
   const allInstances = useEnabledInstances("plex");
-  const instances =
-    settings.instanceId === INSTANCE_BINDING_ALL
-      ? allInstances
-      : allInstances.filter((i) => i.id === settings.instanceId);
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
   const router = useRouter();
 
   const queries = useQueries({

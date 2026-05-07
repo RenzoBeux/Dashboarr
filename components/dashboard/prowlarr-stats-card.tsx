@@ -15,7 +15,7 @@ import {
   PROWLARR_STATS_DEFAULT_SETTINGS,
   type ProwlarrStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/prowlarr-stats-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 
 export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
@@ -24,10 +24,7 @@ export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
     PROWLARR_STATS_DEFAULT_SETTINGS,
   );
   const allInstances = useEnabledInstances("prowlarr");
-  const instances =
-    settings.instanceId === INSTANCE_BINDING_ALL
-      ? allInstances
-      : allInstances.filter((i) => i.id === settings.instanceId);
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
   const router = useRouter();
 
   const indexerQueries = useQueries({

@@ -13,7 +13,7 @@ import {
   SERVER_STATS_DEFAULT_SETTINGS,
   type ServerStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/server-stats-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
 import type { GlancesFsItem } from "@/lib/types";
@@ -85,10 +85,7 @@ export function ServerStatsCard({ slotId }: WidgetComponentProps) {
   );
 
   const allInstances = useEnabledInstances("glances");
-  const instances =
-    settings.instanceId === INSTANCE_BINDING_ALL
-      ? allInstances
-      : allInstances.filter((i) => i.id === settings.instanceId);
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
   const allHidden = !settings.showCpu && !settings.showRam && !settings.showDisks;
 

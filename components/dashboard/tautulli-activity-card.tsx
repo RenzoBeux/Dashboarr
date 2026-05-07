@@ -14,7 +14,7 @@ import {
   TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   type TautulliActivitySettingsValue,
 } from "@/components/dashboard/widget-settings/tautulli-activity-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
@@ -39,10 +39,7 @@ export function TautulliActivityCard({ slotId }: WidgetComponentProps) {
     TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   );
   const allInstances = useEnabledInstances("tautulli");
-  const instances =
-    settings.instanceId === INSTANCE_BINDING_ALL
-      ? allInstances
-      : allInstances.filter((i) => i.id === settings.instanceId);
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
   const router = useRouter();
 
   // Fan out across the resolved Tautulli instances. Sessions from each get

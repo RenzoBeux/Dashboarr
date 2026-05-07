@@ -40,8 +40,53 @@ import { generateInstanceId } from "@/lib/uuid";
  *         ordered WidgetSlot[] where each slot has its own UUID + per-slot
  *         settings) and activeDashboardId: string. The migration folds legacy
  *         widget list + settings map into a single Default dashboard.
+ *   v15 — multi-select widget instance binding. Per-slot settings rename
+ *         instanceId → instanceIds (and sonarrInstanceId/radarrInstanceId on
+ *         calendar) and broaden the value from `string | "all"` to
+ *         `string[] | "all"`. Scalar legacy ids are wrapped in single-element
+ *         arrays; "all" sentinels carry over unchanged. Same transform runs at
+ *         hydrate time on locally-persisted dashboards.
  */
-export const CURRENT_CONFIG_VERSION = 14;
+export const CURRENT_CONFIG_VERSION = 15;
+
+// Per-slot field renames introduced in v15. Same pairs are applied by the
+// hydrate-time migration in config-store.ts so the import path and the local
+// upgrade path produce identical data shapes.
+export const INSTANCE_BINDING_FIELD_RENAMES: ReadonlyArray<readonly [string, string]> = [
+  ["instanceId", "instanceIds"],
+  ["sonarrInstanceId", "sonarrInstanceIds"],
+  ["radarrInstanceId", "radarrInstanceIds"],
+];
+
+// Walks one slot's settings record and returns a new record with v14 binding
+// fields renamed and their values broadened to the v15 shape. Returns the
+// same reference (no copy) when no rename was needed, so callers can treat a
+// reference-equal result as "nothing to persist".
+export function migrateSlotSettingsBindings(
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  let next: Record<string, unknown> | null = null;
+  for (const [oldKey, newKey] of INSTANCE_BINDING_FIELD_RENAMES) {
+    if (!(oldKey in settings)) continue;
+    if (newKey in settings) {
+      // Already migrated — just drop the legacy key without overwriting.
+      next = next ?? { ...settings };
+      delete next[oldKey];
+      continue;
+    }
+    const v = settings[oldKey];
+    next = next ?? { ...settings };
+    if (v === "all" || (Array.isArray(v) && v.every((x) => typeof x === "string"))) {
+      next[newKey] = v;
+    } else if (typeof v === "string" && v.length > 0) {
+      next[newKey] = [v];
+    } else {
+      next[newKey] = "all";
+    }
+    delete next[oldKey];
+  }
+  return next ?? settings;
+}
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -252,6 +297,29 @@ const migrations: Record<number, (payload: any) => any> = {
       dashboards: [dashboard],
       activeDashboardId: dashboard.id,
     };
+  },
+
+  // v14 → v15: rename per-slot instanceId/sonarrInstanceId/radarrInstanceId to
+  // their plural forms and wrap scalar legacy ids in single-element arrays.
+  // Slots without settings or without binding fields pass through untouched.
+  14: (payload) => {
+    const dashboards = Array.isArray(payload.dashboards) ? payload.dashboards : [];
+    const migratedDashboards = dashboards.map((d: any) => {
+      if (!d || typeof d !== "object" || !Array.isArray(d.widgets)) return d;
+      const widgets = d.widgets.map((w: any) => {
+        if (!w || typeof w !== "object") return w;
+        if (!w.settings || typeof w.settings !== "object" || Array.isArray(w.settings)) {
+          return w;
+        }
+        const migrated = migrateSlotSettingsBindings(
+          w.settings as Record<string, unknown>,
+        );
+        if (migrated === w.settings) return w;
+        return { ...w, settings: migrated };
+      });
+      return { ...d, widgets };
+    });
+    return { ...payload, version: 15, dashboards: migratedDashboards };
   },
 };
 

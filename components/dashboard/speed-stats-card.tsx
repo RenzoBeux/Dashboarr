@@ -13,7 +13,7 @@ import {
   SPEED_STATS_DEFAULT_SETTINGS,
   type SpeedStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/speed-stats-settings";
-import { INSTANCE_BINDING_ALL } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 
 export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
@@ -22,10 +22,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     SPEED_STATS_DEFAULT_SETTINGS,
   );
   const allInstances = useEnabledInstances("qbittorrent");
-  const instances =
-    settings.instanceId === INSTANCE_BINDING_ALL
-      ? allInstances
-      : allInstances.filter((i) => i.id === settings.instanceId);
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
   // Fan out across the resolved instances and sum their transfer counters so
   // a single Speed pill represents the whole stack at a glance. Each instance
