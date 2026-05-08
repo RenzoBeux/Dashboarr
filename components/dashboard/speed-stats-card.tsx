@@ -1,14 +1,48 @@
 import { View, Text } from "react-native";
 import { ArrowDown, ArrowUp } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTransferInfo } from "@/hooks/use-qbittorrent";
+import { getTransferInfo } from "@/services/qbittorrent-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
 import { formatSpeed, formatBytes } from "@/lib/utils";
+import {
+  SPEED_STATS_DEFAULT_SETTINGS,
+  type SpeedStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/speed-stats-settings";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 
-export function SpeedStatsCard() {
-  const { data, isLoading } = useTransferInfo();
+export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
+  const { settings } = useWidgetSettings<SpeedStatsSettingsValue>(
+    slotId,
+    SPEED_STATS_DEFAULT_SETTINGS,
+  );
+  const allInstances = useEnabledInstances("qbittorrent");
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
-  if (isLoading || !data) {
+  // Fan out across the resolved instances and sum their transfer counters so
+  // a single Speed pill represents the whole stack at a glance. Each instance
+  // keeps its own cache slot via the [serviceId, instanceId, …] queryKey shape.
+  const queries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["qbittorrent", inst.id, "transfer"] as const,
+      queryFn: () => getTransferInfo(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
+  // Show the skeleton only on the very first cold load; once any instance has
+  // returned a transfer snapshot, keep rendering the summed pill even if one
+  // qBit later goes offline. The sum gracefully drops to the live instances'
+  // contributions instead of flickering back to skeleton on each retry.
+  const { isInitialLoading } = aggregateMultiInstanceState(queries);
+
+  if (isInitialLoading || instances.length === 0) {
     return (
       <Card className="flex-row gap-3">
         <View className="flex-1 flex-row items-center gap-3 rounded-xl p-3 bg-blue-600/10">
@@ -29,17 +63,29 @@ export function SpeedStatsCard() {
     );
   }
 
+  let dlSpeed = 0;
+  let upSpeed = 0;
+  let dlTotal = 0;
+  let upTotal = 0;
+  for (const q of queries) {
+    if (!q.data) continue;
+    dlSpeed += q.data.dl_info_speed;
+    upSpeed += q.data.up_info_speed;
+    dlTotal += q.data.dl_info_data;
+    upTotal += q.data.up_info_data;
+  }
+
   return (
     <Card className="flex-row gap-3">
       <SpeedPill
         direction="down"
-        speed={formatSpeed(data.dl_info_speed)}
-        total={formatBytes(data.dl_info_data)}
+        speed={formatSpeed(dlSpeed)}
+        total={formatBytes(dlTotal)}
       />
       <SpeedPill
         direction="up"
-        speed={formatSpeed(data.up_info_speed)}
-        total={formatBytes(data.up_info_data)}
+        speed={formatSpeed(upSpeed)}
+        total={formatBytes(upTotal)}
       />
     </Card>
   );
@@ -55,13 +101,13 @@ function SpeedPill({
   total: string;
 }) {
   const isDown = direction === "down";
-  const Icon = isDown ? ArrowDown : ArrowUp;
+  const ArrowIcon = isDown ? ArrowDown : ArrowUp;
   const colorClass = isDown ? "text-download" : "text-upload";
   const bgClass = isDown ? "bg-blue-600/10" : "bg-green-600/10";
 
   return (
     <View className={`flex-1 flex-row items-center gap-3 rounded-xl p-3 ${bgClass}`}>
-      <Icon size={18} color={isDown ? "#3b82f6" : "#22c55e"} />
+      <Icon icon={ArrowIcon} size={18} color={isDown ? "#3b82f6" : "#22c55e"} />
       <View>
         <Text className={`text-lg font-bold ${colorClass}`}>{speed}</Text>
         <Text className="text-zinc-500 text-xs">{total} total</Text>

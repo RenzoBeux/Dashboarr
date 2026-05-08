@@ -35,6 +35,29 @@ CREATE TABLE IF NOT EXISTS service_config (
   updated_at  INTEGER NOT NULL
 );
 
+-- service_instance superseded service_config when the app gained multi-instance
+-- support. Existing service_config rows are intentionally left untouched on
+-- upgrade (no read path uses them) and can be dropped in a follow-up once all
+-- in-the-wild backends have received at least one config push from a
+-- multi-instance app build.
+CREATE TABLE IF NOT EXISTS service_instance (
+  id          TEXT PRIMARY KEY,
+  service_id  TEXT NOT NULL,
+  enabled     INTEGER NOT NULL DEFAULT 0,
+  name        TEXT NOT NULL,
+  local_url   TEXT NOT NULL DEFAULT '',
+  remote_url  TEXT NOT NULL DEFAULT '',
+  use_remote  INTEGER NOT NULL DEFAULT 0,
+  api_key     TEXT,
+  username    TEXT,
+  password    TEXT,
+  wol_mac     TEXT,
+  poll_ms     INTEGER,
+  updated_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_instance_kind ON service_instance(service_id);
+
 CREATE TABLE IF NOT EXISTS seen_state (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View, Text, Alert, Linking } from "react-native";
 import { Sparkles } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -29,19 +30,35 @@ export function AppVersionCard() {
         ),
         checkStoreVersion().catch(
           () =>
-            ({ storeVersion: null, storeUrl: "", hasUpdate: false, unknown: true }) as const,
+            ({
+              storeVersion: null,
+              storeUrl: "",
+              hasUpdate: false,
+              unknown: true,
+              source: null,
+            }) as const,
         ),
       ]);
       const otaResult = otaSettled.ok ? otaSettled.value : { available: false };
+      const sourceLabel =
+        storeResult.source === "github"
+          ? "GitHub"
+          : storeResult.source === "play-store"
+            ? "the Play Store"
+            : storeResult.source === "app-store"
+              ? "the App Store"
+              : "the store";
+      const openButtonLabel =
+        storeResult.source === "github" ? "Open release" : "Open store";
 
       if (storeResult.hasUpdate && storeResult.storeVersion) {
         Alert.alert(
           "Update available",
-          `A newer version (${storeResult.storeVersion}) is available on the store. You're on ${NATIVE_VERSION}.`,
+          `A newer version (${storeResult.storeVersion}) is available on ${sourceLabel}. You're on ${NATIVE_VERSION}.`,
           [
             { text: "Later", style: "cancel" },
             {
-              text: "Open store",
+              text: openButtonLabel,
               onPress: () => {
                 if (storeResult.storeUrl) Linking.openURL(storeResult.storeUrl);
               },
@@ -82,7 +99,7 @@ export function AppVersionCard() {
       }
 
       if (storeResult.unknown) {
-        toast("You're up to date (couldn't reach store — OTA is current)", "success");
+        toast(`You're up to date (couldn't reach ${sourceLabel} — OTA is current)`, "success");
       } else {
         toast("You're up to date", "success");
       }
@@ -94,7 +111,7 @@ export function AppVersionCard() {
   return (
     <Card className="gap-3 mb-4">
       <View className="flex-row items-center gap-2">
-        <Sparkles size={16} color="#a1a1aa" />
+        <Icon icon={Sparkles} size={16} color="#a1a1aa" />
         <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
           App version
         </Text>

@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { View, Text, Image, Pressable } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { Image } from "expo-image";
 import { toast } from "@/components/ui/toast";
-import { useRouter } from "expo-router";
 import { Tv, Plus, Check, SlidersHorizontal } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { TextInput } from "@/components/ui/text-input";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -22,7 +24,6 @@ export default function SeriesSearchScreen() {
   const [query, setQuery] = useState("");
   const { data: results, isLoading } = useSonarrSearch(query);
   const { data: existing } = useSonarrSeries();
-  const router = useRouter();
   const [advancedTarget, setAdvancedTarget] = useState<SonarrSearchResult | null>(null);
 
   const existingTvdbIds = useMemo(
@@ -32,12 +33,7 @@ export default function SeriesSearchScreen() {
 
   return (
     <ScreenWrapper>
-      <View className="flex-row items-center mb-4 mt-2">
-        <Pressable onPress={() => router.back()} className="mr-3 active:opacity-70">
-          <Text className="text-primary text-base">← Back</Text>
-        </Pressable>
-        <Text className="text-zinc-100 text-xl font-bold">Search TV Shows</Text>
-      </View>
+      <BackHeader title="Search TV Shows" />
 
       <TextInput
         placeholder="Search for a show..."
@@ -117,12 +113,15 @@ function SearchResultCard({
         <Image
           source={{ uri: posterUrl }}
           className="w-16 h-24 rounded-lg bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={posterUrl}
           onError={onPosterError}
         />
       ) : (
         <View className="w-16 h-24 rounded-lg bg-surface-light items-center justify-center">
-          <Tv size={20} color="#71717a" />
+          <Icon icon={Tv} size={20} color="#71717a" />
         </View>
       )}
       <View className="flex-1 justify-center">
@@ -146,7 +145,7 @@ function SearchResultCard({
       </View>
       {alreadyAdded ? (
         <View className="self-center p-2">
-          <Check size={20} color="#22c55e" />
+          <Icon icon={Check} size={20} color="#22c55e" />
         </View>
       ) : (
         <View className="flex-row items-center self-center">
@@ -155,7 +154,7 @@ function SearchResultCard({
             className="p-2 active:opacity-70"
             hitSlop={4}
           >
-            <SlidersHorizontal size={18} color="#a1a1aa" />
+            <Icon icon={SlidersHorizontal} size={18} color="#a1a1aa" />
           </Pressable>
           <Pressable
             onPress={handleQuickAdd}
@@ -163,7 +162,7 @@ function SearchResultCard({
             disabled={addSeries.isPending}
             hitSlop={4}
           >
-            <Plus size={20} color="#3b82f6" />
+            <Icon icon={Plus} size={20} color="#3b82f6" />
           </Pressable>
         </View>
       )}

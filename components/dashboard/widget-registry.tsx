@@ -2,6 +2,7 @@ import {
   Activity,
   CalendarDays,
   Captions,
+  Clapperboard,
   Cpu,
   Download,
   Film,
@@ -24,6 +25,7 @@ import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
+import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
@@ -32,6 +34,11 @@ import {
   SERVER_STATS_DEFAULT_SETTINGS,
   type ServerStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/server-stats-settings";
+import {
+  ServiceHealthSettings,
+  SERVICE_HEALTH_DEFAULT_SETTINGS,
+  type ServiceHealthSettingsValue,
+} from "@/components/dashboard/widget-settings/service-health-settings";
 import {
   CalendarSettings,
   CALENDAR_DEFAULT_SETTINGS,
@@ -53,6 +60,11 @@ import {
   type PlexNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/plex-now-playing-settings";
 import {
+  JellyfinNowPlayingSettings,
+  JELLYFIN_NOW_PLAYING_DEFAULT_SETTINGS,
+  type JellyfinNowPlayingSettingsValue,
+} from "@/components/dashboard/widget-settings/jellyfin-now-playing-settings";
+import {
   TautulliActivitySettings,
   TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
   type TautulliActivitySettingsValue,
@@ -62,9 +74,38 @@ import {
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   type OverseerrRequestsSettingsValue,
 } from "@/components/dashboard/widget-settings/overseerr-requests-settings";
+import {
+  SpeedStatsSettings,
+  SPEED_STATS_DEFAULT_SETTINGS,
+  type SpeedStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/speed-stats-settings";
+import {
+  RadarrQueueSettings,
+  RADARR_QUEUE_DEFAULT_SETTINGS,
+  type RadarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import {
+  ProwlarrStatsSettings,
+  PROWLARR_STATS_DEFAULT_SETTINGS,
+  type ProwlarrStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/prowlarr-stats-settings";
+import {
+  BazarrWantedSettings,
+  BAZARR_WANTED_DEFAULT_SETTINGS,
+  type BazarrWantedSettingsValue,
+} from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
+// Every widget component receives the id of its slot in the active dashboard.
+// The slot id keys per-slot settings (via useWidgetSettings) and lets two
+// instances of the same widget on different dashboards keep distinct settings
+// (e.g. Downloads bound to qBit-Home vs qBit-Cabin).
+export interface WidgetComponentProps {
+  slotId: string;
+}
+
 export interface WidgetSettingsComponentProps {
+  slotId: string;
   onClose: () => void;
 }
 
@@ -77,7 +118,7 @@ export interface WidgetDefinition {
   // regardless of which services are enabled (e.g. service-health, calendar
   // which can show Sonarr, Radarr, or both).
   service: ServiceId | null;
-  component: React.ComponentType;
+  component: React.ComponentType<WidgetComponentProps>;
   // If provided, the dashboard renders a gear icon in edit mode that opens
   // this component inside the WidgetSettingsSheet.
   settingsComponent?: React.ComponentType<WidgetSettingsComponentProps>;
@@ -95,6 +136,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: HeartPulse,
     service: null,
     component: ServiceHealthCard,
+    settingsComponent: ServiceHealthSettings,
+    defaultSettings: SERVICE_HEALTH_DEFAULT_SETTINGS,
   },
   "server-stats": {
     id: "server-stats",
@@ -113,6 +156,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Gauge,
     service: "qbittorrent",
     component: SpeedStatsCard,
+    settingsComponent: SpeedStatsSettings,
+    defaultSettings: SPEED_STATS_DEFAULT_SETTINGS,
   },
   "downloads": {
     id: "downloads",
@@ -141,6 +186,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Film,
     service: "radarr",
     component: RadarrQueueCard,
+    settingsComponent: RadarrQueueSettings,
+    defaultSettings: RADARR_QUEUE_DEFAULT_SETTINGS,
   },
   "calendar": {
     id: "calendar",
@@ -164,7 +211,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   },
   "overseerr-requests": {
     id: "overseerr-requests",
-    label: "Overseerr Requests",
+    label: "Seerr Requests",
     description: "Recent media requests with status",
     icon: Inbox,
     service: "overseerr",
@@ -182,6 +229,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: PlexNowPlayingSettings,
     defaultSettings: PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
   },
+  "jellyfin-now-playing": {
+    id: "jellyfin-now-playing",
+    label: "Jellyfin Now Playing",
+    description: "Live playback sessions on your Jellyfin server",
+    icon: Clapperboard,
+    service: "jellyfin",
+    component: JellyfinNowPlayingCard,
+    settingsComponent: JellyfinNowPlayingSettings,
+    defaultSettings: JELLYFIN_NOW_PLAYING_DEFAULT_SETTINGS,
+  },
   "prowlarr-stats": {
     id: "prowlarr-stats",
     label: "Prowlarr Stats",
@@ -189,6 +246,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Radar,
     service: "prowlarr",
     component: ProwlarrStatsCard,
+    settingsComponent: ProwlarrStatsSettings,
+    defaultSettings: PROWLARR_STATS_DEFAULT_SETTINGS,
   },
   "bazarr-wanted": {
     id: "bazarr-wanted",
@@ -197,6 +256,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: Captions,
     service: "bazarr",
     component: BazarrWantedCard,
+    settingsComponent: BazarrWantedSettings,
+    defaultSettings: BAZARR_WANTED_DEFAULT_SETTINGS,
   },
   "wol-devices": {
     id: "wol-devices",
@@ -208,19 +269,26 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   },
 };
 
-export function getAvailableWidgets(currentIds: WidgetId[]): WidgetDefinition[] {
-  const current = new Set(currentIds);
-  return DASHBOARD_WIDGET_IDS.filter((id) => !current.has(id)).map(
-    (id) => WIDGET_REGISTRY[id],
-  );
+// Lists widgets the user can still add. With per-slot dashboards a user can
+// place the same widget more than once (e.g. two Downloads cards bound to
+// different qBit instances), so we list every registered widget and let the
+// store deduplicate via slot ids.
+export function getAvailableWidgets(): WidgetDefinition[] {
+  return DASHBOARD_WIDGET_IDS.map((id) => WIDGET_REGISTRY[id]);
 }
 
 export type {
   ServerStatsSettingsValue,
+  ServiceHealthSettingsValue,
   CalendarSettingsValue,
   DownloadsSettingsValue,
   SabnzbdQueueSettingsValue,
   PlexNowPlayingSettingsValue,
+  JellyfinNowPlayingSettingsValue,
   TautulliActivitySettingsValue,
   OverseerrRequestsSettingsValue,
+  SpeedStatsSettingsValue,
+  RadarrQueueSettingsValue,
+  ProwlarrStatsSettingsValue,
+  BazarrWantedSettingsValue,
 };

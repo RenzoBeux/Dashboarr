@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
+import { Image } from "expo-image";
+import { useLocalSearchParams } from "expo-router";
 import {
   Search,
   Check,
@@ -8,7 +10,9 @@ import {
   Tv,
   Compass,
   ListFilter,
+  ArrowUpDown,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -17,10 +21,18 @@ import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { SortButton } from "@/components/ui/sort-button";
+import {
+  useSortStore,
+  SORT_DEFAULTS,
+  type RequestsSortKey,
+} from "@/store/sort-store";
 import { ICON } from "@/lib/constants";
 import { successHaptic, errorHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
 import { PosterCard } from "@/components/overseerr/poster-card";
+import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { MediaDetailModal } from "@/components/overseerr/media-detail-modal";
 import {
   useOverseerrRequests,
@@ -47,6 +59,23 @@ type RequestFilter =
   | "processing"
   | "available";
 type MediaTypeFilter = "all" | "movie" | "tv";
+
+const REQUEST_SORT_OPTIONS: { key: RequestsSortKey; label: string }[] = [
+  { key: "created-desc", label: "Newest First" },
+  { key: "updated-desc", label: "Recently Updated" },
+];
+
+// Default branch covers legacy values ("created-asc"/"updated-asc") that may
+// still be persisted from before the asc options were removed.
+function sortToParams(sort: RequestsSortKey): { sort: "added" | "modified" } {
+  switch (sort) {
+    case "updated-desc":
+      return { sort: "modified" };
+    case "created-desc":
+    default:
+      return { sort: "added" };
+  }
+}
 
 const GRID_GAP = 12;
 
@@ -87,7 +116,14 @@ const REQUEST_STATUS_VARIANTS: Record<
 };
 
 export default function RequestsScreen() {
-  const [tab, setTab] = useState<Tab>("discover");
+  const { tab: initialTabParam } = useLocalSearchParams<{ tab?: string }>();
+  const initialTab: Tab =
+    initialTabParam === "requests" ||
+    initialTabParam === "search" ||
+    initialTabParam === "discover"
+      ? initialTabParam
+      : "discover";
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [selectedMedia, setSelectedMedia] =
     useState<OverseerrMediaResult | null>(null);
   const { data: healthData } = useServiceHealth();
@@ -101,19 +137,24 @@ export default function RequestsScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Overseerr" online={overseerrHealth?.online} />
+      <ServiceHeader name="Seerr" online={overseerrHealth?.online} serviceId="overseerr" />
 
-      <View className="flex-row gap-2 mb-4">
-        {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
+        {TAB_CONFIG.map(({ key, label, icon: TabIcon }) => (
           <FilterChip
             key={key}
             label={label}
             selected={tab === key}
             onPress={() => setTab(key)}
-            icon={<Icon size={14} color={tab === key ? "#fff" : "#a1a1aa"} />}
+            icon={<Icon icon={TabIcon} size={14} color={tab === key ? "#fff" : "#a1a1aa"} />}
           />
         ))}
-      </View>
+      </ScrollView>
 
       {tab === "discover" && <DiscoverTab onItemPress={handleMediaPress} />}
       {tab === "search" && <SearchTab onItemPress={handleMediaPress} />}
@@ -202,13 +243,18 @@ function SearchTab({
             onPress={() => setQuery("")}
             className="bg-surface-light rounded-xl p-3 active:opacity-70"
           >
-            <X size={20} color="#a1a1aa" />
+            <Icon icon={X} size={20} color="#a1a1aa" />
           </Pressable>
         )}
       </View>
 
       {query.length >= 2 && (
-        <View className="flex-row gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="mb-4"
+        >
           {(["all", "movie", "tv"] as MediaTypeFilter[]).map((f) => (
             <FilterChip
               key={f}
@@ -217,7 +263,7 @@ function SearchTab({
               onPress={() => setMediaFilter(f)}
             />
           ))}
-        </View>
+        </ScrollView>
       )}
 
       {/* Loading */}
@@ -233,7 +279,7 @@ function SearchTab({
       {/* Prompt */}
       {query.length < 2 && !isLoading && (
         <EmptyState
-          icon={<Search size={32} color="#71717a" />}
+          icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="Search for media"
           message="Type at least 2 characters to search"
         />
@@ -265,11 +311,13 @@ function PosterGridItem({
   item: OverseerrMediaResult;
   onPress: (item: OverseerrMediaResult) => void;
 }) {
+  const cellWidth = usePosterCellWidth();
   return (
     <PosterCard
       item={item}
       onPress={onPress}
       size="sm"
+      widthOverride={cellWidth}
     />
   );
 }
@@ -278,7 +326,11 @@ function PosterGridItem({
 
 function RequestsList() {
   const [filter, setFilter] = useState<RequestFilter>("all");
-  const { data, isLoading } = useOverseerrRequests(1, filter);
+  const sort = useSortStore((s) => s.requests);
+  const setSort = useSortStore((s) => s.setRequests);
+  const [sortOpen, setSortOpen] = useState(false);
+  const { sort: apiSort } = sortToParams(sort);
+  const { data, isLoading } = useOverseerrRequests(1, filter, apiSort);
   const { data: counts } = useOverseerrRequestCount();
   const approve = useApproveRequest();
   const decline = useDeclineRequest();
@@ -287,17 +339,28 @@ function RequestsList() {
 
   return (
     <View>
-      <View className="flex-row gap-2 mb-4">
-        {(
-          ["all", "pending", "approved", "processing"] as RequestFilter[]
-        ).map((f) => (
-          <FilterChip
-            key={f}
-            label={`${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`}
-            selected={filter === f}
-            onPress={() => setFilter(f)}
-          />
-        ))}
+      <View className="flex-row items-center gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="flex-1"
+        >
+          {(
+            ["all", "pending", "approved", "processing"] as RequestFilter[]
+          ).map((f) => (
+            <FilterChip
+              key={f}
+              label={`${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`}
+              selected={filter === f}
+              onPress={() => setFilter(f)}
+            />
+          ))}
+        </ScrollView>
+        <SortButton
+          onPress={() => setSortOpen(true)}
+          active={sort !== SORT_DEFAULTS.requests}
+        />
       </View>
 
       {isLoading ? (
@@ -320,6 +383,22 @@ function RequestsList() {
           ))}
         </View>
       )}
+
+      <ActionSheet
+        visible={sortOpen}
+        onClose={() => setSortOpen(false)}
+        title="Sort requests"
+        actions={REQUEST_SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            sort === opt.key ? (
+              <Icon icon={Check} size={18} color="#3b82f6" />
+            ) : (
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
+            ),
+          onPress: () => setSort(opt.key),
+        }))}
+      />
     </View>
   );
 }
@@ -372,18 +451,21 @@ function RequestCard({
           <Image
             source={{ uri: posterUrl }}
             className="w-14 h-20 rounded-lg bg-surface-light"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={posterUrl}
           />
         ) : (
           <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
-            <MediaIcon size={20} color="#71717a" />
+            <Icon icon={MediaIcon} size={20} color="#71717a" />
           </View>
         )}
 
         <View className="flex-1 justify-center gap-1">
           <View className="flex-row items-center justify-between gap-2">
             <Text
-              className="text-zinc-200 text-sm font-medium flex-1"
+              className="text-zinc-200 text-base font-medium flex-1"
               numberOfLines={2}
             >
               {title}
@@ -408,8 +490,8 @@ function RequestCard({
                 hitSlop={8}
                 className={`flex-row items-center gap-1 bg-green-600/20 px-3.5 py-2 rounded-lg active:opacity-70 ${busy ? "opacity-50" : ""}`}
               >
-                <Check size={ICON.SM} color="#22c55e" />
-                <Text className="text-success text-xs font-medium">
+                <Icon icon={Check} size={ICON.SM} color="#22c55e" />
+                <Text className="text-success text-sm font-medium">
                   Approve
                 </Text>
               </Pressable>
@@ -422,8 +504,8 @@ function RequestCard({
                 hitSlop={8}
                 className={`flex-row items-center gap-1 bg-red-600/20 px-3.5 py-2 rounded-lg active:opacity-70 ${busy ? "opacity-50" : ""}`}
               >
-                <X size={ICON.SM} color="#ef4444" />
-                <Text className="text-danger text-xs font-medium">
+                <Icon icon={X} size={ICON.SM} color="#ef4444" />
+                <Text className="text-danger text-sm font-medium">
                   Decline
                 </Text>
               </Pressable>

@@ -11,11 +11,14 @@ export interface QBTransferInfo {
   connection_status: "connected" | "firewalled" | "disconnected";
 }
 
+// qBittorrent 5.0 renamed `pausedUP`/`pausedDL` to `stoppedUP`/`stoppedDL`.
+// Both are kept here so the app works against 4.x and 5.x servers.
 export type TorrentState =
   | "error"
   | "missingFiles"
   | "uploading"
   | "pausedUP"
+  | "stoppedUP"
   | "queuedUP"
   | "stalledUP"
   | "checkingUP"
@@ -24,6 +27,7 @@ export type TorrentState =
   | "downloading"
   | "metaDL"
   | "pausedDL"
+  | "stoppedDL"
   | "queuedDL"
   | "stalledDL"
   | "checkingDL"
@@ -31,6 +35,15 @@ export type TorrentState =
   | "checkingResumeData"
   | "moving"
   | "unknown";
+
+export function isTorrentPaused(state: TorrentState): boolean {
+  return (
+    state === "pausedUP" ||
+    state === "pausedDL" ||
+    state === "stoppedUP" ||
+    state === "stoppedDL"
+  );
+}
 
 export interface QBTorrent {
   hash: string;
@@ -143,6 +156,14 @@ export interface SabHistory {
   noofslots: number;
 }
 
+// Subset of qBittorrent /app/preferences. All limits are bytes/s; 0 = unlimited.
+export interface QBSpeedPreferences {
+  dl_limit: number;
+  up_limit: number;
+  alt_dl_limit: number;
+  alt_up_limit: number;
+}
+
 // --- Shared Media Info ---
 
 export interface MediaInfo {
@@ -185,11 +206,31 @@ export interface RadarrMovie {
   digitalRelease?: string;
   sizeOnDisk: number;
   images: RadarrImage[];
-  ratings: { votes: number; value: number };
+  ratings: RatingsBundle;
   runtime: number;
   qualityProfileId: number;
   rootFolderPath: string;
   movieFile?: RadarrMovieFile;
+  genres?: string[];
+  certification?: string;
+  studio?: string;
+}
+
+export interface RatingChild {
+  votes?: number;
+  value?: number;
+  type?: string;
+}
+
+// Radarr/Sonarr v3+ return ratings as a bundle of named sources. Older builds
+// returned a flat `{ votes, value }` — kept as optional for back-compat.
+export interface RatingsBundle {
+  imdb?: RatingChild;
+  tmdb?: RatingChild;
+  metacritic?: RatingChild;
+  rottenTomatoes?: RatingChild;
+  votes?: number;
+  value?: number;
 }
 
 export interface RadarrImage {
@@ -211,6 +252,7 @@ export interface RadarrQueueItem {
   timeleft?: string;
   estimatedCompletionTime?: string;
   protocol: string;
+  downloadId?: string;
   downloadClient?: string;
   quality: { quality: { name: string } };
   movie?: RadarrMovie;
@@ -240,6 +282,49 @@ export interface RadarrSearchResult {
   runtime: number;
 }
 
+// --- Interactive search (releases) ---
+
+// Shape returned by Radarr/Sonarr `/release` for interactive search. Most
+// fields are identical across the two — Sonarr just adds episode/season
+// mapping data. Both expose seeders/leechers only for torrent results.
+export interface ArrRelease {
+  guid: string;
+  indexerId: number;
+  indexer: string;
+  title: string;
+  size: number;
+  age: number;
+  ageHours: number;
+  ageMinutes?: number;
+  publishDate: string;
+  quality: {
+    quality: { id: number; name: string; source?: string; resolution?: number };
+    revision?: { version?: number; real?: number; isRepack?: boolean };
+  };
+  languages?: { id: number; name: string }[];
+  protocol: "torrent" | "usenet" | "unknown";
+  seeders?: number;
+  leechers?: number;
+  customFormatScore?: number;
+  rejected: boolean;
+  rejections?: string[];
+  downloadUrl?: string;
+  magnetUrl?: string;
+  infoUrl?: string;
+  releaseGroup?: string;
+}
+
+export type RadarrRelease = ArrRelease;
+
+export interface SonarrRelease extends ArrRelease {
+  mappedSeasonNumber?: number;
+  mappedEpisodeNumbers?: number[];
+  fullSeason?: boolean;
+  isAbsoluteNumbering?: boolean;
+  isDaily?: boolean;
+  episodeRequested?: boolean;
+}
+
 // --- Sonarr Types ---
 
 export interface SonarrSeries {
@@ -263,6 +348,10 @@ export interface SonarrSeries {
   seasons: SonarrSeason[];
   qualityProfileId: number;
   rootFolderPath: string;
+  ratings?: RatingsBundle;
+  genres?: string[];
+  certification?: string;
+  firstAired?: string;
   statistics?: {
     seasonCount: number;
     episodeFileCount: number;
@@ -343,6 +432,7 @@ export interface SonarrQueueItem {
   timeleft?: string;
   estimatedCompletionTime?: string;
   protocol: string;
+  downloadId?: string;
   quality: { quality: { name: string } };
   series?: SonarrSeries;
   episode?: SonarrEpisode;
@@ -453,11 +543,56 @@ export interface OverseerrMovieDetails {
   };
 }
 
+export interface OverseerrSeasonInfo {
+  id: number;
+  seasonNumber: number;
+  episodeCount: number;
+  name?: string;
+  airDate?: string;
+}
+
 export interface OverseerrTVDetails {
   id: number;
   name: string;
   posterPath?: string;
   firstAirDate?: string;
+  seasons?: OverseerrSeasonInfo[];
+}
+
+// --- Overseerr Service Discovery (Radarr/Sonarr instances configured in Seerr) ---
+
+export interface OverseerrServerInfo {
+  id: number;
+  name: string;
+  is4k: boolean;
+  isDefault: boolean;
+  activeDirectory: string;
+  activeProfileId: number;
+  activeTags: number[];
+}
+
+export interface OverseerrProfile {
+  id: number;
+  name: string;
+}
+
+export interface OverseerrRootFolder {
+  id: number;
+  path: string;
+  freeSpace: number;
+  totalSpace: number;
+}
+
+export interface OverseerrTag {
+  id: number;
+  label: string;
+}
+
+export interface OverseerrServerDetails {
+  server: OverseerrServerInfo;
+  profiles: OverseerrProfile[];
+  rootFolders: OverseerrRootFolder[];
+  tags: OverseerrTag[];
 }
 
 export interface OverseerrTrendingResult extends OverseerrMediaResult {}
@@ -495,6 +630,9 @@ export interface TautulliSession {
   grandparent_title: string; // show name for episodes
   full_title: string;
   year: string;
+  rating_key: string;
+  parent_rating_key: string;
+  grandparent_rating_key: string;
   thumb: string;
   parent_thumb: string;
   grandparent_thumb: string;
@@ -714,6 +852,133 @@ export interface PlexSessionsResponse {
   };
 }
 
+// --- Jellyfin Types ---
+
+export interface JellyfinUser {
+  Id: string;
+  Name: string;
+  Policy?: {
+    IsAdministrator?: boolean;
+    IsDisabled?: boolean;
+  };
+}
+
+export type JellyfinCollectionType =
+  | "movies"
+  | "tvshows"
+  | "music"
+  | "musicvideos"
+  | "homevideos"
+  | "boxsets"
+  | "books"
+  | "playlists"
+  | "livetv"
+  | "mixed"
+  | string;
+
+export interface JellyfinLibrary {
+  Id: string;
+  Name: string;
+  CollectionType?: JellyfinCollectionType;
+  ImageTags?: { Primary?: string };
+}
+
+export interface JellyfinUserData {
+  PlayedPercentage?: number;
+  PlaybackPositionTicks?: number;
+  PlayCount?: number;
+  IsFavorite?: boolean;
+  Played?: boolean;
+  LastPlayedDate?: string;
+}
+
+export type JellyfinItemType =
+  | "Movie"
+  | "Series"
+  | "Season"
+  | "Episode"
+  | "Audio"
+  | "MusicAlbum"
+  | "MusicArtist"
+  | "BoxSet"
+  | "CollectionFolder"
+  | "Folder"
+  | string;
+
+export interface JellyfinItem {
+  Id: string;
+  Name: string;
+  Type: JellyfinItemType;
+  SeriesId?: string;
+  SeriesName?: string;
+  SeasonId?: string;
+  SeasonName?: string;
+  ParentIndexNumber?: number;
+  IndexNumber?: number;
+  ProductionYear?: number;
+  PremiereDate?: string;
+  DateCreated?: string;
+  RunTimeTicks?: number;
+  Overview?: string;
+  CommunityRating?: number;
+  ImageTags?: {
+    Primary?: string;
+    Backdrop?: string;
+    Thumb?: string;
+    Logo?: string;
+  };
+  BackdropImageTags?: string[];
+  ParentBackdropImageTags?: string[];
+  ParentBackdropItemId?: string;
+  SeriesPrimaryImageTag?: string;
+  ParentThumbImageTag?: string;
+  ParentThumbItemId?: string;
+  UserData?: JellyfinUserData;
+}
+
+export interface JellyfinItemsResponse {
+  Items: JellyfinItem[];
+  TotalRecordCount: number;
+}
+
+export interface JellyfinTranscodingInfo {
+  AudioCodec?: string;
+  VideoCodec?: string;
+  Container?: string;
+  IsVideoDirect?: boolean;
+  IsAudioDirect?: boolean;
+  Bitrate?: number;
+  Framerate?: number;
+  CompletionPercentage?: number;
+  Width?: number;
+  Height?: number;
+  TranscodeReasons?: string[];
+}
+
+export interface JellyfinPlayState {
+  PositionTicks?: number;
+  CanSeek?: boolean;
+  IsPaused?: boolean;
+  IsMuted?: boolean;
+  PlayMethod?: "Transcode" | "DirectStream" | "DirectPlay";
+  RepeatMode?: string;
+}
+
+export interface JellyfinSession {
+  Id: string;
+  UserId?: string;
+  UserName?: string;
+  Client: string;
+  DeviceName: string;
+  DeviceId?: string;
+  ApplicationVersion?: string;
+  RemoteEndPoint?: string;
+  IsActive?: boolean;
+  NowPlayingItem?: JellyfinItem;
+  PlayState?: JellyfinPlayState;
+  TranscodingInfo?: JellyfinTranscodingInfo;
+}
+
 // --- Glances Types ---
 
 export interface GlancesCpu {
@@ -837,9 +1102,24 @@ export interface BazarrProvider {
 
 // --- Shared Types ---
 
+// Health entry for a single configured instance — one kind can have many.
+export interface ServiceInstanceHealthStatus {
+  instanceId: string;
+  instanceName: string;
+  online: boolean;
+  responseTime?: number;
+}
+
+// Aggregated health for a service kind. The top-level `online`/`responseTime`
+// are derived from `instances` so existing consumers (`healthData.find(s => s.id ===
+// "tautulli").online`) keep working as if each kind were a singleton: the kind
+// is "online" when at least one of its instances is reachable, and shows the
+// fastest of those response times. Per-instance breakdown lives under
+// `instances` for the notification watcher and the service-health card.
 export interface ServiceHealthStatus {
   id: string;
   name: string;
   online: boolean;
   responseTime?: number;
+  instances: ServiceInstanceHealthStatus[];
 }

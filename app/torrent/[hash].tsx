@@ -1,13 +1,15 @@
 import { View, Text, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, ArrowUp } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import {
-  useAllTorrents,
+  useTorrent,
   useTorrentFiles,
   useTorrentTrackers,
   usePauseTorrent,
@@ -15,28 +17,30 @@ import {
   useDeleteTorrent,
 } from "@/hooks/use-qbittorrent";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
+import { isTorrentPaused } from "@/lib/types";
 
 export default function TorrentDetailScreen() {
   const { hash } = useLocalSearchParams<{ hash: string }>();
   const router = useRouter();
-  const { data: torrents } = useAllTorrents();
+  const { data: torrent, isLoading } = useTorrent(hash);
   const { data: files } = useTorrentFiles(hash);
   const { data: trackers } = useTorrentTrackers(hash);
   const pauseMutation = usePauseTorrent();
   const resumeMutation = useResumeTorrent();
   const deleteMutation = useDeleteTorrent();
 
-  const torrent = torrents?.find((t) => t.hash === hash);
-
   if (!torrent) {
     return (
       <ScreenWrapper>
-        <Text className="text-zinc-400 text-center mt-10">Torrent not found</Text>
+        <BackHeader />
+        <Text className="text-zinc-400 text-center mt-10">
+          {isLoading ? "Loading…" : "Torrent not found"}
+        </Text>
       </ScreenWrapper>
     );
   }
 
-  const isPaused = torrent.state.includes("paused");
+  const isPaused = isTorrentPaused(torrent.state);
 
   const handleDelete = () => {
     Alert.alert("Delete Torrent", "Are you sure?", [
@@ -62,8 +66,9 @@ export default function TorrentDetailScreen() {
 
   return (
     <ScreenWrapper>
+      <BackHeader />
       {/* Header */}
-      <Text className="text-zinc-100 text-lg font-bold mt-2 mb-1">
+      <Text className="text-zinc-100 text-lg font-bold mb-1">
         {torrent.name}
       </Text>
       <Badge
@@ -77,13 +82,13 @@ export default function TorrentDetailScreen() {
         <ProgressBar progress={torrent.progress} showLabel className="mb-3" />
         <View className="flex-row justify-between">
           <View className="flex-row items-center gap-1">
-            <ArrowDown size={14} color="#3b82f6" />
+            <Icon icon={ArrowDown} size={14} color="#3b82f6" />
             <Text className="text-zinc-300 text-sm">
               {formatSpeed(torrent.dlspeed)}
             </Text>
           </View>
           <View className="flex-row items-center gap-1">
-            <ArrowUp size={14} color="#22c55e" />
+            <Icon icon={ArrowUp} size={14} color="#22c55e" />
             <Text className="text-zinc-300 text-sm">
               {formatSpeed(torrent.upspeed)}
             </Text>
@@ -116,7 +121,7 @@ export default function TorrentDetailScreen() {
               <Text className="text-zinc-300 text-xs" numberOfLines={1}>
                 {file.name}
               </Text>
-              <Text className="text-zinc-500 text-[10px]">
+              <Text className="text-zinc-500 text-xs">
                 {formatBytes(file.size)} — {Math.round(file.progress * 100)}%
               </Text>
             </View>
@@ -142,9 +147,9 @@ export default function TorrentDetailScreen() {
           loading={pauseMutation.isPending || resumeMutation.isPending}
           icon={
             isPaused ? (
-              <Play size={16} color="#3b82f6" />
+              <Icon icon={Play} size={16} color="#3b82f6" />
             ) : (
-              <Pause size={16} color="#f59e0b" />
+              <Icon icon={Pause} size={16} color="#f59e0b" />
             )
           }
           className="flex-1"
@@ -154,7 +159,7 @@ export default function TorrentDetailScreen() {
           variant="danger"
           onPress={handleDelete}
           loading={deleteMutation.isPending}
-          icon={<Trash2 size={16} color="white" />}
+          icon={<Icon icon={Trash2} size={16} color="white" />}
           className="flex-1"
         />
       </View>

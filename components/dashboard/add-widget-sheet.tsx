@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { LayoutGrid, Lock, Plus, X } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import Animated, {
   Easing,
   FadeInDown,
@@ -31,6 +32,7 @@ import {
   getAvailableWidgets,
   type WidgetDefinition,
 } from "@/components/dashboard/widget-registry";
+import { GlassSurface } from "@/components/ui/glass-surface";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
@@ -42,7 +44,6 @@ interface AddWidgetSheetProps {
 }
 
 export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
-  const dashboardWidgets = useConfigStore((s) => s.dashboardWidgets);
   const services = useConfigStore((s) => s.services);
   const addWidget = useConfigStore((s) => s.addWidget);
   const insets = useSafeAreaInsets();
@@ -51,7 +52,11 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
-  const available = getAvailableWidgets(dashboardWidgets);
+  // With per-slot dashboards the same widget can be placed multiple times
+  // (different instance bindings), so the picker lists every registered widget.
+  // Locked widgets are still shown — just below the available ones — so users
+  // discover what they could enable in Settings.
+  const available = getAvailableWidgets();
   const enabled = available.filter(
     (w) => w.service === null || services[w.service].enabled,
   );
@@ -120,10 +125,14 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
           <Animated.View
             style={[
               sheetStyle,
-              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8 },
+              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8, overflow: "hidden" },
             ]}
-            className="bg-surface rounded-t-3xl border-t border-border"
+            className="rounded-t-3xl border-t border-border"
           >
+            <GlassSurface
+              style={StyleSheet.absoluteFill}
+              fallbackClassName="bg-surface"
+            />
             <GestureDetector gesture={handlePan}>
               <View className="pt-3 pb-1">
                 <View className="self-center w-10 h-1 rounded-full bg-zinc-700" />
@@ -134,9 +143,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
                       Add widget
                     </Text>
                     <Text className="text-zinc-500 text-xs mt-0.5">
-                      {available.length === 0
-                        ? "All widgets are on your dashboard"
-                        : `${available.length} widget${available.length === 1 ? "" : "s"} available`}
+                      {`${enabled.length} widget${enabled.length === 1 ? "" : "s"} available`}
                     </Text>
                   </View>
                   <Pressable
@@ -144,7 +151,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
                     hitSlop={10}
                     className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
                   >
-                    <X size={ICON.SM} color="#a1a1aa" />
+                    <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
                   </Pressable>
                 </View>
               </View>
@@ -153,7 +160,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
             {available.length === 0 ? (
               <View className="items-center py-10 px-8">
                 <View className="w-14 h-14 rounded-full bg-surface-light items-center justify-center mb-3">
-                  <LayoutGrid size={24} color="#71717a" />
+                  <Icon icon={LayoutGrid} size={24} color="#71717a" />
                 </View>
                 <Text className="text-zinc-300 text-base font-medium">
                   You're all set
@@ -208,7 +215,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
 
 function SectionLabel({ label }: { label: string }) {
   return (
-    <Text className="text-zinc-500 text-[11px] font-semibold uppercase tracking-wider px-1 mb-2">
+    <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider px-1 mb-2">
       {label}
     </Text>
   );
@@ -221,7 +228,7 @@ interface EnabledRowProps {
 }
 
 function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
-  const Icon = widget.icon;
+  const WidgetIcon = widget.icon;
   const scale = useSharedValue(1);
   const style = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -243,7 +250,7 @@ function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
         className="flex-row items-center gap-3 bg-surface-light rounded-2xl px-3 py-3 border border-border/70"
       >
         <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center">
-          <Icon size={ICON.MD} color="#60a5fa" />
+          <Icon icon={WidgetIcon} size={ICON.MD} color="#60a5fa" />
         </View>
         <View className="flex-1">
           <Text className="text-zinc-100 text-sm font-semibold">
@@ -257,7 +264,7 @@ function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
           </Text>
         </View>
         <View className="w-7 h-7 rounded-full bg-primary/20 items-center justify-center">
-          <Plus size={ICON.SM} color="#60a5fa" />
+          <Icon icon={Plus} size={ICON.SM} color="#60a5fa" />
         </View>
       </Pressable>
     </Animated.View>
@@ -270,14 +277,14 @@ interface LockedRowProps {
 }
 
 function LockedRow({ widget, index }: LockedRowProps) {
-  const Icon = widget.icon;
+  const WidgetIcon = widget.icon;
   const serviceName =
     widget.service !== null ? SERVICE_DEFAULTS[widget.service].name : "service";
   return (
     <Animated.View entering={FadeInDown.delay(index * 35).duration(260)}>
       <View className="flex-row items-center gap-3 bg-surface-light/50 rounded-2xl px-3 py-3 border border-border/40">
         <View className="w-10 h-10 rounded-xl bg-surface-light items-center justify-center">
-          <Icon size={ICON.MD} color="#52525b" />
+          <Icon icon={WidgetIcon} size={ICON.MD} color="#52525b" />
         </View>
         <View className="flex-1">
           <Text className="text-zinc-400 text-sm font-semibold">
@@ -291,7 +298,7 @@ function LockedRow({ widget, index }: LockedRowProps) {
           </Text>
         </View>
         <View className="w-7 h-7 rounded-full bg-surface-light items-center justify-center border border-border">
-          <Lock size={ICON.XS} color="#71717a" />
+          <Icon icon={Lock} size={ICON.XS} color="#71717a" />
         </View>
       </View>
     </Animated.View>

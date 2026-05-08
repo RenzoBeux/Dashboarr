@@ -55,7 +55,13 @@ export function formatEpisodeCode(season: number, episode: number): string {
  * Relative date string (Today, Tomorrow, Mon Apr 7, etc.)
  */
 export function relativeDate(dateString: string): string {
-  const date = new Date(dateString);
+  // Date-only strings (YYYY-MM-DD, e.g. Sonarr's airDate) get parsed as UTC
+  // midnight by `new Date(...)`, which lands on the previous local day for any
+  // timezone west of UTC. Anchor those at local midnight instead so today's
+  // airdate doesn't show as "Yesterday".
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+    ? new Date(`${dateString}T00:00:00`)
+    : new Date(dateString);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const target = new Date(date);
@@ -77,12 +83,25 @@ export function relativeDate(dateString: string): string {
 }
 
 /**
- * Get ISO date string for today + offset days
+ * Local YYYY-MM-DD key for a Date (defaults to now). Use this instead of
+ * `toISOString().split("T")[0]` whenever the key represents the user's
+ * calendar day — `toISOString` is UTC and disagrees with local day at TZ
+ * boundaries (always for east-of-UTC users; late evening for west-of-UTC).
+ */
+export function localDateKey(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Get local YYYY-MM-DD for today + offset days.
  */
 export function getDateOffset(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
-  return date.toISOString().split("T")[0];
+  return localDateKey(date);
 }
 
 /**
@@ -96,13 +115,43 @@ export function formatAudioChannels(channels: number): string {
 }
 
 /**
- * Format video resolution string from mediaInfo resolution (e.g. "1920x1080" → "1080p", "3840x2160" → "4K")
+ * Format video resolution string from mediaInfo resolution (e.g. "1920x1080" → "1080p", "3840x2160" → "4K").
+ *
+ * Bucket by the longest dimension, not the height. Cinemascope 4K rips are
+ * commonly cropped to remove black bars, leaving sizes like 3840x2080 or
+ * 3840x1600 — height alone would mis-bucket those as 1080p. The longest side
+ * stays anchored to the standard width (3840 / 1920 / 1280 / 720) regardless
+ * of crop, so it's the reliable axis to classify on.
  */
 export function formatResolution(resolution: string): string {
-  const height = parseInt(resolution.split("x")[1] || resolution, 10);
-  if (height >= 2160) return "4K";
-  if (height >= 1080) return "1080p";
-  if (height >= 720) return "720p";
-  if (height >= 480) return "480p";
+  const [a, b] = resolution.split("x").map((n) => parseInt(n, 10));
+  const longest = Math.max(
+    Number.isFinite(a) ? a : 0,
+    Number.isFinite(b) ? b : 0,
+  );
+  if (longest >= 3000) return "4K";
+  if (longest >= 1800) return "1080p";
+  if (longest >= 1200) return "720p";
+  if (longest >= 700) return "480p";
   return resolution;
+}
+
+/**
+ * Compact age label for a release. Prefers ageHours/ageMinutes when fresh so
+ * "12m" / "3h" surface instead of "0d" for new uploads.
+ */
+export function formatReleaseAge(
+  ageDays: number,
+  ageHours?: number,
+  ageMinutes?: number,
+): string {
+  if (ageMinutes !== undefined && ageMinutes < 60) return `${Math.max(0, Math.round(ageMinutes))}m`;
+  if (ageHours !== undefined && ageHours < 24) return `${Math.max(0, Math.round(ageHours))}h`;
+  if (ageDays < 1) {
+    if (ageHours !== undefined) return `${Math.max(0, Math.round(ageHours))}h`;
+    return "<1d";
+  }
+  if (ageDays < 30) return `${Math.round(ageDays)}d`;
+  if (ageDays < 365) return `${Math.round(ageDays / 30)}mo`;
+  return `${(ageDays / 365).toFixed(1)}y`;
 }

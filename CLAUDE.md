@@ -14,7 +14,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 2. SABnzbd — Usenet client
 3. Radarr — movie automation
 4. Sonarr — TV automation
-5. Overseerr — media requests
+5. Seerr — media requests (formerly Overseerr; same API, internal id and folders still use `overseerr`)
 6. Tautulli — Plex monitoring & stats
 7. Prowlarr — indexer management
 8. Plex — media consumption layer
@@ -43,6 +43,26 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - Every service communicates via its official REST API using API keys
 - Optional backend (`backend/dashboarr-backend`) is a standalone Node.js service for push notification relay — not required for core functionality
 
+## Service API Documentation (sources of truth)
+When implementing or debugging a service integration, consult the upstream API docs below — these are the authoritative references. Prefer fetching the relevant doc page over guessing endpoint shapes.
+
+| Service | API doc URL | Notes |
+| --- | --- | --- |
+| qBittorrent | https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0) | WebUI API v2; cookie-session auth via `/api/v2/auth/login`. We target qBittorrent 5.0+. The 4.1 wiki page exists for older builds but is not our target. |
+| Radarr | https://radarr.video/docs/api/ | OpenAPI/Swagger; live spec also served by each instance at `/api/v3/openapi.json`. We use the `v3` API. |
+| Sonarr | https://sonarr.tv/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v3/openapi.json`. We use the `v3` API. |
+| Prowlarr | https://prowlarr.com/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v1/openapi.json`. We use the `v1` API. |
+| Seerr (Overseerr) | https://api-docs.overseerr.dev/ | Same API for Jellyseerr forks. Schema validated by `express-openapi-validator` — unknown query params return 500 (see comment in `services/overseerr-api.ts`). |
+| Tautulli | https://github.com/Tautulli/Tautulli/wiki/Tautulli-API-Reference | Single endpoint: `/api/v2?apikey=…&cmd=…`. Not REST-shaped — see `tautulliRequest` in `services/tautulli-api.ts`. |
+| Plex | https://plexapi.dev/ (community) + https://www.plexopedia.com/plex-media-server/api/ | Plex has no official public API docs; the community references above are the de facto sources. Auth via `X-Plex-Token`. |
+| Bazarr | https://wiki.bazarr.media/ + live Swagger at `<bazarr>/api/swagger` | Each running instance exposes its own Swagger UI; the wiki covers setup, the Swagger UI is the authoritative endpoint reference. |
+| Glances | https://glances.readthedocs.io/en/latest/api.html | REST API exposed when Glances runs in webserver mode (`-w`). We use API v4. |
+| Jellyfin | https://api.jellyfin.org/ | OpenAPI; live spec also at `/api-docs/openapi.json`. Auth via `MediaBrowser Token="…"` header. |
+
+Notes:
+- The `backend/dashboarr-backend/` Node.js service is in-tree and not a third-party API — its surface is whatever we define there.
+- Where an instance hosts its own OpenAPI/Swagger (Radarr, Sonarr, Prowlarr, Bazarr, Jellyfin), prefer fetching the live spec from a real instance over the public docs when verifying field types or new endpoints — the live spec matches the running version exactly.
+
 ## UI/UX Rules
 - Dark mode only (forced via userInterfaceStyle: "dark")
 - Native mobile app (Android + iOS via Expo)
@@ -52,29 +72,51 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - Pull-to-refresh on all screens
 - Haptic feedback on key interactions
 
-## Phase Plan
-### Phase 1 — Core ✅
-- [x] qBittorrent: queue, pause, resume, delete, speed stats, progress
-- [x] Radarr: search, add movie, monitor, queue, missing/wanted
-- [x] Sonarr: search, add show, episode monitoring, airing schedule
+## UI Scale (Accessibility) — MUST follow when writing any new UI
 
-### Phase 2 — Visibility & Requests ✅
-- [x] Overseerr: browse, search, request movie/show, approve/decline, request status
-- [x] Tautulli: active streams, bandwidth stats, playback history
+The app exposes a global UI scale preference (1.0 / 1.15 / 1.3) wired via NativeWind v4's reactive `rem` observable. `app/_layout.tsx` calls `rem.set(14 * uiScale)` whenever the setting changes, which scales every rem-based style across the running app with no remount. **Every new UI element must scale with this setting.** The rules:
 
-### Phase 3 — Power Tools ✅
-- [x] Prowlarr: indexer status/toggle, search all indexers, grab releases, indexer stats
-- [x] Plex: now playing sessions, recently added, on deck, library browser
+- **`inlineRem: false` in `metro.config.js` is load-bearing.** With NativeWind's default `inlineRem: 14`, every `rem` value (`text-sm` = 0.875rem, `p-4` = 1rem, etc.) is statically multiplied by 14 at bundle time and becomes a frozen pixel value — `rem.set()` would do nothing. Setting `inlineRem: false` keeps rem as a runtime descriptor so styles re-resolve when the observable updates. Do not change this setting without first verifying every rem-based class still scales.
 
-### Phase 4 — Extended Integrations & Infrastructure ✅
-- [x] Bazarr: missing subtitles management
-- [x] Glances: server stats (CPU, RAM, disk, network) on dashboard
-- [x] Push notifications: optional backend relay, QR code pairing, per-service notification watchers
-- [x] Wake-on-LAN: wake server from app via magic packet (react-native-udp)
-- [x] WiFi-based auto URL switching (local vs remote)
-- [x] Calendar view (upcoming media)
-- [x] Activity view
-- [x] Service health monitoring
+- **Use standard Tailwind classes for sizing.** `text-sm`, `text-xs`, `text-base`, `text-lg`, `p-4`, `gap-3`, `mb-2`, `w-14`, `h-20`, `rounded-xl`, etc. all compile to rem and scale automatically.
+- **Never use literal-pixel arbitrary values.** No `text-[10px]`, `w-[80px]`, `h-[120px]`, `min-w-[170px]`. If you need a non-standard size, use rem arbitrary values: `text-[0.7rem]`, `w-[5.7rem]`, `min-w-[12rem]`.
+- **Never use inline `style={{ fontSize: N }}` / `style={{ width: N, height: N }}` with raw numbers.** Move to className with rem values, or — when the prop must stay numeric — multiply by `useUiScale()` from `hooks/use-ui-scale.ts` inside the component (see `MediaPosterTile`, `MediaBackdropRow`).
+- **Always wrap lucide icons with `<Icon icon={Foo} size={N} />`** from `components/ui/icon.tsx`. Raw `<Foo size={20} />` will not scale.
+- **Indirect lucide icons need wrapping too.** `const StateIcon = isPaused ? Pause : Play; <StateIcon size={14} />` is a bug — it must be `<Icon icon={StateIcon} size={14} />`. Same for `<FallbackIcon>`, `<ServiceIcon>`, `<MediaIcon>`, etc. Search `const \w*Icon\s*=` to audit.
+- **Don't shadow the `Icon` import.** If a local variable holds a lucide component, name it `XxxIcon` (e.g. `WidgetIcon`, `ToastIcon`), never `Icon`.
+- **Maps of lucide components** (e.g. `SERVICE_ICONS`, `ICON_MAP`) — type them as `Record<K, React.ComponentType<any>>`, not `Record<K, React.ElementType>` (which permits `string` and breaks the `<Icon>` wrapper's prop type).
+- **Wrap-grids that should drop columns at higher scale** (poster grids in movies/tv/plex/jellyfin/seerr) — use `usePosterCellWidth()` from `hooks/use-poster-cell.ts` and apply via inline `style={{ width: cellWidth }}`, NOT className percentages like `w-[30%]`. It returns a numeric pixel width: 3 cols at scale 1.0 and 2 cols at scale ≥ 1.15. With rem-scaled gaps and intrinsic text widths, RN/Yoga's flex-wrap with percentage children is unreliable and can collapse layouts to 1 column. Numeric pixel widths via `useWindowDimensions` + `useUiScale` are deterministic at every scale. Don't hardcode `w-[8rem]` or similar — that just shrinks/grows in place without reflowing.
+- **Wrap-grids of intrinsically-sized content** (chip/tag clouds, service-icon clouds) — no width set; items wrap naturally. Already correct.
+- **Horizontal-scroll rows** (e.g. dashboard rows, search results carousels) — fixed rem widths are correct. They get bigger via rem; they don't need to reflow column count.
+- **`Skeleton` placeholder widths/heights** — pass percentages (`width="100%"`) when possible. Numeric props go to inline style and won't scale; this is acceptable for brief loading shimmers but never for visible content.
+- **Tab bar in `app/(tabs)/_layout.tsx` is deliberately excluded** — React Navigation owns its `tabBarIcon` sizing. Don't wrap or scale those icons.
+- **When a numeric size is unavoidable on a third-party component** (Skeleton, lucide icons inside a shared primitive that takes a numeric `size` prop) — read `useUiScale()` and multiply at the call site. See `MediaPosterTile.scaledWidth`, `MediaBackdropRow.posterW`, `PosterSkeletonRow.w`.
+- **Hierarchy at higher scales:** when an item gets visually much bigger (e.g. a poster card grows from 30% to 47% width), bump its primary title one Tailwind tier (`text-xs` → `text-sm`, or `text-sm` → `text-base`) so the type stays anchored to the bigger frame. Keep secondary metadata one tier smaller for clear hierarchy.
+- **Horizontal rows of `FilterChip` (or any chip-like row) MUST be inside a horizontal `ScrollView`,** not a plain `<View className="flex-row">`. At higher uiScale chips grow with rem and easily overflow off-screen with no way to access the cut-off ones. Standard pattern:
+  ```tsx
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerClassName="gap-2"
+    className="mb-4"
+  >
+    {chips}
+  </ScrollView>
+  ```
+  Same applies to any horizontal list of items whose count or label length isn't tightly bounded — at higher scales they'll exceed the viewport and clip.
+
+## Keyboard Avoidance — MUST follow for any UI with text inputs
+
+If a screen has a `TextInput` (raw `react-native` or `@/components/ui/text-input`), the keyboard must never obscure it. `KeyboardProvider` from `react-native-keyboard-controller` is mounted at the root in `app/_layout.tsx`, so all the hooks/components below work anywhere in the tree, including inside `Modal`. **Pick the pattern by container shape — do not write your own `Keyboard.addListener` repositioning code.**
+
+- **Full-screen route (uses `ScreenWrapper`)** — already handled. `components/common/screen-wrapper.tsx` uses `KeyboardAwareScrollView` from `react-native-keyboard-controller`. Just place inputs inside `<ScreenWrapper>` and they'll lift on focus. Reference: any settings screen.
+- **Custom animated bottom sheet (reanimated `translateY` + `Modal`)** — use `useReanimatedKeyboardAnimation` from `react-native-keyboard-controller` and add `keyboard.height.value` to the sheet's existing `translateY`. `height` is `0` when hidden and `-keyboardHeight` when shown, so the addition naturally lifts the whole sheet above the keyboard while preserving drag-to-dismiss and open/close springs. Reference: `components/dashboard/dashboard-picker-sheet.tsx`.
+- **Native page-sheet `Modal` with a `ScrollView`** (`presentationStyle="pageSheet"` or `animationType="slide"` full-screen) — replace the inner `ScrollView` with `KeyboardAwareScrollView` from `react-native-keyboard-controller`. Pass `keyboardShouldPersistTaps="handled"`, `keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}`, `bottomOffset={20}`, and run `cssInterop(KeyboardAwareScrollView, { className: "style", contentContainerClassName: "contentContainerStyle" })` once at module top so Tailwind classes work. Reference: `components/qbittorrent/speed-limits-sheet.tsx`.
+- **Centered card/dialog `Modal`** (alert-style, transparent background, content centered) — wrap the card in `KeyboardAvoidingView` from `react-native` with `behavior={Platform.OS === "ios" ? "padding" : undefined}`. Reference: `components/common/passphrase-prompt.tsx`, `components/common/confirm-modal.tsx`.
+
+Why not "just reposition the modal manually on `keyboardWillShow`": Android has no `keyboardWillShow` (only `keyboardDidShow`, which fires after the keyboard is already up — visible jank). The reanimated hook reads the system animation curve and keeps the sheet in lockstep with the keyboard on both platforms, with no listener bookkeeping. Don't reinvent it.
+
+When adding a new `Modal`, sheet, or screen with a text input, decide which of the four patterns above applies *before* writing the layout, and copy the reference file's wiring. Don't ship a sheet with a `TextInput` and a plain `ScrollView` — the keyboard will obscure the input.
 
 ### Phase 5 — Usenet ✅
 - [x] SABnzbd: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications
@@ -86,7 +128,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - `components/ui/` — reusable UI primitives
 - `components/dashboard/` — dashboard card components
 - `components/common/` — shared layout components
-- `components/overseerr/` — Overseerr-specific components (posters, media detail)
+- `components/overseerr/` — Seerr-specific components (posters, media detail; folder name kept for back-compat)
 - `store/` — Zustand stores + AsyncStorage/SecureStore helpers
 - `lib/` — types, utils, constants, HTTP client, notifications, haptics, Wake-on-LAN
 - `plugins/` — custom Expo config plugins (e.g. Android signing)

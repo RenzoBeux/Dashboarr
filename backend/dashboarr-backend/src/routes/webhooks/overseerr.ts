@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { dispatchPush } from "../../push/dispatcher.js";
-import { checkWebhookSecret } from "./shared.js";
+import {
+  checkWebhookSecret,
+  resolveWebhookInstance,
+  webhookTitlePrefix,
+} from "./shared.js";
 
 interface OverseerrWebhookPayload {
   notification_type?: string;
@@ -11,7 +15,10 @@ interface OverseerrWebhookPayload {
   request?: { request_id?: number; requestedBy_username?: string };
 }
 
-type WebhookReq = FastifyRequest<{ Params: { secret?: string } }>;
+type WebhookReq = FastifyRequest<{
+  Params: { secret?: string };
+  Querystring: { instance?: string };
+}>;
 
 export async function overseerrWebhook(app: FastifyInstance): Promise<void> {
   const handler = async (request: WebhookReq, reply: FastifyReply) => {
@@ -20,10 +27,14 @@ export async function overseerrWebhook(app: FastifyInstance): Promise<void> {
     const payload = (request.body ?? {}) as OverseerrWebhookPayload;
     recordWebhook("overseerr", payload);
 
+    const inst = resolveWebhookInstance(request, "overseerr");
+    const prefix = webhookTitlePrefix(inst, "overseerr");
+    const dedupeNs = inst ? inst.id : "any";
+
     if (payload.notification_type === "TEST_NOTIFICATION") {
       await dispatchPush({
         category: "overseerrNewRequest",
-        title: "Overseerr webhook connected",
+        title: `${prefix}Seerr webhook connected`,
         body: "Test notification received successfully",
         bypassCategory: true,
       });
@@ -35,16 +46,26 @@ export async function overseerrWebhook(app: FastifyInstance): Promise<void> {
       const what = payload.subject ?? payload.media?.media_type ?? "media";
       await dispatchPush({
         category: "overseerrNewRequest",
-        title: "New request",
+        title: `${prefix}New request`,
         body: `${who} requested ${what}`,
-        data: { type: "overseerr", requestId: payload.request?.request_id },
-        dedupeKey: `overseerr:webhook:${payload.request?.request_id}`,
+        data: {
+          type: "overseerr",
+          requestId: payload.request?.request_id,
+          instanceId: inst?.id,
+        },
+        dedupeKey: `overseerr:webhook:${dedupeNs}:${payload.request?.request_id}`,
       });
     }
 
     return { ok: true };
   };
 
-  app.post<{ Params: { secret?: string } }>("/webhooks/overseerr", handler);
-  app.post<{ Params: { secret?: string } }>("/webhooks/overseerr/:secret", handler);
+  app.post<{ Params: { secret?: string }; Querystring: { instance?: string } }>(
+    "/webhooks/overseerr",
+    handler,
+  );
+  app.post<{ Params: { secret?: string }; Querystring: { instance?: string } }>(
+    "/webhooks/overseerr/:secret",
+    handler,
+  );
 }

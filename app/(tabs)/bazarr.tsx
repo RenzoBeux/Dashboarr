@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
 import { Captions, Search as SearchIcon, Film, Tv } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -32,9 +33,14 @@ export default function BazarrScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Bazarr" online={bazarrHealth?.online} />
+      <ServiceHeader name="Bazarr" online={bazarrHealth?.online} serviceId="bazarr" />
 
-      <View className="flex-row gap-2 mb-4">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-4"
+      >
         <FilterChip
           label="Movies"
           selected={tab === "movies"}
@@ -50,7 +56,7 @@ export default function BazarrScreen() {
           selected={tab === "history"}
           onPress={() => setTab("history")}
         />
-      </View>
+      </ScrollView>
 
       {tab === "movies" && <WantedMovies />}
       {tab === "episodes" && <WantedEpisodes />}
@@ -67,7 +73,7 @@ function WantedMovies() {
   if (!data?.data?.length) {
     return (
       <EmptyState
-        icon={<Film size={32} color="#71717a" />}
+        icon={<Icon icon={Film} size={32} color="#71717a" />}
         title="No missing movie subtitles"
       />
     );
@@ -109,7 +115,7 @@ function WantedMovies() {
               className="p-2 active:opacity-70"
               hitSlop={6}
             >
-              <SearchIcon size={18} color="#3b82f6" />
+              <Icon icon={SearchIcon} size={18} color="#3b82f6" />
             </Pressable>
           </View>
         </Card>
@@ -126,7 +132,7 @@ function WantedEpisodes() {
   if (!data?.data?.length) {
     return (
       <EmptyState
-        icon={<Tv size={32} color="#71717a" />}
+        icon={<Icon icon={Tv} size={32} color="#71717a" />}
         title="No missing episode subtitles"
       />
     );
@@ -179,7 +185,7 @@ function WantedEpisodes() {
               className="p-2 active:opacity-70"
               hitSlop={6}
             >
-              <SearchIcon size={18} color="#3b82f6" />
+              <Icon icon={SearchIcon} size={18} color="#3b82f6" />
             </Pressable>
           </View>
         </Card>
@@ -210,7 +216,7 @@ function History() {
   if (!combined.length) {
     return (
       <EmptyState
-        icon={<Captions size={32} color="#71717a" />}
+        icon={<Icon icon={Captions} size={32} color="#71717a" />}
         title="No subtitle history"
       />
     );
@@ -245,9 +251,9 @@ function History() {
                 </View>
               </View>
               {item._kind === "movie" ? (
-                <Film size={16} color="#71717a" />
+                <Icon icon={Film} size={16} color="#71717a" />
               ) : (
-                <Tv size={16} color="#71717a" />
+                <Icon icon={Tv} size={16} color="#71717a" />
               )}
             </View>
           </Card>

@@ -1,5 +1,12 @@
-import { DEFAULT_DASHBOARD_WIDGETS, WIDGET_ID_RENAMES } from "@/lib/constants";
+import {
+  DEFAULT_DASHBOARD_WIDGETS,
+  DEFAULT_DASHBOARD_NAME,
+  WIDGET_ID_RENAMES,
+  UI_SCALES,
+  DEFAULT_UI_SCALE,
+} from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
+import { generateInstanceId } from "@/lib/uuid";
 
 /**
  * Bump this when the export schema changes and add a matching migration.
@@ -14,8 +21,72 @@ import type { ExportPayload } from "@/store/config-store";
  *   v5  — dashboardOrder renamed to dashboardWidgets
  *   v6  — added optional homeBSSID for rogue-AP-resistant auto-switch
  *   v7  — added per-widget settings; renamed sonarr-calendar → calendar
+ *   v8  — added hapticsEnabled global preference
+ *   v9  — added jellyfin service entry (no schema change; defaultServices()
+ *         backfills the new id, so this is a version stamp only)
+ *   v10 — added customHeaders per service (in secrets) + globalCustomHeaders
+ *         at the top level for reverse-proxy auth (Cloudflare Access etc.)
+ *   v11 — replaced single homeSSID/homeBSSID with homeNetworks: HomeNetwork[]
+ *         so mesh setups can mark every AP as "home"
+ *   v12 — added uiScale (accessibility): app-wide font/spacing/icon multiplier
+ *   v13 — multi-instance services: services becomes Record<ServiceId,
+ *         ServiceInstance[]> where each instance carries a stable UUID id;
+ *         secrets re-keyed by instance UUID instead of ServiceId; new
+ *         activeInstance: Record<ServiceId, string | null> tracks the
+ *         currently-selected instance per service kind.
+ *   v14 — multi-dashboard + per-slot widget settings. Replaces flat
+ *         dashboardWidgets: WidgetId[] + widgetSettings: Record<WidgetId, …>
+ *         with dashboards: Dashboard[] (each with a UUID id, a name, and an
+ *         ordered WidgetSlot[] where each slot has its own UUID + per-slot
+ *         settings) and activeDashboardId: string. The migration folds legacy
+ *         widget list + settings map into a single Default dashboard.
+ *   v15 — multi-select widget instance binding. Per-slot settings rename
+ *         instanceId → instanceIds (and sonarrInstanceId/radarrInstanceId on
+ *         calendar) and broaden the value from `string | "all"` to
+ *         `string[] | "all"`. Scalar legacy ids are wrapped in single-element
+ *         arrays; "all" sentinels carry over unchanged. Same transform runs at
+ *         hydrate time on locally-persisted dashboards.
  */
-export const CURRENT_CONFIG_VERSION = 7;
+export const CURRENT_CONFIG_VERSION = 15;
+
+// Per-slot field renames introduced in v15. Same pairs are applied by the
+// hydrate-time migration in config-store.ts so the import path and the local
+// upgrade path produce identical data shapes.
+export const INSTANCE_BINDING_FIELD_RENAMES: ReadonlyArray<readonly [string, string]> = [
+  ["instanceId", "instanceIds"],
+  ["sonarrInstanceId", "sonarrInstanceIds"],
+  ["radarrInstanceId", "radarrInstanceIds"],
+];
+
+// Walks one slot's settings record and returns a new record with v14 binding
+// fields renamed and their values broadened to the v15 shape. Returns the
+// same reference (no copy) when no rename was needed, so callers can treat a
+// reference-equal result as "nothing to persist".
+export function migrateSlotSettingsBindings(
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  let next: Record<string, unknown> | null = null;
+  for (const [oldKey, newKey] of INSTANCE_BINDING_FIELD_RENAMES) {
+    if (!(oldKey in settings)) continue;
+    if (newKey in settings) {
+      // Already migrated — just drop the legacy key without overwriting.
+      next = next ?? { ...settings };
+      delete next[oldKey];
+      continue;
+    }
+    const v = settings[oldKey];
+    next = next ?? { ...settings };
+    if (v === "all" || (Array.isArray(v) && v.every((x) => typeof x === "string"))) {
+      next[newKey] = v;
+    } else if (typeof v === "string" && v.length > 0) {
+      next[newKey] = [v];
+    } else {
+      next[newKey] = "all";
+    }
+    delete next[oldKey];
+  }
+  return next ?? settings;
+}
 
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
@@ -107,6 +178,148 @@ const migrations: Record<number, (payload: any) => any> = {
       dashboardWidgets.push(id);
     }
     return { ...payload, version: 7, dashboardWidgets, widgetSettings: {} };
+  },
+
+  // v7 → v8: add hapticsEnabled. Pre-v8 backups never recorded the preference,
+  // so default to true to match the long-standing always-on behavior.
+  7: (payload) => ({
+    ...payload,
+    version: 8,
+    hapticsEnabled: typeof payload.hapticsEnabled === "boolean" ? payload.hapticsEnabled : true,
+  }),
+
+  // v8 → v9: jellyfin added to SERVICE_IDS. importConfig merges over
+  // defaultServices() afterward, so older payloads that lack a jellyfin entry
+  // get the disabled default automatically — nothing to transform here.
+  8: (payload) => ({ ...payload, version: 9 }),
+
+  // v9 → v10: added customHeaders per-service (in secrets) and a top-level
+  // globalCustomHeaders. Older payloads have neither; defaulting to an empty
+  // object preserves the prior "no extra headers" behavior.
+  9: (payload) => ({
+    ...payload,
+    version: 10,
+    globalCustomHeaders:
+      payload.globalCustomHeaders && typeof payload.globalCustomHeaders === "object"
+        ? payload.globalCustomHeaders
+        : {},
+  }),
+
+  // v10 → v11: replace single homeSSID / optional homeBSSID with a list of
+  // HomeNetwork entries so mesh setups can register every AP. Empty SSID =>
+  // no networks (auto-switch was effectively unconfigured anyway). Old fields
+  // are dropped from the payload — the new key is the source of truth.
+  10: (payload) => {
+    const ssid = typeof payload.homeSSID === "string" ? payload.homeSSID : "";
+    const bssid = typeof payload.homeBSSID === "string" ? payload.homeBSSID : "";
+    const homeNetworks: { id: string; ssid: string; bssid: string }[] =
+      ssid.length > 0 ? [{ id: "migrated-1", ssid, bssid }] : [];
+    const { homeSSID: _s, homeBSSID: _b, ...rest } = payload;
+    return { ...rest, version: 11, homeNetworks };
+  },
+
+  // v11 → v12: add uiScale (accessibility multiplier for fonts/spacing/icons).
+  // Pre-v12 backups never recorded it, so default to 1 (no scaling) which
+  // matches the prior behavior. Whitelist the value: anything outside the
+  // allowed set falls back to the default.
+  11: (payload) => ({
+    ...payload,
+    version: 12,
+    uiScale: (UI_SCALES as readonly number[]).includes(payload.uiScale)
+      ? payload.uiScale
+      : DEFAULT_UI_SCALE,
+  }),
+
+  // v12 → v13: multi-instance services. Each entry in `services` becomes a
+  // single-element array of ServiceInstance with a generated UUID; secrets
+  // get re-keyed from `secrets[serviceId]` to `secrets[uuid]` using the same
+  // UUID; activeInstance[serviceId] is initialized to that UUID so existing
+  // consumers see the same data they did before.
+  12: (payload) => {
+    const oldServices = (payload.services && typeof payload.services === "object"
+      ? payload.services
+      : {}) as Record<string, any>;
+    const oldSecrets = (payload.secrets && typeof payload.secrets === "object"
+      ? payload.secrets
+      : {}) as Record<string, any>;
+
+    const services: Record<string, any[]> = {};
+    const secrets: Record<string, any> = {};
+    const activeInstance: Record<string, string | null> = {};
+
+    for (const [serviceId, cfg] of Object.entries(oldServices)) {
+      if (!cfg || typeof cfg !== "object") continue;
+      const uuid = generateInstanceId();
+      services[serviceId] = [{ id: uuid, ...cfg }];
+      activeInstance[serviceId] = uuid;
+      const s = oldSecrets[serviceId];
+      if (s && typeof s === "object") {
+        secrets[uuid] = s;
+      }
+    }
+
+    return { ...payload, version: 13, services, secrets, activeInstance };
+  },
+
+  // v13 → v14: multi-dashboard + per-slot settings. Folds legacy
+  // dashboardWidgets: WidgetId[] + widgetSettings: Record<WidgetId, …> into a
+  // single Default dashboard with one slot per widget id, copying the legacy
+  // per-WidgetId settings onto each slot. Drops the now-redundant top-level
+  // dashboardWidgets / widgetSettings fields.
+  13: (payload) => {
+    const widgetIds: string[] = Array.isArray(payload.dashboardWidgets)
+      ? payload.dashboardWidgets.filter((id: unknown): id is string => typeof id === "string")
+      : [];
+    const legacySettings: Record<string, Record<string, unknown>> =
+      payload.widgetSettings && typeof payload.widgetSettings === "object" && !Array.isArray(payload.widgetSettings)
+        ? payload.widgetSettings
+        : {};
+
+    const widgets = widgetIds.map((widgetId) => {
+      const settings = legacySettings[widgetId];
+      const slot: any = { id: generateInstanceId(), widgetId };
+      if (settings && typeof settings === "object" && Object.keys(settings).length > 0) {
+        slot.settings = { ...settings };
+      }
+      return slot;
+    });
+
+    const dashboard = {
+      id: generateInstanceId(),
+      name: DEFAULT_DASHBOARD_NAME,
+      widgets,
+    };
+
+    const { dashboardWidgets: _dw, widgetSettings: _ws, ...rest } = payload;
+    return {
+      ...rest,
+      version: 14,
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+    };
+  },
+
+  // v14 → v15: rename per-slot instanceId/sonarrInstanceId/radarrInstanceId to
+  // their plural forms and wrap scalar legacy ids in single-element arrays.
+  // Slots without settings or without binding fields pass through untouched.
+  14: (payload) => {
+    const dashboards = Array.isArray(payload.dashboards) ? payload.dashboards : [];
+    const migratedDashboards = dashboards.map((d: any) => {
+      if (!d || typeof d !== "object" || !Array.isArray(d.widgets)) return d;
+      const widgets = d.widgets.map((w: any) => {
+        if (!w || typeof w !== "object") return w;
+        if (!w.settings || typeof w.settings !== "object" || Array.isArray(w.settings)) {
+          return w;
+        }
+        const migrated = migrateSlotSettingsBindings(
+          w.settings as Record<string, unknown>,
+        );
+        if (migrated === w.settings) return w;
+        return { ...w, settings: migrated };
+      });
+      return { ...d, widgets };
+    });
+    return { ...payload, version: 15, dashboards: migratedDashboards };
   },
 };
 

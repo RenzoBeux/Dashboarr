@@ -1,11 +1,13 @@
-import { SERVICE_IDS, DASHBOARD_WIDGET_IDS } from "@/lib/constants";
+import { SERVICE_IDS, DASHBOARD_WIDGET_IDS, UI_SCALES } from "@/lib/constants";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import type {
+  Dashboard,
   ExportPayload,
-  ServiceConfig,
+  HomeNetwork,
+  ServiceInstance,
   ServiceSecrets,
   WakeOnLanDevice,
-  WidgetSettingsMap,
+  WidgetSlot,
 } from "@/store/config-store";
 import type { NotificationSettings } from "@/store/notifications-store";
 
@@ -27,14 +29,37 @@ function isHttpUrlOrEmpty(v: unknown): v is string {
   }
 }
 
-function coerceServiceConfig(v: unknown): ServiceConfig | null {
+// RFC 7230 token chars — same set the spec allows in field-name. Rejecting
+// CR/LF in values closes off header-injection if someone hand-edits an export.
+const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+const MAX_HEADERS_PER_SCOPE = 32;
+const MAX_HOME_NETWORKS = 20;
+
+function coerceHeaderMap(v: unknown): Record<string, string> | null {
   if (!isPlainObject(v)) return null;
+  const out: Record<string, string> = {};
+  let count = 0;
+  for (const [key, value] of Object.entries(v)) {
+    if (typeof key !== "string" || key.length === 0 || key.length > 200) return null;
+    if (!HEADER_NAME_RE.test(key)) return null;
+    if (typeof value !== "string" || value.length > 4096) return null;
+    if (/[\r\n]/.test(value)) return null;
+    out[key] = value;
+    if (++count > MAX_HEADERS_PER_SCOPE) return null;
+  }
+  return out;
+}
+
+function coerceServiceInstance(v: unknown): ServiceInstance | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
   if (typeof v.enabled !== "boolean") return null;
   if (typeof v.name !== "string" || v.name.length > 200) return null;
   if (!isHttpUrlOrEmpty(v.localUrl)) return null;
   if (!isHttpUrlOrEmpty(v.remoteUrl)) return null;
   if (typeof v.useRemote !== "boolean") return null;
   return {
+    id: v.id,
     enabled: v.enabled,
     name: v.name,
     localUrl: v.localUrl,
@@ -51,6 +76,11 @@ function coerceServiceSecrets(v: unknown): ServiceSecrets | null {
     if (raw === undefined || raw === null) continue;
     if (typeof raw !== "string" || raw.length > 4096) return null;
     out[key] = raw;
+  }
+  if (v.customHeaders !== undefined && v.customHeaders !== null) {
+    const headers = coerceHeaderMap(v.customHeaders);
+    if (!headers) return null;
+    if (Object.keys(headers).length > 0) out.customHeaders = headers;
   }
   return out;
 }
@@ -72,6 +102,41 @@ function coerceWolDevice(v: unknown): WakeOnLanDevice | null {
     out.port = v.port;
   }
   return out;
+}
+
+function coerceHomeNetwork(v: unknown): HomeNetwork | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (typeof v.ssid !== "string" || v.ssid.length === 0 || v.ssid.length > 64) return null;
+  if (typeof v.bssid !== "string" || v.bssid.length > 64) return null;
+  return { id: v.id, ssid: v.ssid, bssid: v.bssid };
+}
+
+function coerceWidgetSlot(v: unknown): WidgetSlot | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (typeof v.widgetId !== "string") return null;
+  if (!WIDGET_ID_SET.has(v.widgetId)) return null;
+  const slot: WidgetSlot = { id: v.id, widgetId: v.widgetId as WidgetId };
+  if (v.settings !== undefined && v.settings !== null) {
+    if (!isPlainObject(v.settings)) return null;
+    slot.settings = v.settings as Record<string, unknown>;
+  }
+  return slot;
+}
+
+function coerceDashboard(v: unknown): Dashboard | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (typeof v.name !== "string" || v.name.length === 0 || v.name.length > 200) return null;
+  if (!Array.isArray(v.widgets)) return null;
+  const widgets: WidgetSlot[] = [];
+  for (const w of v.widgets) {
+    const slot = coerceWidgetSlot(w);
+    if (!slot) continue;
+    widgets.push(slot);
+  }
+  return { id: v.id, name: v.name, widgets };
 }
 
 function coerceNotificationSettings(v: unknown): NotificationSettings | null {
@@ -124,33 +189,103 @@ export function validateExportPayload(raw: unknown): ExportPayload {
   if (!isPlainObject(raw.services)) throw new Error("Config services is missing or invalid");
   if (!isPlainObject(raw.secrets)) throw new Error("Config secrets is missing or invalid");
   if (typeof raw.autoSwitchNetwork !== "boolean") throw new Error("Config autoSwitchNetwork is invalid");
-  if (typeof raw.homeSSID !== "string" || raw.homeSSID.length > 64) throw new Error("Config homeSSID is invalid");
-  if (raw.homeBSSID !== undefined && (typeof raw.homeBSSID !== "string" || raw.homeBSSID.length > 64)) {
-    throw new Error("Config homeBSSID is invalid");
+  if (!Array.isArray(raw.homeNetworks)) throw new Error("Config homeNetworks is invalid");
+  if (raw.homeNetworks.length > MAX_HOME_NETWORKS) {
+    throw new Error("Config homeNetworks has too many entries");
   }
-  if (!Array.isArray(raw.dashboardWidgets)) throw new Error("Config dashboardWidgets is invalid");
+  if (!Array.isArray(raw.dashboards)) throw new Error("Config dashboards is invalid");
 
-  const services = {} as Record<ServiceId, ServiceConfig>;
+  // v13: services is Record<ServiceId, ServiceInstance[]>. Reject entries that
+  // aren't arrays so a downgrade-then-upgrade payload (or a hand-edited file)
+  // can't slip through with the old singleton shape.
+  const services = {} as Record<ServiceId, ServiceInstance[]>;
+  const seenInstanceIds = new Set<string>();
   for (const [id, value] of Object.entries(raw.services)) {
     if (!SERVICE_ID_SET.has(id)) continue;
-    const coerced = coerceServiceConfig(value);
-    if (!coerced) throw new Error(`Config services.${id} is invalid`);
-    services[id as ServiceId] = coerced;
-  }
-
-  const secrets = {} as Record<ServiceId, ServiceSecrets>;
-  for (const [id, value] of Object.entries(raw.secrets)) {
-    if (!SERVICE_ID_SET.has(id)) continue;
-    const coerced = coerceServiceSecrets(value);
-    if (!coerced) throw new Error(`Config secrets.${id} is invalid`);
-    secrets[id as ServiceId] = coerced;
-  }
-
-  const dashboardWidgets: WidgetId[] = [];
-  for (const item of raw.dashboardWidgets) {
-    if (typeof item === "string" && WIDGET_ID_SET.has(item)) {
-      dashboardWidgets.push(item as WidgetId);
+    if (!Array.isArray(value)) throw new Error(`Config services.${id} is invalid`);
+    const list: ServiceInstance[] = [];
+    for (const entry of value) {
+      const coerced = coerceServiceInstance(entry);
+      if (!coerced) throw new Error(`Config services.${id} entry is invalid`);
+      // Instance UUIDs must be globally unique — the secrets/widget-settings
+      // maps key off them, and a duplicate would silently merge configs.
+      if (seenInstanceIds.has(coerced.id)) {
+        throw new Error(`Config services.${id} has duplicate instance id`);
+      }
+      seenInstanceIds.add(coerced.id);
+      list.push(coerced);
     }
+    services[id as ServiceId] = list;
+  }
+
+  // v13: secrets keyed by instance UUID, not ServiceId. Drop entries whose
+  // UUID doesn't appear in the services list (forward-compatible orphan cleanup).
+  const secrets: Record<string, ServiceSecrets> = {};
+  for (const [uuid, value] of Object.entries(raw.secrets)) {
+    if (!seenInstanceIds.has(uuid)) continue;
+    const coerced = coerceServiceSecrets(value);
+    if (!coerced) throw new Error(`Config secrets.${uuid} is invalid`);
+    secrets[uuid] = coerced;
+  }
+
+  // v13: activeInstance is Record<ServiceId, string | null>. Validate that
+  // every referenced UUID exists in the services list for that kind.
+  if (raw.activeInstance !== undefined && !isPlainObject(raw.activeInstance)) {
+    throw new Error("Config activeInstance is invalid");
+  }
+  const activeInstance = {} as Record<ServiceId, string | null>;
+  const rawActive = (raw.activeInstance as Record<string, unknown> | undefined) ?? {};
+  for (const id of SERVICE_IDS) {
+    const v = rawActive[id];
+    if (v === null || v === undefined) {
+      activeInstance[id] = null;
+      continue;
+    }
+    if (typeof v !== "string") {
+      throw new Error(`Config activeInstance.${id} is invalid`);
+    }
+    const list = services[id] ?? [];
+    activeInstance[id] = list.some((i) => i.id === v) ? v : (list[0]?.id ?? null);
+  }
+
+  // v14: dashboards is the source of truth. Each entry must coerce cleanly;
+  // unknown widget ids inside slots are dropped silently (forward-compat).
+  // Duplicate slot ids across the whole list are rejected so the slot-keyed
+  // settings store can't accidentally collapse two slots into one.
+  const dashboards: Dashboard[] = [];
+  const seenDashboardIds = new Set<string>();
+  const seenSlotIdsGlobal = new Set<string>();
+  for (const item of raw.dashboards) {
+    const coerced = coerceDashboard(item);
+    if (!coerced) throw new Error("Config dashboards entry is invalid");
+    if (seenDashboardIds.has(coerced.id)) {
+      throw new Error("Config dashboards has duplicate id");
+    }
+    seenDashboardIds.add(coerced.id);
+    for (const slot of coerced.widgets) {
+      if (seenSlotIdsGlobal.has(slot.id)) {
+        throw new Error("Config dashboards has duplicate slot id");
+      }
+      seenSlotIdsGlobal.add(slot.id);
+    }
+    dashboards.push(coerced);
+  }
+  if (dashboards.length === 0) throw new Error("Config dashboards is empty");
+
+  let activeDashboardId: string;
+  if (typeof raw.activeDashboardId !== "string") {
+    activeDashboardId = dashboards[0].id;
+  } else if (dashboards.some((d) => d.id === raw.activeDashboardId)) {
+    activeDashboardId = raw.activeDashboardId;
+  } else {
+    activeDashboardId = dashboards[0].id;
+  }
+
+  const homeNetworks: HomeNetwork[] = [];
+  for (const item of raw.homeNetworks) {
+    const coerced = coerceHomeNetwork(item);
+    if (!coerced) throw new Error("Config homeNetworks entry is invalid");
+    homeNetworks.push(coerced);
   }
 
   const payload: ExportPayload = {
@@ -158,14 +293,12 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     exportedAt: raw.exportedAt,
     services,
     secrets,
+    activeInstance,
     autoSwitchNetwork: raw.autoSwitchNetwork,
-    homeSSID: raw.homeSSID,
-    dashboardWidgets,
+    homeNetworks,
+    dashboards,
+    activeDashboardId,
   };
-
-  if (typeof raw.homeBSSID === "string") {
-    payload.homeBSSID = raw.homeBSSID;
-  }
 
   if (raw.backend !== undefined && raw.backend !== null) {
     const coerced = coerceBackend(raw.backend);
@@ -190,20 +323,25 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     payload.wolDevices = devices;
   }
 
-  if (raw.widgetSettings !== undefined && raw.widgetSettings !== null) {
-    if (!isPlainObject(raw.widgetSettings)) {
-      throw new Error("Config widgetSettings is invalid");
+  if (raw.hapticsEnabled !== undefined) {
+    if (typeof raw.hapticsEnabled !== "boolean") throw new Error("Config hapticsEnabled is invalid");
+    payload.hapticsEnabled = raw.hapticsEnabled;
+  }
+
+  if (raw.globalCustomHeaders !== undefined && raw.globalCustomHeaders !== null) {
+    const headers = coerceHeaderMap(raw.globalCustomHeaders);
+    if (!headers) throw new Error("Config globalCustomHeaders is invalid");
+    payload.globalCustomHeaders = headers;
+  }
+
+  if (raw.uiScale !== undefined) {
+    if (
+      typeof raw.uiScale !== "number" ||
+      !(UI_SCALES as readonly number[]).includes(raw.uiScale)
+    ) {
+      throw new Error("Config uiScale is invalid");
     }
-    const settings: WidgetSettingsMap = {};
-    for (const [id, value] of Object.entries(raw.widgetSettings)) {
-      // Drop unknown widget ids (forward-compatibility) and require object
-      // values; specific shape is enforced by the widget registry's defaults
-      // when the values are read.
-      if (!WIDGET_ID_SET.has(id)) continue;
-      if (!isPlainObject(value)) throw new Error(`Config widgetSettings.${id} is invalid`);
-      settings[id as WidgetId] = value as Record<string, unknown>;
-    }
-    payload.widgetSettings = settings;
+    payload.uiScale = raw.uiScale as ExportPayload["uiScale"];
   }
 
   return payload;

@@ -142,9 +142,10 @@ function getBadgeVariant(
 
 interface ViewProps {
   showHeader?: boolean;
+  segmentedControl?: React.ReactNode;
 }
 
-export function SabnzbdDownloadsView({ showHeader = true }: ViewProps) {
+export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: ViewProps) {
   const [filter, setFilter] = useState<FilterType>("all");
   const [sort, setSort] = useState<SortKey>("progress-desc");
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
@@ -309,6 +310,7 @@ export function SabnzbdDownloadsView({ showHeader = true }: ViewProps) {
         />
       ) : (
         <>
+          {segmentedControl}
           {showHeader && <ServiceHeader name="SABnzbd" online={sabHealth?.online} />}
 
           {/* Speed + global pause/resume */}

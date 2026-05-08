@@ -1,75 +1,130 @@
-import { View, Text, Pressable } from "react-native";
+import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Film } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQueries } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useRadarrQueue, useWantedMissing } from "@/hooks/use-radarr";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { truncateText } from "@/lib/utils";
+import {
+  getQueue,
+  getWantedMissing,
+  getRadarrPoster,
+} from "@/services/radarr-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
+import {
+  RADARR_QUEUE_DEFAULT_SETTINGS,
+  type RadarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 
-export function RadarrQueueCard() {
-  const { data: queue, isLoading } = useRadarrQueue();
-  const { data: wanted } = useWantedMissing();
+export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
   const router = useRouter();
+  const { settings } = useWidgetSettings<RadarrQueueSettingsValue>(
+    slotId,
+    RADARR_QUEUE_DEFAULT_SETTINGS,
+  );
+  // Aggregate queue + wanted counts across every enabled Radarr instance, or
+  // narrow to the bound subset based on the slot's instance binding.
+  const allInstances = useEnabledInstances("radarr");
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
-  const records = queue?.records ?? [];
-  const missingCount = wanted?.totalRecords ?? 0;
+  const queueQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["radarr", inst.id, "queue"] as const,
+      queryFn: () => getQueue(1, 20, true, inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  const wantedQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["radarr", inst.id, "wanted"] as const,
+      queryFn: () => getWantedMissing(1, 1, inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  // Initial-load gate only on the queue queries — see lib/multi-instance-query.ts.
+  // Wanted counts are summed; a single failing instance just contributes 0 and
+  // the rest of the badge stays accurate.
+  const { isInitialLoading } = aggregateMultiInstanceState(queueQueries);
+  // Tag every queue record with its source instance so the per-tile router
+  // push uses the right Radarr's movie id space (Radarr ids aren't unique
+  // across instances).
+  const records = queueQueries.flatMap((q, i) =>
+    (q.data?.records ?? []).map((r) => ({ record: r, instanceId: instances[i].id })),
+  );
+  const missingCount = wantedQueries.reduce(
+    (acc, q) => acc + (q.data?.totalRecords ?? 0),
+    0,
+  );
+  const display = records.slice(0, settings.maxItems);
+  const hasMore = records.length > settings.maxItems;
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Radarr Queue</CardTitle>
-        <View className="flex-row gap-2">
-          {missingCount > 0 && (
+      <CardHeaderLink
+        title="Radarr Queue"
+        onPress={() => router.push("/(tabs)/movies")}
+        trailing={
+          missingCount > 0 ? (
             <Badge label="Missing" variant="missing" count={missingCount} />
-          )}
-        </View>
-      </CardHeader>
+          ) : null
+        }
+      />
 
-      {isLoading ? (
-        <SkeletonCardContent rows={3} />
+      {instances.length === 0 ? (
+        <EmptyState compact title="No Radarr instances enabled" />
+      ) : isInitialLoading ? (
+        <PosterSkeletonRow count={4} showSubtitle />
       ) : records.length === 0 ? (
-        <EmptyState
-          icon={<Film size={32} color="#71717a" />}
-          title="No movies in queue"
-        />
+        <EmptyState compact title="No movies in queue" />
       ) : (
-        <View className="gap-3">
-          {records.slice(0, 5).map((item) => {
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
+          {display.map(({ record: item, instanceId }) => {
             const progress =
               item.size > 0 ? (item.size - item.sizeleft) / item.size : 0;
+            const posterUrl = getRadarrPoster(item.movie?.images);
+            const movieTitle = item.movie?.title || item.title;
 
             return (
-              <Pressable
-                key={item.id}
+              <MediaPosterTile
+                key={`${instanceId}:${item.id}`}
+                posterUrl={posterUrl}
+                title={movieTitle}
+                subtitle={item.timeleft ? `ETA ${item.timeleft}` : undefined}
+                cornerBadge={{
+                  label: item.quality.quality.name,
+                  color: "rgba(37, 99, 235, 0.9)",
+                }}
+                bottomOverlay={<PosterProgressStrip progress={progress} />}
+                mediaType="movie"
                 onPress={() =>
+                  // Movie ids aren't globally unique. The router push only
+                  // makes sense if the user is currently viewing the same
+                  // Radarr instance the queue item belongs to. Tap → switch
+                  // active instance to match, then navigate.
                   item.movie && router.push(`/movie/${item.movie.id}`)
                 }
-                className="active:opacity-80"
-              >
-                <View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
-                      {truncateText(item.title, 35)}
-                    </Text>
-                    <Badge
-                      label={item.quality.quality.name}
-                      variant="default"
-                    />
-                  </View>
-                  <ProgressBar progress={progress} showLabel className="mt-1.5" />
-                  {item.timeleft && (
-                    <Text className="text-zinc-500 text-xs mt-1">
-                      ETA {item.timeleft}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
+              />
             );
           })}
-        </View>
+          {hasMore && (
+            <ViewAllTile onPress={() => router.push("/(tabs)/movies")} />
+          )}
+        </ScrollView>
       )}
     </Card>
   );

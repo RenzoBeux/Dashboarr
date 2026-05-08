@@ -26,10 +26,10 @@ export function MediaRow({
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View className="flex-row gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <View key={i} style={{ width: 110 }}>
-                <Skeleton width={110} height={165} borderRadius={12} />
+              <View key={i} className="w-[7.85rem]">
+                <Skeleton width="100%" height={165} borderRadius={12} />
                 <View className="mt-2">
-                  <Skeleton width={90} height={12} borderRadius={4} />
+                  <Skeleton width="80%" height={12} borderRadius={4} />
                 </View>
               </View>
             ))}

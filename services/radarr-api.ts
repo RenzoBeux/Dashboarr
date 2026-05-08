@@ -4,16 +4,46 @@ import type {
   RadarrQueue,
   RadarrWantedMissing,
   RadarrSearchResult,
+  RadarrImage,
+  RadarrRelease,
 } from "@/lib/types";
+
+// Interactive search hits indexers live and frequently exceeds the 15s
+// default timeout. Bump per-call to keep slow indexers from short-circuiting
+// the whole search.
+const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
+
+// --- Image helpers ---
+
+export function getRadarrPoster(
+  images: RadarrImage[] | undefined | null,
+): string | null {
+  if (!images?.length) return null;
+  const poster = images.find((i) => i.coverType === "poster");
+  // Prefer remoteUrl (TMDB CDN, immutable, fast) over url (local proxy).
+  return poster?.remoteUrl || poster?.url || null;
+}
+
+export function getRadarrFanart(
+  images: RadarrImage[] | undefined | null,
+): string | null {
+  if (!images?.length) return null;
+  const fanart = images.find((i) => i.coverType === "fanart");
+  return fanart?.remoteUrl || fanart?.url || null;
+}
+
+// Per-instance routing: every function takes an optional `instanceId` that
+// scopes the request to a specific Radarr instance. When omitted, the user's
+// active Radarr instance is used (legacy single-instance behavior).
 
 // --- Movies ---
 
-export function getMovies(): Promise<RadarrMovie[]> {
-  return serviceRequest<RadarrMovie[]>("radarr", "/movie");
+export function getMovies(instanceId?: string): Promise<RadarrMovie[]> {
+  return serviceRequest<RadarrMovie[]>("radarr", "/movie", { instanceId });
 }
 
-export function getMovie(id: number): Promise<RadarrMovie> {
-  return serviceRequest<RadarrMovie>("radarr", `/movie/${id}`);
+export function getMovie(id: number, instanceId?: string): Promise<RadarrMovie> {
+  return serviceRequest<RadarrMovie>("radarr", `/movie/${id}`, { instanceId });
 }
 
 // --- Queue ---
@@ -22,9 +52,11 @@ export function getQueue(
   page = 1,
   pageSize = 20,
   includeMovie = true,
+  instanceId?: string,
 ): Promise<RadarrQueue> {
   return serviceRequest<RadarrQueue>("radarr", "/queue", {
     params: { page, pageSize, includeMovie },
+    instanceId,
   });
 }
 
@@ -33,17 +65,23 @@ export function getQueue(
 export function getWantedMissing(
   page = 1,
   pageSize = 1,
+  instanceId?: string,
 ): Promise<RadarrWantedMissing> {
   return serviceRequest<RadarrWantedMissing>("radarr", "/wanted/missing", {
     params: { page, pageSize, sortKey: "movieMetadata.sortTitle", sortDirection: "ascending" },
+    instanceId,
   });
 }
 
 // --- Search ---
 
-export function searchMovies(term: string): Promise<RadarrSearchResult[]> {
+export function searchMovies(
+  term: string,
+  instanceId?: string,
+): Promise<RadarrSearchResult[]> {
   return serviceRequest<RadarrSearchResult[]>("radarr", "/movie/lookup", {
     params: { term },
+    instanceId,
   });
 }
 
@@ -59,17 +97,20 @@ export type RadarrMonitorOption =
   | "movieAndCollection"
   | "none";
 
-export function addMovie(movie: {
-  tmdbId: number;
-  title: string;
-  qualityProfileId: number;
-  rootFolderPath: string;
-  monitored?: boolean;
-  searchForMovie?: boolean;
-  minimumAvailability?: RadarrMinimumAvailability;
-  monitor?: RadarrMonitorOption;
-  tags?: number[];
-}): Promise<RadarrMovie> {
+export function addMovie(
+  movie: {
+    tmdbId: number;
+    title: string;
+    qualityProfileId: number;
+    rootFolderPath: string;
+    monitored?: boolean;
+    searchForMovie?: boolean;
+    minimumAvailability?: RadarrMinimumAvailability;
+    monitor?: RadarrMonitorOption;
+    tags?: number[];
+  },
+  instanceId?: string,
+): Promise<RadarrMovie> {
   return serviceRequest<RadarrMovie>("radarr", "/movie", {
     method: "POST",
     body: JSON.stringify({
@@ -85,6 +126,7 @@ export function addMovie(movie: {
         monitor: movie.monitor ?? "movieOnly",
       },
     }),
+    instanceId,
   });
 }
 
@@ -93,19 +135,47 @@ export function addMovie(movie: {
 export function deleteMovie(
   id: number,
   deleteFiles = false,
+  instanceId?: string,
 ): Promise<void> {
   return serviceRequest<void>("radarr", `/movie/${id}`, {
     method: "DELETE",
     params: { deleteFiles },
+    instanceId,
   });
 }
 
 // --- Search Command ---
 
-export function searchForMovie(movieId: number): Promise<void> {
+export function searchForMovie(movieId: number, instanceId?: string): Promise<void> {
   return serviceRequest<void>("radarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "MoviesSearch", movieIds: [movieId] }),
+    instanceId,
+  });
+}
+
+// --- Interactive Release Search & Grab ---
+
+export function getReleasesForMovie(
+  movieId: number,
+  instanceId?: string,
+): Promise<RadarrRelease[]> {
+  return serviceRequest<RadarrRelease[]>("radarr", "/release", {
+    params: { movieId },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+    instanceId,
+  });
+}
+
+export function grabRadarrRelease(
+  guid: string,
+  indexerId: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("radarr", "/release", {
+    method: "POST",
+    body: JSON.stringify({ guid, indexerId }),
+    instanceId,
   });
 }
 
@@ -114,10 +184,28 @@ export function searchForMovie(movieId: number): Promise<void> {
 export function toggleMovieMonitored(
   movieId: number,
   monitored: boolean,
+  instanceId?: string,
 ): Promise<void> {
   return serviceRequest<void>("radarr", "/movie/editor", {
     method: "PUT",
     body: JSON.stringify({ movieIds: [movieId], monitored }),
+    instanceId,
+  });
+}
+
+// --- Update Movie (full PUT) ---
+//
+// Radarr expects the entire movie resource on PUT. Our `RadarrMovie` type is a
+// subset of the API response, but because we always pass the cached GET result
+// through (spread + override), every runtime field is preserved.
+export function updateMovie(
+  movie: RadarrMovie,
+  instanceId?: string,
+): Promise<RadarrMovie> {
+  return serviceRequest<RadarrMovie>("radarr", `/movie/${movie.id}`, {
+    method: "PUT",
+    body: JSON.stringify(movie),
+    instanceId,
   });
 }
 
@@ -126,9 +214,16 @@ export function toggleMovieMonitored(
 export function getCalendar(
   startDate: string,
   endDate: string,
+  options: { unmonitored?: boolean } = {},
+  instanceId?: string,
 ): Promise<RadarrMovie[]> {
   return serviceRequest<RadarrMovie[]>("radarr", "/calendar", {
-    params: { start: startDate, end: endDate },
+    params: {
+      start: startDate,
+      end: endDate,
+      unmonitored: options.unmonitored ?? false,
+    },
+    instanceId,
   });
 }
 
@@ -139,8 +234,12 @@ export interface RadarrQualityProfile {
   name: string;
 }
 
-export function getQualityProfiles(): Promise<RadarrQualityProfile[]> {
-  return serviceRequest<RadarrQualityProfile[]>("radarr", "/qualityprofile");
+export function getQualityProfiles(
+  instanceId?: string,
+): Promise<RadarrQualityProfile[]> {
+  return serviceRequest<RadarrQualityProfile[]>("radarr", "/qualityprofile", {
+    instanceId,
+  });
 }
 
 // --- Root Folders ---
@@ -151,8 +250,8 @@ export interface RadarrRootFolder {
   freeSpace: number;
 }
 
-export function getRootFolders(): Promise<RadarrRootFolder[]> {
-  return serviceRequest<RadarrRootFolder[]>("radarr", "/rootfolder");
+export function getRootFolders(instanceId?: string): Promise<RadarrRootFolder[]> {
+  return serviceRequest<RadarrRootFolder[]>("radarr", "/rootfolder", { instanceId });
 }
 
 // --- Tags ---
@@ -162,6 +261,6 @@ export interface RadarrTag {
   label: string;
 }
 
-export function getTags(): Promise<RadarrTag[]> {
-  return serviceRequest<RadarrTag[]>("radarr", "/tag");
+export function getTags(instanceId?: string): Promise<RadarrTag[]> {
+  return serviceRequest<RadarrTag[]>("radarr", "/tag", { instanceId });
 }

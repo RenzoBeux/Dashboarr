@@ -1,0 +1,245 @@
+import { serviceRequest, pingService } from "./http-client";
+
+// jest.mock factories run before module-scope code; the only refs allowed
+// inside are auto-imports + names prefixed with `mock`.
+const mockStateRef: { current: any } = { current: null };
+
+jest.mock("@/store/config-store", () => ({
+  useConfigStore: {
+    getState: () => mockStateRef.current,
+  },
+}));
+
+interface FakeInstance {
+  id: string;
+  enabled: boolean;
+  name: string;
+  localUrl: string;
+  remoteUrl: string;
+  useRemote: boolean;
+}
+
+interface FakeSecrets {
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  customHeaders?: Record<string, string>;
+}
+
+// Mock the v13 multi-instance store shape. Each service kind owns an array of
+// instances; secrets and the active-instance pointer are keyed by instance UUID.
+// Convenience aliases (`secrets[serviceId]`) point at the active instance's
+// secret bag so each test can write `mockStateRef.current.secrets.radarr.X`
+// without having to know the synthetic UUID.
+interface FakeState {
+  demoMode: boolean;
+  serviceInstances: Record<string, FakeInstance[]>;
+  instanceSecrets: Record<string, FakeSecrets>;
+  activeInstance: Record<string, string | null>;
+  // Active-instance projections kept in sync with the underlying maps.
+  secrets: Record<string, FakeSecrets>;
+  globalCustomHeaders: Record<string, string>;
+  getActiveInstanceId: (id: string) => string | null;
+  getInstance: (id: string, instanceId: string) => FakeInstance | undefined;
+  getActiveUrl: (id: string, instanceId?: string) => string;
+  getMergedHeaders: (id: string, instanceId?: string) => Record<string, string>;
+}
+
+const FIXTURE_KINDS = [
+  { id: "radarr", url: "http://radarr.local:7878", secrets: { apiKey: "radarr-key" } },
+  { id: "sonarr", url: "http://sonarr.local:8989", secrets: { apiKey: "sonarr-key" } },
+  { id: "plex", url: "http://plex.local:32400", secrets: { apiKey: "plex-token" } },
+  { id: "jellyfin", url: "http://jelly.local:8096", secrets: { apiKey: "jelly-token" } },
+  { id: "glances", url: "http://glances.local:61208", secrets: { username: "u", password: "p" } },
+];
+
+function makeState(overrides: Partial<FakeState> = {}): FakeState {
+  const serviceInstances: Record<string, FakeInstance[]> = {};
+  const instanceSecrets: Record<string, FakeSecrets> = {};
+  const activeInstance: Record<string, string | null> = {};
+  const secrets: Record<string, FakeSecrets> = {};
+
+  for (const f of FIXTURE_KINDS) {
+    const uuid = `${f.id}-uuid`;
+    serviceInstances[f.id] = [
+      {
+        id: uuid,
+        enabled: true,
+        name: f.id,
+        localUrl: f.url,
+        remoteUrl: "",
+        useRemote: false,
+      },
+    ];
+    instanceSecrets[uuid] = { ...f.secrets };
+    activeInstance[f.id] = uuid;
+    secrets[f.id] = instanceSecrets[uuid];
+  }
+
+  const state: FakeState = {
+    demoMode: false,
+    serviceInstances,
+    instanceSecrets,
+    activeInstance,
+    secrets,
+    globalCustomHeaders: {},
+    getActiveInstanceId(id) {
+      return this.activeInstance[id] ?? this.serviceInstances[id]?.[0]?.id ?? null;
+    },
+    getInstance(id, instanceId) {
+      return this.serviceInstances[id]?.find((i) => i.id === instanceId);
+    },
+    getActiveUrl(id, instanceId) {
+      const list = this.serviceInstances[id] ?? [];
+      const targetId = instanceId ?? this.activeInstance[id] ?? list[0]?.id;
+      const inst = list.find((i) => i.id === targetId);
+      if (!inst) return "";
+      return inst.useRemote ? inst.remoteUrl : inst.localUrl;
+    },
+    getMergedHeaders(id, instanceId) {
+      const targetId =
+        instanceId ?? this.activeInstance[id] ?? this.serviceInstances[id]?.[0]?.id;
+      const perInstance = targetId
+        ? this.instanceSecrets[targetId]?.customHeaders
+        : undefined;
+      return { ...this.globalCustomHeaders, ...(perInstance ?? {}) };
+    },
+    ...overrides,
+  };
+  return state;
+}
+
+function fetchMock(): jest.Mock {
+  return jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => ({}),
+    text: async () => "",
+    clone() {
+      return this;
+    },
+  });
+}
+
+describe("serviceRequest — custom header injection", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function getSentHeaders(): Headers {
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1] as { headers: Headers };
+    return init.headers;
+  }
+
+  it("attaches a per-service custom header on a Radarr request", async () => {
+    mockStateRef.current.secrets.radarr.customHeaders = {
+      "CF-Access-Client-Id": "id-1",
+    };
+    await serviceRequest("radarr", "/system/status");
+    expect(getSentHeaders().get("CF-Access-Client-Id")).toBe("id-1");
+  });
+
+  it("attaches global custom headers on a service that has none of its own", async () => {
+    mockStateRef.current.globalCustomHeaders = {
+      "CF-Access-Client-Id": "g-id",
+      "CF-Access-Client-Secret": "g-secret",
+    };
+    await serviceRequest("sonarr", "/system/status");
+    const headers = getSentHeaders();
+    expect(headers.get("CF-Access-Client-Id")).toBe("g-id");
+    expect(headers.get("CF-Access-Client-Secret")).toBe("g-secret");
+  });
+
+  it("merges global + per-service with per-service winning on collision", async () => {
+    mockStateRef.current.globalCustomHeaders = {
+      "X-Shared": "global-value",
+      Authorization: "Bearer global",
+    };
+    mockStateRef.current.secrets.radarr.customHeaders = {
+      Authorization: "Bearer service",
+    };
+    await serviceRequest("radarr", "/system/status");
+    const headers = getSentHeaders();
+    expect(headers.get("X-Shared")).toBe("global-value");
+    expect(headers.get("Authorization")).toBe("Bearer service");
+  });
+
+  it("never lets a custom header overwrite the service's X-Api-Key", async () => {
+    mockStateRef.current.secrets.radarr.customHeaders = {
+      "X-Api-Key": "user-typed-this-by-mistake",
+    };
+    await serviceRequest("radarr", "/system/status");
+    expect(getSentHeaders().get("X-Api-Key")).toBe("radarr-key");
+  });
+
+  it("never lets a custom header overwrite the Plex token", async () => {
+    mockStateRef.current.secrets.plex.customHeaders = {
+      "X-Plex-Token": "spoofed",
+    };
+    await serviceRequest("plex", "/identity");
+    expect(getSentHeaders().get("X-Plex-Token")).toBe("plex-token");
+  });
+
+  it("never lets a custom header overwrite the Jellyfin token", async () => {
+    mockStateRef.current.secrets.jellyfin.customHeaders = {
+      "X-Emby-Token": "spoofed",
+    };
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentHeaders().get("X-Emby-Token")).toBe("jelly-token");
+  });
+
+  it("never lets a custom header overwrite Basic auth on Glances", async () => {
+    mockStateRef.current.secrets.glances.customHeaders = {
+      Authorization: "Bearer attacker",
+    };
+    await serviceRequest("glances", "/cpu");
+    const auth = getSentHeaders().get("Authorization");
+    expect(auth?.startsWith("Basic ")).toBe(true);
+  });
+});
+
+describe("pingService — custom header injection", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+    });
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("forwards merged headers on the ping (so the proxy lets it through)", async () => {
+    mockStateRef.current.globalCustomHeaders = { "CF-Access-Client-Id": "g" };
+    mockStateRef.current.secrets.radarr.customHeaders = {
+      "X-Override": "svc",
+    };
+    await pingService("radarr");
+    const init = fetchSpy.mock.calls[0][1] as { headers: Headers };
+    expect(init.headers.get("CF-Access-Client-Id")).toBe("g");
+    expect(init.headers.get("X-Override")).toBe("svc");
+    // Service auth still wins on the ping path too.
+    expect(init.headers.get("X-Api-Key")).toBe("radarr-key");
+  });
+});

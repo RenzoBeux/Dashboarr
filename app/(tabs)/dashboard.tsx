@@ -9,44 +9,56 @@ import {
   Settings,
   X,
   Plus,
+  ChevronsUpDown,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
-import { ICON, type WidgetId } from "@/lib/constants";
+import { ICON } from "@/lib/constants";
 import { WIDGET_REGISTRY } from "@/components/dashboard/widget-registry";
 import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
+import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
   const services = useConfigStore((s) => s.services);
-  const dashboardWidgets = useConfigStore((s) => s.dashboardWidgets);
-  const removeWidget = useConfigStore((s) => s.removeWidget);
-  const moveWidget = useConfigStore((s) => s.moveWidget);
+  const dashboards = useConfigStore((s) => s.dashboards);
+  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
+  const removeSlot = useConfigStore((s) => s.removeSlot);
+  const moveSlot = useConfigStore((s) => s.moveSlot);
   const [editMode, setEditMode] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
-  const [settingsForWidget, setSettingsForWidget] = useState<WidgetId | null>(null);
+  const [dashboardPickerVisible, setDashboardPickerVisible] = useState(false);
+  const [settingsForSlot, setSettingsForSlot] = useState<string | null>(null);
+
+  const activeDashboard =
+    dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0];
+  const slots = activeDashboard?.widgets ?? [];
 
   const hasAnyEnabled = Object.values(services).some((s) => s.enabled);
 
-  const visibleWidgets = dashboardWidgets.filter((id) => {
-    const widget = WIDGET_REGISTRY[id];
+  // Slots whose required service is disabled get filtered out so users don't
+  // see broken cards. Service-health/calendar/wol-devices have `service: null`
+  // and so always render.
+  const visibleSlots = slots.filter((slot) => {
+    const widget = WIDGET_REGISTRY[slot.widgetId];
     if (!widget) return false;
     return widget.service === null || services[widget.service].enabled;
   });
 
-  function handleMove(id: (typeof dashboardWidgets)[number], direction: "up" | "down") {
+  function handleMove(slotId: string, direction: "up" | "down") {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    moveWidget(id, direction);
+    moveSlot(slotId, direction);
   }
 
-  function handleRemove(id: (typeof dashboardWidgets)[number]) {
+  function handleRemove(slotId: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    removeWidget(id);
+    removeSlot(slotId);
   }
 
   function openPicker() {
@@ -54,15 +66,34 @@ export default function DashboardScreen() {
     setPickerVisible(true);
   }
 
-  function openSettings(id: WidgetId) {
+  function openSettings(slotId: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSettingsForWidget(id);
+    setSettingsForSlot(slotId);
   }
+
+  function openDashboardPicker() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDashboardPickerVisible(true);
+  }
+
+  const dashboardName = activeDashboard?.name ?? "Dashboarr";
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <View className="flex-row items-center justify-between mt-2 mb-4">
-        <Text className="text-zinc-100 text-2xl font-bold">Dashboarr</Text>
+        <TouchableOpacity
+          onPress={openDashboardPicker}
+          className="flex-row items-center gap-1.5"
+          hitSlop={8}
+          activeOpacity={0.7}
+        >
+          <Text className="text-zinc-100 text-2xl font-bold" numberOfLines={1}>
+            {dashboardName}
+          </Text>
+          {/* Always show the chevron so single-dashboard users still see the
+              title is tappable (lets them rename or add another). */}
+          <Icon icon={ChevronsUpDown} size={ICON.SM} color="#71717a" />
+        </TouchableOpacity>
         {hasAnyEnabled && (
           <TouchableOpacity
             onPress={() => setEditMode((e) => !e)}
@@ -70,9 +101,9 @@ export default function DashboardScreen() {
             hitSlop={8}
           >
             {editMode ? (
-              <Check size={ICON.MD} color="#22c55e" />
+              <Icon icon={Check} size={ICON.MD} color="#22c55e" />
             ) : (
-              <Pencil size={ICON.MD} color="#71717a" />
+              <Icon icon={Pencil} size={ICON.MD} color="#71717a" />
             )}
           </TouchableOpacity>
         )}
@@ -100,16 +131,16 @@ export default function DashboardScreen() {
               </Text>
             </Animated.View>
           )}
-          {visibleWidgets.map((id, visibleIndex) => {
-            const widget = WIDGET_REGISTRY[id];
+          {visibleSlots.map((slot, visibleIndex) => {
+            const widget = WIDGET_REGISTRY[slot.widgetId];
             if (!widget) return null;
             const { component: WidgetComponent, label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
-            const isLast = visibleIndex === visibleWidgets.length - 1;
+            const isLast = visibleIndex === visibleSlots.length - 1;
 
             return (
               <Animated.View
-                key={id}
+                key={slot.id}
                 entering={FadeInDown.delay(visibleIndex * 80).springify()}
               >
                 {editMode && (
@@ -119,43 +150,43 @@ export default function DashboardScreen() {
                     className="flex-row items-center justify-between mb-1 px-1"
                   >
                     <View className="flex-row items-center gap-1.5 flex-1">
-                      <GripVertical size={ICON.SM} color="#52525b" />
+                      <Icon icon={GripVertical} size={ICON.SM} color="#52525b" />
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
                         {label}
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-1">
                       <TouchableOpacity
-                        onPress={() => handleMove(id, "up")}
+                        onPress={() => handleMove(slot.id, "up")}
                         disabled={isFirst}
                         className="p-1"
                         hitSlop={6}
                       >
-                        <ChevronUp size={ICON.MD} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
+                        <Icon icon={ChevronUp} size={ICON.MD} color={isFirst ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={() => handleMove(id, "down")}
+                        onPress={() => handleMove(slot.id, "down")}
                         disabled={isLast}
                         className="p-1"
                         hitSlop={6}
                       >
-                        <ChevronDown size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
+                        <Icon icon={ChevronDown} size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
                       {settingsComponent && (
                         <TouchableOpacity
-                          onPress={() => openSettings(id)}
+                          onPress={() => openSettings(slot.id)}
                           className="p-1 ml-1"
                           hitSlop={6}
                         >
-                          <Settings size={ICON.MD} color="#60a5fa" />
+                          <Icon icon={Settings} size={ICON.MD} color="#60a5fa" />
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
-                        onPress={() => handleRemove(id)}
+                        onPress={() => handleRemove(slot.id)}
                         className="p-1 ml-1"
                         hitSlop={6}
                       >
-                        <X size={ICON.MD} color="#ef4444" />
+                        <Icon icon={X} size={ICON.MD} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
                   </Animated.View>
@@ -170,7 +201,7 @@ export default function DashboardScreen() {
                   } : undefined}
                 >
                   <CardErrorBoundary>
-                    <WidgetComponent />
+                    <WidgetComponent slotId={slot.id} />
                   </CardErrorBoundary>
                 </View>
               </Animated.View>
@@ -183,7 +214,7 @@ export default function DashboardScreen() {
                 onPress={openPicker}
                 className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
               >
-                <Plus size={ICON.MD} color="#a1a1aa" />
+                <Icon icon={Plus} size={ICON.MD} color="#a1a1aa" />
                 <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
               </TouchableOpacity>
             </Animated.View>
@@ -193,8 +224,12 @@ export default function DashboardScreen() {
 
       <AddWidgetSheet visible={pickerVisible} onClose={() => setPickerVisible(false)} />
       <WidgetSettingsSheet
-        widgetId={settingsForWidget}
-        onClose={() => setSettingsForWidget(null)}
+        slotId={settingsForSlot}
+        onClose={() => setSettingsForSlot(null)}
+      />
+      <DashboardPickerSheet
+        visible={dashboardPickerVisible}
+        onClose={() => setDashboardPickerVisible(false)}
       />
     </ScreenWrapper>
   );

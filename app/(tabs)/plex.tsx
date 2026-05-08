@@ -1,6 +1,17 @@
 import { useState } from "react";
-import { View, Text, Pressable, Image } from "react-native";
-import { Play, Pause, Loader, Library, Clock, Tv } from "lucide-react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
+import { Image } from "expo-image";
+import {
+  Play,
+  Pause,
+  Loader,
+  Library,
+  Clock,
+  Tv,
+  ArrowUpDown,
+  Check,
+} from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -9,6 +20,13 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { SortButton } from "@/components/ui/sort-button";
+import {
+  useSortStore,
+  SORT_DEFAULTS,
+  type PlexRecentSortKey,
+} from "@/store/sort-store";
 import {
   usePlexLibraries,
   usePlexRecentlyAdded,
@@ -17,14 +35,49 @@ import {
 } from "@/hooks/use-plex";
 import { getPlexImageUrl } from "@/services/plex-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
 import type { PlexSession, PlexMediaItem, PlexLibrary } from "@/lib/types";
 
 type Tab = "playing" | "recent" | "ondeck" | "libraries";
 
+const RECENT_SORT_OPTIONS: { key: PlexRecentSortKey; label: string }[] = [
+  { key: "added-desc", label: "Recently Added" },
+  { key: "title-asc", label: "Title: A → Z" },
+  { key: "title-desc", label: "Title: Z → A" },
+  { key: "year-desc", label: "Year: Newest First" },
+  { key: "year-asc", label: "Year: Oldest First" },
+];
+
+function recentTitle(item: PlexMediaItem): string {
+  return item.grandparentTitle || item.parentTitle || item.title;
+}
+
+function compareRecent(
+  a: PlexMediaItem,
+  b: PlexMediaItem,
+  sort: PlexRecentSortKey,
+): number {
+  switch (sort) {
+    case "added-desc":
+      return (b.addedAt ?? 0) - (a.addedAt ?? 0);
+    case "title-asc":
+      return recentTitle(a).localeCompare(recentTitle(b));
+    case "title-desc":
+      return recentTitle(b).localeCompare(recentTitle(a));
+    case "year-desc":
+      return (b.year ?? 0) - (a.year ?? 0);
+    case "year-asc":
+      return (a.year ?? 0) - (b.year ?? 0);
+  }
+}
+
 export default function PlexScreen() {
   const [tab, setTab] = useState<Tab>("playing");
+  const recentSort = useSortStore((s) => s.plexRecent);
+  const setRecentSort = useSortStore((s) => s.setPlexRecent);
+  const [recentSortOpen, setRecentSortOpen] = useState(false);
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["plex"]]);
 
@@ -32,23 +85,52 @@ export default function PlexScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Plex" online={plexHealth?.online} />
+      <ServiceHeader name="Plex" online={plexHealth?.online} serviceId="plex" />
 
-      <View className="flex-row gap-2 mb-4">
-        {(["playing", "recent", "ondeck", "libraries"] as Tab[]).map((t) => (
-          <FilterChip
-            key={t}
-            label={t === "playing" ? "Now Playing" : t === "ondeck" ? "On Deck" : t.charAt(0).toUpperCase() + t.slice(1)}
-            selected={tab === t}
-            onPress={() => setTab(t)}
+      <View className="flex-row items-center gap-2 mb-4">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="flex-1"
+        >
+          {(["playing", "recent", "ondeck", "libraries"] as Tab[]).map((t) => (
+            <FilterChip
+              key={t}
+              label={t === "playing" ? "Now Playing" : t === "ondeck" ? "On Deck" : t.charAt(0).toUpperCase() + t.slice(1)}
+              selected={tab === t}
+              onPress={() => setTab(t)}
+            />
+          ))}
+        </ScrollView>
+        {tab === "recent" && (
+          <SortButton
+            onPress={() => setRecentSortOpen(true)}
+            active={recentSort !== SORT_DEFAULTS.plexRecent}
           />
-        ))}
+        )}
       </View>
 
       {tab === "playing" && <NowPlaying />}
-      {tab === "recent" && <RecentlyAdded />}
+      {tab === "recent" && <RecentlyAdded sort={recentSort} />}
       {tab === "ondeck" && <OnDeck />}
       {tab === "libraries" && <Libraries />}
+
+      <ActionSheet
+        visible={recentSortOpen}
+        onClose={() => setRecentSortOpen(false)}
+        title="Sort recently added"
+        actions={RECENT_SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
+          label: opt.label,
+          icon:
+            recentSort === opt.key ? (
+              <Icon icon={Check} size={18} color="#3b82f6" />
+            ) : (
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
+            ),
+          onPress: () => setRecentSort(opt.key),
+        }))}
+      />
     </ScreenWrapper>
   );
 }
@@ -60,7 +142,7 @@ function NowPlaying() {
   if (!sessions?.length) {
     return (
       <EmptyState
-        icon={<Play size={32} color="#71717a" />}
+        icon={<Icon icon={Play} size={32} color="#71717a" />}
         title="Nothing playing"
         message="No active Plex streams"
       />
@@ -110,16 +192,19 @@ function SessionCard({ session }: { session: PlexSession }) {
         <Image
           source={{ uri: thumbUrl }}
           className="w-14 h-20 rounded-lg bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={thumbUrl}
         />
       ) : (
         <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
-          <Play size={18} color="#71717a" />
+          <Icon icon={Play} size={18} color="#71717a" />
         </View>
       )}
       <View className="flex-1">
         <View className="flex-row items-center gap-1.5 mb-1">
-          <StateIcon size={14} color={stateColor} />
+          <Icon icon={StateIcon} size={14} color={stateColor} />
           <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
             {truncateText(title, 30)}
           </Text>
@@ -136,14 +221,15 @@ function SessionCard({ session }: { session: PlexSession }) {
   );
 }
 
-function RecentlyAdded() {
+function RecentlyAdded({ sort }: { sort: PlexRecentSortKey }) {
   const { data: items, isLoading } = usePlexRecentlyAdded();
+  const cellWidth = usePosterCellWidth();
 
   if (isLoading) {
     return (
       <View className="flex-row flex-wrap gap-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} className="w-[30%]">
+          <View key={i} style={{ width: cellWidth }}>
             <Skeleton width="100%" height={150} borderRadius={12} />
             <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
           </View>
@@ -155,9 +241,11 @@ function RecentlyAdded() {
     return <EmptyState title="Nothing recently added" />;
   }
 
+  const sorted = [...items].sort((a, b) => compareRecent(a, b, sort));
+
   return (
     <View className="flex-row flex-wrap gap-3">
-      {items.map((item) => (
+      {sorted.map((item) => (
         <MediaPoster key={item.ratingKey} item={item} />
       ))}
     </View>
@@ -191,11 +279,14 @@ function OnDeck() {
               <Image
                 source={{ uri: thumbUrl }}
                 className="w-14 h-20 rounded-lg bg-surface-light"
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={200}
+                recyclingKey={thumbUrl}
               />
             ) : (
               <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
-                <Tv size={18} color="#71717a" />
+                <Icon icon={Tv} size={18} color="#71717a" />
               </View>
             )}
             <View className="flex-1 justify-center">
@@ -237,7 +328,7 @@ function Libraries() {
       {libraries.map((lib) => (
         <Card key={lib.key} className="flex-row items-center gap-3">
           <View className="bg-surface-light rounded-xl p-2.5">
-            <Library size={20} color="#a1a1aa" />
+            <Icon icon={Library} size={20} color="#a1a1aa" />
           </View>
           <View className="flex-1">
             <Text className="text-zinc-200 text-sm font-medium">{lib.title}</Text>
@@ -259,21 +350,25 @@ function MediaPoster({ item }: { item: PlexMediaItem }) {
     item.type === "episode"
       ? item.grandparentTitle || item.title
       : item.title;
+  const cellWidth = usePosterCellWidth();
 
   return (
-    <View className="w-[30%]">
+    <View style={{ width: cellWidth }}>
       {thumbUrl ? (
         <Image
           source={{ uri: thumbUrl }}
           className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          resizeMode="cover"
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={200}
+          recyclingKey={thumbUrl}
         />
       ) : (
         <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Play size={24} color="#71717a" />
+          <Icon icon={Play} size={24} color="#71717a" />
         </View>
       )}
-      <Text className="text-zinc-300 text-xs mt-1" numberOfLines={1}>
+      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
         {title}
       </Text>
     </View>

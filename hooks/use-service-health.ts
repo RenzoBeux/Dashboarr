@@ -1,27 +1,78 @@
 import { useQuery } from "@tanstack/react-query";
 import { pingService } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
-import { SERVICE_IDS, POLLING_INTERVALS } from "@/lib/constants";
-import type { ServiceHealthStatus } from "@/lib/types";
+import { SERVICE_IDS, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
+import type {
+  ServiceHealthStatus,
+  ServiceInstanceHealthStatus,
+} from "@/lib/types";
 
+/**
+ * Health check for every configured (kind, instance) pair. The result still
+ * has one entry per kind — `find(s => s.id === "radarr")` — so existing
+ * consumers keep working. Each entry now carries an `instances` array with
+ * per-instance details for the notification watcher and any UI that wants to
+ * show "Radarr 4K is offline" instead of just "Radarr is offline".
+ */
 export function useServiceHealth() {
-  const services = useConfigStore((s) => s.services);
+  const serviceInstances = useConfigStore((s) => s.serviceInstances);
 
   return useQuery({
     queryKey: ["serviceHealth"],
     queryFn: async (): Promise<ServiceHealthStatus[]> => {
+      // Snapshot the instance map for stable iteration. Each kind contributes
+      // one ServiceHealthStatus with an `instances` breakdown — kinds with no
+      // instances configured (rare; only after a user removes the last one)
+      // appear as offline with an empty instances list so the kind keeps a
+      // slot in the dashboard health card.
       const results = await Promise.all(
-        SERVICE_IDS.map(async (id) => {
-          const config = services[id];
-          if (!config.enabled) {
-            return { id, name: config.name, online: false };
+        SERVICE_IDS.map(async (id): Promise<ServiceHealthStatus> => {
+          const list = serviceInstances[id] ?? [];
+          if (list.length === 0) {
+            return {
+              id,
+              name: SERVICE_DEFAULTS[id].name,
+              online: false,
+              instances: [],
+            };
           }
-          const responseTime = await pingService(id);
+          const instanceHealths: ServiceInstanceHealthStatus[] = await Promise.all(
+            list.map(async (inst) => {
+              if (!inst.enabled) {
+                return {
+                  instanceId: inst.id,
+                  instanceName: inst.name,
+                  online: false,
+                };
+              }
+              const responseTime = await pingService(id, undefined, inst.id);
+              return {
+                instanceId: inst.id,
+                instanceName: inst.name,
+                online: responseTime !== null,
+                responseTime: responseTime ?? undefined,
+              };
+            }),
+          );
+          // Aggregate: the kind is "online" if any instance is, and the
+          // representative response time is the fastest reachable one.
+          const onlineInstances = instanceHealths.filter((i) => i.online);
+          const responseTimes = onlineInstances
+            .map((i) => i.responseTime)
+            .filter((rt): rt is number => typeof rt === "number");
+          // Display name preference: when only one instance is configured, use
+          // that instance's name (matches v12 single-instance UX). With
+          // multiple instances, fall back to the kind's default name so the
+          // card doesn't look inconsistent.
+          const name =
+            list.length === 1 ? list[0].name : SERVICE_DEFAULTS[id].name;
           return {
             id,
-            name: config.name,
-            online: responseTime !== null,
-            responseTime: responseTime ?? undefined,
+            name,
+            online: onlineInstances.length > 0,
+            responseTime:
+              responseTimes.length > 0 ? Math.min(...responseTimes) : undefined,
+            instances: instanceHealths,
           };
         }),
       );

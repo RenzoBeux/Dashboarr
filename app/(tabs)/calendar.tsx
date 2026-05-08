@@ -1,8 +1,17 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable, Image } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Tv, Film } from "lucide-react-native";
+import { useQueries } from "@tanstack/react-query";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Tv,
+  Film,
+  Eye,
+  EyeOff,
+} from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -11,12 +20,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ICON, POLLING_INTERVALS } from "@/lib/constants";
 import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
-import { useConfigStore } from "@/store/config-store";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { formatEpisodeCode } from "@/lib/utils";
+import { formatEpisodeCode, localDateKey } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { lightHaptic } from "@/lib/haptics";
+import { getBoolean, setBoolean } from "@/store/storage";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
+
+const INCLUDE_UNMONITORED_KEY = "ui.calendar.includeUnmonitored";
 
 type Filter = "all" | "tv" | "movies";
 
@@ -31,16 +43,12 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-function toDateKey(d: Date): string {
-  return d.toISOString().split("T")[0];
-}
-
 function getMonthRange(year: number, month: number) {
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 0);
   return {
-    start: toDateKey(start),
-    end: toDateKey(end),
+    start: localDateKey(start),
+    end: localDateKey(end),
   };
 }
 
@@ -57,13 +65,13 @@ function getCalendarGrid(year: number, month: number) {
   for (let i = startDow - 1; i >= 0; i--) {
     const d = prevLast - i;
     const date = new Date(year, month - 1, d);
-    cells.push({ day: d, dateKey: toDateKey(date), inMonth: false });
+    cells.push({ day: d, dateKey: localDateKey(date), inMonth: false });
   }
 
   // Current month
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
-    cells.push({ day: d, dateKey: toDateKey(date), inMonth: true });
+    cells.push({ day: d, dateKey: localDateKey(date), inMonth: true });
   }
 
   // Next month padding
@@ -71,7 +79,7 @@ function getCalendarGrid(year: number, month: number) {
   if (remaining < 7) {
     for (let d = 1; d <= remaining; d++) {
       const date = new Date(year, month + 1, d);
-      cells.push({ day: d, dateKey: toDateKey(date), inMonth: false });
+      cells.push({ day: d, dateKey: localDateKey(date), inMonth: false });
     }
   }
 
@@ -82,32 +90,90 @@ export default function CalendarScreen() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState(toDateKey(today));
+  const [selectedDate, setSelectedDate] = useState(localDateKey(today));
   const [filter, setFilter] = useState<Filter>("all");
+  const [includeUnmonitored, setIncludeUnmonitoredState] = useState(() =>
+    getBoolean(INCLUDE_UNMONITORED_KEY),
+  );
 
-  const sonarrEnabled = useConfigStore((s) => s.services.sonarr.enabled);
-  const radarrEnabled = useConfigStore((s) => s.services.radarr.enabled);
+  const setIncludeUnmonitored = (value: boolean) => {
+    setIncludeUnmonitoredState(value);
+    setBoolean(INCLUDE_UNMONITORED_KEY, value);
+  };
+
+  const sonarrInstances = useEnabledInstances("sonarr");
+  const radarrInstances = useEnabledInstances("radarr");
 
   const { start, end } = getMonthRange(year, month);
 
-  const { data: episodes, isLoading: loadingEp } = useQuery({
-    queryKey: ["sonarr", "calendar", start, end],
-    queryFn: () => getSonarrCalendar(start, end),
-    refetchInterval: POLLING_INTERVALS.calendar,
-    enabled: sonarrEnabled,
+  // Fan out the calendar query across every enabled Sonarr/Radarr instance.
+  // Each instance contributes its own slice of dates; we flatten and dedupe
+  // visually (no need to merge by id — different instances have different
+  // libraries, so duplicate ids across instances are still distinct shows).
+  const sonarrQueries = useQueries({
+    queries: sonarrInstances.map((inst) => ({
+      queryKey: [
+        "sonarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ] as const,
+      queryFn: () =>
+        getSonarrCalendar(start, end, { unmonitored: includeUnmonitored }, inst.id),
+      refetchInterval: POLLING_INTERVALS.calendar,
+    })),
   });
 
-  const { data: movies, isLoading: loadingMov } = useQuery({
-    queryKey: ["radarr", "calendar", start, end],
-    queryFn: () => getRadarrCalendar(start, end),
-    refetchInterval: POLLING_INTERVALS.calendar,
-    enabled: radarrEnabled,
+  const radarrQueries = useQueries({
+    queries: radarrInstances.map((inst) => ({
+      queryKey: [
+        "radarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ] as const,
+      queryFn: () =>
+        getRadarrCalendar(start, end, { unmonitored: includeUnmonitored }, inst.id),
+      refetchInterval: POLLING_INTERVALS.calendar,
+    })),
   });
 
-  const { refreshing, onRefresh } = usePullToRefresh([
-    ["sonarr", "calendar", start, end],
-    ["radarr", "calendar", start, end],
-  ]);
+  const episodes: SonarrCalendarEntry[] = sonarrQueries.flatMap(
+    (q) => q.data ?? [],
+  );
+  const movies: RadarrMovie[] = radarrQueries.flatMap((q) => q.data ?? []);
+  const loadingEp = sonarrQueries.length > 0 && sonarrQueries.some((q) => q.isLoading);
+  const loadingMov = radarrQueries.length > 0 && radarrQueries.some((q) => q.isLoading);
+
+  // Pull-to-refresh invalidates every per-instance calendar slot. Building
+  // these key lists from the live instance arrays guarantees we don't miss
+  // (or stale-refresh) an instance the user just added or disabled.
+  const refreshKeys = useMemo<unknown[][]>(
+    () => [
+      ...sonarrInstances.map((inst) => [
+        "sonarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ]),
+      ...radarrInstances.map((inst) => [
+        "radarr",
+        inst.id,
+        "calendar",
+        start,
+        end,
+        includeUnmonitored,
+      ]),
+    ],
+    [sonarrInstances, radarrInstances, start, end, includeUnmonitored],
+  );
+  const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
 
   // Build items map keyed by date
   const { itemsByDate, allItems } = useMemo(() => {
@@ -141,7 +207,7 @@ export default function CalendarScreen() {
   }, [episodes, movies, filter]);
 
   const grid = useMemo(() => getCalendarGrid(year, month), [year, month]);
-  const todayKey = toDateKey(today);
+  const todayKey = localDateKey(today);
   const selectedItems = itemsByDate.get(selectedDate) ?? [];
 
   function goMonth(delta: number) {
@@ -156,7 +222,7 @@ export default function CalendarScreen() {
     const now = new Date();
     setYear(now.getFullYear());
     setMonth(now.getMonth());
-    setSelectedDate(toDateKey(now));
+    setSelectedDate(localDateKey(now));
   }
 
   return (
@@ -165,13 +231,13 @@ export default function CalendarScreen() {
       <View className="flex-row items-center justify-between mb-3">
         <View className="flex-row items-center gap-1">
           <Pressable onPress={() => goMonth(-1)} className="p-2 active:opacity-70">
-            <ChevronLeft size={ICON.LG} color="#a1a1aa" />
+            <Icon icon={ChevronLeft} size={ICON.LG} color="#a1a1aa" />
           </Pressable>
-          <Text className="text-zinc-100 text-lg font-bold min-w-[170px] text-center">
+          <Text className="text-zinc-100 text-lg font-bold min-w-[12rem] text-center">
             {MONTH_NAMES[month]} {year}
           </Text>
           <Pressable onPress={() => goMonth(1)} className="p-2 active:opacity-70">
-            <ChevronRight size={ICON.LG} color="#a1a1aa" />
+            <Icon icon={ChevronRight} size={ICON.LG} color="#a1a1aa" />
           </Pressable>
         </View>
         <Pressable
@@ -183,7 +249,12 @@ export default function CalendarScreen() {
       </View>
 
       {/* Filters */}
-      <View className="flex-row gap-2 mb-3">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+        className="mb-3"
+      >
         {(["all", "tv", "movies"] as Filter[]).map((f) => (
           <FilterChip
             key={f}
@@ -192,7 +263,22 @@ export default function CalendarScreen() {
             onPress={() => setFilter(f)}
           />
         ))}
-      </View>
+        <FilterChip
+          label="Include unmonitored"
+          selected={includeUnmonitored}
+          icon={
+            <Icon
+              icon={includeUnmonitored ? Eye : EyeOff}
+              size={14}
+              color={includeUnmonitored ? "#fff" : "#a1a1aa"}
+            />
+          }
+          onPress={() => {
+            lightHaptic();
+            setIncludeUnmonitored(!includeUnmonitored);
+          }}
+        />
+      </ScrollView>
 
       {/* Calendar grid */}
       <Card>
@@ -326,12 +412,15 @@ function EpisodeRow({
           <Image
             source={{ uri: src }}
             className="w-10 h-14 rounded-lg bg-surface-light"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={src}
             onError={onError}
           />
         ) : (
           <View className="w-10 h-14 rounded-lg bg-surface-light items-center justify-center">
-            <Tv size={16} color="#71717a" />
+            <Icon icon={Tv} size={16} color="#71717a" />
           </View>
         )}
         <View
@@ -348,7 +437,7 @@ function EpisodeRow({
             {episode.title}
           </Text>
         </View>
-        <Tv size={14} color="#22c55e" />
+        <Icon icon={Tv} size={14} color="#22c55e" />
       </View>
     </Card>
   );
@@ -372,12 +461,15 @@ function MovieRow({
           <Image
             source={{ uri: src }}
             className="w-10 h-14 rounded-lg bg-surface-light"
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={src}
             onError={onError}
           />
         ) : (
           <View className="w-10 h-14 rounded-lg bg-surface-light items-center justify-center">
-            <Film size={16} color="#71717a" />
+            <Icon icon={Film} size={16} color="#71717a" />
           </View>
         )}
         <View
@@ -393,7 +485,7 @@ function MovieRow({
             {movie.year} — {releaseType}
           </Text>
         </View>
-        <Film size={14} color="#f59e0b" />
+        <Icon icon={Film} size={14} color="#f59e0b" />
       </View>
     </Card>
   );

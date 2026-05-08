@@ -10,9 +10,12 @@ import {
   deleteMovie,
   searchForMovie,
   toggleMovieMonitored,
+  updateMovie,
   getQualityProfiles,
   getRootFolders,
   getTags,
+  getReleasesForMovie,
+  grabRadarrRelease,
 } from "@/services/radarr-api";
 import { toast } from "@/components/ui/toast";
 import type { RadarrMovie } from "@/lib/types";
@@ -20,82 +23,91 @@ import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getDateOffset } from "@/lib/utils";
+import { getHttpErrorMessage } from "@/lib/http-client";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
-function useRadarrEnabled() {
-  return useConfigStore((s) => s.services.radarr.enabled);
-}
+// Per-instance cache keying: every hook accepts an optional `instanceId`. When
+// omitted the user's active Radarr is used (single-instance behavior); when
+// passed, queries fan out to that specific instance with its own cache slot.
 
-export function useRadarrMovies() {
-  const enabled = useRadarrEnabled();
+export function useRadarrMovies(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "movies"],
-    queryFn: getMovies,
-    enabled,
+    queryKey: ["radarr", id, "movies"],
+    queryFn: () => getMovies(id ?? undefined),
+    enabled: enabled && !!id,
   });
 }
 
-export function useRadarrCalendar(days = 30) {
-  const enabled = useRadarrEnabled();
+export function useRadarrCalendar(days = 30, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "calendar", days],
-    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(days)),
+    queryKey: ["radarr", id, "calendar", days],
+    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(days), {}, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useRadarrMovie(id: number) {
+export function useRadarrMovie(movieId: number, instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "movie", id],
-    queryFn: () => getMovie(id),
-    enabled: id > 0,
+    queryKey: ["radarr", id, "movie", movieId],
+    queryFn: () => getMovie(movieId, id ?? undefined),
+    enabled: movieId > 0 && !!id,
   });
 }
 
-export function useRadarrQueue() {
-  const enabled = useRadarrEnabled();
+export function useRadarrQueue(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "queue"],
-    queryFn: () => getQueue(1, 20, true),
+    queryKey: ["radarr", id, "queue"],
+    queryFn: () => getQueue(1, 20, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useWantedMissing() {
-  const enabled = useRadarrEnabled();
+export function useWantedMissing(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "wanted"],
-    queryFn: () => getWantedMissing(1, 1),
+    queryKey: ["radarr", id, "wanted"],
+    queryFn: () => getWantedMissing(1, 1, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useRadarrSearch(term: string) {
+export function useRadarrSearch(term: string, instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "search", term],
-    queryFn: () => searchMovies(term),
-    enabled: term.length >= 2,
+    queryKey: ["radarr", id, "search", term],
+    queryFn: () => searchMovies(term, id ?? undefined),
+    enabled: term.length >= 2 && !!id,
   });
 }
 
-export function useAddMovie() {
+export function useAddMovie(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
   return useMutation({
-    mutationFn: addMovie,
+    mutationFn: (movie: Parameters<typeof addMovie>[0]) =>
+      addMovie(movie, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["radarr", "movies"] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
     },
   });
 }
 
-export function useDeleteMovie() {
+export function useDeleteMovie(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  // Overseerr cleanup runs against the active Overseerr instance; cross-stack
+  // deletion is a UX nicety, not a contract.
   const overseerrEnabled = useConfigStore((s) => s.services.overseerr.enabled);
   return useMutation({
     mutationFn: async ({
-      id,
+      id: movieId,
       deleteFiles = false,
       tmdbId,
     }: {
@@ -103,7 +115,7 @@ export function useDeleteMovie() {
       deleteFiles?: boolean;
       tmdbId?: number;
     }) => {
-      await deleteMovie(id, deleteFiles);
+      await deleteMovie(movieId, deleteFiles, id ?? undefined);
       // Clear Overseerr media entry so the movie can be re-requested
       if (tmdbId && overseerrEnabled) {
         try {
@@ -117,22 +129,24 @@ export function useDeleteMovie() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["radarr", "movies"] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
       queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
   });
 }
 
-export function useSearchForMovie() {
+export function useSearchForMovie(instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
   return useMutation({
-    mutationFn: (movieId: number) => searchForMovie(movieId),
+    mutationFn: (movieId: number) => searchForMovie(movieId, id ?? undefined),
     onSuccess: () => toast("Search started"),
     onError: () => toast("Search failed", "error"),
   });
 }
 
-export function useToggleMovieMonitored() {
+export function useToggleMovieMonitored(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
   return useMutation({
     mutationFn: ({
       movieId,
@@ -140,23 +154,28 @@ export function useToggleMovieMonitored() {
     }: {
       movieId: number;
       monitored: boolean;
-    }) => toggleMovieMonitored(movieId, monitored),
+    }) => toggleMovieMonitored(movieId, monitored, id ?? undefined),
     onMutate: async ({ movieId, monitored }) => {
-      await queryClient.cancelQueries({ queryKey: ["radarr", "movies"] });
-      await queryClient.cancelQueries({ queryKey: ["radarr", "movie", movieId] });
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movies"] });
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movie", movieId] });
 
-      const prevList = queryClient.getQueryData<RadarrMovie[]>(["radarr", "movies"]);
-      const prevDetail = queryClient.getQueryData<RadarrMovie>(["radarr", "movie", movieId]);
+      const prevList = queryClient.getQueryData<RadarrMovie[]>(["radarr", id, "movies"]);
+      const prevDetail = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
 
       if (prevList) {
         queryClient.setQueryData<RadarrMovie[]>(
-          ["radarr", "movies"],
+          ["radarr", id, "movies"],
           prevList.map((m) => (m.id === movieId ? { ...m, monitored } : m)),
         );
       }
       if (prevDetail) {
         queryClient.setQueryData<RadarrMovie>(
-          ["radarr", "movie", movieId],
+          ["radarr", id, "movie", movieId],
           { ...prevDetail, monitored },
         );
       }
@@ -165,46 +184,153 @@ export function useToggleMovieMonitored() {
     },
     onError: (_err, { movieId }, context) => {
       if (context?.prevList) {
-        queryClient.setQueryData(["radarr", "movies"], context.prevList);
+        queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
       }
       if (context?.prevDetail) {
-        queryClient.setQueryData(["radarr", "movie", movieId], context.prevDetail);
+        queryClient.setQueryData(["radarr", id, "movie", movieId], context.prevDetail);
       }
       toast("Failed to update monitoring", "error");
     },
     onSettled: (_data, _err, { movieId }) => {
-      queryClient.invalidateQueries({ queryKey: ["radarr", "movies"] });
-      queryClient.invalidateQueries({ queryKey: ["radarr", "movie", movieId] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
     },
   });
 }
 
-export function useRadarrQualityProfiles() {
-  const enabled = useRadarrEnabled();
+export function useUpdateMovieQualityProfile(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  return useMutation({
+    mutationFn: ({
+      movieId,
+      qualityProfileId,
+    }: {
+      movieId: number;
+      qualityProfileId: number;
+    }) => {
+      const cached = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
+      if (!cached) throw new Error("Movie not loaded");
+      return updateMovie(
+        { ...cached, qualityProfileId },
+        id ?? undefined,
+      );
+    },
+    onMutate: async ({ movieId, qualityProfileId }) => {
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movie", movieId] });
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movies"] });
+
+      const prevDetail = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
+      const prevList = queryClient.getQueryData<RadarrMovie[]>([
+        "radarr",
+        id,
+        "movies",
+      ]);
+
+      if (prevDetail) {
+        queryClient.setQueryData<RadarrMovie>(
+          ["radarr", id, "movie", movieId],
+          { ...prevDetail, qualityProfileId },
+        );
+      }
+      if (prevList) {
+        queryClient.setQueryData<RadarrMovie[]>(
+          ["radarr", id, "movies"],
+          prevList.map((m) =>
+            m.id === movieId ? { ...m, qualityProfileId } : m,
+          ),
+        );
+      }
+
+      return { prevDetail, prevList };
+    },
+    onError: (_err, { movieId }, context) => {
+      if (context?.prevDetail) {
+        queryClient.setQueryData(
+          ["radarr", id, "movie", movieId],
+          context.prevDetail,
+        );
+      }
+      if (context?.prevList) {
+        queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
+      }
+      toast("Failed to update quality profile", "error");
+    },
+    onSettled: (_data, _err, { movieId }) => {
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
+    },
+  });
+}
+
+export function useRadarrQualityProfiles(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "qualityProfiles"],
-    queryFn: getQualityProfiles,
-    enabled,
+    queryKey: ["radarr", id, "qualityProfiles"],
+    queryFn: () => getQualityProfiles(id ?? undefined),
+    enabled: enabled && !!id,
     staleTime: Infinity,
   });
 }
 
-export function useRadarrRootFolders() {
-  const enabled = useRadarrEnabled();
+export function useRadarrRootFolders(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "rootFolders"],
-    queryFn: getRootFolders,
-    enabled,
+    queryKey: ["radarr", id, "rootFolders"],
+    queryFn: () => getRootFolders(id ?? undefined),
+    enabled: enabled && !!id,
     staleTime: Infinity,
   });
 }
 
-export function useRadarrTags() {
-  const enabled = useRadarrEnabled();
+export function useRadarrTags(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", "tags"],
-    queryFn: getTags,
-    enabled,
+    queryKey: ["radarr", id, "tags"],
+    queryFn: () => getTags(id ?? undefined),
+    enabled: enabled && !!id,
     staleTime: Infinity,
+  });
+}
+
+// Interactive search is expensive (live indexer hit, often 30s+) — don't
+// auto-retry on transient failure, and keep the cache warm long enough that
+// back-navigation doesn't re-trigger.
+export function useRadarrReleases(movieId: number, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
+  return useQuery({
+    queryKey: ["radarr", id, "releases", movieId],
+    queryFn: () => getReleasesForMovie(movieId, id ?? undefined),
+    enabled: enabled && movieId > 0 && !!id,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useGrabRadarrRelease(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  return useMutation({
+    mutationFn: ({ guid, indexerId }: { guid: string; indexerId: number }) =>
+      grabRadarrRelease(guid, indexerId, id ?? undefined),
+    onSuccess: () => {
+      toast("Sent to download client");
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "queue"] });
+    },
+    onError: (err) => {
+      toast(getHttpErrorMessage(err) ?? "Failed to grab release", "error");
+    },
   });
 }

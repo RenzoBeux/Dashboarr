@@ -6,7 +6,7 @@ import { lightHaptic } from "@/lib/haptics";
  * Hook that provides pull-to-refresh state tied to TanStack Query invalidation.
  * Pass optional query keys to only invalidate specific queries.
  */
-export function usePullToRefresh(queryKeys?: string[][]) {
+export function usePullToRefresh(queryKeys?: readonly unknown[][]) {
   const [refreshing, setRefreshing] = useState(false);
   const queryClient = useQueryClient();
 

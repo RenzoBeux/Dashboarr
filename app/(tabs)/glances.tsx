@@ -1,5 +1,6 @@
 import { View, Text } from "react-native";
 import { Cpu, MemoryStick, HardDrive, Activity } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +39,7 @@ export default function GlancesScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Server" online={glancesHealth?.online} />
+      <ServiceHeader name="Server" online={glancesHealth?.online} serviceId="glances" />
       <View className="gap-4">
         <CpuCard />
         <MemoryCard />
@@ -178,7 +179,7 @@ function DisksCard() {
         <SkeletonCardContent rows={3} />
       ) : !fs || fs.length === 0 ? (
         <EmptyState
-          icon={<HardDrive size={32} color="#71717a" />}
+          icon={<Icon icon={HardDrive} size={32} color="#71717a" />}
           title="No disks"
         />
       ) : (
@@ -197,7 +198,7 @@ function DiskDetail({ disk }: { disk: GlancesFsItem }) {
     <View>
       <View className="flex-row items-center justify-between mb-1.5">
         <View className="flex-row items-center gap-2 flex-1 mr-2">
-          <HardDrive size={14} color="#a1a1aa" />
+          <Icon icon={HardDrive} size={14} color="#a1a1aa" />
           <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
             {disk.mnt_point.replace(/^\/host/, "") || "/"}
           </Text>
@@ -257,7 +258,7 @@ function DiskIORow({ drive }: { drive: GlancesDiskIOItem }) {
   return (
     <View className="flex-row items-center justify-between">
       <View className="flex-row items-center gap-2 flex-1">
-        <Activity size={14} color="#a1a1aa" />
+        <Icon icon={Activity} size={14} color="#a1a1aa" />
         <Text className="text-zinc-300 text-sm">{drive.disk_name}</Text>
       </View>
       <View className="flex-row gap-4">

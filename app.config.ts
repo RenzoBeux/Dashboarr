@@ -1,11 +1,17 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
+import pkg from "./package.json";
+
+// Derives a monotonic integer from semver so `pnpm bump:*` propagates to the
+// native build identifiers Google Play / App Store require. 1.2.3 → 10203.
+const [major, minor, patch] = pkg.version.split(".").map((n) => parseInt(n, 10));
+const nativeBuildNumber = major * 10000 + minor * 100 + patch;
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "Dashboarr",
   "owner": "dashboarr",
   slug: "dashboarr",
-  version: "1.1.0",
+  version: pkg.version,
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "dark",
@@ -26,15 +32,23 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   runtimeVersion: {
-    policy: "appVersion",
+    policy: "fingerprint",
   },
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.dashboarr.app",
+    buildNumber: String(nativeBuildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSLocalNetworkUsageDescription:
         "Dashboarr sends Wake-on-LAN magic packets to your home server on the local network.",
+      // Self-hosted services on a LAN almost always speak plain http://, and
+      // iOS blocks cleartext by default (App Transport Security). Mirrors the
+      // Android cleartext-traffic plugin. The remote-URL form already warns
+      // when users pick http:// for an internet-facing endpoint.
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: true,
+      },
     },
     // Required so NetInfo can read the current Wi-Fi SSID/BSSID for the
     // local-vs-remote auto-switch feature. iOS also needs Location When-In-Use
@@ -49,7 +63,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#09090b",
     },
     package: "com.dashboarr.app",
-    versionCode: 3,
+    versionCode: nativeBuildNumber,
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   scheme: "dashboarr",
@@ -67,6 +81,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-router",
     "expo-secure-store",
     "./plugins/withAndroidSigning",
+    "./plugins/withCleartextTraffic",
     [
       "expo-location",
       {

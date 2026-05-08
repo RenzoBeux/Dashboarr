@@ -35,13 +35,17 @@ export function activeBaseUrl(config: StoredServiceConfig): string {
   return primary || secondary;
 }
 
+// `new URL("/api/v3", base)` discards base.pathname per spec, which breaks
+// reverse-proxy bases like http://host/radarr. Concatenate explicitly so the
+// proxy prefix survives, then parse to attach searchParams.
 function buildUrl(
   baseUrl: string,
   apiBase: string,
   path: string,
   params?: Record<string, string | number | boolean>,
 ): string {
-  const url = new URL(`${apiBase}${path}`, baseUrl);
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const url = new URL(`${trimmedBase}${apiBase}${path}`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       url.searchParams.set(k, String(v));
@@ -71,6 +75,12 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     if (config.apiKey) {
       headers.set("X-Plex-Token", config.apiKey);
       headers.set("Accept", "application/json");
+    }
+    return;
+  }
+  if (id === "jellyfin") {
+    if (config.apiKey) {
+      headers.set("X-Emby-Token", config.apiKey);
     }
     return;
   }

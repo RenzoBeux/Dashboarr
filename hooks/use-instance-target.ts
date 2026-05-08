@@ -1,0 +1,48 @@
+import { useConfigStore } from "@/store/config-store";
+import { useShallow } from "zustand/react/shallow";
+import type { ServiceId } from "@/lib/constants";
+import type { ServiceInstance } from "@/store/config-store";
+
+/**
+ * The ordered list of enabled instances for a kind. Used by aggregated
+ * dashboard cards to fan a query out across every configured instance via
+ * TanStack Query's `useQueries`.
+ *
+ * `useShallow` is load-bearing here: `.filter()` always returns a new array,
+ * so without shallow equality every store change would re-trigger the parent's
+ * `useQueries`, which rebuilds its query list and re-renders, in an infinite
+ * loop. With shallow equality the selector only signals a change when the
+ * filtered ids/names/etc. actually differ.
+ */
+export function useEnabledInstances(serviceId: ServiceId): ServiceInstance[] {
+  return useConfigStore(
+    useShallow((s) =>
+      (s.serviceInstances[serviceId] ?? []).filter((i) => i.enabled),
+    ),
+  );
+}
+
+/**
+ * Resolve which instance a per-service hook should query and whether it's
+ * enabled. Pass `instanceId` to target a specific instance (used by aggregated
+ * dashboard cards that render one slot per instance); omit it to follow the
+ * user's currently-selected instance for that kind (used by per-service tabs).
+ *
+ * The returned `instanceId` is also what callers should fold into TanStack
+ * Query keys so two configured instances never collide in the query cache.
+ */
+export function useInstanceTarget(
+  serviceId: ServiceId,
+  instanceId?: string,
+): { instanceId: string | null; enabled: boolean } {
+  const activeId = useConfigStore(
+    (s) => s.activeInstance[serviceId] ?? s.serviceInstances[serviceId]?.[0]?.id ?? null,
+  );
+  const targetId = instanceId ?? activeId;
+  const enabled = useConfigStore((s) => {
+    if (!targetId) return false;
+    const list = s.serviceInstances[serviceId] ?? [];
+    return list.find((i) => i.id === targetId)?.enabled ?? false;
+  });
+  return { instanceId: targetId, enabled };
+}

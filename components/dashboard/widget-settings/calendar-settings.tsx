@@ -4,8 +4,18 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
+import {
+  InstancePickerRow,
+  INSTANCE_BINDING_ALL,
+  type InstanceBindingValue,
+} from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface CalendarSettingsValue extends Record<string, unknown> {
+  // Independent per-service bindings — calendar can fan out across two
+  // Sonarrs while pinning to one Radarr (or vice versa). Each side accepts
+  // either the "all" sentinel or an array of instance UUIDs.
+  sonarrInstanceIds: InstanceBindingValue;
+  radarrInstanceIds: InstanceBindingValue;
   includeSonarr: boolean;
   includeRadarr: boolean;
   daysAhead: number;
@@ -13,6 +23,8 @@ export interface CalendarSettingsValue extends Record<string, unknown> {
 }
 
 export const CALENDAR_DEFAULT_SETTINGS: CalendarSettingsValue = {
+  sonarrInstanceIds: INSTANCE_BINDING_ALL,
+  radarrInstanceIds: INSTANCE_BINDING_ALL,
   includeSonarr: true,
   includeRadarr: true,
   daysAhead: 7,
@@ -38,11 +50,11 @@ const RELEASE_TYPE_OPTIONS: {
   { value: "physical", label: "Physical" },
 ];
 
-export function CalendarSettings(_props: WidgetSettingsComponentProps) {
+export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
   const sonarrEnabled = useConfigStore((s) => s.services.sonarr.enabled);
   const radarrEnabled = useConfigStore((s) => s.services.radarr.enabled);
   const { settings, update } = useWidgetSettings<CalendarSettingsValue>(
-    "calendar",
+    slotId,
     CALENDAR_DEFAULT_SETTINGS,
   );
 
@@ -77,6 +89,24 @@ export function CalendarSettings(_props: WidgetSettingsComponentProps) {
           />
         </View>
       </View>
+
+      {settings.includeSonarr && sonarrEnabled && (
+        <InstancePickerRow
+          serviceId="sonarr"
+          label="Sonarr instance"
+          value={settings.sonarrInstanceIds}
+          onChange={(sonarrInstanceIds) => update({ sonarrInstanceIds })}
+        />
+      )}
+
+      {settings.includeRadarr && radarrEnabled && (
+        <InstancePickerRow
+          serviceId="radarr"
+          label="Radarr instance"
+          value={settings.radarrInstanceIds}
+          onChange={(radarrInstanceIds) => update({ radarrInstanceIds })}
+        />
+      )}
 
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">

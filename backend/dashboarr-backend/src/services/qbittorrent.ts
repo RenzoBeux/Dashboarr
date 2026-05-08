@@ -2,11 +2,13 @@ import type { StoredServiceConfig } from "../db/repos/config.js";
 import { SERVICE_API_BASE } from "../types.js";
 import { activeBaseUrl } from "./http.js";
 
+// qBittorrent 5.0 renamed `pausedUP`/`pausedDL` to `stoppedUP`/`stoppedDL`.
 export type TorrentState =
   | "error"
   | "missingFiles"
   | "uploading"
   | "pausedUP"
+  | "stoppedUP"
   | "queuedUP"
   | "stalledUP"
   | "checkingUP"
@@ -15,6 +17,7 @@ export type TorrentState =
   | "downloading"
   | "metaDL"
   | "pausedDL"
+  | "stoppedDL"
   | "queuedDL"
   | "stalledDL"
   | "checkingDL"

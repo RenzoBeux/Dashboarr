@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, View, Text, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { Fingerprint } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -99,7 +100,7 @@ export function PassphrasePrompt({
               className="active:opacity-80"
             >
               <Card className="flex-row items-center justify-center gap-2 bg-primary/15 border border-primary/40">
-                <Fingerprint size={18} color="#60a5fa" />
+                <Icon icon={Fingerprint} size={18} color="#60a5fa" />
                 <Text className="text-primary text-base font-medium">
                   {unlocking ? "Unlocking…" : "Use saved passphrase"}
                 </Text>

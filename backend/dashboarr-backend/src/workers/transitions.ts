@@ -13,6 +13,11 @@ import type { OverseerrRequest } from "../services/overseerr.js";
  *
  * Core invariant: persist the new state **before** dispatching so a crash
  * between "saw change" and "pushed" won't re-fire after restart.
+ *
+ * Multi-instance: every seen_state key and every push dedupeKey is namespaced
+ * by the source instance UUID. Two Radarrs grabbing the same movie produce
+ * two distinct dedupe keys (one per instance), so a user with both linked
+ * still gets a push from each rather than one silently swallowing the other.
  */
 
 const DOWNLOADING_STATES: readonly TorrentState[] = [
@@ -25,13 +30,39 @@ const DOWNLOADING_STATES: readonly TorrentState[] = [
   "checkingDL",
 ];
 
+// Post-download states. `pausedUP`/`stoppedUP` cover qBT 4.x and 5.x naming.
+// Excluded on purpose: pausedDL/stoppedDL (paused mid-download), error/
+// missingFiles/unknown (failures), and transient states like moving/
+// checkingResumeData — they resolve into one of the buckets above on the next
+// poll.
+const COMPLETED_STATES: readonly TorrentState[] = [
+  "uploading",
+  "pausedUP",
+  "stoppedUP",
+  "queuedUP",
+  "stalledUP",
+  "checkingUP",
+  "forcedUP",
+];
+
 function isDownloading(state: TorrentState): boolean {
   return DOWNLOADING_STATES.includes(state);
 }
 
-// ---------------- qBittorrent ----------------
+function isCompleted(state: TorrentState): boolean {
+  return COMPLETED_STATES.includes(state);
+}
 
-const QBT_KEY = "qbt:hashes:downloading";
+/**
+ * Per-instance push title formatting. When a kind has multiple instances,
+ * prefix the instance name so the user can tell "Radarr Home" from "Radarr
+ * Seedbox" without opening the app. Single-instance setups stay terse.
+ */
+function instancePrefix(instanceName: string, multipleOfKind: boolean): string {
+  return multipleOfKind ? `${instanceName}: ` : "";
+}
+
+// ---------------- qBittorrent ----------------
 
 /** Categories that Radarr/Sonarr set on torrents they manage. */
 const MANAGED_CATEGORIES = new Set(["radarr", "sonarr", "tv-sonarr"]);
@@ -44,31 +75,39 @@ interface QbtSnapshot {
   [hash: string]: { name: string; state: TorrentState };
 }
 
-export async function diffQbTorrents(torrents: QBTorrent[]): Promise<void> {
-  const prev = getState<QbtSnapshot>(QBT_KEY);
+export async function diffQbTorrents(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  torrents: QBTorrent[],
+): Promise<void> {
+  const key = `qbt:${instanceId}:hashes:downloading`;
+  const prev = getState<QbtSnapshot>(key);
   const next: QbtSnapshot = {};
   for (const t of torrents) {
     next[t.hash] = { name: t.name, state: t.state };
   }
 
   // Persist first, dispatch after.
-  setState(QBT_KEY, next);
+  setState(key, next);
 
   if (!prev) return;
 
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+
   for (const t of torrents) {
     const before = prev[t.hash];
-    if (before && isDownloading(before.state) && !isDownloading(t.state)) {
+    if (before && isDownloading(before.state) && isCompleted(t.state)) {
       // Skip notification for torrents managed by Radarr/Sonarr — those
       // services send their own, more informative notifications.
       if (isManagedByArr(t.category)) continue;
 
       await dispatchPush({
         category: "torrentCompleted",
-        title: "Download complete",
+        title: `${prefix}Download complete`,
         body: t.name,
-        data: { type: "torrent", hash: t.hash },
-        dedupeKey: `qbt:completed:${t.hash}`,
+        data: { type: "torrent", hash: t.hash, instanceId },
+        dedupeKey: `qbt:${instanceId}:completed:${t.hash}`,
       });
     }
   }
@@ -109,8 +148,6 @@ export async function diffSabHistory(slots: SabHistorySlot[]): Promise<void> {
 
 // ---------------- Radarr ----------------
 
-const RADARR_KEY = "radarr:queue:ids";
-
 interface QueueSnapshot {
   [id: string]: { title: string; status?: string; entityId?: number };
 }
@@ -122,8 +159,14 @@ function radarrDisplayTitle(r: RadarrQueueItem): string {
   return r.title;
 }
 
-export async function diffRadarrQueue(records: RadarrQueueItem[]): Promise<void> {
-  const prev = getState<QueueSnapshot>(RADARR_KEY);
+export async function diffRadarrQueue(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  records: RadarrQueueItem[],
+): Promise<void> {
+  const key = `radarr:${instanceId}:queue:ids`;
+  const prev = getState<QueueSnapshot>(key);
   const next: QueueSnapshot = {};
   for (const r of records) {
     next[String(r.id)] = {
@@ -132,27 +175,26 @@ export async function diffRadarrQueue(records: RadarrQueueItem[]): Promise<void>
       entityId: r.movieId ?? r.movie?.id,
     };
   }
-  setState(RADARR_KEY, next);
+  setState(key, next);
 
   if (!prev) return;
 
+  const prefix = instancePrefix(instanceName, multipleOfKind);
   const currentIds = new Set(records.map((r) => String(r.id)));
   for (const [id, item] of Object.entries(prev)) {
     if (!currentIds.has(id) && item.status !== "error") {
       await dispatchPush({
         category: "radarrDownloaded",
-        title: "Movie downloaded",
+        title: `${prefix}Movie downloaded`,
         body: item.title,
-        data: { type: "radarr", movieId: item.entityId },
-        dedupeKey: `radarr:downloaded:${id}`,
+        data: { type: "radarr", movieId: item.entityId, instanceId },
+        dedupeKey: `radarr:${instanceId}:downloaded:${id}`,
       });
     }
   }
 }
 
 // ---------------- Sonarr ----------------
-
-const SONARR_KEY = "sonarr:queue:ids";
 
 function sonarrDisplayTitle(r: SonarrQueueItem): string {
   if (r.series?.title && r.episode) {
@@ -164,8 +206,14 @@ function sonarrDisplayTitle(r: SonarrQueueItem): string {
   return r.title;
 }
 
-export async function diffSonarrQueue(records: SonarrQueueItem[]): Promise<void> {
-  const prev = getState<QueueSnapshot>(SONARR_KEY);
+export async function diffSonarrQueue(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  records: SonarrQueueItem[],
+): Promise<void> {
+  const key = `sonarr:${instanceId}:queue:ids`;
+  const prev = getState<QueueSnapshot>(key);
   const next: QueueSnapshot = {};
   for (const r of records) {
     next[String(r.id)] = {
@@ -174,19 +222,20 @@ export async function diffSonarrQueue(records: SonarrQueueItem[]): Promise<void>
       entityId: r.seriesId ?? r.series?.id,
     };
   }
-  setState(SONARR_KEY, next);
+  setState(key, next);
 
   if (!prev) return;
 
+  const prefix = instancePrefix(instanceName, multipleOfKind);
   const currentIds = new Set(records.map((r) => String(r.id)));
   for (const [id, item] of Object.entries(prev)) {
     if (!currentIds.has(id) && item.status !== "error") {
       await dispatchPush({
         category: "sonarrDownloaded",
-        title: "Episode downloaded",
+        title: `${prefix}Episode downloaded`,
         body: item.title,
-        data: { type: "sonarr", seriesId: item.entityId },
-        dedupeKey: `sonarr:downloaded:${id}`,
+        data: { type: "sonarr", seriesId: item.entityId, instanceId },
+        dedupeKey: `sonarr:${instanceId}:downloaded:${id}`,
       });
     }
   }
@@ -194,28 +243,34 @@ export async function diffSonarrQueue(records: SonarrQueueItem[]): Promise<void>
 
 // ---------------- Overseerr ----------------
 
-const OVERSEERR_KEY = "overseerr:pending:ids";
-
 interface OverseerrSnapshot {
   ids: number[];
 }
 
-export async function diffOverseerrPending(requests: OverseerrRequest[]): Promise<void> {
-  const prev = getState<OverseerrSnapshot>(OVERSEERR_KEY);
+export async function diffOverseerrPending(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  requests: OverseerrRequest[],
+): Promise<void> {
+  const key = `overseerr:${instanceId}:pending:ids`;
+  const prev = getState<OverseerrSnapshot>(key);
   const currentIds = requests.map((r) => r.id);
-  setState(OVERSEERR_KEY, { ids: currentIds });
+  setState(key, { ids: currentIds });
 
   if (!prev) return;
   const prevSet = new Set(prev.ids);
+
+  const prefix = instancePrefix(instanceName, multipleOfKind);
 
   for (const req of requests) {
     if (!prevSet.has(req.id)) {
       await dispatchPush({
         category: "overseerrNewRequest",
-        title: "New request",
+        title: `${prefix}New request`,
         body: `${req.requestedBy.displayName} requested a ${req.media.mediaType}`,
-        data: { type: "overseerr", requestId: req.id },
-        dedupeKey: `overseerr:new:${req.id}`,
+        data: { type: "overseerr", requestId: req.id, instanceId },
+        dedupeKey: `overseerr:${instanceId}:new:${req.id}`,
       });
     }
   }
@@ -232,11 +287,12 @@ interface HealthState {
 }
 
 export async function diffHealth(
-  serviceId: string,
+  instanceId: string,
+  kind: string,
   displayName: string,
   online: boolean,
 ): Promise<void> {
-  const key = `health:${serviceId}:online`;
+  const key = `health:${instanceId}:online`;
   const prev = getState<HealthState>(key);
 
   if (!prev) {
@@ -254,12 +310,16 @@ export async function diffHealth(
 
   if (failCount >= OFFLINE_THRESHOLD && prev.online) {
     setState(key, { online: false, failCount });
+    // displayName is the per-instance name the user configured ("Radarr Home"
+    // / "Radarr Seedbox"). For single-instance setups it's typically just the
+    // kind name, matching the pre-multi-instance phrasing. No multipleOfKind
+    // branching needed.
     await dispatchPush({
       category: "serviceOffline",
       title: "Service offline",
       body: `${displayName} is unreachable`,
-      data: { type: "health", serviceId },
-      dedupeKey: `health:offline:${serviceId}:${Date.now() - (Date.now() % 300000)}`,
+      data: { type: "health", serviceId: kind, instanceId },
+      dedupeKey: `health:offline:${instanceId}:${Date.now() - (Date.now() % 300000)}`,
       // dedupe window is rounded to 5min buckets so flapping doesn't spam
     });
   } else {

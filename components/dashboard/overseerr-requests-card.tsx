@@ -1,32 +1,51 @@
-import { View, Text, Pressable } from "react-native";
+import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Inbox, Check, Clock, X } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Check, Clock, X, type LucideIcon } from "lucide-react-native";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { useOverseerrRequests, useOverseerrRequestCount } from "@/hooks/use-overseerr";
+import {
+  getRequests,
+  getRequestCount,
+  getMovieDetails,
+  getTVDetails,
+  getPosterUrl,
+} from "@/services/overseerr-api";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
+import type {
+  OverseerrRequest,
+  OverseerrMovieDetails,
+  OverseerrTVDetails,
+  OverseerrMediaType,
+} from "@/lib/types";
 import {
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   type OverseerrRequestsSettingsValue,
   type OverseerrStatusFilter,
 } from "@/components/dashboard/widget-settings/overseerr-requests-settings";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 
-const REQUEST_STATUS_ICON: Record<number, React.ElementType> = {
-  1: Clock, // pending
-  2: Check, // approved
-  3: X, // declined
+const REQUEST_STATUS_ICON: Record<number, LucideIcon> = {
+  1: Clock,
+  2: Check,
+  3: X,
 };
 
-const REQUEST_STATUS_COLOR: Record<number, string> = {
+const REQUEST_STATUS_BG: Record<number, string> = {
   1: "#f59e0b",
   2: "#22c55e",
   3: "#ef4444",
 };
 
-// Maps the widget setting to the API filter argument. "pending-approved" needs
-// client-side filtering so we fetch "all" and trim down below.
 function apiFilterFor(filter: OverseerrStatusFilter): "pending" | undefined {
   return filter === "pending" ? "pending" : undefined;
 }
@@ -42,35 +61,76 @@ function statusMatches(status: number, filter: OverseerrStatusFilter): boolean {
   }
 }
 
-export function OverseerrRequestsCard() {
+export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<OverseerrRequestsSettingsValue>(
-    "overseerr-requests",
+    slotId,
     OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   );
-  const { data, isLoading } = useOverseerrRequests(1, apiFilterFor(settings.statusFilter));
-  const { data: counts } = useOverseerrRequestCount();
+  const allInstances = useEnabledInstances("overseerr");
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
   const router = useRouter();
 
-  const allResults = data?.results ?? [];
-  const filtered = allResults.filter((req) => statusMatches(req.status, settings.statusFilter));
+  // Fan out requests + counts across the resolved instances. Each request is
+  // tagged with its source instance so per-tile media-detail lookups hit the
+  // right Seerr (TMDB ids are global but the auth + base URL aren't).
+  const requestQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: [
+        "overseerr",
+        inst.id,
+        "requests",
+        1,
+        apiFilterFor(settings.statusFilter),
+      ] as const,
+      queryFn: () => getRequests(1, 20, apiFilterFor(settings.statusFilter), "added", inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  const countQueries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: ["overseerr", inst.id, "requestCount"] as const,
+      queryFn: () => getRequestCount(inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  // Initial-load gate only on the request queries — see lib/multi-instance-query.ts.
+  // The pending-count summary just contributes 0 from a failing instance.
+  const { isInitialLoading } = aggregateMultiInstanceState(requestQueries);
+  const allResults = requestQueries.flatMap((q, i) =>
+    (q.data?.results ?? []).map((req) => ({ request: req, instanceId: instances[i].id })),
+  );
+  const filtered = allResults.filter(({ request }) =>
+    statusMatches(request.status, settings.statusFilter),
+  );
   const display = filtered.slice(0, settings.maxItems);
+  const pendingCount = countQueries.reduce(
+    (acc, q) => acc + (q.data?.pending ?? 0),
+    0,
+  );
+
+  const goToRequests = () => router.push("/(tabs)/requests?tab=requests");
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Requests</CardTitle>
-        <View className="flex-row gap-2">
-          {counts && counts.pending > 0 && (
-            <Badge label="Pending" variant="warning" count={counts.pending} />
-          )}
-        </View>
-      </CardHeader>
+      <CardHeaderLink
+        title="Requests"
+        onPress={goToRequests}
+        trailing={
+          pendingCount > 0 ? (
+            <Badge label="Pending" variant="warning" count={pendingCount} />
+          ) : null
+        }
+      />
 
-      {isLoading ? (
-        <SkeletonCardContent rows={3} />
+      {instances.length === 0 ? (
+        <EmptyState compact title="No Seerr instances enabled" />
+      ) : isInitialLoading ? (
+        <PosterSkeletonRow count={4} />
       ) : display.length === 0 ? (
         <EmptyState
-          icon={<Inbox size={32} color="#71717a" />}
+          compact
           title={
             settings.statusFilter === "pending"
               ? "No pending requests"
@@ -78,44 +138,78 @@ export function OverseerrRequestsCard() {
           }
         />
       ) : (
-        <View className="gap-2">
-          {display.map((req) => {
-            const Icon = REQUEST_STATUS_ICON[req.status] ?? Clock;
-            const color = REQUEST_STATUS_COLOR[req.status] ?? "#71717a";
-
-            return (
-              <Pressable
-                key={req.id}
-                onPress={() => router.push("/(tabs)/requests")}
-                className="flex-row items-center gap-3 py-1 active:opacity-80"
-              >
-                <Icon size={16} color={color} />
-                <View className="flex-1">
-                  <Text className="text-zinc-200 text-sm">
-                    {req.media.mediaType === "movie" ? "Movie" : "TV"} #{req.media.tmdbId}
-                  </Text>
-                  {settings.showRequester && (
-                    <Text className="text-zinc-500 text-xs">
-                      {req.requestedBy.displayName} ·{" "}
-                      {new Date(req.createdAt).toLocaleDateString()}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
+          {display.map(({ request, instanceId }) => (
+            <RequestPosterCard
+              key={`${instanceId}:${request.id}`}
+              request={request}
+              instanceId={instanceId}
+              showRequester={settings.showRequester}
+              onPress={goToRequests}
+            />
+          ))}
           {filtered.length > settings.maxItems && (
-            <Pressable
-              onPress={() => router.push("/(tabs)/requests")}
-              className="active:opacity-70"
-            >
-              <Text className="text-primary text-sm text-center font-medium">
-                View All →
-              </Text>
-            </Pressable>
+            <ViewAllTile onPress={goToRequests} />
           )}
-        </View>
+        </ScrollView>
       )}
     </Card>
+  );
+}
+
+function RequestPosterCard({
+  request,
+  instanceId,
+  showRequester,
+  onPress,
+}: {
+  request: OverseerrRequest;
+  instanceId: string;
+  showRequester: boolean;
+  onPress: () => void;
+}) {
+  const StatusIcon = REQUEST_STATUS_ICON[request.status] ?? Clock;
+  const statusBg = REQUEST_STATUS_BG[request.status] ?? "#71717a";
+
+  // Each Seerr maintains its own metadata so the media-detail call must hit
+  // the same instance the request came from. Using useQuery directly here so
+  // the per-tile binding doesn't require a hook variant.
+  const { data: mediaDetails } = useQuery<OverseerrMovieDetails | OverseerrTVDetails>({
+    queryKey: [
+      "overseerr",
+      instanceId,
+      "mediaDetails",
+      request.media.mediaType as OverseerrMediaType,
+      request.media.tmdbId,
+    ],
+    queryFn: () =>
+      request.media.mediaType === "movie"
+        ? getMovieDetails(request.media.tmdbId, instanceId)
+        : getTVDetails(request.media.tmdbId, instanceId),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const details = mediaDetails as
+    | { title?: string; name?: string; posterPath?: string }
+    | undefined;
+  const title =
+    details?.title ||
+    details?.name ||
+    `${request.media.mediaType === "movie" ? "Movie" : "TV"} #${request.media.tmdbId}`;
+  const posterUrl = getPosterUrl(details?.posterPath, "w185");
+
+  return (
+    <MediaPosterTile
+      posterUrl={posterUrl}
+      title={title}
+      subtitle={showRequester ? request.requestedBy.displayName : undefined}
+      cornerBadge={{ icon: StatusIcon, color: statusBg }}
+      mediaType={request.media.mediaType === "movie" ? "movie" : "tv"}
+      onPress={onPress}
+    />
   );
 }

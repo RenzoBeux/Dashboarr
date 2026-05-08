@@ -7,27 +7,28 @@ import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { rem } from "nativewind";
 import { useConfigStore } from "@/store/config-store";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
+import { useSortStore } from "@/store/sort-store";
 import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
-import { useNotificationWatchers } from "@/hooks/use-notification-watchers";
+import "@/lib/expo-image-nativewind"; // side-effect: cssInterop on expo-image's Image
+import { NotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
+import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
+import { useNetworkAutoSwitch } from "@/hooks/use-network";
 import { pushConfigSnapshot } from "@/services/backend-api";
-import { ErrorBoundary } from "@/components/common/error-boundary";
+import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
 import "../global.css";
 
 // Pause/resume polling based on app state
 function onAppStateChange(status: AppStateStatus) {
   focusManager.setFocused(status === "active");
-}
-
-function NotificationWatchers() {
-  useNotificationWatchers();
-  return null;
 }
 
 // Notification payloads come from a paired backend. The backend is trusted,
@@ -121,6 +122,16 @@ function BackendHealthPoller() {
   return null;
 }
 
+function NetworkAutoSwitcher() {
+  useNetworkAutoSwitch();
+  return null;
+}
+
+function AppUpdateChecker() {
+  useAppUpdateCheck();
+  return null;
+}
+
 const CONFIG_SYNC_DEBOUNCE_MS = 2000;
 
 /**
@@ -128,6 +139,18 @@ const CONFIG_SYNC_DEBOUNCE_MS = 2000;
  * the paired backend after any change. Only active while the backend is
  * paired (has a shared secret) — unpairing unsubscribes automatically.
  */
+// NativeWind's `rem` is a global reactive observable; styles that resolve in
+// rem units (every Tailwind text-* size, padding, gap, rounded radius, etc.)
+// re-evaluate when it changes. Multiplying its base of 14 by uiScale gives us
+// app-wide accessibility scaling without touching individual components.
+function UiScaleBridge() {
+  const uiScale = useConfigStore((s) => s.uiScale);
+  useEffect(() => {
+    rem.set(14 * uiScale);
+  }, [uiScale]);
+  return null;
+}
+
 function ConfigSyncBridge() {
   const sharedSecret = useBackendStore((s) => s.sharedSecret);
   const backendHydrated = useBackendStore((s) => s.hydrated);
@@ -170,6 +193,7 @@ export default function RootLayout() {
   const hydrated = useConfigStore((s) => s.hydrated);
   const hydrateNotifications = useNotificationStore((s) => s.hydrate);
   const hydrateBackend = useBackendStore((s) => s.hydrate);
+  const hydrateSort = useSortStore((s) => s.hydrate);
 
   useEffect(() => {
     hydrate();
@@ -177,6 +201,12 @@ export default function RootLayout() {
     hydrateBackend();
     configureNotifications();
   }, [hydrate, hydrateNotifications, hydrateBackend]);
+
+  // Sort prefs read sync from the storage cache, which is populated by
+  // useConfigStore.hydrate(). Wait for that before reading.
+  useEffect(() => {
+    if (hydrated) hydrateSort();
+  }, [hydrated, hydrateSort]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", onAppStateChange);
@@ -187,25 +217,47 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <ErrorBoundary>
-            <NotificationWatchers />
-            <NotificationRouter />
-            <BackendHealthPoller />
-            <ConfigSyncBridge />
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: "#09090b" },
-                animation: "slide_from_right",
-              }}
-            />
-            <ToastContainer />
-          </ErrorBoundary>
-        </QueryClientProvider>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <ErrorBoundary>
+              {/* Invisible root subscribers — isolated so a single failing
+                  watcher (e.g. a service returning an unexpected payload) can't
+                  unmount the navigator and trap the user on the fallback. */}
+              <SilentErrorBoundary label="notification-watchers">
+                <NotificationWatchers />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="notification-router">
+                <NotificationRouter />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="backend-health">
+                <BackendHealthPoller />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="network-auto-switch">
+                <NetworkAutoSwitcher />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="config-sync">
+                <ConfigSyncBridge />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="ui-scale">
+                <UiScaleBridge />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="app-update-checker">
+                <AppUpdateChecker />
+              </SilentErrorBoundary>
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: "#09090b" },
+                  animation: "slide_from_right",
+                }}
+              />
+              <ToastContainer />
+            </ErrorBoundary>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

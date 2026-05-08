@@ -4,8 +4,14 @@ import { TextInput } from "@/components/ui/text-input";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
+import {
+  InstancePickerRow,
+  INSTANCE_BINDING_ALL,
+  type InstanceBindingValue,
+} from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export interface PlexNowPlayingSettingsValue extends Record<string, unknown> {
+  instanceIds: InstanceBindingValue;
   maxItems: number;
   hideLocalPlays: boolean;
   hideUsers: string;
@@ -15,6 +21,7 @@ export interface PlexNowPlayingSettingsValue extends Record<string, unknown> {
 }
 
 export const PLEX_NOW_PLAYING_DEFAULT_SETTINGS: PlexNowPlayingSettingsValue = {
+  instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 3,
   hideLocalPlays: false,
   hideUsers: "",
@@ -29,14 +36,19 @@ const MAX_OPTIONS: { value: number; label: string }[] = [
   { value: 10, label: "10" },
 ];
 
-export function PlexNowPlayingSettings(_props: WidgetSettingsComponentProps) {
+export function PlexNowPlayingSettings({ slotId }: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<PlexNowPlayingSettingsValue>(
-    "plex-now-playing",
+    slotId,
     PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
   );
 
   return (
     <View className="px-4 py-2 gap-5">
+      <InstancePickerRow
+        serviceId="plex"
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
+      />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
           Filters

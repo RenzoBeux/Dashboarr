@@ -1,30 +1,51 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Pause, Play, CheckCircle } from "lucide-react-native";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProgressBar } from "@/components/ui/progress-bar";
+import { useQueries } from "@tanstack/react-query";
+import {
+  Pause,
+  Play,
+  AlertTriangle,
+  Download,
+  Upload,
+  CircleAlert,
+} from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useAllTorrents, usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
+import { useTorrentPosterMap } from "@/hooks/use-torrent-poster-map";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { lightHaptic } from "@/lib/haptics";
-import { formatSpeed, formatEta, truncateText } from "@/lib/utils";
+import { formatSpeed, formatEta } from "@/lib/utils";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   DOWNLOADS_DEFAULT_SETTINGS,
   type DownloadsSettingsValue,
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
-import type { QBTorrent, TorrentState } from "@/lib/types";
+import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
+import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
+import {
+  getTorrents,
+  type QBTorrentFilter,
+  type GetTorrentsOptions,
+} from "@/services/qbittorrent-api";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
-// qBittorrent uses 8640000 (100 days) as a sentinel for "unknown ETA". Treat
-// that and anything larger as missing so it sorts to the end.
 const ETA_UNKNOWN = 8640000;
 
 function classifyState(state: TorrentState): StateGroup {
   if (state === "error" || state === "missingFiles") return "errored";
-  if (state === "pausedDL" || state === "pausedUP") return "paused";
+  if (isTorrentPaused(state)) return "paused";
   if (
     state === "downloading" ||
     state === "metaDL" ||
@@ -51,7 +72,6 @@ function classifyState(state: TorrentState): StateGroup {
 function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): number {
   switch (sortBy) {
     case "speed": {
-      // Combined throughput so a busy seeder ranks alongside a fast downloader.
       const aSpeed = a.dlspeed + a.upspeed;
       const bSpeed = b.dlspeed + b.upspeed;
       return bSpeed - aSpeed;
@@ -68,12 +88,85 @@ function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): n
   }
 }
 
-export function DownloadCard() {
+function sortByToQB(sortBy: DownloadsSortBy): { sort: keyof QBTorrent; reverse: boolean } {
+  switch (sortBy) {
+    case "speed":
+      return { sort: "dlspeed", reverse: true };
+    case "progress":
+      return { sort: "progress", reverse: true };
+    case "eta":
+      return { sort: "eta", reverse: false };
+    case "added":
+      return { sort: "added_on", reverse: true };
+  }
+}
+
+function pickServerFilter(s: DownloadsSettingsValue): QBTorrentFilter | undefined {
+  const flags: { flag: boolean; filter: QBTorrentFilter }[] = [
+    { flag: s.showDownloading, filter: "downloading" },
+    { flag: s.showSeeding, filter: "seeding" },
+    { flag: s.showPaused, filter: "paused" },
+    { flag: s.showErrored, filter: "errored" },
+  ];
+  const active = flags.filter((f) => f.flag);
+  return active.length === 1 ? active[0].filter : undefined;
+}
+
+const DASHBOARD_FETCH_LIMIT = 100;
+
+const STATE_BADGE: Record<
+  StateGroup,
+  { color: string; icon: typeof Download } | null
+> = {
+  downloading: { color: "rgba(59, 130, 246, 0.9)", icon: Download },
+  seeding: { color: "rgba(34, 197, 94, 0.9)", icon: Upload },
+  paused: { color: "rgba(245, 158, 11, 0.9)", icon: Pause },
+  errored: { color: "rgba(239, 68, 68, 0.9)", icon: CircleAlert },
+  other: null,
+};
+
+// A torrent paired with the qBit instance it came from. The instance id is
+// threaded into the per-tile mutations so a Pause/Resume tap from the
+// aggregated card hits the right server.
+interface AggregatedTorrent {
+  torrent: QBTorrent;
+  instanceId: string;
+}
+
+export function DownloadCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<DownloadsSettingsValue>(
-    "downloads",
+    slotId,
     DOWNLOADS_DEFAULT_SETTINGS,
   );
-  const { data: torrents, isLoading } = useAllTorrents();
+  const { sort, reverse } = sortByToQB(settings.sortBy);
+  const queryOptions: GetTorrentsOptions = {
+    filter: pickServerFilter(settings),
+    sort,
+    reverse,
+    limit: DASHBOARD_FETCH_LIMIT,
+  };
+  // Aggregate across all enabled qBittorrent instances when bound to "all";
+  // narrow to the bound subset otherwise. Each instance keeps its own cache
+  // slot via the [serviceId, instanceId, …] queryKey shape that every
+  // per-service hook adopted, so two qBits don't trample each other's data
+  // even though we're driving them from the same component.
+  const allInstances = useEnabledInstances("qbittorrent");
+  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const queries = useQueries({
+    queries: instances.map((inst) => ({
+      queryKey: [
+        "qbittorrent",
+        inst.id,
+        "torrents",
+        "list",
+        queryOptions,
+      ] as const,
+      queryFn: () => getTorrents(queryOptions, inst.id),
+      refetchInterval: POLLING_INTERVALS.activeTorrents,
+      enabled: true,
+    })),
+  });
+  const posterMap = useTorrentPosterMap();
   const router = useRouter();
 
   const allowedGroups = new Set<StateGroup>();
@@ -82,71 +175,103 @@ export function DownloadCard() {
   if (settings.showPaused) allowedGroups.add("paused");
   if (settings.showErrored) allowedGroups.add("errored");
 
-  const filtered = (torrents ?? [])
-    .filter((t) => allowedGroups.has(classifyState(t.state)))
-    .sort((a, b) => compareTorrents(a, b, settings.sortBy));
+  // Skeleton only when no instance has produced data yet; once any instance is
+  // back, render whatever we have so a single failing qBit doesn't flicker the
+  // card every refetch tick. See lib/multi-instance-query.ts for the rationale.
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
+  // Tag each torrent with its source instance so per-tile actions know which
+  // qBittorrent to call for pause/resume.
+  const aggregated: AggregatedTorrent[] = queries.flatMap((q, i) =>
+    (q.data ?? []).map((t) => ({ torrent: t, instanceId: instances[i].id })),
+  );
+
+  const filtered = aggregated
+    .filter((row) => allowedGroups.has(classifyState(row.torrent.state)))
+    .sort((a, b) => compareTorrents(a.torrent, b.torrent, settings.sortBy));
 
   const displayTorrents = filtered.slice(0, settings.maxItems);
   const hasMore = filtered.length > settings.maxItems;
   const allHidden = allowedGroups.size === 0;
+  const showMultiInstanceLabel = instances.length > 1;
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Downloads</CardTitle>
-        {filtered.length > 0 && (
-          <Text className="text-zinc-500 text-sm">{filtered.length}</Text>
-        )}
-      </CardHeader>
+      <CardHeaderLink
+        title="Downloads"
+        onPress={() => router.push("/(tabs)/downloads")}
+        trailing={
+          filtered.length > 0 ? (
+            <Text className="text-zinc-500 text-sm">
+              {filtered.length}
+              {showMultiInstanceLabel ? ` · ${instances.length}` : ""}
+            </Text>
+          ) : null
+        }
+      />
 
-      {allHidden ? (
+      {instances.length === 0 ? (
+        <EmptyState compact title="No qBittorrent instances enabled" />
+      ) : allHidden ? (
         <Text className="text-zinc-500 text-sm py-1">
           All states hidden — enable one in the widget settings.
         </Text>
-      ) : isLoading ? (
-        <SkeletonCardContent rows={3} />
-      ) : displayTorrents.length === 0 ? (
+      ) : isInitialLoading ? (
+        <PosterSkeletonRow count={4} showSubtitle />
+      ) : isAllErrored ? (
         <EmptyState
-          icon={<CheckCircle size={32} color="#71717a" />}
-          title="Nothing to show"
+          icon={<Icon icon={AlertTriangle} size={32} color="#f59e0b" />}
+          title="Couldn't load downloads"
+          message="Check qBittorrent is reachable and credentials are correct."
         />
+      ) : displayTorrents.length === 0 ? (
+        <EmptyState compact title="Nothing to show" />
       ) : (
-        <View className="gap-3">
-          {displayTorrents.map((torrent) => (
-            <TorrentRow
-              key={torrent.hash}
-              torrent={torrent}
-              onPress={() => router.push(`/torrent/${torrent.hash}`)}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 12 }}
+        >
+          {displayTorrents.map((row) => (
+            <TorrentTile
+              key={`${row.instanceId}:${row.torrent.hash}`}
+              torrent={row.torrent}
+              instanceId={row.instanceId}
+              posterEntry={posterMap.get(row.torrent.hash.toLowerCase())}
             />
           ))}
           {hasMore && (
-            <Pressable
-              onPress={() => router.push("/(tabs)/downloads")}
-              className="active:opacity-70"
-            >
-              <Text className="text-primary text-sm text-center font-medium">
-                View All →
-              </Text>
-            </Pressable>
+            <ViewAllTile onPress={() => router.push("/(tabs)/downloads")} />
           )}
-        </View>
+        </ScrollView>
       )}
     </Card>
   );
 }
 
-function TorrentRow({
+function TorrentTile({
   torrent,
-  onPress,
+  instanceId,
+  posterEntry,
 }: {
   torrent: QBTorrent;
-  onPress: () => void;
+  instanceId: string;
+  posterEntry: ReturnType<typeof useTorrentPosterMap>["get"] extends (
+    k: string,
+  ) => infer R
+    ? R
+    : never;
 }) {
-  const pauseMutation = usePauseTorrent();
-  const resumeMutation = useResumeTorrent();
+  const router = useRouter();
+  // Mutations are scoped to the source instance so a Pause tap on a tile from
+  // qBit A doesn't accidentally pause a same-hash torrent on qBit B.
+  const pauseMutation = usePauseTorrent(instanceId);
+  const resumeMutation = useResumeTorrent(instanceId);
 
-  const isDownloading = torrent.state.includes("DL") || torrent.state === "downloading";
-  const isPaused = torrent.state.includes("paused");
+  const isDownloading =
+    torrent.state.includes("DL") || torrent.state === "downloading";
+  const isPaused = isTorrentPaused(torrent.state);
+  const stateGroup = classifyState(torrent.state);
+  const stateBadge = STATE_BADGE[stateGroup];
 
   const handleToggle = () => {
     lightHaptic();
@@ -157,44 +282,35 @@ function TorrentRow({
     }
   };
 
+  const subtitle = isDownloading
+    ? formatSpeed(torrent.dlspeed)
+    : torrent.eta > 0 && torrent.eta < ETA_UNKNOWN
+      ? `ETA ${formatEta(torrent.eta)}`
+      : torrent.upspeed > 0
+        ? `↑ ${formatSpeed(torrent.upspeed)}`
+        : undefined;
+
   return (
-    <Pressable onPress={onPress} className="active:opacity-80">
-      <View className="flex-row items-center gap-3">
-        <View className="flex-1">
-          <Text className="text-zinc-200 text-sm" numberOfLines={1}>
-            {truncateText(torrent.name, 40)}
-          </Text>
-          <ProgressBar progress={torrent.progress} showLabel className="mt-1.5" />
-          <View className="flex-row gap-3 mt-1">
-            {isDownloading && (
-              <Text className="text-zinc-500 text-xs">
-                ↓ {formatSpeed(torrent.dlspeed)}
-              </Text>
-            )}
-            {torrent.upspeed > 0 && (
-              <Text className="text-zinc-500 text-xs">
-                ↑ {formatSpeed(torrent.upspeed)}
-              </Text>
-            )}
-            {torrent.eta > 0 && torrent.eta < ETA_UNKNOWN && (
-              <Text className="text-zinc-500 text-xs">
-                ETA {formatEta(torrent.eta)}
-              </Text>
-            )}
-          </View>
-        </View>
-        <Pressable
-          onPress={handleToggle}
-          className="p-2 active:opacity-70"
-          hitSlop={8}
-        >
-          {isPaused ? (
-            <Play size={20} color="#3b82f6" />
-          ) : (
-            <Pause size={20} color="#f59e0b" />
-          )}
-        </Pressable>
-      </View>
-    </Pressable>
+    <MediaPosterTile
+      posterUrl={posterEntry?.posterUrl ?? null}
+      title={posterEntry?.title ?? torrent.name}
+      subtitle={subtitle}
+      cornerBadge={
+        stateBadge
+          ? { icon: stateBadge.icon, color: stateBadge.color }
+          : undefined
+      }
+      bottomLeftBadge={{
+        icon: isPaused ? Play : Pause,
+        color: isPaused
+          ? "rgba(59, 130, 246, 0.9)"
+          : "rgba(245, 158, 11, 0.9)",
+        onPress: handleToggle,
+      }}
+      bottomOverlay={<PosterProgressStrip progress={torrent.progress} />}
+      mediaType={posterEntry?.mediaType}
+      fallbackIcon={!posterEntry ? Download : undefined}
+      onPress={() => router.push(`/torrent/${torrent.hash}`)}
+    />
   );
 }

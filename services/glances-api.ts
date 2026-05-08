@@ -8,20 +8,22 @@ import type {
   GlancesDiskIOItem,
 } from "@/lib/types";
 
-export function getCpu(): Promise<GlancesCpu> {
-  return serviceRequest<GlancesCpu>("glances", "/cpu");
+// Per-instance routing: every function takes an optional `instanceId`.
+
+export function getCpu(instanceId?: string): Promise<GlancesCpu> {
+  return serviceRequest<GlancesCpu>("glances", "/cpu", { instanceId });
 }
 
-export function getPerCpu(): Promise<GlancesPerCpuItem[]> {
-  return serviceRequest<GlancesPerCpuItem[]>("glances", "/percpu");
+export function getPerCpu(instanceId?: string): Promise<GlancesPerCpuItem[]> {
+  return serviceRequest<GlancesPerCpuItem[]>("glances", "/percpu", { instanceId });
 }
 
-export function getLoad(): Promise<GlancesLoad> {
-  return serviceRequest<GlancesLoad>("glances", "/load");
+export function getLoad(instanceId?: string): Promise<GlancesLoad> {
+  return serviceRequest<GlancesLoad>("glances", "/load", { instanceId });
 }
 
-export function getMem(): Promise<GlancesMem> {
-  return serviceRequest<GlancesMem>("glances", "/mem");
+export function getMem(instanceId?: string): Promise<GlancesMem> {
+  return serviceRequest<GlancesMem>("glances", "/mem", { instanceId });
 }
 
 const VIRTUAL_FS_TYPES = new Set([
@@ -45,11 +47,11 @@ export function isRealDisk(item: GlancesFsItem): boolean {
   return true;
 }
 
-export async function getFs(): Promise<GlancesFsItem[]> {
-  const all = await serviceRequest<GlancesFsItem[]>("glances", "/fs");
+export async function getFs(instanceId?: string): Promise<GlancesFsItem[]> {
+  const all = await serviceRequest<GlancesFsItem[]>("glances", "/fs", { instanceId });
   return all.filter(isRealDisk);
 }
 
-export function getDiskIO(): Promise<GlancesDiskIOItem[]> {
-  return serviceRequest<GlancesDiskIOItem[]>("glances", "/diskio");
+export function getDiskIO(instanceId?: string): Promise<GlancesDiskIOItem[]> {
+  return serviceRequest<GlancesDiskIOItem[]>("glances", "/diskio", { instanceId });
 }

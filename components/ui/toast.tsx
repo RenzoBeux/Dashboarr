@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { Animated, Text, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckCircle, AlertTriangle, X, Info } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { create } from "zustand";
 import { successHaptic, errorHaptic } from "@/lib/haptics";
 
@@ -40,7 +41,7 @@ export function toast(message: string, type: ToastType = "success") {
   else if (type === "error") errorHaptic();
 }
 
-const ICON_MAP: Record<ToastType, React.ElementType> = {
+const ICON_MAP: Record<ToastType, React.ComponentType<any>> = {
   success: CheckCircle,
   error: AlertTriangle,
   info: Info,
@@ -99,19 +100,19 @@ function ToastItem({ toast: t, onDismiss }: { toast: Toast; onDismiss: () => voi
     ]).start(() => onDismiss());
   }, [onDismiss, translateY, opacity]);
 
-  const Icon = ICON_MAP[t.type];
+  const ToastIcon = ICON_MAP[t.type];
 
   return (
     <Animated.View
       style={{ transform: [{ translateY }], opacity }}
       className={`mx-4 mb-2 rounded-xl px-4 py-3 flex-row items-center gap-3 border border-border/50 ${BG_MAP[t.type]}`}
     >
-      <Icon size={18} color={COLOR_MAP[t.type]} />
+      <Icon icon={ToastIcon} size={18} color={COLOR_MAP[t.type]} />
       <Text className="text-zinc-200 text-sm flex-1" numberOfLines={2}>
         {t.message}
       </Text>
       <Pressable onPress={dismiss} hitSlop={8}>
-        <X size={16} color="#71717a" />
+        <Icon icon={X} size={16} color="#71717a" />
       </Pressable>
     </Animated.View>
   );

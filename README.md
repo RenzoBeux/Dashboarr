@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript" alt="TypeScript" />
   <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app"><img src="https://img.shields.io/badge/Android-Google_Play-3DDC84?logo=android&logoColor=white" alt="Android — Google Play" /></a>
   <a href="https://apps.apple.com/us/app/dashboarr/id6762170117"><img src="https://img.shields.io/badge/iOS-App_Store-black?logo=apple" alt="iOS — App Store" /></a>
+  <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest"><img src="https://img.shields.io/github/v/release/RenzoBeux/Dashboarr?label=APK&logo=github&color=24292e" alt="Direct APK download" /></a>
 </p>
 
 ---
@@ -32,7 +33,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **SABnzbd** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |
 | **Sonarr** | Search & add shows, episode monitoring, airing calendar/schedule |
-| **Overseerr** | Browse & search media, request movies/shows, approve/decline requests |
+| **Seerr** | Browse & search media, request movies/shows, approve/decline requests |
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
 | **Plex** | Now playing, recently added, on deck, library browsing |
@@ -59,6 +60,16 @@ Dashboarr is now available on the Apple App Store: [Dashboarr on the App Store](
 ### Android — Play Store
 
 Dashboarr is now available on the Google Play Store: [Dashboarr on Google Play](https://play.google.com/store/apps/details?id=com.dashboarr.app)
+
+### Android — Direct APK (de-Googled / sideload)
+
+If you're running a de-Googled Android (GrapheneOS, LineageOS, /e/OS, etc.) or just prefer to sideload, the signed APK for every release is attached to the matching tag on the [Releases page](https://github.com/RenzoBeux/Dashboarr/releases/latest).
+
+1. Download `app-release.apk` from the latest release
+2. Open it on your device — Android will prompt you to allow installs from your browser/file manager
+3. Updates are **manual**: there is no in-app updater for sideloaded installs, so check the Releases page periodically (or watch the repo)
+
+The APK is signed with the same keystore as the Play Store build, so you can install it side-by-side or migrate from Play without losing data — but you cannot mix the two on the same device.
 
 ## Getting Started
 
@@ -88,78 +99,31 @@ Scan the QR code with [Expo Go](https://expo.dev/go) on your device, or press `a
 
 ```bash
 # Android (EAS Build)
-npm run build:android
+pnpm build:android
 
 # iOS (EAS Build)
-npm run build:ios
+pnpm build:ios
 
-# Android local production build
-npm run build:android:prod
+# Android local production build — produces both AAB (Play Store) and APK (sideload)
+pnpm build:android:prod
+
+# Upload the locally-built APK to the GitHub Release matching package.json version
+# (creates the release with auto-generated notes if it doesn't exist yet)
+pnpm release:android:apk
+
+# Build + upload in one go
+pnpm release:android
 ```
+
+The `release:*` scripts require the [GitHub CLI](https://cli.github.com/) (`gh`) to be installed and authenticated against the repo. The APK is read from `android/app/build/outputs/apk/release/app-release.apk` and uploaded to the tag `v<version>` from `package.json`.
 
 ## Backend (Optional — Push Notifications)
 
-Dashboarr works fully without a backend, but if you want **real push notifications** (torrent completed, new episodes grabbed, request approved, etc.), you can self-host the companion backend.
+Dashboarr works fully without a backend. If you want **real push notifications** delivered to your phone's lock screen — torrent completed, new episodes grabbed, request approved, service offline — you can self-host the lightweight companion backend.
 
-The backend is a lightweight Fastify + SQLite server that:
-- **Polls** your *arr services on a schedule and detects state changes
-- **Receives webhooks** from Radarr, Sonarr, Overseerr, Bazarr, and Tautulli
-- **Sends push notifications** to your phone via the Expo push service
-- **Pairs** with your device via QR code — no accounts needed
+The backend polls your services and ingests their webhooks, then fires Expo pushes to every paired device. It pairs with your phone via QR code (no accounts) and supports multiple instances per service kind.
 
-### Quick Start (Docker)
-
-```yaml
-# docker-compose.yml
-services:
-  dashboarr-backend:
-    build: ./backend/dashboarr-backend
-    # or use a pre-built image:
-    # image: ghcr.io/renzobeux/dashboarr-backend:latest
-    container_name: dashboarr-backend
-    restart: unless-stopped
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./data:/data
-    environment:
-      - NODE_ENV=production
-      - LOG_LEVEL=info
-      # Public URL your phone will use to reach the backend.
-      # When set the pairing QR encodes both the URL and token so the app
-      # can pair in a single scan. When omitted the QR only contains the
-      # token and you enter the URL manually in the app.
-      # - PUBLIC_URL=https://dashboarr.yourdomain.com
-      # Enable if behind a reverse proxy (Caddy, Nginx, Traefik) so
-      # rate limiting uses the real client IP from X-Forwarded-For.
-      # - TRUST_PROXY=true
-      # Poll Expo for push delivery receipts (rarely needed).
-      # - PUSH_RECEIPTS=true
-      # Consecutive failed health checks (30s each) before "service offline"
-      # notification. Default 3 (~1.5 min). Set to 10 for ~5 min tolerance.
-      # - OFFLINE_THRESHOLD=10
-      # Route service polls via remoteUrl instead of localUrl. The app's own
-      # useRemote flag is always ignored server-side. Default false (backend
-      # on LAN). Flip to true only if the backend lives off-LAN.
-      # - BACKEND_USE_REMOTE=false
-```
-
-```bash
-docker compose up -d
-```
-
-### Quick Start (Node.js)
-
-```bash
-cd backend/dashboarr-backend
-npm install
-npm run build
-npm start
-```
-
-Then open the Dashboarr app, go to **Settings → Backend**, enter your backend URL, and scan the pairing QR code.
-
-For full setup instructions, environment variables, webhook configuration, and more, see the [backend README](backend/dashboarr-backend/README.md).
+For setup, configuration, environment variables, webhook URLs, and per-instance push attribution, see the **[backend README](backend/dashboarr-backend/README.md)**.
 
 ## Configuration
 
@@ -184,7 +148,7 @@ components/
   ui/                 # Reusable UI primitives (cards, buttons, inputs, toggles)
   dashboard/          # Dashboard card components
   common/             # Shared layout components (screen wrapper, pull-to-refresh)
-  overseerr/          # Overseerr-specific components
+  overseerr/          # Seerr-specific components (folder name kept for back-compat)
 services/             # Raw API clients for each service
 hooks/                # TanStack Query wrappers (caching, polling, mutations)
 store/                # Zustand stores + AsyncStorage/SecureStore helpers
@@ -226,3 +190,13 @@ This project is open source. See the [LICENSE](LICENSE) file for details.
 
 - [nzb360](https://nzb360.com/) — The original inspiration for this project
 - The *arr stack community for building incredible self-hosted media tools
+
+## Star History
+
+<a href="https://www.star-history.com/#RenzoBeux/Dashboarr&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date" />
+ </picture>
+</a>
