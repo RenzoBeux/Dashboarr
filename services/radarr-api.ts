@@ -193,6 +193,22 @@ export function toggleMovieMonitored(
   });
 }
 
+// --- Update Movie (full PUT) ---
+//
+// Radarr expects the entire movie resource on PUT. Our `RadarrMovie` type is a
+// subset of the API response, but because we always pass the cached GET result
+// through (spread + override), every runtime field is preserved.
+export function updateMovie(
+  movie: RadarrMovie,
+  instanceId?: string,
+): Promise<RadarrMovie> {
+  return serviceRequest<RadarrMovie>("radarr", `/movie/${movie.id}`, {
+    method: "PUT",
+    body: JSON.stringify(movie),
+    instanceId,
+  });
+}
+
 // --- Calendar ---
 
 export function getCalendar(

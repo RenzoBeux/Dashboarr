@@ -139,11 +139,31 @@ export interface RadarrMovie {
   digitalRelease?: string;
   sizeOnDisk: number;
   images: RadarrImage[];
-  ratings: { votes: number; value: number };
+  ratings: RatingsBundle;
   runtime: number;
   qualityProfileId: number;
   rootFolderPath: string;
   movieFile?: RadarrMovieFile;
+  genres?: string[];
+  certification?: string;
+  studio?: string;
+}
+
+export interface RatingChild {
+  votes?: number;
+  value?: number;
+  type?: string;
+}
+
+// Radarr/Sonarr v3+ return ratings as a bundle of named sources. Older builds
+// returned a flat `{ votes, value }` — kept as optional for back-compat.
+export interface RatingsBundle {
+  imdb?: RatingChild;
+  tmdb?: RatingChild;
+  metacritic?: RatingChild;
+  rottenTomatoes?: RatingChild;
+  votes?: number;
+  value?: number;
 }
 
 export interface RadarrImage {
@@ -261,6 +281,10 @@ export interface SonarrSeries {
   seasons: SonarrSeason[];
   qualityProfileId: number;
   rootFolderPath: string;
+  ratings?: RatingsBundle;
+  genres?: string[];
+  certification?: string;
+  firstAired?: string;
   statistics?: {
     seasonCount: number;
     episodeFileCount: number;

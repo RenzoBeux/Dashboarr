@@ -212,6 +212,22 @@ export function toggleSeriesMonitored(
   });
 }
 
+// --- Update Series (full PUT) ---
+//
+// Sonarr expects the entire series resource on PUT. As with Radarr, we forward
+// the cached GET result with the targeted field overridden so unknown fields
+// outside our typed subset survive the round-trip.
+export function updateSeries(
+  series: SonarrSeries,
+  instanceId?: string,
+): Promise<SonarrSeries> {
+  return serviceRequest<SonarrSeries>("sonarr", `/series/${series.id}`, {
+    method: "PUT",
+    body: JSON.stringify(series),
+    instanceId,
+  });
+}
+
 // --- Search Commands ---
 
 export function searchForSeries(seriesId: number, instanceId?: string): Promise<void> {

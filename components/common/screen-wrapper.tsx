@@ -19,12 +19,17 @@ interface ScreenWrapperProps extends ViewProps {
   scrollable?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  // When true, content extends behind the status bar and the scroll view
+  // drops its default `px-4 pt-2`. Callers handle their own padding.
+  // Used for media detail screens that render a full-bleed hero.
+  edgeToEdge?: boolean;
 }
 
 export function ScreenWrapper({
   scrollable = true,
   refreshing = false,
   onRefresh,
+  edgeToEdge = false,
   children,
   className = "",
   ...props
@@ -35,9 +40,12 @@ export function ScreenWrapper({
   // tab bar itself) and padding the scroll view by the full tab bar height.
   const tabBarHeight = useContext(BottomTabBarHeightContext);
   const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
-  const safeAreaEdges = usesFloatingTabBar
-    ? (["top", "left", "right"] as const)
-    : undefined;
+  const baseEdges: ReadonlyArray<"top" | "left" | "right" | "bottom"> = edgeToEdge
+    ? ["left", "right"]
+    : usesFloatingTabBar
+      ? ["top", "left", "right"]
+      : ["top", "left", "right", "bottom"];
+  const safeAreaEdges = baseEdges as readonly ("top" | "left" | "right" | "bottom")[];
   const scrollPaddingBottom =
     SCROLL_BOTTOM_PADDING + (usesFloatingTabBar ? tabBarHeight : 0);
 
@@ -51,7 +59,7 @@ export function ScreenWrapper({
         <DemoBanner />
         <KeyboardAwareScrollView
           className="flex-1"
-          contentContainerClassName="px-4 pt-2"
+          contentContainerClassName={edgeToEdge ? "" : "px-4 pt-2"}
           contentContainerStyle={{ paddingBottom: scrollPaddingBottom }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -79,7 +87,7 @@ export function ScreenWrapper({
     <SafeAreaView
       edges={safeAreaEdges}
       style={usesFloatingTabBar ? { paddingBottom: tabBarHeight } : undefined}
-      className={`flex-1 bg-background px-4 ${className}`}
+      className={`flex-1 bg-background ${edgeToEdge ? "" : "px-4"} ${className}`}
       {...props}
     >
       <DemoBanner />

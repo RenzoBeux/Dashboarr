@@ -115,14 +115,24 @@ export function formatAudioChannels(channels: number): string {
 }
 
 /**
- * Format video resolution string from mediaInfo resolution (e.g. "1920x1080" → "1080p", "3840x2160" → "4K")
+ * Format video resolution string from mediaInfo resolution (e.g. "1920x1080" → "1080p", "3840x2160" → "4K").
+ *
+ * Bucket by the longest dimension, not the height. Cinemascope 4K rips are
+ * commonly cropped to remove black bars, leaving sizes like 3840x2080 or
+ * 3840x1600 — height alone would mis-bucket those as 1080p. The longest side
+ * stays anchored to the standard width (3840 / 1920 / 1280 / 720) regardless
+ * of crop, so it's the reliable axis to classify on.
  */
 export function formatResolution(resolution: string): string {
-  const height = parseInt(resolution.split("x")[1] || resolution, 10);
-  if (height >= 2160) return "4K";
-  if (height >= 1080) return "1080p";
-  if (height >= 720) return "720p";
-  if (height >= 480) return "480p";
+  const [a, b] = resolution.split("x").map((n) => parseInt(n, 10));
+  const longest = Math.max(
+    Number.isFinite(a) ? a : 0,
+    Number.isFinite(b) ? b : 0,
+  );
+  if (longest >= 3000) return "4K";
+  if (longest >= 1800) return "1080p";
+  if (longest >= 1200) return "720p";
+  if (longest >= 700) return "480p";
   return resolution;
 }
 

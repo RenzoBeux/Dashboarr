@@ -10,6 +10,7 @@ import {
   deleteMovie,
   searchForMovie,
   toggleMovieMonitored,
+  updateMovie,
   getQualityProfiles,
   getRootFolders,
   getTags,
@@ -193,6 +194,81 @@ export function useToggleMovieMonitored(instanceId?: string) {
     onSettled: (_data, _err, { movieId }) => {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
+    },
+  });
+}
+
+export function useUpdateMovieQualityProfile(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  return useMutation({
+    mutationFn: ({
+      movieId,
+      qualityProfileId,
+    }: {
+      movieId: number;
+      qualityProfileId: number;
+    }) => {
+      const cached = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
+      if (!cached) throw new Error("Movie not loaded");
+      return updateMovie(
+        { ...cached, qualityProfileId },
+        id ?? undefined,
+      );
+    },
+    onMutate: async ({ movieId, qualityProfileId }) => {
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movie", movieId] });
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movies"] });
+
+      const prevDetail = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
+      const prevList = queryClient.getQueryData<RadarrMovie[]>([
+        "radarr",
+        id,
+        "movies",
+      ]);
+
+      if (prevDetail) {
+        queryClient.setQueryData<RadarrMovie>(
+          ["radarr", id, "movie", movieId],
+          { ...prevDetail, qualityProfileId },
+        );
+      }
+      if (prevList) {
+        queryClient.setQueryData<RadarrMovie[]>(
+          ["radarr", id, "movies"],
+          prevList.map((m) =>
+            m.id === movieId ? { ...m, qualityProfileId } : m,
+          ),
+        );
+      }
+
+      return { prevDetail, prevList };
+    },
+    onError: (_err, { movieId }, context) => {
+      if (context?.prevDetail) {
+        queryClient.setQueryData(
+          ["radarr", id, "movie", movieId],
+          context.prevDetail,
+        );
+      }
+      if (context?.prevList) {
+        queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
+      }
+      toast("Failed to update quality profile", "error");
+    },
+    onSettled: (_data, _err, { movieId }) => {
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
     },
   });
 }

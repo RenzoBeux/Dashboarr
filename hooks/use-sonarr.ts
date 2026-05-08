@@ -11,6 +11,7 @@ import {
   deleteSeries,
   toggleEpisodeMonitored,
   toggleSeriesMonitored,
+  updateSeries,
   searchForSeries,
   searchForEpisodes,
   getQualityProfiles,
@@ -209,6 +210,81 @@ export function useToggleSeriesMonitored(instanceId?: string) {
     onSettled: (_data, _err, { seriesId }) => {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+    },
+  });
+}
+
+export function useUpdateSeriesQualityProfile(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      qualityProfileId,
+    }: {
+      seriesId: number;
+      qualityProfileId: number;
+    }) => {
+      const cached = queryClient.getQueryData<SonarrSeries>([
+        "sonarr",
+        id,
+        "series",
+        seriesId,
+      ]);
+      if (!cached) throw new Error("Series not loaded");
+      return updateSeries(
+        { ...cached, qualityProfileId },
+        id ?? undefined,
+      );
+    },
+    onMutate: async ({ seriesId, qualityProfileId }) => {
+      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series"] });
+
+      const prevDetail = queryClient.getQueryData<SonarrSeries>([
+        "sonarr",
+        id,
+        "series",
+        seriesId,
+      ]);
+      const prevList = queryClient.getQueryData<SonarrSeries[]>([
+        "sonarr",
+        id,
+        "series",
+      ]);
+
+      if (prevDetail) {
+        queryClient.setQueryData<SonarrSeries>(
+          ["sonarr", id, "series", seriesId],
+          { ...prevDetail, qualityProfileId },
+        );
+      }
+      if (prevList) {
+        queryClient.setQueryData<SonarrSeries[]>(
+          ["sonarr", id, "series"],
+          prevList.map((s) =>
+            s.id === seriesId ? { ...s, qualityProfileId } : s,
+          ),
+        );
+      }
+
+      return { prevDetail, prevList };
+    },
+    onError: (_err, { seriesId }, context) => {
+      if (context?.prevDetail) {
+        queryClient.setQueryData(
+          ["sonarr", id, "series", seriesId],
+          context.prevDetail,
+        );
+      }
+      if (context?.prevList) {
+        queryClient.setQueryData(["sonarr", id, "series"], context.prevList);
+      }
+      toast("Failed to update quality profile", "error");
+    },
+    onSettled: (_data, _err, { seriesId }) => {
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
     },
   });
 }

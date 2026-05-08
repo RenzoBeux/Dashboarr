@@ -163,12 +163,30 @@ describe("formatResolution", () => {
     expect(formatResolution("3840x2160")).toBe("4K");
   });
 
+  it("maps cinemascope-cropped 4K (3840x2080) to 4K", () => {
+    // Real-world Bluray-2160p of a cinemascope movie, cropped to drop black
+    // bars. Height alone falls below 2160 and used to mis-bucket as 1080p.
+    expect(formatResolution("3840x2080")).toBe("4K");
+  });
+
+  it("maps cinemascope-cropped 4K (3840x1600) to 4K", () => {
+    expect(formatResolution("3840x1600")).toBe("4K");
+  });
+
   it("maps 1920x1080 to 1080p", () => {
     expect(formatResolution("1920x1080")).toBe("1080p");
   });
 
+  it("maps cinemascope-cropped 1080p (1920x800) to 1080p", () => {
+    expect(formatResolution("1920x800")).toBe("1080p");
+  });
+
   it("maps 1280x720 to 720p", () => {
     expect(formatResolution("1280x720")).toBe("720p");
+  });
+
+  it("maps DVD-shaped 720x480 to 480p", () => {
+    expect(formatResolution("720x480")).toBe("480p");
   });
 
   it("returns the raw resolution for sub-480p", () => {
