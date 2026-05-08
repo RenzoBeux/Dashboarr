@@ -10,7 +10,6 @@ import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
-import { useConfigStore } from "@/store/config-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { toast } from "@/components/ui/toast";
@@ -80,15 +79,10 @@ export function NotificationWatchers() {
   const gate: BaseGate = { hydrated, enabled, backendActive };
 
   const qbInstances = useEnabledInstances("qbittorrent");
+  const sabInstances = useEnabledInstances("sabnzbd");
   const radarrInstances = useEnabledInstances("radarr");
   const sonarrInstances = useEnabledInstances("sonarr");
   const overseerrInstances = useEnabledInstances("overseerr");
-
-  // SAB hooks are still single-instance — they read the active sabnzbd
-  // instance from the legacy `services.sabnzbd` view. Render a single
-  // watcher gated on that flag. Once `useSabHistory` accepts an instanceId,
-  // switch to the per-instance map pattern used by qBittorrent above.
-  const sabnzbdEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
 
   return (
     <>
@@ -99,11 +93,13 @@ export function NotificationWatchers() {
           active={!backendActive && hydrated && enabled && torrentCompleted}
         />
       ))}
-      <SabnzbdHistoryWatcher
-        active={
-          !backendActive && hydrated && enabled && sabnzbdCompleted && sabnzbdEnabled
-        }
-      />
+      {sabInstances.map((inst) => (
+        <SabnzbdHistoryWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && sabnzbdCompleted}
+        />
+      ))}
       {radarrInstances.map((inst) => (
         <RadarrQueueWatcher
           key={inst.id}
@@ -198,11 +194,17 @@ function QbDownloadWatcher({
 }
 
 // --- SABnzbd: new history entries with status=Completed ---
-// Single-instance for now; the underlying `useSabHistory` hook hasn't been
-// migrated to multi-instance yet. When it gains an `instanceId` arg, lift
-// this into a per-instance map alongside QbDownloadWatcher.
-function SabnzbdHistoryWatcher({ active }: { active: boolean }) {
-  const { data: sabHistory } = useSabHistory(20);
+// Per-instance: each enabled SAB instance gets its own watcher with isolated
+// previous-id snapshot, so a completion on instance A doesn't get muted by
+// the same nzo_id appearing on instance B.
+function SabnzbdHistoryWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: sabHistory } = useSabHistory(20, instanceId);
   const prevSabHistoryIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -221,12 +223,12 @@ function SabnzbdHistoryWatcher({ active }: { active: boolean }) {
         sendLocalNotification({
           title: "Download complete",
           body: slot.name,
-          data: { type: "sabnzbd", nzoId: slot.nzo_id },
+          data: { type: "sabnzbd", nzoId: slot.nzo_id, instanceId },
         });
       }
     }
     prevSabHistoryIds.current = currentIds;
-  }, [sabHistory, active]);
+  }, [sabHistory, active, instanceId]);
 
   return null;
 }

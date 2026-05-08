@@ -3,10 +3,16 @@ import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
+import {
+  InstancePickerRow,
+  INSTANCE_BINDING_ALL,
+  type InstanceBindingValue,
+} from "@/components/dashboard/widget-settings/instance-picker-row";
 
 export type SabnzbdQueueSortBy = "progress" | "name" | "size" | "added";
 
 export interface SabnzbdQueueSettingsValue extends Record<string, unknown> {
+  instanceIds: InstanceBindingValue;
   maxItems: number;
   showDownloading: boolean;
   showPaused: boolean;
@@ -15,6 +21,7 @@ export interface SabnzbdQueueSettingsValue extends Record<string, unknown> {
 }
 
 export const SABNZBD_QUEUE_DEFAULT_SETTINGS: SabnzbdQueueSettingsValue = {
+  instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 5,
   showDownloading: true,
   showPaused: true,
@@ -36,14 +43,19 @@ const SORT_OPTIONS: { value: SabnzbdQueueSortBy; label: string }[] = [
   { value: "added", label: "Recent" },
 ];
 
-export function SabnzbdQueueSettings(_props: WidgetSettingsComponentProps) {
+export function SabnzbdQueueSettings({ slotId }: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<SabnzbdQueueSettingsValue>(
-    "sabnzbd-queue",
+    slotId,
     SABNZBD_QUEUE_DEFAULT_SETTINGS,
   );
 
   return (
     <View className="px-4 py-2 gap-5">
+      <InstancePickerRow
+        serviceId="sabnzbd"
+        value={settings.instanceIds}
+        onChange={(instanceIds) => update({ instanceIds })}
+      />
       <View>
         <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
           Show states

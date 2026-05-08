@@ -115,21 +115,27 @@ export async function diffQbTorrents(
 
 // ---------------- SABnzbd ----------------
 
-const SAB_KEY = "sab:nzo:history";
-
 interface SabSnapshot {
   ids: string[];
 }
 
-export async function diffSabHistory(slots: SabHistorySlot[]): Promise<void> {
-  const prev = getState<SabSnapshot>(SAB_KEY);
+export async function diffSabHistory(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  slots: SabHistorySlot[],
+): Promise<void> {
+  const key = `sab:${instanceId}:nzo:history`;
+  const prev = getState<SabSnapshot>(key);
   const currentIds = slots.map((s) => s.nzo_id);
 
   // Persist first, dispatch after.
-  setState(SAB_KEY, { ids: currentIds });
+  setState(key, { ids: currentIds });
 
   if (!prev) return;
   const prevSet = new Set(prev.ids);
+
+  const prefix = instancePrefix(instanceName, multipleOfKind);
 
   for (const slot of slots) {
     if (prevSet.has(slot.nzo_id)) continue;
@@ -138,10 +144,10 @@ export async function diffSabHistory(slots: SabHistorySlot[]): Promise<void> {
 
     await dispatchPush({
       category: "sabnzbdCompleted",
-      title: "Download complete",
+      title: `${prefix}Download complete`,
       body: slot.name,
-      data: { type: "sabnzbd", nzoId: slot.nzo_id },
-      dedupeKey: `sab:completed:${slot.nzo_id}`,
+      data: { type: "sabnzbd", nzoId: slot.nzo_id, instanceId },
+      dedupeKey: `sab:${instanceId}:completed:${slot.nzo_id}`,
     });
   }
 }

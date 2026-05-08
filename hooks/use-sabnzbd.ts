@@ -10,71 +10,59 @@ import {
   deleteSabHistorySlot,
   addSabUrl,
 } from "@/services/sabnzbd-api";
-import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 
-function useSabEnabled() {
-  return useConfigStore((s) => s.services.sabnzbd.enabled);
-}
+// Per-instance cache keying: every hook accepts an optional `instanceId`.
+// When omitted, the user's active SABnzbd is used (single-instance behavior);
+// when passed (by aggregated dashboard cards or per-instance watchers), queries
+// fan out to that specific instance with its own cache slot.
 
-export function useSabQueue() {
-  const enabled = useSabEnabled();
+export function useSabQueue(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("sabnzbd", instanceId);
   return useQuery({
-    queryKey: ["sabnzbd", "queue"],
-    queryFn: getSabQueue,
+    queryKey: ["sabnzbd", id, "queue"],
+    queryFn: () => getSabQueue(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.activeTorrents,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function useSabHistory(limit = 50) {
-  const enabled = useSabEnabled();
+export function useSabHistory(limit = 50, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("sabnzbd", instanceId);
   return useQuery({
-    queryKey: ["sabnzbd", "history", limit],
-    queryFn: () => getSabHistory(limit),
+    queryKey: ["sabnzbd", id, "history", limit],
+    queryFn: () => getSabHistory(limit, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled,
+    enabled: enabled && !!id,
   });
 }
 
-export function usePauseSabSlot() {
+export function usePauseSabSlot(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
   return useMutation({
-    mutationFn: (nzoId: string) => pauseSabSlot(nzoId),
+    mutationFn: (nzoId: string) => pauseSabSlot(nzoId, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
     },
   });
 }
 
-export function useResumeSabSlot() {
+export function useResumeSabSlot(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
   return useMutation({
-    mutationFn: (nzoId: string) => resumeSabSlot(nzoId),
+    mutationFn: (nzoId: string) => resumeSabSlot(nzoId, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
     },
   });
 }
 
-export function useDeleteSabSlot() {
+export function useDeleteSabSlot(instanceId?: string) {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      nzoId,
-      deleteFiles = false,
-    }: {
-      nzoId: string;
-      deleteFiles?: boolean;
-    }) => deleteSabSlot(nzoId, deleteFiles),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
-    },
-  });
-}
-
-export function useDeleteSabHistorySlot() {
-  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
   return useMutation({
     mutationFn: ({
       nzoId,
@@ -82,40 +70,60 @@ export function useDeleteSabHistorySlot() {
     }: {
       nzoId: string;
       deleteFiles?: boolean;
-    }) => deleteSabHistorySlot(nzoId, deleteFiles),
+    }) => deleteSabSlot(nzoId, deleteFiles, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
     },
   });
 }
 
-export function usePauseSabAll() {
+export function useDeleteSabHistorySlot(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
   return useMutation({
-    mutationFn: pauseSabAll,
+    mutationFn: ({
+      nzoId,
+      deleteFiles = false,
+    }: {
+      nzoId: string;
+      deleteFiles?: boolean;
+    }) => deleteSabHistorySlot(nzoId, deleteFiles, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
     },
   });
 }
 
-export function useResumeSabAll() {
+export function usePauseSabAll(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
   return useMutation({
-    mutationFn: resumeSabAll,
+    mutationFn: () => pauseSabAll(id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
     },
   });
 }
 
-export function useAddSabUrl() {
+export function useResumeSabAll(instanceId?: string) {
   const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
+  return useMutation({
+    mutationFn: () => resumeSabAll(id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
+    },
+  });
+}
+
+export function useAddSabUrl(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
   return useMutation({
     mutationFn: ({ url, category }: { url: string; category?: string }) =>
-      addSabUrl(url, category),
+      addSabUrl(url, category, id ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sabnzbd"] });
+      queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] });
     },
   });
 }

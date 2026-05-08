@@ -27,14 +27,20 @@ function getBadgeVariant(
 }
 
 export default function SabSlotDetailScreen() {
-  const { nzo_id } = useLocalSearchParams<{ nzo_id: string }>();
+  // `instanceId` lands here from dashboard widget pushes (`/sab/<id>?instanceId=<uuid>`).
+  // Omitted when the user navigates from the SAB tab, where it's implicit and
+  // resolves to the active SAB instance.
+  const { nzo_id, instanceId } = useLocalSearchParams<{
+    nzo_id: string;
+    instanceId?: string;
+  }>();
   const router = useRouter();
-  const { data: queue } = useSabQueue();
-  const { data: history } = useSabHistory(50);
-  const pauseSlot = usePauseSabSlot();
-  const resumeSlot = useResumeSabSlot();
-  const deleteSlot = useDeleteSabSlot();
-  const deleteHistory = useDeleteSabHistorySlot();
+  const { data: queue } = useSabQueue(instanceId);
+  const { data: history } = useSabHistory(50, instanceId);
+  const pauseSlot = usePauseSabSlot(instanceId);
+  const resumeSlot = useResumeSabSlot(instanceId);
+  const deleteSlot = useDeleteSabSlot(instanceId);
+  const deleteHistory = useDeleteSabHistorySlot(instanceId);
 
   const queueSlot = queue?.slots.find((s) => s.nzo_id === nzo_id);
   const historySlot = history?.slots.find((s) => s.nzo_id === nzo_id);

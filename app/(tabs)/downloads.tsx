@@ -111,12 +111,9 @@ type DownloadClient = "qbittorrent" | "sabnzbd";
 
 // Top-level switcher for the Downloads tab. When both qBittorrent and SAB are
 // enabled the user picks via a segmented control; otherwise the available
-// client is rendered directly.
-//
-// qBittorrent's view stays inlined here (server-side pagination, sort store,
-// virtualized FlatList) — `components/downloads/qbittorrent-downloads-view.tsx`
-// is the older extracted version from before the multi-instance / pagination
-// rework on main and is not used by this screen yet.
+// client is rendered directly. qBittorrent's logic stays inlined here so the
+// virtualized FlatList + server-side pagination + sort store all share the
+// screen's state.
 export default function DownloadsScreen() {
   const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
   const sabEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
