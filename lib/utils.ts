@@ -55,7 +55,13 @@ export function formatEpisodeCode(season: number, episode: number): string {
  * Relative date string (Today, Tomorrow, Mon Apr 7, etc.)
  */
 export function relativeDate(dateString: string): string {
-  const date = new Date(dateString);
+  // Date-only strings (YYYY-MM-DD, e.g. Sonarr's airDate) get parsed as UTC
+  // midnight by `new Date(...)`, which lands on the previous local day for any
+  // timezone west of UTC. Anchor those at local midnight instead so today's
+  // airdate doesn't show as "Yesterday".
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+    ? new Date(`${dateString}T00:00:00`)
+    : new Date(dateString);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const target = new Date(date);
@@ -77,12 +83,25 @@ export function relativeDate(dateString: string): string {
 }
 
 /**
- * Get ISO date string for today + offset days
+ * Local YYYY-MM-DD key for a Date (defaults to now). Use this instead of
+ * `toISOString().split("T")[0]` whenever the key represents the user's
+ * calendar day — `toISOString` is UTC and disagrees with local day at TZ
+ * boundaries (always for east-of-UTC users; late evening for west-of-UTC).
+ */
+export function localDateKey(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Get local YYYY-MM-DD for today + offset days.
  */
 export function getDateOffset(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
-  return date.toISOString().split("T")[0];
+  return localDateKey(date);
 }
 
 /**

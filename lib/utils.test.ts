@@ -129,6 +129,15 @@ describe("relativeDate", () => {
     expect(result).toContain("Apr");
     expect(result).toContain("30");
   });
+
+  it("treats date-only strings (YYYY-MM-DD) as local time", () => {
+    // Regression for issue #33: Sonarr's airDate is "YYYY-MM-DD" and used to
+    // parse as UTC midnight, showing "Yesterday" for today's airdate in any
+    // timezone west of UTC.
+    expect(relativeDate("2026-04-27")).toBe("Today");
+    expect(relativeDate("2026-04-28")).toBe("Tomorrow");
+    expect(relativeDate("2026-04-26")).toBe("Yesterday");
+  });
 });
 
 describe("formatAudioChannels", () => {

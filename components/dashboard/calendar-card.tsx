@@ -17,7 +17,12 @@ import {
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
-import { formatEpisodeCode, relativeDate, getDateOffset } from "@/lib/utils";
+import {
+  formatEpisodeCode,
+  relativeDate,
+  getDateOffset,
+  localDateKey,
+} from "@/lib/utils";
 import {
   getCalendar as getSonarrCalendar,
   getSonarrPoster,
@@ -70,8 +75,7 @@ function isoDate(value: string): string {
 }
 
 function isToday(dateString: string): boolean {
-  const today = new Date().toISOString().split("T")[0];
-  return dateString === today;
+  return dateString === localDateKey();
 }
 
 export function CalendarCard({ slotId }: WidgetComponentProps) {
@@ -131,10 +135,10 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
     (showSonarr && !sonarrState.hasAnyData && sonarrState.isInitialLoading) ||
     (showRadarr && !radarrState.hasAnyData && radarrState.isInitialLoading);
 
-  const todayIso = new Date().toISOString().split("T")[0];
+  const todayIso = localDateKey();
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + settings.daysAhead);
-  const horizonIso = horizon.toISOString().split("T")[0];
+  const horizonIso = localDateKey(horizon);
 
   const items: CalendarItem[] = [];
   if (showSonarr) {

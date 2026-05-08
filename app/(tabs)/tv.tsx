@@ -33,7 +33,7 @@ import {
 } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { formatEpisodeCode, relativeDate } from "@/lib/utils";
+import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { mediumHaptic } from "@/lib/haptics";
@@ -408,7 +408,7 @@ function CalendarView({ onLongPress }: { onLongPress: (ep: SonarrCalendarEntry) 
     <View className="gap-4">
       {sortedDates.map((date) => {
         const entries = grouped.get(date)!;
-        const isToday = date === new Date().toISOString().split("T")[0];
+        const isToday = date === localDateKey();
 
         return (
           <View key={date}>

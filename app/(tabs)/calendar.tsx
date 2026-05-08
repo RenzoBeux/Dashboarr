@@ -22,7 +22,7 @@ import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { formatEpisodeCode } from "@/lib/utils";
+import { formatEpisodeCode, localDateKey } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { lightHaptic } from "@/lib/haptics";
 import { getBoolean, setBoolean } from "@/store/storage";
@@ -43,16 +43,12 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-function toDateKey(d: Date): string {
-  return d.toISOString().split("T")[0];
-}
-
 function getMonthRange(year: number, month: number) {
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 0);
   return {
-    start: toDateKey(start),
-    end: toDateKey(end),
+    start: localDateKey(start),
+    end: localDateKey(end),
   };
 }
 
@@ -69,13 +65,13 @@ function getCalendarGrid(year: number, month: number) {
   for (let i = startDow - 1; i >= 0; i--) {
     const d = prevLast - i;
     const date = new Date(year, month - 1, d);
-    cells.push({ day: d, dateKey: toDateKey(date), inMonth: false });
+    cells.push({ day: d, dateKey: localDateKey(date), inMonth: false });
   }
 
   // Current month
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
-    cells.push({ day: d, dateKey: toDateKey(date), inMonth: true });
+    cells.push({ day: d, dateKey: localDateKey(date), inMonth: true });
   }
 
   // Next month padding
@@ -83,7 +79,7 @@ function getCalendarGrid(year: number, month: number) {
   if (remaining < 7) {
     for (let d = 1; d <= remaining; d++) {
       const date = new Date(year, month + 1, d);
-      cells.push({ day: d, dateKey: toDateKey(date), inMonth: false });
+      cells.push({ day: d, dateKey: localDateKey(date), inMonth: false });
     }
   }
 
@@ -94,7 +90,7 @@ export default function CalendarScreen() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState(toDateKey(today));
+  const [selectedDate, setSelectedDate] = useState(localDateKey(today));
   const [filter, setFilter] = useState<Filter>("all");
   const [includeUnmonitored, setIncludeUnmonitoredState] = useState(() =>
     getBoolean(INCLUDE_UNMONITORED_KEY),
@@ -211,7 +207,7 @@ export default function CalendarScreen() {
   }, [episodes, movies, filter]);
 
   const grid = useMemo(() => getCalendarGrid(year, month), [year, month]);
-  const todayKey = toDateKey(today);
+  const todayKey = localDateKey(today);
   const selectedItems = itemsByDate.get(selectedDate) ?? [];
 
   function goMonth(delta: number) {
@@ -226,7 +222,7 @@ export default function CalendarScreen() {
     const now = new Date();
     setYear(now.getFullYear());
     setMonth(now.getMonth());
-    setSelectedDate(toDateKey(now));
+    setSelectedDate(localDateKey(now));
   }
 
   return (
