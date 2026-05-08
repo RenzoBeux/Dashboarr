@@ -46,8 +46,10 @@ import { generateInstanceId } from "@/lib/uuid";
  *         `string[] | "all"`. Scalar legacy ids are wrapped in single-element
  *         arrays; "all" sentinels carry over unchanged. Same transform runs at
  *         hydrate time on locally-persisted dashboards.
+ *   v16 — added sabnzbd service entry (no schema change; defaultInstances()
+ *         backfills the new id at import time, so this is a version stamp only).
  */
-export const CURRENT_CONFIG_VERSION = 15;
+export const CURRENT_CONFIG_VERSION = 16;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -321,6 +323,11 @@ const migrations: Record<number, (payload: any) => any> = {
     });
     return { ...payload, version: 15, dashboards: migratedDashboards };
   },
+
+  // v15 → v16: sabnzbd added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack a sabnzbd entry
+  // get the disabled default automatically — nothing to transform here.
+  15: (payload) => ({ ...payload, version: 16 }),
 };
 
 /**

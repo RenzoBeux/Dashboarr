@@ -1,6 +1,7 @@
 import { View, Text, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -107,13 +108,13 @@ export default function SabSlotDetailScreen() {
         <View className="flex-row justify-between">
           {inQueue && queue?.speed?.trim() && (
             <View className="flex-row items-center gap-1">
-              <ArrowDown size={14} color="#3b82f6" />
+              <Icon icon={ArrowDown} size={14} color="#3b82f6" />
               <Text className="text-zinc-300 text-sm">{queue.speed}B/s</Text>
             </View>
           )}
           {inQueue && queueSlot!.timeleft && queueSlot!.timeleft !== "0:00:00" && (
             <View className="flex-row items-center gap-1">
-              <Clock size={14} color="#a1a1aa" />
+              <Icon icon={Clock} size={14} color="#a1a1aa" />
               <Text className="text-zinc-300 text-sm">ETA {queueSlot!.timeleft}</Text>
             </View>
           )}
@@ -161,9 +162,9 @@ export default function SabSlotDetailScreen() {
             loading={pauseSlot.isPending || resumeSlot.isPending}
             icon={
               isPaused ? (
-                <Play size={16} color="#3b82f6" />
+                <Icon icon={Play} size={16} color="#3b82f6" />
               ) : (
-                <Pause size={16} color="#f59e0b" />
+                <Icon icon={Pause} size={16} color="#f59e0b" />
               )
             }
             className="flex-1"
@@ -174,7 +175,7 @@ export default function SabSlotDetailScreen() {
           variant="danger"
           onPress={handleDelete}
           loading={deleteSlot.isPending || deleteHistory.isPending}
-          icon={<Trash2 size={16} color="white" />}
+          icon={<Icon icon={Trash2} size={16} color="white" />}
           className="flex-1"
         />
       </View>

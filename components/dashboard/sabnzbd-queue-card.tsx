@@ -2,6 +2,7 @@ import { View, Text, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueries } from "@tanstack/react-query";
 import { Pause, Play, CheckCircle } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -133,7 +134,7 @@ export function SabnzbdQueueCard({ slotId }: WidgetComponentProps) {
         <SkeletonCardContent rows={3} />
       ) : display.length === 0 ? (
         <EmptyState
-          icon={<CheckCircle size={32} color="#71717a" />}
+          icon={<Icon icon={CheckCircle} size={32} color="#71717a" />}
           title="Nothing to show"
         />
       ) : (
@@ -235,9 +236,9 @@ function SlotRow({
           hitSlop={8}
         >
           {isPaused ? (
-            <Play size={20} color="#3b82f6" />
+            <Icon icon={Play} size={20} color="#3b82f6" />
           ) : (
-            <Pause size={20} color="#f59e0b" />
+            <Icon icon={Pause} size={20} color="#f59e0b" />
           )}
         </Pressable>
       </View>

@@ -12,6 +12,7 @@ import {
   ArrowUpDown,
   Check,
 } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -329,9 +330,9 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
               className="bg-surface-light rounded-xl px-4 items-center justify-center active:opacity-70"
             >
               {queuePaused ? (
-                <Play size={20} color="#3b82f6" />
+                <Icon icon={Play} size={20} color="#3b82f6" />
               ) : (
-                <Pause size={20} color="#f59e0b" />
+                <Icon icon={Pause} size={20} color="#f59e0b" />
               )}
             </Pressable>
           </View>
@@ -372,7 +373,7 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
               variant="outline"
               size="sm"
               onPress={() => setShowAddModal(true)}
-              icon={<Plus size={16} color="#a1a1aa" />}
+              icon={<Icon icon={Plus} size={16} color="#a1a1aa" />}
               className="mb-4 self-start"
             />
           )}
@@ -398,7 +399,7 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
               hitSlop={6}
               className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
             >
-              <ArrowUpDown size={16} color="#a1a1aa" />
+              <Icon icon={ArrowUpDown} size={16} color="#a1a1aa" />
             </Pressable>
           </View>
         </>
@@ -430,9 +431,9 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
           label: opt.label,
           icon:
             sort === opt.key ? (
-              <Check size={18} color="#3b82f6" />
+              <Icon icon={Check} size={18} color="#3b82f6" />
             ) : (
-              <ArrowUpDown size={18} color="#71717a" />
+              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
             ),
           onPress: () => setSort(opt.key),
         }))}
@@ -483,7 +484,7 @@ function SelectionBar({
           size="sm"
           onPress={onPause}
           disabled={busy || count === 0}
-          icon={<Pause size={14} color="#f59e0b" />}
+          icon={<Icon icon={Pause} size={14} color="#f59e0b" />}
           className="flex-1"
         />
         <Button
@@ -492,7 +493,7 @@ function SelectionBar({
           size="sm"
           onPress={onResume}
           disabled={busy || count === 0}
-          icon={<Play size={14} color="#3b82f6" />}
+          icon={<Icon icon={Play} size={14} color="#3b82f6" />}
           className="flex-1"
         />
         <Button
@@ -501,7 +502,7 @@ function SelectionBar({
           size="sm"
           onPress={onDelete}
           disabled={busy || count === 0}
-          icon={<Trash2 size={14} color="white" />}
+          icon={<Icon icon={Trash2} size={14} color="white" />}
           className="flex-1"
         />
       </View>
@@ -575,9 +576,9 @@ function SlotListItem({
         {selectionMode && (
           <View className="mr-2 mt-0.5">
             {isSelected ? (
-              <CheckCircle2 size={18} color="#3b82f6" />
+              <Icon icon={CheckCircle2} size={18} color="#3b82f6" />
             ) : (
-              <Circle size={18} color="#71717a" />
+              <Icon icon={Circle} size={18} color="#71717a" />
             )}
           </View>
         )}
@@ -616,9 +617,9 @@ function SlotListItem({
                 hitSlop={6}
               >
                 {isPaused ? (
-                  <Play size={16} color="#3b82f6" />
+                  <Icon icon={Play} size={16} color="#3b82f6" />
                 ) : (
-                  <Pause size={16} color="#f59e0b" />
+                  <Icon icon={Pause} size={16} color="#f59e0b" />
                 )}
               </Pressable>
             )}
@@ -628,7 +629,7 @@ function SlotListItem({
               className={`p-1.5 active:opacity-70 ${deletePending ? "opacity-50" : ""}`}
               hitSlop={6}
             >
-              <Trash2 size={16} color="#ef4444" />
+              <Icon icon={Trash2} size={16} color="#ef4444" />
             </Pressable>
           </View>
         )}

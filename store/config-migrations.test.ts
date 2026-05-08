@@ -994,6 +994,22 @@ describe("v14 → v15 (multi-select widget instance binding)", () => {
   });
 });
 
+describe("v15 → v16 (sabnzbd stamp)", () => {
+  it("just stamps the version without touching unrelated fields", () => {
+    const result: any = migrateConfig({
+      version: 15,
+      services: { radarr: [{ id: "r1", enabled: true, name: "Radarr", localUrl: "", remoteUrl: "", useRemote: false }] },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      hapticsEnabled: false,
+    });
+    expect(result.services.radarr[0].enabled).toBe(true);
+    expect(result.hapticsEnabled).toBe(false);
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {
