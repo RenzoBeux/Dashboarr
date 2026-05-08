@@ -34,6 +34,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useConfigStore } from "@/store/config-store";
@@ -73,6 +74,10 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   const renamingCommittedRef = useRef(false);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
+  // `height` is 0 when the keyboard is hidden and goes to a negative value
+  // (-keyboardHeight) when shown. Adding it to translateY lifts the whole
+  // sheet above the keyboard so its TextInputs aren't obscured.
+  const keyboard = useReanimatedKeyboardAnimation();
 
   useEffect(() => {
     if (visible) {
@@ -103,7 +108,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   }, [visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: translateY.value + keyboard.height.value }],
   }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
 

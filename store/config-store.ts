@@ -1372,8 +1372,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   importConfig: async (requestPassphrase, onStage) => {
+    // On iOS, expo-document-picker maps the `type` filter via
+    // `UTType(mimeType:)`. For some MIME types (including "application/json")
+    // that initializer returns nil in release builds, leaving the picker with
+    // zero content types and `getDocumentAsync` throws. Use the wildcard
+    // ("*/*") which the library hardcodes to UTType.item, then rely on the
+    // JSON.parse below to reject non-JSON files.
     const result = await DocumentPicker.getDocumentAsync({
-      type: "application/json",
+      type: "*/*",
       copyToCacheDirectory: true,
     });
 

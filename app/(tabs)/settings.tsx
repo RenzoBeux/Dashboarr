@@ -226,6 +226,12 @@ export default function SettingsScreen() {
 
   const performImport = async () => {
     setConfirmImport(false);
+    // iOS won't present a new modal (the document picker) while another
+    // is still animating away — it silently fails and the picker never
+    // opens. Wait for the ConfirmModal fade-out before continuing.
+    if (Platform.OS === "ios") {
+      await new Promise<void>((resolve) => setTimeout(resolve, 350));
+    }
     // Captured from the requestPassphrase callback below — only set
     // if the picked file was encrypted and the user supplied a
     // passphrase. Plain-JSON legacy backups leave this null.

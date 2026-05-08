@@ -32,7 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   runtimeVersion: {
-    policy: "appVersion",
+    policy: "fingerprint",
   },
   ios: {
     supportsTablet: true,

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Modal, View, Text, ScrollView, ActivityIndicator } from "react-native";
+import { Modal, View, Text, ActivityIndicator, Platform } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { cssInterop } from "nativewind";
 import { Zap, ArrowDown, ArrowUp } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
@@ -15,6 +17,11 @@ import {
   useSetGlobalSpeedLimits,
   useSetAltSpeedLimits,
 } from "@/hooks/use-qbittorrent";
+
+cssInterop(KeyboardAwareScrollView, {
+  className: "style",
+  contentContainerClassName: "contentContainerStyle",
+});
 
 interface SpeedLimitsSheetProps {
   visible: boolean;
@@ -119,7 +126,12 @@ export function SpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetProps) {
       <View className="flex-1 bg-background">
         <SheetHeader title="Speed Limits" onClose={onClose} />
 
-        <ScrollView contentContainerClassName="px-4 py-4 pb-8">
+        <KeyboardAwareScrollView
+          contentContainerClassName="px-4 py-4 pb-8"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          bottomOffset={20}
+        >
           <Card className="mb-4">
             <Toggle
               label="Alternative speed mode"
@@ -206,7 +218,7 @@ export function SpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetProps) {
               />
             </>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
     </Modal>
   );

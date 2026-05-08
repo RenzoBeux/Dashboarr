@@ -104,29 +104,18 @@ The app exposes a global UI scale preference (1.0 / 1.15 / 1.3) wired via Native
   ```
   Same applies to any horizontal list of items whose count or label length isn't tightly bounded — at higher scales they'll exceed the viewport and clip.
 
-## Phase Plan
-### Phase 1 — Core ✅
-- [x] qBittorrent: queue, pause, resume, delete, speed stats, progress
-- [x] Radarr: search, add movie, monitor, queue, missing/wanted
-- [x] Sonarr: search, add show, episode monitoring, airing schedule
+## Keyboard Avoidance — MUST follow for any UI with text inputs
 
-### Phase 2 — Visibility & Requests ✅
-- [x] Seerr (formerly Overseerr): browse, search, request movie/show, approve/decline, request status
-- [x] Tautulli: active streams, bandwidth stats, playback history
+If a screen has a `TextInput` (raw `react-native` or `@/components/ui/text-input`), the keyboard must never obscure it. `KeyboardProvider` from `react-native-keyboard-controller` is mounted at the root in `app/_layout.tsx`, so all the hooks/components below work anywhere in the tree, including inside `Modal`. **Pick the pattern by container shape — do not write your own `Keyboard.addListener` repositioning code.**
 
-### Phase 3 — Power Tools ✅
-- [x] Prowlarr: indexer status/toggle, search all indexers, grab releases, indexer stats
-- [x] Plex: now playing sessions, recently added, on deck, library browser
+- **Full-screen route (uses `ScreenWrapper`)** — already handled. `components/common/screen-wrapper.tsx` uses `KeyboardAwareScrollView` from `react-native-keyboard-controller`. Just place inputs inside `<ScreenWrapper>` and they'll lift on focus. Reference: any settings screen.
+- **Custom animated bottom sheet (reanimated `translateY` + `Modal`)** — use `useReanimatedKeyboardAnimation` from `react-native-keyboard-controller` and add `keyboard.height.value` to the sheet's existing `translateY`. `height` is `0` when hidden and `-keyboardHeight` when shown, so the addition naturally lifts the whole sheet above the keyboard while preserving drag-to-dismiss and open/close springs. Reference: `components/dashboard/dashboard-picker-sheet.tsx`.
+- **Native page-sheet `Modal` with a `ScrollView`** (`presentationStyle="pageSheet"` or `animationType="slide"` full-screen) — replace the inner `ScrollView` with `KeyboardAwareScrollView` from `react-native-keyboard-controller`. Pass `keyboardShouldPersistTaps="handled"`, `keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}`, `bottomOffset={20}`, and run `cssInterop(KeyboardAwareScrollView, { className: "style", contentContainerClassName: "contentContainerStyle" })` once at module top so Tailwind classes work. Reference: `components/qbittorrent/speed-limits-sheet.tsx`.
+- **Centered card/dialog `Modal`** (alert-style, transparent background, content centered) — wrap the card in `KeyboardAvoidingView` from `react-native` with `behavior={Platform.OS === "ios" ? "padding" : undefined}`. Reference: `components/common/passphrase-prompt.tsx`, `components/common/confirm-modal.tsx`.
 
-### Phase 4 — Extended Integrations & Infrastructure ✅
-- [x] Bazarr: missing subtitles management
-- [x] Glances: server stats (CPU, RAM, disk, network) on dashboard
-- [x] Push notifications: optional backend relay, QR code pairing, per-service notification watchers
-- [x] Wake-on-LAN: wake server from app via magic packet (react-native-udp)
-- [x] WiFi-based auto URL switching (local vs remote)
-- [x] Calendar view (upcoming media)
-- [x] Activity view
-- [x] Service health monitoring
+Why not "just reposition the modal manually on `keyboardWillShow`": Android has no `keyboardWillShow` (only `keyboardDidShow`, which fires after the keyboard is already up — visible jank). The reanimated hook reads the system animation curve and keeps the sheet in lockstep with the keyboard on both platforms, with no listener bookkeeping. Don't reinvent it.
+
+When adding a new `Modal`, sheet, or screen with a text input, decide which of the four patterns above applies *before* writing the layout, and copy the reference file's wiring. Don't ship a sheet with a `TextInput` and a plain `ScrollView` — the keyboard will obscure the input.
 
 ## File Structure Conventions
 - Expo Router file-based routing in `app/` directory
