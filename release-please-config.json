@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "dashboarr",
+      "component": "dashboarr",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "exclude-paths": ["backend/dashboarr-backend"],
+      "pull-request-title-pattern": "chore: release ${version}"
+    },
+    "backend/dashboarr-backend": {
+      "release-type": "node",
+      "package-name": "dashboarr-backend",
+      "component": "backend",
+      "include-component-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "pull-request-title-pattern": "chore(backend): release ${version}"
+    }
+  }
+}

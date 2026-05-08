@@ -152,6 +152,23 @@ When adding a new `Modal`, sheet, or screen with a text input, decide which of t
 - **Keep `index.html` in sync** when adding/removing services, changing major features, or updating download links
 - Self-contained HTML with inline styles — no build step, no dependencies
 
+## Releases & Changelog
+Releases are automated via [release-please](https://github.com/googleapis/release-please) — config in `release-please-config.json`, version manifest in `.release-please-manifest.json`, workflow in `.github/workflows/release-please.yml`. Two packages are tracked independently:
+
+- **App (root)** — tag format `v<version>`, changelog at `CHANGELOG.md`, version stored in `package.json`. `app.config.ts` derives `ios.buildNumber` and `android.versionCode` from `package.json` automatically, so a release-please version bump propagates to native build numbers without extra steps.
+- **Backend** — tag format `backend-v<version>`, changelog at `backend/dashboarr-backend/CHANGELOG.md`, version stored in `backend/dashboarr-backend/package.json`. Excluded from the root package via `exclude-paths` so backend-only commits never trigger an app release.
+
+How a release happens:
+1. Push commits to `main` using [Conventional Commits](https://www.conventionalcommits.org/) — `feat:` (minor bump), `fix:` (patch bump), `feat!:` or `BREAKING CHANGE:` footer (major bump). `chore:`, `docs:`, `refactor:`, `test:` do NOT trigger a release.
+2. Release-please opens (or updates) a "Release PR" per package. It contains the bumped version + appended changelog entry.
+3. Merging the Release PR creates the git tag and a GitHub Release. The CI build pipeline can key off the tag from there.
+
+Practical guidance:
+- Use scope-style messages when the change is backend-only (e.g. `feat(backend): …`) — but the path-based filter is what actually routes commits, so the scope is decorative.
+- Do NOT manually run `pnpm bump:patch` / `bump:minor` / `bump:major` anymore (those scripts still exist as escape hatches but should not be the normal path). Let release-please own the version field.
+- Do NOT hand-edit `CHANGELOG.md` or `backend/.../CHANGELOG.md` for new versions — release-please rewrites them. Only the seeded historical entries are hand-written.
+- If a non-conventional commit lands and you want it in the changelog, amend it (locally before push) or follow up with a `chore: …` style fix-up commit — don't try to retroactively rewrite published history.
+
 ## What NOT to Build
 - No user accounts or authentication beyond service API keys
 - No monetization or credit system
