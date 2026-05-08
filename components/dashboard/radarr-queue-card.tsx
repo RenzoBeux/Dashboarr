@@ -1,8 +1,6 @@
 import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueries } from "@tanstack/react-query";
-import { Film } from "lucide-react-native";
-import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -84,17 +82,11 @@ export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
       />
 
       {instances.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Film} size={32} color="#71717a" />}
-          title="No Radarr instances enabled"
-        />
+        <EmptyState compact title="No Radarr instances enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={4} showSubtitle />
       ) : records.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Film} size={32} color="#71717a" />}
-          title="No movies in queue"
-        />
+        <EmptyState compact title="No movies in queue" />
       ) : (
         <ScrollView
           horizontal

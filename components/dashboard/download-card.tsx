@@ -4,7 +4,6 @@ import { useQueries } from "@tanstack/react-query";
 import {
   Pause,
   Play,
-  CheckCircle,
   AlertTriangle,
   Download,
   Upload,
@@ -211,10 +210,7 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
       />
 
       {instances.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Download} size={32} color="#71717a" />}
-          title="No qBittorrent instances enabled"
-        />
+        <EmptyState compact title="No qBittorrent instances enabled" />
       ) : allHidden ? (
         <Text className="text-zinc-500 text-sm py-1">
           All states hidden — enable one in the widget settings.
@@ -228,10 +224,7 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
           message="Check qBittorrent is reachable and credentials are correct."
         />
       ) : displayTorrents.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={CheckCircle} size={32} color="#71717a" />}
-          title="Nothing to show"
-        />
+        <EmptyState compact title="Nothing to show" />
       ) : (
         <ScrollView
           horizontal

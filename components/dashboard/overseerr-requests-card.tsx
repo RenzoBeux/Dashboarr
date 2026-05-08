@@ -1,8 +1,7 @@
 import { ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Inbox, Check, Clock, X, type LucideIcon } from "lucide-react-native";
+import { Check, Clock, X, type LucideIcon } from "lucide-react-native";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -126,15 +125,12 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
       />
 
       {instances.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Inbox} size={32} color="#71717a" />}
-          title="No Seerr instances enabled"
-        />
+        <EmptyState compact title="No Seerr instances enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={4} />
       ) : display.length === 0 ? (
         <EmptyState
-          icon={<Icon icon={Inbox} size={32} color="#71717a" />}
+          compact
           title={
             settings.statusFilter === "pending"
               ? "No pending requests"

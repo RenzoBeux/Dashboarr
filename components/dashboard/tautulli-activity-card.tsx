@@ -1,8 +1,7 @@
 import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { Play, Pause, Loader, MonitorPlay, Cog } from "lucide-react-native";
+import { Play, Pause, Loader, Cog } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
-import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -91,17 +90,11 @@ export function TautulliActivityCard({ slotId }: WidgetComponentProps) {
       />
 
       {instances.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={MonitorPlay} size={32} color="#71717a" />}
-          title="No Tautulli instances enabled"
-        />
+        <EmptyState compact title="No Tautulli instances enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={MonitorPlay} size={32} color="#71717a" />}
-          title="Nothing playing"
-        />
+        <EmptyState compact title="Nothing playing" />
       ) : (
         <ScrollView
           horizontal

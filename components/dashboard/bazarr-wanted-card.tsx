@@ -2,7 +2,6 @@ import { View, Text, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Captions } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
-import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -116,17 +115,11 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
       />
 
       {instances.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Captions} size={32} color="#71717a" />}
-          title="No Bazarr instances enabled"
-        />
+        <EmptyState compact title="No Bazarr instances enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={3} />
       ) : display.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Captions} size={32} color="#71717a" />}
-          title="All subtitles in place"
-        />
+        <EmptyState compact title="All subtitles in place" />
       ) : (
         <ScrollView
           horizontal

@@ -194,7 +194,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
         <CalendarSkeleton />
       ) : grouped.length === 0 ? (
         <EmptyState
-          icon={<Icon icon={CalendarDays} size={32} color="#71717a" />}
+          compact
           title={`Nothing in the next ${settings.daysAhead} days`}
         />
       ) : (

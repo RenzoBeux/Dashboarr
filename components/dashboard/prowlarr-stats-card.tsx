@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, AlertTriangle } from "lucide-react-native";
+import { AlertTriangle } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,17 +81,11 @@ export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
       </CardHeader>
 
       {instances.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Search} size={32} color="#71717a" />}
-          title="No Prowlarr instances enabled"
-        />
+        <EmptyState compact title="No Prowlarr instances enabled" />
       ) : isInitialLoading ? (
         <SkeletonCardContent rows={2} />
       ) : enabled.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Search} size={32} color="#71717a" />}
-          title="No indexers"
-        />
+        <EmptyState compact title="No indexers" />
       ) : (
         <View className="flex-row flex-wrap gap-2">
           {enabled.slice(0, 8).map(({ indexer, instanceId }) => {

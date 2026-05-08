@@ -7,6 +7,12 @@ interface EmptyStateProps {
   message?: string;
   action?: React.ReactNode;
   className?: string;
+  /**
+   * Renders a thin single-line variant (no icon circle, minimal padding).
+   * Use inside dashboard widgets so they collapse instead of taking a full
+   * card's worth of vertical space when there's no data.
+   */
+  compact?: boolean;
 }
 
 export function EmptyState({
@@ -15,7 +21,25 @@ export function EmptyState({
   message,
   action,
   className = "",
+  compact = false,
 }: EmptyStateProps) {
+  if (compact) {
+    return (
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        className={`items-center justify-center py-2 px-4 ${className}`}
+      >
+        <Text className="text-zinc-500 text-sm text-center">{title}</Text>
+        {message && (
+          <Text className="text-zinc-600 text-xs text-center mt-0.5">
+            {message}
+          </Text>
+        )}
+        {action && <View className="mt-2">{action}</View>}
+      </Animated.View>
+    );
+  }
+
   return (
     <View className={`items-center justify-center py-8 px-4 ${className}`}>
       {icon && (
