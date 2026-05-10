@@ -11,14 +11,15 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 
 ## My Active Stack (Priority Order)
 1. qBittorrent — torrent client (core)
-2. Radarr — movie automation
-3. Sonarr — TV automation
-4. Seerr — media requests (formerly Overseerr; same API, internal id and folders still use `overseerr`)
-5. Tautulli — Plex monitoring & stats
-6. Prowlarr — indexer management
-7. Plex — media consumption layer
-8. Bazarr — subtitle management
-9. Glances — system/server monitoring
+2. SABnzbd — Usenet client
+3. Radarr — movie automation
+4. Sonarr — TV automation
+5. Seerr — media requests (formerly Overseerr; same API, internal id and folders still use `overseerr`)
+6. Tautulli — Plex monitoring & stats
+7. Prowlarr — indexer management
+8. Plex — media consumption layer
+9. Bazarr — subtitle management
+10. Glances — system/server monitoring
 
 ## Tech Stack
 - **Framework:** Expo SDK 54 (React Native 0.81) — managed workflow
@@ -116,6 +117,9 @@ If a screen has a `TextInput` (raw `react-native` or `@/components/ui/text-input
 Why not "just reposition the modal manually on `keyboardWillShow`": Android has no `keyboardWillShow` (only `keyboardDidShow`, which fires after the keyboard is already up — visible jank). The reanimated hook reads the system animation curve and keeps the sheet in lockstep with the keyboard on both platforms, with no listener bookkeeping. Don't reinvent it.
 
 When adding a new `Modal`, sheet, or screen with a text input, decide which of the four patterns above applies *before* writing the layout, and copy the reference file's wiring. Don't ship a sheet with a `TextInput` and a plain `ScrollView` — the keyboard will obscure the input.
+
+### Phase 5 — Usenet ✅
+- [x] SABnzbd: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications
 
 ## File Structure Conventions
 - Expo Router file-based routing in `app/` directory

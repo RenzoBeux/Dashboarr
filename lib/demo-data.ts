@@ -126,6 +126,127 @@ const DEMO_QB_TORRENTS = [
   },
 ];
 
+// --- SABnzbd ---
+
+const DEMO_SAB_QUEUE = {
+  queue: {
+    paused: false,
+    speed: "4.2 M",
+    speedlimit: "0",
+    size: "8.4 GB",
+    sizeleft: "5.1 GB",
+    noofslots: 3,
+    noofslots_total: 3,
+    diskspace1: "248.7",
+    diskspace2: "1428.3",
+    status: "Downloading",
+    kbpersec: "4300.5",
+    slots: [
+      {
+        nzo_id: "SABnzbd_nzo_demo01",
+        filename: "Shogun.S01E08.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+        cat: "tv",
+        status: "Downloading",
+        priority: "Normal",
+        mb: "3072.0",
+        mbleft: "1843.2",
+        size: "3.0 GB",
+        sizeleft: "1.8 GB",
+        percentage: "40",
+        timeleft: "0:07:08",
+        index: 0,
+      },
+      {
+        nzo_id: "SABnzbd_nzo_demo02",
+        filename: "The.Boys.S04E06.2160p.AMZN.WEB-DL.DDP5.1.HDR.H.265-NTb",
+        cat: "tv",
+        status: "Downloading",
+        priority: "High",
+        mb: "5120.0",
+        mbleft: "2867.2",
+        size: "5.0 GB",
+        sizeleft: "2.8 GB",
+        percentage: "44",
+        timeleft: "0:11:06",
+        index: 1,
+      },
+      {
+        nzo_id: "SABnzbd_nzo_demo03",
+        filename: "A.Quiet.Place.Day.One.2024.1080p.WEB-DL.DDP5.1.H.264-FLUX",
+        cat: "movies",
+        status: "Queued",
+        priority: "Normal",
+        mb: "4915.2",
+        mbleft: "4915.2",
+        size: "4.8 GB",
+        sizeleft: "4.8 GB",
+        percentage: "0",
+        timeleft: "0:00:00",
+        index: 2,
+      },
+    ],
+  },
+};
+
+const DEMO_SAB_HISTORY = {
+  history: {
+    total_size: "142.3 GB",
+    noofslots: 4,
+    slots: [
+      {
+        nzo_id: "SABnzbd_nzo_done01",
+        name: "Dune.Part.Two.2024.2160p.UHD.BluRay.HDR.x265-TERMINAL",
+        category: "movies",
+        status: "Completed",
+        fail_message: "",
+        size: "48.3 GB",
+        bytes: 51858063360,
+        download_time: 4320,
+        completed: NOW_TS - 7200,
+        storage: "/downloads/movies/Dune.Part.Two.2024",
+      },
+      {
+        nzo_id: "SABnzbd_nzo_done02",
+        name: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+        category: "tv",
+        status: "Completed",
+        fail_message: "",
+        size: "2.6 GB",
+        bytes: 2791728742,
+        download_time: 480,
+        completed: NOW_TS - 14400,
+        storage: "/downloads/tv/Fallout.S01E07",
+      },
+      {
+        nzo_id: "SABnzbd_nzo_done03",
+        name: "Severance.S02E01.1080p.ATVP.WEB-DL.DDP5.1.H.264-FLUX",
+        category: "tv",
+        status: "Completed",
+        fail_message: "",
+        size: "3.1 GB",
+        bytes: 3328599654,
+        download_time: 545,
+        completed: NOW_TS - 86400,
+        storage: "/downloads/tv/Severance.S02E01",
+      },
+      {
+        nzo_id: "SABnzbd_nzo_done04",
+        name: "Civil.War.2024.1080p.WEB-DL.DDP5.1.Atmos.H.264-NaB",
+        category: "movies",
+        status: "Failed",
+        fail_message: "Unpack failed: missing files",
+        size: "4.5 GB",
+        bytes: 4831838208,
+        download_time: 720,
+        completed: NOW_TS - 172800,
+        storage: "",
+      },
+    ],
+  },
+};
+
+const DEMO_SAB_VERSION = { version: "4.3.3" };
+
 // --- Radarr ---
 
 function makeMovie(id: number, title: string, year: number, tmdbId: number, hasFile: boolean) {
@@ -685,7 +806,11 @@ const DEMO_SYSTEM_STATUS = { version: "5.14.0.9376", isDebug: false, isProductio
 
 // --- Lookup functions ---
 
-export function getDemoResponse(serviceId: ServiceId, path: string): unknown {
+export function getDemoResponse(
+  serviceId: ServiceId,
+  path: string,
+  params?: Record<string, string | number | boolean>,
+): unknown {
   const basePath = path.split("?")[0]!;
   const normalized = basePath.replace(/\/\d+(\.\d+)*$/, "/:id");
 
@@ -759,6 +884,16 @@ export function getDemoResponse(serviceId: ServiceId, path: string): unknown {
       if (normalized.startsWith("/torrents/trackers")) return [];
       if (normalized.startsWith("/app/version")) return "5.0.0";
       return undefined;
+    }
+    case "sabnzbd": {
+      // SAB hits a single endpoint at /api with mode= as a query param, so
+      // the routing key lives in params, not the path.
+      const mode = String(params?.mode ?? "queue");
+      if (mode === "queue") return DEMO_SAB_QUEUE;
+      if (mode === "history") return DEMO_SAB_HISTORY;
+      if (mode === "version") return DEMO_SAB_VERSION;
+      // pause/resume/addurl all return { status: true }
+      return { status: true };
     }
     case "jellyfin": {
       if (basePath === "/System/Info/Public") return { Version: "10.8.13", ServerName: "Demo Jellyfin" };

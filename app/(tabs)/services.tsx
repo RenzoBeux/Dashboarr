@@ -11,6 +11,9 @@ import type { ServiceId } from "@/lib/constants";
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
+  // SAB shares the Downloads tab with qBittorrent via a segmented control,
+  // so the services tile lands on the same route.
+  sabnzbd: "/(tabs)/downloads",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
   overseerr: "/(tabs)/requests",

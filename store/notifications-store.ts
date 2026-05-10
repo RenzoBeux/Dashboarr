@@ -5,6 +5,7 @@ import { STORAGE_KEYS } from "@/lib/constants";
 export interface NotificationSettings {
   enabled: boolean;
   torrentCompleted: boolean;
+  sabnzbdCompleted: boolean;
   radarrDownloaded: boolean;
   sonarrDownloaded: boolean;
   serviceOffline: boolean;
@@ -14,6 +15,7 @@ export interface NotificationSettings {
 const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: true,
   torrentCompleted: true,
+  sabnzbdCompleted: true,
   radarrDownloaded: true,
   sonarrDownloaded: true,
   serviceOffline: true,

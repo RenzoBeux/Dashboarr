@@ -5,12 +5,14 @@ import { useUiScale } from "@/hooks/use-ui-scale";
 import type { ServiceId } from "@/lib/constants";
 
 import QbittorrentLogo from "@/assets/services/qbittorrent.svg";
+import SabnzbdLogo from "@/assets/services/sabnzbd.svg";
 import JellyfinLogo from "@/assets/services/jellyfin.svg";
 import OverseerrLogo from "@/assets/services/overseerr.svg";
 import PlexLogo from "@/assets/services/plex.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
+  sabnzbd: SabnzbdLogo,
   jellyfin: JellyfinLogo,
   overseerr: OverseerrLogo,
   plex: PlexLogo,

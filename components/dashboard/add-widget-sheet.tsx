@@ -30,6 +30,7 @@ import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS, ICON } from "@/lib/constants";
 import {
   getAvailableWidgets,
+  isWidgetServiceEnabled,
   type WidgetDefinition,
 } from "@/components/dashboard/widget-registry";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -57,12 +58,8 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
   // Locked widgets are still shown — just below the available ones — so users
   // discover what they could enable in Settings.
   const available = getAvailableWidgets();
-  const enabled = available.filter(
-    (w) => w.service === null || services[w.service].enabled,
-  );
-  const locked = available.filter(
-    (w) => w.service !== null && !services[w.service].enabled,
-  );
+  const enabled = available.filter((w) => isWidgetServiceEnabled(w, services));
+  const locked = available.filter((w) => !isWidgetServiceEnabled(w, services));
 
   useEffect(() => {
     if (visible) {
@@ -278,8 +275,13 @@ interface LockedRowProps {
 
 function LockedRow({ widget, index }: LockedRowProps) {
   const WidgetIcon = widget.icon;
-  const serviceName =
-    widget.service !== null ? SERVICE_DEFAULTS[widget.service].name : "service";
+  const serviceName = (() => {
+    if (widget.service === null) return "service";
+    if (Array.isArray(widget.service)) {
+      return widget.service.map((id) => SERVICE_DEFAULTS[id].name).join(" or ");
+    }
+    return SERVICE_DEFAULTS[widget.service].name;
+  })();
   return (
     <Animated.View entering={FadeInDown.delay(index * 35).duration(260)}>
       <View className="flex-row items-center gap-3 bg-surface-light/50 rounded-2xl px-3 py-3 border border-border/40">

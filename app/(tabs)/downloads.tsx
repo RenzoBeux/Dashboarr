@@ -10,6 +10,9 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
+import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { useConfigStore } from "@/store/config-store";
+import { SabnzbdDownloadsView } from "@/components/downloads/sabnzbd-downloads-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast } from "@/components/ui/toast";
@@ -104,7 +107,113 @@ function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" 
   return "default";
 }
 
+type DownloadClient = "qbittorrent" | "sabnzbd";
+
+// Top-level switcher for the Downloads tab. When both qBittorrent and SAB are
+// enabled the user picks via a segmented control; otherwise the available
+// client is rendered directly. qBittorrent's logic stays inlined here so the
+// virtualized FlatList + server-side pagination + sort store all share the
+// screen's state.
 export default function DownloadsScreen() {
+  const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
+  const sabEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
+  const [client, setClient] = useState<DownloadClient>(
+    qbEnabled ? "qbittorrent" : "sabnzbd",
+  );
+
+  if (!qbEnabled && !sabEnabled) {
+    return (
+      <ScreenWrapper>
+        <EmptyState
+          title="No download client configured"
+          message="Enable qBittorrent or SABnzbd in Settings to manage downloads."
+        />
+      </ScreenWrapper>
+    );
+  }
+
+  const showSegmented = qbEnabled && sabEnabled;
+  const activeClient: DownloadClient = showSegmented
+    ? client
+    : qbEnabled
+      ? "qbittorrent"
+      : "sabnzbd";
+
+  if (activeClient === "sabnzbd") {
+    return (
+      <ScreenWrapper>
+        <SabnzbdDownloadsView
+          showHeader={!showSegmented}
+          segmentedControl={
+            showSegmented ? (
+              <DownloadsSegmentedControl value={activeClient} onChange={setClient} />
+            ) : null
+          }
+        />
+      </ScreenWrapper>
+    );
+  }
+
+  return (
+    <QbittorrentDownloadsScreen
+      segmentedControl={
+        showSegmented ? (
+          <DownloadsSegmentedControl value={activeClient} onChange={setClient} />
+        ) : null
+      }
+    />
+  );
+}
+
+function DownloadsSegmentedControl({
+  value,
+  onChange,
+}: {
+  value: DownloadClient;
+  onChange: (next: DownloadClient) => void;
+}) {
+  return (
+    <View className="flex-row bg-surface-light rounded-2xl p-1 mb-4 mt-2 mx-4">
+      <Segment
+        label="qBittorrent"
+        active={value === "qbittorrent"}
+        onPress={() => onChange("qbittorrent")}
+      />
+      <Segment
+        label="SABnzbd"
+        active={value === "sabnzbd"}
+        onPress={() => onChange("sabnzbd")}
+      />
+    </View>
+  );
+}
+
+function Segment({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`flex-1 py-2 rounded-xl items-center active:opacity-70 ${active ? "bg-surface" : ""}`}
+    >
+      <Text className={`text-sm font-semibold ${active ? "text-zinc-100" : "text-zinc-400"}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function QbittorrentDownloadsScreen({
+  segmentedControl,
+}: {
+  segmentedControl?: React.ReactNode;
+}) {
   const [filter, setFilter] = useState<FilterType>("all");
   const sort = useSortStore((s) => s.downloads);
   const setSort = useSortStore((s) => s.setDownloads);
@@ -271,6 +380,7 @@ export default function DownloadsScreen() {
     />
   ) : (
     <>
+      {segmentedControl}
       <ServiceHeader name="Downloads" online={qbHealth?.online} serviceId="qbittorrent" />
 
       {/* Speed Summary */}

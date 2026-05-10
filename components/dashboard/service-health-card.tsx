@@ -17,6 +17,7 @@ import type { ServiceInstance } from "@/store/config-store";
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
+  sabnzbd: "/(tabs)/downloads",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
 };

@@ -17,9 +17,10 @@ import {
   ArrowUp,
   ArrowDown,
   Copy,
-  Github,
   Bug,
 } from "lucide-react-native";
+import GithubLogo from "@/assets/services/github.svg";
+import { useUiScale } from "@/hooks/use-ui-scale";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
@@ -175,8 +176,14 @@ export default function SettingsScreen() {
   const uiScale = useConfigStore((s) => s.uiScale);
   const setUiScale = useConfigStore((s) => s.setUiScale);
 
+  // GitHub logo is an SVG (lucide v1 dropped brand icons), so size it manually
+  // to match the lucide icons in other rows (size=20 with rem scale).
+  const scale = useUiScale();
+  const githubLogoSize = Math.round(20 * scale);
+
   const notifEnabled = useNotificationStore((s) => s.enabled);
   const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
+  const sabnzbdCompleted = useNotificationStore((s) => s.sabnzbdCompleted);
   const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
   const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
   const serviceOffline = useNotificationStore((s) => s.serviceOffline);
@@ -392,6 +399,13 @@ export default function SettingsScreen() {
         ) : null}
         {notifEnabled ? (
           <SettingsToggleRow
+            label="NZB completed"
+            value={sabnzbdCompleted}
+            onValueChange={(v) => setNotifSetting("sabnzbdCompleted", v)}
+          />
+        ) : null}
+        {notifEnabled ? (
+          <SettingsToggleRow
             label="Movie downloaded"
             value={radarrDownloaded}
             onValueChange={(v) => setNotifSetting("radarrDownloaded", v)}
@@ -497,7 +511,7 @@ export default function SettingsScreen() {
         footer="Dashboarr is open-source under GPL-3.0. Contributions and bug reports are welcome."
       >
         <SettingsRow
-          icon={Github}
+          leading={<GithubLogo width={githubLogoSize} height={githubLogoSize} />}
           label="View on GitHub"
           subtitle="github.com/renzobeux/Dashboarr"
           onPress={() => void Linking.openURL("https://github.com/renzobeux/Dashboarr")}

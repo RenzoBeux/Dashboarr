@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const SERVICE_IDS = [
   "qbittorrent",
+  "sabnzbd",
   "radarr",
   "sonarr",
   "overseerr",
@@ -79,6 +80,7 @@ export type ServiceInstancePayload = z.infer<typeof serviceInstanceSchema>;
 export const notificationSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   torrentCompleted: z.boolean().default(true),
+  sabnzbdCompleted: z.boolean().default(true),
   radarrDownloaded: z.boolean().default(true),
   sonarrDownloaded: z.boolean().default(true),
   serviceOffline: z.boolean().default(true),
@@ -90,6 +92,7 @@ export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
   torrentCompleted: true,
+  sabnzbdCompleted: true,
   radarrDownloaded: true,
   sonarrDownloaded: true,
   serviceOffline: true,
@@ -130,6 +133,7 @@ export const deviceRegisterSchema = z.object({
 
 export const SERVICE_API_BASE: Record<ServiceId, string> = {
   qbittorrent: "/api/v2",
+  sabnzbd: "/api",
   radarr: "/api/v3",
   sonarr: "/api/v3",
   overseerr: "/api/v1",
@@ -143,6 +147,8 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   qbittorrent: "/app/version",
+  // SAB has no path-based ping endpoint — pingService synthesises ?mode=version.
+  sabnzbd: "",
   radarr: "/system/status",
   sonarr: "/system/status",
   overseerr: "/status",
@@ -157,6 +163,7 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
 // Notification category labels sent to the device as `data.type`
 export type NotificationCategory =
   | "torrentCompleted"
+  | "sabnzbdCompleted"
   | "radarrDownloaded"
   | "sonarrDownloaded"
   | "serviceOffline"

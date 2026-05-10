@@ -7,12 +7,22 @@ import { useRadarrQueue } from "@/hooks/use-radarr";
 import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
+import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { toast } from "@/components/ui/toast";
 import type { QBTorrent, TorrentState } from "@/lib/types";
+
+// Categories Radarr/Sonarr set on jobs they manage. The arr-specific watchers
+// already notify on those, so the download-client watchers skip them to avoid
+// double-firing.
+const MANAGED_CATEGORIES = new Set(["radarr", "sonarr", "tv-sonarr"]);
+
+function isManagedByArr(category: string): boolean {
+  return MANAGED_CATEGORIES.has(category.toLowerCase());
+}
 
 // Post-download states. `pausedUP`/`stoppedUP` cover qBT 4.x and 5.x naming.
 // Excluding pausedDL/stoppedDL here is what stops a pause from being mistaken
@@ -52,6 +62,7 @@ export function NotificationWatchers() {
   const hydrated = useNotificationStore((s) => s.hydrated);
   const enabled = useNotificationStore((s) => s.enabled);
   const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
+  const sabnzbdCompleted = useNotificationStore((s) => s.sabnzbdCompleted);
   const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
   const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
   const serviceOffline = useNotificationStore((s) => s.serviceOffline);
@@ -68,6 +79,7 @@ export function NotificationWatchers() {
   const gate: BaseGate = { hydrated, enabled, backendActive };
 
   const qbInstances = useEnabledInstances("qbittorrent");
+  const sabInstances = useEnabledInstances("sabnzbd");
   const radarrInstances = useEnabledInstances("radarr");
   const sonarrInstances = useEnabledInstances("sonarr");
   const overseerrInstances = useEnabledInstances("overseerr");
@@ -79,6 +91,13 @@ export function NotificationWatchers() {
           key={inst.id}
           instanceId={inst.id}
           active={!backendActive && hydrated && enabled && torrentCompleted}
+        />
+      ))}
+      {sabInstances.map((inst) => (
+        <SabnzbdHistoryWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && sabnzbdCompleted}
         />
       ))}
       {radarrInstances.map((inst) => (
@@ -170,6 +189,46 @@ function QbDownloadWatcher({
       }
     })();
   }, [downloading, active, instanceId]);
+
+  return null;
+}
+
+// --- SABnzbd: new history entries with status=Completed ---
+// Per-instance: each enabled SAB instance gets its own watcher with isolated
+// previous-id snapshot, so a completion on instance A doesn't get muted by
+// the same nzo_id appearing on instance B.
+function SabnzbdHistoryWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: sabHistory } = useSabHistory(20, instanceId);
+  const prevSabHistoryIds = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      prevSabHistoryIds.current = null;
+      return;
+    }
+    if (!sabHistory) return;
+    const prev = prevSabHistoryIds.current;
+    const currentIds = new Set(sabHistory.slots.map((s) => s.nzo_id));
+    if (prev !== null) {
+      for (const slot of sabHistory.slots) {
+        if (prev.has(slot.nzo_id)) continue;
+        if (slot.status !== "Completed") continue;
+        if (isManagedByArr(slot.category)) continue;
+        sendLocalNotification({
+          title: "Download complete",
+          body: slot.name,
+          data: { type: "sabnzbd", nzoId: slot.nzo_id, instanceId },
+        });
+      }
+    }
+    prevSabHistoryIds.current = currentIds;
+  }, [sabHistory, active, instanceId]);
 
   return null;
 }

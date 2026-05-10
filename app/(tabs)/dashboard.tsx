@@ -19,7 +19,10 @@ import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
 import { ICON } from "@/lib/constants";
-import { WIDGET_REGISTRY } from "@/components/dashboard/widget-registry";
+import {
+  WIDGET_REGISTRY,
+  isWidgetServiceEnabled,
+} from "@/components/dashboard/widget-registry";
 import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
@@ -44,11 +47,12 @@ export default function DashboardScreen() {
 
   // Slots whose required service is disabled get filtered out so users don't
   // see broken cards. Service-health/calendar/wol-devices have `service: null`
-  // and so always render.
+  // and so always render. Speed Stats accepts an array (qbit OR sab) — the
+  // helper handles all three shapes.
   const visibleSlots = slots.filter((slot) => {
     const widget = WIDGET_REGISTRY[slot.widgetId];
     if (!widget) return false;
-    return widget.service === null || services[widget.service].enabled;
+    return isWidgetServiceEnabled(widget, services);
   });
 
   function handleMove(slotId: string, direction: "up" | "down") {

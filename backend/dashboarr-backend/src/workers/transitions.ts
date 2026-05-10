@@ -2,6 +2,7 @@ import { getState, setState } from "../db/repos/seen-state.js";
 import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
+import type { SabHistorySlot } from "../services/sabnzbd.js";
 import type { RadarrQueueItem } from "../services/radarr.js";
 import type { SonarrQueueItem } from "../services/sonarr.js";
 import type { OverseerrRequest } from "../services/overseerr.js";
@@ -109,6 +110,45 @@ export async function diffQbTorrents(
         dedupeKey: `qbt:${instanceId}:completed:${t.hash}`,
       });
     }
+  }
+}
+
+// ---------------- SABnzbd ----------------
+
+interface SabSnapshot {
+  ids: string[];
+}
+
+export async function diffSabHistory(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  slots: SabHistorySlot[],
+): Promise<void> {
+  const key = `sab:${instanceId}:nzo:history`;
+  const prev = getState<SabSnapshot>(key);
+  const currentIds = slots.map((s) => s.nzo_id);
+
+  // Persist first, dispatch after.
+  setState(key, { ids: currentIds });
+
+  if (!prev) return;
+  const prevSet = new Set(prev.ids);
+
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+
+  for (const slot of slots) {
+    if (prevSet.has(slot.nzo_id)) continue;
+    if (slot.status !== "Completed") continue;
+    if (isManagedByArr(slot.category)) continue;
+
+    await dispatchPush({
+      category: "sabnzbdCompleted",
+      title: `${prefix}Download complete`,
+      body: slot.name,
+      data: { type: "sabnzbd", nzoId: slot.nzo_id, instanceId },
+      dedupeKey: `sab:${instanceId}:completed:${slot.nzo_id}`,
+    });
   }
 }
 

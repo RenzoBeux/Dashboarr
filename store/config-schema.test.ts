@@ -597,6 +597,26 @@ describe("validateExportPayload — notification settings", () => {
     });
     expect(result.notificationSettings).toEqual(fullSettings);
   });
+
+  it("accepts an optional sabnzbdCompleted alongside the 6 required keys", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: { ...fullSettings, sabnzbdCompleted: true },
+    });
+    expect(result.notificationSettings).toEqual({
+      ...fullSettings,
+      sabnzbdCompleted: true,
+    });
+  });
+
+  it("rejects sabnzbdCompleted with the wrong type", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        notificationSettings: { ...fullSettings, sabnzbdCompleted: "yes" as any },
+      }),
+    ).toThrow(/notificationSettings/);
+  });
 });
 
 describe("validateExportPayload — backend", () => {

@@ -141,7 +141,11 @@ function coerceDashboard(v: unknown): Dashboard | null {
 
 function coerceNotificationSettings(v: unknown): NotificationSettings | null {
   if (!isPlainObject(v)) return null;
-  const keys = [
+  // Required keys must all be booleans. Newer keys (added when a service was
+  // introduced post-v2) are optional during coercion so a backup made before
+  // the key existed validates cleanly; the missing entry falls back to its
+  // default at hydrate time.
+  const requiredKeys = [
     "enabled",
     "torrentCompleted",
     "radarrDownloaded",
@@ -149,8 +153,14 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     "serviceOffline",
     "overseerrNewRequest",
   ] as const;
+  const optionalKeys = ["sabnzbdCompleted"] as const;
   const out: Partial<NotificationSettings> = {};
-  for (const key of keys) {
+  for (const key of requiredKeys) {
+    if (typeof v[key] !== "boolean") return null;
+    out[key] = v[key] as boolean;
+  }
+  for (const key of optionalKeys) {
+    if (v[key] === undefined) continue;
     if (typeof v[key] !== "boolean") return null;
     out[key] = v[key] as boolean;
   }
