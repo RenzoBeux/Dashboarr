@@ -21,11 +21,10 @@ import {
   getReleasesForSeason,
   grabSonarrRelease,
 } from "@/services/sonarr-api";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import type { SonarrSeries } from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getDateOffset } from "@/lib/utils";
-import { getHttpErrorMessage } from "@/lib/http-client";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 // Per-instance cache keying: see use-qbittorrent.ts and use-radarr.ts for the
@@ -147,7 +146,7 @@ export function useSearchForSeries(instanceId?: string) {
   return useMutation({
     mutationFn: (seriesId: number) => searchForSeries(seriesId, id ?? undefined),
     onSuccess: () => toast("Search started"),
-    onError: () => toast("Search failed", "error"),
+    onError: (err) => toastError("Search failed", err),
   });
 }
 
@@ -156,7 +155,7 @@ export function useSearchForEpisodes(instanceId?: string) {
   return useMutation({
     mutationFn: (episodeIds: number[]) => searchForEpisodes(episodeIds, id ?? undefined),
     onSuccess: () => toast("Search started"),
-    onError: () => toast("Search failed", "error"),
+    onError: (err) => toastError("Search failed", err),
   });
 }
 
@@ -198,14 +197,14 @@ export function useToggleSeriesMonitored(instanceId?: string) {
 
       return { prevList, prevDetail };
     },
-    onError: (_err, { seriesId }, context) => {
+    onError: (err, { seriesId }, context) => {
       if (context?.prevList) {
         queryClient.setQueryData(["sonarr", id, "series"], context.prevList);
       }
       if (context?.prevDetail) {
         queryClient.setQueryData(["sonarr", id, "series", seriesId], context.prevDetail);
       }
-      toast("Failed to update monitoring", "error");
+      toastError("Failed to update monitoring", err);
     },
     onSettled: (_data, _err, { seriesId }) => {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
@@ -270,7 +269,7 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
 
       return { prevDetail, prevList };
     },
-    onError: (_err, { seriesId }, context) => {
+    onError: (err, { seriesId }, context) => {
       if (context?.prevDetail) {
         queryClient.setQueryData(
           ["sonarr", id, "series", seriesId],
@@ -280,7 +279,7 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
       if (context?.prevList) {
         queryClient.setQueryData(["sonarr", id, "series"], context.prevList);
       }
-      toast("Failed to update quality profile", "error");
+      toastError("Failed to update quality profile", err);
     },
     onSettled: (_data, _err, { seriesId }) => {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
@@ -360,7 +359,7 @@ export function useGrabSonarrRelease(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "queue"] });
     },
     onError: (err) => {
-      toast(getHttpErrorMessage(err) ?? "Failed to grab release", "error");
+      toastError("Failed to grab release", err);
     },
   });
 }

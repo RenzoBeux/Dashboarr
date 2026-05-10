@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/toast";
-import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
+import { toast, toastError } from "@/components/ui/toast";
+import { sendWakeOnLan } from "@/lib/wake-on-lan";
 import type { WakeOnLanDevice } from "@/store/config-store";
 
 interface WakeOnLanButtonProps {
@@ -31,13 +31,7 @@ export function WakeOnLanButton({
       });
       toast(`Magic packet sent to ${device.name}`, "success");
     } catch (err) {
-      const msg =
-        err instanceof WakeOnLanError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to send magic packet";
-      toast(msg, "error");
+      toastError("Failed to send magic packet", err);
     } finally {
       setSending(false);
     }

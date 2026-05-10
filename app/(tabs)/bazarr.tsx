@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import {
   useBazarrWantedMovies,
   useBazarrWantedEpisodes,
@@ -82,7 +82,7 @@ function WantedMovies() {
   const handleSearch = (radarrId: number, title: string) => {
     searchMovie.mutate(radarrId, {
       onSuccess: () => toast(`Searching for "${title}" subtitles`, "success"),
-      onError: () => toast("Failed to start search", "error"),
+      onError: (err) => toastError("Failed to start search", err),
     });
   };
 
@@ -147,7 +147,7 @@ function WantedEpisodes() {
       { seriesId, episodeId },
       {
         onSuccess: () => toast(`Searching for "${title}" subtitles`, "success"),
-        onError: () => toast("Failed to start search", "error"),
+        onError: (err) => toastError("Failed to start search", err),
       },
     );
   };

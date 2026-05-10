@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useBackendStore } from "@/store/backend-store";
 import {
   getBackendHealth,
@@ -94,7 +94,7 @@ export default function BackendScreen() {
         setMode("summary");
       } catch (err) {
         console.warn("pair failed", err);
-        toast(err instanceof Error ? err.message : "Pairing failed", "error");
+        toastError("Pairing failed", err);
         // Only release the guard on failure so the user can retry. On success
         // we intentionally keep it latched — the camera stays mounted briefly
         // after the success toast, and any buffered native scan would
@@ -135,7 +135,7 @@ export default function BackendScreen() {
       await testPush();
       toast("Test push sent", "success");
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Test push failed", "error");
+      toastError("Test push failed", err);
     } finally {
       setBusy(false);
     }

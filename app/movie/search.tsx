@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { Film, Plus, Check, SlidersHorizontal } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { useServiceImage } from "@/hooks/use-service-image";
@@ -117,7 +117,7 @@ function SearchResultCard({
       },
       {
         onSuccess: () => toast(`${result.title} added to Radarr`),
-        onError: () => toast("Failed to add movie", "error"),
+        onError: (err) => toastError("Failed to add movie", err),
       },
     );
   };

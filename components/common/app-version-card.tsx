@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import {
   NATIVE_VERSION,
   RUNTIME_VERSION,
@@ -79,8 +79,8 @@ export function AppVersionCard() {
               onPress: async () => {
                 try {
                   await downloadAndApplyOtaUpdate();
-                } catch {
-                  toast("Failed to install update", "error");
+                } catch (err) {
+                  toastError("Failed to install update", err);
                 }
               },
             },

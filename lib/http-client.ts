@@ -68,6 +68,42 @@ export function getHttpErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
+// Produce a verbose, paste-friendly representation of any caught error.
+// Used as the clipboard payload for error toasts so users can share or
+// search the underlying cause even when the toast shows a friendly summary.
+// URLs are already API-key-redacted by HttpError, so this is safe to share.
+export function formatErrorForCopy(err: unknown): string {
+  if (err instanceof HttpError) {
+    const lines: string[] = [];
+    lines.push(`HTTP ${err.status}${err.statusText ? ` ${err.statusText}` : ""}`);
+    lines.push(err.url);
+    if (err.body !== undefined && err.body !== null) {
+      let bodyStr: string;
+      if (typeof err.body === "string") {
+        bodyStr = err.body;
+      } else {
+        try {
+          bodyStr = JSON.stringify(err.body, null, 2);
+        } catch {
+          bodyStr = String(err.body);
+        }
+      }
+      if (bodyStr.length > 0) lines.push(bodyStr);
+    }
+    return lines.join("\n");
+  }
+  if (err instanceof Error) {
+    const parts = [`${err.name}: ${err.message}`];
+    if (err.stack) parts.push(err.stack);
+    return parts.join("\n");
+  }
+  try {
+    return typeof err === "string" ? err : JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 export async function serviceRequest<T>(
   serviceId: ServiceId,
   path: string,

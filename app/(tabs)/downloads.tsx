@@ -15,7 +15,7 @@ import { useConfigStore } from "@/store/config-store";
 import { SabnzbdDownloadsView } from "@/components/downloads/sabnzbd-downloads-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -306,7 +306,7 @@ function QbittorrentDownloadsScreen({
         setMagnetUri("");
         setShowAddModal(false);
       },
-      onError: () => toast("Failed to add torrent", "error"),
+      onError: (err) => toastError("Failed to add torrent", err),
     });
   };
 

@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useServiceImage } from "@/hooks/use-service-image";
 import {
   useAddMovie,
@@ -97,7 +97,7 @@ export function AddMovieSheet({ result, visible, onClose }: AddMovieSheetProps) 
           toast(`${result.title} added to Radarr`);
           onClose();
         },
-        onError: () => toast("Failed to add movie", "error"),
+        onError: (err) => toastError("Failed to add movie", err),
       },
     );
   };

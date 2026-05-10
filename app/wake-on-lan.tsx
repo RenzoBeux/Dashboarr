@@ -7,9 +7,9 @@ import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useConfigStore } from "@/store/config-store";
-import { sendWakeOnLan, WakeOnLanError } from "@/lib/wake-on-lan";
+import { sendWakeOnLan } from "@/lib/wake-on-lan";
 import type { WakeOnLanDevice } from "@/store/config-store";
 
 function generateId() {
@@ -106,13 +106,7 @@ export default function WakeOnLanScreen() {
       });
       toast(`Magic packet sent to ${device.name}`, "success");
     } catch (err) {
-      const msg =
-        err instanceof WakeOnLanError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to send magic packet";
-      toast(msg, "error");
+      toastError("Failed to send magic packet", err);
     } finally {
       setSendingId(null);
     }

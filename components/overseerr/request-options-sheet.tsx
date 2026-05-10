@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Modal, View, Text, ScrollView } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Modal, View, Text, ScrollView, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { Plus, Film, Tv } from "lucide-react-native";
+import { Plus, Film, Tv, AlertCircle, Copy, Check } from "lucide-react-native";
+import * as Clipboard from "expo-clipboard";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
 import { toast } from "@/components/ui/toast";
+import { getHttpErrorMessage, formatErrorForCopy } from "@/lib/http-client";
+import { brrrHaptic } from "@/lib/haptics";
 import { getPosterUrl } from "@/services/overseerr-api";
 import {
   useOverseerrRadarrServers,
@@ -78,6 +81,38 @@ export function RequestOptionsSheet({
     if (visible) setSeasonSelection("all");
   }, [visible, item?.id]);
 
+  // The visible banner text is the friendly message; the clipboard payload is
+  // the verbose error (HTTP body / stack) so users can share/search the real
+  // failure. Mirrors the Copy behavior in error toasts.
+  const [submitError, setSubmitError] = useState<{
+    message: string;
+    copyText: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setSubmitError(null);
+      setCopied(false);
+    }
+  }, [visible, item?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+    };
+  }, []);
+
+  const handleCopyError = async () => {
+    if (!submitError) return;
+    await Clipboard.setStringAsync(submitError.copyText);
+    brrrHaptic();
+    setCopied(true);
+    if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+    copiedTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
+  };
+
   const tvDetailsQuery = useOverseerrMediaDetails(
     item?.id ?? 0,
     isTv ? "tv" : "movie",
@@ -126,6 +161,7 @@ export function RequestOptionsSheet({
 
   const handleSubmit = async () => {
     if (!item) return;
+    setSubmitError(null);
     const options =
       servers.length > 0
         ? { serverId, profileId, rootFolder, tags }
@@ -145,8 +181,14 @@ export function RequestOptionsSheet({
       toast(`${title} has been requested`);
       onRequested?.();
       onClose();
-    } catch {
-      toast("Failed to request", "error");
+    } catch (err) {
+      // Surface the real Seerr error inline — toasts shown from inside this
+      // Modal render behind it on Android, so the user would otherwise see
+      // nothing and only get a generic "request failed" after dismissing.
+      const message =
+        getHttpErrorMessage(err) ??
+        (err instanceof Error ? err.message : "Failed to request");
+      setSubmitError({ message, copyText: formatErrorForCopy(err) });
     }
   };
 
@@ -321,6 +363,32 @@ export function RequestOptionsSheet({
         </ScrollView>
 
         <View className="px-4 pb-6 pt-3 border-t border-border bg-background">
+          {submitError ? (
+            <View className="mb-3 flex-row items-start gap-2 rounded-xl border border-red-600/40 bg-red-600/10 px-3 py-2.5">
+              <View className="pt-0.5">
+                <Icon icon={AlertCircle} size={16} color="#f87171" />
+              </View>
+              <Text className="text-red-300 text-sm flex-1">{submitError.message}</Text>
+              <Pressable
+                onPress={handleCopyError}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={copied ? "Error copied" : "Copy error"}
+                className="flex-row items-center gap-1 pl-2 py-0.5 active:opacity-60"
+              >
+                <Icon
+                  icon={copied ? Check : Copy}
+                  size={14}
+                  color={copied ? "#4ade80" : "#fca5a5"}
+                />
+                <Text
+                  className={`text-xs ${copied ? "text-green-400" : "text-red-300"}`}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Button
             label="Send Request"
             onPress={handleSubmit}

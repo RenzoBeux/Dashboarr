@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable, Alert, Platform, ScrollView } from "react-native";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { Search, Power, AlertTriangle, CheckCircle, XCircle } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -152,7 +152,7 @@ function IndexerSearch() {
             { guid: result.guid, indexerId: result.indexerId },
             {
               onSuccess: () => toast("Sent to download client"),
-              onError: () => toast("Failed to grab release", "error"),
+              onError: (err) => toastError("Failed to grab release", err),
             },
           ),
       },
