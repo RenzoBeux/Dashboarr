@@ -41,8 +41,13 @@ import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
 
 type CalendarItem =
-  | { kind: "episode"; date: string; entry: SonarrCalendarEntry }
-  | { kind: "movie"; date: string; movie: RadarrMovie };
+  | {
+      kind: "episode";
+      date: string;
+      entry: SonarrCalendarEntry;
+      instanceId: string;
+    }
+  | { kind: "movie"; date: string; movie: RadarrMovie; instanceId: string };
 
 function pickRadarrDate(
   movie: RadarrMovie,
@@ -142,24 +147,28 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
 
   const items: CalendarItem[] = [];
   if (showSonarr) {
-    for (const q of sonarrQueries) {
+    sonarrQueries.forEach((q, i) => {
+      const instanceId = sonarrInstances[i]?.id;
+      if (!instanceId) return;
       for (const ep of q.data ?? []) {
         const date = isoDate(ep.airDate);
         if (date < todayIso || date > horizonIso) continue;
-        items.push({ kind: "episode", date, entry: ep });
+        items.push({ kind: "episode", date, entry: ep, instanceId });
       }
-    }
+    });
   }
   if (showRadarr) {
-    for (const q of radarrQueries) {
+    radarrQueries.forEach((q, i) => {
+      const instanceId = radarrInstances[i]?.id;
+      if (!instanceId) return;
       for (const movie of q.data ?? []) {
         const raw = pickRadarrDate(movie, settings.radarrReleaseType);
         if (!raw) continue;
         const date = isoDate(raw);
         if (date < todayIso || date > horizonIso) continue;
-        items.push({ kind: "movie", date, movie });
+        items.push({ kind: "movie", date, movie, instanceId });
       }
-    }
+    });
   }
 
   const grouped = groupByDate(items);
@@ -216,17 +225,23 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
                 {entries.map((item) =>
                   item.kind === "episode" ? (
                     <EpisodeRow
-                      key={`ep-${item.entry.id}`}
+                      key={`ep-${item.instanceId}-${item.entry.id}`}
                       entry={item.entry}
                       onPress={() =>
-                        router.push(`/series/${item.entry.seriesId}`)
+                        router.push(
+                          `/series/${item.entry.seriesId}?instanceId=${item.instanceId}`,
+                        )
                       }
                     />
                   ) : (
                     <MovieRow
-                      key={`mv-${item.movie.id}`}
+                      key={`mv-${item.instanceId}-${item.movie.id}`}
                       movie={item.movie}
-                      onPress={() => router.push(`/movie/${item.movie.id}`)}
+                      onPress={() =>
+                        router.push(
+                          `/movie/${item.movie.id}?instanceId=${item.instanceId}`,
+                        )
+                      }
                     />
                   ),
                 )}

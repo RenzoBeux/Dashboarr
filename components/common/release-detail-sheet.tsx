@@ -40,6 +40,7 @@ const OFFSCREEN = SHEET_MAX + 140;
 interface ReleaseDetailSheetProps {
   release: ArrRelease | SonarrRelease | null;
   service: "radarr" | "sonarr";
+  instanceId?: string;
   onClose: () => void;
   onGrabbed?: () => void;
 }
@@ -47,6 +48,7 @@ interface ReleaseDetailSheetProps {
 export function ReleaseDetailSheet({
   release,
   service,
+  instanceId,
   onClose,
   onGrabbed,
 }: ReleaseDetailSheetProps) {
@@ -57,8 +59,8 @@ export function ReleaseDetailSheet({
 
   // Both grab hooks coexist so the sheet can be used from either service.
   // Only one will fire per render.
-  const radarrGrab = useGrabRadarrRelease();
-  const sonarrGrab = useGrabSonarrRelease();
+  const radarrGrab = useGrabRadarrRelease(instanceId);
+  const sonarrGrab = useGrabSonarrRelease(instanceId);
   const grab = service === "radarr" ? radarrGrab : sonarrGrab;
 
   const visible = release !== null;

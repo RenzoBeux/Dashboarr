@@ -33,6 +33,7 @@ type Release = ArrRelease | SonarrRelease;
 interface ReleasesPickerProps {
   service: "radarr" | "sonarr";
   query: UseQueryResult<Release[], Error>;
+  instanceId?: string;
 }
 
 const SORT_LABELS: Record<ReleasesSortKey, string> = {
@@ -160,7 +161,11 @@ function formatRelative(timestamp: number): string {
   return `${hours}h ago`;
 }
 
-export function ReleasesPicker({ service, query }: ReleasesPickerProps) {
+export function ReleasesPicker({
+  service,
+  query,
+  instanceId,
+}: ReleasesPickerProps) {
   const router = useRouter();
   const sortKey = useSortStore((s) => s.releases);
   const setSortKey = useSortStore((s) => s.setReleases);
@@ -440,6 +445,7 @@ export function ReleasesPicker({ service, query }: ReleasesPickerProps) {
       <ReleaseDetailSheet
         release={selected}
         service={service}
+        instanceId={instanceId}
         onClose={() => setSelected(null)}
         onGrabbed={() => {
           // After a grab succeeds, pop back to the detail screen so the user

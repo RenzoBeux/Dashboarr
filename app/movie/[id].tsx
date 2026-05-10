@@ -43,13 +43,16 @@ import type { RadarrMovie } from "@/lib/types";
 type DeleteMode = "keep" | "withFiles" | null;
 
 export default function MovieDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, instanceId } = useLocalSearchParams<{
+    id: string;
+    instanceId?: string;
+  }>();
   const router = useRouter();
-  const { data: movie, isLoading } = useRadarrMovie(Number(id));
-  const deleteMutation = useDeleteMovie();
-  const toggleMonitored = useToggleMovieMonitored();
-  const { data: qualityProfiles } = useRadarrQualityProfiles();
-  const updateProfile = useUpdateMovieQualityProfile();
+  const { data: movie, isLoading } = useRadarrMovie(Number(id), instanceId);
+  const deleteMutation = useDeleteMovie(instanceId);
+  const toggleMonitored = useToggleMovieMonitored(instanceId);
+  const { data: qualityProfiles } = useRadarrQualityProfiles(instanceId);
+  const updateProfile = useUpdateMovieQualityProfile(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
@@ -129,7 +132,12 @@ export default function MovieDetailScreen() {
       key: "search",
       icon: Search,
       label: "Search",
-      onPress: () => router.push(`/movie/releases/${movie.id}`),
+      onPress: () =>
+        router.push(
+          instanceId
+            ? `/movie/releases/${movie.id}?instanceId=${instanceId}`
+            : `/movie/releases/${movie.id}`,
+        ),
     },
     ...(movie.imdbId
       ? [

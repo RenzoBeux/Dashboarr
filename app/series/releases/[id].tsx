@@ -17,27 +17,32 @@ export default function SeriesReleasesScreen() {
     id: string;
     episodeId?: string;
     seasonNumber?: string;
+    instanceId?: string;
   }>();
   const seriesId = Number(params.id);
   const episodeId = params.episodeId ? Number(params.episodeId) : 0;
   const seasonNumber =
     params.seasonNumber !== undefined ? Number(params.seasonNumber) : NaN;
+  const instanceId = params.instanceId;
 
   const mode: "episode" | "season" = episodeId > 0 ? "episode" : "season";
 
-  const { data: series } = useSonarrSeriesById(seriesId);
+  const { data: series } = useSonarrSeriesById(seriesId, instanceId);
   // Episode metadata is needed for the title in episode mode; the list is
   // already cached from the series detail screen so this is usually free.
   const { data: episodes } = useSonarrEpisodes(
     mode === "episode" ? seriesId : 0,
+    instanceId,
   );
 
   const episodeQuery = useSonarrReleasesForEpisode(
     mode === "episode" ? episodeId : 0,
+    instanceId,
   );
   const seasonQuery = useSonarrReleasesForSeason(
     mode === "season" ? seriesId : 0,
     mode === "season" ? seasonNumber : -1,
+    instanceId,
   );
   const query = mode === "episode" ? episodeQuery : seasonQuery;
 
@@ -58,7 +63,7 @@ export default function SeriesReleasesScreen() {
     <ScreenWrapper scrollable={false}>
       <BackHeader title={title} />
       <View className="flex-1">
-        <ReleasesPicker service="sonarr" query={query} />
+        <ReleasesPicker service="sonarr" query={query} instanceId={instanceId} />
       </View>
     </ScreenWrapper>
   );
