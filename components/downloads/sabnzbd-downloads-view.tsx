@@ -312,7 +312,13 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
       ) : (
         <>
           {segmentedControl}
-          {showHeader && <ServiceHeader name="SABnzbd" online={sabHealth?.online} />}
+          {showHeader && (
+            <ServiceHeader
+              name="SABnzbd"
+              online={sabHealth?.online}
+              serviceId="sabnzbd"
+            />
+          )}
 
           {/* Speed + global pause/resume */}
           <View className="flex-row gap-3 mb-4">

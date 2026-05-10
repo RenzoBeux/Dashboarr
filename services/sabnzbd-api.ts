@@ -102,10 +102,15 @@ export async function deleteSabHistorySlot(
   deleteFiles = false,
   instanceId?: string,
 ): Promise<void> {
+  // SAB's default behavior on history delete is to *move* the row into the
+  // Archive view rather than remove it. That doesn't match what users expect
+  // when they tap "Delete" on a history entry, so always pass `archive=0` to
+  // make the delete final. See https://sabnzbd.org/wiki/configuration/4.5/api.
   const params: Record<string, string | number | boolean> = {
     mode: "history",
     name: "delete",
     value: nzoId,
+    archive: 0,
   };
   if (deleteFiles) {
     params.del_files = 1;
