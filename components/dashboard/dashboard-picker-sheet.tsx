@@ -289,14 +289,14 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                               onPress={() => handleSelect(d.id)}
                               hitSlop={6}
                             >
-                              {/* Wrap to 2 lines so longer names stay readable
-                                  at higher uiScale settings (Extra Large can
-                                  truncate even short names like "HomeServer"
-                                  to "HomeSe…" with the trailing actions taking
-                                  most of the row). */}
+                              {/* Name gets the full row width (only the icon
+                                  sits beside it) so longer names like
+                                  "HomeServer" stay on a single line at every
+                                  uiScale. Action buttons live on a second row
+                                  below so they never squeeze this column. */}
                               <Text
                                 className="text-zinc-100 text-base font-semibold"
-                                numberOfLines={2}
+                                numberOfLines={1}
                               >
                                 {d.name}
                               </Text>
@@ -311,63 +311,57 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                             </Pressable>
                           )}
                         </View>
-
-                        <View className="flex-row items-center gap-1">
-                          {!isRenaming && (
-                            <>
-                              <Pressable
-                                onPress={() =>
-                                  moveDashboard(d.id, "up")
-                                }
-                                disabled={isFirst}
-                                hitSlop={6}
-                                className="p-1"
-                              >
-                                <Icon
-                                  icon={ChevronUp}
-                                  size={ICON.MD}
-                                  color={isFirst ? "#3f3f46" : "#a1a1aa"}
-                                />
-                              </Pressable>
-                              <Pressable
-                                onPress={() =>
-                                  moveDashboard(d.id, "down")
-                                }
-                                disabled={isLast}
-                                hitSlop={6}
-                                className="p-1"
-                              >
-                                <Icon
-                                  icon={ChevronDown}
-                                  size={ICON.MD}
-                                  color={isLast ? "#3f3f46" : "#a1a1aa"}
-                                />
-                              </Pressable>
-                              <Pressable
-                                onPress={() => startRename(d)}
-                                hitSlop={6}
-                                className="p-1 ml-1"
-                              >
-                                <Icon icon={Pencil} size={ICON.MD} color="#60a5fa" />
-                              </Pressable>
-                              <Pressable
-                                onPress={() => handleRemove(d)}
-                                disabled={dashboards.length <= 1}
-                                hitSlop={6}
-                                className="p-1 ml-1"
-                              >
-                                <Icon
-                                  icon={Trash2}
-                                  size={ICON.MD}
-                                  color={
-                                    dashboards.length <= 1 ? "#3f3f46" : "#ef4444"
-                                  }
-                                />
-                              </Pressable>
-                            </>
-                          )}
-                        </View>
                       </View>
+
+                      {!isRenaming && (
+                        <View className="flex-row items-center justify-end gap-1 mt-2">
+                          <Pressable
+                            onPress={() => moveDashboard(d.id, "up")}
+                            disabled={isFirst}
+                            hitSlop={6}
+                            className="p-1"
+                          >
+                            <Icon
+                              icon={ChevronUp}
+                              size={ICON.MD}
+                              color={isFirst ? "#3f3f46" : "#a1a1aa"}
+                            />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => moveDashboard(d.id, "down")}
+                            disabled={isLast}
+                            hitSlop={6}
+                            className="p-1"
+                          >
+                            <Icon
+                              icon={ChevronDown}
+                              size={ICON.MD}
+                              color={isLast ? "#3f3f46" : "#a1a1aa"}
+                            />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => startRename(d)}
+                            hitSlop={6}
+                            className="p-1 ml-1"
+                          >
+                            <Icon icon={Pencil} size={ICON.MD} color="#60a5fa" />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleRemove(d)}
+                            disabled={dashboards.length <= 1}
+                            hitSlop={6}
+                            className="p-1 ml-1"
+                          >
+                            <Icon
+                              icon={Trash2}
+                              size={ICON.MD}
+                              color={
+                                dashboards.length <= 1 ? "#3f3f46" : "#ef4444"
+                              }
+                            />
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   );
                 })}
