@@ -114,10 +114,11 @@ export interface WidgetDefinition {
   label: string;
   description: string;
   icon: LucideIcon;
-  // Service this widget needs configured. `null` means the widget renders
+  // Service(s) this widget needs configured. `null` means the widget renders
   // regardless of which services are enabled (e.g. service-health, calendar
-  // which can show Sonarr, Radarr, or both).
-  service: ServiceId | null;
+  // which can show Sonarr, Radarr, or both). An array means "any of these" —
+  // used by Speed Stats which can fold in qBittorrent, SABnzbd, or both.
+  service: ServiceId | ServiceId[] | null;
   component: React.ComponentType<WidgetComponentProps>;
   // If provided, the dashboard renders a gear icon in edit mode that opens
   // this component inside the WidgetSettingsSheet.
@@ -126,6 +127,23 @@ export interface WidgetDefinition {
   // Lives here (not in the widget itself) so the registry can describe a
   // widget without rendering it — useful for the settings sheet picker.
   defaultSettings?: Record<string, unknown>;
+}
+
+/**
+ * Whether the widget's service requirement is satisfied by the current set of
+ * enabled services. Folds the three possible shapes — `null` (no requirement),
+ * a single id, or "any of these ids" — into one boolean check so callers
+ * (dashboard visibility, add-widget filter) don't need to branch on shape.
+ */
+export function isWidgetServiceEnabled(
+  widget: WidgetDefinition,
+  services: Record<ServiceId, { enabled: boolean }>,
+): boolean {
+  if (widget.service === null) return true;
+  if (Array.isArray(widget.service)) {
+    return widget.service.some((id) => services[id].enabled);
+  }
+  return services[widget.service].enabled;
 }
 
 export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
@@ -154,7 +172,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Speed Stats",
     description: "Live download and upload speeds",
     icon: Gauge,
-    service: "qbittorrent",
+    service: ["qbittorrent", "sabnzbd"],
     component: SpeedStatsCard,
     settingsComponent: SpeedStatsSettings,
     defaultSettings: SPEED_STATS_DEFAULT_SETTINGS,
