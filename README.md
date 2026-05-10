@@ -37,17 +37,22 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
 | **Plex** | Now playing, recently added, on deck, library browsing |
+| **Jellyfin** | Now playing, recently added, continue watching, library browsing |
+| **Bazarr** | Wanted subtitles for movies & episodes, history, on-demand subtitle search |
 | **Glances** | Server CPU, RAM, disk, and network stats |
 
 ## Features
 
 - **Unified dashboard** — All your services at a glance with customizable, reorderable cards
+- **Multi-instance support** — Run two qBittorrents, split 4K and 1080p Radarrs, or any combination — switch in-tab and aggregate on the dashboard
 - **Dark mode only** — Designed for OLED screens and late-night browsing
 - **Auto network switching** — Detects your home WiFi SSID and switches between local/remote URLs automatically
 - **Per-service configuration** — Enable only the services you use; tabs auto-hide for disabled services
 - **Secure storage** — API keys stored in the device's secure enclave via `expo-secure-store`
+- **Wake-on-LAN** — Wake your server from the app when it's asleep
 - **Pull-to-refresh** — On every screen
 - **Config import/export** — Back up and restore your entire configuration (with biometric auth)
+- **Adjustable UI scale** — 1.0 / 1.15 / 1.3 for accessibility and larger displays
 - **No backend required** — Pure client architecture for core functionality; your data stays between your phone and your servers
 - **Optional self-hosted backend** — Enable real push notifications by running the companion backend on your server (Node.js or Docker)
 
@@ -76,6 +81,7 @@ The APK is signed with the same keystore as the Play Store build, so you can ins
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (v18+)
+- [pnpm](https://pnpm.io/) (v9+)
 - [Expo CLI](https://docs.expo.dev/get-started/installation/)
 - Android device/emulator or iOS device/simulator
 
@@ -87,10 +93,10 @@ git clone https://github.com/renzobeux/dashboarr.git
 cd dashboarr
 
 # Install dependencies
-npm install
+pnpm install
 
 # Start the dev server
-npx expo start
+pnpm start
 ```
 
 Scan the QR code with [Expo Go](https://expo.dev/go) on your device, or press `a` for Android emulator / `i` for iOS simulator.
@@ -142,17 +148,24 @@ app/                  # Expo Router file-based routing
   movie/              # Movie detail & search screens
   series/             # Series detail & search screens
   torrent/            # Torrent detail screen
+  sab/                # SABnzbd job detail screens
 backend/
   dashboarr-backend/  # Self-hosted companion server (Fastify + SQLite)
 components/
   ui/                 # Reusable UI primitives (cards, buttons, inputs, toggles)
-  dashboard/          # Dashboard card components
   common/             # Shared layout components (screen wrapper, pull-to-refresh)
+  dashboard/          # Dashboard card components
+  downloads/          # Unified downloads list (qBittorrent + SABnzbd)
+  qbittorrent/        # qBittorrent-specific components
+  radarr/             # Radarr-specific components
+  sonarr/             # Sonarr-specific components
   overseerr/          # Seerr-specific components (folder name kept for back-compat)
+  settings/           # Settings screen components
 services/             # Raw API clients for each service
 hooks/                # TanStack Query wrappers (caching, polling, mutations)
 store/                # Zustand stores + AsyncStorage/SecureStore helpers
-lib/                  # Types, utils, constants, HTTP client
+lib/                  # Types, utils, constants, HTTP client, Wake-on-LAN
+plugins/              # Custom Expo config plugins (Android signing)
 ```
 
 ## Tech Stack
