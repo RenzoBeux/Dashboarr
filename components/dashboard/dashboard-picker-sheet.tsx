@@ -289,9 +289,14 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                               onPress={() => handleSelect(d.id)}
                               hitSlop={6}
                             >
+                              {/* Wrap to 2 lines so longer names stay readable
+                                  at higher uiScale settings (Extra Large can
+                                  truncate even short names like "HomeServer"
+                                  to "HomeSe…" with the trailing actions taking
+                                  most of the row). */}
                               <Text
                                 className="text-zinc-100 text-base font-semibold"
-                                numberOfLines={1}
+                                numberOfLines={2}
                               >
                                 {d.name}
                               </Text>
