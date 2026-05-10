@@ -17,13 +17,12 @@ import {
   getReleasesForMovie,
   grabRadarrRelease,
 } from "@/services/radarr-api";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import type { RadarrMovie } from "@/lib/types";
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getDateOffset } from "@/lib/utils";
-import { getHttpErrorMessage } from "@/lib/http-client";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 // Per-instance cache keying: every hook accepts an optional `instanceId`. When
@@ -140,7 +139,7 @@ export function useSearchForMovie(instanceId?: string) {
   return useMutation({
     mutationFn: (movieId: number) => searchForMovie(movieId, id ?? undefined),
     onSuccess: () => toast("Search started"),
-    onError: () => toast("Search failed", "error"),
+    onError: (err) => toastError("Search failed", err),
   });
 }
 
@@ -182,14 +181,14 @@ export function useToggleMovieMonitored(instanceId?: string) {
 
       return { prevList, prevDetail };
     },
-    onError: (_err, { movieId }, context) => {
+    onError: (err, { movieId }, context) => {
       if (context?.prevList) {
         queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
       }
       if (context?.prevDetail) {
         queryClient.setQueryData(["radarr", id, "movie", movieId], context.prevDetail);
       }
-      toast("Failed to update monitoring", "error");
+      toastError("Failed to update monitoring", err);
     },
     onSettled: (_data, _err, { movieId }) => {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
@@ -254,7 +253,7 @@ export function useUpdateMovieQualityProfile(instanceId?: string) {
 
       return { prevDetail, prevList };
     },
-    onError: (_err, { movieId }, context) => {
+    onError: (err, { movieId }, context) => {
       if (context?.prevDetail) {
         queryClient.setQueryData(
           ["radarr", id, "movie", movieId],
@@ -264,7 +263,7 @@ export function useUpdateMovieQualityProfile(instanceId?: string) {
       if (context?.prevList) {
         queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
       }
-      toast("Failed to update quality profile", "error");
+      toastError("Failed to update quality profile", err);
     },
     onSettled: (_data, _err, { movieId }) => {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
@@ -330,7 +329,7 @@ export function useGrabRadarrRelease(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "queue"] });
     },
     onError: (err) => {
-      toast(getHttpErrorMessage(err) ?? "Failed to grab release", "error");
+      toastError("Failed to grab release", err);
     },
   });
 }

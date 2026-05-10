@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { toast } from "@/components/ui/toast";
+import { useRouter } from "expo-router";
+import { toast, toastError } from "@/components/ui/toast";
 import { Tv, Plus, Check, SlidersHorizontal } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { useServiceImage } from "@/hooks/use-service-image";
@@ -21,15 +22,19 @@ import {
 import type { SonarrSearchResult } from "@/lib/types";
 
 export default function SeriesSearchScreen() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const { data: results, isLoading } = useSonarrSearch(query);
   const { data: existing } = useSonarrSeries();
   const [advancedTarget, setAdvancedTarget] = useState<SonarrSearchResult | null>(null);
 
-  const existingTvdbIds = useMemo(
-    () => new Set(existing?.map((s) => s.tvdbId) ?? []),
-    [existing],
-  );
+  const existingByTvdbId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const s of existing ?? []) {
+      map.set(s.tvdbId, s.id);
+    }
+    return map;
+  }, [existing]);
 
   return (
     <ScreenWrapper>
@@ -51,14 +56,21 @@ export default function SeriesSearchScreen() {
 
       {results && results.length > 0 && (
         <View className="gap-3">
-          {results.map((result) => (
-            <SearchResultCard
-              key={result.tvdbId}
-              result={result}
-              alreadyAdded={existingTvdbIds.has(result.tvdbId)}
-              onAdvanced={() => setAdvancedTarget(result)}
-            />
-          ))}
+          {results.map((result) => {
+            const existingId = existingByTvdbId.get(result.tvdbId);
+            return (
+              <SearchResultCard
+                key={result.tvdbId}
+                result={result}
+                existingSeriesId={existingId}
+                onAdvanced={() => setAdvancedTarget(result)}
+                onOpenExisting={() =>
+                  existingId !== undefined &&
+                  router.push(`/series/${existingId}`)
+                }
+              />
+            );
+          })}
         </View>
       )}
 
@@ -73,13 +85,16 @@ export default function SeriesSearchScreen() {
 
 function SearchResultCard({
   result,
-  alreadyAdded,
+  existingSeriesId,
   onAdvanced,
+  onOpenExisting,
 }: {
   result: SonarrSearchResult;
-  alreadyAdded: boolean;
+  existingSeriesId: number | undefined;
   onAdvanced: () => void;
+  onOpenExisting: () => void;
 }) {
+  const alreadyAdded = existingSeriesId !== undefined;
   const addSeries = useAddSeries();
   const { data: profiles } = useSonarrQualityProfiles();
   const { data: folders } = useSonarrRootFolders();
@@ -102,13 +117,16 @@ function SearchResultCard({
       },
       {
         onSuccess: () => toast(`${result.title} added to Sonarr`),
-        onError: () => toast("Failed to add series", "error"),
+        onError: (err) => toastError("Failed to add series", err),
       },
     );
   };
 
   return (
-    <Card className="flex-row gap-3">
+    <Card
+      className="flex-row gap-3"
+      onPress={alreadyAdded ? onOpenExisting : undefined}
+    >
       {posterUrl ? (
         <Image
           source={{ uri: posterUrl }}

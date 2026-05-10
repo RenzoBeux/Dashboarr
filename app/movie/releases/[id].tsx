@@ -6,10 +6,13 @@ import { ReleasesPicker } from "@/components/common/releases-picker";
 import { useRadarrMovie, useRadarrReleases } from "@/hooks/use-radarr";
 
 export default function MovieReleasesScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, instanceId } = useLocalSearchParams<{
+    id: string;
+    instanceId?: string;
+  }>();
   const movieId = Number(id);
-  const { data: movie } = useRadarrMovie(movieId);
-  const query = useRadarrReleases(movieId);
+  const { data: movie } = useRadarrMovie(movieId, instanceId);
+  const query = useRadarrReleases(movieId, instanceId);
 
   const title = movie ? `Releases · ${movie.title}` : "Releases";
 
@@ -17,7 +20,7 @@ export default function MovieReleasesScreen() {
     <ScreenWrapper scrollable={false}>
       <BackHeader title={title} />
       <View className="flex-1">
-        <ReleasesPicker service="radarr" query={query} />
+        <ReleasesPicker service="radarr" query={query} instanceId={instanceId} />
       </View>
     </ScreenWrapper>
   );

@@ -9,7 +9,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import {
   useSpeedLimitsMode,
   useToggleSpeedLimitsMode,
@@ -108,8 +108,8 @@ export function SpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetProps) {
 
       toast("Speed limits saved", "success");
       onClose();
-    } catch {
-      toast("Failed to save speed limits", "error");
+    } catch (err) {
+      toastError("Failed to save speed limits", err);
     }
   };
 

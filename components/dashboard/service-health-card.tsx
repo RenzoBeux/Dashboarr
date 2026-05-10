@@ -40,6 +40,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   );
   const { data: services } = useServiceHealth();
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
+  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const router = useRouter();
 
   const hiddenSet = new Set(settings.hiddenKinds);
@@ -92,7 +93,14 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           return (
             <Pressable
               key={`${entry.kindId}:${entry.instanceId}`}
-              onPress={() => route && router.push(route as any)}
+              onPress={() => {
+                if (!route) return;
+                // Switch the active instance to the one tapped so the
+                // destination tab opens against this server, not whichever
+                // instance the user happened to last visit.
+                setActiveInstance(entry.kindId, entry.instanceId);
+                router.push(route as any);
+              }}
               className="items-center gap-1.5 active:opacity-70"
               hitSlop={6}
             >

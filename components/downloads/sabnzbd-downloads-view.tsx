@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { View, Text, Pressable, Alert, BackHandler, ScrollView } from "react-native";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import {
   Pause,
@@ -214,7 +214,7 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
           setNzbUrl("");
           setShowAddModal(false);
         },
-        onError: () => toast("Failed to add NZB", "error"),
+        onError: (err) => toastError("Failed to add NZB", err),
       },
     );
   };

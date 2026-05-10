@@ -57,15 +57,18 @@ import type {
 type DeleteMode = "keep" | "withFiles" | null;
 
 export default function SeriesDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, instanceId } = useLocalSearchParams<{
+    id: string;
+    instanceId?: string;
+  }>();
   const router = useRouter();
-  const { data: series, isLoading } = useSonarrSeriesById(Number(id));
-  const { data: episodes } = useSonarrEpisodes(Number(id));
-  const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id));
-  const toggleSeries = useToggleSeriesMonitored();
-  const deleteSeries = useDeleteSeries();
-  const { data: qualityProfiles } = useSonarrQualityProfiles();
-  const updateProfile = useUpdateSeriesQualityProfile();
+  const { data: series, isLoading } = useSonarrSeriesById(Number(id), instanceId);
+  const { data: episodes } = useSonarrEpisodes(Number(id), instanceId);
+  const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id), instanceId);
+  const toggleSeries = useToggleSeriesMonitored(instanceId);
+  const deleteSeries = useDeleteSeries(instanceId);
+  const { data: qualityProfiles } = useSonarrQualityProfiles(instanceId);
+  const updateProfile = useUpdateSeriesQualityProfile(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
@@ -150,7 +153,12 @@ export default function SeriesDetailScreen() {
       key: "search",
       icon: Search,
       label: "Search",
-      onPress: () => router.push(`/series/releases/${series.id}`),
+      onPress: () =>
+        router.push(
+          instanceId
+            ? `/series/releases/${series.id}?instanceId=${instanceId}`
+            : `/series/releases/${series.id}`,
+        ),
     },
     {
       key: "more",
@@ -227,6 +235,7 @@ export default function SeriesDetailScreen() {
                   <SeasonAccordion
                     key={season.seasonNumber}
                     seriesId={series.id}
+                    instanceId={instanceId}
                     season={season}
                     episodes={episodes?.filter(
                       (ep) => ep.seasonNumber === season.seasonNumber,
@@ -440,11 +449,13 @@ function AboutRow({ label, value }: { label: string; value: string }) {
 
 function SeasonAccordion({
   seriesId,
+  instanceId,
   season,
   episodes,
   episodeFileMap,
 }: {
   seriesId: number;
+  instanceId?: string;
   season: SonarrSeason;
   episodes?: SonarrEpisode[];
   episodeFileMap: Map<number, SonarrEpisodeFile>;
@@ -453,6 +464,10 @@ function SeasonAccordion({
   const [expanded, setExpanded] = useState(false);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
+
+  const releasesQuery = `seasonNumber=${season.seasonNumber}${
+    instanceId ? `&instanceId=${instanceId}` : ""
+  }`;
 
   return (
     <Card>
@@ -481,9 +496,7 @@ function SeasonAccordion({
           )}
           <Pressable
             onPress={() =>
-              router.push(
-                `/series/releases/${seriesId}?seasonNumber=${season.seasonNumber}`,
-              )
+              router.push(`/series/releases/${seriesId}?${releasesQuery}`)
             }
             hitSlop={8}
             className="p-1 active:opacity-70"
@@ -503,6 +516,7 @@ function SeasonAccordion({
               <EpisodeRow
                 key={ep.id}
                 seriesId={seriesId}
+                instanceId={instanceId}
                 episode={ep}
                 episodeFile={
                   ep.episodeFileId
@@ -519,15 +533,17 @@ function SeasonAccordion({
 
 function EpisodeRow({
   seriesId,
+  instanceId,
   episode,
   episodeFile,
 }: {
   seriesId: number;
+  instanceId?: string;
   episode: SonarrEpisode;
   episodeFile?: SonarrEpisodeFile;
 }) {
   const router = useRouter();
-  const toggleMonitored = useToggleEpisodeMonitored();
+  const toggleMonitored = useToggleEpisodeMonitored(instanceId);
   const mediaInfo = episodeFile?.mediaInfo;
 
   return (
@@ -556,7 +572,11 @@ function EpisodeRow({
       </View>
       <Pressable
         onPress={() =>
-          router.push(`/series/releases/${seriesId}?episodeId=${episode.id}`)
+          router.push(
+            `/series/releases/${seriesId}?episodeId=${episode.id}${
+              instanceId ? `&instanceId=${instanceId}` : ""
+            }`,
+          )
         }
         hitSlop={6}
         className="p-1 active:opacity-70 mr-1"

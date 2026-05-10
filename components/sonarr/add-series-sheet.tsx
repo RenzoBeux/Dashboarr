@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useServiceImage } from "@/hooks/use-service-image";
 import {
   useAddSeries,
@@ -104,7 +104,7 @@ export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps
           toast(`${result.title} added to Sonarr`);
           onClose();
         },
-        onError: () => toast("Failed to add series", "error"),
+        onError: (err) => toastError("Failed to add series", err),
       },
     );
   };

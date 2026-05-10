@@ -112,11 +112,14 @@ export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
                 bottomOverlay={<PosterProgressStrip progress={progress} />}
                 mediaType="movie"
                 onPress={() =>
-                  // Movie ids aren't globally unique. The router push only
-                  // makes sense if the user is currently viewing the same
-                  // Radarr instance the queue item belongs to. Tap → switch
-                  // active instance to match, then navigate.
-                  item.movie && router.push(`/movie/${item.movie.id}`)
+                  // Movie ids aren't globally unique across instances, so we
+                  // pass the source instance id to the detail screen — it
+                  // queries Radarr against that instance instead of the
+                  // user's currently-active one.
+                  item.movie &&
+                  router.push(
+                    `/movie/${item.movie.id}?instanceId=${instanceId}`,
+                  )
                 }
               />
             );

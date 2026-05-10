@@ -35,8 +35,13 @@ export function toggleIndexer(
   enable: boolean,
   instanceId?: string,
 ): Promise<ProwlarrIndexer> {
+  // forceSave=true skips Prowlarr's pre-save validation (which test-pings the
+  // indexer). Without it, re-enabling an indexer can no-op silently if the
+  // validation step fails — the PUT returns 200 with the indexer still
+  // disabled. With forceSave the toggle persists regardless.
   return serviceRequest<ProwlarrIndexer>("prowlarr", `/indexer/${indexer.id}`, {
     method: "PUT",
+    params: { forceSave: true },
     body: JSON.stringify({ ...indexer, enable }),
     instanceId,
   });

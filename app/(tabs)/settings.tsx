@@ -3,7 +3,7 @@ import { View, Text, Alert, BackHandler, Pressable, Linking, Platform } from "re
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import {
   Upload,
   FolderDown,
@@ -197,8 +197,7 @@ export default function SettingsScreen() {
       await exportConfig(result.passphrase, setExportStage);
       await syncRememberedState(result);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to export config";
-      toast(msg, "error");
+      toastError("Failed to export config", e);
     } finally {
       setExportStage(null);
     }
@@ -226,8 +225,8 @@ export default function SettingsScreen() {
     try {
       await Promise.all([Image.clearMemoryCache(), Image.clearDiskCache()]);
       toast("Image cache cleared", "success");
-    } catch {
-      toast("Failed to clear image cache", "error");
+    } catch (err) {
+      toastError("Failed to clear image cache", err);
     }
   };
 
@@ -253,8 +252,7 @@ export default function SettingsScreen() {
         toast("Configuration imported successfully", "success");
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Invalid config file";
-      toast(msg, "error");
+      toastError("Invalid config file", e);
     } finally {
       setImportStage(null);
     }

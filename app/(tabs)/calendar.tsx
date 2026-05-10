@@ -33,8 +33,18 @@ const INCLUDE_UNMONITORED_KEY = "ui.calendar.includeUnmonitored";
 type Filter = "all" | "tv" | "movies";
 
 type CalendarItem =
-  | { type: "episode"; date: string; data: SonarrCalendarEntry }
-  | { type: "movie"; date: string; data: RadarrMovie };
+  | {
+      type: "episode";
+      date: string;
+      data: SonarrCalendarEntry;
+      instanceId: string;
+    }
+  | {
+      type: "movie";
+      date: string;
+      data: RadarrMovie;
+      instanceId: string;
+    };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -142,10 +152,21 @@ export default function CalendarScreen() {
     })),
   });
 
-  const episodes: SonarrCalendarEntry[] = sonarrQueries.flatMap(
-    (q) => q.data ?? [],
+  // Tag each calendar entry with the source instance so navigation can route
+  // detail-screen queries to the correct Sonarr/Radarr (ids aren't globally
+  // unique across instances).
+  const taggedEpisodes = sonarrQueries.flatMap((q, i) =>
+    (q.data ?? []).map((data) => ({
+      data,
+      instanceId: sonarrInstances[i]?.id,
+    })),
   );
-  const movies: RadarrMovie[] = radarrQueries.flatMap((q) => q.data ?? []);
+  const taggedMovies = radarrQueries.flatMap((q, i) =>
+    (q.data ?? []).map((data) => ({
+      data,
+      instanceId: radarrInstances[i]?.id,
+    })),
+  );
   const loadingEp = sonarrQueries.length > 0 && sonarrQueries.some((q) => q.isLoading);
   const loadingMov = radarrQueries.length > 0 && radarrQueries.some((q) => q.isLoading);
 
@@ -181,8 +202,14 @@ export default function CalendarScreen() {
     const all: CalendarItem[] = [];
 
     if (filter !== "movies") {
-      for (const ep of episodes ?? []) {
-        const item: CalendarItem = { type: "episode", date: ep.airDate, data: ep };
+      for (const { data: ep, instanceId } of taggedEpisodes) {
+        if (!instanceId) continue;
+        const item: CalendarItem = {
+          type: "episode",
+          date: ep.airDate,
+          data: ep,
+          instanceId,
+        };
         all.push(item);
         const list = map.get(ep.airDate) ?? [];
         list.push(item);
@@ -191,10 +218,16 @@ export default function CalendarScreen() {
     }
 
     if (filter !== "tv") {
-      for (const movie of movies ?? []) {
+      for (const { data: movie, instanceId } of taggedMovies) {
+        if (!instanceId) continue;
         const date = getMovieReleaseDate(movie);
         if (date) {
-          const item: CalendarItem = { type: "movie", date, data: movie };
+          const item: CalendarItem = {
+            type: "movie",
+            date,
+            data: movie,
+            instanceId,
+          };
           all.push(item);
           const list = map.get(date) ?? [];
           list.push(item);
@@ -204,7 +237,7 @@ export default function CalendarScreen() {
     }
 
     return { itemsByDate: map, allItems: all };
-  }, [episodes, movies, filter]);
+  }, [taggedEpisodes, taggedMovies, filter]);
 
   const grid = useMemo(() => getCalendarGrid(year, month), [year, month]);
   const todayKey = localDateKey(today);
@@ -379,15 +412,21 @@ function SelectedDayList({ items }: { items: CalendarItem[] }) {
       {items.map((item) =>
         item.type === "episode" ? (
           <EpisodeRow
-            key={`ep-${item.data.id}`}
+            key={`ep-${item.instanceId}-${item.data.id}`}
             episode={item.data}
-            onPress={() => router.push(`/series/${item.data.seriesId}`)}
+            onPress={() =>
+              router.push(
+                `/series/${item.data.seriesId}?instanceId=${item.instanceId}`,
+              )
+            }
           />
         ) : (
           <MovieRow
-            key={`mov-${item.data.id}`}
+            key={`mov-${item.instanceId}-${item.data.id}`}
             movie={item.data}
-            onPress={() => router.push(`/movie/${item.data.id}`)}
+            onPress={() =>
+              router.push(`/movie/${item.data.id}?instanceId=${item.instanceId}`)
+            }
           />
         ),
       )}
