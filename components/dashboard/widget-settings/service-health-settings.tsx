@@ -1,8 +1,11 @@
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { ArrowUp, ArrowDown } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { Toggle } from "@/components/ui/toggle";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useConfigStore } from "@/store/config-store";
-import { SERVICE_IDS, SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
+import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
+import { applyServicesOrder } from "@/lib/services-order";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
   InstancePickerRow,
@@ -34,13 +37,35 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
     SERVICE_HEALTH_DEFAULT_SETTINGS,
   );
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
+  const servicesOrder = useConfigStore((s) => s.servicesOrder);
+  const setServicesOrder = useConfigStore((s) => s.setServicesOrder);
 
-  // Only surface kinds the user has actually configured + enabled. Hiding a
-  // kind in app settings already removes it from the dashboard, so there's no
-  // point listing it here — the widget can't show what isn't reachable.
-  const configuredKinds = SERVICE_IDS.filter(
+  // Only surface kinds the user has actually configured + enabled, in the
+  // user-defined order. Hiding a kind in app settings already removes it from
+  // the dashboard, so there's no point listing it here — the widget can't
+  // show what isn't reachable. The order is the shared servicesOrder so the
+  // Status widget and the Services tab agree.
+  const fullOrder = applyServicesOrder(servicesOrder);
+  const configuredKinds = fullOrder.filter(
     (id) => (serviceInstances[id] ?? []).some((i) => i.enabled),
   );
+
+  // Move `id` left/right within the visible (configured) list, mapping the
+  // swap back onto the full order so disabled kinds interleaved between two
+  // configured ones don't sabotage the user's tap.
+  const moveKind = (id: ServiceId, direction: "up" | "down") => {
+    const visibleIdx = configuredKinds.indexOf(id);
+    if (visibleIdx === -1) return;
+    const target = direction === "up" ? visibleIdx - 1 : visibleIdx + 1;
+    if (target < 0 || target >= configuredKinds.length) return;
+    const otherId = configuredKinds[target];
+    const a = fullOrder.indexOf(id);
+    const b = fullOrder.indexOf(otherId);
+    if (a === -1 || b === -1) return;
+    const next = [...fullOrder];
+    [next[a], next[b]] = [next[b], next[a]];
+    setServicesOrder(next);
+  };
 
   if (configuredKinds.length === 0) {
     return (
@@ -66,25 +91,57 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
 
   return (
     <View className="px-4 py-2 gap-5">
-      {configuredKinds.map((id) => {
+      {configuredKinds.length > 1 && (
+        <Text className="text-zinc-500 text-xs">
+          Order is shared with the Services tab.
+        </Text>
+      )}
+      {configuredKinds.map((id, idx) => {
         const isShown = !hiddenSet.has(id);
         const instances = serviceInstances[id] ?? [];
         const enabledInstances = instances.filter((i) => i.enabled);
         const binding = settings.instances[id] ?? INSTANCE_BINDING_ALL;
+        const isFirst = idx === 0;
+        const isLast = idx === configuredKinds.length - 1;
+        const canReorder = configuredKinds.length > 1;
 
         return (
           <View key={id} className="gap-3">
-            <View className="bg-surface-light rounded-2xl border border-border px-4">
-              <Toggle
-                label={SERVICE_DEFAULTS[id].name}
-                description={
-                  enabledInstances.length === 1
-                    ? "1 instance enabled"
-                    : `${enabledInstances.length} instances enabled`
-                }
-                value={isShown}
-                onValueChange={(show) => toggleKind(id, show)}
-              />
+            <View className="flex-row items-center gap-2">
+              <View className="flex-1 bg-surface-light rounded-2xl border border-border px-4">
+                <Toggle
+                  label={SERVICE_DEFAULTS[id].name}
+                  description={
+                    enabledInstances.length === 1
+                      ? "1 instance enabled"
+                      : `${enabledInstances.length} instances enabled`
+                  }
+                  value={isShown}
+                  onValueChange={(show) => toggleKind(id, show)}
+                />
+              </View>
+              {canReorder && (
+                <View className="flex-col items-center">
+                  <Pressable
+                    onPress={() => moveKind(id, "up")}
+                    disabled={isFirst}
+                    hitSlop={6}
+                    className="p-1 active:opacity-60"
+                    style={{ opacity: isFirst ? 0.3 : 1 }}
+                  >
+                    <Icon icon={ArrowUp} size={16} color="#a1a1aa" />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => moveKind(id, "down")}
+                    disabled={isLast}
+                    hitSlop={6}
+                    className="p-1 active:opacity-60"
+                    style={{ opacity: isLast ? 0.3 : 1 }}
+                  >
+                    <Icon icon={ArrowDown} size={16} color="#a1a1aa" />
+                  </Pressable>
+                </View>
+              )}
             </View>
             {isShown && enabledInstances.length > 1 && (
               <InstancePickerRow

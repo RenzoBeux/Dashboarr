@@ -7,8 +7,8 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
+import { applyServicesOrder } from "@/lib/services-order";
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
@@ -25,26 +25,6 @@ const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   glances: "/(tabs)/glances",
   bazarr: "/(tabs)/bazarr",
 };
-
-// Materialize the user's display order: known entries from servicesOrder in
-// the order they chose, then any SERVICE_IDS missing from that list appended
-// in canonical order. A user who only ever moved one tile still gets every
-// service rendered.
-function applyServicesOrder(order: ServiceId[]): ServiceId[] {
-  const seen = new Set<ServiceId>();
-  const out: ServiceId[] = [];
-  for (const id of order) {
-    if (seen.has(id)) continue;
-    if (!SERVICE_IDS.includes(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  for (const id of SERVICE_IDS) {
-    if (seen.has(id)) continue;
-    out.push(id);
-  }
-  return out;
-}
 
 export default function ServicesScreen() {
   const router = useRouter();
