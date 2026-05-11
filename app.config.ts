@@ -6,9 +6,18 @@ import pkg from "./package.json";
 const [major, minor, patch] = pkg.version.split(".").map((n) => parseInt(n, 10));
 const nativeBuildNumber = major * 10000 + minor * 100 + patch;
 
+// APP_VARIANT=development produces a side-by-side install: different name,
+// bundle id, package, and URL scheme so both prod and dev builds can coexist
+// on the same device. Slug and EAS project stay shared so OTA channels still
+// route correctly (dev binaries pull the "development" channel via eas.json).
+const IS_DEV = process.env.APP_VARIANT === "development";
+const APP_NAME = IS_DEV ? "Dashboarr Dev" : "Dashboarr";
+const BUNDLE_ID = IS_DEV ? "com.dashboarr.app.dev" : "com.dashboarr.app";
+const APP_SCHEME = IS_DEV ? "dashboarr-dev" : "dashboarr";
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: "Dashboarr",
+  name: APP_NAME,
   "owner": "dashboarr",
   slug: "dashboarr",
   version: pkg.version,
@@ -36,7 +45,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "com.dashboarr.app",
+    bundleIdentifier: BUNDLE_ID,
     buildNumber: String(nativeBuildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
@@ -62,11 +71,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#09090b",
     },
-    package: "com.dashboarr.app",
+    package: BUNDLE_ID,
     versionCode: nativeBuildNumber,
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
-  scheme: "dashboarr",
+  scheme: APP_SCHEME,
   // Shared EAS project used by every install. Required for real push tokens —
   // Notifications.getExpoPushTokenAsync({ projectId }) reads from extra.eas.projectId.
   // Keep this stable across releases; replace with the real EAS project UUID

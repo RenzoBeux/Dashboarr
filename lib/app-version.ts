@@ -33,8 +33,12 @@ export async function downloadAndApplyOtaUpdate(): Promise<void> {
   await Updates.reloadAsync();
 }
 
-const IOS_BUNDLE_ID = "com.dashboarr.app";
-const ANDROID_PACKAGE = "com.dashboarr.app";
+// Read the live bundle id/package from the installed binary so a sideloaded
+// dev variant (com.dashboarr.app.dev) doesn't falsely compare itself against
+// the prod store listing. Falls back to prod for typings — at runtime
+// Application.applicationId is always populated on iOS/Android.
+const IOS_BUNDLE_ID = Application.applicationId ?? "com.dashboarr.app";
+const ANDROID_PACKAGE = Application.applicationId ?? "com.dashboarr.app";
 const GITHUB_REPO = "RenzoBeux/Dashboarr";
 
 export type UpdateSource = "app-store" | "play-store" | "github";
