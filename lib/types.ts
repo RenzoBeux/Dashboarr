@@ -1034,6 +1034,20 @@ export interface GlancesDiskIOItem {
   time_since_update: number;
 }
 
+export interface GlancesGpuItem {
+  key: string;
+  gpu_id: string;
+  name: string;
+  // mem is VRAM utilization percent (used / total * 100), not absolute bytes —
+  // Glances doesn't expose absolute VRAM via the GPU plugin. proc is GPU
+  // compute utilization percent. Both may be null on backends that can't
+  // report them (e.g. some AMD/Intel/ARM cards lack fan_speed/temperature).
+  mem: number | null;
+  proc: number | null;
+  temperature: number | null;
+  fan_speed: number | null;
+}
+
 // --- Bazarr Types ---
 
 export interface BazarrMissingSubtitle {

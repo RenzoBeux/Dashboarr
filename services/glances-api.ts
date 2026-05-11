@@ -1,4 +1,4 @@
-import { serviceRequest } from "@/lib/http-client";
+import { serviceRequest, HttpError } from "@/lib/http-client";
 import type {
   GlancesCpu,
   GlancesMem,
@@ -6,6 +6,7 @@ import type {
   GlancesPerCpuItem,
   GlancesLoad,
   GlancesDiskIOItem,
+  GlancesGpuItem,
 } from "@/lib/types";
 
 // Per-instance routing: every function takes an optional `instanceId`.
@@ -54,4 +55,15 @@ export async function getFs(instanceId?: string): Promise<GlancesFsItem[]> {
 
 export function getDiskIO(instanceId?: string): Promise<GlancesDiskIOItem[]> {
   return serviceRequest<GlancesDiskIOItem[]>("glances", "/diskio", { instanceId });
+}
+
+export async function getGpu(instanceId?: string): Promise<GlancesGpuItem[]> {
+  // Hosts without a GPU return an empty list; if the plugin is disabled the
+  // endpoint can 404, so swallow that into [] rather than surfacing as error.
+  try {
+    return await serviceRequest<GlancesGpuItem[]>("glances", "/gpu", { instanceId });
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) return [];
+    throw e;
+  }
 }

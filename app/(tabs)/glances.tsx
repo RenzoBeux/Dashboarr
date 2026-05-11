@@ -1,5 +1,5 @@
 import { View, Text } from "react-native";
-import { Cpu, MemoryStick, HardDrive, Activity } from "lucide-react-native";
+import { Cpu, MemoryStick, HardDrive, Activity, Gpu } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -14,11 +14,12 @@ import {
   useGlancesMem,
   useGlancesFs,
   useGlancesDiskIO,
+  useGlancesGpu,
 } from "@/hooks/use-glances";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatBytes, formatSpeed } from "@/lib/utils";
-import type { GlancesFsItem, GlancesDiskIOItem } from "@/lib/types";
+import type { GlancesFsItem, GlancesDiskIOItem, GlancesGpuItem } from "@/lib/types";
 
 function usageBarColor(percent: number): string {
   if (percent >= 85) return "bg-red-500";
@@ -43,6 +44,7 @@ export default function GlancesScreen() {
       <View className="gap-4">
         <CpuCard />
         <MemoryCard />
+        <GpuCard />
         <DisksCard />
         <DiskIOCard />
       </View>
@@ -163,6 +165,84 @@ function MemoryCard() {
         </View>
       )}
     </Card>
+  );
+}
+
+function GpuCard() {
+  const { data: gpus, isLoading } = useGlancesGpu();
+
+  // Hide entirely on hosts with no GPU — the endpoint returns [] when the
+  // plugin is enabled but no card is detected (and getGpu swallows 404 when
+  // the plugin is disabled), so an empty list isn't an error condition.
+  if (!isLoading && (!gpus || gpus.length === 0)) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>GPU</CardTitle>
+      </CardHeader>
+
+      {isLoading ? (
+        <SkeletonCardContent rows={2} />
+      ) : (
+        <View className="gap-4">
+          {gpus!.map((gpu, idx) => (
+            <GpuDetail key={gpu.gpu_id ?? idx} gpu={gpu} />
+          ))}
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function GpuDetail({ gpu }: { gpu: GlancesGpuItem }) {
+  const proc = typeof gpu.proc === "number" ? gpu.proc : null;
+  const mem = typeof gpu.mem === "number" ? gpu.mem : null;
+
+  return (
+    <View>
+      <View className="flex-row items-center gap-2 mb-2">
+        <Icon icon={Gpu} size={14} color="#a1a1aa" />
+        <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
+          {gpu.name || gpu.gpu_id}
+        </Text>
+      </View>
+
+      {proc !== null && (
+        <View className="mb-2">
+          <View className="flex-row justify-between mb-1">
+            <Text className="text-zinc-500 text-xs">Compute</Text>
+            <Text className={`text-xs font-medium ${usageTextColor(proc)}`}>
+              {proc.toFixed(1)}%
+            </Text>
+          </View>
+          <ProgressBar progress={proc / 100} color={usageBarColor(proc)} />
+        </View>
+      )}
+
+      {mem !== null && (
+        <View className="mb-2">
+          <View className="flex-row justify-between mb-1">
+            <Text className="text-zinc-500 text-xs">VRAM</Text>
+            <Text className={`text-xs font-medium ${usageTextColor(mem)}`}>
+              {mem.toFixed(1)}%
+            </Text>
+          </View>
+          <ProgressBar progress={mem / 100} color={usageBarColor(mem)} />
+        </View>
+      )}
+
+      {(typeof gpu.temperature === "number" || typeof gpu.fan_speed === "number") && (
+        <View className="flex-row gap-3 flex-wrap mt-1">
+          {typeof gpu.temperature === "number" && (
+            <StatPill label="Temp" value={`${gpu.temperature.toFixed(0)}°C`} />
+          )}
+          {typeof gpu.fan_speed === "number" && (
+            <StatPill label="Fan" value={`${gpu.fan_speed.toFixed(0)} RPM`} />
+          )}
+        </View>
+      )}
+    </View>
   );
 }
 

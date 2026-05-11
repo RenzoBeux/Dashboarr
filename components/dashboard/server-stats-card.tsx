@@ -6,7 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { getCpu, getMem, getFs } from "@/services/glances-api";
+import { getCpu, getMem, getFs, getGpu } from "@/services/glances-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import {
@@ -16,7 +16,7 @@ import {
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
-import type { GlancesFsItem } from "@/lib/types";
+import type { GlancesFsItem, GlancesGpuItem } from "@/lib/types";
 import type { ServiceInstance } from "@/store/config-store";
 
 const RING_SIZE = 80;
@@ -87,7 +87,8 @@ export function ServerStatsCard({ slotId }: WidgetComponentProps) {
   const allInstances = useEnabledInstances("glances");
   const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
-  const allHidden = !settings.showCpu && !settings.showRam && !settings.showDisks;
+  const allHidden =
+    !settings.showCpu && !settings.showRam && !settings.showGpu && !settings.showDisks;
 
   return (
     <Card>
@@ -148,24 +149,33 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
         refetchInterval: FAST_POLL,
         enabled: settings.showDisks,
       },
+      {
+        queryKey: ["glances", instance.id, "gpu"] as const,
+        queryFn: () => getGpu(instance.id),
+        refetchInterval: FAST_POLL,
+        enabled: settings.showGpu,
+      },
     ],
   });
-  const [cpuQuery, memQuery, fsQuery] = queries;
+  const [cpuQuery, memQuery, fsQuery, gpuQuery] = queries;
   const cpu = settings.showCpu ? cpuQuery.data : undefined;
   const mem = settings.showRam ? memQuery.data : undefined;
   const fs = settings.showDisks ? fsQuery.data : undefined;
+  const gpus = settings.showGpu ? gpuQuery.data : undefined;
 
   const isLoading =
     (settings.showCpu && cpuQuery.isLoading) ||
     (settings.showRam && memQuery.isLoading) ||
-    (settings.showDisks && fsQuery.isLoading);
-  const hasData = cpu || mem || (fs && fs.length > 0);
+    (settings.showDisks && fsQuery.isLoading) ||
+    (settings.showGpu && gpuQuery.isLoading);
+  const hasData = cpu || mem || (fs && fs.length > 0) || (gpus && gpus.length > 0);
   const showError =
     !isLoading &&
     !hasData &&
     ((settings.showCpu && cpuQuery.isError) ||
       (settings.showRam && memQuery.isError) ||
-      (settings.showDisks && fsQuery.isError));
+      (settings.showDisks && fsQuery.isError) ||
+      (settings.showGpu && gpuQuery.isError));
 
   return (
     <View className="gap-3">
@@ -190,6 +200,18 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
             </View>
           )}
 
+          {settings.showGpu && gpus && gpus.length > 0 && (
+            <View className="gap-3">
+              {gpus.map((gpu, idx) => (
+                <GpuRow
+                  key={gpu.gpu_id ?? idx}
+                  gpu={gpu}
+                  showName={gpus.length > 1}
+                />
+              ))}
+            </View>
+          )}
+
           {settings.showDisks && fs && fs.length > 0 && (
             <View className="gap-2">
               {fs.map((disk) => (
@@ -199,6 +221,29 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
           )}
         </View>
       )}
+    </View>
+  );
+}
+
+function GpuRow({ gpu, showName }: { gpu: GlancesGpuItem; showName: boolean }) {
+  // Glances reports null for backends that can't read a value (e.g. some AMD
+  // cards lack temperature/fan_speed). Skip rings whose value is missing.
+  const proc = typeof gpu.proc === "number" ? gpu.proc : null;
+  const mem = typeof gpu.mem === "number" ? gpu.mem : null;
+
+  if (proc === null && mem === null) return null;
+
+  return (
+    <View className="gap-2">
+      {showName && (
+        <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+          {gpu.name || gpu.gpu_id}
+        </Text>
+      )}
+      <View className="flex-row justify-around">
+        {proc !== null && <RingChart percent={proc} label="GPU" />}
+        {mem !== null && <RingChart percent={mem} label="VRAM" />}
+      </View>
     </View>
   );
 }
