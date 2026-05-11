@@ -48,8 +48,11 @@ import { generateInstanceId } from "@/lib/uuid";
  *         hydrate time on locally-persisted dashboards.
  *   v16 — added sabnzbd service entry (no schema change; defaultInstances()
  *         backfills the new id at import time, so this is a version stamp only).
+ *   v17 — added servicesOrder: ServiceId[] for the user-defined Services tab
+ *         tile order. Older exports lack the field; default to [] which the
+ *         render-side logic interprets as "use canonical SERVICE_IDS order".
  */
-export const CURRENT_CONFIG_VERSION = 16;
+export const CURRENT_CONFIG_VERSION = 17;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -328,6 +331,15 @@ const migrations: Record<number, (payload: any) => any> = {
   // defaultInstances() afterward, so older payloads that lack a sabnzbd entry
   // get the disabled default automatically — nothing to transform here.
   15: (payload) => ({ ...payload, version: 16 }),
+
+  // v16 → v17: added servicesOrder. Older payloads had no concept of a
+  // user-defined Services tab order — default to [] which the render-side
+  // logic treats as "fall back to canonical SERVICE_IDS order".
+  16: (payload) => ({
+    ...payload,
+    version: 17,
+    servicesOrder: Array.isArray(payload.servicesOrder) ? payload.servicesOrder : [],
+  }),
 };
 
 /**

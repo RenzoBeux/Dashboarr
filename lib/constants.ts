@@ -106,6 +106,11 @@ export const STORAGE_KEYS = {
   hapticsEnabled: "app.hapticsEnabled",
   globalCustomHeaders: "app.globalCustomHeaders",
   uiScale: "app.uiScale",
+  // v17: user-defined display order for the Services tab tiles. Stored as a
+  // ServiceId[]; unknown ids in this list are ignored at render time, and
+  // any SERVICE_IDS missing from the list are appended in their canonical
+  // order — so adding a new service kind ships with a sensible default.
+  servicesOrder: "app.servicesOrder",
 } as const;
 
 // Whitelisted UI scale multipliers. Kept as a const so the schema and the
