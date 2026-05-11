@@ -272,6 +272,84 @@ export function useUpdateMovieQualityProfile(instanceId?: string) {
   });
 }
 
+export function useUpdateMovieRootFolder(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  return useMutation({
+    mutationFn: ({
+      movieId,
+      rootFolderPath,
+      moveFiles,
+    }: {
+      movieId: number;
+      rootFolderPath: string;
+      moveFiles: boolean;
+    }) => {
+      const cached = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
+      if (!cached) throw new Error("Movie not loaded");
+      return updateMovie(
+        { ...cached, rootFolderPath },
+        id ?? undefined,
+        { moveFiles },
+      );
+    },
+    onMutate: async ({ movieId, rootFolderPath }) => {
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movie", movieId] });
+      await queryClient.cancelQueries({ queryKey: ["radarr", id, "movies"] });
+
+      const prevDetail = queryClient.getQueryData<RadarrMovie>([
+        "radarr",
+        id,
+        "movie",
+        movieId,
+      ]);
+      const prevList = queryClient.getQueryData<RadarrMovie[]>([
+        "radarr",
+        id,
+        "movies",
+      ]);
+
+      if (prevDetail) {
+        queryClient.setQueryData<RadarrMovie>(
+          ["radarr", id, "movie", movieId],
+          { ...prevDetail, rootFolderPath },
+        );
+      }
+      if (prevList) {
+        queryClient.setQueryData<RadarrMovie[]>(
+          ["radarr", id, "movies"],
+          prevList.map((m) =>
+            m.id === movieId ? { ...m, rootFolderPath } : m,
+          ),
+        );
+      }
+
+      return { prevDetail, prevList };
+    },
+    onError: (err, { movieId }, context) => {
+      if (context?.prevDetail) {
+        queryClient.setQueryData(
+          ["radarr", id, "movie", movieId],
+          context.prevDetail,
+        );
+      }
+      if (context?.prevList) {
+        queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
+      }
+      toastError("Failed to update root folder", err);
+    },
+    onSettled: (_data, _err, { movieId }) => {
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
+    },
+  });
+}
+
 export function useRadarrQualityProfiles(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({

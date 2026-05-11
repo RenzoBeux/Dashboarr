@@ -201,8 +201,10 @@ export function toggleMovieMonitored(
 export function updateMovie(
   movie: RadarrMovie,
   instanceId?: string,
+  options?: { moveFiles?: boolean },
 ): Promise<RadarrMovie> {
-  return serviceRequest<RadarrMovie>("radarr", `/movie/${movie.id}`, {
+  const query = options?.moveFiles ? "?moveFiles=true" : "";
+  return serviceRequest<RadarrMovie>("radarr", `/movie/${movie.id}${query}`, {
     method: "PUT",
     body: JSON.stringify(movie),
     instanceId,
