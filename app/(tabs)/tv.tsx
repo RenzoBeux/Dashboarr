@@ -17,6 +17,7 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { SortButton } from "@/components/ui/sort-button";
@@ -287,7 +288,7 @@ function SeriesLibrary({
   sort: SeriesSortKey;
   onLongPress: (series: SonarrSeries) => void;
 }) {
-  const { data: series, isLoading } = useSonarrSeries();
+  const { data: series, isLoading, error } = useSonarrSeries();
   const router = useRouter();
   const cellWidth = usePosterCellWidth();
 
@@ -302,6 +303,9 @@ function SeriesLibrary({
         ))}
       </View>
     );
+  }
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load library" />;
   }
   if (!series?.length) {
     return <EmptyState icon={<Icon icon={Tv} size={32} color="#71717a" />} title="No shows in library" />;
@@ -386,10 +390,13 @@ function SeriesPoster({
 }
 
 function CalendarView({ onLongPress }: { onLongPress: (ep: SonarrCalendarEntry) => void }) {
-  const { data: episodes, isLoading } = useSonarrCalendar();
+  const { data: episodes, isLoading, error } = useSonarrCalendar();
   const router = useRouter();
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load calendar" />;
+  }
   if (!episodes?.length) {
     return <EmptyState title="Nothing airing this week" />;
   }

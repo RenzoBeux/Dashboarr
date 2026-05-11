@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { toast, toastError } from "@/components/ui/toast";
 import {
@@ -66,10 +67,13 @@ export default function BazarrScreen() {
 }
 
 function WantedMovies() {
-  const { data, isLoading } = useBazarrWantedMovies();
+  const { data, isLoading, error } = useBazarrWantedMovies();
   const searchMovie = useSearchWantedMovie();
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load wanted movies" />;
+  }
   if (!data?.data?.length) {
     return (
       <EmptyState
@@ -125,10 +129,13 @@ function WantedMovies() {
 }
 
 function WantedEpisodes() {
-  const { data, isLoading } = useBazarrWantedEpisodes();
+  const { data, isLoading, error } = useBazarrWantedEpisodes();
   const searchEpisode = useSearchWantedEpisode();
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load wanted episodes" />;
+  }
   if (!data?.data?.length) {
     return (
       <EmptyState

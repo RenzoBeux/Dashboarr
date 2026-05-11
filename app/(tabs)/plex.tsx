@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { SortButton } from "@/components/ui/sort-button";
@@ -308,9 +309,12 @@ function OnDeck() {
 }
 
 function Libraries() {
-  const { data: libraries, isLoading } = usePlexLibraries();
+  const { data: libraries, isLoading, error } = usePlexLibraries();
 
   if (isLoading) return <SkeletonCardContent rows={3} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load libraries" />;
+  }
   if (!libraries?.length) {
     return <EmptyState title="No libraries found" />;
   }

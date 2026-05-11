@@ -11,6 +11,7 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import {
   useProwlarrIndexers,
@@ -62,11 +63,14 @@ export default function IndexersScreen() {
 }
 
 function IndexerList() {
-  const { data: indexers, isLoading } = useProwlarrIndexers();
+  const { data: indexers, isLoading, error } = useProwlarrIndexers();
   const { data: statuses } = useProwlarrIndexerStatuses();
   const toggleIndexer = useToggleIndexer();
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load indexers" />;
+  }
   if (!indexers?.length) {
     return <EmptyState title="No indexers configured" />;
   }

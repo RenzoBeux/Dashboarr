@@ -18,6 +18,7 @@ import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { SortButton } from "@/components/ui/sort-button";
@@ -266,7 +267,7 @@ function MovieLibrary({
   sort: MoviesSortKey;
   onLongPress: (movie: RadarrMovie) => void;
 }) {
-  const { data: movies, isLoading } = useRadarrMovies();
+  const { data: movies, isLoading, error } = useRadarrMovies();
   const router = useRouter();
   const cellWidth = usePosterCellWidth();
 
@@ -281,6 +282,9 @@ function MovieLibrary({
         ))}
       </View>
     );
+  }
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load library" />;
   }
   if (!movies?.length) {
     return <EmptyState icon={<Icon icon={Film} size={32} color="#71717a" />} title="No movies in library" />;
@@ -363,10 +367,13 @@ function MoviePoster({
 }
 
 function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => void }) {
-  const { data: queue, isLoading } = useRadarrQueue();
+  const { data: queue, isLoading, error } = useRadarrQueue();
   const router = useRouter();
 
   if (isLoading) return <SkeletonCardContent rows={3} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load queue" />;
+  }
   if (!queue?.records.length) {
     return <EmptyState title="Queue empty" message="No movies downloading" />;
   }

@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
@@ -330,7 +331,7 @@ function RequestsList() {
   const setSort = useSortStore((s) => s.setRequests);
   const [sortOpen, setSortOpen] = useState(false);
   const { sort: apiSort } = sortToParams(sort);
-  const { data, isLoading } = useOverseerrRequests(1, filter, apiSort);
+  const { data, isLoading, error } = useOverseerrRequests(1, filter, apiSort);
   const { data: counts } = useOverseerrRequestCount();
   const approve = useApproveRequest();
   const decline = useDeclineRequest();
@@ -365,6 +366,8 @@ function RequestsList() {
 
       {isLoading ? (
         <SkeletonCardContent rows={4} />
+      ) : error ? (
+        <ErrorBanner error={error} title="Failed to load requests" />
       ) : requests.length === 0 ? (
         <EmptyState
           title="No requests"

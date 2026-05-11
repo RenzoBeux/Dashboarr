@@ -1,9 +1,10 @@
-import { View, Text, Alert } from "react-native";
+import { View, Text, Alert, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, ArrowUp } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -22,7 +23,7 @@ import { isTorrentPaused } from "@/lib/types";
 export default function TorrentDetailScreen() {
   const { hash } = useLocalSearchParams<{ hash: string }>();
   const router = useRouter();
-  const { data: torrent, isLoading } = useTorrent(hash);
+  const { data: torrent, isLoading, error } = useTorrent(hash);
   const { data: files } = useTorrentFiles(hash);
   const { data: trackers } = useTorrentTrackers(hash);
   const pauseMutation = usePauseTorrent();
@@ -33,9 +34,15 @@ export default function TorrentDetailScreen() {
     return (
       <ScreenWrapper>
         <BackHeader />
-        <Text className="text-zinc-400 text-center mt-10">
-          {isLoading ? "Loading…" : "Torrent not found"}
-        </Text>
+        {error ? (
+          <ErrorBanner error={error} title="Failed to load torrent" className="mt-4" />
+        ) : isLoading ? (
+          <View className="items-center justify-center mt-10">
+            <ActivityIndicator color="#3b82f6" />
+          </View>
+        ) : (
+          <Text className="text-zinc-400 text-center mt-10">Torrent not found</Text>
+        )}
       </ScreenWrapper>
     );
   }

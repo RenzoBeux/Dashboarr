@@ -17,6 +17,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { MediaDetailHero } from "@/components/common/media-detail-hero";
 import { MediaDetailSkeleton } from "@/components/common/media-detail-skeleton";
 import {
@@ -62,7 +63,7 @@ export default function SeriesDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
-  const { data: series, isLoading } = useSonarrSeriesById(Number(id), instanceId);
+  const { data: series, isLoading, error } = useSonarrSeriesById(Number(id), instanceId);
   const { data: episodes } = useSonarrEpisodes(Number(id), instanceId);
   const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id), instanceId);
   const toggleSeries = useToggleSeriesMonitored(instanceId);
@@ -93,6 +94,14 @@ export default function SeriesDetailScreen() {
 
   if (isLoading) {
     return <MediaDetailSkeleton showSeasonList />;
+  }
+  if (error) {
+    return (
+      <ScreenWrapper>
+        <BackHeader />
+        <ErrorBanner error={error} title="Failed to load series" className="mt-4" />
+      </ScreenWrapper>
+    );
   }
   if (!series) {
     return (

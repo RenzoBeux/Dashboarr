@@ -14,6 +14,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { MediaDetailHero } from "@/components/common/media-detail-hero";
 import { MediaDetailSkeleton } from "@/components/common/media-detail-skeleton";
 import {
@@ -48,7 +49,7 @@ export default function MovieDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
-  const { data: movie, isLoading } = useRadarrMovie(Number(id), instanceId);
+  const { data: movie, isLoading, error } = useRadarrMovie(Number(id), instanceId);
   const deleteMutation = useDeleteMovie(instanceId);
   const toggleMonitored = useToggleMovieMonitored(instanceId);
   const { data: qualityProfiles } = useRadarrQualityProfiles(instanceId);
@@ -71,6 +72,14 @@ export default function MovieDetailScreen() {
 
   if (isLoading) {
     return <MediaDetailSkeleton />;
+  }
+  if (error) {
+    return (
+      <ScreenWrapper>
+        <BackHeader />
+        <ErrorBanner error={error} title="Failed to load movie" className="mt-4" />
+      </ScreenWrapper>
+    );
   }
   if (!movie) {
     return (

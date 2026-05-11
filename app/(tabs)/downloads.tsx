@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast, toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap } from "lucide-react-native";
+import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap, AlertCircle } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
 import { DemoBanner } from "@/components/common/demo-banner";
@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { errorHaptic, lightHaptic, mediumHaptic } from "@/lib/haptics";
@@ -229,7 +230,9 @@ function QbittorrentDownloadsScreen({
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    isFetchNextPageError,
     isLoading,
+    error,
     refetch,
   } = useInfiniteTorrents({
     filter: tabFilterToQB(filter),
@@ -509,7 +512,9 @@ function QbittorrentDownloadsScreen({
         ItemSeparatorComponent={() => <View className="h-2" />}
         ListHeaderComponent={header}
         ListEmptyComponent={
-          showEmpty ? (
+          error ? (
+            <ErrorBanner error={error} title="Failed to load torrents" />
+          ) : showEmpty ? (
             <EmptyState title="No torrents" message={`No ${filter} torrents found`} />
           ) : null
         }
@@ -518,6 +523,22 @@ function QbittorrentDownloadsScreen({
             <View className="py-4 items-center">
               <ActivityIndicator color="#3b82f6" />
             </View>
+          ) : isFetchNextPageError ? (
+            // Page-2+ failure: keep already-loaded pages visible and offer a
+            // retry instead of silently stalling onEndReached. Initial-load
+            // failure is handled by ListEmptyComponent above.
+            <Pressable
+              onPress={() => fetchNextPage()}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading more torrents"
+              className="py-4 flex-row items-center justify-center gap-2 active:opacity-60"
+            >
+              <Icon icon={AlertCircle} size={14} color="#f87171" />
+              <Text className="text-red-300 text-sm">
+                Couldn't load more — tap to retry
+              </Text>
+            </Pressable>
           ) : null
         }
         contentContainerStyle={{

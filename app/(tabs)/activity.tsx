@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { useTautulliActivity, useTautulliHistory } from "@/hooks/use-tautulli";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -60,9 +61,12 @@ export default function ActivityScreen() {
 }
 
 function ActiveStreams() {
-  const { data: activity, isLoading } = useTautulliActivity();
+  const { data: activity, isLoading, error } = useTautulliActivity();
 
   if (isLoading) return <SkeletonCardContent rows={3} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load active streams" />;
+  }
 
   const sessions = activity?.sessions ?? [];
   const streamCount = parseInt(activity?.stream_count ?? "0", 10);
@@ -168,9 +172,12 @@ function SessionCard({ session }: { session: TautulliSession }) {
 }
 
 function HistoryList() {
-  const { data, isLoading } = useTautulliHistory(30);
+  const { data, isLoading, error } = useTautulliHistory(30);
 
   if (isLoading) return <SkeletonCardContent rows={5} />;
+  if (error) {
+    return <ErrorBanner error={error} title="Failed to load history" />;
+  }
 
   const items = data?.data ?? [];
 

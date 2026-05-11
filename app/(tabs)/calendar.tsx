@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ICON, POLLING_INTERVALS } from "@/lib/constants";
@@ -170,6 +171,23 @@ export default function CalendarScreen() {
   const loadingEp = sonarrQueries.length > 0 && sonarrQueries.some((q) => q.isLoading);
   const loadingMov = radarrQueries.length > 0 && radarrQueries.some((q) => q.isLoading);
 
+  // Partial-failure surfacing: collect every failing instance (not just the
+  // first) so multi-instance setups know exactly which server is down. We
+  // don't replace the page on these — Sonarr can fail while Radarr still
+  // shows movies (and vice-versa). Banners appear above the calendar grid
+  // so users know *why* an expected service is missing, without losing the
+  // working one.
+  const failingSonarr = sonarrQueries.flatMap((q, i) => {
+    const inst = sonarrInstances[i];
+    return q.error && inst ? [{ error: q.error, instance: inst }] : [];
+  });
+  const failingRadarr = radarrQueries.flatMap((q, i) => {
+    const inst = radarrInstances[i];
+    return q.error && inst ? [{ error: q.error, instance: inst }] : [];
+  });
+  const multiSonarr = sonarrInstances.length > 1;
+  const multiRadarr = radarrInstances.length > 1;
+
   // Pull-to-refresh invalidates every per-instance calendar slot. Building
   // these key lists from the live instance arrays guarantees we don't miss
   // (or stale-refresh) an instance the user just added or disabled.
@@ -312,6 +330,34 @@ export default function CalendarScreen() {
           }}
         />
       </ScrollView>
+
+      {/* Per-service errors (partial failure — keep showing the working side).
+          Instance name is suffixed only when multiple instances are configured
+          for that kind, so single-instance users see a clean title. */}
+      {failingSonarr.map(({ error, instance }) => (
+        <ErrorBanner
+          key={`sonarr-${instance.id}`}
+          error={error}
+          title={
+            multiSonarr
+              ? `Failed to load Sonarr calendar (${instance.name})`
+              : "Failed to load Sonarr calendar"
+          }
+          className="mb-3"
+        />
+      ))}
+      {failingRadarr.map(({ error, instance }) => (
+        <ErrorBanner
+          key={`radarr-${instance.id}`}
+          error={error}
+          title={
+            multiRadarr
+              ? `Failed to load Radarr calendar (${instance.name})`
+              : "Failed to load Radarr calendar"
+          }
+          className="mb-3"
+        />
+      ))}
 
       {/* Calendar grid */}
       <Card>

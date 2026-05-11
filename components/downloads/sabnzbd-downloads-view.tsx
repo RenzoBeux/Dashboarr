@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
@@ -153,8 +154,9 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
   const [showAddModal, setShowAddModal] = useState(false);
   const [nzbUrl, setNzbUrl] = useState("");
 
-  const { data: queue } = useSabQueue();
-  const { data: history } = useSabHistory(50);
+  const { data: queue, error: queueError } = useSabQueue();
+  const { data: history, error: historyError } = useSabHistory(50);
+  const fetchError = queueError ?? historyError;
   const { data: healthData } = useServiceHealth();
 
   const addUrl = useAddSabUrl();
@@ -413,7 +415,11 @@ export function SabnzbdDownloadsView({ showHeader = true, segmentedControl }: Vi
 
       {/* Slot List */}
       {sortedItems.length === 0 ? (
-        <EmptyState title="Nothing to show" message={`No ${filter} items`} />
+        fetchError ? (
+          <ErrorBanner error={fetchError} title="Failed to load downloads" />
+        ) : (
+          <EmptyState title="Nothing to show" message={`No ${filter} items`} />
+        )
       ) : (
         <View className="gap-2">
           {sortedItems.map((item) => (

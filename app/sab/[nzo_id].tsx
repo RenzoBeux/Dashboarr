@@ -1,8 +1,9 @@
-import { View, Text, Alert } from "react-native";
+import { View, Text, Alert, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -36,8 +37,16 @@ export default function SabSlotDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
-  const { data: queue } = useSabQueue(instanceId);
-  const { data: history } = useSabHistory(50, instanceId);
+  const {
+    data: queue,
+    isLoading: queueLoading,
+    error: queueError,
+  } = useSabQueue(instanceId);
+  const {
+    data: history,
+    isLoading: historyLoading,
+    error: historyError,
+  } = useSabHistory(50, instanceId);
   const pauseSlot = usePauseSabSlot(instanceId);
   const resumeSlot = useResumeSabSlot(instanceId);
   const deleteSlot = useDeleteSabSlot(instanceId);
@@ -47,9 +56,26 @@ export default function SabSlotDetailScreen() {
   const historySlot = history?.slots.find((s) => s.nzo_id === nzo_id);
 
   if (!queueSlot && !historySlot) {
+    // "Not found" only after both queue and history have actually resolved.
+    // Otherwise we'd flash this message during the normal load that follows
+    // navigation, which looks like a broken link.
+    const fetchError = queueError ?? historyError;
+    const stillLoading = !fetchError && (queueLoading || historyLoading);
     return (
       <ScreenWrapper>
-        <Text className="text-zinc-400 text-center mt-10">Download not found</Text>
+        {fetchError ? (
+          <ErrorBanner
+            error={fetchError}
+            title="Failed to load download"
+            className="mt-4"
+          />
+        ) : stillLoading ? (
+          <View className="items-center justify-center mt-10">
+            <ActivityIndicator color="#3b82f6" />
+          </View>
+        ) : (
+          <Text className="text-zinc-400 text-center mt-10">Download not found</Text>
+        )}
       </ScreenWrapper>
     );
   }
