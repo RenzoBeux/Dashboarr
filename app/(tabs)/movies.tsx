@@ -58,12 +58,25 @@ const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
 
 const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
+  { key: "next-airing-asc", label: "Next Airing" },
   { key: "title-asc", label: "Title: A → Z" },
   { key: "title-desc", label: "Title: Z → A" },
   { key: "year-desc", label: "Year: Newest First" },
   { key: "year-asc", label: "Year: Oldest First" },
   { key: "size-desc", label: "Size: Largest First" },
 ];
+
+function nextReleaseTime(m: RadarrMovie): number | null {
+  const times = [m.inCinemas, m.digitalRelease, m.physicalRelease]
+    .filter((d): d is string => Boolean(d))
+    .map((d) => new Date(d).getTime())
+    .filter((t) => Number.isFinite(t));
+  if (!times.length) return null;
+  const now = Date.now();
+  const future = times.filter((t) => t >= now);
+  if (future.length) return Math.min(...future);
+  return Math.max(...times);
+}
 
 function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): number {
   switch (sort) {
@@ -79,6 +92,20 @@ function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): num
       return a.year - b.year;
     case "size-desc":
       return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+    case "next-airing-asc": {
+      const aT = nextReleaseTime(a);
+      const bT = nextReleaseTime(b);
+      if (aT === null && bT === null)
+        return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+      if (aT === null) return 1;
+      if (bT === null) return -1;
+      const now = Date.now();
+      const aFuture = aT >= now;
+      const bFuture = bT >= now;
+      if (aFuture && !bFuture) return -1;
+      if (!aFuture && bFuture) return 1;
+      return aFuture ? aT - bT : bT - aT;
+    }
   }
 }
 

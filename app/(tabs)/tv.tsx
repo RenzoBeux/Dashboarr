@@ -56,6 +56,7 @@ const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
 
 const SORT_OPTIONS: { key: SeriesSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
+  { key: "next-airing-asc", label: "Next Airing" },
   { key: "title-asc", label: "Title: A → Z" },
   { key: "title-desc", label: "Title: Z → A" },
   { key: "year-desc", label: "Year: Newest First" },
@@ -77,6 +78,15 @@ function compareSeries(a: SonarrSeries, b: SonarrSeries, sort: SeriesSortKey): n
       return a.year - b.year;
     case "size-desc":
       return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+    case "next-airing-asc": {
+      const aT = a.nextAiring ? new Date(a.nextAiring).getTime() : null;
+      const bT = b.nextAiring ? new Date(b.nextAiring).getTime() : null;
+      if (aT === null && bT === null)
+        return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+      if (aT === null) return 1;
+      if (bT === null) return -1;
+      return aT - bT;
+    }
   }
 }
 

@@ -352,6 +352,8 @@ export interface SonarrSeries {
   genres?: string[];
   certification?: string;
   firstAired?: string;
+  nextAiring?: string;
+  previousAiring?: string;
   statistics?: {
     seasonCount: number;
     episodeFileCount: number;
