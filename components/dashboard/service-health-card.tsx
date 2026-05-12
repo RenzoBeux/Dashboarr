@@ -1,4 +1,5 @@
 import { View, Text, Pressable, Platform } from "react-native";
+import Animated, { LinearTransition } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { ServiceLogo, hasServiceLogo } from "@/components/ui/service-logo";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,11 @@ import {
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import type { ServiceInstanceHealthStatus } from "@/lib/types";
 import type { ServiceInstance } from "@/store/config-store";
+
+// Matches the spring used by the Services tab and the Status widget's
+// settings sheet — so when the user reorders kinds, the dashboard tile
+// rearrangement feels continuous with the surface they touched.
+const REORDER_LAYOUT = LinearTransition.springify().damping(18).stiffness(180).mass(0.7);
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
@@ -96,8 +102,11 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           const route = SERVICE_ROUTES[entry.kindId];
 
           return (
-            <Pressable
+            <Animated.View
               key={`${entry.kindId}:${entry.instanceId}`}
+              layout={REORDER_LAYOUT}
+            >
+            <Pressable
               onPress={() => {
                 if (!route) return;
                 // Switch the active instance to the one tapped so the
@@ -133,6 +142,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                 {entry.label}
               </Text>
             </Pressable>
+            </Animated.View>
           );
         })}
       </View>

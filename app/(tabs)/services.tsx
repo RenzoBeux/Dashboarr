@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import Animated, { LinearTransition } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { ArrowLeft, ArrowRight, Check, Pencil, Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -7,8 +8,14 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { lightHaptic } from "@/lib/haptics";
 import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
+
+// Spring tuned to feel snappy but visible — too fast and the user can't tell a
+// tile moved; too slow and successive taps queue up before the previous one
+// settles. ~300ms total motion is the sweet spot.
+const REORDER_LAYOUT = LinearTransition.springify().damping(18).stiffness(180).mass(0.7);
 
 const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
@@ -57,6 +64,7 @@ export default function ServicesScreen() {
     if (a === -1 || b === -1) return;
     const next = [...fullOrder];
     [next[a], next[b]] = [next[b], next[a]];
+    lightHaptic();
     setServicesOrder(next);
   };
 
@@ -123,13 +131,23 @@ export default function ServicesScreen() {
           // While reordering, suppress the tile's onPress so a tap can't
           // accidentally drop into a service mid-rearrange. The arrows are the
           // only interactive elements on the tile in this mode.
+          //
+          // The Animated.View wrapper carries the layout transition so when
+          // servicesOrder mutates and React re-renders the children in a new
+          // order, each tile springs to its new flex position instead of
+          // jump-cutting. The width lives on the wrapper (the actual flex
+          // child); the Pressable inside fills it.
           return (
-            <Pressable
+            <Animated.View
               key={id}
+              layout={REORDER_LAYOUT}
+              className="w-[47%]"
+            >
+            <Pressable
               onPress={
                 editing ? undefined : () => router.push(SERVICE_ROUTES[id]! as any)
               }
-              className={`w-[47%] bg-surface border rounded-2xl p-4 items-center gap-3 ${
+              className={`bg-surface border rounded-2xl p-4 items-center gap-3 ${
                 editing ? "border-primary/40" : "border-border active:opacity-70"
               }`}
             >
@@ -167,6 +185,7 @@ export default function ServicesScreen() {
                 </View>
               )}
             </Pressable>
+            </Animated.View>
           );
         })}
       </View>
