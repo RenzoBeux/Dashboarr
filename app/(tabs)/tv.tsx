@@ -9,8 +9,6 @@ import {
   EyeOff,
   Trash2,
   Info,
-  ArrowUpDown,
-  Check,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -20,7 +18,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
-import { SortButton } from "@/components/ui/sort-button";
+import { FilterSortButton } from "@/components/common/filter-sort-button";
+import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { useSortStore, SORT_DEFAULTS, type SeriesSortKey } from "@/store/sort-store";
 import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
@@ -95,7 +94,7 @@ export default function TVScreen() {
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
   const sort = useSortStore((s) => s.series);
   const setSort = useSortStore((s) => s.setSeries);
-  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -230,25 +229,13 @@ export default function TVScreen() {
       </ScrollView>
 
       {tab === "library" && (
-        <View className="flex-row items-center gap-2 mb-4">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2"
-            className="flex-1"
-          >
-            {MONITOR_FILTERS.map((f) => (
-              <FilterChip
-                key={f.value}
-                label={f.label}
-                selected={monitorFilter === f.value}
-                onPress={() => setMonitorFilter(f.value)}
-              />
-            ))}
-          </ScrollView>
-          <SortButton
-            onPress={() => setSortSheetOpen(true)}
-            active={sort !== SORT_DEFAULTS.series}
+        <View className="mb-4">
+          <FilterSortButton
+            summary={`${MONITOR_FILTERS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+            onPress={() => setFilterSortOpen(true)}
+            active={
+              monitorFilter !== "monitored" || sort !== SORT_DEFAULTS.series
+            }
           />
         </View>
       )}
@@ -270,20 +257,19 @@ export default function TVScreen() {
         actions={actions}
       />
 
-      <ActionSheet
-        visible={sortSheetOpen}
-        onClose={() => setSortSheetOpen(false)}
-        title="Sort shows"
-        actions={SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
-          label: opt.label,
-          icon:
-            sort === opt.key ? (
-              <Icon icon={Check} size={18} color="#3b82f6" />
-            ) : (
-              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
-            ),
-          onPress: () => setSort(opt.key),
+      <FilterSortSheet
+        visible={filterSortOpen}
+        onClose={() => setFilterSortOpen(false)}
+        title="Filter & sort shows"
+        filterOptions={MONITOR_FILTERS.map((f) => ({
+          key: f.value,
+          label: f.label,
         }))}
+        filterValue={monitorFilter}
+        onFilterChange={setMonitorFilter}
+        sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
+        sortValue={sort}
+        onSortChange={setSort}
       />
     </ScreenWrapper>
   );
