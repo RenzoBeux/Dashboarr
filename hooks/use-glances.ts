@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getCpu, getPerCpu, getLoad, getMem, getFs, getDiskIO } from "@/services/glances-api";
+import { getCpu, getPerCpu, getLoad, getMem, getFs, getDiskIO, getGpu } from "@/services/glances-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 const FAST_POLL = 5000;
@@ -60,6 +60,16 @@ export function useGlancesDiskIO(instanceId?: string) {
   return useQuery({
     queryKey: ["glances", id, "diskio"],
     queryFn: () => getDiskIO(id ?? undefined),
+    refetchInterval: FAST_POLL,
+    enabled: enabled && !!id,
+  });
+}
+
+export function useGlancesGpu(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
+  return useQuery({
+    queryKey: ["glances", id, "gpu"],
+    queryFn: () => getGpu(id ?? undefined),
     refetchInterval: FAST_POLL,
     enabled: enabled && !!id,
   });

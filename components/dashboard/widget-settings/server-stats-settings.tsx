@@ -14,6 +14,7 @@ export interface ServerStatsSettingsValue extends Record<string, unknown> {
   instanceIds: InstanceBindingValue;
   showCpu: boolean;
   showRam: boolean;
+  showGpu: boolean;
   showDisks: boolean;
 }
 
@@ -21,6 +22,7 @@ export const SERVER_STATS_DEFAULT_SETTINGS: ServerStatsSettingsValue = {
   instanceIds: INSTANCE_BINDING_ALL,
   showCpu: true,
   showRam: true,
+  showGpu: true,
   showDisks: true,
 };
 
@@ -53,6 +55,12 @@ export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
             description="Ring chart of memory utilization"
             value={settings.showRam}
             onValueChange={(showRam) => update({ showRam })}
+          />
+          <Toggle
+            label="GPU usage"
+            description="Ring charts of GPU compute and VRAM (hidden if no GPU)"
+            value={settings.showGpu}
+            onValueChange={(showGpu) => update({ showGpu })}
           />
           <Toggle
             label="Disk usage"

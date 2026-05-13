@@ -71,7 +71,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#09090b",
     },
-    package: BUNDLE_ID,
+    // Always the base id at prebuild time. The dev variant suffix (".dev") is
+    // applied at Gradle build time by plugins/withDevVariant — that lets one
+    // prebuilt android/ project produce both variants by toggling APP_VARIANT
+    // when invoking gradlew, without a second prebuild.
+    package: "com.dashboarr.app",
     versionCode: nativeBuildNumber,
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
@@ -91,6 +95,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-secure-store",
     "./plugins/withAndroidSigning",
     "./plugins/withCleartextTraffic",
+    "./plugins/withDevVariant",
     [
       "expo-location",
       {

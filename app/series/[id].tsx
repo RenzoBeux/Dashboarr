@@ -13,6 +13,7 @@ import {
   Award,
   Tv,
   Circle,
+  FolderTree,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -40,6 +41,8 @@ import {
   useDeleteSeries,
   useSonarrQualityProfiles,
   useUpdateSeriesQualityProfile,
+  useSonarrRootFolders,
+  useUpdateSeriesRootFolder,
 } from "@/hooks/use-sonarr";
 import {
   formatEpisodeCode,
@@ -70,9 +73,13 @@ export default function SeriesDetailScreen() {
   const deleteSeries = useDeleteSeries(instanceId);
   const { data: qualityProfiles } = useSonarrQualityProfiles(instanceId);
   const updateProfile = useUpdateSeriesQualityProfile(instanceId);
+  const { data: rootFolders } = useSonarrRootFolders(instanceId);
+  const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
+  const [rootFolderVisible, setRootFolderVisible] = useState(false);
+  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
 
   const episodeFileMap = useMemo(() => {
@@ -233,7 +240,14 @@ export default function SeriesDetailScreen() {
             </View>
           ) : null}
 
-          <AboutBlock series={series} />
+          <AboutBlock
+            series={series}
+            onPressRoot={
+              rootFolders && rootFolders.length > 0
+                ? () => setRootFolderVisible(true)
+                : undefined
+            }
+          />
 
           <View className="mb-2">
             <SectionLabel>Seasons</SectionLabel>
@@ -299,6 +313,63 @@ export default function SeriesDetailScreen() {
             });
           },
         }))}
+      />
+
+      <ActionSheet
+        visible={rootFolderVisible}
+        onClose={() => setRootFolderVisible(false)}
+        title="Root Folder"
+        subtitle={series.title}
+        actions={(rootFolders ?? []).map((f) => ({
+          label: `${f.path}  ·  ${formatBytes(f.freeSpace)} free`,
+          icon: (
+            <Icon
+              icon={f.path === series.rootFolderPath ? Check : Circle}
+              size={18}
+              color={f.path === series.rootFolderPath ? "#60a5fa" : "#71717a"}
+            />
+          ),
+          onPress: () => {
+            if (f.path === series.rootFolderPath) return;
+            setRootFolderVisible(false);
+            setPendingRootFolder(f.path);
+          },
+        }))}
+      />
+
+      <ActionSheet
+        visible={pendingRootFolder !== null}
+        onClose={() => setPendingRootFolder(null)}
+        title="Move existing files?"
+        subtitle={pendingRootFolder ?? ""}
+        actions={[
+          {
+            label: "Move existing files",
+            icon: <Icon icon={FolderTree} size={18} color="#60a5fa" />,
+            onPress: () => {
+              if (!pendingRootFolder) return;
+              updateRootFolder.mutate({
+                seriesId: series.id,
+                rootFolderPath: pendingRootFolder,
+                moveFiles: true,
+              });
+              setPendingRootFolder(null);
+            },
+          },
+          {
+            label: "Keep files in place",
+            icon: <Icon icon={Circle} size={18} color="#71717a" />,
+            onPress: () => {
+              if (!pendingRootFolder) return;
+              updateRootFolder.mutate({
+                seriesId: series.id,
+                rootFolderPath: pendingRootFolder,
+                moveFiles: false,
+              });
+              setPendingRootFolder(null);
+            },
+          },
+        ]}
       />
 
       <ConfirmModal
@@ -421,7 +492,13 @@ function EpisodeProgressBlock({ series }: { series: SonarrSeries }) {
   );
 }
 
-function AboutBlock({ series }: { series: SonarrSeries }) {
+function AboutBlock({
+  series,
+  onPressRoot,
+}: {
+  series: SonarrSeries;
+  onPressRoot?: () => void;
+}) {
   return (
     <View className="mb-5">
       <SectionLabel>About</SectionLabel>
@@ -432,16 +509,28 @@ function AboutBlock({ series }: { series: SonarrSeries }) {
             value={formatReleaseDate(series.firstAired)}
           />
         ) : null}
-        <AboutRow label="Root" value={series.rootFolderPath} />
+        <AboutRow
+          label="Root"
+          value={series.rootFolderPath}
+          onPress={onPressRoot}
+        />
         <AboutRow label="Added" value={formatReleaseDate(series.added)} />
       </View>
     </View>
   );
 }
 
-function AboutRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row items-center">
+function AboutRow({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider w-14">
         {label}
       </Text>
@@ -452,8 +541,25 @@ function AboutRow({ label, value }: { label: string; value: string }) {
       >
         {value}
       </Text>
-    </View>
+      {onPress ? (
+        <Icon icon={ChevronRight} size={14} color="#71717a" />
+      ) : null}
+    </>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        className="flex-row items-center active:opacity-60"
+        hitSlop={6}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <View className="flex-row items-center">{content}</View>;
 }
 
 function SeasonAccordion({

@@ -146,6 +146,10 @@ interface ConfigState {
 
   autoSwitchNetwork: boolean;
   homeNetworks: HomeNetwork[];
+  // v17: per-user display order for the Services tab. Unknown ids are skipped
+  // at render time; any SERVICE_IDS missing from the list fall in at the end
+  // in canonical order, so adding a new service kind never gets hidden.
+  servicesOrder: ServiceId[];
   // v14: per-user named dashboards. The active one is rendered. Each dashboard
   // owns an ordered list of WidgetSlot entries; per-widget settings live on
   // the slot, not in a global map keyed by WidgetId. This is what lets the
@@ -193,6 +197,8 @@ export interface ExportPayload {
   globalCustomHeaders?: Record<string, string>;
   // v12
   uiScale?: UiScale;
+  // v17 — user-defined Services tab tile order.
+  servicesOrder?: ServiceId[];
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -256,6 +262,7 @@ interface ConfigActions {
   setSlotSettings: (slotId: string, settings: WidgetSlotSettings) => void;
   resetSlotSettings: (slotId: string) => void;
 
+  setServicesOrder: (order: ServiceId[]) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
@@ -446,6 +453,27 @@ function isServiceInstance(v: unknown): v is ServiceInstance {
   );
 }
 
+const VALID_SERVICE_IDS = new Set<string>(SERVICE_IDS);
+
+// Filter a raw stored list down to known ServiceIds, drop duplicates, and
+// preserve the user's chosen order. The list is allowed to be a partial
+// subset — render-time logic appends any SERVICE_IDS not present here at the
+// end in canonical order, so a user who only ever moved a single tile still
+// gets every service rendered.
+function sanitizeServicesOrder(raw: unknown): ServiceId[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: ServiceId[] = [];
+  for (const id of raw) {
+    if (typeof id !== "string") continue;
+    if (!VALID_SERVICE_IDS.has(id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id as ServiceId);
+  }
+  return out;
+}
+
 const VALID_WIDGET_IDS = new Set<string>(DASHBOARD_WIDGET_IDS);
 
 function normalizeWidgetIds(ids: string[]): WidgetId[] {
@@ -491,6 +519,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
   homeNetworks: [],
+  servicesOrder: [],
   dashboards: initialDashboards,
   activeDashboardId: initialDashboards[0].id,
   wolDevices: [],
@@ -764,6 +793,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       setString(STORAGE_KEYS.activeDashboardId, activeDashboardId);
     }
 
+    const servicesOrder = sanitizeServicesOrder(
+      getJSON<unknown>(STORAGE_KEYS.servicesOrder),
+    );
+
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
     const globalCustomHeaders =
       getJSON<Record<string, string>>(STORAGE_KEYS.globalCustomHeaders) ?? {};
@@ -809,6 +842,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       secrets,
       autoSwitchNetwork,
       homeNetworks,
+      servicesOrder,
       dashboards,
       activeDashboardId,
       wolDevices,
@@ -1040,6 +1074,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   setHomeNetworks: (networks) => {
     setJSON(STORAGE_KEYS.homeNetworks, networks);
     set({ homeNetworks: networks });
+  },
+
+  setServicesOrder: (order) => {
+    const sanitized = sanitizeServicesOrder(order);
+    setJSON(STORAGE_KEYS.servicesOrder, sanitized);
+    set({ servicesOrder: sanitized });
   },
 
   // --- Dashboards (v14+) ---
@@ -1322,6 +1362,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       activeInstance,
       autoSwitchNetwork,
       homeNetworks,
+      servicesOrder,
       dashboards,
       activeDashboardId,
       wolDevices,
@@ -1341,6 +1382,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       activeInstance,
       autoSwitchNetwork,
       homeNetworks,
+      servicesOrder,
       dashboards,
       activeDashboardId,
       backend: { url, sharedSecret, deviceId },
@@ -1507,6 +1549,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ? payload.uiScale
         : DEFAULT_UI_SCALE;
     setJSON(STORAGE_KEYS.uiScale, importedUiScale);
+    const importedServicesOrder = sanitizeServicesOrder(payload.servicesOrder);
+    setJSON(STORAGE_KEYS.servicesOrder, importedServicesOrder);
 
     // Restore backend pairing (v2+)
     if (payload.backend?.url && payload.backend?.sharedSecret) {
@@ -1539,6 +1583,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       secrets: derivedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
       homeNetworks: importedHomeNetworks,
+      servicesOrder: importedServicesOrder,
       dashboards: importedDashboards,
       activeDashboardId: importedActiveDashboardId,
       wolDevices: payload.wolDevices ?? [],

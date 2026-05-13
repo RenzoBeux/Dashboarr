@@ -1,14 +1,21 @@
 import { View, Text } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { ServerCrash } from "lucide-react-native";
+import {
+  Cpu as CpuIcon,
+  MemoryStick,
+  Gpu as GpuIconSvg,
+  HardDrive,
+  ServerCrash,
+} from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProgressBar } from "@/components/ui/progress-bar";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { getCpu, getMem, getFs } from "@/services/glances-api";
+import { getCpu, getMem, getFs, getGpu } from "@/services/glances-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useUiScale } from "@/hooks/use-ui-scale";
 import {
   SERVER_STATS_DEFAULT_SETTINGS,
   type ServerStatsSettingsValue,
@@ -16,13 +23,11 @@ import {
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes } from "@/lib/utils";
-import type { GlancesFsItem } from "@/lib/types";
+import type { GlancesFsItem, GlancesGpuItem } from "@/lib/types";
 import type { ServiceInstance } from "@/store/config-store";
 
-const RING_SIZE = 80;
-const STROKE_WIDTH = 8;
-const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const RING_BASE = 60;
+const STROKE_WIDTH = 6;
 const FAST_POLL = 5000;
 
 function ringColor(percent: number): string {
@@ -37,43 +42,79 @@ function diskBarColor(percent: number): string {
   return "bg-success";
 }
 
-function RingChart({ percent, label }: { percent: number; label: string }) {
-  const filled = CIRCUMFERENCE * (1 - percent / 100);
+function diskTextColor(percent: number): string {
+  if (percent >= 85) return "text-red-400";
+  if (percent >= 70) return "text-amber-400";
+  return "text-success";
+}
+
+interface MetricRingProps {
+  percent: number;
+  label: string;
+  sublabel?: string;
+  icon: LucideIcon;
+}
+
+function MetricRing({ percent, label, sublabel, icon }: MetricRingProps) {
+  // Use numeric pixel size scaled by uiScale so the ring resizes with
+  // accessibility scaling — react-native-svg props are numeric, not rem.
+  const scale = useUiScale();
+  const size = Math.round(RING_BASE * scale);
+  const stroke = Math.max(4, Math.round(STROKE_WIDTH * scale));
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = circumference * (1 - Math.min(Math.max(percent, 0), 100) / 100);
   const color = ringColor(percent);
 
   return (
-    <View className="items-center gap-1">
-      <View style={{ width: RING_SIZE, height: RING_SIZE }}>
-        <Svg width={RING_SIZE} height={RING_SIZE}>
+    <View className="items-center gap-1.5" style={{ minWidth: size + 8 }}>
+      <View style={{ width: size, height: size }}>
+        <Svg width={size} height={size}>
           <Circle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RADIUS}
-            stroke="#3f3f46"
-            strokeWidth={STROKE_WIDTH}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="#27272a"
+            strokeWidth={stroke}
             fill="none"
           />
           <Circle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RADIUS}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
             stroke={color}
-            strokeWidth={STROKE_WIDTH}
+            strokeWidth={stroke}
             fill="none"
-            strokeDasharray={`${CIRCUMFERENCE} ${CIRCUMFERENCE}`}
+            strokeDasharray={`${circumference} ${circumference}`}
             strokeDashoffset={filled}
             strokeLinecap="round"
             rotation="-90"
-            origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
+            origin={`${size / 2}, ${size / 2}`}
           />
         </Svg>
         <View className="absolute inset-0 items-center justify-center">
-          <Text style={{ color }} className="text-sm font-bold">
-            {percent.toFixed(0)}%
+          <Text style={{ color }} className="text-sm font-bold leading-none">
+            {percent.toFixed(0)}
+            <Text style={{ color }} className="text-[0.6rem] font-semibold">
+              %
+            </Text>
           </Text>
         </View>
       </View>
-      <Text className="text-zinc-400 text-xs">{label}</Text>
+      <View className="flex-row items-center gap-1">
+        <Icon icon={icon} size={11} color="#a1a1aa" />
+        <Text className="text-zinc-300 text-[0.7rem] font-semibold uppercase tracking-wider">
+          {label}
+        </Text>
+      </View>
+      {sublabel ? (
+        <Text
+          className="text-zinc-500 text-[0.65rem]"
+          numberOfLines={1}
+        >
+          {sublabel}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -87,7 +128,8 @@ export function ServerStatsCard({ slotId }: WidgetComponentProps) {
   const allInstances = useEnabledInstances("glances");
   const instances = resolveBoundInstances(settings.instanceIds, allInstances);
 
-  const allHidden = !settings.showCpu && !settings.showRam && !settings.showDisks;
+  const allHidden =
+    !settings.showCpu && !settings.showRam && !settings.showGpu && !settings.showDisks;
 
   return (
     <Card>
@@ -105,7 +147,7 @@ export function ServerStatsCard({ slotId }: WidgetComponentProps) {
           <Text className="text-zinc-500 text-sm">No Glances instances enabled</Text>
         </View>
       ) : (
-        <View className="gap-5">
+        <View className="gap-4">
           {instances.map((inst) => (
             <InstanceBlock
               key={inst.id}
@@ -148,24 +190,41 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
         refetchInterval: FAST_POLL,
         enabled: settings.showDisks,
       },
+      {
+        queryKey: ["glances", instance.id, "gpu"] as const,
+        queryFn: () => getGpu(instance.id),
+        refetchInterval: FAST_POLL,
+        enabled: settings.showGpu,
+      },
     ],
   });
-  const [cpuQuery, memQuery, fsQuery] = queries;
+  const [cpuQuery, memQuery, fsQuery, gpuQuery] = queries;
   const cpu = settings.showCpu ? cpuQuery.data : undefined;
   const mem = settings.showRam ? memQuery.data : undefined;
   const fs = settings.showDisks ? fsQuery.data : undefined;
+  const gpus = settings.showGpu ? gpuQuery.data : undefined;
 
   const isLoading =
     (settings.showCpu && cpuQuery.isLoading) ||
     (settings.showRam && memQuery.isLoading) ||
-    (settings.showDisks && fsQuery.isLoading);
-  const hasData = cpu || mem || (fs && fs.length > 0);
+    (settings.showDisks && fsQuery.isLoading) ||
+    (settings.showGpu && gpuQuery.isLoading);
+  const hasData = cpu || mem || (fs && fs.length > 0) || (gpus && gpus.length > 0);
   const showError =
     !isLoading &&
     !hasData &&
     ((settings.showCpu && cpuQuery.isError) ||
       (settings.showRam && memQuery.isError) ||
-      (settings.showDisks && fsQuery.isError));
+      (settings.showDisks && fsQuery.isError) ||
+      (settings.showGpu && gpuQuery.isError));
+
+  const gpuRings = buildGpuRings(gpus);
+  const hasRings =
+    (settings.showCpu && cpu) ||
+    (settings.showRam && mem) ||
+    gpuRings.length > 0;
+  const hasDisks = settings.showDisks && fs && fs.length > 0;
+  const showDivider = hasRings && hasDisks;
 
   return (
     <View className="gap-3">
@@ -182,39 +241,124 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
           <Text className="text-zinc-500 text-sm">Could not reach Glances</Text>
         </View>
       ) : (
-        <View className="gap-4">
-          {(settings.showCpu || settings.showRam) && (
-            <View className="flex-row justify-around">
-              {settings.showCpu && cpu && <RingChart percent={cpu.total} label="CPU" />}
-              {settings.showRam && mem && <RingChart percent={mem.percent} label="RAM" />}
+        <>
+          {hasRings && (
+            <View className="flex-row flex-wrap justify-around gap-y-3">
+              {settings.showCpu && cpu && (
+                <MetricRing
+                  percent={cpu.total}
+                  label="CPU"
+                  icon={CpuIcon}
+                  sublabel={`${cpu.cpucore} ${cpu.cpucore === 1 ? "core" : "cores"}`}
+                />
+              )}
+              {settings.showRam && mem && (
+                <MetricRing
+                  percent={mem.percent}
+                  label="RAM"
+                  icon={MemoryStick}
+                  sublabel={`${formatBytes(mem.used)} / ${formatBytes(mem.total)}`}
+                />
+              )}
+              {gpuRings.map((ring) => (
+                <MetricRing
+                  key={ring.key}
+                  percent={ring.percent}
+                  label={ring.label}
+                  icon={GpuIconSvg}
+                  sublabel={ring.sublabel}
+                />
+              ))}
             </View>
           )}
 
-          {settings.showDisks && fs && fs.length > 0 && (
+          {showDivider && <View className="h-px bg-border" />}
+
+          {hasDisks && (
             <View className="gap-2">
               {fs.map((disk) => (
                 <DiskRow key={disk.mnt_point} disk={disk} />
               ))}
             </View>
           )}
-        </View>
+        </>
       )}
     </View>
   );
 }
 
+interface GpuRingEntry {
+  key: string;
+  label: string;
+  percent: number;
+  sublabel?: string;
+}
+
+function buildGpuRings(gpus: GlancesGpuItem[] | undefined): GpuRingEntry[] {
+  if (!gpus || gpus.length === 0) return [];
+  const multi = gpus.length > 1;
+  const entries: GpuRingEntry[] = [];
+  gpus.forEach((gpu, idx) => {
+    const suffix = multi ? ` ${idx + 1}` : "";
+    const name = (gpu.name || gpu.gpu_id || "").trim();
+    if (typeof gpu.proc === "number") {
+      entries.push({
+        key: `${gpu.gpu_id ?? idx}-proc`,
+        label: `GPU${suffix}`,
+        percent: gpu.proc,
+        sublabel: !multi && name ? shortenGpuName(name) : undefined,
+      });
+    }
+    if (typeof gpu.mem === "number") {
+      entries.push({
+        key: `${gpu.gpu_id ?? idx}-mem`,
+        label: `VRAM${suffix}`,
+        percent: gpu.mem,
+      });
+    }
+  });
+  return entries;
+}
+
+function shortenGpuName(name: string): string {
+  // Strip vendor noise so the sublabel stays inside the ring column. Common
+  // patterns: "NVIDIA GeForce RTX 3080", "AMD Radeon RX 6800", "Intel Arc A770".
+  return name
+    .replace(/^NVIDIA\s+/i, "")
+    .replace(/^AMD\s+/i, "")
+    .replace(/^Intel\s+/i, "")
+    .replace(/\s+\(.*\)$/, "")
+    .trim();
+}
+
 function DiskRow({ disk }: { disk: GlancesFsItem }) {
+  const mount = disk.mnt_point.replace(/^\/host/, "") || "/";
+  const pct = Math.min(Math.max(disk.percent, 0), 100);
   return (
     <View className="gap-1">
-      <View className="flex-row justify-between items-center">
-        <Text className="text-zinc-400 text-xs" numberOfLines={1}>
-          {disk.mnt_point.replace(/^\/host/, "") || "/"}
-        </Text>
-        <Text className="text-zinc-500 text-xs">
+      <View className="flex-row justify-between items-center gap-2">
+        <View className="flex-row items-center gap-1.5 flex-1 min-w-0">
+          <Icon icon={HardDrive} size={11} color="#a1a1aa" />
+          <Text
+            className="text-zinc-300 text-xs font-medium"
+            numberOfLines={1}
+          >
+            {mount}
+          </Text>
+        </View>
+        <Text className="text-zinc-500 text-[0.7rem]">
           {formatBytes(disk.used)} / {formatBytes(disk.size)}
         </Text>
+        <Text className={`text-xs font-semibold w-10 text-right ${diskTextColor(pct)}`}>
+          {pct.toFixed(0)}%
+        </Text>
       </View>
-      <ProgressBar progress={disk.percent / 100} color={diskBarColor(disk.percent)} />
+      <View className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+        <View
+          className={`h-full rounded-full ${diskBarColor(pct)}`}
+          style={{ width: `${pct}%` }}
+        />
+      </View>
     </View>
   );
 }

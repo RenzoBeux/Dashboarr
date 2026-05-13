@@ -220,8 +220,10 @@ export function toggleSeriesMonitored(
 export function updateSeries(
   series: SonarrSeries,
   instanceId?: string,
+  options?: { moveFiles?: boolean },
 ): Promise<SonarrSeries> {
-  return serviceRequest<SonarrSeries>("sonarr", `/series/${series.id}`, {
+  const query = options?.moveFiles ? "?moveFiles=true" : "";
+  return serviceRequest<SonarrSeries>("sonarr", `/series/${series.id}${query}`, {
     method: "PUT",
     body: JSON.stringify(series),
     instanceId,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, ScrollView, Linking } from "react-native";
+import { View, Text, ScrollView, Linking, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Trash2,
@@ -10,6 +10,8 @@ import {
   Film,
   Circle,
   Check,
+  ChevronRight,
+  FolderTree,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -32,6 +34,8 @@ import {
   useToggleMovieMonitored,
   useRadarrQualityProfiles,
   useUpdateMovieQualityProfile,
+  useRadarrRootFolders,
+  useUpdateMovieRootFolder,
 } from "@/hooks/use-radarr";
 import { useServiceImage } from "@/hooks/use-service-image";
 import {
@@ -54,9 +58,13 @@ export default function MovieDetailScreen() {
   const toggleMonitored = useToggleMovieMonitored(instanceId);
   const { data: qualityProfiles } = useRadarrQualityProfiles(instanceId);
   const updateProfile = useUpdateMovieQualityProfile(instanceId);
+  const { data: rootFolders } = useRadarrRootFolders(instanceId);
+  const updateRootFolder = useUpdateMovieRootFolder(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
+  const [rootFolderVisible, setRootFolderVisible] = useState(false);
+  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
 
   const poster = movie?.images.find((i) => i.coverType === "poster");
@@ -224,7 +232,14 @@ export default function MovieDetailScreen() {
 
           <ReleaseDatesBlock movie={movie} />
 
-          <AboutBlock movie={movie} />
+          <AboutBlock
+            movie={movie}
+            onPressRoot={
+              rootFolders && rootFolders.length > 0
+                ? () => setRootFolderVisible(true)
+                : undefined
+            }
+          />
         </View>
       </ScreenWrapper>
 
@@ -270,6 +285,63 @@ export default function MovieDetailScreen() {
             });
           },
         }))}
+      />
+
+      <ActionSheet
+        visible={rootFolderVisible}
+        onClose={() => setRootFolderVisible(false)}
+        title="Root Folder"
+        subtitle={movie.title}
+        actions={(rootFolders ?? []).map((f) => ({
+          label: `${f.path}  ·  ${formatBytes(f.freeSpace)} free`,
+          icon: (
+            <Icon
+              icon={f.path === movie.rootFolderPath ? Check : Circle}
+              size={18}
+              color={f.path === movie.rootFolderPath ? "#60a5fa" : "#71717a"}
+            />
+          ),
+          onPress: () => {
+            if (f.path === movie.rootFolderPath) return;
+            setRootFolderVisible(false);
+            setPendingRootFolder(f.path);
+          },
+        }))}
+      />
+
+      <ActionSheet
+        visible={pendingRootFolder !== null}
+        onClose={() => setPendingRootFolder(null)}
+        title="Move existing files?"
+        subtitle={pendingRootFolder ?? ""}
+        actions={[
+          {
+            label: "Move existing files",
+            icon: <Icon icon={FolderTree} size={18} color="#60a5fa" />,
+            onPress: () => {
+              if (!pendingRootFolder) return;
+              updateRootFolder.mutate({
+                movieId: movie.id,
+                rootFolderPath: pendingRootFolder,
+                moveFiles: true,
+              });
+              setPendingRootFolder(null);
+            },
+          },
+          {
+            label: "Keep files in place",
+            icon: <Icon icon={Circle} size={18} color="#71717a" />,
+            onPress: () => {
+              if (!pendingRootFolder) return;
+              updateRootFolder.mutate({
+                movieId: movie.id,
+                rootFolderPath: pendingRootFolder,
+                moveFiles: false,
+              });
+              setPendingRootFolder(null);
+            },
+          },
+        ]}
       />
 
       <ConfirmModal
@@ -436,21 +508,39 @@ function ReleaseDatesBlock({ movie }: { movie: RadarrMovie }) {
   );
 }
 
-function AboutBlock({ movie }: { movie: RadarrMovie }) {
+function AboutBlock({
+  movie,
+  onPressRoot,
+}: {
+  movie: RadarrMovie;
+  onPressRoot?: () => void;
+}) {
   return (
     <View className="mb-5">
       <SectionLabel>About</SectionLabel>
       <View className="rounded-2xl bg-surface border border-border p-4 gap-2.5">
-        <AboutRow label="Root" value={movie.rootFolderPath} />
+        <AboutRow
+          label="Root"
+          value={movie.rootFolderPath}
+          onPress={onPressRoot}
+        />
         <AboutRow label="Added" value={formatReleaseDate(movie.added)} />
       </View>
     </View>
   );
 }
 
-function AboutRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="flex-row items-center">
+function AboutRow({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider w-14">
         {label}
       </Text>
@@ -461,6 +551,23 @@ function AboutRow({ label, value }: { label: string; value: string }) {
       >
         {value}
       </Text>
-    </View>
+      {onPress ? (
+        <Icon icon={ChevronRight} size={14} color="#71717a" />
+      ) : null}
+    </>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        className="flex-row items-center active:opacity-60"
+        hitSlop={6}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <View className="flex-row items-center">{content}</View>;
 }

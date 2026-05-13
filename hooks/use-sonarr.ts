@@ -288,6 +288,84 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
   });
 }
 
+export function useUpdateSeriesRootFolder(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      rootFolderPath,
+      moveFiles,
+    }: {
+      seriesId: number;
+      rootFolderPath: string;
+      moveFiles: boolean;
+    }) => {
+      const cached = queryClient.getQueryData<SonarrSeries>([
+        "sonarr",
+        id,
+        "series",
+        seriesId,
+      ]);
+      if (!cached) throw new Error("Series not loaded");
+      return updateSeries(
+        { ...cached, rootFolderPath },
+        id ?? undefined,
+        { moveFiles },
+      );
+    },
+    onMutate: async ({ seriesId, rootFolderPath }) => {
+      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series"] });
+
+      const prevDetail = queryClient.getQueryData<SonarrSeries>([
+        "sonarr",
+        id,
+        "series",
+        seriesId,
+      ]);
+      const prevList = queryClient.getQueryData<SonarrSeries[]>([
+        "sonarr",
+        id,
+        "series",
+      ]);
+
+      if (prevDetail) {
+        queryClient.setQueryData<SonarrSeries>(
+          ["sonarr", id, "series", seriesId],
+          { ...prevDetail, rootFolderPath },
+        );
+      }
+      if (prevList) {
+        queryClient.setQueryData<SonarrSeries[]>(
+          ["sonarr", id, "series"],
+          prevList.map((s) =>
+            s.id === seriesId ? { ...s, rootFolderPath } : s,
+          ),
+        );
+      }
+
+      return { prevDetail, prevList };
+    },
+    onError: (err, { seriesId }, context) => {
+      if (context?.prevDetail) {
+        queryClient.setQueryData(
+          ["sonarr", id, "series", seriesId],
+          context.prevDetail,
+        );
+      }
+      if (context?.prevList) {
+        queryClient.setQueryData(["sonarr", id, "series"], context.prevList);
+      }
+      toastError("Failed to update root folder", err);
+    },
+    onSettled: (_data, _err, { seriesId }) => {
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
+    },
+  });
+}
+
 export function useSonarrQualityProfiles(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({

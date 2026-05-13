@@ -354,5 +354,22 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     payload.uiScale = raw.uiScale as ExportPayload["uiScale"];
   }
 
+  if (raw.servicesOrder !== undefined && raw.servicesOrder !== null) {
+    if (!Array.isArray(raw.servicesOrder)) throw new Error("Config servicesOrder is invalid");
+    if (raw.servicesOrder.length > SERVICE_IDS.length) {
+      throw new Error("Config servicesOrder has too many entries");
+    }
+    const seen = new Set<string>();
+    const order: ServiceId[] = [];
+    for (const id of raw.servicesOrder) {
+      if (typeof id !== "string") throw new Error("Config servicesOrder entry is invalid");
+      if (!SERVICE_ID_SET.has(id)) continue; // forward-compat: drop unknowns
+      if (seen.has(id)) continue;
+      seen.add(id);
+      order.push(id as ServiceId);
+    }
+    payload.servicesOrder = order;
+  }
+
   return payload;
 }
