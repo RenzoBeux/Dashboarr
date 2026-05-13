@@ -11,27 +11,12 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { lightHaptic } from "@/lib/haptics";
 import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
+import { SERVICE_ROUTES } from "@/lib/service-routes";
 
 // Spring tuned to feel snappy but visible — too fast and the user can't tell a
 // tile moved; too slow and successive taps queue up before the previous one
 // settles. ~300ms total motion is the sweet spot.
 const REORDER_LAYOUT = LinearTransition.springify().damping(18).stiffness(180).mass(0.7);
-
-const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
-  qbittorrent: "/(tabs)/downloads",
-  // SAB shares the Downloads tab with qBittorrent via a segmented control,
-  // so the services tile lands on the same route.
-  sabnzbd: "/(tabs)/downloads",
-  radarr: "/(tabs)/movies",
-  sonarr: "/(tabs)/tv",
-  overseerr: "/(tabs)/requests",
-  tautulli: "/(tabs)/activity",
-  prowlarr: "/(tabs)/indexers",
-  plex: "/(tabs)/plex",
-  jellyfin: "/(tabs)/jellyfin",
-  glances: "/(tabs)/glances",
-  bazarr: "/(tabs)/bazarr",
-};
 
 export default function ServicesScreen() {
   const router = useRouter();

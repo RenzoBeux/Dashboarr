@@ -7,6 +7,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
+import { SERVICE_ROUTES } from "@/lib/service-routes";
 import { useConfigStore } from "@/store/config-store";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
@@ -21,13 +22,6 @@ import type { ServiceInstance } from "@/store/config-store";
 // settings sheet — so when the user reorders kinds, the dashboard tile
 // rearrangement feels continuous with the surface they touched.
 const REORDER_LAYOUT = LinearTransition.springify().damping(18).stiffness(180).mass(0.7);
-
-const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
-  qbittorrent: "/(tabs)/downloads",
-  sabnzbd: "/(tabs)/downloads",
-  radarr: "/(tabs)/movies",
-  sonarr: "/(tabs)/tv",
-};
 
 // One indicator per (kind, instance) pair after applying the slot's binding
 // settings. The card always renders one tile per bound instance — the prior
