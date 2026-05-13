@@ -144,7 +144,7 @@ export default function SeriesDetailScreen() {
       },
       {
         onSuccess: () => router.back(),
-        onError: (err) => toastError(err, "Failed to delete show"),
+        onError: (err) => toastError("Failed to delete show", err),
       },
     );
     setPendingDelete(null);

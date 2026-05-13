@@ -124,7 +124,7 @@ export default function MovieDetailScreen() {
       },
       {
         onSuccess: () => router.back(),
-        onError: (err) => toastError(err, "Failed to delete movie"),
+        onError: (err) => toastError("Failed to delete movie", err),
       },
     );
     setPendingDelete(null);
