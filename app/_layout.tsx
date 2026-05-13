@@ -10,7 +10,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { rem } from "nativewind";
 import { useConfigStore } from "@/store/config-store";
-import { useNotificationStore } from "@/store/notifications-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
 import { queryClient } from "@/lib/query-client";
@@ -155,11 +154,10 @@ function ConfigSyncBridge() {
   const sharedSecret = useBackendStore((s) => s.sharedSecret);
   const backendHydrated = useBackendStore((s) => s.hydrated);
   const configHydrated = useConfigStore((s) => s.hydrated);
-  const notificationsHydrated = useNotificationStore((s) => s.hydrated);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!sharedSecret || !backendHydrated || !configHydrated || !notificationsHydrated) {
+    if (!sharedSecret || !backendHydrated || !configHydrated) {
       return;
     }
 
@@ -173,17 +171,15 @@ function ConfigSyncBridge() {
     };
 
     const unsubConfig = useConfigStore.subscribe(schedule);
-    const unsubNotifications = useNotificationStore.subscribe(schedule);
 
     return () => {
       unsubConfig();
-      unsubNotifications();
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [sharedSecret, backendHydrated, configHydrated, notificationsHydrated]);
+  }, [sharedSecret, backendHydrated, configHydrated]);
 
   return null;
 }
@@ -191,16 +187,14 @@ function ConfigSyncBridge() {
 export default function RootLayout() {
   const hydrate = useConfigStore((s) => s.hydrate);
   const hydrated = useConfigStore((s) => s.hydrated);
-  const hydrateNotifications = useNotificationStore((s) => s.hydrate);
   const hydrateBackend = useBackendStore((s) => s.hydrate);
   const hydrateSort = useSortStore((s) => s.hydrate);
 
   useEffect(() => {
     hydrate();
-    hydrateNotifications();
     hydrateBackend();
     configureNotifications();
-  }, [hydrate, hydrateNotifications, hydrateBackend]);
+  }, [hydrate, hydrateBackend]);
 
   // Sort prefs read sync from the storage cache, which is populated by
   // useConfigStore.hydrate(). Wait for that before reading.

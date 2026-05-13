@@ -8,7 +8,7 @@ import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
-import { useNotificationStore } from "@/store/notifications-store";
+import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
@@ -59,14 +59,17 @@ interface BaseGate {
  * Must be rendered inside a QueryClientProvider.
  */
 export function NotificationWatchers() {
-  const hydrated = useNotificationStore((s) => s.hydrated);
-  const enabled = useNotificationStore((s) => s.enabled);
-  const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
-  const sabnzbdCompleted = useNotificationStore((s) => s.sabnzbdCompleted);
-  const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
-  const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
-  const serviceOffline = useNotificationStore((s) => s.serviceOffline);
-  const overseerrNewRequest = useNotificationStore((s) => s.overseerrNewRequest);
+  // Notification settings now live on the config store; hydration is bundled
+  // into useConfigStore.hydrate() so the toggles can't read defaults before
+  // AsyncStorage has been loaded into the in-memory cache.
+  const hydrated = useConfigStore((s) => s.hydrated);
+  const enabled = useConfigStore((s) => s.notificationSettings.enabled);
+  const torrentCompleted = useConfigStore((s) => s.notificationSettings.torrentCompleted);
+  const sabnzbdCompleted = useConfigStore((s) => s.notificationSettings.sabnzbdCompleted);
+  const radarrDownloaded = useConfigStore((s) => s.notificationSettings.radarrDownloaded);
+  const sonarrDownloaded = useConfigStore((s) => s.notificationSettings.sonarrDownloaded);
+  const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
+  const overseerrNewRequest = useConfigStore((s) => s.notificationSettings.overseerrNewRequest);
 
   // When a backend is paired AND currently reachable, defer notifications to
   // it so the user doesn't get double-notified (one local, one push). If the

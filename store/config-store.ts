@@ -41,9 +41,7 @@ import {
   isEncryptedEnvelope,
 } from "@/lib/config-crypto";
 import { useBackendStore } from "@/store/backend-store";
-import { useNotificationStore } from "@/store/notifications-store";
 import { queryClient } from "@/lib/query-client";
-import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
 import { generateInstanceId } from "@/lib/uuid";
@@ -125,6 +123,30 @@ export interface Dashboard {
 // export the type so the v14 export migration can reference it.
 export type WidgetSettingsMap = Partial<Record<WidgetId, Record<string, unknown>>>;
 
+// Notification preferences (v2+). Lives on the config store so it hydrates
+// after initStorage() completes — the old standalone notifications-store
+// hydrated synchronously before the AsyncStorage cache was populated, which
+// caused the "enabled" toggle to revert to `true` on every cold start.
+export interface NotificationSettings {
+  enabled: boolean;
+  torrentCompleted: boolean;
+  sabnzbdCompleted: boolean;
+  radarrDownloaded: boolean;
+  sonarrDownloaded: boolean;
+  serviceOffline: boolean;
+  overseerrNewRequest: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  torrentCompleted: true,
+  sabnzbdCompleted: true,
+  radarrDownloaded: true,
+  sonarrDownloaded: true,
+  serviceOffline: true,
+  overseerrNewRequest: true,
+};
+
 interface ConfigState {
   // Authoritative multi-instance state (v13+). One array of ServiceInstance
   // entries per kind; each carries its own UUID, URLs, and enabled flag.
@@ -167,6 +189,7 @@ interface ConfigState {
   globalCustomHeaders: Record<string, string>;
   // Accessibility multiplier applied app-wide via NativeWind's rem observable.
   uiScale: UiScale;
+  notificationSettings: NotificationSettings;
 }
 
 export interface ExportPayload {
@@ -267,6 +290,10 @@ interface ConfigActions {
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
+  setNotificationSetting: <K extends keyof NotificationSettings>(
+    key: K,
+    value: NotificationSettings[K],
+  ) => void;
 
   // Lookup helpers. instanceId is optional — when omitted, the active instance
   // for that kind is used (legacy single-instance behavior).
@@ -528,6 +555,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   hapticsEnabled: true,
   globalCustomHeaders: {},
   uiScale: DEFAULT_UI_SCALE,
+  notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 
   hydrate: async () => {
     // Populate in-memory cache from AsyncStorage
@@ -814,6 +842,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ? (storedUiScale as UiScale)
         : DEFAULT_UI_SCALE;
 
+    // Notification settings persisted under their own AsyncStorage key since
+    // v2 (originally owned by a standalone notifications-store). Merge over
+    // defaults so a partially-stored payload (older app picking up newer
+    // schema) still resolves to a complete record.
+    const storedNotificationSettings = getJSON<Partial<NotificationSettings>>(
+      STORAGE_KEYS.notificationSettings,
+    );
+    const notificationSettings: NotificationSettings = {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...(storedNotificationSettings ?? {}),
+    };
+
     const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
     if (demoMode) {
       // Replace each kind's instances with a single demo instance so the
@@ -850,6 +890,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      notificationSettings,
       hydrated: true,
     });
   },
@@ -1251,6 +1292,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ uiScale: scale });
   },
 
+  setNotificationSetting: (key, value) => {
+    const next = { ...get().notificationSettings, [key]: value };
+    setJSON(STORAGE_KEYS.notificationSettings, next);
+    set({ notificationSettings: next });
+  },
+
   // --- Lookup helpers ---
 
   getInstance: (id, instanceId) => {
@@ -1369,10 +1416,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      notificationSettings: notifSettings,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
-    const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
-      useNotificationStore.getState();
 
     const payload: ExportPayload = {
       version: CURRENT_CONFIG_VERSION,
@@ -1561,10 +1607,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       });
     }
 
-    // Restore notification settings (v2+)
+    // Restore notification settings (v2+). Persist to the legacy storage key
+    // (so older app versions on the same device can still read them) and
+    // assign to the store below in the bulk set().
+    const importedNotificationSettings: NotificationSettings = payload.notificationSettings
+      ? { ...DEFAULT_NOTIFICATION_SETTINGS, ...payload.notificationSettings }
+      : DEFAULT_NOTIFICATION_SETTINGS;
     if (payload.notificationSettings) {
-      setJSON(STORAGE_KEYS.notificationSettings, payload.notificationSettings);
-      useNotificationStore.getState().hydrate();
+      setJSON(STORAGE_KEYS.notificationSettings, importedNotificationSettings);
     }
 
     const derivedSecrets = deriveLegacySecrets(
@@ -1590,6 +1640,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,
       uiScale: importedUiScale,
+      notificationSettings: importedNotificationSettings,
     });
 
     return true;
