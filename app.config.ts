@@ -96,6 +96,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "./plugins/withAndroidSigning",
     "./plugins/withCleartextTraffic",
     "./plugins/withDevVariant",
+    "./plugins/withFmtConstevalFix",
     [
       "expo-location",
       {
