@@ -48,14 +48,18 @@ function withFmtConstevalFix(config) {
       let podfile = fs.readFileSync(podfilePath, "utf-8");
       if (podfile.includes(MARKER)) return config;
 
+      // Inject AFTER `react_native_post_install(installer, ...)` — that call
+      // walks every pod target and resets CLANG_CXX_LANGUAGE_STANDARD back to
+      // the RN default (c++20). Anything we set before it runs gets clobbered.
+      // The block is multi-line so we grow the match until the closing paren.
       const updated = podfile.replace(
-        /(post_install\s+do\s+\|installer\|\s*\n)/,
+        /(react_native_post_install\s*\([^)]*\)\s*\n)/,
         `$1${PATCH}\n`,
       );
 
       if (updated === podfile) {
         throw new Error(
-          "withFmtConstevalFix: could not find `post_install do |installer|` in Podfile — Expo prebuild output changed shape?",
+          "withFmtConstevalFix: could not find `react_native_post_install(...)` call in Podfile — Expo prebuild output changed shape?",
         );
       }
 
