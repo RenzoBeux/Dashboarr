@@ -13,7 +13,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.dashboarr.app
       node: 20
-      xcode: latest
+      xcode: 16.4
       cocoapods: default
       vars:
         EAS_UPDATE_CHANNEL: production
