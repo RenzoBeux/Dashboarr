@@ -20,12 +20,16 @@ const path = require("path");
 // project stays on its configured C++ standard. Drop this plugin when RN ships
 // a fmt version that's clean on Apple Clang 21.
 //
-// A previous version of this plugin tried -DFMT_USE_CONSTEVAL=0 via
-// GCC_PREPROCESSOR_DEFINITIONS. The flag arrived on the fmt compile command but
-// the constructor still resolved as consteval (very likely because Clang's
-// modules cache reused header PCMs parsed without the define). Switching the
-// language standard sidesteps the cache entirely — different std, different
-// module hash.
+// The patch MUST run at the very end of the Podfile's post_install block. RN's
+// own post_install (called via `react_native_post_install` or
+// `react_native_post_install!`, depending on SDK shape) walks every pod target
+// and resets `CLANG_CXX_LANGUAGE_STANDARD` back to its default — anything we set
+// before it runs gets clobbered. Rather than rely on the exact RN function name
+// or argument shape (which has changed between SDKs), we locate the
+// `post_install do |installer|` block, walk forward counting `do`/`end`
+// keywords to find its matching `end`, and inject our snippet immediately
+// before that `end`. This makes the patch the last code that runs inside
+// post_install, regardless of what came before.
 const MARKER = "# fmt-consteval-fix";
 const PATCH = `
   ${MARKER}
@@ -38,6 +42,27 @@ const PATCH = `
   end
 `;
 
+// Find the index of the `end` keyword that closes the `post_install do
+// |installer|` block by counting do/end nesting. Returns the start index of the
+// closing `end`, or -1 if not found. Word-boundaried so we don't match `do`
+// inside identifiers like `do_something`.
+function findPostInstallEnd(podfile) {
+  const openMatch = podfile.match(/post_install\s+do\s+\|installer\|/);
+  if (!openMatch) return -1;
+
+  const startIdx = openMatch.index + openMatch[0].length;
+  const tokenRe = /\b(do|end)\b/g;
+  tokenRe.lastIndex = startIdx;
+
+  let depth = 1;
+  let m;
+  while ((m = tokenRe.exec(podfile)) !== null) {
+    depth += m[1] === "do" ? 1 : -1;
+    if (depth === 0) return m.index;
+  }
+  return -1;
+}
+
 function withFmtConstevalFix(config) {
   return withDangerousMod(config, [
     "ios",
@@ -48,21 +73,14 @@ function withFmtConstevalFix(config) {
       let podfile = fs.readFileSync(podfilePath, "utf-8");
       if (podfile.includes(MARKER)) return config;
 
-      // Inject AFTER `react_native_post_install(installer, ...)` — that call
-      // walks every pod target and resets CLANG_CXX_LANGUAGE_STANDARD back to
-      // the RN default (c++20). Anything we set before it runs gets clobbered.
-      // The block is multi-line so we grow the match until the closing paren.
-      const updated = podfile.replace(
-        /(react_native_post_install\s*\([^)]*\)\s*\n)/,
-        `$1${PATCH}\n`,
-      );
-
-      if (updated === podfile) {
+      const endIdx = findPostInstallEnd(podfile);
+      if (endIdx === -1) {
         throw new Error(
-          "withFmtConstevalFix: could not find `react_native_post_install(...)` call in Podfile — Expo prebuild output changed shape?",
+          "withFmtConstevalFix: could not locate the closing `end` of `post_install do |installer|` in Podfile",
         );
       }
 
+      const updated = podfile.slice(0, endIdx) + PATCH + "\n" + podfile.slice(endIdx);
       fs.writeFileSync(podfilePath, updated);
       return config;
     },
