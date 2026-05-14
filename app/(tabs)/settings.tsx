@@ -987,7 +987,8 @@ function ServiceEditor({
           keyboardType="url"
         />
         <Toggle
-          label="Use Remote URL"
+          label="Always use Remote URL"
+          description="Force the remote URL even when on a configured home network. Leave off to let auto-switch use the local URL at home."
           value={config.useRemote}
           onValueChange={(v) =>
             updateInstance(serviceId, instanceId, { useRemote: v })

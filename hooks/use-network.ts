@@ -1,37 +1,29 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import NetInfo from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
-import { SERVICE_IDS } from "@/lib/constants";
 
 /**
- * Auto-switches all services between local/remote URLs based on WiFi identity.
- * Any configured `homeNetwork` entry that matches the live (ssid, bssid) → home.
+ * Tracks whether the phone is on a configured home network and writes the
+ * result to `networkAwayFromHome` in the config store. The URL resolver
+ * combines that runtime flag with the per-instance `useRemote` *user
+ * override* — so the user's "always use remote" toggle never gets clobbered
+ * by network events, and the situational auto-switch still flips URLs
+ * transparently as the user moves between networks.
  *
- * Per-entry matching:
+ * Home-network matching:
  *   - SSID must match exactly.
  *   - If the entry has an empty `bssid`, SSID alone is enough.
  *   - If the entry has a `bssid` set, it must match the live BSSID. If the OS
  *     doesn't surface a BSSID on this build, the pinned entry fails closed —
  *     don't trust local URLs without the AP fingerprint we asked for.
- *
- * Writes only on transition: NetInfo fires events frequently (esp. on Android
- * during app resume, screen-on, etc.). Writing useRemote on every event would
- * clobber a user's manual override within seconds. We track the last applied
- * isHome and only call updateService when it flips — including the initial
- * subscribe, which intentionally seeds the ref without writing so the user's
- * persisted choice survives app launch.
  */
 export function useNetworkAutoSwitch() {
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
-  const updateService = useConfigStore((s) => s.updateService);
-  const lastIsHomeRef = useRef<boolean | null>(null);
+  const setNetworkAwayFromHome = useConfigStore((s) => s.setNetworkAwayFromHome);
 
   useEffect(() => {
-    if (!autoSwitchNetwork || homeNetworks.length === 0) {
-      lastIsHomeRef.current = null;
-      return;
-    }
+    if (!autoSwitchNetwork || homeNetworks.length === 0) return;
 
     const unsubscribe = NetInfo.addEventListener((state) => {
       let isHome: boolean;
@@ -50,23 +42,11 @@ export function useNetworkAutoSwitch() {
           return n.bssid === currentBssid;
         });
       }
-
-      // First event after subscribe: seed the ref without writing. The user's
-      // persisted useRemote stays in effect until the network *changes*.
-      if (lastIsHomeRef.current === null) {
-        lastIsHomeRef.current = isHome;
-        return;
-      }
-      if (lastIsHomeRef.current === isHome) return;
-      lastIsHomeRef.current = isHome;
-      for (const id of SERVICE_IDS) {
-        updateService(id, { useRemote: !isHome });
-      }
+      // Setter is a no-op when the value hasn't changed, so NetInfo's chatty
+      // event stream doesn't cause spurious store updates / re-renders.
+      setNetworkAwayFromHome(!isHome);
     });
 
-    return () => {
-      unsubscribe();
-      lastIsHomeRef.current = null;
-    };
-  }, [autoSwitchNetwork, homeNetworks, updateService]);
+    return unsubscribe;
+  }, [autoSwitchNetwork, homeNetworks, setNetworkAwayFromHome]);
 }

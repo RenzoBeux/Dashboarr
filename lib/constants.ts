@@ -111,6 +111,16 @@ export const STORAGE_KEYS = {
   // any SERVICE_IDS missing from the list are appended in their canonical
   // order — so adding a new service kind ships with a sensible default.
   servicesOrder: "app.servicesOrder",
+  // v18: cached network-state ("am I off my home network right now?"). The
+  // auto-switch hook updates this on every home↔away transition. Persisted
+  // so cold launches use last-known state for the brief moment before
+  // NetInfo fires; NetInfo overwrites it on first event.
+  networkAwayFromHome: "app.networkAwayFromHome",
+  // v18 one-shot marker: pre-v18 builds clobbered useRemote with derived
+  // network state. On first v18 launch the hydrate path resets useRemote
+  // (only for installs that had auto-switch on) so the user starts from a
+  // clean override; this flag prevents the reset from running twice.
+  v18UseRemoteReset: "app.v18.useRemoteReset",
 } as const;
 
 // Whitelisted UI scale multipliers. Kept as a const so the schema and the

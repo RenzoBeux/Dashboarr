@@ -1010,6 +1010,56 @@ describe("v15 → v16 (sabnzbd stamp)", () => {
   });
 });
 
+describe("v17 → v18 (useRemote becomes user override)", () => {
+  function baseV17(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      version: 17,
+      services: {
+        radarr: [
+          { id: "r1", enabled: true, name: "Radarr", localUrl: "http://r", remoteUrl: "https://r", useRemote: true },
+        ],
+        sonarr: [
+          { id: "s1", enabled: true, name: "Sonarr", localUrl: "http://s", remoteUrl: "https://s", useRemote: true },
+          { id: "s2", enabled: false, name: "Sonarr 2", localUrl: "", remoteUrl: "", useRemote: true },
+        ],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1", sonarr: "s1" },
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      servicesOrder: [],
+      ...overrides,
+    };
+  }
+
+  it("resets every instance's useRemote to false when autoSwitchNetwork was on", () => {
+    const result: any = migrateConfig(baseV17({ autoSwitchNetwork: true }));
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.radarr[0].useRemote).toBe(false);
+    expect(result.services.sonarr[0].useRemote).toBe(false);
+    expect(result.services.sonarr[1].useRemote).toBe(false);
+  });
+
+  it("leaves useRemote untouched when autoSwitchNetwork was off (user intent is genuine)", () => {
+    const result: any = migrateConfig(baseV17({ autoSwitchNetwork: false }));
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.radarr[0].useRemote).toBe(true);
+    expect(result.services.sonarr[0].useRemote).toBe(true);
+    expect(result.services.sonarr[1].useRemote).toBe(true);
+  });
+
+  it("preserves non-useRemote fields on the instance", () => {
+    const result: any = migrateConfig(baseV17({ autoSwitchNetwork: true }));
+    expect(result.services.radarr[0]).toMatchObject({
+      id: "r1",
+      enabled: true,
+      name: "Radarr",
+      localUrl: "http://r",
+      remoteUrl: "https://r",
+    });
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {
