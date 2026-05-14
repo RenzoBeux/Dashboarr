@@ -14,6 +14,7 @@ import {
   FolderTree,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { toastError } from "@/components/ui/toast";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { ErrorBanner } from "@/components/common/error-banner";
@@ -123,6 +124,7 @@ export default function MovieDetailScreen() {
       },
       {
         onSuccess: () => router.back(),
+        onError: (err) => toastError("Failed to delete movie", err),
       },
     );
     setPendingDelete(null);
@@ -252,13 +254,19 @@ export default function MovieDetailScreen() {
             label: "Delete Movie",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => setPendingDelete("keep"),
+            onPress: () => {
+              setActionsVisible(false);
+              setPendingDelete("keep");
+            },
           },
           {
             label: "Delete Movie + Files",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => setPendingDelete("withFiles"),
+            onPress: () => {
+              setActionsVisible(false);
+              setPendingDelete("withFiles");
+            },
           },
         ]}
       />

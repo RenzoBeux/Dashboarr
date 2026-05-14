@@ -6,10 +6,13 @@ import { useQueries } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Tv,
   Film,
   Eye,
   EyeOff,
+  Check,
+  Server,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -18,7 +21,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ICON, POLLING_INTERVALS } from "@/lib/constants";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { ICON, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
 import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
@@ -26,10 +30,19 @@ import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode, localDateKey } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { lightHaptic } from "@/lib/haptics";
-import { getBoolean, setBoolean } from "@/store/storage";
+import { getBoolean, setBoolean, getString, setString } from "@/store/storage";
+import type { ServiceId } from "@/lib/constants";
+import type { ServiceInstance } from "@/store/config-store";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
 
 const INCLUDE_UNMONITORED_KEY = "ui.calendar.includeUnmonitored";
+const SONARR_INSTANCE_FILTER_KEY = "ui.calendar.sonarrInstance";
+const RADARR_INSTANCE_FILTER_KEY = "ui.calendar.radarrInstance";
+
+// "all" = fan out across every enabled instance of that kind (original
+// behavior); any other string is a ServiceInstance UUID — scope to that one.
+type InstanceFilter = string;
+const ALL = "all";
 
 type Filter = "all" | "tv" | "movies";
 
@@ -112,12 +125,49 @@ export default function CalendarScreen() {
     setBoolean(INCLUDE_UNMONITORED_KEY, value);
   };
 
-  const sonarrInstances = useEnabledInstances("sonarr");
-  const radarrInstances = useEnabledInstances("radarr");
+  const sonarrAll = useEnabledInstances("sonarr");
+  const radarrAll = useEnabledInstances("radarr");
+
+  // Persisted per-kind instance filter. Default to "all" so existing single-
+  // instance users see no behavior change; multi-instance users who pick a
+  // specific instance scope queries (and failure banners) to that one.
+  const [sonarrFilter, setSonarrFilterState] = useState<InstanceFilter>(
+    () => getString(SONARR_INSTANCE_FILTER_KEY) ?? ALL,
+  );
+  const [radarrFilter, setRadarrFilterState] = useState<InstanceFilter>(
+    () => getString(RADARR_INSTANCE_FILTER_KEY) ?? ALL,
+  );
+
+  const setSonarrFilter = (value: InstanceFilter) => {
+    setSonarrFilterState(value);
+    setString(SONARR_INSTANCE_FILTER_KEY, value);
+  };
+  const setRadarrFilter = (value: InstanceFilter) => {
+    setRadarrFilterState(value);
+    setString(RADARR_INSTANCE_FILTER_KEY, value);
+  };
+
+  // Reconcile a stored UUID against the live list of enabled instances. If
+  // the user disables or deletes the previously-selected instance the filter
+  // silently falls back to "all" rather than producing an empty calendar.
+  const sonarrInstances = useMemo(
+    () =>
+      sonarrFilter === ALL
+        ? sonarrAll
+        : sonarrAll.filter((i) => i.id === sonarrFilter),
+    [sonarrAll, sonarrFilter],
+  );
+  const radarrInstances = useMemo(
+    () =>
+      radarrFilter === ALL
+        ? radarrAll
+        : radarrAll.filter((i) => i.id === radarrFilter),
+    [radarrAll, radarrFilter],
+  );
 
   const { start, end } = getMonthRange(year, month);
 
-  // Fan out the calendar query across every enabled Sonarr/Radarr instance.
+  // Fan out the calendar query across every selected Sonarr/Radarr instance.
   // Each instance contributes its own slice of dates; we flatten and dedupe
   // visually (no need to merge by id — different instances have different
   // libraries, so duplicate ids across instances are still distinct shows).
@@ -330,6 +380,37 @@ export default function CalendarScreen() {
           }}
         />
       </ScrollView>
+
+      {/* Per-kind instance scope. Each picker hides itself when there's 0–1
+          enabled instance for that kind — single-instance users see nothing
+          new. Multi-instance users get an explicit way to exclude an
+          unreachable server (e.g. a Tailscale-only secondary while off-VPN)
+          so its inevitable failure doesn't surface as an error banner. */}
+      {(sonarrAll.length > 1 || radarrAll.length > 1) && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="mb-3"
+        >
+          {sonarrAll.length > 1 ? (
+            <InstanceScopePicker
+              kind="sonarr"
+              instances={sonarrAll}
+              value={sonarrFilter}
+              onChange={setSonarrFilter}
+            />
+          ) : null}
+          {radarrAll.length > 1 ? (
+            <InstanceScopePicker
+              kind="radarr"
+              instances={radarrAll}
+              value={radarrFilter}
+              onChange={setRadarrFilter}
+            />
+          ) : null}
+        </ScrollView>
+      )}
 
       {/* Per-service errors (partial failure — keep showing the working side).
           Instance name is suffixed only when multiple instances are configured
@@ -573,6 +654,74 @@ function MovieRow({
         <Icon icon={Film} size={14} color="#f59e0b" />
       </View>
     </Card>
+  );
+}
+
+function InstanceScopePicker({
+  kind,
+  instances,
+  value,
+  onChange,
+}: {
+  kind: ServiceId;
+  instances: ServiceInstance[];
+  value: InstanceFilter;
+  onChange: (next: InstanceFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const kindLabel = SERVICE_DEFAULTS[kind].name;
+  const activeLabel =
+    value === ALL
+      ? "All"
+      : (instances.find((i) => i.id === value)?.name ?? "All");
+
+  const actions: ActionSheetAction[] = [
+    {
+      label: "All instances",
+      icon: (
+        <Icon
+          icon={value === ALL ? Check : Server}
+          size={18}
+          color={value === ALL ? "#22c55e" : "#a1a1aa"}
+        />
+      ),
+      onPress: () => onChange(ALL),
+    },
+    ...instances.map((inst) => ({
+      label: inst.name,
+      icon: (
+        <Icon
+          icon={inst.id === value ? Check : Server}
+          size={18}
+          color={inst.id === value ? "#22c55e" : "#a1a1aa"}
+        />
+      ),
+      onPress: () => onChange(inst.id),
+    })),
+  ];
+
+  return (
+    <>
+      <Pressable
+        onPress={() => {
+          lightHaptic();
+          setOpen(true);
+        }}
+        className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border active:opacity-70"
+      >
+        <Text className="text-zinc-400 text-xs">{kindLabel}:</Text>
+        <Text className="text-zinc-100 text-xs font-medium" numberOfLines={1}>
+          {activeLabel}
+        </Text>
+        <Icon icon={ChevronDown} size={12} color="#71717a" />
+      </Pressable>
+      <ActionSheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title={`${kindLabel} instances`}
+        actions={actions}
+      />
+    </>
   );
 }
 

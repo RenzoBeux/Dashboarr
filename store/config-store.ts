@@ -41,9 +41,7 @@ import {
   isEncryptedEnvelope,
 } from "@/lib/config-crypto";
 import { useBackendStore } from "@/store/backend-store";
-import { useNotificationStore } from "@/store/notifications-store";
 import { queryClient } from "@/lib/query-client";
-import type { NotificationSettings } from "@/store/notifications-store";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
 import { generateInstanceId } from "@/lib/uuid";
@@ -125,6 +123,30 @@ export interface Dashboard {
 // export the type so the v14 export migration can reference it.
 export type WidgetSettingsMap = Partial<Record<WidgetId, Record<string, unknown>>>;
 
+// Notification preferences (v2+). Lives on the config store so it hydrates
+// after initStorage() completes — the old standalone notifications-store
+// hydrated synchronously before the AsyncStorage cache was populated, which
+// caused the "enabled" toggle to revert to `true` on every cold start.
+export interface NotificationSettings {
+  enabled: boolean;
+  torrentCompleted: boolean;
+  sabnzbdCompleted: boolean;
+  radarrDownloaded: boolean;
+  sonarrDownloaded: boolean;
+  serviceOffline: boolean;
+  overseerrNewRequest: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  torrentCompleted: true,
+  sabnzbdCompleted: true,
+  radarrDownloaded: true,
+  sonarrDownloaded: true,
+  serviceOffline: true,
+  overseerrNewRequest: true,
+};
+
 interface ConfigState {
   // Authoritative multi-instance state (v13+). One array of ServiceInstance
   // entries per kind; each carries its own UUID, URLs, and enabled flag.
@@ -145,6 +167,13 @@ interface ConfigState {
   secrets: Record<ServiceId, ServiceSecrets>;
 
   autoSwitchNetwork: boolean;
+  // Runtime-cached network state: true when the phone is not on a configured
+  // home network. Driven by the NetInfo listener in `useNetworkAutoSwitch`.
+  // The URL resolver combines this with the per-instance `useRemote` config
+  // (which is a user override — "force remote even at home") so the toggle
+  // never gets clobbered by the auto-switch. Persisted between launches so
+  // requests fired before NetInfo's first event use last-known state.
+  networkAwayFromHome: boolean;
   homeNetworks: HomeNetwork[];
   // v17: per-user display order for the Services tab. Unknown ids are skipped
   // at render time; any SERVICE_IDS missing from the list fall in at the end
@@ -167,6 +196,7 @@ interface ConfigState {
   globalCustomHeaders: Record<string, string>;
   // Accessibility multiplier applied app-wide via NativeWind's rem observable.
   uiScale: UiScale;
+  notificationSettings: NotificationSettings;
 }
 
 export interface ExportPayload {
@@ -240,6 +270,7 @@ interface ConfigActions {
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
 
   setAutoSwitch: (enabled: boolean) => void;
+  setNetworkAwayFromHome: (away: boolean) => void;
   addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
   removeHomeNetwork: (id: string) => void;
@@ -267,6 +298,10 @@ interface ConfigActions {
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
+  setNotificationSetting: <K extends keyof NotificationSettings>(
+    key: K,
+    value: NotificationSettings[K],
+  ) => void;
 
   // Lookup helpers. instanceId is optional — when omitted, the active instance
   // for that kind is used (legacy single-instance behavior).
@@ -518,6 +553,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   services: deriveLegacyServices(initialInstances, initialActiveInstance),
   secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
+  networkAwayFromHome: false,
   homeNetworks: [],
   servicesOrder: [],
   dashboards: initialDashboards,
@@ -528,6 +564,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   hapticsEnabled: true,
   globalCustomHeaders: {},
   uiScale: DEFAULT_UI_SCALE,
+  notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 
   hydrate: async () => {
     // Populate in-memory cache from AsyncStorage
@@ -577,6 +614,29 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         inst.name = SERVICE_DEFAULTS.overseerr.name;
         needsServicesPersist = true;
       }
+    }
+
+    // v18 one-shot: pre-v18 builds wrote useRemote on every NetInfo event as
+    // if it were derived state. The user could never actually set the toggle
+    // for their preferred override without it getting clobbered. On first
+    // launch of v18, reset useRemote to false on every instance for installs
+    // that had auto-switch on — that returns the toggle to a clean slate
+    // representing user intent. Installs that had auto-switch off had a
+    // genuine user-controlled useRemote, so we leave those alone.
+    const v18ResetDone = getBoolean(STORAGE_KEYS.v18UseRemoteReset);
+    if (!v18ResetDone) {
+      const autoSwitchWasOn = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
+      if (autoSwitchWasOn) {
+        for (const id of SERVICE_IDS) {
+          for (const inst of instances[id]) {
+            if (inst.useRemote) {
+              inst.useRemote = false;
+              needsServicesPersist = true;
+            }
+          }
+        }
+      }
+      setBoolean(STORAGE_KEYS.v18UseRemoteReset, true);
     }
 
     if (needsServicesPersist) {
@@ -685,6 +745,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
+    const networkAwayFromHome = getBoolean(STORAGE_KEYS.networkAwayFromHome);
 
     // Read the new array; if absent, migrate from legacy single-SSID keys so
     // upgraders who never re-import keep their auto-switch configuration.
@@ -814,6 +875,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ? (storedUiScale as UiScale)
         : DEFAULT_UI_SCALE;
 
+    // Notification settings persisted under their own AsyncStorage key since
+    // v2 (originally owned by a standalone notifications-store). Merge over
+    // defaults so a partially-stored payload (older app picking up newer
+    // schema) still resolves to a complete record.
+    const storedNotificationSettings = getJSON<Partial<NotificationSettings>>(
+      STORAGE_KEYS.notificationSettings,
+    );
+    const notificationSettings: NotificationSettings = {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...(storedNotificationSettings ?? {}),
+    };
+
     const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
     if (demoMode) {
       // Replace each kind's instances with a single demo instance so the
@@ -841,6 +914,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
+      networkAwayFromHome,
       homeNetworks,
       servicesOrder,
       dashboards,
@@ -850,6 +924,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      notificationSettings,
       hydrated: true,
     });
   },
@@ -1031,6 +1106,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   setAutoSwitch: (enabled) => {
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, enabled);
     set({ autoSwitchNetwork: enabled });
+  },
+
+  setNetworkAwayFromHome: (away) => {
+    if (get().networkAwayFromHome === away) return;
+    setBoolean(STORAGE_KEYS.networkAwayFromHome, away);
+    set({ networkAwayFromHome: away });
   },
 
   addHomeNetwork: (network) => {
@@ -1251,6 +1332,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ uiScale: scale });
   },
 
+  setNotificationSetting: (key, value) => {
+    const next = { ...get().notificationSettings, [key]: value };
+    setJSON(STORAGE_KEYS.notificationSettings, next);
+    set({ notificationSettings: next });
+  },
+
   // --- Lookup helpers ---
 
   getInstance: (id, instanceId) => {
@@ -1282,7 +1369,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const targetId = instanceId ?? state.activeInstance[id] ?? list[0]?.id;
     const inst = list.find((i) => i.id === targetId);
     if (!inst) return "";
-    return inst.useRemote ? inst.remoteUrl : inst.localUrl;
+    // useRemote is the user's force-remote override. autoSwitchNetwork +
+    // networkAwayFromHome handle the situational case (we're off the home
+    // network, so prefer remote). Either path picks remoteUrl.
+    const useRemote =
+      inst.useRemote ||
+      (state.autoSwitchNetwork && state.networkAwayFromHome);
+    return useRemote ? inst.remoteUrl : inst.localUrl;
   },
 
   getActiveDashboard: () => {
@@ -1369,10 +1462,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      notificationSettings: notifSettings,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
-    const { hydrated: _nh, hydrate: _nhyd, setSetting: _ns, ...notifSettings } =
-      useNotificationStore.getState();
 
     const payload: ExportPayload = {
       version: CURRENT_CONFIG_VERSION,
@@ -1561,10 +1653,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       });
     }
 
-    // Restore notification settings (v2+)
+    // Restore notification settings (v2+). Persist to the legacy storage key
+    // (so older app versions on the same device can still read them) and
+    // assign to the store below in the bulk set().
+    const importedNotificationSettings: NotificationSettings = payload.notificationSettings
+      ? { ...DEFAULT_NOTIFICATION_SETTINGS, ...payload.notificationSettings }
+      : DEFAULT_NOTIFICATION_SETTINGS;
     if (payload.notificationSettings) {
-      setJSON(STORAGE_KEYS.notificationSettings, payload.notificationSettings);
-      useNotificationStore.getState().hydrate();
+      setJSON(STORAGE_KEYS.notificationSettings, importedNotificationSettings);
     }
 
     const derivedSecrets = deriveLegacySecrets(
@@ -1590,6 +1686,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,
       uiScale: importedUiScale,
+      notificationSettings: importedNotificationSettings,
     });
 
     return true;

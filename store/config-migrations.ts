@@ -51,8 +51,14 @@ import { generateInstanceId } from "@/lib/uuid";
  *   v17 — added servicesOrder: ServiceId[] for the user-defined Services tab
  *         tile order. Older exports lack the field; default to [] which the
  *         render-side logic interprets as "use canonical SERVICE_IDS order".
+ *   v18 — useRemote toggle semantics fix: was being clobbered by the auto-
+ *         switch hook as derived state, now means "force remote even at
+ *         home" (user override). Migration resets useRemote to false on
+ *         every instance for users who had autoSwitchNetwork on, since the
+ *         stored values were last-known network state, not user intent.
+ *         Users with auto-switch off keep their useRemote values.
  */
-export const CURRENT_CONFIG_VERSION = 17;
+export const CURRENT_CONFIG_VERSION = 18;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -340,6 +346,32 @@ const migrations: Record<number, (payload: any) => any> = {
     version: 17,
     servicesOrder: Array.isArray(payload.servicesOrder) ? payload.servicesOrder : [],
   }),
+
+  // v17 → v18: useRemote becomes a user override ("force remote even at
+  // home") instead of a derived network-state cache. For installs that had
+  // autoSwitchNetwork on, the persisted useRemote values reflect last-known
+  // network state, not user intent — reset them to false so the toggle
+  // shows the user's actual override (which they never set if auto-switch
+  // was doing the work). Installs with auto-switch off keep useRemote
+  // exactly as the user configured it.
+  17: (payload) => {
+    if (!payload.autoSwitchNetwork) {
+      return { ...payload, version: 18 };
+    }
+    const services: Record<string, any> = {};
+    for (const [serviceId, instances] of Object.entries(payload.services ?? {})) {
+      if (!Array.isArray(instances)) {
+        services[serviceId] = instances;
+        continue;
+      }
+      services[serviceId] = instances.map((inst: any) =>
+        inst && typeof inst === "object"
+          ? { ...inst, useRemote: false }
+          : inst,
+      );
+    }
+    return { ...payload, version: 18, services };
+  },
 };
 
 /**

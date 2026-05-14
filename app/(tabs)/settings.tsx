@@ -34,7 +34,6 @@ import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
-import { useNotificationStore } from "@/store/notifications-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { BackHeader } from "@/components/common/back-header";
 import { pingService } from "@/lib/http-client";
@@ -181,14 +180,14 @@ export default function SettingsScreen() {
   const scale = useUiScale();
   const githubLogoSize = Math.round(20 * scale);
 
-  const notifEnabled = useNotificationStore((s) => s.enabled);
-  const torrentCompleted = useNotificationStore((s) => s.torrentCompleted);
-  const sabnzbdCompleted = useNotificationStore((s) => s.sabnzbdCompleted);
-  const radarrDownloaded = useNotificationStore((s) => s.radarrDownloaded);
-  const sonarrDownloaded = useNotificationStore((s) => s.sonarrDownloaded);
-  const serviceOffline = useNotificationStore((s) => s.serviceOffline);
-  const overseerrNewRequest = useNotificationStore((s) => s.overseerrNewRequest);
-  const setNotifSetting = useNotificationStore((s) => s.setSetting);
+  const notifEnabled = useConfigStore((s) => s.notificationSettings.enabled);
+  const torrentCompleted = useConfigStore((s) => s.notificationSettings.torrentCompleted);
+  const sabnzbdCompleted = useConfigStore((s) => s.notificationSettings.sabnzbdCompleted);
+  const radarrDownloaded = useConfigStore((s) => s.notificationSettings.radarrDownloaded);
+  const sonarrDownloaded = useConfigStore((s) => s.notificationSettings.sonarrDownloaded);
+  const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
+  const overseerrNewRequest = useConfigStore((s) => s.notificationSettings.overseerrNewRequest);
+  const setNotifSetting = useConfigStore((s) => s.setNotificationSetting);
 
   const handleExport = async () => {
     const result = await requestPassphrase("export");
@@ -988,7 +987,8 @@ function ServiceEditor({
           keyboardType="url"
         />
         <Toggle
-          label="Use Remote URL"
+          label="Always use Remote URL"
+          description="Force the remote URL even when on a configured home network. Leave off to let auto-switch use the local URL at home."
           value={config.useRemote}
           onValueChange={(v) =>
             updateInstance(serviceId, instanceId, { useRemote: v })

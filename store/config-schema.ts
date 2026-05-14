@@ -9,7 +9,7 @@ import type {
   WakeOnLanDevice,
   WidgetSlot,
 } from "@/store/config-store";
-import type { NotificationSettings } from "@/store/notifications-store";
+import type { NotificationSettings } from "@/store/config-store";
 
 const SERVICE_ID_SET: ReadonlySet<string> = new Set(SERVICE_IDS);
 const WIDGET_ID_SET: ReadonlySet<string> = new Set(DASHBOARD_WIDGET_IDS);

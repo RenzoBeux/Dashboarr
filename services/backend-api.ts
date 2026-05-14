@@ -1,6 +1,5 @@
 import { useBackendStore } from "@/store/backend-store";
 import { useConfigStore } from "@/store/config-store";
-import { useNotificationStore } from "@/store/notifications-store";
 import { SERVICE_IDS } from "@/lib/constants";
 
 const DEFAULT_TIMEOUT = 10000;
@@ -120,7 +119,6 @@ export function testPush(): Promise<void> {
  */
 export function pushConfigSnapshot(): Promise<void> {
   const configState = useConfigStore.getState();
-  const notificationState = useNotificationStore.getState();
 
   const instances = SERVICE_IDS.flatMap((kind) => {
     const list = configState.serviceInstances[kind] ?? [];
@@ -146,7 +144,7 @@ export function pushConfigSnapshot(): Promise<void> {
   });
 
   const { enabled, torrentCompleted, radarrDownloaded, sonarrDownloaded, serviceOffline, overseerrNewRequest } =
-    notificationState;
+    configState.notificationSettings;
 
   return request<void>("/config", {
     method: "PUT",
