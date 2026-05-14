@@ -195,6 +195,11 @@ async function main() {
   }
 
   // 2. Archive — Release config, generic iOS device.
+  // `DEVELOPMENT_TEAM` + `CODE_SIGN_STYLE=Automatic` are passed as build settings because
+  // `expo prebuild --clean` regenerates the Xcode project without a team set; without
+  // these, archive fails with "Signing for 'Dashboarr' requires a development team."
+  // Setting them here (rather than in a config plugin) keeps the team id in one place
+  // and survives every prebuild.
   log("\nStep 2/4: archive");
   if (fs.existsSync(ARCHIVE_PATH)) {
     fs.rmSync(ARCHIVE_PATH, { recursive: true, force: true });
@@ -206,6 +211,12 @@ async function main() {
     "-sdk", "iphoneos",
     "-destination", "generic/platform=iOS",
     "-archivePath", ARCHIVE_PATH,
+    // Lets xcodebuild contact Apple to create / download the Distribution
+    // provisioning profile for com.dashboarr.app on demand. Without this,
+    // automatic signing refuses to generate a missing profile in CI/headless.
+    "-allowProvisioningUpdates",
+    `DEVELOPMENT_TEAM=${cfg.teamId}`,
+    "CODE_SIGN_STYLE=Automatic",
     "archive",
   ]);
 
@@ -220,6 +231,9 @@ async function main() {
     "-archivePath", ARCHIVE_PATH,
     "-exportPath", IPA_DIR,
     "-exportOptionsPlist", EXPORT_OPTIONS_PATH,
+    // Same reason as archive step: allow on-demand profile fetch/creation
+    // for the App Store Distribution profile.
+    "-allowProvisioningUpdates",
   ]);
 
   const ipaFiles = fs.readdirSync(IPA_DIR).filter((f) => f.endsWith(".ipa"));
