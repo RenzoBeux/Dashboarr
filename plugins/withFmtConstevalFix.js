@@ -11,14 +11,16 @@ const path = require("path");
 // upstream in react-native#55601 and expo#44229. Maintainers say the fmt bump
 // will land in RN 0.83.
 //
-// Fix: compile the fmt pod (and only the fmt pod) against the C++17 language
-// standard. fmt's own header (base.h) gates consteval on FMT_HAS_FEATURE(
-// cxx_consteval) — under C++17 that feature isn't advertised, so FMT_CONSTEVAL
-// collapses to empty and the buggy code path is never instantiated. This is
-// the canonical workaround published by the fmt maintainers and adopted across
-// the React Native community. It changes only the fmt pod; the rest of the
-// project stays on its configured C++ standard. Drop this plugin when RN ships
-// a fmt version that's clean on Apple Clang 21.
+// Fix: compile the fmt AND RCT-Folly pods against the C++17 language standard,
+// and define FMT_USE_CONSTEVAL=0 on both. RCT-Folly includes fmt headers, so
+// patching only fmt leaves Folly pulling in the consteval-marked constructor
+// when it's compiled as C++20 — same error, different translation unit. The
+// belt-and-suspenders FMT_USE_CONSTEVAL=0 forces FMT_CONSTEVAL to expand to
+// empty even if some build path slips through with C++20. This is the exact
+// verbatim snippet from software-mansion/react-native-executorch#1081, which
+// is the one community-tested combination known to work end-to-end on RN 0.81
+// + Xcode 26.4. Drop this plugin when RN ships a fmt version that's clean on
+// Apple Clang 21 (tracked for RN 0.83 per expo#44229).
 //
 // The patch MUST run at the very end of the Podfile's post_install block. RN's
 // own post_install (called via `react_native_post_install` or
@@ -34,9 +36,13 @@ const MARKER = "# fmt-consteval-fix";
 const PATCH = `
   ${MARKER}
   installer.pods_project.targets.each do |target|
-    if target.name == 'fmt'
+    if target.name == 'fmt' || target.name == 'RCT-Folly'
       target.build_configurations.each do |config|
         config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('FMT_USE_CONSTEVAL=0')
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
+        end
       end
     end
   end
