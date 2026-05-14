@@ -22,7 +22,9 @@
     "bump:major": "pnpm version major -m \"chore: release v%s\"",
     "build:android:prod": "expo prebuild --platform android --clean && node -e \"require('fs').copyFileSync(require('path').join(require('os').homedir(),'.android-keystores','dashboarr-release.keystore'),'android/app/dashboarr-release.keystore')\" && cd android && gradlew bundleRelease assembleRelease",
     "release:android:apk": "node scripts/release-android-apk.js",
-    "release:android": "pnpm build:android:prod && pnpm release:android:apk"
+    "release:android": "pnpm build:android:prod && pnpm release:android:apk",
+    "build:ios:prod": "node scripts/release-ios.js --no-upload",
+    "release:ios": "node scripts/release-ios.js"
   },
   "dependencies": {
     "@callstack/liquid-glass": "^0.7.1",
