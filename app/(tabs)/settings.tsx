@@ -919,7 +919,12 @@ function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    const testUrl = config.useRemote ? remoteUrl : localUrl;
+    const rawTestUrl = config.useRemote ? remoteUrl : localUrl;
+    const testUrl = normalizeServiceUrl(rawTestUrl);
+    if (testUrl !== rawTestUrl) {
+      if (config.useRemote) setRemoteUrl(testUrl);
+      else setLocalUrl(testUrl);
+    }
     const responseTime = await pingService(serviceId, testUrl || undefined, instanceId);
     setTesting(false);
 
