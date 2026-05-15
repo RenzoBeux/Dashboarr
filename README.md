@@ -17,6 +17,7 @@
   <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app"><img src="https://img.shields.io/badge/Android-Google_Play-3DDC84?logo=android&logoColor=white" alt="Android — Google Play" /></a>
   <a href="https://apps.apple.com/us/app/dashboarr/id6762170117"><img src="https://img.shields.io/badge/iOS-App_Store-black?logo=apple" alt="iOS — App Store" /></a>
   <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest"><img src="https://img.shields.io/github/v/release/RenzoBeux/Dashboarr?label=APK&logo=github&color=24292e" alt="Direct APK download" /></a>
+  <a href="https://ko-fi.com/renzobeux"><img src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=ko-fi&logoColor=white" alt="Support on Ko-fi" /></a>
 </p>
 
 ---
@@ -204,6 +205,14 @@ Contributions are welcome! Feel free to open issues and pull requests.
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## Support Development
+
+Dashboarr is free and open source under GPL-3.0. If you find it useful, you can support continued development on Ko-fi:
+
+<a href="https://ko-fi.com/renzobeux"><img src="https://img.shields.io/badge/Ko--fi-Support%20on%20Ko--fi-FF5E5B?logo=ko-fi&logoColor=white&style=for-the-badge" alt="Support on Ko-fi" height="40" /></a>
+
+Every coffee helps cover Apple Developer fees and time spent adding new services!
 
 ## License
 

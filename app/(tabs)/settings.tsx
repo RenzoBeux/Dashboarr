@@ -18,6 +18,7 @@ import {
   ArrowDown,
   Copy,
   Bug,
+  Heart,
 } from "lucide-react-native";
 import GithubLogo from "@/assets/services/github.svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -526,6 +527,12 @@ export default function SettingsScreen() {
           label="Report an issue"
           subtitle="Open a new issue on GitHub"
           onPress={() => void Linking.openURL(buildIssueUrl())}
+        />
+        <SettingsRow
+          icon={Heart}
+          label="Support development"
+          subtitle="Buy me a coffee on Ko-fi"
+          onPress={() => void Linking.openURL("https://ko-fi.com/renzobeux")}
         />
       </SettingsGroup>
 
