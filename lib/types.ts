@@ -156,6 +156,92 @@ export interface SabHistory {
   noofslots: number;
 }
 
+// --- NZBGet ---
+// NZBGet's JSON-RPC returns 64-bit byte counts as Lo/Hi pairs. Use
+// combineHiLo() from lib/utils.ts to reassemble.
+
+// Status strings the queue ("listgroups") returns. `Status` is what NZBGet
+// actually emits — see https://nzbget.net/api/listgroups
+export type NzbgetGroupStatus =
+  | "QUEUED"
+  | "PAUSED"
+  | "DOWNLOADING"
+  | "FETCHING"
+  | "PARSING"
+  | "REPAIRING"
+  | "UNPACKING"
+  | "MOVING"
+  | "VERIFYING"
+  | "RENAMING"
+  | "DELETING"
+  | "PP_QUEUED";
+
+export interface NzbgetGroup {
+  NZBID: number;
+  NZBName: string;
+  Kind: "NZB" | "URL";
+  Category: string;
+  Status: NzbgetGroupStatus;
+  Priority: number;
+  Health: number;
+  // Sizes in bytes via Lo/Hi split.
+  FileSizeLo: number;
+  FileSizeHi: number;
+  RemainingSizeLo: number;
+  RemainingSizeHi: number;
+  DownloadedSizeLo: number;
+  DownloadedSizeHi: number;
+  // Per-group download rate is the queue average for that group; the overall
+  // rate lives in the `status` call.
+  DownloadRate?: number;
+}
+
+export type NzbgetHistoryStatus =
+  // Top-level status from history items. NZBGet's actual `Status` field is a
+  // composite like "SUCCESS/ALL", "FAILURE/PAR", "WARNING/HEALTH" etc., but
+  // the prefix before the slash is enough for our completion classification.
+  | "SUCCESS"
+  | "FAILURE"
+  | "WARNING"
+  | "DELETED"
+  | "NONE";
+
+export interface NzbgetHistoryItem {
+  NZBID: number;
+  NZBName: string;
+  Category: string;
+  Status: string; // raw composite "SUCCESS/ALL" etc.
+  HistoryTime: number; // unix seconds
+  FileSizeLo: number;
+  FileSizeHi: number;
+  DownloadedSizeLo: number;
+  DownloadedSizeHi: number;
+  ParStatus?: string;
+  ScriptStatus?: string;
+  Kind?: string;
+}
+
+export interface NzbgetStatus {
+  RemainingSizeLo: number;
+  RemainingSizeHi: number;
+  DownloadRate: number; // bytes/sec
+  AverageDownloadRate: number;
+  DownloadLimit: number; // bytes/sec, 0 = unlimited
+  ServerStandBy: boolean;
+  DownloadPaused: boolean;
+  Download2Paused: boolean;
+  ServerPaused: boolean;
+  PostPaused: boolean;
+  ScanPaused: boolean;
+  FreeDiskSpaceLo: number;
+  FreeDiskSpaceHi: number;
+  UpTimeSec: number;
+  DownloadTimeSec: number;
+  ThreadCount: number;
+  ResumeTime: number;
+  FeedActive: boolean;
+}
+
 // Subset of qBittorrent /app/preferences. All limits are bytes/s; 0 = unlimited.
 export interface QBSpeedPreferences {
   dl_limit: number;

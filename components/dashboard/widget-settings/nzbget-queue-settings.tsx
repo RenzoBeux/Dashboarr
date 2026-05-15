@@ -5,10 +5,10 @@ import {
 } from "@/components/dashboard/widget-settings/usenet-queue-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 
-export const SABNZBD_QUEUE_DEFAULT_SETTINGS: UsenetQueueSettingsValue =
+export const NZBGET_QUEUE_DEFAULT_SETTINGS: UsenetQueueSettingsValue =
   USENET_QUEUE_DEFAULT_SETTINGS;
-export type SabnzbdQueueSettingsValue = UsenetQueueSettingsValue;
+export type NzbgetQueueSettingsValue = UsenetQueueSettingsValue;
 
-export function SabnzbdQueueSettings(props: WidgetSettingsComponentProps) {
-  return <UsenetQueueSettings {...props} serviceId="sabnzbd" />;
+export function NzbgetQueueSettings(props: WidgetSettingsComponentProps) {
+  return <UsenetQueueSettings {...props} serviceId="nzbget" />;
 }

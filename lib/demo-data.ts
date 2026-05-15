@@ -247,6 +247,113 @@ const DEMO_SAB_HISTORY = {
 
 const DEMO_SAB_VERSION = { version: "4.3.3" };
 
+// --- NZBGet ---
+// 64-bit byte counts split across Lo/Hi pairs as the real API does. The split
+// boundary is 2^32: bytes >= 2^32 set Hi=1+; tiny demo files all stay Lo-only.
+
+const DEMO_NZBGET_GROUPS = [
+  {
+    NZBID: 101,
+    NZBName: "Demo.Documentary.S01E04.1080p.WEB.x264-DEMO",
+    Kind: "NZB",
+    Category: "movies",
+    Status: "DOWNLOADING",
+    Priority: 0,
+    Health: 1000,
+    FileSizeLo: 2_500_000_000,
+    FileSizeHi: 0,
+    RemainingSizeLo: 875_000_000,
+    RemainingSizeHi: 0,
+    DownloadedSizeLo: 1_625_000_000,
+    DownloadedSizeHi: 0,
+    DownloadRate: 12_500_000,
+  },
+  {
+    NZBID: 102,
+    NZBName: "Demo.Album.FLAC.WEB-DEMO",
+    Kind: "NZB",
+    Category: "music",
+    Status: "PAUSED",
+    Priority: 0,
+    Health: 1000,
+    FileSizeLo: 480_000_000,
+    FileSizeHi: 0,
+    RemainingSizeLo: 320_000_000,
+    RemainingSizeHi: 0,
+    DownloadedSizeLo: 160_000_000,
+    DownloadedSizeHi: 0,
+    DownloadRate: 0,
+  },
+  {
+    NZBID: 103,
+    NZBName: "Demo.Software.ISO.x86_64.WEB-DEMO",
+    Kind: "NZB",
+    Category: "",
+    Status: "QUEUED",
+    Priority: 0,
+    Health: 1000,
+    FileSizeLo: 4_700_000_000,
+    FileSizeHi: 0,
+    RemainingSizeLo: 4_700_000_000,
+    RemainingSizeHi: 0,
+    DownloadedSizeLo: 0,
+    DownloadedSizeHi: 0,
+    DownloadRate: 0,
+  },
+];
+
+const DEMO_NZBGET_HISTORY = [
+  {
+    NZBID: 200,
+    NZBName: "Demo.Show.S02E03.720p.WEB.x264-DEMO",
+    Category: "tv",
+    Status: "SUCCESS/ALL",
+    HistoryTime: NOW_TS - 86400,
+    FileSizeLo: 1_350_000_000,
+    FileSizeHi: 0,
+    DownloadedSizeLo: 1_350_000_000,
+    DownloadedSizeHi: 0,
+    ParStatus: "SUCCESS",
+    ScriptStatus: "SUCCESS",
+    Kind: "NZB",
+  },
+  {
+    NZBID: 201,
+    NZBName: "Demo.Movie.2024.2160p.WEB.x265-DEMO",
+    Category: "movies",
+    Status: "FAILURE/PAR",
+    HistoryTime: NOW_TS - 172800,
+    FileSizeLo: 0,
+    FileSizeHi: 5,
+    DownloadedSizeLo: 0,
+    DownloadedSizeHi: 4,
+    ParStatus: "FAILURE",
+    ScriptStatus: "NONE",
+    Kind: "NZB",
+  },
+];
+
+const DEMO_NZBGET_STATUS = {
+  RemainingSizeLo: 5_895_000_000,
+  RemainingSizeHi: 0,
+  DownloadRate: 12_500_000,
+  AverageDownloadRate: 11_800_000,
+  DownloadLimit: 0,
+  ServerStandBy: false,
+  DownloadPaused: false,
+  Download2Paused: false,
+  ServerPaused: false,
+  PostPaused: false,
+  ScanPaused: false,
+  FreeDiskSpaceLo: 0,
+  FreeDiskSpaceHi: 1, // ~4 GB free in the demo
+  UpTimeSec: 86400,
+  DownloadTimeSec: 36000,
+  ThreadCount: 8,
+  ResumeTime: 0,
+  FeedActive: false,
+};
+
 // --- Radarr ---
 
 function makeMovie(id: number, title: string, year: number, tmdbId: number, hasFile: boolean) {
@@ -810,6 +917,7 @@ export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
   params?: Record<string, string | number | boolean>,
+  body?: string,
 ): unknown {
   const basePath = path.split("?")[0]!;
   const normalized = basePath.replace(/\/\d+(\.\d+)*$/, "/:id");
@@ -894,6 +1002,31 @@ export function getDemoResponse(
       if (mode === "version") return DEMO_SAB_VERSION;
       // pause/resume/addurl all return { status: true }
       return { status: true };
+    }
+    case "nzbget": {
+      // NZBGet dispatches off the JSON-RPC method name carried in the request
+      // body, not the path. Wrap the result in the JSON-RPC envelope shape so
+      // the api layer's `result` unwrap sees what it expects.
+      let method = "version";
+      if (body) {
+        try {
+          const parsed = JSON.parse(body) as { method?: string };
+          if (typeof parsed.method === "string") method = parsed.method;
+        } catch {
+          // fall through to version
+        }
+      }
+      const result =
+        method === "listgroups"
+          ? DEMO_NZBGET_GROUPS
+          : method === "history"
+            ? DEMO_NZBGET_HISTORY
+            : method === "status"
+              ? DEMO_NZBGET_STATUS
+              : method === "version"
+                ? "21.1"
+                : true; // pausedownload, resumedownload, editqueue, append all return bool
+      return { version: "1.1", result };
     }
     case "jellyfin": {
       if (basePath === "/System/Info/Public") return { Version: "10.8.13", ServerName: "Demo Jellyfin" };

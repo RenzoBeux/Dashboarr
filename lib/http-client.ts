@@ -114,7 +114,11 @@ export async function serviceRequest<T>(
 
   if (store.demoMode) {
     await new Promise((r) => setTimeout(r, 80 + Math.random() * 120));
-    return (getDemoResponse(serviceId, path, params) ?? undefined) as T;
+    // NZBGet dispatches off the JSON-RPC method name in the request body, not
+    // the path or query params — pass body through so the demo router can read
+    // it. Other services ignore the third arg.
+    const body = typeof fetchOptions.body === "string" ? fetchOptions.body : undefined;
+    return (getDemoResponse(serviceId, path, params, body) ?? undefined) as T;
   }
 
   const targetId = instanceId ?? store.getActiveInstanceId(serviceId);
@@ -167,6 +171,15 @@ export async function serviceRequest<T>(
       const encoded = btoa(`${secrets.username}:${secrets.password}`);
       headers.set("Authorization", `Basic ${encoded}`);
     }
+  } else if (serviceId === "nzbget") {
+    // NZBGet uses HTTP Basic Auth with the Control username/password from
+    // nzbget.conf. Every method call is JSON-RPC over POST, so default the
+    // content type here and let services/nzbget-api.ts pass the JSON body.
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+    headers.set("Content-Type", "application/json");
   } else if (serviceId === "plex") {
     if (secrets.apiKey) {
       headers.set("X-Plex-Token", secrets.apiKey);
@@ -266,6 +279,12 @@ export async function pingService(
       const encoded = btoa(`${secrets.username}:${secrets.password}`);
       headers.set("Authorization", `Basic ${encoded}`);
     }
+  } else if (serviceId === "nzbget") {
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+    headers.set("Content-Type", "application/json");
   } else if (serviceId === "sabnzbd") {
     // apikey already in query params
   } else if (serviceId !== "qbittorrent") {
@@ -278,7 +297,17 @@ export async function pingService(
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, { method: "GET", headers, signal: controller.signal });
+    // NZBGet's ping is a JSON-RPC `version` POST, not a GET — every NZBGet
+    // method (including version) lives at /jsonrpc and rejects GET.
+    const isNzbget = serviceId === "nzbget";
+    const response = await fetch(url, {
+      method: isNzbget ? "POST" : "GET",
+      body: isNzbget
+        ? JSON.stringify({ version: "1.1", method: "version", params: [] })
+        : undefined,
+      headers,
+      signal: controller.signal,
+    });
     clearTimeout(timeoutId);
     // Any HTTP response (even 4xx) means the service is reachable
     return response.status < 500 ? Date.now() - start : null;

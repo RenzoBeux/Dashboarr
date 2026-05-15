@@ -265,6 +265,8 @@ push), so attribution there is a no-op until those categories are added.
 | Service | Webhook? | Polling? | Notes |
 |---|---|---|---|
 | **qBittorrent** | ❌ | ✅ 15s | "downloading → not downloading" transition; torrent hash dedupe |
+| **SABnzbd** | ❌ | ✅ 30s | New history entry with `Completed` status; `nzo_id` dedupe; skips `radarr`/`sonarr` categories |
+| **NZBGet** | ❌ | ✅ 30s | New history entry with `SUCCESS`/`WARNING` status; `NZBID` dedupe; skips `radarr`/`sonarr` categories |
 | **Radarr** | ✅ (preferred) | ✅ 30s | Webhook for `Download` event; poll diffs the queue |
 | **Sonarr** | ✅ (preferred) | ✅ 30s | Same as Radarr |
 | **Seerr** | ✅ (preferred) | ✅ 60s | Webhook for `MEDIA_PENDING`; poll diffs pending requests |

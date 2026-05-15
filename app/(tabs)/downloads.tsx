@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
-import { SabnzbdDownloadsView } from "@/components/downloads/sabnzbd-downloads-view";
+import { UsenetDownloadsView } from "@/components/downloads/usenet-downloads-view";
+import { sabnzbdAdapter } from "@/lib/usenet-adapters/sabnzbd";
+import { nzbgetAdapter } from "@/lib/usenet-adapters/nzbget";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast, toastError } from "@/components/ui/toast";
@@ -108,83 +110,105 @@ function getTorrentBadgeVariant(state: TorrentState): "downloading" | "seeding" 
   return "default";
 }
 
-type DownloadClient = "qbittorrent" | "sabnzbd";
+type DownloadClient = "qbittorrent" | "sabnzbd" | "nzbget";
 
-// Top-level switcher for the Downloads tab. When both qBittorrent and SAB are
-// enabled the user picks via a segmented control; otherwise the available
+// Top-level switcher for the Downloads tab. When more than one download client
+// is enabled the user picks via a segmented control; otherwise the available
 // client is rendered directly. qBittorrent's logic stays inlined here so the
 // virtualized FlatList + server-side pagination + sort store all share the
 // screen's state.
 export default function DownloadsScreen() {
   const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
   const sabEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
+  const nzbgetEnabled = useConfigStore((s) => s.services.nzbget?.enabled ?? false);
+
+  const enabledClients: DownloadClient[] = [];
+  if (qbEnabled) enabledClients.push("qbittorrent");
+  if (sabEnabled) enabledClients.push("sabnzbd");
+  if (nzbgetEnabled) enabledClients.push("nzbget");
+
   const [client, setClient] = useState<DownloadClient>(
-    qbEnabled ? "qbittorrent" : "sabnzbd",
+    enabledClients[0] ?? "qbittorrent",
   );
 
-  if (!qbEnabled && !sabEnabled) {
+  if (enabledClients.length === 0) {
     return (
       <ScreenWrapper>
         <EmptyState
           title="No download client configured"
-          message="Enable qBittorrent or SABnzbd in Settings to manage downloads."
+          message="Enable qBittorrent, SABnzbd, or NZBGet in Settings to manage downloads."
         />
       </ScreenWrapper>
     );
   }
 
-  const showSegmented = qbEnabled && sabEnabled;
+  const showSegmented = enabledClients.length > 1;
   const activeClient: DownloadClient = showSegmented
-    ? client
-    : qbEnabled
-      ? "qbittorrent"
-      : "sabnzbd";
+    ? enabledClients.includes(client)
+      ? client
+      : enabledClients[0]
+    : enabledClients[0];
+
+  const segmentedControl = showSegmented ? (
+    <DownloadsSegmentedControl
+      value={activeClient}
+      enabled={enabledClients}
+      onChange={setClient}
+    />
+  ) : null;
 
   if (activeClient === "sabnzbd") {
     return (
       <ScreenWrapper>
-        <SabnzbdDownloadsView
+        <UsenetDownloadsView
+          adapter={sabnzbdAdapter}
           showHeader={!showSegmented}
-          segmentedControl={
-            showSegmented ? (
-              <DownloadsSegmentedControl value={activeClient} onChange={setClient} />
-            ) : null
-          }
+          segmentedControl={segmentedControl}
         />
       </ScreenWrapper>
     );
   }
 
-  return (
-    <QbittorrentDownloadsScreen
-      segmentedControl={
-        showSegmented ? (
-          <DownloadsSegmentedControl value={activeClient} onChange={setClient} />
-        ) : null
-      }
-    />
-  );
+  if (activeClient === "nzbget") {
+    return (
+      <ScreenWrapper>
+        <UsenetDownloadsView
+          adapter={nzbgetAdapter}
+          showHeader={!showSegmented}
+          segmentedControl={segmentedControl}
+        />
+      </ScreenWrapper>
+    );
+  }
+
+  return <QbittorrentDownloadsScreen segmentedControl={segmentedControl} />;
 }
+
+const SEGMENT_LABELS: Record<DownloadClient, string> = {
+  qbittorrent: "qBittorrent",
+  sabnzbd: "SABnzbd",
+  nzbget: "NZBGet",
+};
 
 function DownloadsSegmentedControl({
   value,
+  enabled,
   onChange,
 }: {
   value: DownloadClient;
+  enabled: DownloadClient[];
   onChange: (next: DownloadClient) => void;
 }) {
   return (
     <View className="flex-row bg-surface-light rounded-2xl p-1 mb-4 mt-2 mx-4">
-      <Segment
-        label="qBittorrent"
-        active={value === "qbittorrent"}
-        onPress={() => onChange("qbittorrent")}
-      />
-      <Segment
-        label="SABnzbd"
-        active={value === "sabnzbd"}
-        onPress={() => onChange("sabnzbd")}
-      />
+      {enabled.map((c) => (
+        <Segment
+          key={c}
+          label={SEGMENT_LABELS[c]}
+          active={value === c}
+          onPress={() => onChange(c)}
+        />
+      ))}
     </View>
   );
 }

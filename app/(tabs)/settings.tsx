@@ -183,6 +183,7 @@ export default function SettingsScreen() {
   const notifEnabled = useConfigStore((s) => s.notificationSettings.enabled);
   const torrentCompleted = useConfigStore((s) => s.notificationSettings.torrentCompleted);
   const sabnzbdCompleted = useConfigStore((s) => s.notificationSettings.sabnzbdCompleted);
+  const nzbgetCompleted = useConfigStore((s) => s.notificationSettings.nzbgetCompleted);
   const radarrDownloaded = useConfigStore((s) => s.notificationSettings.radarrDownloaded);
   const sonarrDownloaded = useConfigStore((s) => s.notificationSettings.sonarrDownloaded);
   const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
@@ -396,9 +397,16 @@ export default function SettingsScreen() {
         ) : null}
         {notifEnabled ? (
           <SettingsToggleRow
-            label="NZB completed"
+            label="SABnzbd completed"
             value={sabnzbdCompleted}
             onValueChange={(v) => setNotifSetting("sabnzbdCompleted", v)}
+          />
+        ) : null}
+        {notifEnabled ? (
+          <SettingsToggleRow
+            label="NZBGet completed"
+            value={nzbgetCompleted}
+            onValueChange={(v) => setNotifSetting("nzbgetCompleted", v)}
           />
         ) : null}
         {notifEnabled ? (
@@ -802,7 +810,10 @@ function ServiceEditor({
   const [testing, setTesting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const isQB = serviceId === "qbittorrent" || serviceId === "glances";
+  const usesBasicAuth =
+    serviceId === "qbittorrent" ||
+    serviceId === "glances" ||
+    serviceId === "nzbget";
 
   const headersJson = JSON.stringify(customHeaders);
   const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
@@ -812,7 +823,7 @@ function ServiceEditor({
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
-    (isQB
+    (usesBasicAuth
       ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
       : apiKey !== (secrets.apiKey ?? ""));
 
@@ -893,7 +904,7 @@ function ServiceEditor({
       localUrl,
       remoteUrl,
     });
-    if (isQB) {
+    if (usesBasicAuth) {
       await updateInstanceSecrets(instanceId, {
         username,
         password,
@@ -903,8 +914,8 @@ function ServiceEditor({
       await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
     }
     // Drop the cached qBittorrent SID so the next request re-logs in with the
-    // new URL or credentials. (glances reuses isQB for its u/p form but has
-    // no session to clear.)
+    // new URL or credentials. (glances and nzbget reuse the basic-auth form
+    // but have no session to clear.)
     if (serviceId === "qbittorrent") {
       await qbClearSession(instanceId);
     }
@@ -1000,7 +1011,7 @@ function ServiceEditor({
         <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
           Authentication
         </Text>
-        {isQB ? (
+        {usesBasicAuth ? (
           <>
             <TextInput
               label="Username"

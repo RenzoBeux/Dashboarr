@@ -20,6 +20,7 @@ import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
 import { ServiceHealthCard } from "@/components/dashboard/service-health-card";
 import { DownloadCard } from "@/components/dashboard/download-card";
 import { SabnzbdQueueCard } from "@/components/dashboard/sabnzbd-queue-card";
+import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
@@ -54,6 +55,11 @@ import {
   SABNZBD_QUEUE_DEFAULT_SETTINGS,
   type SabnzbdQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/sabnzbd-queue-settings";
+import {
+  NzbgetQueueSettings,
+  NZBGET_QUEUE_DEFAULT_SETTINGS,
+  type NzbgetQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/nzbget-queue-settings";
 import {
   PlexNowPlayingSettings,
   PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
@@ -197,6 +203,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: SabnzbdQueueSettings,
     defaultSettings: SABNZBD_QUEUE_DEFAULT_SETTINGS,
   },
+  "nzbget-queue": {
+    id: "nzbget-queue",
+    label: "NZBGet Queue",
+    description: "Top active Usenet downloads",
+    icon: Newspaper,
+    service: "nzbget",
+    component: NzbgetQueueCard,
+    settingsComponent: NzbgetQueueSettings,
+    defaultSettings: NZBGET_QUEUE_DEFAULT_SETTINGS,
+  },
   "radarr-queue": {
     id: "radarr-queue",
     label: "Radarr Queue",
@@ -301,6 +317,7 @@ export type {
   CalendarSettingsValue,
   DownloadsSettingsValue,
   SabnzbdQueueSettingsValue,
+  NzbgetQueueSettingsValue,
   PlexNowPlayingSettingsValue,
   JellyfinNowPlayingSettingsValue,
   TautulliActivitySettingsValue,

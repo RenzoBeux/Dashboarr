@@ -14,6 +14,7 @@ import type { ServiceId } from "@/lib/constants";
 export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   qbittorrent: "/(tabs)/downloads",
   sabnzbd: "/(tabs)/downloads",
+  nzbget: "/(tabs)/downloads",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
   overseerr: "/(tabs)/requests",

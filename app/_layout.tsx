@@ -57,6 +57,12 @@ function asSabNzoId(value: unknown): string | null {
   return typeof value === "string" && SAB_NZO_ID.test(value) ? value : null;
 }
 
+// NZBGet's NZBID is a positive integer; accept either number or string forms
+// from the notification payload and normalize to string for the route.
+function asNzbgetId(value: unknown): string | null {
+  return asPositiveIntId(value);
+}
+
 function NotificationRouter() {
   const router = useRouter();
 
@@ -83,6 +89,11 @@ function NotificationRouter() {
         case "sabnzbd": {
           const nzoId = asSabNzoId(data.nzoId);
           if (nzoId) router.push(`/sab/${nzoId}`);
+          break;
+        }
+        case "nzbget": {
+          const nzbId = asNzbgetId(data.nzbId);
+          if (nzbId) router.push(`/nzb/${nzbId}`);
           break;
         }
         case "overseerr":
