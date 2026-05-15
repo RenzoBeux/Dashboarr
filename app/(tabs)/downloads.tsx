@@ -18,7 +18,7 @@ import { nzbgetAdapter } from "@/lib/usenet-adapters/nzbget";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast, toastError } from "@/components/ui/toast";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap, AlertCircle } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -127,9 +127,31 @@ export default function DownloadsScreen() {
   if (sabEnabled) enabledClients.push("sabnzbd");
   if (nzbgetEnabled) enabledClients.push("nzbget");
 
+  // `?client=...` lets the Services tab (and dashboard Status widget) deep-link
+  // straight to the matching segment instead of always landing on whichever
+  // client was opened first.
+  const { client: clientParam } = useLocalSearchParams<{ client?: string }>();
+  const paramClient =
+    clientParam === "qbittorrent" ||
+    clientParam === "sabnzbd" ||
+    clientParam === "nzbget"
+      ? clientParam
+      : undefined;
+
   const [client, setClient] = useState<DownloadClient>(
-    enabledClients[0] ?? "qbittorrent",
+    paramClient && enabledClients.includes(paramClient)
+      ? paramClient
+      : enabledClients[0] ?? "qbittorrent",
   );
+
+  // Re-select when the deep-link param changes (e.g. user is already on this
+  // tab and taps a different download-client tile in the Services tab).
+  useEffect(() => {
+    if (paramClient && enabledClients.includes(paramClient) && paramClient !== client) {
+      setClient(paramClient);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramClient]);
 
   if (enabledClients.length === 0) {
     return (
