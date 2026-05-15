@@ -21,6 +21,14 @@
 
 ---
 
+## Contributors
+
+Thanks to everyone who has contributed to Dashboarr!
+
+<a href="https://github.com/RenzoBeux/Dashboarr/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=RenzoBeux/Dashboarr" alt="Contributors" />
+</a>
+
 ## What is Dashboarr?
 
 Dashboarr is a native mobile app (Android & iOS) that connects directly to your self-hosted *arr stack and media services. No backend server required — the app talks to each service's REST API using your API keys.
