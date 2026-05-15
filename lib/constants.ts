@@ -1,6 +1,7 @@
 export const SERVICE_IDS = [
   "qbittorrent",
   "sabnzbd",
+  "nzbget",
   "radarr",
   "sonarr",
   "overseerr",
@@ -28,6 +29,10 @@ export const SERVICE_DEFAULTS: Record<
   // pingPath combined with mode=version (injected as a param in pingService)
   // gives /api?mode=version&apikey=... at request time.
   sabnzbd: { name: "SABnzbd", defaultPort: 8080, apiBasePath: "/api", pingPath: "" },
+  // NZBGet is JSON-RPC: every method is POST /jsonrpc with a JSON body. The
+  // empty pingPath combined with the version method (issued as a POST in
+  // pingService) gives /jsonrpc at request time.
+  nzbget: { name: "NZBGet", defaultPort: 6789, apiBasePath: "/jsonrpc", pingPath: "" },
   radarr: { name: "Radarr", defaultPort: 7878, apiBasePath: "/api/v3", pingPath: "/system/status" },
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
   overseerr: { name: "Seerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
@@ -53,6 +58,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "service-health",
   "downloads",
   "sabnzbd-queue",
+  "nzbget-queue",
   "radarr-queue",
   "calendar",
   "tautulli-activity",

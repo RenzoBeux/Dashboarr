@@ -131,6 +131,7 @@ export interface NotificationSettings {
   enabled: boolean;
   torrentCompleted: boolean;
   sabnzbdCompleted: boolean;
+  nzbgetCompleted: boolean;
   radarrDownloaded: boolean;
   sonarrDownloaded: boolean;
   serviceOffline: boolean;
@@ -141,6 +142,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
   torrentCompleted: true,
   sabnzbdCompleted: true,
+  nzbgetCompleted: true,
   radarrDownloaded: true,
   sonarrDownloaded: true,
   serviceOffline: true,

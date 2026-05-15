@@ -31,6 +31,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 |---|---|
 | **qBittorrent** | View queue, pause/resume/delete torrents, speed stats, transfer progress |
 | **SABnzbd** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
+| **NZBGet** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |
 | **Sonarr** | Search & add shows, episode monitoring, airing calendar/schedule |
 | **Seerr** | Browse & search media, request movies/shows, approve/decline requests |
@@ -149,13 +150,14 @@ app/                  # Expo Router file-based routing
   series/             # Series detail & search screens
   torrent/            # Torrent detail screen
   sab/                # SABnzbd job detail screens
+  nzb/                # NZBGet job detail screens
 backend/
   dashboarr-backend/  # Self-hosted companion server (Fastify + SQLite)
 components/
   ui/                 # Reusable UI primitives (cards, buttons, inputs, toggles)
   common/             # Shared layout components (screen wrapper, pull-to-refresh)
   dashboard/          # Dashboard card components
-  downloads/          # Unified downloads list (qBittorrent + SABnzbd)
+  downloads/          # Unified downloads list (qBittorrent + SABnzbd + NZBGet)
   qbittorrent/        # qBittorrent-specific components
   radarr/             # Radarr-specific components
   sonarr/             # Sonarr-specific components

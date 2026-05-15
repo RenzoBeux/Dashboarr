@@ -8,6 +8,7 @@ import { useSonarrQueue } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
+import { useNzbgetHistory } from "@/hooks/use-nzbget";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
@@ -66,6 +67,7 @@ export function NotificationWatchers() {
   const enabled = useConfigStore((s) => s.notificationSettings.enabled);
   const torrentCompleted = useConfigStore((s) => s.notificationSettings.torrentCompleted);
   const sabnzbdCompleted = useConfigStore((s) => s.notificationSettings.sabnzbdCompleted);
+  const nzbgetCompleted = useConfigStore((s) => s.notificationSettings.nzbgetCompleted);
   const radarrDownloaded = useConfigStore((s) => s.notificationSettings.radarrDownloaded);
   const sonarrDownloaded = useConfigStore((s) => s.notificationSettings.sonarrDownloaded);
   const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
@@ -83,6 +85,7 @@ export function NotificationWatchers() {
 
   const qbInstances = useEnabledInstances("qbittorrent");
   const sabInstances = useEnabledInstances("sabnzbd");
+  const nzbgetInstances = useEnabledInstances("nzbget");
   const radarrInstances = useEnabledInstances("radarr");
   const sonarrInstances = useEnabledInstances("sonarr");
   const overseerrInstances = useEnabledInstances("overseerr");
@@ -101,6 +104,13 @@ export function NotificationWatchers() {
           key={inst.id}
           instanceId={inst.id}
           active={!backendActive && hydrated && enabled && sabnzbdCompleted}
+        />
+      ))}
+      {nzbgetInstances.map((inst) => (
+        <NzbgetHistoryWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={!backendActive && hydrated && enabled && nzbgetCompleted}
         />
       ))}
       {radarrInstances.map((inst) => (
@@ -232,6 +242,45 @@ function SabnzbdHistoryWatcher({
     }
     prevSabHistoryIds.current = currentIds;
   }, [sabHistory, active, instanceId]);
+
+  return null;
+}
+
+// --- NZBGet: new history entries appear (success only, per backend diff
+// semantics: SUCCESS and WARNING both count as delivered) ---
+function NzbgetHistoryWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: history } = useNzbgetHistory(20, instanceId);
+  const prevIds = useRef<Set<number> | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      prevIds.current = null;
+      return;
+    }
+    if (!history) return;
+    const prev = prevIds.current;
+    const currentIds = new Set(history.map((h) => h.NZBID));
+    if (prev !== null) {
+      for (const item of history) {
+        if (prev.has(item.NZBID)) continue;
+        const head = item.Status.split("/")[0];
+        if (head !== "SUCCESS" && head !== "WARNING") continue;
+        if (isManagedByArr(item.Category)) continue;
+        sendLocalNotification({
+          title: "Download complete",
+          body: item.NZBName,
+          data: { type: "nzbget", nzbId: String(item.NZBID), instanceId },
+        });
+      }
+    }
+    prevIds.current = currentIds;
+  }, [history, active, instanceId]);
 
   return null;
 }

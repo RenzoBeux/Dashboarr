@@ -3,6 +3,8 @@ import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
 import type { SabHistorySlot } from "../services/sabnzbd.js";
+import type { NzbgetHistoryItem } from "../services/nzbget.js";
+import type { NotificationCategory } from "../types.js";
 import type { RadarrQueueItem } from "../services/radarr.js";
 import type { SonarrQueueItem } from "../services/sonarr.js";
 import type { OverseerrRequest } from "../services/overseerr.js";
@@ -113,11 +115,106 @@ export async function diffQbTorrents(
   }
 }
 
-// ---------------- SABnzbd ----------------
+// ---------------- Usenet (SABnzbd, NZBGet) ----------------
 
-interface SabSnapshot {
+interface UsenetSnapshot {
   ids: string[];
 }
+
+/**
+ * Identifies which fields a Usenet client's history items expose so the
+ * generic completion-diff can pull out the id, name, completion check, and
+ * "managed by an *arr service" check without knowing the concrete shape.
+ */
+interface UsenetDiffSpec<T> {
+  /** Short prefix for the dedupe key (e.g. "sab", "nzbget"). */
+  serviceKey: string;
+  /**
+   * Builds the seen_state key. SAB shipped with `sab:${id}:nzo:history`; this
+   * stays parameterized so we can match that exactly and not re-fire every
+   * history item on backend upgrade.
+   */
+  seenStateKey: (instanceId: string) => string;
+  /** Notification category toggle the user can enable/disable. */
+  notificationCategory: NotificationCategory;
+  /** `data.type` shipped to the device — drives the deep-link router. */
+  payloadType: string;
+  /** `data` field name carrying the per-item id. */
+  payloadIdKey: string;
+  getId: (item: T) => string;
+  getName: (item: T) => string;
+  getCategory: (item: T) => string;
+  isCompleted: (item: T) => boolean;
+}
+
+async function diffUsenetCompletionSet<T>(
+  spec: UsenetDiffSpec<T>,
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  items: T[],
+): Promise<void> {
+  const key = spec.seenStateKey(instanceId);
+  const prev = getState<UsenetSnapshot>(key);
+  const currentIds = items.map((i) => spec.getId(i));
+
+  // Persist first, dispatch after — a crash between snapshot and push must not
+  // re-fire on restart.
+  setState(key, { ids: currentIds });
+
+  if (!prev) return;
+  const prevSet = new Set(prev.ids);
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+
+  for (const item of items) {
+    const id = spec.getId(item);
+    if (prevSet.has(id)) continue;
+    if (!spec.isCompleted(item)) continue;
+    if (isManagedByArr(spec.getCategory(item))) continue;
+
+    await dispatchPush({
+      category: spec.notificationCategory,
+      title: `${prefix}Download complete`,
+      body: spec.getName(item),
+      data: {
+        type: spec.payloadType,
+        [spec.payloadIdKey]: id,
+        instanceId,
+      },
+      dedupeKey: `${spec.serviceKey}:${instanceId}:completed:${id}`,
+    });
+  }
+}
+
+const SAB_DIFF: UsenetDiffSpec<SabHistorySlot> = {
+  serviceKey: "sab",
+  // Pre-refactor key shape — keep verbatim so existing snapshots still match.
+  seenStateKey: (id) => `sab:${id}:nzo:history`,
+  notificationCategory: "sabnzbdCompleted",
+  payloadType: "sabnzbd",
+  payloadIdKey: "nzoId",
+  getId: (s) => s.nzo_id,
+  getName: (s) => s.name,
+  getCategory: (s) => s.category,
+  isCompleted: (s) => s.status === "Completed",
+};
+
+const NZBGET_DIFF: UsenetDiffSpec<NzbgetHistoryItem> = {
+  serviceKey: "nzbget",
+  seenStateKey: (id) => `nzbget:${id}:history`,
+  notificationCategory: "nzbgetCompleted",
+  payloadType: "nzbget",
+  payloadIdKey: "nzbId",
+  getId: (h) => String(h.NZBID),
+  getName: (h) => h.NZBName,
+  getCategory: (h) => h.Category,
+  // History `Status` is "SUCCESS/ALL", "FAILURE/PAR", "WARNING/HEALTH", etc.
+  // SUCCESS and WARNING both mean the file landed; FAILURE/DELETED do not.
+  isCompleted: (h) => {
+    const head = h.Status.split("/")[0];
+    return head === "SUCCESS" || head === "WARNING";
+  },
+};
 
 export async function diffSabHistory(
   instanceId: string,
@@ -125,31 +222,16 @@ export async function diffSabHistory(
   multipleOfKind: boolean,
   slots: SabHistorySlot[],
 ): Promise<void> {
-  const key = `sab:${instanceId}:nzo:history`;
-  const prev = getState<SabSnapshot>(key);
-  const currentIds = slots.map((s) => s.nzo_id);
+  await diffUsenetCompletionSet(SAB_DIFF, instanceId, instanceName, multipleOfKind, slots);
+}
 
-  // Persist first, dispatch after.
-  setState(key, { ids: currentIds });
-
-  if (!prev) return;
-  const prevSet = new Set(prev.ids);
-
-  const prefix = instancePrefix(instanceName, multipleOfKind);
-
-  for (const slot of slots) {
-    if (prevSet.has(slot.nzo_id)) continue;
-    if (slot.status !== "Completed") continue;
-    if (isManagedByArr(slot.category)) continue;
-
-    await dispatchPush({
-      category: "sabnzbdCompleted",
-      title: `${prefix}Download complete`,
-      body: slot.name,
-      data: { type: "sabnzbd", nzoId: slot.nzo_id, instanceId },
-      dedupeKey: `sab:${instanceId}:completed:${slot.nzo_id}`,
-    });
-  }
+export async function diffNzbgetHistory(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  items: NzbgetHistoryItem[],
+): Promise<void> {
+  await diffUsenetCompletionSet(NZBGET_DIFF, instanceId, instanceName, multipleOfKind, items);
 }
 
 // ---------------- Radarr ----------------

@@ -71,6 +71,14 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
+  if (id === "nzbget") {
+    if (config.username && config.password) {
+      const encoded = Buffer.from(`${config.username}:${config.password}`).toString("base64");
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+    headers.set("Content-Type", "application/json");
+    return;
+  }
   if (id === "plex") {
     if (config.apiKey) {
       headers.set("X-Plex-Token", config.apiKey);
@@ -155,7 +163,16 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
   try {
-    const res = await fetch(url, { method: "GET", headers, signal: controller.signal });
+    // NZBGet rejects GET on /jsonrpc — every method (including version) is POST.
+    const isNzbget = config.id === "nzbget";
+    const res = await fetch(url, {
+      method: isNzbget ? "POST" : "GET",
+      body: isNzbget
+        ? JSON.stringify({ version: "1.1", method: "version", params: [] })
+        : undefined,
+      headers,
+      signal: controller.signal,
+    });
     return res.status < 500;
   } catch {
     return false;

@@ -153,7 +153,7 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     "serviceOffline",
     "overseerrNewRequest",
   ] as const;
-  const optionalKeys = ["sabnzbdCompleted"] as const;
+  const optionalKeys = ["sabnzbdCompleted", "nzbgetCompleted"] as const;
   const out: Partial<NotificationSettings> = {};
   for (const key of requiredKeys) {
     if (typeof v[key] !== "boolean") return null;

@@ -1,4 +1,14 @@
 /**
+ * Combine 32-bit Hi/Lo halves of a 64-bit integer field. NZBGet's JSON-RPC
+ * splits sizes this way to stay within JSON's safe-integer range (e.g.
+ * `FileSizeLo` + `FileSizeHi`). Reassembled values above 2^53 lose precision —
+ * acceptable for byte counts up to ~9 PB which is well beyond Usenet usage.
+ */
+export function combineHiLo(hi: number, lo: number): number {
+  return hi * 0x100000000 + lo;
+}
+
+/**
  * Format bytes to human-readable string (e.g., 1.5 GB)
  */
 export function formatBytes(bytes: number, decimals = 1): string {

@@ -49,6 +49,7 @@ When implementing or debugging a service integration, consult the upstream API d
 | Service | API doc URL | Notes |
 | --- | --- | --- |
 | qBittorrent | https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0) | WebUI API v2; cookie-session auth via `/api/v2/auth/login`. We target qBittorrent 5.0+. The 4.1 wiki page exists for older builds but is not our target. |
+| NZBGet | https://nzbget.com/documentation/api/ | JSON-RPC 2.0 over `POST /jsonrpc`; positional params only. HTTP Basic Auth using ControlUsername/ControlPassword from `nzbget.conf`. 64-bit byte counts split into Lo/Hi pairs — recombine via `combineHiLo()` in `lib/utils.ts`. |
 | Radarr | https://radarr.video/docs/api/ | OpenAPI/Swagger; live spec also served by each instance at `/api/v3/openapi.json`. We use the `v3` API. |
 | Sonarr | https://sonarr.tv/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v3/openapi.json`. We use the `v3` API. |
 | Prowlarr | https://prowlarr.com/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v1/openapi.json`. We use the `v1` API. |
@@ -120,6 +121,7 @@ When adding a new `Modal`, sheet, or screen with a text input, decide which of t
 
 ### Phase 5 — Usenet ✅
 - [x] SABnzbd: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications
+- [x] NZBGet: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications. Both clients render through a shared adapter (`lib/usenet-adapter.ts` + `lib/usenet-adapters/`) so the downloads view, queue widget, settings sheet, and backend completion-diff are one source of truth for both.
 
 ## File Structure Conventions
 - Expo Router file-based routing in `app/` directory

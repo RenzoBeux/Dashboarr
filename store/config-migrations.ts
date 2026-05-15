@@ -57,8 +57,10 @@ import { generateInstanceId } from "@/lib/uuid";
  *         every instance for users who had autoSwitchNetwork on, since the
  *         stored values were last-known network state, not user intent.
  *         Users with auto-switch off keep their useRemote values.
+ *   v19 — added nzbget service entry (no schema change; defaultInstances()
+ *         backfills the new id at import time, so this is a version stamp only).
  */
-export const CURRENT_CONFIG_VERSION = 18;
+export const CURRENT_CONFIG_VERSION = 19;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -372,6 +374,11 @@ const migrations: Record<number, (payload: any) => any> = {
     }
     return { ...payload, version: 18, services };
   },
+
+  // v18 → v19: added the nzbget service. Pure version stamp — defaultInstances()
+  // already iterates SERVICE_IDS and backfills a disabled instance for any
+  // newly-added service, so older exports just need the version field bumped.
+  18: (payload) => ({ ...payload, version: 19 }),
 };
 
 /**
