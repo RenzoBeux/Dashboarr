@@ -873,6 +873,9 @@ const DEMO_GLANCES_DISKIO = [
   { disk_name: "sda", read_bytes: 4096000, write_bytes: 1048576, read_count: 128, write_count: 32, time_since_update: 1 },
   { disk_name: "sdb", read_bytes: 20971520, write_bytes: 8388608, read_count: 512, write_count: 256, time_since_update: 1 },
 ];
+const DEMO_GLANCES_GPU = [
+  { key: "gpu_id", gpu_id: "0", name: "NVIDIA GeForce RTX 3060", mem: 42.5, proc: 28.0, temperature: 54, fan_speed: 38 },
+];
 
 // --- Bazarr ---
 
@@ -983,6 +986,7 @@ export function getDemoResponse(
       if (normalized === "/percpu") return DEMO_GLANCES_PERCPU;
       if (normalized === "/load") return DEMO_GLANCES_LOAD;
       if (normalized === "/diskio") return DEMO_GLANCES_DISKIO;
+      if (normalized === "/gpu") return DEMO_GLANCES_GPU;
       return undefined;
     }
     case "qbittorrent": {

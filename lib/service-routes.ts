@@ -12,9 +12,9 @@ import type { ServiceId } from "@/lib/constants";
  * which ids do and don't have a destination.
  */
 export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
-  qbittorrent: "/(tabs)/downloads",
-  sabnzbd: "/(tabs)/downloads",
-  nzbget: "/(tabs)/downloads",
+  qbittorrent: "/(tabs)/downloads?client=qbittorrent",
+  sabnzbd: "/(tabs)/downloads?client=sabnzbd",
+  nzbget: "/(tabs)/downloads?client=nzbget",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
   overseerr: "/(tabs)/requests",
