@@ -1,4 +1,4 @@
-import { validateServiceUrl } from "./url-validation";
+import { validateServiceUrl, normalizeServiceUrl } from "./url-validation";
 
 describe("validateServiceUrl", () => {
   describe("empty input", () => {
@@ -72,5 +72,30 @@ describe("validateServiceUrl", () => {
         kind: "ok",
       });
     });
+  });
+});
+
+describe("normalizeServiceUrl", () => {
+  it("returns empty string for empty input", () => {
+    expect(normalizeServiceUrl("")).toBe("");
+    expect(normalizeServiceUrl("  ")).toBe("");
+  });
+
+  it("leaves http:// URLs alone", () => {
+    expect(normalizeServiceUrl("http://localhost:8989")).toBe("http://localhost:8989");
+  });
+
+  it("leaves https:// URLs alone", () => {
+    expect(normalizeServiceUrl("https://example.com")).toBe("https://example.com");
+  });
+
+  it("prepends http:// to hostnames", () => {
+    expect(normalizeServiceUrl("localhost:8989")).toBe("http://localhost:8989");
+    expect(normalizeServiceUrl("192.168.1.100:8080")).toBe("http://192.168.1.100:8080");
+    expect(normalizeServiceUrl("my-service.local")).toBe("http://my-service.local");
+  });
+
+  it("trims input", () => {
+    expect(normalizeServiceUrl("  localhost:8989  ")).toBe("http://localhost:8989");
   });
 });

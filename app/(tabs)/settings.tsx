@@ -40,7 +40,7 @@ import { pingService } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
-import { validateServiceUrl } from "@/lib/url-validation";
+import { validateServiceUrl, normalizeServiceUrl } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { AppVersionCard } from "@/components/common/app-version-card";
 import {
@@ -859,12 +859,18 @@ function ServiceEditor({
       toast("Name cannot be empty", "error");
       return;
     }
-    const localResult = validateServiceUrl(localUrl, "local");
+
+    const normLocal = normalizeServiceUrl(localUrl);
+    const normRemote = normalizeServiceUrl(remoteUrl);
+    setLocalUrl(normLocal);
+    setRemoteUrl(normRemote);
+
+    const localResult = validateServiceUrl(normLocal, "local");
     if (localResult.kind === "invalid") {
       toast(localResult.message, "error");
       return;
     }
-    const remoteResult = validateServiceUrl(remoteUrl, "remote");
+    const remoteResult = validateServiceUrl(normRemote, "remote");
     if (remoteResult.kind === "invalid") {
       toast(remoteResult.message, "error");
       return;
@@ -890,8 +896,8 @@ function ServiceEditor({
 
     updateInstance(serviceId, instanceId, {
       name: trimmedName,
-      localUrl,
-      remoteUrl,
+      localUrl: normLocal,
+      remoteUrl: normRemote,
     });
     if (isQB) {
       await updateInstanceSecrets(instanceId, {
@@ -913,7 +919,12 @@ function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    const testUrl = config.useRemote ? remoteUrl : localUrl;
+    const rawTestUrl = config.useRemote ? remoteUrl : localUrl;
+    const testUrl = normalizeServiceUrl(rawTestUrl);
+    if (testUrl !== rawTestUrl) {
+      if (config.useRemote) setRemoteUrl(testUrl);
+      else setLocalUrl(testUrl);
+    }
     const responseTime = await pingService(serviceId, testUrl || undefined, instanceId);
     setTesting(false);
 
@@ -977,6 +988,7 @@ function ServiceEditor({
           placeholder="http://192.168.1.100:8080"
           value={localUrl}
           onChangeText={setLocalUrl}
+          onBlur={() => setLocalUrl(normalizeServiceUrl(localUrl))}
           keyboardType="url"
         />
         <TextInput
@@ -984,6 +996,7 @@ function ServiceEditor({
           placeholder="https://service.mydomain.com"
           value={remoteUrl}
           onChangeText={setRemoteUrl}
+          onBlur={() => setRemoteUrl(normalizeServiceUrl(remoteUrl))}
           keyboardType="url"
         />
         <Toggle

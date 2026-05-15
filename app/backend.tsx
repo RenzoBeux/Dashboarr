@@ -19,6 +19,7 @@ import {
   unregisterDevice,
 } from "@/services/backend-api";
 import { getExpoPushToken, hasProjectId } from "@/lib/expo-push";
+import { normalizeServiceUrl } from "@/lib/url-validation";
 
 type Mode = "summary" | "scanning" | "manual";
 
@@ -62,12 +63,14 @@ export default function BackendScreen() {
   const handleClaim = useCallback(
     async (token: string, urlOverride?: string) => {
       if (claimingRef.current) return;
-      const trimmedUrl = (urlOverride ?? backendUrl).trim().replace(/\/$/, "");
+      const rawUrl = urlOverride ?? backendUrl;
+      const trimmedUrl = normalizeServiceUrl(rawUrl).replace(/\/$/, "");
       if (!trimmedUrl) {
         toast("Enter the backend URL first", "error");
         setMode("summary");
         return;
       }
+      setBackendUrl(trimmedUrl);
       claimingRef.current = true;
       setBusy(true);
       try {
@@ -285,6 +288,7 @@ export default function BackendScreen() {
                   placeholder="http://192.168.1.50:4000"
                   value={backendUrl}
                   onChangeText={setBackendUrl}
+                  onBlur={() => setBackendUrl(normalizeServiceUrl(backendUrl))}
                   keyboardType="url"
                   autoCapitalize="none"
                 />

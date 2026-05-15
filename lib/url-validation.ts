@@ -46,3 +46,14 @@ export function validateServiceUrl(
 
   return { kind: "ok" };
 }
+
+/**
+ * Auto-prefix `http://` if no protocol is present. This helps users who type
+ * just `192.168.1.10:8080` or `localhost:8989`.
+ */
+export function normalizeServiceUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === "") return "";
+  if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
+}
