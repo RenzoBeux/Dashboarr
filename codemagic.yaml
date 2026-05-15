@@ -44,7 +44,7 @@ workflows:
       - name: Set iOS version from package.json
         script: |
           APP_VERSION=$(node -p "require('./package.json').version")
-          BUILD_NUMBER=$PROJECT_BUILD_NUMBER
+          BUILD_NUMBER=$(node -p "const [ma,mi,pa]=require('./package.json').version.split('.').map(Number); ma*10000+mi*100+pa")
           cd ios
           agvtool new-marketing-version "$APP_VERSION"
           agvtool new-version -all "$BUILD_NUMBER"
