@@ -3,6 +3,7 @@ import {
   getMovies,
   getMovie,
   getQueue,
+  getHistory,
   getWantedMissing,
   getCalendar,
   searchMovies,
@@ -62,6 +63,16 @@ export function useRadarrQueue(instanceId?: string) {
   return useQuery({
     queryKey: ["radarr", id, "queue"],
     queryFn: () => getQueue(1, 20, true, id ?? undefined),
+    refetchInterval: POLLING_INTERVALS.queue,
+    enabled: enabled && !!id,
+  });
+}
+
+export function useRadarrHistory(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
+  return useQuery({
+    queryKey: ["radarr", id, "history"],
+    queryFn: () => getHistory(1, 50, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });

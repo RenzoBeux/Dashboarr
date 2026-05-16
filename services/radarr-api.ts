@@ -2,6 +2,7 @@ import { serviceRequest } from "@/lib/http-client";
 import type {
   RadarrMovie,
   RadarrQueue,
+  RadarrHistory,
   RadarrWantedMissing,
   RadarrSearchResult,
   RadarrImage,
@@ -56,6 +57,25 @@ export function getQueue(
 ): Promise<RadarrQueue> {
   return serviceRequest<RadarrQueue>("radarr", "/queue", {
     params: { page, pageSize, includeMovie },
+    instanceId,
+  });
+}
+
+// --- History ---
+
+export function getHistory(
+  page = 1,
+  pageSize = 50,
+  instanceId?: string,
+): Promise<RadarrHistory> {
+  return serviceRequest<RadarrHistory>("radarr", "/history", {
+    params: {
+      page,
+      pageSize,
+      sortKey: "date",
+      sortDirection: "descending",
+      includeMovie: true,
+    },
     instanceId,
   });
 }

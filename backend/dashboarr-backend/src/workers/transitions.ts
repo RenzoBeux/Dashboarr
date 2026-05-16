@@ -5,8 +5,8 @@ import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
 import type { SabHistorySlot } from "../services/sabnzbd.js";
 import type { NzbgetHistoryItem } from "../services/nzbget.js";
 import type { NotificationCategory } from "../types.js";
-import type { RadarrQueueItem } from "../services/radarr.js";
-import type { SonarrQueueItem } from "../services/sonarr.js";
+import type { RadarrHistoryRecord } from "../services/radarr.js";
+import type { SonarrHistoryRecord } from "../services/sonarr.js";
 import type { OverseerrRequest } from "../services/overseerr.js";
 
 /**
@@ -236,96 +236,95 @@ export async function diffNzbgetHistory(
 
 // ---------------- Radarr ----------------
 
-interface QueueSnapshot {
-  [id: string]: { title: string; status?: string; entityId?: number };
-}
-
-function radarrDisplayTitle(r: RadarrQueueItem): string {
+function radarrDisplayTitle(r: RadarrHistoryRecord): string {
   if (r.movie?.title) {
     return r.movie.year ? `${r.movie.title} (${r.movie.year})` : r.movie.title;
   }
-  return r.title;
+  return r.sourceTitle ?? "";
 }
 
-export async function diffRadarrQueue(
+// Diffs Radarr's /history endpoint for newly-imported releases. We only
+// announce records with eventType "downloadFolderImported" — the queue can
+// shed items for many non-success reasons (delay profile, manual removal,
+// internal state transitions), so queue disappearance is not a reliable
+// success signal.
+export async function diffRadarrHistory(
   instanceId: string,
   instanceName: string,
   multipleOfKind: boolean,
-  records: RadarrQueueItem[],
+  records: RadarrHistoryRecord[],
 ): Promise<void> {
-  const key = `radarr:${instanceId}:queue:ids`;
-  const prev = getState<QueueSnapshot>(key);
-  const next: QueueSnapshot = {};
-  for (const r of records) {
-    next[String(r.id)] = {
-      title: radarrDisplayTitle(r),
-      status: r.trackedDownloadStatus,
-      entityId: r.movieId ?? r.movie?.id,
-    };
-  }
-  setState(key, next);
+  const key = `radarr:${instanceId}:history:seen`;
+  const prev = getState<number[]>(key);
 
+  const imported = records.filter((r) => r.eventType === "downloadFolderImported");
+  const currentIds = imported.map((r) => r.id);
+
+  setState(key, currentIds);
   if (!prev) return;
 
+  const prevSet = new Set(prev);
   const prefix = instancePrefix(instanceName, multipleOfKind);
-  const currentIds = new Set(records.map((r) => String(r.id)));
-  for (const [id, item] of Object.entries(prev)) {
-    if (!currentIds.has(id) && item.status !== "error") {
-      await dispatchPush({
-        category: "radarrDownloaded",
-        title: `${prefix}Movie downloaded`,
-        body: item.title,
-        data: { type: "radarr", movieId: item.entityId, instanceId },
-        dedupeKey: `radarr:${instanceId}:downloaded:${id}`,
-      });
-    }
+
+  for (const r of imported) {
+    if (prevSet.has(r.id)) continue;
+    await dispatchPush({
+      category: "radarrDownloaded",
+      title: `${prefix}Movie downloaded`,
+      body: radarrDisplayTitle(r),
+      data: { type: "radarr", movieId: r.movieId ?? r.movie?.id, instanceId },
+      dedupeKey: r.downloadId
+        ? `radarr:${instanceId}:downloaded:${r.downloadId}`
+        : `radarr:${instanceId}:history:${r.id}`,
+    });
   }
 }
 
 // ---------------- Sonarr ----------------
 
-function sonarrDisplayTitle(r: SonarrQueueItem): string {
+function sonarrDisplayTitle(r: SonarrHistoryRecord): string {
   if (r.series?.title && r.episode) {
     const ep = `S${String(r.episode.seasonNumber ?? 0).padStart(2, "0")}E${String(r.episode.episodeNumber ?? 0).padStart(2, "0")}`;
     const epTitle = r.episode.title ? ` - ${r.episode.title}` : "";
     return `${r.series.title} ${ep}${epTitle}`;
   }
   if (r.series?.title) return r.series.title;
-  return r.title;
+  return r.sourceTitle ?? "";
 }
 
-export async function diffSonarrQueue(
+// Diffs Sonarr's /history endpoint for newly-imported releases. See the
+// Radarr equivalent above for why we no longer diff /queue (Sonarr's Delay
+// Profile and other internal transitions cause queue items to disappear
+// without being imported, which previously fired false-positive notifications).
+export async function diffSonarrHistory(
   instanceId: string,
   instanceName: string,
   multipleOfKind: boolean,
-  records: SonarrQueueItem[],
+  records: SonarrHistoryRecord[],
 ): Promise<void> {
-  const key = `sonarr:${instanceId}:queue:ids`;
-  const prev = getState<QueueSnapshot>(key);
-  const next: QueueSnapshot = {};
-  for (const r of records) {
-    next[String(r.id)] = {
-      title: sonarrDisplayTitle(r),
-      status: r.trackedDownloadStatus,
-      entityId: r.seriesId ?? r.series?.id,
-    };
-  }
-  setState(key, next);
+  const key = `sonarr:${instanceId}:history:seen`;
+  const prev = getState<number[]>(key);
 
+  const imported = records.filter((r) => r.eventType === "downloadFolderImported");
+  const currentIds = imported.map((r) => r.id);
+
+  setState(key, currentIds);
   if (!prev) return;
 
+  const prevSet = new Set(prev);
   const prefix = instancePrefix(instanceName, multipleOfKind);
-  const currentIds = new Set(records.map((r) => String(r.id)));
-  for (const [id, item] of Object.entries(prev)) {
-    if (!currentIds.has(id) && item.status !== "error") {
-      await dispatchPush({
-        category: "sonarrDownloaded",
-        title: `${prefix}Episode downloaded`,
-        body: item.title,
-        data: { type: "sonarr", seriesId: item.entityId, instanceId },
-        dedupeKey: `sonarr:${instanceId}:downloaded:${id}`,
-      });
-    }
+
+  for (const r of imported) {
+    if (prevSet.has(r.id)) continue;
+    await dispatchPush({
+      category: "sonarrDownloaded",
+      title: `${prefix}Episode downloaded`,
+      body: sonarrDisplayTitle(r),
+      data: { type: "sonarr", seriesId: r.seriesId ?? r.series?.id, instanceId },
+      dedupeKey: r.downloadId
+        ? `sonarr:${instanceId}:downloaded:${r.downloadId}`
+        : `sonarr:${instanceId}:history:${r.id}`,
+    });
   }
 }
 
