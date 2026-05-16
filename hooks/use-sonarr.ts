@@ -6,6 +6,7 @@ import {
   getEpisodeFiles,
   getCalendar,
   getQueue,
+  getHistory,
   searchSeries,
   addSeries,
   deleteSeries,
@@ -81,6 +82,16 @@ export function useSonarrQueue(instanceId?: string) {
   return useQuery({
     queryKey: ["sonarr", id, "queue"],
     queryFn: () => getQueue(1, 20, true, true, id ?? undefined),
+    refetchInterval: POLLING_INTERVALS.queue,
+    enabled: enabled && !!id,
+  });
+}
+
+export function useSonarrHistory(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
+  return useQuery({
+    queryKey: ["sonarr", id, "history"],
+    queryFn: () => getHistory(1, 50, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });

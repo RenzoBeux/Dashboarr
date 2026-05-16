@@ -5,6 +5,7 @@ import type {
   SonarrEpisodeFile,
   SonarrCalendarEntry,
   SonarrQueue,
+  SonarrHistory,
   SonarrSearchResult,
   SonarrImage,
   SonarrRelease,
@@ -103,6 +104,26 @@ export function getQueue(
 ): Promise<SonarrQueue> {
   return serviceRequest<SonarrQueue>("sonarr", "/queue", {
     params: { page, pageSize, includeSeries, includeEpisode },
+    instanceId,
+  });
+}
+
+// --- History ---
+
+export function getHistory(
+  page = 1,
+  pageSize = 50,
+  instanceId?: string,
+): Promise<SonarrHistory> {
+  return serviceRequest<SonarrHistory>("sonarr", "/history", {
+    params: {
+      page,
+      pageSize,
+      sortKey: "date",
+      sortDirection: "descending",
+      includeSeries: true,
+      includeEpisode: true,
+    },
     instanceId,
   });
 }

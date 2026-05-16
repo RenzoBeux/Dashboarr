@@ -5,7 +5,6 @@ import {
   Pressable,
   Alert,
   BackHandler,
-  ScrollView,
   FlatList,
   RefreshControl,
   ActivityIndicator,
@@ -19,7 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { toast, toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, ArrowUpDown, Check, Zap, AlertCircle } from "lucide-react-native";
+import { Pause, Play, Trash2, Plus, CheckCircle2, Circle, Zap, AlertCircle } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
 import { DemoBanner } from "@/components/common/demo-banner";
@@ -30,10 +29,9 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
-import { FilterChip } from "@/components/ui/filter-chip";
-import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { FilterSortButton } from "@/components/common/filter-sort-button";
+import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { errorHaptic, lightHaptic, mediumHaptic } from "@/lib/haptics";
-import { SortButton } from "@/components/ui/sort-button";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 import {
   useSortStore,
@@ -264,7 +262,7 @@ function QbittorrentDownloadsScreen({
   const [filter, setFilter] = useState<FilterType>("all");
   const sort = useSortStore((s) => s.downloads);
   const setSort = useSortStore((s) => s.setDownloads);
-  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [speedLimitsOpen, setSpeedLimitsOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
@@ -502,25 +500,11 @@ function QbittorrentDownloadsScreen({
         />
       )}
 
-      <View className="flex-row items-center gap-2 mb-4">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerClassName="gap-2"
-          className="flex-1"
-        >
-          {FILTER_OPTIONS.map((opt) => (
-            <FilterChip
-              key={opt.key}
-              label={opt.label}
-              selected={filter === opt.key}
-              onPress={() => setFilter(opt.key)}
-            />
-          ))}
-        </ScrollView>
-        <SortButton
-          onPress={() => setSortSheetOpen(true)}
-          active={sort !== SORT_DEFAULTS.downloads}
+      <View className="mb-4">
+        <FilterSortButton
+          summary={`${FILTER_OPTIONS.find((f) => f.key === filter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+          onPress={() => setFilterSortOpen(true)}
+          active={filter !== "all" || sort !== SORT_DEFAULTS.downloads}
         />
       </View>
     </>
@@ -616,20 +600,16 @@ function QbittorrentDownloadsScreen({
         removeClippedSubviews
       />
 
-      <ActionSheet
-        visible={sortSheetOpen}
-        onClose={() => setSortSheetOpen(false)}
-        title="Sort torrents"
-        actions={SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
-          label: opt.label,
-          icon:
-            sort === opt.key ? (
-              <Icon icon={Check} size={18} color="#3b82f6" />
-            ) : (
-              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
-            ),
-          onPress: () => setSort(opt.key),
-        }))}
+      <FilterSortSheet
+        visible={filterSortOpen}
+        onClose={() => setFilterSortOpen(false)}
+        title="Filter & sort torrents"
+        filterOptions={FILTER_OPTIONS}
+        filterValue={filter}
+        onFilterChange={setFilter}
+        sortOptions={SORT_OPTIONS}
+        sortValue={sort}
+        onSortChange={setSort}
       />
 
       <SpeedLimitsSheet

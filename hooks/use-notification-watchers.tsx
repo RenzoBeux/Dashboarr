@@ -3,8 +3,8 @@ import {
   useDownloadingTorrentsForWatcher,
 } from "@/hooks/use-qbittorrent";
 import { getTorrents } from "@/services/qbittorrent-api";
-import { useRadarrQueue } from "@/hooks/use-radarr";
-import { useSonarrQueue } from "@/hooks/use-sonarr";
+import { useRadarrHistory } from "@/hooks/use-radarr";
+import { useSonarrHistory } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
@@ -14,7 +14,12 @@ import { useBackendStore } from "@/store/backend-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { toast } from "@/components/ui/toast";
-import type { QBTorrent, TorrentState } from "@/lib/types";
+import type {
+  QBTorrent,
+  TorrentState,
+  SonarrHistoryRecord,
+  RadarrHistoryRecord,
+} from "@/lib/types";
 
 // Categories Radarr/Sonarr set on jobs they manage. The arr-specific watchers
 // already notify on those, so the download-client watchers skip them to avoid
@@ -114,14 +119,14 @@ export function NotificationWatchers() {
         />
       ))}
       {radarrInstances.map((inst) => (
-        <RadarrQueueWatcher
+        <RadarrImportWatcher
           key={inst.id}
           instanceId={inst.id}
           active={!backendActive && hydrated && enabled && radarrDownloaded}
         />
       ))}
       {sonarrInstances.map((inst) => (
-        <SonarrQueueWatcher
+        <SonarrImportWatcher
           key={inst.id}
           instanceId={inst.id}
           active={!backendActive && hydrated && enabled && sonarrDownloaded}
@@ -285,88 +290,107 @@ function NzbgetHistoryWatcher({
   return null;
 }
 
-// --- Radarr: queue item disappears (success only) ---
-function RadarrQueueWatcher({
+function radarrHistoryDisplayTitle(r: RadarrHistoryRecord): string {
+  if (r.movie?.title) {
+    return r.movie.year ? `${r.movie.title} (${r.movie.year})` : r.movie.title;
+  }
+  return r.sourceTitle ?? "";
+}
+
+function sonarrHistoryDisplayTitle(r: SonarrHistoryRecord): string {
+  if (r.series?.title && r.episode) {
+    const ep = `S${String(r.episode.seasonNumber ?? 0).padStart(2, "0")}E${String(r.episode.episodeNumber ?? 0).padStart(2, "0")}`;
+    const epTitle = r.episode.title ? ` - ${r.episode.title}` : "";
+    return `${r.series.title} ${ep}${epTitle}`;
+  }
+  if (r.series?.title) return r.series.title;
+  return r.sourceTitle ?? "";
+}
+
+// --- Radarr: new `downloadFolderImported` history record appears ---
+// Queue diffing produced false positives (delay-profile holds, internal state
+// transitions); history records are immutable and explicit about completion.
+function RadarrImportWatcher({
   instanceId,
   active,
 }: {
   instanceId: string;
   active: boolean;
 }) {
-  const { data: radarrQueue } = useRadarrQueue(instanceId);
-  const prevQueue = useRef<Map<number, { title: string; status?: string }> | null>(
-    null,
-  );
+  const { data: history } = useRadarrHistory(instanceId);
+  const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
     if (!active) {
-      prevQueue.current = null;
+      prevIds.current = null;
       return;
     }
-    if (!Array.isArray(radarrQueue?.records)) return;
-    const prev = prevQueue.current;
-    const currentMap = new Map(
-      radarrQueue.records.map((r) => [
-        r.id,
-        { title: r.title, status: r.trackedDownloadStatus },
-      ]),
+    if (!Array.isArray(history?.records)) return;
+    const imported = history.records.filter(
+      (r) => r.eventType === "downloadFolderImported",
     );
+    const currentIds = new Set(imported.map((r) => r.id));
+    const prev = prevIds.current;
     if (prev !== null) {
-      for (const [id, item] of prev) {
-        if (!currentMap.has(id) && item.status !== "error") {
-          sendLocalNotification({
-            title: "Movie downloaded",
-            body: item.title,
-            data: { type: "radarr", queueId: id, instanceId },
-          });
-        }
+      for (const r of imported) {
+        if (prev.has(r.id)) continue;
+        sendLocalNotification({
+          title: "Movie downloaded",
+          body: radarrHistoryDisplayTitle(r),
+          data: {
+            type: "radarr",
+            movieId: r.movieId ?? r.movie?.id,
+            historyId: r.id,
+            instanceId,
+          },
+        });
       }
     }
-    prevQueue.current = currentMap;
-  }, [radarrQueue, active, instanceId]);
+    prevIds.current = currentIds;
+  }, [history, active, instanceId]);
 
   return null;
 }
 
-// --- Sonarr: queue item disappears (success only) ---
-function SonarrQueueWatcher({
+// --- Sonarr: new `downloadFolderImported` history record appears ---
+function SonarrImportWatcher({
   instanceId,
   active,
 }: {
   instanceId: string;
   active: boolean;
 }) {
-  const { data: sonarrQueue } = useSonarrQueue(instanceId);
-  const prevQueue = useRef<Map<number, { title: string; status?: string }> | null>(
-    null,
-  );
+  const { data: history } = useSonarrHistory(instanceId);
+  const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
     if (!active) {
-      prevQueue.current = null;
+      prevIds.current = null;
       return;
     }
-    if (!Array.isArray(sonarrQueue?.records)) return;
-    const prev = prevQueue.current;
-    const currentMap = new Map(
-      sonarrQueue.records.map((r) => [
-        r.id,
-        { title: r.title, status: r.trackedDownloadStatus },
-      ]),
+    if (!Array.isArray(history?.records)) return;
+    const imported = history.records.filter(
+      (r) => r.eventType === "downloadFolderImported",
     );
+    const currentIds = new Set(imported.map((r) => r.id));
+    const prev = prevIds.current;
     if (prev !== null) {
-      for (const [id, item] of prev) {
-        if (!currentMap.has(id) && item.status !== "error") {
-          sendLocalNotification({
-            title: "Episode downloaded",
-            body: item.title,
-            data: { type: "sonarr", queueId: id, instanceId },
-          });
-        }
+      for (const r of imported) {
+        if (prev.has(r.id)) continue;
+        sendLocalNotification({
+          title: "Episode downloaded",
+          body: sonarrHistoryDisplayTitle(r),
+          data: {
+            type: "sonarr",
+            seriesId: r.seriesId ?? r.series?.id,
+            historyId: r.id,
+            instanceId,
+          },
+        });
       }
     }
-    prevQueue.current = currentMap;
-  }, [sonarrQueue, active, instanceId]);
+    prevIds.current = currentIds;
+  }, [history, active, instanceId]);
 
   return null;
 }

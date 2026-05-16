@@ -1,15 +1,7 @@
 import { useState, useMemo } from "react";
 import { View, Text, Pressable, Alert, ScrollView } from "react-native";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import {
-  Search,
-  Film,
-  Eye,
-  EyeOff,
-  Trash2,
-  Info,
-} from "lucide-react-native";
+import { Search, Film, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -21,9 +13,14 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import {
+  MonitoredLibraryGrid,
+  MONITOR_FILTER_OPTIONS,
+  type MonitorFilter,
+} from "@/components/common/monitored-library-grid";
 import { useSortStore, SORT_DEFAULTS, type MoviesSortKey } from "@/store/sort-store";
 
-import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
+import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
 import {
   useRadarrMovies,
@@ -35,9 +32,6 @@ import {
 } from "@/hooks/use-radarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { formatBytes } from "@/lib/utils";
-import { useServiceImage } from "@/hooks/use-service-image";
-import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { mediumHaptic } from "@/lib/haptics";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 
@@ -47,13 +41,6 @@ type MovieSheetTarget =
   | null;
 
 type Tab = "library" | "queue" | "wanted";
-type MonitorFilter = "monitored" | "unmonitored" | "all";
-
-const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
-  { value: "monitored", label: "Monitored" },
-  { value: "unmonitored", label: "Unmonitored" },
-  { value: "all", label: "All" },
-];
 
 const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
@@ -226,7 +213,7 @@ export default function MoviesScreen() {
       {tab === "library" && (
         <View className="mb-4">
           <FilterSortButton
-            summary={`${MONITOR_FILTERS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+            summary={`${MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
             onPress={() => setFilterSortOpen(true)}
             active={
               monitorFilter !== "monitored" || sort !== SORT_DEFAULTS.movies
@@ -235,13 +222,7 @@ export default function MoviesScreen() {
         </View>
       )}
 
-      {tab === "library" && (
-        <MovieLibrary
-          monitorFilter={monitorFilter}
-          sort={sort}
-          onLongPress={openMovieSheet}
-        />
-      )}
+      {tab === "library" && <MovieLibrary monitorFilter={monitorFilter} sort={sort} onLongPress={openMovieSheet} />}
       {tab === "queue" && <MovieQueue onLongPress={openQueueSheet} />}
       {tab === "wanted" && <MovieWanted />}
 
@@ -257,7 +238,7 @@ export default function MoviesScreen() {
         visible={filterSortOpen}
         onClose={() => setFilterSortOpen(false)}
         title="Filter & sort movies"
-        filterOptions={MONITOR_FILTERS.map((f) => ({
+        filterOptions={MONITOR_FILTER_OPTIONS.map((f) => ({
           key: f.value,
           label: f.label,
         }))}
@@ -282,100 +263,22 @@ function MovieLibrary({
 }) {
   const { data: movies, isLoading, error } = useRadarrMovies();
   const router = useRouter();
-  const cellWidth = usePosterCellWidth();
-
-  if (isLoading) {
-    return (
-      <View className="flex-row flex-wrap gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} style={{ width: cellWidth }}>
-            <Skeleton width="100%" height={150} borderRadius={12} />
-            <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
-          </View>
-        ))}
-      </View>
-    );
-  }
-  if (error) {
-    return <ErrorBanner error={error} title="Failed to load library" />;
-  }
-  if (!movies?.length) {
-    return <EmptyState icon={<Icon icon={Film} size={32} color="#71717a" />} title="No movies in library" />;
-  }
-
-  const filtered = movies.filter((m) => {
-    if (monitorFilter === "monitored") return m.monitored;
-    if (monitorFilter === "unmonitored") return !m.monitored;
-    return true;
-  });
-
-  if (!filtered.length) {
-    const title =
-      monitorFilter === "monitored"
-        ? "No monitored movies"
-        : monitorFilter === "unmonitored"
-          ? "No unmonitored movies"
-          : "No movies in library";
-    return <EmptyState icon={<Icon icon={Film} size={32} color="#71717a" />} title={title} />;
-  }
-
-  const sorted = [...filtered].sort((a, b) => compareMovies(a, b, sort));
 
   return (
-    <View className="flex-row flex-wrap gap-3">
-      {sorted.map((movie) => (
-        <MoviePoster
-          key={movie.id}
-          movie={movie}
-          onPress={() => router.push(`/movie/${movie.id}`)}
-          onLongPress={() => onLongPress(movie)}
-        />
-      ))}
-    </View>
-  );
-}
-
-function MoviePoster({
-  movie,
-  onPress,
-  onLongPress,
-}: {
-  movie: RadarrMovie;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const poster = movie.images.find((i) => i.coverType === "poster");
-  const { src, onError } = useServiceImage(poster, "radarr");
-  const cellWidth = usePosterCellWidth();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={400}
-      style={{ width: cellWidth }}
-      className="active:opacity-80"
-    >
-      {src ? (
-        <Image
-          source={{ uri: src }}
-          className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={200}
-          recyclingKey={src}
-          onError={onError}
-        />
-      ) : (
-        <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Icon icon={Film} size={24} color="#71717a" />
-        </View>
-      )}
-      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
-        {movie.title}
-      </Text>
-      <Text className="text-zinc-600 text-xs">{movie.year}</Text>
-    </Pressable>
+    <MonitoredLibraryGrid
+      data={movies}
+      isLoading={isLoading}
+      error={error}
+      monitorFilter={monitorFilter}
+      sort={sort}
+      compare={compareMovies}
+      serviceId="radarr"
+      placeholderIcon={Film}
+      nounPlural="movies"
+      renderFooter={(m) => String(m.year)}
+      onItemPress={(m) => router.push(`/movie/${m.id}`)}
+      onItemLongPress={onLongPress}
+    />
   );
 }
 
@@ -416,7 +319,6 @@ function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => v
 
 function MovieWanted() {
   const { data: wanted, isLoading } = useWantedMissing();
-  const router = useRouter();
 
   if (isLoading) return <SkeletonCardContent rows={2} />;
 

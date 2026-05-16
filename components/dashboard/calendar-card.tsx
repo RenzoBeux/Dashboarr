@@ -144,6 +144,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + settings.daysAhead);
   const horizonIso = localDateKey(horizon);
+  const nowMs = Date.now();
 
   const items: CalendarItem[] = [];
   if (showSonarr) {
@@ -153,6 +154,13 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
       for (const ep of q.data ?? []) {
         const date = isoDate(ep.airDate);
         if (date < todayIso || date > horizonIso) continue;
+        // Drop episodes whose actual air time has already passed — matches
+        // Sonarr's own `series.nextAiring` rollover so "Releasing Soon" stays
+        // in sync with the "Next Airing" sort on the TV Shows tab. Otherwise
+        // a show airing at 8 PM ET sticks in "Today" until midnight local,
+        // long after Sonarr has advanced to the next episode.
+        if (ep.airDateUtc && new Date(ep.airDateUtc).getTime() <= nowMs)
+          continue;
         items.push({ kind: "episode", date, entry: ep, instanceId });
       }
     });

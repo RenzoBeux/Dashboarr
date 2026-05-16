@@ -1,15 +1,7 @@
 import { useState, useMemo } from "react";
 import { View, Text, Pressable, Alert, ScrollView } from "react-native";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import {
-  Search,
-  Tv,
-  Eye,
-  EyeOff,
-  Trash2,
-  Info,
-} from "lucide-react-native";
+import { Search, Tv, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -20,8 +12,13 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import {
+  MonitoredLibraryGrid,
+  MONITOR_FILTER_OPTIONS,
+  type MonitorFilter,
+} from "@/components/common/monitored-library-grid";
 import { useSortStore, SORT_DEFAULTS, type SeriesSortKey } from "@/store/sort-store";
-import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
+import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
 import {
   useSonarrSeries,
@@ -34,8 +31,6 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
-import { useServiceImage } from "@/hooks/use-service-image";
-import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 
@@ -45,13 +40,6 @@ type SeriesSheetTarget =
   | null;
 
 type Tab = "library" | "calendar";
-type MonitorFilter = "monitored" | "unmonitored" | "all";
-
-const MONITOR_FILTERS: { value: MonitorFilter; label: string }[] = [
-  { value: "monitored", label: "Monitored" },
-  { value: "unmonitored", label: "Unmonitored" },
-  { value: "all", label: "All" },
-];
 
 const SORT_OPTIONS: { key: SeriesSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
@@ -231,7 +219,7 @@ export default function TVScreen() {
       {tab === "library" && (
         <View className="mb-4">
           <FilterSortButton
-            summary={`${MONITOR_FILTERS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+            summary={`${MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
             onPress={() => setFilterSortOpen(true)}
             active={
               monitorFilter !== "monitored" || sort !== SORT_DEFAULTS.series
@@ -240,13 +228,7 @@ export default function TVScreen() {
         </View>
       )}
 
-      {tab === "library" && (
-        <SeriesLibrary
-          monitorFilter={monitorFilter}
-          sort={sort}
-          onLongPress={openSeriesSheet}
-        />
-      )}
+      {tab === "library" && <SeriesLibrary monitorFilter={monitorFilter} sort={sort} onLongPress={openSeriesSheet} />}
       {tab === "calendar" && <CalendarView onLongPress={openCalendarSheet} />}
 
       <ActionSheet
@@ -261,7 +243,7 @@ export default function TVScreen() {
         visible={filterSortOpen}
         onClose={() => setFilterSortOpen(false)}
         title="Filter & sort shows"
-        filterOptions={MONITOR_FILTERS.map((f) => ({
+        filterOptions={MONITOR_FILTER_OPTIONS.map((f) => ({
           key: f.value,
           label: f.label,
         }))}
@@ -286,102 +268,22 @@ function SeriesLibrary({
 }) {
   const { data: series, isLoading, error } = useSonarrSeries();
   const router = useRouter();
-  const cellWidth = usePosterCellWidth();
-
-  if (isLoading) {
-    return (
-      <View className="flex-row flex-wrap gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} style={{ width: cellWidth }}>
-            <Skeleton width="100%" height={150} borderRadius={12} />
-            <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
-          </View>
-        ))}
-      </View>
-    );
-  }
-  if (error) {
-    return <ErrorBanner error={error} title="Failed to load library" />;
-  }
-  if (!series?.length) {
-    return <EmptyState icon={<Icon icon={Tv} size={32} color="#71717a" />} title="No shows in library" />;
-  }
-
-  const filtered = series.filter((s) => {
-    if (monitorFilter === "monitored") return s.monitored;
-    if (monitorFilter === "unmonitored") return !s.monitored;
-    return true;
-  });
-
-  if (!filtered.length) {
-    const title =
-      monitorFilter === "monitored"
-        ? "No monitored shows"
-        : monitorFilter === "unmonitored"
-          ? "No unmonitored shows"
-          : "No shows in library";
-    return <EmptyState icon={<Icon icon={Tv} size={32} color="#71717a" />} title={title} />;
-  }
-
-  const sorted = [...filtered].sort((a, b) => compareSeries(a, b, sort));
 
   return (
-    <View className="flex-row flex-wrap gap-3">
-      {sorted.map((show) => (
-        <SeriesPoster
-          key={show.id}
-          series={show}
-          onPress={() => router.push(`/series/${show.id}`)}
-          onLongPress={() => onLongPress(show)}
-        />
-      ))}
-    </View>
-  );
-}
-
-function SeriesPoster({
-  series,
-  onPress,
-  onLongPress,
-}: {
-  series: SonarrSeries;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const poster = series.images.find((i) => i.coverType === "poster");
-  const { src, onError } = useServiceImage(poster, "sonarr");
-  const cellWidth = usePosterCellWidth();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={400}
-      style={{ width: cellWidth }}
-      className="active:opacity-80"
-    >
-      {src ? (
-        <Image
-          source={{ uri: src }}
-          className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={200}
-          recyclingKey={src}
-          onError={onError}
-        />
-      ) : (
-        <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Icon icon={Tv} size={24} color="#71717a" />
-        </View>
-      )}
-      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
-        {series.title}
-      </Text>
-      <Text className="text-zinc-600 text-xs">
-        {series.seasonCount} season{series.seasonCount !== 1 ? "s" : ""}
-      </Text>
-    </Pressable>
+    <MonitoredLibraryGrid
+      data={series}
+      isLoading={isLoading}
+      error={error}
+      monitorFilter={monitorFilter}
+      sort={sort}
+      compare={compareSeries}
+      serviceId="sonarr"
+      placeholderIcon={Tv}
+      nounPlural="shows"
+      renderFooter={(s) => `${s.seasonCount} season${s.seasonCount !== 1 ? "s" : ""}`}
+      onItemPress={(s) => router.push(`/series/${s.id}`)}
+      onItemLongPress={onLongPress}
+    />
   );
 }
 
@@ -397,7 +299,6 @@ function CalendarView({ onLongPress }: { onLongPress: (ep: SonarrCalendarEntry) 
     return <EmptyState title="Nothing airing this week" />;
   }
 
-  // Group by date
   const grouped = new Map<string, SonarrCalendarEntry[]>();
   for (const ep of episodes) {
     const list = grouped.get(ep.airDate) ?? [];

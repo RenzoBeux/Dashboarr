@@ -13,25 +13,26 @@ import {
   SettingsSection,
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+import type { ServiceId } from "@/lib/constants";
 
-export interface TautulliActivitySettingsValue extends Record<string, unknown> {
+export interface StreamingNowPlayingSettingsValue extends Record<string, unknown> {
   instanceIds: InstanceBindingValue;
   maxItems: number;
+  hideLocalPlays: boolean;
   hideUsers: string;
   showBitrate: boolean;
   showTranscoding: boolean;
   showUserAndDevice: boolean;
-  showBandwidthSummary: boolean;
 }
 
-export const TAUTULLI_ACTIVITY_DEFAULT_SETTINGS: TautulliActivitySettingsValue = {
+export const STREAMING_NOW_PLAYING_DEFAULT_SETTINGS: StreamingNowPlayingSettingsValue = {
   instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 3,
+  hideLocalPlays: false,
   hideUsers: "",
   showBitrate: false,
   showTranscoding: true,
   showUserAndDevice: true,
-  showBandwidthSummary: true,
 };
 
 const MAX_OPTIONS: { value: number; label: string }[] = [
@@ -40,26 +41,47 @@ const MAX_OPTIONS: { value: number; label: string }[] = [
   { value: 10, label: "10" },
 ];
 
-export function TautulliActivitySettings({ slotId }: WidgetSettingsComponentProps) {
-  const { settings, update } = useWidgetSettings<TautulliActivitySettingsValue>(
+interface StreamingNowPlayingSettingsProps extends WidgetSettingsComponentProps {
+  serviceId: ServiceId;
+  hideLocalPlaysDescription: string;
+  bitrateDescription: string;
+}
+
+export function StreamingNowPlayingSettings({
+  slotId,
+  serviceId,
+  hideLocalPlaysDescription,
+  bitrateDescription,
+}: StreamingNowPlayingSettingsProps) {
+  const { settings, update } = useWidgetSettings<StreamingNowPlayingSettingsValue>(
     slotId,
-    TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
+    STREAMING_NOW_PLAYING_DEFAULT_SETTINGS,
   );
 
   return (
     <View className="px-4 py-2 gap-5">
       <InstancePickerRow
-        serviceId="tautulli"
+        serviceId={serviceId}
         value={settings.instanceIds}
         onChange={(instanceIds) => update({ instanceIds })}
       />
       <SettingsSection label="Filters">
-        <TextInput
-          label="Hide users"
-          placeholder="comma-separated usernames"
-          value={settings.hideUsers}
-          onChangeText={(hideUsers) => update({ hideUsers })}
-        />
+        <ToggleCard>
+          <Toggle
+            label="Hide local plays"
+            description={hideLocalPlaysDescription}
+            value={settings.hideLocalPlays}
+            onValueChange={(hideLocalPlays) => update({ hideLocalPlays })}
+          />
+        </ToggleCard>
+        <View className="mt-3">
+          <TextInput
+            label="Hide users"
+            placeholder="comma-separated usernames"
+            value={settings.hideUsers}
+            onChangeText={(hideUsers) => update({ hideUsers })}
+          />
+        </View>
       </SettingsSection>
 
       <SettingsSection label="Show">
@@ -71,20 +93,14 @@ export function TautulliActivitySettings({ slotId }: WidgetSettingsComponentProp
           />
           <Toggle
             label="Transcoding indicator"
-            description="Highlights direct play, copy, or transcode"
             value={settings.showTranscoding}
             onValueChange={(showTranscoding) => update({ showTranscoding })}
           />
           <Toggle
-            label="Per-stream bitrate"
+            label="Bitrate"
+            description={bitrateDescription}
             value={settings.showBitrate}
             onValueChange={(showBitrate) => update({ showBitrate })}
-          />
-          <Toggle
-            label="Total bandwidth"
-            description="Footer with the combined bandwidth of every stream"
-            value={settings.showBandwidthSummary}
-            onValueChange={(showBandwidthSummary) => update({ showBandwidthSummary })}
           />
         </ToggleCard>
       </SettingsSection>

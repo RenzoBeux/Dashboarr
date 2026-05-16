@@ -351,6 +351,23 @@ export interface RadarrQueue {
   records: RadarrQueueItem[];
 }
 
+export interface RadarrHistoryRecord {
+  id: number;
+  eventType: string;
+  sourceTitle?: string;
+  date?: string;
+  downloadId?: string;
+  movieId?: number;
+  movie?: RadarrMovie;
+}
+
+export interface RadarrHistory {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: RadarrHistoryRecord[];
+}
+
 export interface RadarrWantedMissing {
   page: number;
   pageSize: number;
@@ -531,6 +548,25 @@ export interface SonarrQueue {
   pageSize: number;
   totalRecords: number;
   records: SonarrQueueItem[];
+}
+
+export interface SonarrHistoryRecord {
+  id: number;
+  eventType: string;
+  sourceTitle?: string;
+  date?: string;
+  downloadId?: string;
+  seriesId?: number;
+  episodeId?: number;
+  series?: SonarrSeries;
+  episode?: SonarrEpisode;
+}
+
+export interface SonarrHistory {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: SonarrHistoryRecord[];
 }
 
 export interface SonarrSearchResult {

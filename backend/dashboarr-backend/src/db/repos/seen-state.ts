@@ -4,8 +4,8 @@ import { getDb } from "../client.js";
  * Persists poller state + cross-source dedupe keys.
  * Key conventions:
  *   - `qbt:hashes:downloading`          → JSON-encoded array of torrent hashes currently downloading
- *   - `radarr:queue:ids`                → JSON-encoded array of queue IDs currently present
- *   - `sonarr:queue:ids`                → JSON-encoded array of queue IDs currently present
+ *   - `radarr:<instance>:history:seen`  → JSON-encoded array of imported-history record IDs already announced
+ *   - `sonarr:<instance>:history:seen`  → JSON-encoded array of imported-history record IDs already announced
  *   - `overseerr:pending:ids`           → JSON-encoded array of request IDs in pending
  *   - `health:<serviceId>:online`       → "1" or "0"
  *   - `event:<source>:<type>:<extId>`   → "1" once an event has been dispatched
