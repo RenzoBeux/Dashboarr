@@ -1,6 +1,5 @@
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import { Toggle } from "@/components/ui/toggle";
-import { FilterChip } from "@/components/ui/filter-chip";
 import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
@@ -9,6 +8,11 @@ import {
   INSTANCE_BINDING_ALL,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
+import {
+  ChipGroup,
+  SettingsSection,
+  ToggleCard,
+} from "@/components/dashboard/widget-settings/widget-settings-blocks";
 
 export interface CalendarSettingsValue extends Record<string, unknown> {
   // Independent per-service bindings — calendar can fan out across two
@@ -60,11 +64,8 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
 
   return (
     <View className="px-4 py-2 gap-5">
-      <View>
-        <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-          Sources
-        </Text>
-        <View className="bg-surface-light rounded-2xl border border-border px-4 divide-y divide-border/60">
+      <SettingsSection label="Sources">
+        <ToggleCard>
           <Toggle
             label="Sonarr (TV episodes)"
             description={
@@ -87,8 +88,8 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
             onValueChange={(includeRadarr) => update({ includeRadarr })}
             disabled={!radarrEnabled}
           />
-        </View>
-      </View>
+        </ToggleCard>
+      </SettingsSection>
 
       {settings.includeSonarr && sonarrEnabled && (
         <InstancePickerRow
@@ -108,38 +109,20 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
         />
       )}
 
-      <View>
-        <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-          Look ahead
-        </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {DAYS_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.value}
-              label={option.label}
-              selected={settings.daysAhead === option.value}
-              onPress={() => update({ daysAhead: option.value })}
-            />
-          ))}
-        </View>
-      </View>
+      <ChipGroup
+        label="Look ahead"
+        options={DAYS_OPTIONS}
+        value={settings.daysAhead}
+        onChange={(daysAhead) => update({ daysAhead })}
+      />
 
       {settings.includeRadarr && radarrEnabled && (
-        <View>
-          <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-            Movie release date
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {RELEASE_TYPE_OPTIONS.map((option) => (
-              <FilterChip
-                key={option.value}
-                label={option.label}
-                selected={settings.radarrReleaseType === option.value}
-                onPress={() => update({ radarrReleaseType: option.value })}
-              />
-            ))}
-          </View>
-        </View>
+        <ChipGroup
+          label="Movie release date"
+          options={RELEASE_TYPE_OPTIONS}
+          value={settings.radarrReleaseType}
+          onChange={(radarrReleaseType) => update({ radarrReleaseType })}
+        />
       )}
     </View>
   );

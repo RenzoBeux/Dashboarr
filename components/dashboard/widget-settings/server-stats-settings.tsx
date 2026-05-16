@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import { Toggle } from "@/components/ui/toggle";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
@@ -7,6 +7,10 @@ import {
   INSTANCE_BINDING_ALL,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
+import {
+  SettingsSection,
+  ToggleCard,
+} from "@/components/dashboard/widget-settings/widget-settings-blocks";
 
 export interface ServerStatsSettingsValue extends Record<string, unknown> {
   // Which Glances instances to read from. "all" stacks per-host blocks; an
@@ -39,11 +43,8 @@ export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
         value={settings.instanceIds}
         onChange={(instanceIds) => update({ instanceIds })}
       />
-      <View>
-        <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-          Show
-        </Text>
-        <View className="bg-surface-light rounded-2xl border border-border px-4 divide-y divide-border/60">
+      <SettingsSection label="Show">
+        <ToggleCard>
           <Toggle
             label="CPU usage"
             description="Ring chart of total CPU load"
@@ -68,8 +69,8 @@ export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
             value={settings.showDisks}
             onValueChange={(showDisks) => update({ showDisks })}
           />
-        </View>
-      </View>
+        </ToggleCard>
+      </SettingsSection>
     </View>
   );
 }

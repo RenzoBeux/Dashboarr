@@ -1,6 +1,5 @@
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import { Toggle } from "@/components/ui/toggle";
-import { FilterChip } from "@/components/ui/filter-chip";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
@@ -8,6 +7,12 @@ import {
   INSTANCE_BINDING_ALL,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
+import {
+  ChipGroup,
+  MaxItemsSelector,
+  SettingsSection,
+  ToggleCard,
+} from "@/components/dashboard/widget-settings/widget-settings-blocks";
 
 export type OverseerrStatusFilter = "pending" | "pending-approved" | "all";
 
@@ -31,13 +36,6 @@ const STATUS_OPTIONS: { value: OverseerrStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
 ];
 
-const MAX_OPTIONS: { value: number; label: string }[] = [
-  { value: 3, label: "3" },
-  { value: 5, label: "5" },
-  { value: 10, label: "10" },
-  { value: 20, label: "20" },
-];
-
 export function OverseerrRequestsSettings({ slotId }: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<OverseerrRequestsSettingsValue>(
     slotId,
@@ -51,51 +49,28 @@ export function OverseerrRequestsSettings({ slotId }: WidgetSettingsComponentPro
         value={settings.instanceIds}
         onChange={(instanceIds) => update({ instanceIds })}
       />
-      <View>
-        <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-          Status
-        </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {STATUS_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.value}
-              label={option.label}
-              selected={settings.statusFilter === option.value}
-              onPress={() => update({ statusFilter: option.value })}
-            />
-          ))}
-        </View>
-      </View>
+      <ChipGroup
+        label="Status"
+        options={STATUS_OPTIONS}
+        value={settings.statusFilter}
+        onChange={(statusFilter) => update({ statusFilter })}
+      />
 
-      <View>
-        <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-          Show
-        </Text>
-        <View className="bg-surface-light rounded-2xl border border-border px-4 divide-y divide-border/60">
+      <SettingsSection label="Show">
+        <ToggleCard>
           <Toggle
             label="Requester"
             description="Username and request date under each item"
             value={settings.showRequester}
             onValueChange={(showRequester) => update({ showRequester })}
           />
-        </View>
-      </View>
+        </ToggleCard>
+      </SettingsSection>
 
-      <View>
-        <Text className="text-zinc-500 text-xs uppercase tracking-wider mb-2">
-          Max items
-        </Text>
-        <View className="flex-row flex-wrap gap-2">
-          {MAX_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.value}
-              label={option.label}
-              selected={settings.maxItems === option.value}
-              onPress={() => update({ maxItems: option.value })}
-            />
-          ))}
-        </View>
-      </View>
+      <MaxItemsSelector
+        value={settings.maxItems}
+        onChange={(maxItems) => update({ maxItems })}
+      />
     </View>
   );
 }
