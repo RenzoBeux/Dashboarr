@@ -17,4 +17,5 @@ ios/
 .claude/
 google-services.json
 *-firebase-adminsdk-*.json
+play-service-account.json
 coverage/*

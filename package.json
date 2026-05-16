@@ -22,7 +22,8 @@
     "bump:major": "pnpm version major -m \"chore: release v%s\"",
     "build:android:prod": "node scripts/build-android-prod.js",
     "release:android:apk": "node scripts/release-android-apk.js",
-    "release:android": "pnpm build:android:prod && pnpm release:android:apk",
+    "release:android:play": "eas submit --platform android --profile production --path android/app/build/outputs/bundle/release/app-release.aab --non-interactive",
+    "release:android": "pnpm build:android:prod && pnpm release:android:apk && pnpm release:android:play",
     "build:ios:prod": "node scripts/release-ios.js --no-upload",
     "release:ios": "node scripts/release-ios.js"
   },
