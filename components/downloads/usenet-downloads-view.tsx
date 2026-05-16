@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { View, Text, Pressable, Alert, BackHandler, ScrollView } from "react-native";
+import { View, Text, Pressable, Alert, BackHandler } from "react-native";
 import { toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import {
@@ -9,8 +9,6 @@ import {
   Plus,
   CheckCircle2,
   Circle,
-  ArrowUpDown,
-  Check,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -21,8 +19,8 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
-import { FilterChip } from "@/components/ui/filter-chip";
-import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { FilterSortButton } from "@/components/common/filter-sort-button";
+import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -82,7 +80,7 @@ export function UsenetDownloadsView({
 }: ViewProps) {
   const [filter, setFilter] = useState<FilterType>("all");
   const [sort, setSort] = useState<SortKey>("progress-desc");
-  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [nzbUrl, setNzbUrl] = useState("");
 
@@ -313,29 +311,12 @@ export function UsenetDownloadsView({
             />
           )}
 
-          <View className="flex-row items-center gap-2 mb-4">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-2"
-              className="flex-1"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <FilterChip
-                  key={opt.key}
-                  label={opt.label}
-                  selected={filter === opt.key}
-                  onPress={() => setFilter(opt.key)}
-                />
-              ))}
-            </ScrollView>
-            <Pressable
-              onPress={() => setSortSheetOpen(true)}
-              hitSlop={6}
-              className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
-            >
-              <Icon icon={ArrowUpDown} size={16} color="#a1a1aa" />
-            </Pressable>
+          <View className="mb-4">
+            <FilterSortButton
+              summary={`${FILTER_OPTIONS.find((f) => f.key === filter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+              onPress={() => setFilterSortOpen(true)}
+              active={filter !== "all" || sort !== "progress-desc"}
+            />
           </View>
         </>
       )}
@@ -363,20 +344,16 @@ export function UsenetDownloadsView({
         </View>
       )}
 
-      <ActionSheet
-        visible={sortSheetOpen}
-        onClose={() => setSortSheetOpen(false)}
-        title="Sort downloads"
-        actions={SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
-          label: opt.label,
-          icon:
-            sort === opt.key ? (
-              <Icon icon={Check} size={18} color="#3b82f6" />
-            ) : (
-              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
-            ),
-          onPress: () => setSort(opt.key),
-        }))}
+      <FilterSortSheet
+        visible={filterSortOpen}
+        onClose={() => setFilterSortOpen(false)}
+        title="Filter & sort downloads"
+        filterOptions={FILTER_OPTIONS}
+        filterValue={filter}
+        onFilterChange={setFilter}
+        sortOptions={SORT_OPTIONS}
+        sortValue={sort}
+        onSortChange={setSort}
       />
     </>
   );

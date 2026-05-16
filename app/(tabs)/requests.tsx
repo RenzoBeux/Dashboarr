@@ -10,7 +10,6 @@ import {
   Tv,
   Compass,
   ListFilter,
-  ArrowUpDown,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -22,8 +21,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
-import { SortButton } from "@/components/ui/sort-button";
+import { FilterSortButton } from "@/components/common/filter-sort-button";
+import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import {
   useSortStore,
   SORT_DEFAULTS,
@@ -329,7 +328,7 @@ function RequestsList() {
   const [filter, setFilter] = useState<RequestFilter>("all");
   const sort = useSortStore((s) => s.requests);
   const setSort = useSortStore((s) => s.setRequests);
-  const [sortOpen, setSortOpen] = useState(false);
+  const [filterSortOpen, setFilterSortOpen] = useState(false);
   const { sort: apiSort } = sortToParams(sort);
   const { data, isLoading, error } = useOverseerrRequests(1, filter, apiSort);
   const { data: counts } = useOverseerrRequestCount();
@@ -338,29 +337,20 @@ function RequestsList() {
 
   const requests = data?.results ?? [];
 
+  const filterOptions: { key: RequestFilter; label: string }[] = (
+    ["all", "pending", "approved", "processing"] as RequestFilter[]
+  ).map((f) => ({
+    key: f,
+    label: `${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`,
+  }));
+
   return (
     <View>
-      <View className="flex-row items-center gap-2 mb-4">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerClassName="gap-2"
-          className="flex-1"
-        >
-          {(
-            ["all", "pending", "approved", "processing"] as RequestFilter[]
-          ).map((f) => (
-            <FilterChip
-              key={f}
-              label={`${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`}
-              selected={filter === f}
-              onPress={() => setFilter(f)}
-            />
-          ))}
-        </ScrollView>
-        <SortButton
-          onPress={() => setSortOpen(true)}
-          active={sort !== SORT_DEFAULTS.requests}
+      <View className="mb-4">
+        <FilterSortButton
+          summary={`${filterOptions.find((f) => f.key === filter)?.label ?? ""} · ${REQUEST_SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+          onPress={() => setFilterSortOpen(true)}
+          active={filter !== "all" || sort !== SORT_DEFAULTS.requests}
         />
       </View>
 
@@ -387,20 +377,16 @@ function RequestsList() {
         </View>
       )}
 
-      <ActionSheet
-        visible={sortOpen}
-        onClose={() => setSortOpen(false)}
-        title="Sort requests"
-        actions={REQUEST_SORT_OPTIONS.map<ActionSheetAction>((opt) => ({
-          label: opt.label,
-          icon:
-            sort === opt.key ? (
-              <Icon icon={Check} size={18} color="#3b82f6" />
-            ) : (
-              <Icon icon={ArrowUpDown} size={18} color="#71717a" />
-            ),
-          onPress: () => setSort(opt.key),
-        }))}
+      <FilterSortSheet
+        visible={filterSortOpen}
+        onClose={() => setFilterSortOpen(false)}
+        title="Filter & sort requests"
+        filterOptions={filterOptions}
+        filterValue={filter}
+        onFilterChange={setFilter}
+        sortOptions={REQUEST_SORT_OPTIONS}
+        sortValue={sort}
+        onSortChange={setSort}
       />
     </View>
   );
