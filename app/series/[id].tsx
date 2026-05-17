@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronRight,
   Check,
-  X,
   Search,
   Trash2,
   Bookmark,
@@ -716,12 +715,17 @@ function EpisodeRow({
         disabled={toggleMonitored.isPending}
         className={`p-1 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
         hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={
+          episode.monitored ? "Monitored — tap to unmonitor" : "Not monitored — tap to monitor"
+        }
       >
-        {episode.monitored ? (
-          <Icon icon={Check} size={14} color="#3b82f6" />
-        ) : (
-          <Icon icon={X} size={14} color="#71717a" />
-        )}
+        <Icon
+          icon={Bookmark}
+          size={14}
+          color={episode.monitored ? "#3b82f6" : "#52525b"}
+          fill={episode.monitored ? "#3b82f6" : "transparent"}
+        />
       </Pressable>
     </View>
   );
