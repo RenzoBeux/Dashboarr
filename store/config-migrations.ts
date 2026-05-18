@@ -4,9 +4,13 @@ import {
   WIDGET_ID_RENAMES,
   UI_SCALES,
   DEFAULT_UI_SCALE,
+  SERVICE_IDS,
 } from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
 import { generateInstanceId } from "@/lib/uuid";
+import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-icons";
+import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
+import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
 
 /**
  * Bump this when the export schema changes and add a matching migration.
@@ -59,8 +63,19 @@ import { generateInstanceId } from "@/lib/uuid";
  *         Users with auto-switch off keep their useRemote values.
  *   v19 — added nzbget service entry (no schema change; defaultInstances()
  *         backfills the new id at import time, so this is a version stamp only).
+ *   v20 — dashboards become workspaces. Each Dashboard gains optional `icon`
+ *         (lucide name), `color` (hex from palette), `attachedInstances`
+ *         (instance UUIDs; drives per-instance workspace filtering so a
+ *         multi-instance user can pin "Radarr Home" to one dashboard and
+ *         "Radarr Cabin" to another), and `pinnedTabs` (route names of
+ *         user-pinned middle bottom tabs).  Migration backfills sensible
+ *         defaults: icon = LayoutDashboard, color = blue,
+ *         attachedInstances = every UUID present in the payload (so
+ *         existing dashboards keep their global behavior), pinnedTabs = the
+ *         pre-v20 bar (downloads/calendar/services) intersected with what's
+ *         actually enabled on this install.
  */
-export const CURRENT_CONFIG_VERSION = 19;
+export const CURRENT_CONFIG_VERSION = 20;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -379,6 +394,51 @@ const migrations: Record<number, (payload: any) => any> = {
   // already iterates SERVICE_IDS and backfills a disabled instance for any
   // newly-added service, so older exports just need the version field bumped.
   18: (payload) => ({ ...payload, version: 19 }),
+
+  // v19 → v20: dashboards become workspaces. Backfill icon/color/pinned
+  // with sensible defaults. Deliberately leave `attachedInstances`
+  // undefined on migrated dashboards — the render-time fallback in
+  // `useAttachedInstances` treats absent as "every currently-known instance
+  // attached", which means future instances the user adds later also
+  // auto-attach to migrated dashboards. Once the user opens the editor and
+  // saves, the dashboard transitions to an explicit list (curated mode).
+  19: (payload) => {
+    const defaultPins = defaultPinnedTabsForInstall(payload.services ?? {});
+    const dashboards = Array.isArray(payload.dashboards)
+      ? payload.dashboards.map((d: any) => {
+          if (!d || typeof d !== "object") return d;
+          // Forward-fix: a pre-rename development build of v20 briefly used
+          // `attachedServices: ServiceId[]`. Expand it to instance UUIDs so
+          // those installs upgrade cleanly. New imports won't carry this.
+          let attachedInstances: string[] | undefined;
+          if (Array.isArray(d.attachedInstances)) {
+            attachedInstances = d.attachedInstances;
+          } else if (Array.isArray(d.attachedServices)) {
+            const kinds = new Set(d.attachedServices);
+            attachedInstances = [];
+            for (const id of SERVICE_IDS) {
+              if (!kinds.has(id)) continue;
+              for (const inst of (payload.services ?? {})[id] ?? []) {
+                if (inst && typeof inst.id === "string") {
+                  attachedInstances.push(inst.id);
+                }
+              }
+            }
+          }
+          const { attachedServices: _drop, ...rest } = d;
+          const base = {
+            ...rest,
+            icon: typeof d.icon === "string" ? d.icon : DEFAULT_DASHBOARD_ICON,
+            color: typeof d.color === "string" ? d.color : DEFAULT_DASHBOARD_COLOR,
+            pinnedTabs: Array.isArray(d.pinnedTabs) ? d.pinnedTabs : defaultPins,
+          };
+          return attachedInstances !== undefined
+            ? { ...base, attachedInstances }
+            : base;
+        })
+      : payload.dashboards;
+    return { ...payload, version: 20, dashboards };
+  },
 };
 
 /**

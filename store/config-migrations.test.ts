@@ -1060,6 +1060,177 @@ describe("v17 → v18 (useRemote becomes user override)", () => {
   });
 });
 
+describe("v19 → v20 (dashboards become workspaces)", () => {
+  function baseV19(dashboardOverrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      version: 19,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "http://r",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [{ id: "s1", widgetId: "service-health" }],
+          ...dashboardOverrides,
+        },
+      ],
+      activeDashboardId: "d1",
+    };
+  }
+
+  it("backfills icon, color, and pinnedTabs on bare dashboards", () => {
+    const result: any = migrateConfig(baseV19());
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    const d = result.dashboards[0];
+    expect(d.icon).toBe("LayoutDashboard");
+    expect(d.color).toBe("#3b82f6");
+    // The legacy v20-development `attachedServices` field is dropped.
+    expect(d.attachedServices).toBeUndefined();
+  });
+
+  it("leaves attachedInstances undefined on bare dashboards so future instances auto-attach", () => {
+    // The render-time fallback in useAttachedInstances treats absent as
+    // "every currently-known instance attached", which is the only way for
+    // instances added after the v20 upgrade to flow into legacy dashboards.
+    const result: any = migrateConfig(baseV19());
+    expect(result.dashboards[0].attachedInstances).toBeUndefined();
+  });
+
+  it("does NOT backfill attachedInstances even when services are populated (auto-attach mode)", () => {
+    const result: any = migrateConfig(baseV19());
+    expect(result.dashboards[0].attachedInstances).toBeUndefined();
+  });
+
+  it("defaults pinnedTabs to the pre-v20 bottom bar when the install has the underlying services", () => {
+    const withClient: any = baseV19();
+    withClient.services.qbittorrent = [
+      {
+        id: "q1",
+        enabled: true,
+        name: "qBit",
+        localUrl: "http://q",
+        remoteUrl: "",
+        useRemote: false,
+      },
+    ];
+    withClient.services.sonarr = [
+      {
+        id: "s1",
+        enabled: true,
+        name: "Sonarr",
+        localUrl: "",
+        remoteUrl: "",
+        useRemote: false,
+      },
+    ];
+    const result: any = migrateConfig(withClient);
+    expect(result.dashboards[0].pinnedTabs).toEqual([
+      "downloads",
+      "calendar",
+      "services",
+    ]);
+  });
+
+  it("drops the downloads pin when no download client is enabled", () => {
+    // Radarr is enabled, no qbit/sab/nzbget => downloads tab makes no sense.
+    const result: any = migrateConfig(baseV19());
+    expect(result.dashboards[0].pinnedTabs).toEqual(["calendar", "services"]);
+  });
+
+  it("drops the calendar pin when neither sonarr nor radarr is enabled", () => {
+    const payload = baseV19();
+    payload.services = {
+      qbittorrent: [
+        {
+          id: "q1",
+          enabled: true,
+          name: "qBit",
+          localUrl: "http://q",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      ],
+    } as any;
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards[0].pinnedTabs).toEqual(["downloads", "services"]);
+  });
+
+  it("never drops the services pin (it's a meta surface)", () => {
+    // No services enabled at all → downloads/calendar both drop, services stays.
+    const payload = baseV19();
+    payload.services.radarr[0].enabled = false;
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards[0].pinnedTabs).toEqual(["services"]);
+  });
+
+  it("preserves pre-existing dashboard fields rather than overwriting them", () => {
+    const result: any = migrateConfig(
+      baseV19({
+        icon: "Film",
+        color: "#ef4444",
+        attachedInstances: ["r1"],
+        pinnedTabs: ["movies"],
+      }),
+    );
+    const d = result.dashboards[0];
+    expect(d.icon).toBe("Film");
+    expect(d.color).toBe("#ef4444");
+    expect(d.attachedInstances).toEqual(["r1"]);
+    expect(d.pinnedTabs).toEqual(["movies"]);
+  });
+
+  it("expands a legacy attachedServices kind list to live instance UUIDs", () => {
+    // A pre-rename build of v20 wrote attachedServices: ServiceId[]. The
+    // migration should expand each kind to all current instance UUIDs and
+    // drop the legacy field.
+    const payload = baseV19({
+      attachedServices: ["radarr"],
+    });
+    payload.services.radarr.push({
+      id: "r2",
+      enabled: true,
+      name: "Radarr 2",
+      localUrl: "",
+      remoteUrl: "",
+      useRemote: false,
+    });
+    const result: any = migrateConfig(payload);
+    const d = result.dashboards[0];
+    expect(d.attachedInstances).toEqual(["r1", "r2"]);
+    expect(d.attachedServices).toBeUndefined();
+  });
+
+  it("applies the migration to every dashboard, not just the first", () => {
+    const payload = baseV19();
+    payload.dashboards.push({
+      id: "d2",
+      name: "Server",
+      widgets: [],
+    } as any);
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards).toHaveLength(2);
+    expect(result.dashboards[0].icon).toBe("LayoutDashboard");
+    expect(result.dashboards[1].icon).toBe("LayoutDashboard");
+    // Both dashboards stay in auto-attach mode (attachedInstances absent).
+    expect(result.dashboards[0].attachedInstances).toBeUndefined();
+    expect(result.dashboards[1].attachedInstances).toBeUndefined();
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {

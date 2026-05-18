@@ -26,6 +26,7 @@ import { ICON, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
 import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode, localDateKey } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
@@ -125,8 +126,21 @@ export default function CalendarScreen() {
     setBoolean(INCLUDE_UNMONITORED_KEY, value);
   };
 
-  const sonarrAll = useEnabledInstances("sonarr");
-  const radarrAll = useEnabledInstances("radarr");
+  const attachedInstances = useAttachedInstances();
+  const sonarrAllRaw = useEnabledInstances("sonarr");
+  const radarrAllRaw = useEnabledInstances("radarr");
+  // Workspace filter at per-instance granularity: only fan out to instances
+  // attached to the active dashboard. A "Movies-only" workspace that
+  // attached just Radarr-Home won't surface Sonarr at all, and won't pull
+  // calendar data from Radarr-Cabin either.
+  const sonarrAll = useMemo(
+    () => sonarrAllRaw.filter((i) => attachedInstances.has(i.id)),
+    [sonarrAllRaw, attachedInstances],
+  );
+  const radarrAll = useMemo(
+    () => radarrAllRaw.filter((i) => attachedInstances.has(i.id)),
+    [radarrAllRaw, attachedInstances],
+  );
 
   // Persisted per-kind instance filter. Default to "all" so existing single-
   // instance users see no behavior change; multi-instance users who pick a

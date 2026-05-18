@@ -739,6 +739,121 @@ describe("validateExportPayload — dashboards (slot widget IDs silent drop)", (
   });
 });
 
+describe("validateExportPayload — dashboards (v20 identity + workspace fields)", () => {
+  it("accepts a dashboard with icon, color, attachedInstances, and pinnedTabs", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Media",
+          widgets: [],
+          icon: "Film",
+          color: "#ef4444",
+          attachedInstances: ["inst-radarr-1", "inst-sonarr-1"],
+          pinnedTabs: ["movies", "tv"],
+        },
+      ],
+    });
+    const d = result.dashboards[0];
+    expect(d.icon).toBe("Film");
+    expect(d.color).toBe("#ef4444");
+    expect(d.attachedInstances).toEqual(["inst-radarr-1", "inst-sonarr-1"]);
+    expect(d.pinnedTabs).toEqual(["movies", "tv"]);
+  });
+
+  it("allows dashboards without any v20 fields (pre-v20 shape passes)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [{ id: TEST_DASHBOARD_ID, name: "Default", widgets: [] }],
+    });
+    const d = result.dashboards[0];
+    expect(d.icon).toBeUndefined();
+    expect(d.color).toBeUndefined();
+    expect(d.attachedInstances).toBeUndefined();
+    expect(d.pinnedTabs).toBeUndefined();
+  });
+
+  it("rejects a non-hex color string", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            color: "red",
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry/);
+  });
+
+  it("rejects a non-string icon", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            icon: 42,
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry/);
+  });
+
+  it("drops empty/malformed entries from attachedInstances without rejecting the dashboard", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          attachedInstances: ["uuid-1", "", 42, "uuid-2", "uuid-1"],
+        },
+      ],
+    });
+    // Empties and non-strings are dropped; duplicates dedupe.
+    expect(result.dashboards[0].attachedInstances).toEqual(["uuid-1", "uuid-2"]);
+  });
+
+  it("caps pinnedTabs at MAX_PINNED_TABS (3) and dedupes", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          pinnedTabs: ["a", "a", "b", "c", "d", "e"],
+        },
+      ],
+    });
+    expect(result.dashboards[0].pinnedTabs).toEqual(["a", "b", "c"]);
+  });
+
+  it("rejects non-array attachedInstances", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            attachedInstances: "uuid-1",
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry/);
+  });
+});
+
 describe("validateExportPayload — hapticsEnabled", () => {
   it("accepts true", () => {
     const result = validateExportPayload({ ...baseValid(), hapticsEnabled: true });

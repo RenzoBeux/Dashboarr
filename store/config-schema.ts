@@ -10,9 +10,15 @@ import type {
   WidgetSlot,
 } from "@/store/config-store";
 import type { NotificationSettings } from "@/store/config-store";
+import { MAX_PINNED_TABS } from "@/lib/tab-routes";
 
 const SERVICE_ID_SET: ReadonlySet<string> = new Set(SERVICE_IDS);
 const WIDGET_ID_SET: ReadonlySet<string> = new Set(DASHBOARD_WIDGET_IDS);
+
+// Accepts the 8 hex characters palette swatches use. Restrictive on purpose —
+// rejects "transparent", named colors, and rgba() so the field stays a stable
+// JSON-serializable string the picker can map back to a palette entry.
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -136,7 +142,50 @@ function coerceDashboard(v: unknown): Dashboard | null {
     if (!slot) continue;
     widgets.push(slot);
   }
-  return { id: v.id, name: v.name, widgets };
+  const out: Dashboard = { id: v.id, name: v.name, widgets };
+  // v20: optional identity + workspace fields. Each is rejected only when
+  // present-but-malformed; absent fields fall back at render time via the
+  // resolve helpers, so old payloads validate cleanly.
+  if (v.icon !== undefined && v.icon !== null) {
+    if (typeof v.icon !== "string" || v.icon.length === 0 || v.icon.length > 64) {
+      return null;
+    }
+    out.icon = v.icon;
+  }
+  if (v.color !== undefined && v.color !== null) {
+    if (typeof v.color !== "string" || !HEX_COLOR_RE.test(v.color)) return null;
+    out.color = v.color;
+  }
+  if (v.attachedInstances !== undefined && v.attachedInstances !== null) {
+    if (!Array.isArray(v.attachedInstances)) return null;
+    const seen = new Set<string>();
+    const attached: string[] = [];
+    for (const id of v.attachedInstances) {
+      // Instance UUIDs aren't validated against a known set here (they're
+      // user-generated and may legitimately reference instances that don't
+      // exist on this device yet — e.g. cross-device import). Render-side
+      // intersects with live instances; non-matches are silently ignored.
+      if (typeof id !== "string" || id.length === 0 || id.length > 128) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      attached.push(id);
+    }
+    out.attachedInstances = attached;
+  }
+  if (v.pinnedTabs !== undefined && v.pinnedTabs !== null) {
+    if (!Array.isArray(v.pinnedTabs)) return null;
+    const seen = new Set<string>();
+    const pinned: string[] = [];
+    for (const tab of v.pinnedTabs) {
+      if (typeof tab !== "string" || tab.length === 0 || tab.length > 64) continue;
+      if (seen.has(tab)) continue;
+      seen.add(tab);
+      pinned.push(tab);
+      if (pinned.length >= MAX_PINNED_TABS) break;
+    }
+    out.pinnedTabs = pinned;
+  }
+  return out;
 }
 
 function coerceNotificationSettings(v: unknown): NotificationSettings | null {

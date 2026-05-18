@@ -29,6 +29,9 @@ import {
   DEFAULT_UI_SCALE,
 } from "@/lib/constants";
 import type { UiScale } from "@/lib/constants";
+import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-icons";
+import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
+import { MAX_PINNED_TABS } from "@/lib/tab-routes";
 import {
   CURRENT_CONFIG_VERSION,
   migrateConfig,
@@ -112,10 +115,37 @@ export interface WidgetSlot {
 // dashboard screen renders. Slot ids are globally unique across all dashboards
 // because they live in our memory at the same time and the slot-keyed query
 // cache would otherwise collide.
+//
+// v20: dashboards become workspaces. `attachedInstances` filters every
+// dashboard-aware surface at per-instance granularity (so a user with two
+// Radarrs can attach the "Home" instance to one dashboard and the "Cabin"
+// instance to another, without the Cabin Radarr's offline status leaking
+// into the Home dashboard's health grid). `pinnedTabs` orders the
+// user-chosen middle slots of the bottom tab bar; kind-level pickability
+// still applies (e.g. a Movies tab needs at least one attached Radarr).
+// `icon` and `color` give each workspace a visual identity surfaced in the
+// picker, the dashboard header, and the bottom Dashboard tab. All four are
+// optional so pre-v20 dashboards (and external imports) still validate.
 export interface Dashboard {
   id: string;
   name: string;
   widgets: WidgetSlot[];
+  // lucide icon name (e.g. "Film"). Unknown names fall back to the default
+  // at render time via resolveDashboardIcon.
+  icon?: string;
+  // hex string from the curated palette in lib/dashboard-colors.ts. Unknown
+  // values fall back to the default via resolveDashboardColor.
+  color?: string;
+  // Instance UUIDs attached to this workspace (per-instance, not per-kind).
+  // Missing/undefined behaves like "all current instances attached" so
+  // pre-v20 dashboards keep their global behavior. Stored UUIDs that no
+  // longer match a live instance are ignored silently — re-creating an
+  // instance with the same UUID restores its attachment without a re-pick.
+  attachedInstances?: string[];
+  // Route names of the middle bottom-tab slots, in display order. Capped at
+  // MAX_PINNED_TABS by the setter. Missing/undefined falls back to the
+  // pre-v20 bottom bar (downloads / calendar / services where applicable).
+  pinnedTabs?: string[];
 }
 
 // Legacy widget-settings shape carried by v13 exports. v13→v14 migration folds
@@ -286,6 +316,12 @@ interface ConfigActions {
   renameDashboard: (dashboardId: string, name: string) => void;
   setActiveDashboard: (dashboardId: string) => void;
   moveDashboard: (dashboardId: string, direction: "up" | "down") => void;
+  // v20: dashboard identity + workspace filter + bottom-tab pinning. All four
+  // setters persist via setJSON(STORAGE_KEYS.dashboards, ...).
+  setDashboardIcon: (dashboardId: string, icon: string) => void;
+  setDashboardColor: (dashboardId: string, color: string) => void;
+  setDashboardAttachedInstances: (dashboardId: string, instanceIds: string[]) => void;
+  setDashboardPinnedTabs: (dashboardId: string, tabIds: string[]) => void;
 
   // Slots (v14+). Operate on the active dashboard's widget list. addWidget
   // returns the new slot so callers can reference it (e.g. open settings sheet).
@@ -423,6 +459,11 @@ function deriveLegacySecrets(
 // Build the auto-created Default dashboard for a fresh install. Each entry in
 // DEFAULT_DASHBOARD_WIDGETS becomes a slot with a generated UUID and no
 // per-slot settings (widgets fall back to their registry-declared defaults).
+// v20: `attachedInstances` stays undefined so the auto-attach semantic
+// (every current and future instance is included) covers fresh installs
+// without requiring the user to revisit the picker every time they add a
+// new instance. Once they open the editor and save, the dashboard
+// transitions to an explicit list — i.e. they're in curated mode.
 function defaultDashboards(): Dashboard[] {
   return [
     {
@@ -432,6 +473,9 @@ function defaultDashboards(): Dashboard[] {
         id: generateInstanceId(),
         widgetId,
       })),
+      icon: DEFAULT_DASHBOARD_ICON,
+      color: DEFAULT_DASHBOARD_COLOR,
+      pinnedTabs: ["downloads", "calendar", "services"],
     },
   ];
 }
@@ -439,6 +483,9 @@ function defaultDashboards(): Dashboard[] {
 // Convert a flat legacy widget id list + per-WidgetId settings map into a
 // single Dashboard with one slot per widget. Used by both hydrate and the
 // v13→v14 export migration so the two paths produce identical shapes.
+// `attachedInstances` is intentionally absent — the render-time fallback
+// treats undefined as "all currently-known instances attached", which is
+// the right behavior for a freshly-migrated dashboard.
 function buildLegacyDashboard(
   widgetIds: WidgetId[],
   legacySettings: Partial<Record<WidgetId, Record<string, unknown>>>,
@@ -457,6 +504,9 @@ function buildLegacyDashboard(
       }
       return slot;
     }),
+    icon: DEFAULT_DASHBOARD_ICON,
+    color: DEFAULT_DASHBOARD_COLOR,
+    pinnedTabs: ["downloads", "calendar", "services"],
   };
 }
 
@@ -809,7 +859,80 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           }
         }
         if (typeof d.id === "string" && typeof d.name === "string") {
-          dashboards.push({ id: d.id, name: d.name, widgets });
+          const dashboard: Dashboard = { id: d.id, name: d.name, widgets };
+          // v20: optional identity + workspace fields. Each is round-tripped
+          // through hydrate so users upgrading from a pre-v20 build pick up
+          // the migration's defaults on first launch; once set, edits stick.
+          if (typeof d.icon === "string" && d.icon.length > 0) {
+            dashboard.icon = d.icon;
+          }
+          if (typeof d.color === "string" && d.color.length > 0) {
+            dashboard.color = d.color;
+          }
+          if (Array.isArray(d.attachedInstances)) {
+            const seen = new Set<string>();
+            const attached: string[] = [];
+            for (const id of d.attachedInstances) {
+              if (typeof id !== "string" || id.length === 0) continue;
+              if (seen.has(id)) continue;
+              seen.add(id);
+              attached.push(id);
+            }
+            dashboard.attachedInstances = attached;
+          } else if (Array.isArray(d.attachedServices)) {
+            // Forward-fix for a pre-rename build of v20 that briefly used
+            // ServiceId[] attachment. Expand each kind to all live instance
+            // UUIDs so behavior is preserved across the rename.
+            const kindSet = new Set<string>();
+            for (const id of d.attachedServices) {
+              if (typeof id === "string" && VALID_SERVICE_IDS.has(id)) {
+                kindSet.add(id);
+              }
+            }
+            const expanded: string[] = [];
+            for (const kind of SERVICE_IDS) {
+              if (!kindSet.has(kind)) continue;
+              for (const inst of instances[kind] ?? []) {
+                expanded.push(inst.id);
+              }
+            }
+            dashboard.attachedInstances = expanded;
+            dashboardsNeedPersist = true;
+          }
+          if (Array.isArray(d.pinnedTabs)) {
+            const seen = new Set<string>();
+            const pinned: string[] = [];
+            for (const tab of d.pinnedTabs) {
+              if (typeof tab !== "string" || tab.length === 0) continue;
+              if (seen.has(tab)) continue;
+              seen.add(tab);
+              pinned.push(tab);
+              if (pinned.length >= MAX_PINNED_TABS) break;
+            }
+            dashboard.pinnedTabs = pinned;
+          }
+          // Backfill v20 fields one-time for users upgrading from a v14-v19
+          // local install (the AsyncStorage payload is the legacy shape, even
+          // though the export migration handles them at import time).
+          if (dashboard.icon === undefined) {
+            dashboard.icon = DEFAULT_DASHBOARD_ICON;
+            dashboardsNeedPersist = true;
+          }
+          if (dashboard.color === undefined) {
+            dashboard.color = DEFAULT_DASHBOARD_COLOR;
+            dashboardsNeedPersist = true;
+          }
+          // attachedInstances stays undefined on pre-v20 dashboards
+          // intentionally — the render-time fallback treats absent as "all
+          // currently-known instances attached", which is the only way for
+          // future instances the user adds later to also auto-attach to
+          // legacy dashboards. The fields below stay explicit because they
+          // don't have a meaningful "auto" semantic.
+          if (dashboard.pinnedTabs === undefined) {
+            dashboard.pinnedTabs = ["downloads", "calendar", "services"];
+            dashboardsNeedPersist = true;
+          }
+          dashboards.push(dashboard);
         }
       }
     }
@@ -1168,10 +1291,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   // --- Dashboards (v14+) ---
 
   addDashboard: (name) => {
+    // New dashboards default to "no instances attached" so the user can opt
+    // in to exactly the workspace they want without first having to
+    // deselect every unrelated instance. The empty list also makes the
+    // bottom bar fall back to its pinnedTabs-only behavior cleanly. Pre-
+    // existing dashboards (created before v20) carry full attachment via
+    // the migration default.
     const dashboard: Dashboard = {
       id: generateInstanceId(),
       name: name.trim() || DEFAULT_DASHBOARD_NAME,
       widgets: [],
+      icon: DEFAULT_DASHBOARD_ICON,
+      color: DEFAULT_DASHBOARD_COLOR,
+      attachedInstances: [],
+      pinnedTabs: ["services"],
     };
     set((state) => {
       const dashboards = [...state.dashboards, dashboard];
@@ -1223,6 +1356,72 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       if (target < 0 || target >= state.dashboards.length) return state;
       const dashboards = [...state.dashboards];
       [dashboards[idx], dashboards[target]] = [dashboards[target], dashboards[idx]];
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setDashboardIcon: (dashboardId, icon) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) =>
+        d.id === dashboardId ? { ...d, icon } : d,
+      );
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setDashboardColor: (dashboardId, color) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) =>
+        d.id === dashboardId ? { ...d, color } : d,
+      );
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setDashboardAttachedInstances: (dashboardId, instanceIds) => {
+    set((state) => {
+      // Dedupe + drop empties. Order comes from the caller; we don't
+      // validate UUIDs against live instances here so dashboards survive
+      // an instance being temporarily removed and re-added with the same
+      // id (e.g. via export/import). Render-side intersects with live
+      // instances anyway.
+      const seen = new Set<string>();
+      const sanitized: string[] = [];
+      for (const id of instanceIds) {
+        if (typeof id !== "string" || id.length === 0) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        sanitized.push(id);
+      }
+      const dashboards = state.dashboards.map((d) =>
+        d.id === dashboardId ? { ...d, attachedInstances: sanitized } : d,
+      );
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setDashboardPinnedTabs: (dashboardId, tabIds) => {
+    set((state) => {
+      // Cap at MAX_PINNED_TABS, dedupe, drop empty entries. The full set of
+      // valid tab names isn't enforced here because the layout component
+      // ignores entries it doesn't render — keeping validation loose lets
+      // pinned items survive across app upgrades that add new tabs.
+      const seen = new Set<string>();
+      const sanitized: string[] = [];
+      for (const tab of tabIds) {
+        if (typeof tab !== "string" || tab.length === 0) continue;
+        if (seen.has(tab)) continue;
+        seen.add(tab);
+        sanitized.push(tab);
+        if (sanitized.length >= MAX_PINNED_TABS) break;
+      }
+      const dashboards = state.dashboards.map((d) =>
+        d.id === dashboardId ? { ...d, pinnedTabs: sanitized } : d,
+      );
       setJSON(STORAGE_KEYS.dashboards, dashboards);
       return { dashboards };
     });

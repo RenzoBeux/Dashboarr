@@ -9,6 +9,7 @@ import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
 import { useConfigStore } from "@/store/config-store";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   SERVICE_HEALTH_DEFAULT_SETTINGS,
@@ -43,6 +44,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const servicesOrder = useConfigStore((s) => s.servicesOrder);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  const attachedInstances = useAttachedInstances();
   const router = useRouter();
 
   const hiddenSet = new Set(settings.hiddenKinds);
@@ -68,7 +70,14 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     );
     if (allInstances.length === 0) continue;
     const binding = settings.instances[kindId];
-    const bound = resolveBoundInstances(binding, allInstances);
+    // Workspace filter at per-instance granularity: the user attached
+    // specific instances to this dashboard (e.g. "Radarr Home" but not
+    // "Radarr Cabin"), so drop bound instances that aren't attached.
+    // This prevents the Cabin Radarr's offline status from showing up on
+    // the Home dashboard's health grid.
+    const bound = resolveBoundInstances(binding, allInstances).filter((inst) =>
+      attachedInstances.has(inst.id),
+    );
     if (bound.length === 0) continue;
     for (const inst of bound) {
       const status = healthByInstance.get(`${kindId}:${inst.id}`);

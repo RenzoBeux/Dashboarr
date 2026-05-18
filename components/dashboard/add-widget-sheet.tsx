@@ -30,10 +30,12 @@ import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS, ICON } from "@/lib/constants";
 import {
   getAvailableWidgets,
+  isWidgetServiceAttached,
   isWidgetServiceEnabled,
   type WidgetDefinition,
 } from "@/components/dashboard/widget-registry";
 import { GlassSurface } from "@/components/ui/glass-surface";
+import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
@@ -47,6 +49,7 @@ interface AddWidgetSheetProps {
 export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
   const services = useConfigStore((s) => s.services);
   const addWidget = useConfigStore((s) => s.addWidget);
+  const attachedKinds = useAttachedKinds();
   const insets = useSafeAreaInsets();
 
   const [mounted, setMounted] = useState(false);
@@ -54,10 +57,15 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
   const backdrop = useSharedValue(0);
 
   // With per-slot dashboards the same widget can be placed multiple times
-  // (different instance bindings), so the picker lists every registered widget.
-  // Locked widgets are still shown — just below the available ones — so users
-  // discover what they could enable in Settings.
-  const available = getAvailableWidgets();
+  // (different instance bindings), so the picker lists every registered widget
+  // whose service has at least one attached instance on this dashboard.
+  // Locked widgets (attached kind but disabled globally) are still shown so
+  // users discover what they could enable in Settings. Widgets whose service
+  // has no attached instance are hidden entirely — they belong on a
+  // different dashboard.
+  const available = getAvailableWidgets().filter((w) =>
+    isWidgetServiceAttached(w, attachedKinds),
+  );
   const enabled = available.filter((w) => isWidgetServiceEnabled(w, services));
   const locked = available.filter((w) => !isWidgetServiceEnabled(w, services));
 
