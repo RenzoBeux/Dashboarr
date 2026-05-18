@@ -74,18 +74,19 @@ export default function DashboardEditScreen() {
   // Snapshot the dashboard into editable draft state when the screen mounts.
   // If the dashboard is later removed (e.g. via another device through a
   // backend sync), the saved values silently no-op — better than crashing.
+  //
+  // Auto-attach mode (`attachedInstances === undefined`) starts the draft
+  // EMPTY rather than pre-ticking every instance. Users open this screen
+  // to curate — pre-ticking everything forces them to untick a long list
+  // to reach a focused workspace, which is the opposite of the action they
+  // came here to perform. The trade-off (a user who only wanted to tweak
+  // icon/color can no longer Save without thinking about attachment) is
+  // worth it; that user can hit back/Cancel and the dashboard stays in
+  // auto-attach mode.
+  const wasAutoAttach = dashboard?.attachedInstances === undefined;
   const initialAttached = useMemo<string[]>(() => {
-    if (!dashboard) return [];
-    if (dashboard.attachedInstances) return [...dashboard.attachedInstances];
-    // Pre-v20 auto-attach mode: seed the draft with every currently-known
-    // instance so saving commits the equivalent explicit set.
-    const out: string[] = [];
-    for (const kind of SERVICE_IDS) {
-      for (const inst of serviceInstances[kind] ?? []) {
-        out.push(inst.id);
-      }
-    }
-    return out;
+    if (!dashboard?.attachedInstances) return [];
+    return [...dashboard.attachedInstances];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id]);
 
@@ -115,6 +116,16 @@ export default function DashboardEditScreen() {
     return () => handle.cancel();
   }, []);
 
+  // Collapse state for each multi-instance kind card. Default collapsed —
+  // the summary line ("2 of 3 attached") gives the user enough at-a-glance
+  // info, and keeping kinds folded lets long lists stay scannable. The
+  // user expands only the kind they actually want to edit.
+  const [expandedKinds, setExpandedKinds] = useState<Record<string, boolean>>({});
+  function toggleExpanded(kind: ServiceId) {
+    Haptics.selectionAsync();
+    setExpandedKinds((prev) => ({ ...prev, [kind]: !prev[kind] }));
+  }
+
   const attachedSet = useMemo(() => new Set(attached), [attached]);
   const attachedKinds = useMemo(() => {
     const out = new Set<ServiceId>();
@@ -131,9 +142,24 @@ export default function DashboardEditScreen() {
   );
 
   function handleToggleInstance(instanceId: string) {
-    Haptics.selectionAsync();
     setAttached((prev) => {
       const has = prev.includes(instanceId);
+      // Defensive gate: disabled instances can be *removed* (un-attached)
+      // but never freshly *added* — there's nothing for the workspace to
+      // surface from a disabled instance, and the UI shouldn't be the
+      // only thing keeping that invariant.
+      if (!has) {
+        let live: { enabled: boolean } | undefined;
+        for (const kind of SERVICE_IDS) {
+          live = (serviceInstances[kind] ?? []).find((i) => i.id === instanceId);
+          if (live) break;
+        }
+        if (live && !live.enabled) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          return prev;
+        }
+      }
+      Haptics.selectionAsync();
       const next = has
         ? prev.filter((x) => x !== instanceId)
         : [...prev, instanceId];
@@ -152,7 +178,11 @@ export default function DashboardEditScreen() {
 
   function handleSelectAll(kind: ServiceId) {
     Haptics.selectionAsync();
-    const ids = (serviceInstances[kind] ?? []).map((i) => i.id);
+    // Mirror handleToggleInstance: never auto-attach disabled instances.
+    // Pre-attached disabled ids stay attached (they were already there).
+    const ids = (serviceInstances[kind] ?? [])
+      .filter((i) => i.enabled)
+      .map((i) => i.id);
     setAttached((prev) => {
       const set = new Set(prev);
       for (const id of ids) set.add(id);
@@ -328,94 +358,184 @@ export default function DashboardEditScreen() {
 
       <Section
         label="Attached instances"
-        hint="Pick which service instances belong to this workspace. A second Radarr or qBittorrent on another network can stay quiet on the wrong dashboard."
+        hint={
+          wasAutoAttach
+            ? "This dashboard was set to auto-include every service. Tick the instances that belong here — anything you don't tick won't appear on this workspace after you save."
+            : "Pick which service instances belong to this workspace. A second Radarr or qBittorrent on another network can stay quiet on the wrong dashboard."
+        }
       >
         {!heavyReady ? (
           <View className="gap-2">
-            <View className="h-16 rounded-2xl bg-surface-light/40" />
-            <View className="h-16 rounded-2xl bg-surface-light/40" />
+            <View className="h-14 rounded-2xl bg-surface-light/40" />
+            <View className="h-14 rounded-2xl bg-surface-light/40" />
           </View>
         ) : (
-        <View className="gap-3">
-          {SERVICE_IDS.map((kind) => {
-            const list = serviceInstances[kind] ?? [];
-            if (list.length === 0) return null;
-            const multi = list.length > 1;
-            const allOn = list.every((inst) => attachedSet.has(inst.id));
-            const noneOn = list.every((inst) => !attachedSet.has(inst.id));
-            return (
-              <View
-                key={kind}
-                className="rounded-2xl bg-surface-light border border-border/70 overflow-hidden"
-              >
-                <View className="flex-row items-center gap-2 px-3 py-2.5 border-b border-border/40">
-                  <ServiceLogo id={kind} size={16} online />
-                  <Text
-                    className="flex-1 text-zinc-100 text-sm font-semibold"
-                    numberOfLines={1}
+          <View className="gap-2">
+            {SERVICE_IDS.map((kind) => {
+              const list = serviceInstances[kind] ?? [];
+              if (list.length === 0) return null;
+              const multi = list.length > 1;
+              const enabledCount = list.filter((i) => i.enabled).length;
+              const attachedCount = list.filter((i) =>
+                attachedSet.has(i.id),
+              ).length;
+              const allDisabled = enabledCount === 0;
+              // Kind-card disabled state: when every instance is disabled
+              // and none are currently attached, the whole card is
+              // non-interactive — there's nothing meaningful to toggle.
+              // (If an instance is attached from a prior state and later
+              // got disabled, we still let the user un-attach it.)
+              const kindUntouchable = allDisabled && attachedCount === 0;
+
+              // Single-instance kinds render as a flat toggle row — no
+              // need for a collapse, the checkbox lives in the header.
+              if (!multi) {
+                const inst = list[0];
+                const on = attachedSet.has(inst.id);
+                const interactive = inst.enabled || on;
+                return (
+                  <Pressable
+                    key={kind}
+                    onPress={
+                      interactive
+                        ? () => handleToggleInstance(inst.id)
+                        : undefined
+                    }
+                    className="flex-row items-center gap-3 rounded-2xl bg-surface-light border border-border/70 px-3 py-3 active:bg-surface"
+                    style={{ opacity: !interactive ? 0.5 : 1 }}
                   >
-                    {SERVICE_DEFAULTS[kind].name}
-                  </Text>
-                  {multi && (
-                    <View className="flex-row items-center gap-1">
-                      <MiniButton
-                        label="All"
-                        disabled={allOn}
-                        onPress={() => handleSelectAll(kind)}
+                    <ServiceLogo id={kind} size={16} online />
+                    <View className="flex-1">
+                      <Text
+                        className="text-zinc-100 text-sm font-semibold"
+                        numberOfLines={1}
+                      >
+                        {SERVICE_DEFAULTS[kind].name}
+                      </Text>
+                      {!inst.enabled && (
+                        <Text className="text-zinc-600 text-xs mt-0.5">
+                          Enable in Settings to attach
+                        </Text>
+                      )}
+                    </View>
+                    <Checkbox
+                      on={on}
+                      color={color}
+                      disabled={!interactive}
+                    />
+                  </Pressable>
+                );
+              }
+
+              // Multi-instance kinds get a collapsable card with a
+              // per-instance breakdown inside.
+              const expanded = !!expandedKinds[kind];
+              const allOn =
+                enabledCount > 0 &&
+                list
+                  .filter((i) => i.enabled)
+                  .every((i) => attachedSet.has(i.id));
+
+              return (
+                <View
+                  key={kind}
+                  className="rounded-2xl bg-surface-light border border-border/70 overflow-hidden"
+                >
+                  <Pressable
+                    onPress={
+                      kindUntouchable ? undefined : () => toggleExpanded(kind)
+                    }
+                    className="flex-row items-center gap-3 px-3 py-3 active:bg-surface"
+                    style={{ opacity: kindUntouchable ? 0.55 : 1 }}
+                  >
+                    <ServiceLogo id={kind} size={16} online />
+                    <View className="flex-1">
+                      <Text
+                        className="text-zinc-100 text-sm font-semibold"
+                        numberOfLines={1}
+                      >
+                        {SERVICE_DEFAULTS[kind].name}
+                      </Text>
+                      <Text
+                        className="text-zinc-500 text-xs mt-0.5"
+                        numberOfLines={1}
+                      >
+                        {kindUntouchable
+                          ? "All instances disabled — enable in Settings"
+                          : `${attachedCount} of ${list.length} attached`}
+                      </Text>
+                    </View>
+                    {!kindUntouchable && (
+                      <Icon
+                        icon={expanded ? ChevronUp : ChevronDown}
+                        size={18}
+                        color="#a1a1aa"
                       />
-                      <MiniButton
-                        label="None"
-                        disabled={noneOn}
-                        onPress={() => handleSelectNone(kind)}
-                      />
+                    )}
+                  </Pressable>
+
+                  {expanded && !kindUntouchable && (
+                    <View className="border-t border-border/40">
+                      <View className="flex-row items-center gap-1 px-3 py-2 border-b border-border/30">
+                        <MiniButton
+                          label="All"
+                          disabled={allOn || enabledCount === 0}
+                          onPress={() => handleSelectAll(kind)}
+                        />
+                        <MiniButton
+                          label="None"
+                          disabled={attachedCount === 0}
+                          onPress={() => handleSelectNone(kind)}
+                        />
+                      </View>
+                      {list.map((inst, idx) => {
+                        const on = attachedSet.has(inst.id);
+                        const isLast = idx === list.length - 1;
+                        const interactive = inst.enabled || on;
+                        const label =
+                          inst.name || SERVICE_DEFAULTS[kind].name;
+                        return (
+                          <Pressable
+                            key={inst.id}
+                            onPress={
+                              interactive
+                                ? () => handleToggleInstance(inst.id)
+                                : undefined
+                            }
+                            className={`flex-row items-center gap-3 px-3 py-3 active:bg-surface ${
+                              isLast ? "" : "border-b border-border/30"
+                            }`}
+                            style={{ opacity: !interactive ? 0.5 : 1 }}
+                          >
+                            <Checkbox
+                              on={on}
+                              color={color}
+                              disabled={!interactive}
+                            />
+                            <Text
+                              className={`flex-1 text-sm ${
+                                on
+                                  ? "text-zinc-100 font-medium"
+                                  : "text-zinc-400"
+                              }`}
+                              numberOfLines={1}
+                            >
+                              {label}
+                            </Text>
+                            {!inst.enabled && (
+                              <Text className="text-zinc-600 text-xs">
+                                disabled
+                              </Text>
+                            )}
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
-                {list.map((inst, idx) => {
-                  const on = attachedSet.has(inst.id);
-                  const isLast = idx === list.length - 1;
-                  // For single-instance kinds, fall back to the kind name
-                  // so the row doesn't read as a generic placeholder.
-                  const label = multi
-                    ? inst.name || SERVICE_DEFAULTS[kind].name
-                    : SERVICE_DEFAULTS[kind].name;
-                  return (
-                    <Pressable
-                      key={inst.id}
-                      onPress={() => handleToggleInstance(inst.id)}
-                      className={`flex-row items-center gap-3 px-3 py-3 active:bg-surface ${
-                        isLast ? "" : "border-b border-border/30"
-                      }`}
-                    >
-                      <View
-                        className="w-5 h-5 rounded items-center justify-center border"
-                        style={{
-                          backgroundColor: on ? color : "transparent",
-                          borderColor: on ? color : "#52525b",
-                        }}
-                      >
-                        {on && (
-                          <Icon icon={Check} size={14} color="#ffffff" />
-                        )}
-                      </View>
-                      <Text
-                        className={`flex-1 text-sm ${
-                          on ? "text-zinc-100 font-medium" : "text-zinc-400"
-                        }`}
-                        numberOfLines={1}
-                      >
-                        {label}
-                      </Text>
-                      {!inst.enabled && (
-                        <Text className="text-zinc-600 text-xs">disabled</Text>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
         )}
       </Section>
 
@@ -547,6 +667,26 @@ function MiniButton({ label, disabled, onPress }: MiniButtonProps) {
     >
       <Text className="text-zinc-300 text-[0.7rem] font-medium">{label}</Text>
     </Pressable>
+  );
+}
+
+interface CheckboxProps {
+  on: boolean;
+  color: string;
+  disabled?: boolean;
+}
+
+function Checkbox({ on, color, disabled }: CheckboxProps) {
+  return (
+    <View
+      className="w-5 h-5 rounded items-center justify-center border"
+      style={{
+        backgroundColor: on ? color : "transparent",
+        borderColor: on ? color : disabled ? "#3f3f46" : "#52525b",
+      }}
+    >
+      {on && <Icon icon={Check} size={14} color="#ffffff" />}
+    </View>
   );
 }
 
