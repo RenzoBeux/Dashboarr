@@ -333,19 +333,19 @@ export default function DashboardEditScreen() {
       <Section label="Color">
         <View className="flex-row flex-wrap gap-2">
           {DASHBOARD_COLORS.map((swatch) => {
-            const selected = color === swatch.value;
+            const selected = color === swatch.hex;
             return (
               <Pressable
-                key={swatch.value}
+                key={swatch.hex}
                 onPress={() => {
                   Haptics.selectionAsync();
-                  setColor(swatch.value);
+                  setColor(swatch.hex);
                 }}
                 hitSlop={6}
                 className={`w-10 h-10 rounded-full items-center justify-center ${
                   selected ? "border-2 border-white" : ""
                 }`}
-                style={{ backgroundColor: swatch.value }}
+                style={{ backgroundColor: swatch.hex }}
               >
                 {selected && (
                   <Icon icon={Check} size={ICON.SM} color="#ffffff" />

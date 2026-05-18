@@ -5,7 +5,7 @@ import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { rem } from "nativewind";
@@ -223,7 +223,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
-        <SafeAreaProvider>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <QueryClientProvider client={queryClient}>
             <ErrorBoundary>
               {/* Invisible root subscribers — isolated so a single failing
