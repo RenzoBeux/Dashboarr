@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo } from "react";
+import { createElement, useEffect, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native";
 import { Tabs, useRouter, usePathname } from "expo-router";
 import {
@@ -77,19 +77,23 @@ export default function TabLayout() {
   // jump back to the always-pinned Dashboard tab so the user never lands on a
   // hidden route with no way back.
   //
-  // Critical gating: only act when the current segment is a known
-  // pickable tab. The (tabs) layout stays mounted when the user pushes to a
-  // non-tabs route (e.g. /dashboard-edit/[id]), and its pathname changes
-  // accordingly — without this guard the effect would bounce the user back
-  // to /dashboard whenever they navigate to any sibling route.
+  // Trigger only on dashboard switch (or pin-set change), NOT on every
+  // pathname change. Non-pinned tabs still have a registered route (so cards
+  // / service tiles can deep-link into them via router.push) — if we redirect
+  // on every pathname change, those deep links bounce back to /dashboard the
+  // instant they land. The pathname is read inside the effect via a ref so
+  // the latest value is used without the effect re-running when it changes.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   useEffect(() => {
-    if (!pathname) return;
-    const segment = pathname.split("/").filter(Boolean)[0];
+    const current = pathnameRef.current;
+    if (!current) return;
+    const segment = current.split("/").filter(Boolean)[0];
     if (!segment) return;
     if (!ALL_PICKABLE_TABS.includes(segment as TabRouteId)) return;
     if (pinnedTabs.includes(segment as TabRouteId)) return;
     router.replace("/(tabs)/dashboard");
-  }, [activeDashboard?.id, pinnedTabs, pathname]);
+  }, [activeDashboard?.id, pinnedTabs.join(",")]);
 
   // Build the middle-tab declarations in pinned order, then fall back to the
   // canonical list for the rest. React Navigation renders tabs in the JSX
