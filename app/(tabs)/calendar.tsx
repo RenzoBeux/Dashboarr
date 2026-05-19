@@ -325,6 +325,30 @@ export default function CalendarScreen() {
   const todayKey = localDateKey(today);
   const selectedItems = itemsByDate.get(selectedDate) ?? [];
 
+  // Workspace can be configured such that no calendar-able service is
+  // attached (e.g. user un-attached both Sonarr and Radarr after pinning the
+  // tab). The tab-bar redirect in _layout.tsx normally bounces them away, but
+  // they can still land here via a deep-link or the rare race during edit.
+  // Render a contextual empty state instead of an empty grid.
+  const hasAnyAttached = sonarrAllRaw.length > 0 || radarrAllRaw.length > 0;
+  const hasAnyOnDashboard = sonarrAll.length > 0 || radarrAll.length > 0;
+  if (!hasAnyOnDashboard) {
+    return (
+      <ScreenWrapper scrollable={false}>
+        <View className="flex-1 items-center justify-center gap-2 px-6">
+          <Text className="text-zinc-100 text-lg font-semibold">
+            {hasAnyAttached ? "Nothing attached here" : "No calendar source enabled"}
+          </Text>
+          <Text className="text-zinc-500 text-sm text-center">
+            {hasAnyAttached
+              ? "Open the dashboard switcher and attach Sonarr or Radarr to this workspace."
+              : "Enable Sonarr or Radarr in Settings to populate the calendar."}
+          </Text>
+        </View>
+      </ScreenWrapper>
+    );
+  }
+
   function goMonth(delta: number) {
     lightHaptic();
     const d = new Date(year, month + delta, 1);

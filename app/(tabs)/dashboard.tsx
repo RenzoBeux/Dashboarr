@@ -8,6 +8,7 @@ import {
   Pencil,
   Check,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   X,
   Plus,
@@ -112,19 +113,35 @@ export default function DashboardScreen() {
               title is tappable (lets them rename or add another). */}
           <Icon icon={ChevronsUpDown} size={ICON.SM} color="#71717a" />
         </TouchableOpacity>
-        {hasAnyEnabled && (
-          <TouchableOpacity
-            onPress={() => setEditMode((e) => !e)}
-            className="p-2"
-            hitSlop={8}
-          >
-            {editMode ? (
-              <Icon icon={Check} size={ICON.MD} color="#22c55e" />
-            ) : (
-              <Icon icon={Pencil} size={ICON.MD} color="#71717a" />
-            )}
-          </TouchableOpacity>
-        )}
+        <View className="flex-row items-center">
+          {activeDashboard && (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push(`/dashboard-edit/${activeDashboard.id}` as any);
+              }}
+              className="p-2"
+              hitSlop={8}
+              accessibilityLabel="Configure dashboard"
+            >
+              <Icon icon={SlidersHorizontal} size={ICON.MD} color="#71717a" />
+            </TouchableOpacity>
+          )}
+          {hasAnyEnabled && (
+            <TouchableOpacity
+              onPress={() => setEditMode((e) => !e)}
+              className="p-2"
+              hitSlop={8}
+              accessibilityLabel={editMode ? "Done editing widgets" : "Edit widgets"}
+            >
+              {editMode ? (
+                <Icon icon={Check} size={ICON.MD} color="#22c55e" />
+              ) : (
+                <Icon icon={Pencil} size={ICON.MD} color="#71717a" />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {isAutoAttach && hasAnyEnabled && activeDashboard && (

@@ -66,10 +66,13 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   const [mounted, setMounted] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState("");
-  // Submitting via the keyboard return key fires `onSubmitEditing` and then,
-  // when the input loses focus, `onBlur` — both wired to the same commit
-  // function. The ref guard makes the second call a no-op so we don't add the
-  // dashboard twice.
+  // Submit-only commit (via the keyboard return key or the inline check
+  // button). Tapping the backdrop, an existing dashboard, or the close button
+  // discards the draft — `onBlur`-commit was surprising because it conflated
+  // "I lost focus" with "I'm done", and users who tapped the backdrop expecting
+  // cancel got a new dashboard instead. Guard against the keyboard fire-once
+  // path: pressing Return also blurs the input, so the second call after the
+  // first commit needs to be a no-op.
   const creatingCommittedRef = useRef(false);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
@@ -169,18 +172,33 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
 
   function commitCreate() {
     if (creatingCommittedRef.current) return;
-    creatingCommittedRef.current = true;
     const trimmed = createDraft.trim();
     if (trimmed.length === 0) {
-      setCreating(false);
+      // Nothing to commit yet — keep the row open so the user can keep typing
+      // instead of bouncing them out on accidental Return.
       return;
     }
+    creatingCommittedRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const created = addDashboard(trimmed);
     setActiveDashboard(created.id);
     setCreating(false);
     setCreateDraft("");
+    // Snap the picker closed and push to the editor in the same frame so a
+    // freshly-created dashboard is immediately configurable. The picker's
+    // 240ms slide-out would otherwise sit on top of the route push.
+    translateY.value = OFFSCREEN;
+    backdrop.value = 0;
+    setMounted(false);
     onClose();
+    router.push(`/dashboard-edit/${created.id}` as any);
+  }
+
+  function cancelCreate() {
+    Haptics.selectionAsync();
+    creatingCommittedRef.current = false;
+    setCreating(false);
+    setCreateDraft("");
   }
 
   return (
@@ -367,14 +385,30 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                     <TextInput
                       value={createDraft}
                       onChangeText={setCreateDraft}
-                      onBlur={commitCreate}
                       onSubmitEditing={commitCreate}
+                      returnKeyType="done"
                       autoFocus
                       maxLength={40}
                       className="flex-1 text-zinc-100 text-base font-semibold"
                       placeholder="Dashboard name"
                       placeholderTextColor="#52525b"
                     />
+                    <Pressable
+                      onPress={cancelCreate}
+                      hitSlop={8}
+                      className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
+                    >
+                      <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
+                    </Pressable>
+                    <Pressable
+                      onPress={commitCreate}
+                      disabled={createDraft.trim().length === 0}
+                      hitSlop={8}
+                      className="w-9 h-9 rounded-full bg-primary/20 items-center justify-center active:opacity-70"
+                      style={{ opacity: createDraft.trim().length === 0 ? 0.4 : 1 }}
+                    >
+                      <Icon icon={Check} size={ICON.SM} color="#60a5fa" />
+                    </Pressable>
                   </View>
                 ) : (
                   <Pressable

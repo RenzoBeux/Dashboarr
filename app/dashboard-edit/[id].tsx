@@ -1,5 +1,6 @@
-import { createElement, useEffect, useMemo, useState } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
 import {
   InteractionManager,
   Pressable,
@@ -13,6 +14,7 @@ import { Icon } from "@/components/ui/icon";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { TextInput } from "@/components/ui/text-input";
 import { useConfigStore } from "@/store/config-store";
 import {
@@ -24,7 +26,6 @@ import {
 import {
   LUCIDE_BY_NAME,
   LUCIDE_ICON_NAMES,
-  resolveDashboardIcon,
   type DashboardIconName,
 } from "@/lib/dashboard-icons";
 import {
@@ -98,9 +99,29 @@ export default function DashboardEditScreen() {
     resolveDashboardColor(dashboard?.color),
   );
   const [attached, setAttached] = useState<string[]>(initialAttached);
+  const [touchedAttached, setTouchedAttached] = useState(false);
   const [pinned, setPinned] = useState<TabRouteId[]>(() =>
     sanitizePins(dashboard?.pinnedTabs ?? []),
   );
+
+  // Track whether the draft diverges from the persisted dashboard so we can
+  // (1) skip silent writes on save and (2) prompt before discarding on back.
+  const initialName = dashboard?.name ?? "";
+  const initialIcon = resolveIconName(dashboard?.icon);
+  const initialColor = resolveDashboardColor(dashboard?.color);
+  const initialPinned = useMemo(
+    () => sanitizePins(dashboard?.pinnedTabs ?? []),
+    // Snapshot on mount — same lifecycle as initialAttached, see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dashboard?.id],
+  );
+  const trimmedName = name.trim();
+  const dirty =
+    (trimmedName.length > 0 && trimmedName !== initialName) ||
+    icon !== initialIcon ||
+    color !== initialColor ||
+    touchedAttached ||
+    !arraysEqual(pinned, initialPinned);
 
   // Defer mounting the heavy sections (50+ lucide SVGs in the icon picker,
   // the full instances list) until after the stack push transition settles.
@@ -115,6 +136,42 @@ export default function DashboardEditScreen() {
     });
     return () => handle.cancel();
   }, []);
+
+  // Intercept back/swipe-dismiss while the draft is dirty so the user gets a
+  // chance to keep editing or explicitly discard. Bypass is held in a ref —
+  // not state — because Save needs to flip it *and* call router.back() in the
+  // same tick; a state flip would re-render after the back call had already
+  // tripped the guard.
+  const navigation = useNavigation();
+  const allowRemoveRef = useRef(false);
+  const pendingActionRef = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+
+  usePreventRemove(
+    dirty,
+    useCallback(({ data }) => {
+      if (allowRemoveRef.current) {
+        allowRemoveRef.current = false;
+        navigation.dispatch(data.action);
+        return;
+      }
+      Haptics.selectionAsync();
+      pendingActionRef.current = data.action;
+      setDiscardOpen(true);
+    }, [navigation]),
+  );
+
+  function confirmDiscard() {
+    setDiscardOpen(false);
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    allowRemoveRef.current = true;
+    if (action) {
+      navigation.dispatch(action);
+    } else {
+      router.back();
+    }
+  }
 
   // Collapse state for each multi-instance kind card. Default collapsed —
   // the summary line ("2 of 3 attached") gives the user enough at-a-glance
@@ -141,6 +198,21 @@ export default function DashboardEditScreen() {
     [attachedKinds],
   );
 
+  // Recompute the still-pickable tab set from a hypothetical attachment list
+  // and prune pins down to it. Centralized so every attachment mutation goes
+  // through the same cascade — handleSelectNone in particular used to read
+  // the stale `attachedSet` closure, which worked by accident.
+  function prunePinsForAttachment(nextAttached: string[]) {
+    const nextAttachedSet = new Set(nextAttached);
+    const nextKinds = new Set<ServiceId>();
+    for (const kind of SERVICE_IDS) {
+      const list = serviceInstances[kind] ?? [];
+      if (list.some((inst) => nextAttachedSet.has(inst.id))) nextKinds.add(kind);
+    }
+    const stillPickable = new Set<string>(pickableTabIdsFor(nextKinds));
+    setPinned((prevPins) => prevPins.filter((tab) => stillPickable.has(tab)));
+  }
+
   function handleToggleInstance(instanceId: string) {
     setAttached((prev) => {
       const has = prev.includes(instanceId);
@@ -163,15 +235,8 @@ export default function DashboardEditScreen() {
       const next = has
         ? prev.filter((x) => x !== instanceId)
         : [...prev, instanceId];
-      // Drop pins whose underlying kind no longer has any attached instance
-      // so the pinned list stays consistent with the attachment set.
-      const nextKinds = new Set<ServiceId>();
-      for (const kind of SERVICE_IDS) {
-        const list = serviceInstances[kind] ?? [];
-        if (list.some((inst) => next.includes(inst.id))) nextKinds.add(kind);
-      }
-      const stillPickable = new Set<string>(pickableTabIdsFor(nextKinds));
-      setPinned((prevPins) => prevPins.filter((tab) => stillPickable.has(tab)));
+      prunePinsForAttachment(next);
+      setTouchedAttached(true);
       return next;
     });
   }
@@ -186,25 +251,22 @@ export default function DashboardEditScreen() {
     setAttached((prev) => {
       const set = new Set(prev);
       for (const id of ids) set.add(id);
-      return [...set];
+      const next = [...set];
+      prunePinsForAttachment(next);
+      return next;
     });
+    setTouchedAttached(true);
   }
 
   function handleSelectNone(kind: ServiceId) {
     Haptics.selectionAsync();
     const remove = new Set((serviceInstances[kind] ?? []).map((i) => i.id));
-    setAttached((prev) => prev.filter((id) => !remove.has(id)));
-    // Cascading pin cleanup — same logic as handleToggleInstance.
-    setPinned((prev) => {
-      const nextKinds = new Set<ServiceId>();
-      for (const k of SERVICE_IDS) {
-        if (k === kind) continue;
-        const list = serviceInstances[k] ?? [];
-        if (list.some((inst) => attachedSet.has(inst.id))) nextKinds.add(k);
-      }
-      const stillPickable = new Set<string>(pickableTabIdsFor(nextKinds));
-      return prev.filter((tab) => stillPickable.has(tab));
+    setAttached((prev) => {
+      const next = prev.filter((id) => !remove.has(id));
+      prunePinsForAttachment(next);
+      return next;
     });
+    setTouchedAttached(true);
   }
 
   function handleTogglePin(tab: TabRouteId) {
@@ -241,15 +303,35 @@ export default function DashboardEditScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const trimmed = name.trim();
-    if (trimmed.length > 0 && trimmed !== dashboard.name) {
-      renameDashboard(dashboard.id, trimmed);
+    if (trimmedName.length > 0 && trimmedName !== dashboard.name) {
+      renameDashboard(dashboard.id, trimmedName);
     }
-    setDashboardIcon(dashboard.id, icon);
-    setDashboardColor(dashboard.id, color);
-    setDashboardAttachedInstances(dashboard.id, attached);
-    setDashboardPinnedTabs(dashboard.id, pinned);
+    if (icon !== initialIcon) setDashboardIcon(dashboard.id, icon);
+    if (color !== initialColor) setDashboardColor(dashboard.id, color);
+    // Only persist attachment when the user actually touched it. Without this
+    // guard, a user opening the editor solely to recolor an auto-attach
+    // dashboard (attachedInstances === undefined) would silently demote it
+    // to explicit empty attachment — which would then exclude every future
+    // instance they add.
+    if (touchedAttached) {
+      setDashboardAttachedInstances(dashboard.id, attached);
+    }
+    if (!arraysEqual(pinned, initialPinned)) {
+      setDashboardPinnedTabs(dashboard.id, pinned);
+    }
     toast("Dashboard updated", "success");
+    allowRemoveRef.current = true;
+    router.back();
+  }
+
+  function handleCancel() {
+    if (dirty) {
+      Haptics.selectionAsync();
+      pendingActionRef.current = null;
+      setDiscardOpen(true);
+      return;
+    }
+    allowRemoveRef.current = true;
     router.back();
   }
 
@@ -266,19 +348,37 @@ export default function DashboardEditScreen() {
     );
   }
 
+  const saveTextColor = pickReadableForeground(color);
+
   return (
     <ScreenWrapper>
       <BackHeader
         title="Edit dashboard"
+        onBack={handleCancel}
         right={
-          <Pressable
-            onPress={handleSave}
-            hitSlop={6}
-            className="px-4 py-1.5 rounded-xl active:opacity-70"
-            style={{ backgroundColor: color }}
-          >
-            <Text className="text-white text-sm font-semibold">Save</Text>
-          </Pressable>
+          <View className="flex-row items-center gap-2">
+            <Pressable
+              onPress={handleCancel}
+              hitSlop={6}
+              className="px-3 py-1.5 rounded-xl active:opacity-70"
+            >
+              <Text className="text-zinc-400 text-sm font-medium">Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSave}
+              disabled={!dirty}
+              hitSlop={6}
+              className="px-4 py-1.5 rounded-xl active:opacity-70"
+              style={{ backgroundColor: color, opacity: dirty ? 1 : 0.5 }}
+            >
+              <Text
+                className="text-sm font-semibold"
+                style={{ color: saveTextColor }}
+              >
+                Save
+              </Text>
+            </Pressable>
+          </View>
         }
       />
 
@@ -293,11 +393,7 @@ export default function DashboardEditScreen() {
 
       <Section label="Icon">
         {heavyReady ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2 px-0.5 py-1"
-          >
+          <View className="flex-row flex-wrap gap-2">
             {LUCIDE_ICON_NAMES.map((iconName) => {
               const Comp = LUCIDE_BY_NAME[iconName];
               const selected = icon === iconName;
@@ -324,7 +420,7 @@ export default function DashboardEditScreen() {
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </View>
         ) : (
           <View className="h-11 rounded-xl bg-surface-light/40" />
         )}
@@ -626,6 +722,20 @@ export default function DashboardEditScreen() {
           </View>
         )}
       </Section>
+
+      <ConfirmModal
+        visible={discardOpen}
+        title="Discard changes?"
+        message="Your edits to this dashboard haven't been saved yet."
+        tone="danger"
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        onCancel={() => {
+          setDiscardOpen(false);
+          pendingActionRef.current = null;
+        }}
+        onConfirm={confirmDiscard}
+      />
     </ScreenWrapper>
   );
 }
@@ -707,4 +817,31 @@ function sanitizePins(pins: readonly string[]): TabRouteId[] {
     if (out.length >= MAX_PINNED_TABS) break;
   }
   return out;
+}
+
+function arraysEqual<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+// Pick black-or-white text for a hex background using sRGB relative luminance.
+// The Save pill paints the dashboard color full-bleed; amber/slate/yellow
+// swatches are bright enough that white text loses contrast — flip to black
+// in those cases. Threshold of 0.55 keeps blue/red/purple on white text and
+// flips amber/slate to dark.
+function pickReadableForeground(hex: string): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) return "#ffffff";
+  const int = parseInt(m[1], 16);
+  const r = ((int >> 16) & 0xff) / 255;
+  const g = ((int >> 8) & 0xff) / 255;
+  const b = (int & 0xff) / 255;
+  const lin = (c: number) =>
+    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return luminance > 0.55 ? "#0a0a0a" : "#ffffff";
 }

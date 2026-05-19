@@ -91,12 +91,17 @@ export default function TabLayout() {
     router.replace("/(tabs)/dashboard");
   }, [activeDashboard?.id, pinnedTabs, pathname]);
 
-  // Build the middle-tab declarations in the order pinned. React Navigation
-  // renders tabs in the JSX order they're declared, so this is what makes the
-  // bar visually reflect pin order. Tabs not in the pinned set are still
-  // declared (so the route exists for deep-links from widget cards) but with
-  // `href: null`, which hides them from the bar.
+  // Build the middle-tab declarations in pinned order, then fall back to the
+  // canonical list for the rest. React Navigation renders tabs in the JSX
+  // order they're declared — so to reflect the user's pin reorder controls in
+  // the bar we have to declare pinned routes first. Tabs not in the pinned
+  // set are still declared (so the route exists for deep-links from widget
+  // cards) but with `href: null`, which hides them from the bar.
   const pinnedSet = new Set<TabRouteId>(pinnedTabs);
+  const middleTabs: TabRouteId[] = [
+    ...pinnedTabs,
+    ...ALL_PICKABLE_TABS.filter((t) => !pinnedSet.has(t)),
+  ];
 
   return (
     <Tabs
@@ -136,7 +141,7 @@ export default function TabLayout() {
         listeners={{ tabPress: () => lightHaptic() }}
       />
 
-      {ALL_PICKABLE_TABS.map((name) => {
+      {middleTabs.map((name) => {
         const IconComponent = TAB_ICONS[name];
         const visible = pinnedSet.has(name);
         return (
