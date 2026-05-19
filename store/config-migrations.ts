@@ -74,8 +74,14 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         existing dashboards keep their global behavior), pinnedTabs = the
  *         pre-v20 bar (downloads/calendar/services) intersected with what's
  *         actually enabled on this install.
+ *   v21 — per-instance notification overrides. notificationSettings gains an
+ *         optional `perInstance: Record<instanceId, Partial<categories>>`
+ *         map that lets a user silence one Radarr instance without
+ *         affecting siblings. Pure version stamp — absence of the field
+ *         falls through to the existing global toggles via
+ *         shouldNotifyForInstance().
  */
-export const CURRENT_CONFIG_VERSION = 20;
+export const CURRENT_CONFIG_VERSION = 21;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -439,6 +445,12 @@ const migrations: Record<number, (payload: any) => any> = {
       : payload.dashboards;
     return { ...payload, version: 20, dashboards };
   },
+
+  // v20 → v21: per-instance notification overrides. Pure version stamp — the
+  // new `notificationSettings.perInstance` field is optional and `undefined`
+  // is the "no overrides" default. Older exports that lack the field are
+  // already correct after this bump.
+  20: (payload) => ({ ...payload, version: 21 }),
 };
 
 /**

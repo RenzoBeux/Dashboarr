@@ -41,6 +41,11 @@ import { pingService } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
+import {
+  CATEGORIES_FOR_KIND,
+  CATEGORY_LABELS,
+  type NotifCategory,
+} from "@/lib/notification-categories";
 import { validateServiceUrl, normalizeServiceUrl } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { AppVersionCard } from "@/components/common/app-version-card";
@@ -322,11 +327,17 @@ export default function SettingsScreen() {
 
   return (
     <ScreenWrapper>
-      <Text className="text-zinc-100 text-2xl font-bold mt-2 mb-4">
-        Settings
-      </Text>
+      <View className="mt-2 mb-4">
+        <Text className="text-zinc-100 text-2xl font-bold">Settings</Text>
+        <Text className="text-zinc-500 text-xs mt-0.5">
+          Applies to all dashboards
+        </Text>
+      </View>
 
-      <SettingsGroup title="Services">
+      <SettingsGroup
+        title="Services"
+        footer="Instances are shared across dashboards. Attach them to a workspace in its settings."
+      >
         {enabledKinds.map(renderKindRow)}
         {disabledKinds.length > 0 && enabledKinds.length > 0 ? (
           <View className="px-4 py-2 bg-surface-light/30">
@@ -382,10 +393,13 @@ export default function SettingsScreen() {
         />
       </SettingsGroup>
 
-      <SettingsGroup title="Notifications">
+      <SettingsGroup
+        title="Notifications"
+        footer="Apply to all dashboards. Open a specific instance in Services to override per-instance."
+      >
         <SettingsToggleRow
-          label="Local alerts"
-          description="Fire banners when Dashboarr is open"
+          label="Enable notifications"
+          description="Master switch for in-app banners and backend pushes"
           value={notifEnabled}
           onValueChange={(v) => setNotifSetting("enabled", v)}
         />
@@ -1069,6 +1083,8 @@ function ServiceEditor({
         />
       </Card>
 
+      <InstanceNotificationsCard serviceId={serviceId} instanceId={instanceId} />
+
       <WebhookInstanceIdCard serviceId={serviceId} instanceId={instanceId} />
 
       <View className="flex-row gap-3 mb-4">
@@ -1116,6 +1132,69 @@ function ServiceEditor({
  * integration, and hidden when no backend is paired (the id has no use
  * standalone).
  */
+// Per-instance notification overrides. For each notification category that
+// applies to this kind (see CATEGORIES_FOR_KIND), a 3-option Select decides
+// whether to defer to the global toggle or force on/off for this specific
+// instance. Stored under notificationSettings.perInstance[instanceId].
+function InstanceNotificationsCard({
+  serviceId,
+  instanceId,
+}: {
+  serviceId: ServiceId;
+  instanceId: string;
+}) {
+  const notif = useConfigStore((s) => s.notificationSettings);
+  const setOverride = useConfigStore((s) => s.setInstanceNotificationOverride);
+  const categories = CATEGORIES_FOR_KIND[serviceId] ?? [];
+  if (categories.length === 0) return null;
+
+  const masterOff = !notif.enabled;
+  const overrideMap = notif.perInstance?.[instanceId];
+
+  return (
+    <Card className="gap-4 mb-4" style={masterOff ? { opacity: 0.55 } : undefined}>
+      <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+        Notifications
+      </Text>
+      {masterOff ? (
+        <Text className="text-zinc-500 text-xs leading-5">
+          Notifications are off. Turn them on in Settings → Notifications to
+          use per-instance overrides.
+        </Text>
+      ) : null}
+      {categories.map((cat) => {
+        const override = overrideMap?.[cat];
+        const value: "inherit" | "on" | "off" =
+          override === undefined ? "inherit" : override ? "on" : "off";
+        const globalOn = notif[cat];
+        return (
+          <Select
+            key={cat}
+            label={CATEGORY_LABELS[cat]}
+            value={value}
+            disabled={masterOff}
+            options={[
+              {
+                value: "inherit",
+                label: `Use default (${globalOn ? "On" : "Off"})`,
+              },
+              { value: "on", label: "Always notify" },
+              { value: "off", label: "Never notify" },
+            ]}
+            onChange={(next) =>
+              setOverride(
+                instanceId,
+                cat satisfies NotifCategory,
+                next === "inherit" ? "inherit" : next === "on",
+              )
+            }
+          />
+        );
+      })}
+    </Card>
+  );
+}
+
 function WebhookInstanceIdCard({
   serviceId,
   instanceId,

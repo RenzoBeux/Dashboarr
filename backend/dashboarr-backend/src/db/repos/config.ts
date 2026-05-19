@@ -1,13 +1,16 @@
 import { getDb } from "../client.js";
-import type { ServiceId, NotificationSettings } from "../../types.js";
+import type { ServiceId, NotificationSettings, NotifCategory } from "../../types.js";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "../../types.js";
 import type { StoredServiceInstance } from "./service-instance.js";
 
 /**
- * Notification toggles persistence. Per-kind only — there's no per-instance
- * "mute Radarr Seedbox" UI today; if it lands later, swap this table for one
- * keyed by (instance_id, category).
+ * Notification toggles persistence. The boolean per-category toggles live in
+ * `notification_settings`. v21 added per-instance overrides — stored as a JSON
+ * blob in the generic `kv` table since it's read whole on every dispatch and
+ * is naturally sparse (most users have no overrides).
  */
+
+const PER_INSTANCE_KV_KEY = "notification.perInstance";
 
 export function saveNotificationSettings(settings: NotificationSettings): void {
   const db = getDb();
@@ -16,7 +19,17 @@ export function saveNotificationSettings(settings: NotificationSettings): void {
       "INSERT OR REPLACE INTO notification_settings (key, enabled) VALUES (?, ?)",
     );
     for (const [k, v] of Object.entries(settings)) {
+      if (k === "perInstance") continue; // handled separately below
       stmt.run(k, v ? 1 : 0);
+    }
+
+    if (settings.perInstance && Object.keys(settings.perInstance).length > 0) {
+      db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)").run(
+        PER_INSTANCE_KV_KEY,
+        JSON.stringify(settings.perInstance),
+      );
+    } else {
+      db.prepare("DELETE FROM kv WHERE key = ?").run(PER_INSTANCE_KV_KEY);
     }
   });
   tx();
@@ -28,10 +41,29 @@ export function loadNotificationSettings(): NotificationSettings {
       "SELECT key, enabled FROM notification_settings",
     )
     .all();
-  const result: Record<string, boolean> = { ...DEFAULT_NOTIFICATION_SETTINGS };
+  const result: Record<string, unknown> = { ...DEFAULT_NOTIFICATION_SETTINGS };
   for (const row of rows) {
     result[row.key] = row.enabled === 1;
   }
+
+  const perRow = getDb()
+    .prepare<[string], { value: string }>("SELECT value FROM kv WHERE key = ?")
+    .get(PER_INSTANCE_KV_KEY);
+  if (perRow?.value) {
+    try {
+      const parsed = JSON.parse(perRow.value);
+      if (parsed && typeof parsed === "object") {
+        result.perInstance = parsed as Record<
+          string,
+          Partial<Record<NotifCategory, boolean>>
+        >;
+      }
+    } catch {
+      // Malformed JSON in kv — drop it silently rather than crash the
+      // dispatcher. Next saveNotificationSettings call rewrites it.
+    }
+  }
+
   return result as NotificationSettings;
 }
 

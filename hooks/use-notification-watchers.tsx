@@ -13,6 +13,7 @@ import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
+import { shouldNotifyForInstance } from "@/lib/notification-categories";
 import { toast } from "@/components/ui/toast";
 import type {
   QBTorrent,
@@ -69,14 +70,8 @@ export function NotificationWatchers() {
   // into useConfigStore.hydrate() so the toggles can't read defaults before
   // AsyncStorage has been loaded into the in-memory cache.
   const hydrated = useConfigStore((s) => s.hydrated);
-  const enabled = useConfigStore((s) => s.notificationSettings.enabled);
-  const torrentCompleted = useConfigStore((s) => s.notificationSettings.torrentCompleted);
-  const sabnzbdCompleted = useConfigStore((s) => s.notificationSettings.sabnzbdCompleted);
-  const nzbgetCompleted = useConfigStore((s) => s.notificationSettings.nzbgetCompleted);
-  const radarrDownloaded = useConfigStore((s) => s.notificationSettings.radarrDownloaded);
-  const sonarrDownloaded = useConfigStore((s) => s.notificationSettings.sonarrDownloaded);
-  const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
-  const overseerrNewRequest = useConfigStore((s) => s.notificationSettings.overseerrNewRequest);
+  const settings = useConfigStore((s) => s.notificationSettings);
+  const enabled = settings.enabled;
 
   // When a backend is paired AND currently reachable, defer notifications to
   // it so the user doesn't get double-notified (one local, one push). If the
@@ -95,51 +90,60 @@ export function NotificationWatchers() {
   const sonarrInstances = useEnabledInstances("sonarr");
   const overseerrInstances = useEnabledInstances("overseerr");
 
+  // Per-instance `active` consults the override map first, then the global
+  // category toggle. shouldNotifyForInstance already short-circuits on the
+  // master `enabled` flag.
+  const liveActive = (cat: Parameters<typeof shouldNotifyForInstance>[0], id: string) =>
+    !backendActive && hydrated && shouldNotifyForInstance(cat, id, settings);
+
   return (
     <>
       {qbInstances.map((inst) => (
         <QbDownloadWatcher
           key={inst.id}
           instanceId={inst.id}
-          active={!backendActive && hydrated && enabled && torrentCompleted}
+          active={liveActive("torrentCompleted", inst.id)}
         />
       ))}
       {sabInstances.map((inst) => (
         <SabnzbdHistoryWatcher
           key={inst.id}
           instanceId={inst.id}
-          active={!backendActive && hydrated && enabled && sabnzbdCompleted}
+          active={liveActive("sabnzbdCompleted", inst.id)}
         />
       ))}
       {nzbgetInstances.map((inst) => (
         <NzbgetHistoryWatcher
           key={inst.id}
           instanceId={inst.id}
-          active={!backendActive && hydrated && enabled && nzbgetCompleted}
+          active={liveActive("nzbgetCompleted", inst.id)}
         />
       ))}
       {radarrInstances.map((inst) => (
         <RadarrImportWatcher
           key={inst.id}
           instanceId={inst.id}
-          active={!backendActive && hydrated && enabled && radarrDownloaded}
+          active={liveActive("radarrDownloaded", inst.id)}
         />
       ))}
       {sonarrInstances.map((inst) => (
         <SonarrImportWatcher
           key={inst.id}
           instanceId={inst.id}
-          active={!backendActive && hydrated && enabled && sonarrDownloaded}
+          active={liveActive("sonarrDownloaded", inst.id)}
         />
       ))}
       {overseerrInstances.map((inst) => (
         <OverseerrRequestWatcher
           key={inst.id}
           instanceId={inst.id}
-          active={!backendActive && hydrated && enabled && overseerrNewRequest}
+          active={liveActive("overseerrNewRequest", inst.id)}
         />
       ))}
-      <ServiceHealthWatcher gate={gate} active={serviceOffline} />
+      {/* ServiceHealthWatcher fans out across every kind itself, so it
+          consults the override map per-instance inside the effect — see
+          implementation below. */}
+      <ServiceHealthWatcher gate={gate} settings={settings} />
     </>
   );
 }
@@ -399,19 +403,23 @@ function SonarrImportWatcher({
 // Per-instance: fire one notification per (kind, instance) that goes offline.
 // The instance name lands in the body so multi-instance setups can tell
 // "Radarr (4K) is offline" from "Radarr (1080p) is offline".
+//
+// Receives the full settings object (not a pre-resolved boolean) so it can
+// consult per-instance "serviceOffline" overrides — different instances of
+// the same kind can opt in or out independently.
 function ServiceHealthWatcher({
   gate,
-  active,
+  settings,
 }: {
   gate: BaseGate;
-  active: boolean;
+  settings: import("@/store/config-store").NotificationSettings;
 }) {
   const { data: health } = useServiceHealth();
   const prevHealth = useRef<Map<string, boolean> | null>(null);
 
   useEffect(() => {
     if (gate.backendActive) return;
-    if (!gate.hydrated || !gate.enabled || !active) return;
+    if (!gate.hydrated || !gate.enabled) return;
     if (!Array.isArray(health)) return;
     const prev = prevHealth.current;
     const currentMap = new Map<string, boolean>();
@@ -421,7 +429,11 @@ function ServiceHealthWatcher({
         currentMap.set(key, inst.online);
         if (prev !== null) {
           const wasOnline = prev.get(key);
-          if (wasOnline === true && inst.online === false) {
+          if (
+            wasOnline === true &&
+            inst.online === false &&
+            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings)
+          ) {
             sendLocalNotification({
               title: "Service offline",
               body: `${inst.instanceName} is unreachable`,
@@ -436,7 +448,7 @@ function ServiceHealthWatcher({
       }
     }
     prevHealth.current = currentMap;
-  }, [health, gate.backendActive, gate.hydrated, gate.enabled, active]);
+  }, [health, gate.backendActive, gate.hydrated, gate.enabled, settings]);
 
   return null;
 }

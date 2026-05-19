@@ -157,6 +157,18 @@ export type WidgetSettingsMap = Partial<Record<WidgetId, Record<string, unknown>
 // after initStorage() completes — the old standalone notifications-store
 // hydrated synchronously before the AsyncStorage cache was populated, which
 // caused the "enabled" toggle to revert to `true` on every cold start.
+// Notification categories that can be toggled per-event-type. Kept as a
+// string-literal union next to NotificationSettings so adding/removing a
+// category is a single source of truth.
+export type NotifCategory =
+  | "torrentCompleted"
+  | "sabnzbdCompleted"
+  | "nzbgetCompleted"
+  | "radarrDownloaded"
+  | "sonarrDownloaded"
+  | "serviceOffline"
+  | "overseerrNewRequest";
+
 export interface NotificationSettings {
   enabled: boolean;
   torrentCompleted: boolean;
@@ -166,6 +178,11 @@ export interface NotificationSettings {
   sonarrDownloaded: boolean;
   serviceOffline: boolean;
   overseerrNewRequest: boolean;
+  // v21: per-instance overrides keyed by instance UUID. A category absent from
+  // an instance's override map falls through to the global toggle. Allows
+  // "notify me from the primary Radarr but stay silent from the testing one"
+  // without splitting the global toggles per kind.
+  perInstance?: Record<string, Partial<Record<NotifCategory, boolean>>>;
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -339,6 +356,14 @@ interface ConfigActions {
   setNotificationSetting: <K extends keyof NotificationSettings>(
     key: K,
     value: NotificationSettings[K],
+  ) => void;
+  // v21: write or clear a per-instance notification override. Passing
+  // "inherit" deletes the entry; passing a boolean stores it. Cleans up
+  // empty per-instance records so the persisted shape stays tidy.
+  setInstanceNotificationOverride: (
+    instanceId: string,
+    category: NotifCategory,
+    value: boolean | "inherit",
   ) => void;
 
   // Lookup helpers. instanceId is optional — when omitted, the active instance
@@ -1103,7 +1128,25 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         instanceSecrets,
         activeInstance,
       );
-      return { serviceInstances, instanceSecrets, activeInstance, services, secrets };
+      // v21: drop any per-instance notification overrides keyed to the
+      // deleted instance so orphan keys don't accumulate in storage.
+      let notificationSettings = state.notificationSettings;
+      if (notificationSettings.perInstance?.[instanceId] !== undefined) {
+        const { [instanceId]: _drop, ...rest } = notificationSettings.perInstance;
+        notificationSettings = {
+          ...notificationSettings,
+          perInstance: Object.keys(rest).length === 0 ? undefined : rest,
+        };
+        setJSON(STORAGE_KEYS.notificationSettings, notificationSettings);
+      }
+      return {
+        serviceInstances,
+        instanceSecrets,
+        activeInstance,
+        services,
+        secrets,
+        notificationSettings,
+      };
     });
   },
 
@@ -1535,6 +1578,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   setNotificationSetting: (key, value) => {
     const next = { ...get().notificationSettings, [key]: value };
+    setJSON(STORAGE_KEYS.notificationSettings, next);
+    set({ notificationSettings: next });
+  },
+
+  setInstanceNotificationOverride: (instanceId, category, value) => {
+    const current = get().notificationSettings;
+    const map = { ...(current.perInstance ?? {}) };
+    const entry = { ...(map[instanceId] ?? {}) };
+    if (value === "inherit") {
+      delete entry[category];
+    } else {
+      entry[category] = value;
+    }
+    if (Object.keys(entry).length === 0) {
+      delete map[instanceId];
+    } else {
+      map[instanceId] = entry;
+    }
+    const next: NotificationSettings = {
+      ...current,
+      perInstance: Object.keys(map).length === 0 ? undefined : map,
+    };
     setJSON(STORAGE_KEYS.notificationSettings, next);
     set({ notificationSettings: next });
   },

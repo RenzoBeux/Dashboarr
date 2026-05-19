@@ -1370,3 +1370,83 @@ describe("end-to-end multi-step", () => {
     expect(Object.keys(result.secrets)).toEqual([qbUuid]);
   });
 });
+
+describe("v20 → v21 (per-instance notification overrides)", () => {
+  function baseV20() {
+    return {
+      version: 20,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "http://r",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [],
+          icon: "LayoutDashboard",
+          color: "#3b82f6",
+          pinnedTabs: [],
+        },
+      ],
+      activeDashboardId: "d1",
+    };
+  }
+
+  it("bumps version to v21 without altering notificationSettings", () => {
+    const payload: any = baseV20();
+    payload.notificationSettings = {
+      enabled: true,
+      torrentCompleted: true,
+      sabnzbdCompleted: true,
+      nzbgetCompleted: true,
+      radarrDownloaded: false,
+      sonarrDownloaded: true,
+      serviceOffline: true,
+      overseerrNewRequest: true,
+    };
+    const result: any = migrateConfig(payload);
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings).toEqual(payload.notificationSettings);
+  });
+
+  it("leaves perInstance untouched when present on the input", () => {
+    const payload: any = baseV20();
+    payload.notificationSettings = {
+      enabled: true,
+      torrentCompleted: true,
+      sabnzbdCompleted: true,
+      nzbgetCompleted: true,
+      radarrDownloaded: true,
+      sonarrDownloaded: true,
+      serviceOffline: true,
+      overseerrNewRequest: true,
+      perInstance: { r1: { radarrDownloaded: false } },
+    };
+    const result: any = migrateConfig(payload);
+    expect(result.notificationSettings.perInstance).toEqual({
+      r1: { radarrDownloaded: false },
+    });
+  });
+
+  it("leaves perInstance absent when the source payload omitted it", () => {
+    const result: any = migrateConfig(baseV20());
+    // notificationSettings itself may or may not be on the payload — the
+    // migration is a version stamp, so absence is preserved.
+    if (result.notificationSettings) {
+      expect(result.notificationSettings.perInstance).toBeUndefined();
+    }
+  });
+});
