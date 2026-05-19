@@ -80,8 +80,16 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         affecting siblings. Pure version stamp — absence of the field
  *         falls through to the existing global toggles via
  *         shouldNotifyForInstance().
+ *   v22 — activeInstance becomes per-workspace. The top-level
+ *         `activeInstance: Record<ServiceId, string | null>` moves onto each
+ *         Dashboard as an optional `activeInstance: Partial<Record<ServiceId,
+ *         string>>` map. Migration folds the global pointer into every
+ *         dashboard, filtered to instance UUIDs the dashboard actually
+ *         attaches (auto-attach mode keeps the full set). Runtime fallback:
+ *         when a dashboard has no entry for a kind, resolve to the first
+ *         attached+enabled instance of that kind.
  */
-export const CURRENT_CONFIG_VERSION = 21;
+export const CURRENT_CONFIG_VERSION = 22;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -451,6 +459,39 @@ const migrations: Record<number, (payload: any) => any> = {
   // is the "no overrides" default. Older exports that lack the field are
   // already correct after this bump.
   20: (payload) => ({ ...payload, version: 21 }),
+
+  // v21 → v22: activeInstance migrates from a single global Record<ServiceId,
+  // string|null> at the top level onto each Dashboard as an optional
+  // `activeInstance: Partial<Record<ServiceId, string>>`. For each dashboard,
+  // we fold the global pointer in, filtered to instance UUIDs that the
+  // dashboard actually attaches (or the full set for auto-attach
+  // dashboards). The top-level field is dropped so storage doesn't carry two
+  // sources of truth.
+  21: (payload) => {
+    const global: Record<string, unknown> =
+      payload.activeInstance && typeof payload.activeInstance === "object"
+        ? (payload.activeInstance as Record<string, unknown>)
+        : {};
+    const dashboards = Array.isArray(payload.dashboards)
+      ? payload.dashboards.map((d: any) => {
+          if (!d || typeof d !== "object") return d;
+          const attached: string[] | undefined = Array.isArray(d.attachedInstances)
+            ? d.attachedInstances
+            : undefined;
+          const out: Record<string, string> = {};
+          for (const [kind, id] of Object.entries(global)) {
+            if (typeof id !== "string" || id.length === 0) continue;
+            if (attached === undefined || attached.includes(id)) {
+              out[kind] = id;
+            }
+          }
+          if (Object.keys(out).length === 0) return d;
+          return { ...d, activeInstance: out };
+        })
+      : payload.dashboards;
+    const { activeInstance: _drop, ...rest } = payload;
+    return { ...rest, version: 22, dashboards };
+  },
 };
 
 /**

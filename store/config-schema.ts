@@ -185,6 +185,22 @@ function coerceDashboard(v: unknown): Dashboard | null {
     }
     out.pinnedTabs = pinned;
   }
+  // v22: per-workspace active instance pin per kind. Stored UUIDs that point
+  // at instances the device doesn't currently have are kept — the resolver
+  // tolerates staleness, and cross-device imports may legitimately carry
+  // unknown UUIDs.
+  if (v.activeInstance !== undefined && v.activeInstance !== null) {
+    if (!isPlainObject(v.activeInstance)) return null;
+    const cleaned: Partial<Record<ServiceId, string>> = {};
+    for (const [kind, raw] of Object.entries(v.activeInstance)) {
+      if (!(SERVICE_IDS as readonly string[]).includes(kind)) continue;
+      if (typeof raw !== "string" || raw.length === 0 || raw.length > 128) continue;
+      cleaned[kind as ServiceId] = raw;
+    }
+    if (Object.keys(cleaned).length > 0) {
+      out.activeInstance = cleaned;
+    }
+  }
   return out;
 }
 
@@ -287,25 +303,13 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     secrets[uuid] = coerced;
   }
 
-  // v13: activeInstance is Record<ServiceId, string | null>. Validate that
-  // every referenced UUID exists in the services list for that kind.
-  if (raw.activeInstance !== undefined && !isPlainObject(raw.activeInstance)) {
-    throw new Error("Config activeInstance is invalid");
-  }
-  const activeInstance = {} as Record<ServiceId, string | null>;
-  const rawActive = (raw.activeInstance as Record<string, unknown> | undefined) ?? {};
-  for (const id of SERVICE_IDS) {
-    const v = rawActive[id];
-    if (v === null || v === undefined) {
-      activeInstance[id] = null;
-      continue;
-    }
-    if (typeof v !== "string") {
-      throw new Error(`Config activeInstance.${id} is invalid`);
-    }
-    const list = services[id] ?? [];
-    activeInstance[id] = list.some((i) => i.id === v) ? v : (list[0]?.id ?? null);
-  }
+  // v22: top-level `activeInstance` was dropped; per-dashboard
+  // `dashboard.activeInstance` is now the source of truth (validated inside
+  // coerceDashboard below). The migration chain (v21→v22) folds any legacy
+  // top-level field onto each dashboard before we get here, so a v22+
+  // payload should never carry the legacy key — but coerceDashboard
+  // tolerates either shape going forward for forward-compat with imports
+  // that hand-edit the JSON.
 
   // v14: dashboards is the source of truth. Each entry must coerce cleanly;
   // unknown widget ids inside slots are dropped silently (forward-compat).
@@ -352,7 +356,6 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     exportedAt: raw.exportedAt,
     services,
     secrets,
-    activeInstance,
     autoSwitchNetwork: raw.autoSwitchNetwork,
     homeNetworks,
     dashboards,

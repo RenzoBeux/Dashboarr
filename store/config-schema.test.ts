@@ -8,7 +8,9 @@ const baseValid = () => ({
   exportedAt: "2026-04-27T00:00:00.000Z",
   services: {},
   secrets: {},
-  activeInstance: {},
+  // v22: top-level `activeInstance` is gone; per-workspace pins live on each
+  // dashboard. Tests that need to assert resolution should set
+  // `dashboards[0].activeInstance` directly.
   autoSwitchNetwork: false,
   homeNetworks: [],
   // v14: dashboards is required and must be non-empty. Every test below builds
@@ -316,46 +318,85 @@ describe("validateExportPayload — service secrets", () => {
   });
 });
 
-describe("validateExportPayload — activeInstance", () => {
-  it("defaults to null for kinds with no instances", () => {
+describe("validateExportPayload — dashboard.activeInstance (v22)", () => {
+  it("omits dashboard.activeInstance when not provided", () => {
     const result = validateExportPayload(baseValid());
-    expect(result.activeInstance.radarr).toBeNull();
+    expect(result.dashboards[0].activeInstance).toBeUndefined();
   });
 
-  it("falls back to first instance when stored UUID doesn't match any instance", () => {
+  it("preserves a valid per-dashboard activeInstance map", () => {
     const result = validateExportPayload({
       ...baseValid(),
       services: { radarr: [validInstance()] },
-      activeInstance: { radarr: "stale-uuid-from-deleted-instance" },
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          activeInstance: { radarr: TEST_INSTANCE_ID },
+        },
+      ],
     });
-    expect(result.activeInstance.radarr).toBe(TEST_INSTANCE_ID);
+    expect(result.dashboards[0].activeInstance).toEqual({
+      radarr: TEST_INSTANCE_ID,
+    });
   });
 
-  it("preserves a valid stored UUID", () => {
+  it("keeps a stale UUID — the resolver falls back at read time, not validation", () => {
+    // Cross-device imports may carry UUIDs the local install doesn't have yet;
+    // dropping them during validation would lose data on re-export.
     const result = validateExportPayload({
       ...baseValid(),
       services: { radarr: [validInstance()] },
-      activeInstance: { radarr: TEST_INSTANCE_ID },
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          activeInstance: { radarr: "stale-uuid-from-another-device" },
+        },
+      ],
     });
-    expect(result.activeInstance.radarr).toBe(TEST_INSTANCE_ID);
+    expect(result.dashboards[0].activeInstance).toEqual({
+      radarr: "stale-uuid-from-another-device",
+    });
   });
 
-  it("rejects a non-string activeInstance value", () => {
+  it("drops unknown service ids and non-string entries", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          activeInstance: {
+            radarr: TEST_INSTANCE_ID,
+            bogus: "id",
+            sonarr: 42,
+          },
+        },
+      ],
+    });
+    expect(result.dashboards[0].activeInstance).toEqual({
+      radarr: TEST_INSTANCE_ID,
+    });
+  });
+
+  it("rejects a dashboard with a non-object activeInstance", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        activeInstance: { radarr: 42 } as any,
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            activeInstance: ["radarr"] as any,
+          },
+        ],
       }),
-    ).toThrow(/activeInstance\.radarr/);
-  });
-
-  it("rejects activeInstance that is not a plain object", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        activeInstance: ["radarr"] as any,
-      }),
-    ).toThrow(/activeInstance/);
+    ).toThrow(/dashboards entry is invalid/);
   });
 });
 

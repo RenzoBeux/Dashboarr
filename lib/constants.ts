@@ -127,6 +127,10 @@ export const STORAGE_KEYS = {
   // (only for installs that had auto-switch on) so the user starts from a
   // clean override; this flag prevents the reset from running twice.
   v18UseRemoteReset: "app.v18.useRemoteReset",
+  // v22: one-shot flag for the multi-dashboard intro carousel. Set true on
+  // first dismissal; the Settings → About → "Show workspace tour" row
+  // resets it to false so users can replay.
+  workspaceIntroSeen: "app.onboarding.workspaceIntroSeen",
 } as const;
 
 // Whitelisted UI scale multipliers. Kept as a const so the schema and the

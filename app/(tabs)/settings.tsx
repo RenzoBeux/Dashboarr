@@ -19,6 +19,7 @@ import {
   Copy,
   Bug,
   Heart,
+  BookOpen,
 } from "lucide-react-native";
 import GithubLogo from "@/assets/services/github.svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -34,6 +35,7 @@ import { Select } from "@/components/ui/select";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
+import { useIntroStore } from "@/store/intro-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { BackHeader } from "@/components/common/back-header";
@@ -145,6 +147,7 @@ export default function SettingsScreen() {
   const [hasRemembered, setHasRemembered] = useState(() => hasRememberedPassphrase());
   const [confirmClearCache, setConfirmClearCache] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
+  const replayWorkspaceIntro = useIntroStore((s) => s.replayWorkspaceIntro);
 
   const requestPassphrase = (mode: PassphraseMode) =>
     new Promise<PassphraseResult | null>((resolve) => {
@@ -548,6 +551,12 @@ export default function SettingsScreen() {
           subtitle="Buy me a coffee on Ko-fi"
           onPress={() => void Linking.openURL("https://ko-fi.com/renzobeux")}
         />
+        <SettingsRow
+          icon={BookOpen}
+          label="Show workspace tour"
+          subtitle="Replay the multi-dashboard intro"
+          onPress={replayWorkspaceIntro}
+        />
       </SettingsGroup>
 
       <AppVersionCard />
@@ -625,7 +634,22 @@ function InstanceList({
   const removeInstance = useConfigStore((s) => s.removeInstance);
   const moveInstance = useConfigStore((s) => s.moveInstance);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  const dashboards = useConfigStore((s) => s.dashboards);
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
+
+  // v22: how many workspaces attach a given instance UUID. Auto-attach mode
+  // (attachedInstances === undefined) counts as attached. Only displayed
+  // when the install has more than one dashboard.
+  const totalDashboards = dashboards.length;
+  const countAttached = (instanceId: string): number => {
+    let n = 0;
+    for (const d of dashboards) {
+      if (d.attachedInstances === undefined || d.attachedInstances.includes(instanceId)) {
+        n++;
+      }
+    }
+    return n;
+  };
 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -686,6 +710,22 @@ function InstanceList({
                     ) : null}
                   </View>
                   <Text className="text-zinc-500 text-xs">{subtitle}</Text>
+                  {totalDashboards > 1
+                    ? (() => {
+                        const attached = countAttached(inst.id);
+                        const label =
+                          attached === 0
+                            ? "Not in any workspace"
+                            : attached === totalDashboards
+                              ? `In all ${totalDashboards} workspaces`
+                              : `In ${attached} of ${totalDashboards} workspaces`;
+                        return (
+                          <Text className="text-zinc-600 text-[0.7rem] mt-0.5">
+                            {label}
+                          </Text>
+                        );
+                      })()
+                    : null}
                 </View>
                 {inst.enabled ? (
                   <View className="w-2 h-2 rounded-full bg-success mr-2" />
@@ -736,7 +776,7 @@ function InstanceList({
         {instances.length > 1 ? (
           <View className="px-4 py-3 border-t border-surface-light">
             <Text className="text-zinc-500 text-xs mb-2">
-              Active instance (used by tabs and notifications)
+              Active in this workspace
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {instances

@@ -761,10 +761,16 @@ describe("v12 → v13 (multi-instance)", () => {
         },
       },
     });
-    expect(result.activeInstance.qbittorrent).toBe(
+    // v21→v22 folded the global activeInstance pointer into the default
+    // dashboard's `activeInstance` map (the default dashboard is in auto-attach
+    // mode, so every instance UUID lands on it).
+    expect(result.activeInstance).toBeUndefined();
+    expect(result.dashboards[0].activeInstance.qbittorrent).toBe(
       result.services.qbittorrent[0].id,
     );
-    expect(result.activeInstance.radarr).toBe(result.services.radarr[0].id);
+    expect(result.dashboards[0].activeInstance.radarr).toBe(
+      result.services.radarr[0].id,
+    );
   });
 
   it("drops orphaned secrets whose serviceId has no matching service entry", () => {
@@ -780,9 +786,12 @@ describe("v12 → v13 (multi-instance)", () => {
     expect(result.secrets).toEqual({});
   });
 
-  it("produces an empty activeInstance map when services is empty", () => {
+  it("produces no activeInstance entries on any dashboard when services is empty", () => {
     const result: any = migrateConfig({ ...baseV12(), services: {} });
-    expect(result.activeInstance).toEqual({});
+    // v21→v22 drops the top-level field; an empty global pointer folds into no
+    // dashboard entries.
+    expect(result.activeInstance).toBeUndefined();
+    expect(result.dashboards[0].activeInstance).toBeUndefined();
   });
 
   it("assigns distinct UUIDs across kinds (no collisions)", () => {
@@ -1297,7 +1306,10 @@ describe("end-to-end multi-step", () => {
     const radarrUuid = result.services.radarr[0].id;
     expect(result.secrets[radarrUuid]).toEqual({ apiKey: "k1" });
     expect(result.secrets.radarr).toBeUndefined();
-    expect(result.activeInstance.radarr).toBe(radarrUuid);
+    // v21→v22 moved activeInstance onto each dashboard; the default dashboard
+    // is in auto-attach mode and carries the migrated radarr UUID.
+    expect(result.activeInstance).toBeUndefined();
+    expect(result.dashboards[0].activeInstance.radarr).toBe(radarrUuid);
   });
 
   it("upgrades a v3 fixture (typical post-v3 build) to the current version without touching steps 0-2", () => {
@@ -1448,5 +1460,97 @@ describe("v20 → v21 (per-instance notification overrides)", () => {
     if (result.notificationSettings) {
       expect(result.notificationSettings.perInstance).toBeUndefined();
     }
+  });
+});
+
+describe("v21 → v22 (activeInstance becomes per-workspace)", () => {
+  function baseV21(
+    overrides: {
+      activeInstance?: Record<string, string | null>;
+      dashboards?: any[];
+      services?: Record<string, any[]>;
+    } = {},
+  ) {
+    return {
+      version: 21,
+      services: overrides.services ?? {
+        radarr: [
+          { id: "r1", enabled: true, name: "Radarr Home", localUrl: "", remoteUrl: "", useRemote: false },
+          { id: "r2", enabled: true, name: "Radarr Cabin", localUrl: "", remoteUrl: "", useRemote: false },
+        ],
+      },
+      secrets: {},
+      activeInstance: overrides.activeInstance ?? { radarr: "r1" },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: overrides.dashboards ?? [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [],
+          icon: "LayoutDashboard",
+          color: "#3b82f6",
+          pinnedTabs: [],
+        },
+      ],
+      activeDashboardId: "d1",
+    };
+  }
+
+  it("drops the top-level activeInstance after folding it into dashboards", () => {
+    const result: any = migrateConfig(baseV21());
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.activeInstance).toBeUndefined();
+  });
+
+  it("copies the global active instance onto an auto-attach dashboard", () => {
+    // attachedInstances absent ⇒ auto-attach ⇒ every UUID is implicitly attached,
+    // so the global pointer carries over verbatim.
+    const result: any = migrateConfig(baseV21());
+    expect(result.dashboards[0].activeInstance).toEqual({ radarr: "r1" });
+  });
+
+  it("filters the global active instance against curated attachedInstances", () => {
+    // A workspace that explicitly attaches only r2 should NOT inherit the
+    // global pointer to r1 — r1 isn't attached, so the kind has no pin and
+    // resolution falls back to the first attached enabled instance at runtime.
+    const result: any = migrateConfig(
+      baseV21({
+        activeInstance: { radarr: "r1" },
+        dashboards: [
+          {
+            id: "d1",
+            name: "Cabin",
+            widgets: [],
+            icon: "LayoutDashboard",
+            color: "#3b82f6",
+            pinnedTabs: [],
+            attachedInstances: ["r2"],
+          },
+        ],
+      }),
+    );
+    expect(result.dashboards[0].activeInstance).toBeUndefined();
+    expect(result.dashboards[0].attachedInstances).toEqual(["r2"]);
+  });
+
+  it("preserves a curated workspace's pin when the global pointer matches its attached set", () => {
+    const result: any = migrateConfig(
+      baseV21({
+        activeInstance: { radarr: "r2" },
+        dashboards: [
+          {
+            id: "d1",
+            name: "Cabin",
+            widgets: [],
+            icon: "LayoutDashboard",
+            color: "#3b82f6",
+            pinnedTabs: [],
+            attachedInstances: ["r2"],
+          },
+        ],
+      }),
+    );
+    expect(result.dashboards[0].activeInstance).toEqual({ radarr: "r2" });
   });
 });

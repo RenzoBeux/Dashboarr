@@ -12,6 +12,7 @@ import { rem } from "nativewind";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
+import { useIntroStore } from "@/store/intro-store";
 import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
 import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: true })
@@ -23,6 +24,7 @@ import { useNetworkAutoSwitch } from "@/hooks/use-network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
+import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
 import "../global.css";
 
 // Pause/resume polling based on app state
@@ -198,8 +200,14 @@ function ConfigSyncBridge() {
 export default function RootLayout() {
   const hydrate = useConfigStore((s) => s.hydrate);
   const hydrated = useConfigStore((s) => s.hydrated);
+  const demoMode = useConfigStore((s) => s.demoMode);
   const hydrateBackend = useBackendStore((s) => s.hydrate);
   const hydrateSort = useSortStore((s) => s.hydrate);
+  const hydrateIntro = useIntroStore((s) => s.hydrate);
+  const introHydrated = useIntroStore((s) => s.hydrated);
+  const introSeen = useIntroStore((s) => s.workspaceIntroSeen);
+  const introReplayVersion = useIntroStore((s) => s.showRequestVersion);
+  const markIntroSeen = useIntroStore((s) => s.markWorkspaceIntroSeen);
 
   useEffect(() => {
     hydrate();
@@ -210,8 +218,21 @@ export default function RootLayout() {
   // Sort prefs read sync from the storage cache, which is populated by
   // useConfigStore.hydrate(). Wait for that before reading.
   useEffect(() => {
-    if (hydrated) hydrateSort();
-  }, [hydrated, hydrateSort]);
+    if (hydrated) {
+      hydrateSort();
+      hydrateIntro();
+    }
+  }, [hydrated, hydrateSort, hydrateIntro]);
+
+  // Intro overlay visibility: never auto-open during Demo Mode (user is
+  // exploring fake data; an overlay on top would be noise). Re-mounts when
+  // `replayWorkspaceIntro()` bumps the version, so Settings → "Show
+  // workspace tour" can replay without restarting the app.
+  const showIntro =
+    introHydrated && !introSeen && !demoMode;
+  // introReplayVersion is intentionally read above to subscribe; the visible
+  // flag toggles via introSeen which the replay action also clears.
+  void introReplayVersion;
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", onAppStateChange);
@@ -257,6 +278,10 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: "#09090b" },
                   animation: "slide_from_right",
                 }}
+              />
+              <WorkspaceIntroOverlay
+                visible={showIntro}
+                onDismiss={markIntroSeen}
               />
               <ToastContainer />
             </ErrorBoundary>

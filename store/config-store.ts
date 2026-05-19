@@ -146,6 +146,13 @@ export interface Dashboard {
   // MAX_PINNED_TABS by the setter. Missing/undefined falls back to the
   // pre-v20 bottom bar (downloads / calendar / services where applicable).
   pinnedTabs?: string[];
+  // v22: per-workspace active instance selection. Each kind that has an entry
+  // pins a specific UUID; kinds without an entry resolve at read time to the
+  // first attached enabled instance of that kind. Stored UUIDs that fall out
+  // of the dashboard's attached set (or get disabled / deleted) are silently
+  // ignored by the resolver — they don't need to be cleaned eagerly, except
+  // on instance delete (we prune to keep storage tidy).
+  activeInstance?: Partial<Record<ServiceId, string>>;
 }
 
 // Legacy widget-settings shape carried by v13 exports. v13→v14 migration folds
@@ -202,9 +209,14 @@ interface ConfigState {
   serviceInstances: Record<ServiceId, ServiceInstance[]>;
   // Secrets keyed by instance UUID, not ServiceId. One row per ServiceInstance.id.
   instanceSecrets: Record<string, ServiceSecrets>;
-  // Currently-selected instance per service kind. Persisted across restarts so
-  // the per-service tab remembers the user's pick. Null means no instances
-  // configured.
+  // v22: derived view of the active workspace's `activeInstance` map, with
+  // resolver fallback applied (first attached+enabled instance of each kind
+  // when the workspace has no explicit pin). The source of truth is
+  // `dashboards[activeDashboardId].activeInstance` — this top-level shape is
+  // kept so existing consumers that read `state.activeInstance[kind]` (and
+  // the derived `services`/`secrets` views below) keep working without
+  // workspace-awareness churn. Recomputed by `deriveActiveInstance()` on
+  // every workspace switch / attachment change / instance enable/delete.
   activeInstance: Record<ServiceId, string | null>;
 
   // Legacy single-instance views of the active instance, keyed by ServiceId.
@@ -255,8 +267,6 @@ export interface ExportPayload {
   services: Record<ServiceId, ServiceInstance[]>;
   // v13: keyed by instance UUID, not ServiceId.
   secrets: Record<string, ServiceSecrets>;
-  // v13: currently-active instance UUID per kind.
-  activeInstance: Record<ServiceId, string | null>;
   autoSwitchNetwork: boolean;
   // v11 — replaces homeSSID/homeBSSID with a per-AP list so mesh setups can
   // register every SSID/BSSID pair the user considers "home".
@@ -305,6 +315,14 @@ interface ConfigActions {
   toggleInstance: (id: ServiceId, instanceId: string) => void;
   moveInstance: (id: ServiceId, instanceId: string, direction: "up" | "down") => void;
   setActiveInstance: (id: ServiceId, instanceId: string | null) => void;
+  // v22: explicit-dashboard variant. Writes the kind's pin onto the named
+  // dashboard's `activeInstance` map. `setActiveInstance` above is the
+  // common case (writes to whichever workspace is currently active).
+  setDashboardActiveInstance: (
+    dashboardId: string,
+    id: ServiceId,
+    instanceId: string | null,
+  ) => void;
   updateInstanceSecrets: (
     instanceId: string,
     secrets: Partial<ServiceSecrets>,
@@ -430,6 +448,75 @@ function defaultActiveInstance(
     out[id] = instances[id][0]?.id ?? null;
   }
   return out;
+}
+
+// v22: resolve the workspace-aware active instance per kind. Reads the active
+// dashboard's optional `activeInstance` map first; if the kind has no pin (or
+// the pinned UUID is disabled / unattached / missing), falls back to the
+// first attached + enabled instance of that kind. Returns null when no
+// instance of the kind exists or none are attached + enabled.
+//
+// Used to populate the derived top-level `state.activeInstance` view on every
+// mutation that could change resolution: workspace switch, attachment change,
+// per-dashboard pin set/clear, instance add/remove/toggle.
+function deriveActiveInstance(
+  dashboards: Dashboard[],
+  activeDashboardId: string,
+  serviceInstances: Record<ServiceId, ServiceInstance[]>,
+): Record<ServiceId, string | null> {
+  const dashboard = dashboards.find((d) => d.id === activeDashboardId);
+  const attached = dashboard?.attachedInstances;
+  const isAttached = (id: string): boolean =>
+    attached === undefined ? true : attached.includes(id);
+
+  const out = {} as Record<ServiceId, string | null>;
+  for (const kind of SERVICE_IDS) {
+    const list = serviceInstances[kind] ?? [];
+    if (list.length === 0) {
+      out[kind] = null;
+      continue;
+    }
+    const pinned = dashboard?.activeInstance?.[kind];
+    if (pinned) {
+      const hit = list.find(
+        (i) => i.id === pinned && i.enabled && isAttached(i.id),
+      );
+      if (hit) {
+        out[kind] = hit.id;
+        continue;
+      }
+    }
+    const fallback = list.find((i) => i.enabled && isAttached(i.id));
+    out[kind] = fallback?.id ?? null;
+  }
+  return out;
+}
+
+// Helper: bundled recomputation for the trio of derived views that depend on
+// active-instance resolution. Call after any mutation that could affect the
+// active dashboard's per-kind pick or its attachment set.
+function recomputeDerivedFromActive(
+  dashboards: Dashboard[],
+  activeDashboardId: string,
+  serviceInstances: Record<ServiceId, ServiceInstance[]>,
+  instanceSecrets: Record<string, ServiceSecrets>,
+): {
+  activeInstance: Record<ServiceId, string | null>;
+  services: Record<ServiceId, ServiceConfig>;
+  secrets: Record<ServiceId, ServiceSecrets>;
+} {
+  const activeInstance = deriveActiveInstance(
+    dashboards,
+    activeDashboardId,
+    serviceInstances,
+  );
+  const services = deriveLegacyServices(serviceInstances, activeInstance);
+  const secrets = deriveLegacySecrets(
+    serviceInstances,
+    instanceSecrets,
+    activeInstance,
+  );
+  return { activeInstance, services, secrets };
 }
 
 function emptyLegacySecrets(): Record<ServiceId, ServiceSecrets> {
@@ -802,24 +889,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
     }
 
-    // Active instance per kind: prefer stored value, fall back to the first
-    // instance for that kind (matches the v12 single-instance behavior).
-    const storedActive = getJSON<Record<string, unknown>>(ACTIVE_INSTANCE_KEY) ?? {};
-    const activeInstance = {} as Record<ServiceId, string | null>;
-    let activeChanged = false;
-    for (const id of SERVICE_IDS) {
-      const raw = storedActive[id];
-      const list = instances[id];
-      if (typeof raw === "string" && list.some((i) => i.id === raw)) {
-        activeInstance[id] = raw;
-      } else {
-        activeInstance[id] = list[0]?.id ?? null;
-        activeChanged = true;
-      }
-    }
-    if (activeChanged) {
-      setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
-    }
+    // v22: active instance is workspace-scoped, derived from
+    // `dashboard.activeInstance` + attachment fallback. The legacy
+    // `ACTIVE_INSTANCE_KEY` storage is no longer the source of truth — but on
+    // first launch after upgrade, fold it onto each dashboard that doesn't
+    // already carry an activeInstance map (mirrors the v21→v22 export
+    // migration for local-only installs that never re-imported). One-shot.
+    const legacyActive = getJSON<Record<string, unknown>>(ACTIVE_INSTANCE_KEY);
+    // NOTE: we can't apply the legacy fold here yet — dashboards aren't built
+    // at this point in hydrate (they're loaded a few hundred lines below).
+    // Stash the legacy value and apply after the dashboards array exists.
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
     const networkAwayFromHome = getBoolean(STORAGE_KEYS.networkAwayFromHome);
@@ -936,6 +1015,22 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
             }
             dashboard.pinnedTabs = pinned;
           }
+          // v22: per-workspace activeInstance map (kind → instance UUID).
+          // Unknown kinds and empty UUIDs are dropped; any post-hydrate
+          // staleness (UUIDs that no longer exist) is handled by the
+          // resolver, which silently falls back to the first attached enabled
+          // instance.
+          if (isPlainObject(d.activeInstance)) {
+            const cleaned: Partial<Record<ServiceId, string>> = {};
+            for (const [kind, raw] of Object.entries(d.activeInstance)) {
+              if (typeof raw !== "string" || raw.length === 0) continue;
+              if (!(SERVICE_IDS as readonly string[]).includes(kind)) continue;
+              cleaned[kind as ServiceId] = raw;
+            }
+            if (Object.keys(cleaned).length > 0) {
+              dashboard.activeInstance = cleaned;
+            }
+          }
           // Backfill v20 fields one-time for users upgrading from a v14-v19
           // local install (the AsyncStorage payload is the legacy shape, even
           // though the export migration handles them at import time).
@@ -1050,12 +1145,57 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           remoteUrl: "",
         };
         instances[id] = [demoInst];
-        activeInstance[id] = demoInst.id;
+      }
+      // v22: drop curated attachments in memory so demo UUIDs resolve. Mirrors
+      // the enableDemoMode action; not persisted (real attachments come back
+      // on disableDemoMode → hydrate).
+      for (let i = 0; i < dashboards.length; i++) {
+        if (dashboards[i].attachedInstances === undefined) continue;
+        const next = { ...dashboards[i] };
+        delete (next as { attachedInstances?: unknown }).attachedInstances;
+        dashboards[i] = next;
       }
     }
 
-    const secrets = deriveLegacySecrets(instances, instanceSecrets, activeInstance);
-    const services = deriveLegacyServices(instances, activeInstance);
+    // v22: one-shot upgrade — fold the legacy `ACTIVE_INSTANCE_KEY` payload
+    // onto dashboards that don't already carry an activeInstance map. Mirrors
+    // the v21→v22 export migration for local installs that never re-imported.
+    if (legacyActive && typeof legacyActive === "object" && dashboards.length > 0) {
+      let touched = false;
+      for (let i = 0; i < dashboards.length; i++) {
+        const d = dashboards[i];
+        if (d.activeInstance) continue;
+        const attached = Array.isArray(d.attachedInstances)
+          ? new Set(d.attachedInstances)
+          : null;
+        const out: Partial<Record<ServiceId, string>> = {};
+        for (const [kind, raw] of Object.entries(legacyActive)) {
+          if (typeof raw !== "string" || raw.length === 0) continue;
+          if (!(SERVICE_IDS as readonly string[]).includes(kind)) continue;
+          if (attached === null || attached.has(raw)) {
+            out[kind as ServiceId] = raw;
+          }
+        }
+        if (Object.keys(out).length > 0) {
+          dashboards[i] = { ...d, activeInstance: out };
+          touched = true;
+        }
+      }
+      if (touched) {
+        setJSON(STORAGE_KEYS.dashboards, dashboards);
+      }
+    }
+    // Always drop the legacy key — dashboards are the source of truth now.
+    if (legacyActive !== undefined) {
+      deleteKey(ACTIVE_INSTANCE_KEY);
+    }
+
+    const { activeInstance, services, secrets } = recomputeDerivedFromActive(
+      dashboards,
+      activeDashboardId,
+      instances,
+      instanceSecrets,
+    );
 
     set({
       serviceInstances: instances,
@@ -1086,20 +1226,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set((state) => {
       const list = [...(state.serviceInstances[id] ?? []), inst];
       const serviceInstances = { ...state.serviceInstances, [id]: list };
-      // First instance for this kind also becomes the active selection.
-      const nextActive = state.activeInstance[id] ?? inst.id;
-      const activeInstance = { ...state.activeInstance, [id]: nextActive };
       setJSON(`${STORAGE_KEYS.services}.${id}`, list);
-      if (nextActive !== state.activeInstance[id]) {
-        setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
-      }
-      const services = deriveLegacyServices(serviceInstances, activeInstance);
-      const secrets = deriveLegacySecrets(
+      // v22: no explicit "make this the active instance" write — the resolver
+      // picks the new instance up automatically if the active workspace had
+      // no pin for this kind (or its pin became invalid). When the kind has
+      // an existing pin, that pin is preserved.
+      const derived = recomputeDerivedFromActive(
+        state.dashboards,
+        state.activeDashboardId,
         serviceInstances,
         state.instanceSecrets,
-        activeInstance,
       );
-      return { serviceInstances, activeInstance, services, secrets };
+      return { serviceInstances, ...derived };
     });
     return inst;
   },
@@ -1116,18 +1254,44 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const list = (state.serviceInstances[id] ?? []).filter((i) => i.id !== instanceId);
       const serviceInstances = { ...state.serviceInstances, [id]: list };
       const { [instanceId]: _removed, ...instanceSecrets } = state.instanceSecrets;
-      const activeInstance = { ...state.activeInstance };
-      if (activeInstance[id] === instanceId) {
-        activeInstance[id] = list[0]?.id ?? null;
-      }
       setJSON(`${STORAGE_KEYS.services}.${id}`, list);
-      setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
-      const services = deriveLegacyServices(serviceInstances, activeInstance);
-      const secrets = deriveLegacySecrets(
-        serviceInstances,
-        instanceSecrets,
-        activeInstance,
-      );
+
+      // v22: prune the deleted UUID from every dashboard's `attachedInstances`
+      // and `activeInstance[kind]` so storage doesn't accumulate orphans.
+      // Auto-attach dashboards (attachedInstances === undefined) need no
+      // change — they implicitly drop the deleted UUID. The runtime resolver
+      // would tolerate stale pins, but pruning here keeps an exported config
+      // tidy and survives downgrade-then-upgrade cycles.
+      let dashboardsChanged = false;
+      const dashboards = state.dashboards.map((d) => {
+        let nextAttached = d.attachedInstances;
+        let nextActiveMap = d.activeInstance;
+        let localChanged = false;
+        if (Array.isArray(nextAttached) && nextAttached.includes(instanceId)) {
+          nextAttached = nextAttached.filter((x) => x !== instanceId);
+          localChanged = true;
+        }
+        if (nextActiveMap && nextActiveMap[id] === instanceId) {
+          const { [id]: _drop, ...rest } = nextActiveMap;
+          nextActiveMap = Object.keys(rest).length === 0
+            ? undefined
+            : (rest as Partial<Record<ServiceId, string>>);
+          localChanged = true;
+        }
+        if (!localChanged) return d;
+        dashboardsChanged = true;
+        const out: Dashboard = { ...d, attachedInstances: nextAttached };
+        if (nextActiveMap === undefined) {
+          delete (out as { activeInstance?: unknown }).activeInstance;
+        } else {
+          out.activeInstance = nextActiveMap;
+        }
+        return out;
+      });
+      if (dashboardsChanged) {
+        setJSON(STORAGE_KEYS.dashboards, dashboards);
+      }
+
       // v21: drop any per-instance notification overrides keyed to the
       // deleted instance so orphan keys don't accumulate in storage.
       let notificationSettings = state.notificationSettings;
@@ -1139,13 +1303,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         };
         setJSON(STORAGE_KEYS.notificationSettings, notificationSettings);
       }
+
+      const derived = recomputeDerivedFromActive(
+        dashboards,
+        state.activeDashboardId,
+        serviceInstances,
+        instanceSecrets,
+      );
       return {
         serviceInstances,
         instanceSecrets,
-        activeInstance,
-        services,
-        secrets,
+        dashboards,
         notificationSettings,
+        ...derived,
       };
     });
   },
@@ -1155,10 +1325,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const list = state.serviceInstances[id] ?? [];
       const idx = list.findIndex((i) => i.id === instanceId);
       if (idx === -1) return state;
+      const prev = list[idx];
       const next = [...list];
-      next[idx] = { ...next[idx], ...patch, id: next[idx].id };
+      next[idx] = { ...prev, ...patch, id: prev.id };
       const serviceInstances = { ...state.serviceInstances, [id]: next };
       setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      // v22: toggling `enabled` can flip the resolver's fallback (a freshly
+      // disabled active pin needs to give way to the next attached+enabled
+      // sibling). Other field edits don't affect resolution, but the
+      // recompute is cheap.
+      const enabledFlipped = "enabled" in patch && prev.enabled !== next[idx].enabled;
+      if (enabledFlipped) {
+        const derived = recomputeDerivedFromActive(
+          state.dashboards,
+          state.activeDashboardId,
+          serviceInstances,
+          state.instanceSecrets,
+        );
+        return { serviceInstances, ...derived };
+      }
+      // Field edit that doesn't affect resolution — re-derive `services`/
+      // `secrets` against the unchanged `state.activeInstance` so legacy
+      // readers reflect the patch (e.g. URL/name).
       const services = deriveLegacyServices(serviceInstances, state.activeInstance);
       const secrets = deriveLegacySecrets(
         serviceInstances,
@@ -1193,6 +1381,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setActiveInstance: (id, instanceId) => {
+    // v22: writes the kind pin onto the active dashboard's `activeInstance`
+    // map. Workspaces other than the active one are untouched.
+    get().setDashboardActiveInstance(get().activeDashboardId, id, instanceId);
+  },
+
+  setDashboardActiveInstance: (dashboardId, id, instanceId) => {
     set((state) => {
       const list = state.serviceInstances[id] ?? [];
       // Reject ids that don't refer to an existing instance — keeps state
@@ -1200,15 +1394,49 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       if (instanceId !== null && !list.some((i) => i.id === instanceId)) {
         return state;
       }
-      const activeInstance = { ...state.activeInstance, [id]: instanceId };
-      setJSON(ACTIVE_INSTANCE_KEY, activeInstance);
-      const services = deriveLegacyServices(state.serviceInstances, activeInstance);
-      const secrets = deriveLegacySecrets(
-        state.serviceInstances,
-        state.instanceSecrets,
-        activeInstance,
-      );
-      return { activeInstance, services, secrets };
+      const dashboard = state.dashboards.find((d) => d.id === dashboardId);
+      if (!dashboard) return state;
+
+      const prevMap = dashboard.activeInstance ?? {};
+      const nextMap: Partial<Record<ServiceId, string>> = { ...prevMap };
+      if (instanceId === null) {
+        delete nextMap[id];
+      } else {
+        nextMap[id] = instanceId;
+      }
+      const finalMap: Partial<Record<ServiceId, string>> | undefined =
+        Object.keys(nextMap).length === 0 ? undefined : nextMap;
+
+      // No-op early-out: same kind pin already set; avoids needless storage
+      // writes and re-renders for the common tap-the-already-active case.
+      if ((prevMap[id] ?? null) === (instanceId ?? null)) {
+        return state;
+      }
+
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== dashboardId) return d;
+        const next: Dashboard = { ...d };
+        if (finalMap === undefined) {
+          delete (next as { activeInstance?: unknown }).activeInstance;
+        } else {
+          next.activeInstance = finalMap;
+        }
+        return next;
+      });
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+
+      // Re-derive only when we just touched the active workspace; pinning a
+      // kind on a non-active workspace doesn't affect the rendered tabs.
+      if (dashboardId === state.activeDashboardId) {
+        const derived = recomputeDerivedFromActive(
+          dashboards,
+          state.activeDashboardId,
+          state.serviceInstances,
+          state.instanceSecrets,
+        );
+        return { dashboards, ...derived };
+      }
+      return { dashboards };
     });
   },
 
@@ -1364,11 +1592,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const dashboards = state.dashboards.filter((d) => d.id !== dashboardId);
       if (dashboards.length === state.dashboards.length) return state;
       let activeDashboardId = state.activeDashboardId;
-      if (activeDashboardId === dashboardId) {
+      const activeChanged = activeDashboardId === dashboardId;
+      if (activeChanged) {
         activeDashboardId = dashboards[0].id;
         setString(STORAGE_KEYS.activeDashboardId, activeDashboardId);
       }
       setJSON(STORAGE_KEYS.dashboards, dashboards);
+      // v22: deleting the active workspace re-resolves the active instance
+      // per kind against the new active workspace.
+      if (activeChanged) {
+        const derived = recomputeDerivedFromActive(
+          dashboards,
+          activeDashboardId,
+          state.serviceInstances,
+          state.instanceSecrets,
+        );
+        return { dashboards, activeDashboardId, ...derived };
+      }
       return { dashboards, activeDashboardId };
     });
   },
@@ -1386,8 +1626,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   setActiveDashboard: (dashboardId) => {
     set((state) => {
       if (!state.dashboards.some((d) => d.id === dashboardId)) return state;
+      if (state.activeDashboardId === dashboardId) return state;
       setString(STORAGE_KEYS.activeDashboardId, dashboardId);
-      return { activeDashboardId: dashboardId };
+      // v22: a workspace switch re-resolves the active instance per kind
+      // (different `activeInstance` map + different `attachedInstances` set).
+      const derived = recomputeDerivedFromActive(
+        state.dashboards,
+        dashboardId,
+        state.serviceInstances,
+        state.instanceSecrets,
+      );
+      return { activeDashboardId: dashboardId, ...derived };
     });
   },
 
@@ -1443,6 +1692,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         d.id === dashboardId ? { ...d, attachedInstances: sanitized } : d,
       );
       setJSON(STORAGE_KEYS.dashboards, dashboards);
+      // v22: attachment changes on the active workspace can re-resolve the
+      // active instance per kind (a previously-pinned UUID may no longer be
+      // attached; the fallback set changes).
+      if (dashboardId === state.activeDashboardId) {
+        const derived = recomputeDerivedFromActive(
+          dashboards,
+          state.activeDashboardId,
+          state.serviceInstances,
+          state.instanceSecrets,
+        );
+        return { dashboards, ...derived };
+      }
       return { dashboards };
     });
   },
@@ -1663,7 +1924,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   enableDemoMode: () => {
     setBoolean(STORAGE_KEYS.demoMode, true);
     const demoInstances = {} as Record<ServiceId, ServiceInstance[]>;
-    const demoActive = {} as Record<ServiceId, string | null>;
     for (const id of SERVICE_IDS) {
       const inst: ServiceInstance = {
         id: generateInstanceId(),
@@ -1673,17 +1933,30 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         remoteUrl: "",
       };
       demoInstances[id] = [inst];
-      demoActive[id] = inst.id;
     }
-    const secrets = deriveLegacySecrets(demoInstances, {}, demoActive);
-    const services = deriveLegacyServices(demoInstances, demoActive);
-    set({
-      demoMode: true,
-      serviceInstances: demoInstances,
-      instanceSecrets: {},
-      activeInstance: demoActive,
-      services,
-      secrets,
+    set((state) => {
+      // v22: force every dashboard into auto-attach mode in memory (not
+      // persisted) so the resolver picks up the freshly-generated demo UUIDs.
+      // The user's stored attachments come back on disableDemoMode → hydrate.
+      const demoDashboards = state.dashboards.map((d) => {
+        if (d.attachedInstances === undefined) return d;
+        const next: Dashboard = { ...d };
+        delete (next as { attachedInstances?: unknown }).attachedInstances;
+        return next;
+      });
+      const derived = recomputeDerivedFromActive(
+        demoDashboards,
+        state.activeDashboardId,
+        demoInstances,
+        {},
+      );
+      return {
+        demoMode: true,
+        serviceInstances: demoInstances,
+        instanceSecrets: {},
+        dashboards: demoDashboards,
+        ...derived,
+      };
     });
     queryClient.clear();
   },
@@ -1718,7 +1991,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const {
       serviceInstances,
       instanceSecrets,
-      activeInstance,
       autoSwitchNetwork,
       homeNetworks,
       servicesOrder,
@@ -1737,7 +2009,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       exportedAt: new Date().toISOString(),
       services: serviceInstances,
       secrets: instanceSecrets,
-      activeInstance,
+      // v22: activeInstance is now per-dashboard, serialized inside the
+      // `dashboards` array — no top-level field.
       autoSwitchNetwork,
       homeNetworks,
       servicesOrder,
@@ -1858,19 +2131,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
     }
 
-    // Restore active instance per kind, validating every UUID still exists in
-    // the merged services list.
-    const mergedActiveInstance = {} as Record<ServiceId, string | null>;
-    for (const id of SERVICE_IDS) {
-      const list = mergedInstances[id];
-      const stored = payload.activeInstance?.[id] ?? null;
-      if (typeof stored === "string" && list.some((i) => i.id === stored)) {
-        mergedActiveInstance[id] = stored;
-      } else {
-        mergedActiveInstance[id] = list[0]?.id ?? null;
-      }
-    }
-    setJSON(ACTIVE_INSTANCE_KEY, mergedActiveInstance);
+    // v22: active instance per kind is carried inside each dashboard's
+    // `activeInstance` map (the v21→v22 migration already folded any
+    // pre-v22 top-level `activeInstance` onto dashboards). No separate
+    // storage key — `STORAGE_KEYS.dashboards` is the source of truth.
+    // Clean the legacy key from any prior install so a downgrade can't
+    // resurrect a stale global pointer.
+    deleteKey(ACTIVE_INSTANCE_KEY);
 
     // Restore app settings
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
@@ -1929,18 +2196,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       setJSON(STORAGE_KEYS.notificationSettings, importedNotificationSettings);
     }
 
-    const derivedSecrets = deriveLegacySecrets(
-      mergedInstances,
-      mergedSecrets,
-      mergedActiveInstance,
-    );
-    const derivedServices = deriveLegacyServices(mergedInstances, mergedActiveInstance);
+    const { activeInstance: derivedActiveInstance, services: derivedServices, secrets: derivedSecrets } =
+      recomputeDerivedFromActive(
+        importedDashboards,
+        importedActiveDashboardId,
+        mergedInstances,
+        mergedSecrets,
+      );
 
     // Reload everything into the store
     set({
       serviceInstances: mergedInstances,
       instanceSecrets: mergedSecrets,
-      activeInstance: mergedActiveInstance,
+      activeInstance: derivedActiveInstance,
       services: derivedServices,
       secrets: derivedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
