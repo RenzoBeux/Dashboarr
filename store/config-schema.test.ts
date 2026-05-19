@@ -658,6 +658,45 @@ describe("validateExportPayload — notification settings", () => {
       }),
     ).toThrow(/notificationSettings/);
   });
+
+  it("round-trips perInstance overrides (v21)", () => {
+    const perInstance = {
+      "inst-radarr-1": { radarrDownloaded: false, serviceOffline: true },
+      "inst-sonarr-2": { sonarrDownloaded: false },
+    };
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: { ...fullSettings, perInstance },
+    });
+    expect(result.notificationSettings?.perInstance).toEqual(perInstance);
+  });
+
+  it("drops unknown perInstance categories silently (forward-compat)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: {
+        ...fullSettings,
+        perInstance: {
+          "inst-1": { radarrDownloaded: false, futureCategory: true },
+        },
+      } as any,
+    });
+    expect(result.notificationSettings?.perInstance).toEqual({
+      "inst-1": { radarrDownloaded: false },
+    });
+  });
+
+  it("rejects perInstance with a non-boolean override value", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        notificationSettings: {
+          ...fullSettings,
+          perInstance: { "inst-1": { radarrDownloaded: "yes" as any } },
+        } as any,
+      }),
+    ).toThrow(/notificationSettings/);
+  });
 });
 
 describe("validateExportPayload — backend", () => {

@@ -9,8 +9,11 @@ import type {
   WakeOnLanDevice,
   WidgetSlot,
 } from "@/store/config-store";
-import type { NotificationSettings } from "@/store/config-store";
+import type { NotificationSettings, NotifCategory } from "@/store/config-store";
+import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { MAX_PINNED_TABS } from "@/lib/tab-routes";
+
+const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
 const SERVICE_ID_SET: ReadonlySet<string> = new Set(SERVICE_IDS);
 const WIDGET_ID_SET: ReadonlySet<string> = new Set(DASHBOARD_WIDGET_IDS);
@@ -228,6 +231,30 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     if (v[key] === undefined) continue;
     if (typeof v[key] !== "boolean") return null;
     out[key] = v[key] as boolean;
+  }
+  // v21: per-instance overrides. Validate the shape; drop unknown categories
+  // silently so a future-added category doesn't fail the whole import on an
+  // older app build, but reject malformed values (non-object, non-boolean) so
+  // we don't write garbage into the store.
+  if (v.perInstance !== undefined) {
+    if (!isPlainObject(v.perInstance)) return null;
+    const perInstance: Record<string, Partial<Record<NotifCategory, boolean>>> = {};
+    for (const [instanceId, overrides] of Object.entries(v.perInstance)) {
+      if (typeof instanceId !== "string" || instanceId.length === 0 || instanceId.length > 128) return null;
+      if (!isPlainObject(overrides)) return null;
+      const cleaned: Partial<Record<NotifCategory, boolean>> = {};
+      for (const [cat, val] of Object.entries(overrides)) {
+        if (!NOTIF_CATEGORY_SET.has(cat)) continue;
+        if (typeof val !== "boolean") return null;
+        cleaned[cat as NotifCategory] = val;
+      }
+      if (Object.keys(cleaned).length > 0) {
+        perInstance[instanceId] = cleaned;
+      }
+    }
+    if (Object.keys(perInstance).length > 0) {
+      out.perInstance = perInstance;
+    }
   }
   return out as NotificationSettings;
 }

@@ -31,6 +31,8 @@ export const CATEGORY_LABELS: Record<NotifCategory, string> = {
   overseerrNewRequest: "New Seerr request",
 };
 
+export const NOTIF_CATEGORIES = Object.keys(CATEGORY_LABELS) as NotifCategory[];
+
 // Resolves the effective per-instance notification preference.
 // Per-instance override (when present) wins over the global category toggle.
 // Master `enabled = false` short-circuits everything.
