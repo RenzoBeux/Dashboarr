@@ -1,14 +1,20 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { usePreventRemove } from "@react-navigation/native";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+} from "react-native-reanimated";
 import {
-  InteractionManager,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
-import { Check, ChevronDown, ChevronUp, Plus, X } from "lucide-react-native";
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Plus,
+  X,
+} from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo } from "@/components/ui/service-logo";
@@ -16,7 +22,7 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { TextInput } from "@/components/ui/text-input";
-import { useConfigStore } from "@/store/config-store";
+import { useConfigStore, type ServiceInstance } from "@/store/config-store";
 import {
   ICON,
   SERVICE_DEFAULTS,
@@ -26,6 +32,7 @@ import {
 import {
   LUCIDE_BY_NAME,
   LUCIDE_ICON_NAMES,
+  resolveDashboardIcon,
   type DashboardIconName,
 } from "@/lib/dashboard-icons";
 import {
@@ -39,6 +46,7 @@ import {
   type TabRouteId,
 } from "@/lib/tab-routes";
 import { toast } from "@/components/ui/toast";
+import { DashboardIconPickerSheet } from "@/components/dashboard/dashboard-icon-picker-sheet";
 
 const TAB_LABELS: Record<TabRouteId, string> = {
   downloads: "Downloads",
@@ -92,8 +100,8 @@ export default function DashboardEditScreen() {
   }, [dashboard?.id]);
 
   const [name, setName] = useState(dashboard?.name ?? "");
-  const [icon, setIcon] = useState<string>(
-    () => resolveIconName(dashboard?.icon),
+  const [icon, setIcon] = useState<string>(() =>
+    resolveIconName(dashboard?.icon),
   );
   const [color, setColor] = useState<string>(() =>
     resolveDashboardColor(dashboard?.color),
@@ -103,6 +111,7 @@ export default function DashboardEditScreen() {
   const [pinned, setPinned] = useState<TabRouteId[]>(() =>
     sanitizePins(dashboard?.pinnedTabs ?? []),
   );
+  const [iconSheetOpen, setIconSheetOpen] = useState(false);
 
   // Track whether the draft diverges from the persisted dashboard so we can
   // (1) skip silent writes on save and (2) prompt before discarding on back.
@@ -122,20 +131,6 @@ export default function DashboardEditScreen() {
     color !== initialColor ||
     touchedAttached ||
     !arraysEqual(pinned, initialPinned);
-
-  // Defer mounting the heavy sections (50+ lucide SVGs in the icon picker,
-  // the full instances list) until after the stack push transition settles.
-  // First paint shows the back header, name field, and color swatches so
-  // the screen feels instant; the icon picker and instances list populate
-  // a frame later. Without this defer, the route push waits on ~60 SVG
-  // mounts before the screen becomes visible, which reads as lag on tap.
-  const [heavyReady, setHeavyReady] = useState(false);
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setHeavyReady(true);
-    });
-    return () => handle.cancel();
-  }, []);
 
   // Intercept back/swipe-dismiss while the draft is dirty so the user gets a
   // chance to keep editing or explicitly discard. Bypass is held in a ref —
@@ -178,10 +173,10 @@ export default function DashboardEditScreen() {
   // info, and keeping kinds folded lets long lists stay scannable. The
   // user expands only the kind they actually want to edit.
   const [expandedKinds, setExpandedKinds] = useState<Record<string, boolean>>({});
-  function toggleExpanded(kind: ServiceId) {
+  const toggleExpanded = useCallback((kind: ServiceId) => {
     Haptics.selectionAsync();
     setExpandedKinds((prev) => ({ ...prev, [kind]: !prev[kind] }));
-  }
+  }, []);
 
   const attachedSet = useMemo(() => new Set(attached), [attached]);
   const attachedKinds = useMemo(() => {
@@ -202,7 +197,7 @@ export default function DashboardEditScreen() {
   // and prune pins down to it. Centralized so every attachment mutation goes
   // through the same cascade — handleSelectNone in particular used to read
   // the stale `attachedSet` closure, which worked by accident.
-  function prunePinsForAttachment(nextAttached: string[]) {
+  const prunePinsForAttachment = useCallback((nextAttached: string[]) => {
     const nextAttachedSet = new Set(nextAttached);
     const nextKinds = new Set<ServiceId>();
     for (const kind of SERVICE_IDS) {
@@ -211,9 +206,9 @@ export default function DashboardEditScreen() {
     }
     const stillPickable = new Set<string>(pickableTabIdsFor(nextKinds));
     setPinned((prevPins) => prevPins.filter((tab) => stillPickable.has(tab)));
-  }
+  }, [serviceInstances]);
 
-  function handleToggleInstance(instanceId: string) {
+  const handleToggleInstance = useCallback((instanceId: string) => {
     setAttached((prev) => {
       const has = prev.includes(instanceId);
       // Defensive gate: disabled instances can be *removed* (un-attached)
@@ -239,9 +234,9 @@ export default function DashboardEditScreen() {
       setTouchedAttached(true);
       return next;
     });
-  }
+  }, [serviceInstances, prunePinsForAttachment]);
 
-  function handleSelectAll(kind: ServiceId) {
+  const handleSelectAll = useCallback((kind: ServiceId) => {
     Haptics.selectionAsync();
     // Mirror handleToggleInstance: never auto-attach disabled instances.
     // Pre-attached disabled ids stay attached (they were already there).
@@ -256,9 +251,9 @@ export default function DashboardEditScreen() {
       return next;
     });
     setTouchedAttached(true);
-  }
+  }, [serviceInstances, prunePinsForAttachment]);
 
-  function handleSelectNone(kind: ServiceId) {
+  const handleSelectNone = useCallback((kind: ServiceId) => {
     Haptics.selectionAsync();
     const remove = new Set((serviceInstances[kind] ?? []).map((i) => i.id));
     setAttached((prev) => {
@@ -267,7 +262,7 @@ export default function DashboardEditScreen() {
       return next;
     });
     setTouchedAttached(true);
-  }
+  }, [serviceInstances, prunePinsForAttachment]);
 
   function handleTogglePin(tab: TabRouteId) {
     setPinned((prev) => {
@@ -349,6 +344,22 @@ export default function DashboardEditScreen() {
   }
 
   const saveTextColor = pickReadableForeground(color);
+  const PreviewIcon = LUCIDE_BY_NAME[icon as DashboardIconName] ?? resolveDashboardIcon(icon);
+  const previewName = trimmedName.length > 0 ? trimmedName : "Untitled dashboard";
+  const previewSummary = (() => {
+    const parts: string[] = [];
+    if (wasAutoAttach && !touchedAttached) {
+      parts.push("Auto-attach all");
+    } else if (attached.length === 0) {
+      parts.push("No instances");
+    } else {
+      parts.push(`${attached.length} instance${attached.length === 1 ? "" : "s"}`);
+    }
+    if (pinned.length > 0) {
+      parts.push(`${pinned.length} pinned`);
+    }
+    return parts.join(" · ");
+  })();
 
   return (
     <ScreenWrapper>
@@ -356,31 +367,54 @@ export default function DashboardEditScreen() {
         title="Edit dashboard"
         onBack={handleCancel}
         right={
-          <View className="flex-row items-center gap-2">
-            <Pressable
-              onPress={handleCancel}
-              hitSlop={6}
-              className="px-3 py-1.5 rounded-xl active:opacity-70"
+          <Pressable
+            onPress={handleSave}
+            disabled={!dirty}
+            hitSlop={6}
+            className="px-4 py-1.5 rounded-xl active:opacity-70"
+            style={{ backgroundColor: color, opacity: dirty ? 1 : 0.4 }}
+          >
+            <Text
+              className="text-sm font-semibold"
+              style={{ color: saveTextColor }}
             >
-              <Text className="text-zinc-400 text-sm font-medium">Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSave}
-              disabled={!dirty}
-              hitSlop={6}
-              className="px-4 py-1.5 rounded-xl active:opacity-70"
-              style={{ backgroundColor: color, opacity: dirty ? 1 : 0.5 }}
-            >
-              <Text
-                className="text-sm font-semibold"
-                style={{ color: saveTextColor }}
-              >
-                Save
-              </Text>
-            </Pressable>
-          </View>
+              Save
+            </Text>
+          </Pressable>
         }
       />
+
+      {/* Live preview tile — gives the user immediate visual feedback as they
+          edit icon/color/name. Mirrors the row layout used in the dashboards
+          picker sheet so they recognise what the result will look like there. */}
+      <Animated.View
+        layout={LinearTransition.duration(220)}
+        className="rounded-2xl p-4 mb-5 border"
+        style={{
+          backgroundColor: `${color}1A`,
+          borderColor: `${color}55`,
+        }}
+      >
+        <View className="flex-row items-center gap-3">
+          <View
+            className="w-14 h-14 rounded-2xl items-center justify-center"
+            style={{ backgroundColor: `${color}33` }}
+          >
+            <Icon icon={PreviewIcon} size={26} color={color} />
+          </View>
+          <View className="flex-1">
+            <Text
+              className="text-zinc-100 text-lg font-bold"
+              numberOfLines={1}
+            >
+              {previewName}
+            </Text>
+            <Text className="text-zinc-400 text-xs mt-0.5" numberOfLines={1}>
+              {previewSummary}
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
 
       <Section label="Name">
         <TextInput
@@ -391,64 +425,47 @@ export default function DashboardEditScreen() {
         />
       </Section>
 
-      <Section label="Icon">
-        {heavyReady ? (
-          <View className="flex-row flex-wrap gap-2">
-            {LUCIDE_ICON_NAMES.map((iconName) => {
-              const Comp = LUCIDE_BY_NAME[iconName];
-              const selected = icon === iconName;
-              return (
-                <Pressable
-                  key={iconName}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setIcon(iconName);
-                  }}
-                  hitSlop={4}
-                  className={`w-11 h-11 rounded-xl items-center justify-center border ${
-                    selected ? "border-2" : "border"
-                  }`}
-                  style={{
-                    backgroundColor: selected ? `${color}26` : "#27272a",
-                    borderColor: selected ? color : "#3f3f46",
-                  }}
-                >
-                    {createElement(Comp, {
-                      size: 20,
-                      color: selected ? color : "#a1a1aa",
-                    })}
-                </Pressable>
-              );
-            })}
+      <Section label="Appearance">
+        {/* Icon row opens the full picker on tap. The grid lives in a sheet
+            so the edit screen mounts instantly — previously the inline grid
+            mounted 60 SVGs synchronously after the route transition, which
+            caused the visible pop-in users called "buggy". */}
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            setIconSheetOpen(true);
+          }}
+          className="flex-row items-center gap-3 rounded-2xl bg-surface-light border border-border/70 px-3 py-3 active:bg-surface mb-3"
+        >
+          <View
+            className="w-11 h-11 rounded-xl items-center justify-center"
+            style={{ backgroundColor: `${color}26` }}
+          >
+            <Icon icon={PreviewIcon} size={22} color={color} />
           </View>
-        ) : (
-          <View className="h-11 rounded-xl bg-surface-light/40" />
-        )}
-      </Section>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-sm font-semibold">
+              Icon
+            </Text>
+            <Text className="text-zinc-500 text-xs mt-0.5">
+              Tap to pick from {LUCIDE_ICON_NAMES.length} icons
+            </Text>
+          </View>
+          <Icon icon={ChevronRight} size={ICON.MD} color="#71717a" />
+        </Pressable>
 
-      <Section label="Color">
         <View className="flex-row flex-wrap gap-2">
-          {DASHBOARD_COLORS.map((swatch) => {
-            const selected = color === swatch.hex;
-            return (
-              <Pressable
-                key={swatch.hex}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setColor(swatch.hex);
-                }}
-                hitSlop={6}
-                className={`w-10 h-10 rounded-full items-center justify-center ${
-                  selected ? "border-2 border-white" : ""
-                }`}
-                style={{ backgroundColor: swatch.hex }}
-              >
-                {selected && (
-                  <Icon icon={Check} size={ICON.SM} color="#ffffff" />
-                )}
-              </Pressable>
-            );
-          })}
+          {DASHBOARD_COLORS.map((swatch) => (
+            <ColorSwatch
+              key={swatch.hex}
+              hex={swatch.hex}
+              selected={color === swatch.hex}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setColor(swatch.hex);
+              }}
+            />
+          ))}
         </View>
       </Section>
 
@@ -456,183 +473,30 @@ export default function DashboardEditScreen() {
         label="Attached instances"
         hint={
           wasAutoAttach
-            ? "This dashboard was set to auto-include every service. Tick the instances that belong here — anything you don't tick won't appear on this workspace after you save."
-            : "Pick which service instances belong to this workspace. A second Radarr or qBittorrent on another network can stay quiet on the wrong dashboard."
+            ? "Auto-attach is on — tick what belongs here. Anything left unchecked won't appear on this workspace."
+            : "Pick which service instances belong to this workspace."
         }
       >
-        {!heavyReady ? (
-          <View className="gap-2">
-            <View className="h-14 rounded-2xl bg-surface-light/40" />
-            <View className="h-14 rounded-2xl bg-surface-light/40" />
-          </View>
-        ) : (
-          <View className="gap-2">
-            {SERVICE_IDS.map((kind) => {
-              const list = serviceInstances[kind] ?? [];
-              if (list.length === 0) return null;
-              const multi = list.length > 1;
-              const enabledCount = list.filter((i) => i.enabled).length;
-              const attachedCount = list.filter((i) =>
-                attachedSet.has(i.id),
-              ).length;
-              const allDisabled = enabledCount === 0;
-              // Kind-card disabled state: when every instance is disabled
-              // and none are currently attached, the whole card is
-              // non-interactive — there's nothing meaningful to toggle.
-              // (If an instance is attached from a prior state and later
-              // got disabled, we still let the user un-attach it.)
-              const kindUntouchable = allDisabled && attachedCount === 0;
-
-              // Single-instance kinds render as a flat toggle row — no
-              // need for a collapse, the checkbox lives in the header.
-              if (!multi) {
-                const inst = list[0];
-                const on = attachedSet.has(inst.id);
-                const interactive = inst.enabled || on;
-                return (
-                  <Pressable
-                    key={kind}
-                    onPress={
-                      interactive
-                        ? () => handleToggleInstance(inst.id)
-                        : undefined
-                    }
-                    className="flex-row items-center gap-3 rounded-2xl bg-surface-light border border-border/70 px-3 py-3 active:bg-surface"
-                    style={{ opacity: !interactive ? 0.5 : 1 }}
-                  >
-                    <ServiceLogo id={kind} size={16} online />
-                    <View className="flex-1">
-                      <Text
-                        className="text-zinc-100 text-sm font-semibold"
-                        numberOfLines={1}
-                      >
-                        {SERVICE_DEFAULTS[kind].name}
-                      </Text>
-                      {!inst.enabled && (
-                        <Text className="text-zinc-600 text-xs mt-0.5">
-                          Enable in Settings to attach
-                        </Text>
-                      )}
-                    </View>
-                    <Checkbox
-                      on={on}
-                      color={color}
-                      disabled={!interactive}
-                    />
-                  </Pressable>
-                );
-              }
-
-              // Multi-instance kinds get a collapsable card with a
-              // per-instance breakdown inside.
-              const expanded = !!expandedKinds[kind];
-              const allOn =
-                enabledCount > 0 &&
-                list
-                  .filter((i) => i.enabled)
-                  .every((i) => attachedSet.has(i.id));
-
-              return (
-                <View
-                  key={kind}
-                  className="rounded-2xl bg-surface-light border border-border/70 overflow-hidden"
-                >
-                  <Pressable
-                    onPress={
-                      kindUntouchable ? undefined : () => toggleExpanded(kind)
-                    }
-                    className="flex-row items-center gap-3 px-3 py-3 active:bg-surface"
-                    style={{ opacity: kindUntouchable ? 0.55 : 1 }}
-                  >
-                    <ServiceLogo id={kind} size={16} online />
-                    <View className="flex-1">
-                      <Text
-                        className="text-zinc-100 text-sm font-semibold"
-                        numberOfLines={1}
-                      >
-                        {SERVICE_DEFAULTS[kind].name}
-                      </Text>
-                      <Text
-                        className="text-zinc-500 text-xs mt-0.5"
-                        numberOfLines={1}
-                      >
-                        {kindUntouchable
-                          ? "All instances disabled — enable in Settings"
-                          : `${attachedCount} of ${list.length} attached`}
-                      </Text>
-                    </View>
-                    {!kindUntouchable && (
-                      <Icon
-                        icon={expanded ? ChevronUp : ChevronDown}
-                        size={18}
-                        color="#a1a1aa"
-                      />
-                    )}
-                  </Pressable>
-
-                  {expanded && !kindUntouchable && (
-                    <View className="border-t border-border/40">
-                      <View className="flex-row items-center gap-1 px-3 py-2 border-b border-border/30">
-                        <MiniButton
-                          label="All"
-                          disabled={allOn || enabledCount === 0}
-                          onPress={() => handleSelectAll(kind)}
-                        />
-                        <MiniButton
-                          label="None"
-                          disabled={attachedCount === 0}
-                          onPress={() => handleSelectNone(kind)}
-                        />
-                      </View>
-                      {list.map((inst, idx) => {
-                        const on = attachedSet.has(inst.id);
-                        const isLast = idx === list.length - 1;
-                        const interactive = inst.enabled || on;
-                        const label =
-                          inst.name || SERVICE_DEFAULTS[kind].name;
-                        return (
-                          <Pressable
-                            key={inst.id}
-                            onPress={
-                              interactive
-                                ? () => handleToggleInstance(inst.id)
-                                : undefined
-                            }
-                            className={`flex-row items-center gap-3 px-3 py-3 active:bg-surface ${
-                              isLast ? "" : "border-b border-border/30"
-                            }`}
-                            style={{ opacity: !interactive ? 0.5 : 1 }}
-                          >
-                            <Checkbox
-                              on={on}
-                              color={color}
-                              disabled={!interactive}
-                            />
-                            <Text
-                              className={`flex-1 text-sm ${
-                                on
-                                  ? "text-zinc-100 font-medium"
-                                  : "text-zinc-400"
-                              }`}
-                              numberOfLines={1}
-                            >
-                              {label}
-                            </Text>
-                            {!inst.enabled && (
-                              <Text className="text-zinc-600 text-xs">
-                                disabled
-                              </Text>
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
+        <View className="gap-2">
+          {SERVICE_IDS.map((kind) => {
+            const list = serviceInstances[kind] ?? [];
+            if (list.length === 0) return null;
+            return (
+              <InstanceKindCard
+                key={kind}
+                kind={kind}
+                list={list}
+                color={color}
+                attachedSet={attachedSet}
+                expanded={!!expandedKinds[kind]}
+                onToggleExpanded={toggleExpanded}
+                onToggleInstance={handleToggleInstance}
+                onSelectAll={handleSelectAll}
+                onSelectNone={handleSelectNone}
+              />
+            );
+          })}
+        </View>
       </Section>
 
       <Section
@@ -649,8 +513,11 @@ export default function DashboardEditScreen() {
               const isFirst = idx === 0;
               const isLast = idx === pinned.length - 1;
               return (
-                <View
+                <Animated.View
                   key={tab}
+                  layout={LinearTransition.duration(200)}
+                  entering={FadeIn.duration(180)}
+                  exiting={FadeOut.duration(140)}
                   className="flex-row items-center gap-2 rounded-xl border px-3 py-2"
                   style={{
                     borderColor: color,
@@ -691,7 +558,7 @@ export default function DashboardEditScreen() {
                   >
                     <Icon icon={X} size={ICON.MD} color="#ef4444" />
                   </Pressable>
-                </View>
+                </Animated.View>
               );
             })}
 
@@ -700,14 +567,19 @@ export default function DashboardEditScreen() {
               if (remaining.length === 0) return null;
               const atMax = pinned.length >= MAX_PINNED_TABS;
               return (
-                <View className="flex-row flex-wrap gap-2 mt-1">
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerClassName="gap-2 py-1"
+                  className="mt-1 -mx-1 px-1"
+                >
                   {remaining.map((tab) => (
                     <Pressable
                       key={tab}
                       onPress={() => handleTogglePin(tab)}
                       hitSlop={4}
                       disabled={atMax}
-                      className="flex-row items-center gap-1 rounded-full px-3 py-1.5 border border-border/70 bg-surface-light"
+                      className="flex-row items-center gap-1 rounded-full px-3 py-1.5 border border-border/70 bg-surface-light active:opacity-70"
                       style={{ opacity: atMax ? 0.4 : 1 }}
                     >
                       <Icon icon={Plus} size={ICON.SM} color="#a1a1aa" />
@@ -716,7 +588,7 @@ export default function DashboardEditScreen() {
                       </Text>
                     </Pressable>
                   ))}
-                </View>
+                </ScrollView>
               );
             })()}
           </View>
@@ -735,6 +607,14 @@ export default function DashboardEditScreen() {
           pendingActionRef.current = null;
         }}
         onConfirm={confirmDiscard}
+      />
+
+      <DashboardIconPickerSheet
+        visible={iconSheetOpen}
+        onClose={() => setIconSheetOpen(false)}
+        selected={icon}
+        color={color}
+        onSelect={(picked) => setIcon(picked)}
       />
     </ScreenWrapper>
   );
@@ -766,7 +646,7 @@ interface MiniButtonProps {
   onPress: () => void;
 }
 
-function MiniButton({ label, disabled, onPress }: MiniButtonProps) {
+const MiniButton = memo(function MiniButton({ label, disabled, onPress }: MiniButtonProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -778,7 +658,7 @@ function MiniButton({ label, disabled, onPress }: MiniButtonProps) {
       <Text className="text-zinc-300 text-[0.7rem] font-medium">{label}</Text>
     </Pressable>
   );
-}
+});
 
 interface CheckboxProps {
   on: boolean;
@@ -786,7 +666,7 @@ interface CheckboxProps {
   disabled?: boolean;
 }
 
-function Checkbox({ on, color, disabled }: CheckboxProps) {
+const Checkbox = memo(function Checkbox({ on, color, disabled }: CheckboxProps) {
   return (
     <View
       className="w-5 h-5 rounded items-center justify-center border"
@@ -798,7 +678,188 @@ function Checkbox({ on, color, disabled }: CheckboxProps) {
       {on && <Icon icon={Check} size={14} color="#ffffff" />}
     </View>
   );
+});
+
+interface ColorSwatchProps {
+  hex: string;
+  selected: boolean;
+  onPress: () => void;
 }
+
+const ColorSwatch = memo(function ColorSwatch({ hex, selected, onPress }: ColorSwatchProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      className={`w-10 h-10 rounded-full items-center justify-center ${
+        selected ? "border-2 border-white" : ""
+      }`}
+      style={{ backgroundColor: hex }}
+    >
+      {selected && <Icon icon={Check} size={ICON.SM} color="#ffffff" />}
+    </Pressable>
+  );
+});
+
+interface InstanceKindCardProps {
+  kind: ServiceId;
+  list: readonly ServiceInstance[];
+  color: string;
+  attachedSet: Set<string>;
+  expanded: boolean;
+  onToggleExpanded: (kind: ServiceId) => void;
+  onToggleInstance: (id: string) => void;
+  onSelectAll: (kind: ServiceId) => void;
+  onSelectNone: (kind: ServiceId) => void;
+}
+
+const InstanceKindCard = memo(function InstanceKindCard({
+  kind,
+  list,
+  color,
+  attachedSet,
+  expanded,
+  onToggleExpanded,
+  onToggleInstance,
+  onSelectAll,
+  onSelectNone,
+}: InstanceKindCardProps) {
+  const multi = list.length > 1;
+  const enabledCount = list.filter((i) => i.enabled).length;
+  const attachedCount = list.filter((i) => attachedSet.has(i.id)).length;
+  const allDisabled = enabledCount === 0;
+  // Kind-card disabled state: when every instance is disabled and none are
+  // currently attached, the whole card is non-interactive — there's nothing
+  // meaningful to toggle. (If an instance is attached from a prior state and
+  // later got disabled, we still let the user un-attach it.)
+  const kindUntouchable = allDisabled && attachedCount === 0;
+
+  // Single-instance kinds render as a flat toggle row — no need for a
+  // collapse, the checkbox lives in the header.
+  if (!multi) {
+    const inst = list[0];
+    const on = attachedSet.has(inst.id);
+    const interactive = inst.enabled || on;
+    return (
+      <Pressable
+        onPress={interactive ? () => onToggleInstance(inst.id) : undefined}
+        className="flex-row items-center gap-3 rounded-2xl bg-surface-light border border-border/70 px-3 py-3 active:bg-surface"
+        style={{ opacity: !interactive ? 0.5 : 1 }}
+      >
+        <ServiceLogo id={kind} size={16} online />
+        <View className="flex-1">
+          <Text
+            className="text-zinc-100 text-sm font-semibold"
+            numberOfLines={1}
+          >
+            {SERVICE_DEFAULTS[kind].name}
+          </Text>
+          {!inst.enabled && (
+            <Text className="text-zinc-600 text-xs mt-0.5">
+              Enable in Settings to attach
+            </Text>
+          )}
+        </View>
+        <Checkbox on={on} color={color} disabled={!interactive} />
+      </Pressable>
+    );
+  }
+
+  // Multi-instance kinds get a collapsable card with a per-instance breakdown.
+  const allOn =
+    enabledCount > 0 &&
+    list.filter((i) => i.enabled).every((i) => attachedSet.has(i.id));
+
+  return (
+    <Animated.View
+      layout={LinearTransition.duration(200)}
+      className="rounded-2xl bg-surface-light border border-border/70 overflow-hidden"
+    >
+      <Pressable
+        onPress={kindUntouchable ? undefined : () => onToggleExpanded(kind)}
+        className="flex-row items-center gap-3 px-3 py-3 active:bg-surface"
+        style={{ opacity: kindUntouchable ? 0.55 : 1 }}
+      >
+        <ServiceLogo id={kind} size={16} online />
+        <View className="flex-1">
+          <Text
+            className="text-zinc-100 text-sm font-semibold"
+            numberOfLines={1}
+          >
+            {SERVICE_DEFAULTS[kind].name}
+          </Text>
+          <Text
+            className="text-zinc-500 text-xs mt-0.5"
+            numberOfLines={1}
+          >
+            {kindUntouchable
+              ? "All instances disabled — enable in Settings"
+              : `${attachedCount} of ${list.length} attached`}
+          </Text>
+        </View>
+        {!kindUntouchable && (
+          <Icon
+            icon={expanded ? ChevronUp : ChevronDown}
+            size={18}
+            color="#a1a1aa"
+          />
+        )}
+      </Pressable>
+
+      {expanded && !kindUntouchable && (
+        <Animated.View
+          entering={FadeIn.duration(180)}
+          exiting={FadeOut.duration(140)}
+          className="border-t border-border/40"
+        >
+          <View className="flex-row items-center gap-1 px-3 py-2 border-b border-border/30">
+            <MiniButton
+              label="All"
+              disabled={allOn || enabledCount === 0}
+              onPress={() => onSelectAll(kind)}
+            />
+            <MiniButton
+              label="None"
+              disabled={attachedCount === 0}
+              onPress={() => onSelectNone(kind)}
+            />
+          </View>
+          {list.map((inst, idx) => {
+            const on = attachedSet.has(inst.id);
+            const isLast = idx === list.length - 1;
+            const interactive = inst.enabled || on;
+            const label = inst.name || SERVICE_DEFAULTS[kind].name;
+            return (
+              <Pressable
+                key={inst.id}
+                onPress={interactive ? () => onToggleInstance(inst.id) : undefined}
+                className={`flex-row items-center gap-3 px-3 py-3 active:bg-surface ${
+                  isLast ? "" : "border-b border-border/30"
+                }`}
+                style={{ opacity: !interactive ? 0.5 : 1 }}
+              >
+                <Checkbox on={on} color={color} disabled={!interactive} />
+                <Text
+                  className={`flex-1 text-sm ${
+                    on ? "text-zinc-100 font-medium" : "text-zinc-400"
+                  }`}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+                {!inst.enabled && (
+                  <Text className="text-zinc-600 text-xs">
+                    disabled
+                  </Text>
+                )}
+              </Pressable>
+            );
+          })}
+        </Animated.View>
+      )}
+    </Animated.View>
+  );
+});
 
 function resolveIconName(name: string | undefined): DashboardIconName {
   if (name && name in LUCIDE_BY_NAME) return name as DashboardIconName;
