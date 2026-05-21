@@ -131,6 +131,12 @@ export const STORAGE_KEYS = {
   // first dismissal; the Settings → About → "Show workspace tour" row
   // resets it to false so users can replay.
   workspaceIntroSeen: "app.onboarding.workspaceIntroSeen",
+  // Sticky hash→poster mapping for the Downloads widget. The *arr queue only
+  // lists in-flight downloads, so without persistence the cover would vanish
+  // the instant Radarr/Sonarr imports the file (#88). Populated additively
+  // from queue + history; survives cold starts so seeding torrents still
+  // render their posters on app open.
+  torrentPosterCache: "app.torrentPosterCache",
 } as const;
 
 // Whitelisted UI scale multipliers. Kept as a const so the schema and the

@@ -127,10 +127,23 @@ async function ensureAuth(instanceId: string): Promise<void> {
   if (await getCookie(instanceId)) return;
   const entry = getEntry(instanceId);
   if (entry.loginPromise) {
-    await entry.loginPromise;
+    // Waiters must propagate the leader's outcome — otherwise a failed login
+    // returns void to the waiter, which then sends an unauth'd request and
+    // surfaces an opaque 403 (or worse, silently recovers via the retry path
+    // while the *leader* shows "auth failed" — see #87).
+    const ok = await entry.loginPromise;
+    if (!ok) throw new Error("qBittorrent authentication failed");
     return;
   }
-  const p = qbLogin(instanceId);
+  // Single retry with brief backoff: qBittorrent 5.x can transiently return a
+  // non-Ok login response under concurrent first-time auth (e.g. cold boot
+  // race when several widgets mount at once). qBT's default anti-bruteforce
+  // is 5 failed auths/min, so one retry is well under the threshold.
+  const p = (async (): Promise<boolean> => {
+    if (await qbLogin(instanceId)) return true;
+    await new Promise((r) => setTimeout(r, 200));
+    return qbLogin(instanceId);
+  })();
   entry.loginPromise = p;
   try {
     const ok = await p;
