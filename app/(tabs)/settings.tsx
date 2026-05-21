@@ -653,6 +653,19 @@ function InstanceList({
 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
+  // Intercept Android hardware back / swipe-back so it returns to the main
+  // settings list instead of popping the Settings tab (which would land on
+  // the dashboard).
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        onBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [onBack]),
+  );
+
   const handleAdd = () => {
     // First instance for a kind takes the kind's default name; subsequent ones
     // are auto-numbered to a unique label so the user has something to edit
