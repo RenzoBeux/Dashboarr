@@ -39,7 +39,7 @@ export function getMovieHistory(
   length = 25,
   instanceId?: string,
 ): Promise<BazarrHistoryResponse> {
-  return serviceRequest<BazarrHistoryResponse>("bazarr", "/history/movies", {
+  return serviceRequest<BazarrHistoryResponse>("bazarr", "/movies/history", {
     params: { start, length },
     instanceId,
   });
@@ -50,7 +50,7 @@ export function getEpisodeHistory(
   length = 25,
   instanceId?: string,
 ): Promise<BazarrHistoryResponse> {
-  return serviceRequest<BazarrHistoryResponse>("bazarr", "/history/series", {
+  return serviceRequest<BazarrHistoryResponse>("bazarr", "/episodes/history", {
     params: { start, length },
     instanceId,
   });
