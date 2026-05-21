@@ -8,6 +8,7 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { lightHaptic } from "@/lib/haptics";
 import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
@@ -24,13 +25,24 @@ export default function ServicesScreen() {
   const wolDevices = useConfigStore((s) => s.wolDevices);
   const servicesOrder = useConfigStore((s) => s.servicesOrder);
   const setServicesOrder = useConfigStore((s) => s.setServicesOrder);
+  const attachedKinds = useAttachedKinds();
   const { data: health } = useServiceHealth();
   const [editing, setEditing] = useState(false);
 
   const fullOrder = useMemo(() => applyServicesOrder(servicesOrder), [servicesOrder]);
+  // Workspace filter: only show enabled services with at least one attached
+  // instance on the active dashboard. The full canonical order still drives
+  // reorder neighbor lookups (so swapping with a hidden tile doesn't
+  // silently no-op).
   const enabledServices = useMemo(
-    () => fullOrder.filter((id) => services[id].enabled && SERVICE_ROUTES[id]),
-    [fullOrder, services],
+    () =>
+      fullOrder.filter(
+        (id) =>
+          services[id].enabled &&
+          SERVICE_ROUTES[id] &&
+          attachedKinds.has(id),
+      ),
+    [fullOrder, services, attachedKinds],
   );
 
   // Reorder in the visible-list space: swap `id` with its previous/next
@@ -54,12 +66,23 @@ export default function ServicesScreen() {
   };
 
   if (!enabledServices.length) {
+    // Disambiguate: an install with zero enabled services needs Settings, but
+    // a dashboard with services enabled-but-not-attached needs an edit on the
+    // active dashboard. Detect by checking if any enabled service exists at
+    // all (independent of attachment).
+    const anyEnabledGlobally = fullOrder.some(
+      (id) => services[id].enabled && SERVICE_ROUTES[id],
+    );
     return (
       <ScreenWrapper scrollable={false}>
-        <View className="flex-1 items-center justify-center gap-2">
-          <Text className="text-zinc-100 text-lg font-semibold">No services enabled</Text>
+        <View className="flex-1 items-center justify-center gap-2 px-6">
+          <Text className="text-zinc-100 text-lg font-semibold">
+            {anyEnabledGlobally ? "Nothing attached here" : "No services enabled"}
+          </Text>
           <Text className="text-zinc-500 text-sm text-center">
-            Go to Settings to configure your services.
+            {anyEnabledGlobally
+              ? "Open the dashboard switcher and attach services to this workspace."
+              : "Go to Settings to configure your services."}
           </Text>
         </View>
       </ScreenWrapper>

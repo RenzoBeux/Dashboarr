@@ -152,6 +152,24 @@ export function isWidgetServiceEnabled(
   return services[widget.service].enabled;
 }
 
+/**
+ * Whether the widget's service requirement intersects the active dashboard's
+ * attached service set. Widgets with `service === null` (service-health,
+ * calendar, wol-devices) are workspace-agnostic and always pass. Used by the
+ * dashboard visibility filter and the Add Widget picker to keep each
+ * workspace's widget list scoped to its attached services.
+ */
+export function isWidgetServiceAttached(
+  widget: WidgetDefinition,
+  attached: ReadonlySet<ServiceId>,
+): boolean {
+  if (widget.service === null) return true;
+  if (Array.isArray(widget.service)) {
+    return widget.service.some((id) => attached.has(id));
+  }
+  return attached.has(widget.service);
+}
+
 export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   "service-health": {
     id: "service-health",

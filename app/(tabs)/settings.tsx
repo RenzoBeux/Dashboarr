@@ -19,6 +19,7 @@ import {
   Copy,
   Bug,
   Heart,
+  BookOpen,
 } from "lucide-react-native";
 import GithubLogo from "@/assets/services/github.svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -34,6 +35,7 @@ import { Select } from "@/components/ui/select";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
+import { useIntroStore } from "@/store/intro-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { BackHeader } from "@/components/common/back-header";
@@ -41,6 +43,11 @@ import { pingService } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
+import {
+  CATEGORIES_FOR_KIND,
+  CATEGORY_LABELS,
+  type NotifCategory,
+} from "@/lib/notification-categories";
 import { validateServiceUrl, normalizeServiceUrl } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { AppVersionCard } from "@/components/common/app-version-card";
@@ -140,6 +147,7 @@ export default function SettingsScreen() {
   const [hasRemembered, setHasRemembered] = useState(() => hasRememberedPassphrase());
   const [confirmClearCache, setConfirmClearCache] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
+  const replayWorkspaceIntro = useIntroStore((s) => s.replayWorkspaceIntro);
 
   const requestPassphrase = (mode: PassphraseMode) =>
     new Promise<PassphraseResult | null>((resolve) => {
@@ -322,11 +330,17 @@ export default function SettingsScreen() {
 
   return (
     <ScreenWrapper>
-      <Text className="text-zinc-100 text-2xl font-bold mt-2 mb-4">
-        Settings
-      </Text>
+      <View className="mt-2 mb-4">
+        <Text className="text-zinc-100 text-2xl font-bold">Settings</Text>
+        <Text className="text-zinc-500 text-xs mt-0.5">
+          Applies to all dashboards
+        </Text>
+      </View>
 
-      <SettingsGroup title="Services">
+      <SettingsGroup
+        title="Services"
+        footer="Instances are shared across dashboards. Attach them to a workspace in its settings."
+      >
         {enabledKinds.map(renderKindRow)}
         {disabledKinds.length > 0 && enabledKinds.length > 0 ? (
           <View className="px-4 py-2 bg-surface-light/30">
@@ -382,10 +396,13 @@ export default function SettingsScreen() {
         />
       </SettingsGroup>
 
-      <SettingsGroup title="Notifications">
+      <SettingsGroup
+        title="Notifications"
+        footer="Apply to all dashboards. Open a specific instance in Services to override per-instance."
+      >
         <SettingsToggleRow
-          label="Local alerts"
-          description="Fire banners when Dashboarr is open"
+          label="Enable notifications"
+          description="Master switch for in-app banners and backend pushes"
           value={notifEnabled}
           onValueChange={(v) => setNotifSetting("enabled", v)}
         />
@@ -534,6 +551,12 @@ export default function SettingsScreen() {
           subtitle="Buy me a coffee on Ko-fi"
           onPress={() => void Linking.openURL("https://ko-fi.com/renzobeux")}
         />
+        <SettingsRow
+          icon={BookOpen}
+          label="Show workspace tour"
+          subtitle="Replay the multi-dashboard intro"
+          onPress={replayWorkspaceIntro}
+        />
       </SettingsGroup>
 
       <AppVersionCard />
@@ -611,7 +634,22 @@ function InstanceList({
   const removeInstance = useConfigStore((s) => s.removeInstance);
   const moveInstance = useConfigStore((s) => s.moveInstance);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  const dashboards = useConfigStore((s) => s.dashboards);
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
+
+  // v22: how many workspaces attach a given instance UUID. Auto-attach mode
+  // (attachedInstances === undefined) counts as attached. Only displayed
+  // when the install has more than one dashboard.
+  const totalDashboards = dashboards.length;
+  const countAttached = (instanceId: string): number => {
+    let n = 0;
+    for (const d of dashboards) {
+      if (d.attachedInstances === undefined || d.attachedInstances.includes(instanceId)) {
+        n++;
+      }
+    }
+    return n;
+  };
 
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -672,6 +710,22 @@ function InstanceList({
                     ) : null}
                   </View>
                   <Text className="text-zinc-500 text-xs">{subtitle}</Text>
+                  {totalDashboards > 1
+                    ? (() => {
+                        const attached = countAttached(inst.id);
+                        const label =
+                          attached === 0
+                            ? "Not in any workspace"
+                            : attached === totalDashboards
+                              ? `In all ${totalDashboards} workspaces`
+                              : `In ${attached} of ${totalDashboards} workspaces`;
+                        return (
+                          <Text className="text-zinc-600 text-[0.7rem] mt-0.5">
+                            {label}
+                          </Text>
+                        );
+                      })()
+                    : null}
                 </View>
                 {inst.enabled ? (
                   <View className="w-2 h-2 rounded-full bg-success mr-2" />
@@ -722,7 +776,7 @@ function InstanceList({
         {instances.length > 1 ? (
           <View className="px-4 py-3 border-t border-surface-light">
             <Text className="text-zinc-500 text-xs mb-2">
-              Active instance (used by tabs and notifications)
+              Active in this workspace
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {instances
@@ -1069,6 +1123,8 @@ function ServiceEditor({
         />
       </Card>
 
+      <InstanceNotificationsCard serviceId={serviceId} instanceId={instanceId} />
+
       <WebhookInstanceIdCard serviceId={serviceId} instanceId={instanceId} />
 
       <View className="flex-row gap-3 mb-4">
@@ -1116,6 +1172,69 @@ function ServiceEditor({
  * integration, and hidden when no backend is paired (the id has no use
  * standalone).
  */
+// Per-instance notification overrides. For each notification category that
+// applies to this kind (see CATEGORIES_FOR_KIND), a 3-option Select decides
+// whether to defer to the global toggle or force on/off for this specific
+// instance. Stored under notificationSettings.perInstance[instanceId].
+function InstanceNotificationsCard({
+  serviceId,
+  instanceId,
+}: {
+  serviceId: ServiceId;
+  instanceId: string;
+}) {
+  const notif = useConfigStore((s) => s.notificationSettings);
+  const setOverride = useConfigStore((s) => s.setInstanceNotificationOverride);
+  const categories = CATEGORIES_FOR_KIND[serviceId] ?? [];
+  if (categories.length === 0) return null;
+
+  const masterOff = !notif.enabled;
+  const overrideMap = notif.perInstance?.[instanceId];
+
+  return (
+    <Card className="gap-4 mb-4" style={masterOff ? { opacity: 0.55 } : undefined}>
+      <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+        Notifications
+      </Text>
+      {masterOff ? (
+        <Text className="text-zinc-500 text-xs leading-5">
+          Notifications are off. Turn them on in Settings → Notifications to
+          use per-instance overrides.
+        </Text>
+      ) : null}
+      {categories.map((cat) => {
+        const override = overrideMap?.[cat];
+        const value: "inherit" | "on" | "off" =
+          override === undefined ? "inherit" : override ? "on" : "off";
+        const globalOn = notif[cat];
+        return (
+          <Select
+            key={cat}
+            label={CATEGORY_LABELS[cat]}
+            value={value}
+            disabled={masterOff}
+            options={[
+              {
+                value: "inherit",
+                label: `Use default (${globalOn ? "On" : "Off"})`,
+              },
+              { value: "on", label: "Always notify" },
+              { value: "off", label: "Never notify" },
+            ]}
+            onChange={(next) =>
+              setOverride(
+                instanceId,
+                cat satisfies NotifCategory,
+                next === "inherit" ? "inherit" : next === "on",
+              )
+            }
+          />
+        );
+      })}
+    </Card>
+  );
+}
+
 function WebhookInstanceIdCard({
   serviceId,
   instanceId,

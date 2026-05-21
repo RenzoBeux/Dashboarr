@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
+import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { UsenetDownloadsView } from "@/components/downloads/usenet-downloads-view";
 import { sabnzbdAdapter } from "@/lib/usenet-adapters/sabnzbd";
 import { nzbgetAdapter } from "@/lib/usenet-adapters/nzbget";
@@ -119,11 +120,18 @@ export default function DownloadsScreen() {
   const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
   const sabEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
   const nzbgetEnabled = useConfigStore((s) => s.services.nzbget?.enabled ?? false);
+  const attachedKinds = useAttachedKinds();
 
+  // Workspace filter: only show clients enabled globally AND with at least
+  // one attached instance on the active dashboard. Pinning Downloads to a
+  // workspace that has no clients attached is prevented at pin time by
+  // pickableTabIdsFor, so the empty case here only happens when the user
+  // un-attaches every client after pinning — in which case the redirect in
+  // _layout.tsx kicks them out before this screen renders.
   const enabledClients: DownloadClient[] = [];
-  if (qbEnabled) enabledClients.push("qbittorrent");
-  if (sabEnabled) enabledClients.push("sabnzbd");
-  if (nzbgetEnabled) enabledClients.push("nzbget");
+  if (qbEnabled && attachedKinds.has("qbittorrent")) enabledClients.push("qbittorrent");
+  if (sabEnabled && attachedKinds.has("sabnzbd")) enabledClients.push("sabnzbd");
+  if (nzbgetEnabled && attachedKinds.has("nzbget")) enabledClients.push("nzbget");
 
   // `?client=...` lets the Services tab (and dashboard Status widget) deep-link
   // straight to the matching segment instead of always landing on whichever

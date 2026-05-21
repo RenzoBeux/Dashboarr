@@ -761,10 +761,16 @@ describe("v12 → v13 (multi-instance)", () => {
         },
       },
     });
-    expect(result.activeInstance.qbittorrent).toBe(
+    // v21→v22 folded the global activeInstance pointer into the default
+    // dashboard's `activeInstance` map (the default dashboard is in auto-attach
+    // mode, so every instance UUID lands on it).
+    expect(result.activeInstance).toBeUndefined();
+    expect(result.dashboards[0].activeInstance.qbittorrent).toBe(
       result.services.qbittorrent[0].id,
     );
-    expect(result.activeInstance.radarr).toBe(result.services.radarr[0].id);
+    expect(result.dashboards[0].activeInstance.radarr).toBe(
+      result.services.radarr[0].id,
+    );
   });
 
   it("drops orphaned secrets whose serviceId has no matching service entry", () => {
@@ -780,9 +786,12 @@ describe("v12 → v13 (multi-instance)", () => {
     expect(result.secrets).toEqual({});
   });
 
-  it("produces an empty activeInstance map when services is empty", () => {
+  it("produces no activeInstance entries on any dashboard when services is empty", () => {
     const result: any = migrateConfig({ ...baseV12(), services: {} });
-    expect(result.activeInstance).toEqual({});
+    // v21→v22 drops the top-level field; an empty global pointer folds into no
+    // dashboard entries.
+    expect(result.activeInstance).toBeUndefined();
+    expect(result.dashboards[0].activeInstance).toBeUndefined();
   });
 
   it("assigns distinct UUIDs across kinds (no collisions)", () => {
@@ -1060,6 +1069,177 @@ describe("v17 → v18 (useRemote becomes user override)", () => {
   });
 });
 
+describe("v19 → v20 (dashboards become workspaces)", () => {
+  function baseV19(dashboardOverrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      version: 19,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "http://r",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [{ id: "s1", widgetId: "service-health" }],
+          ...dashboardOverrides,
+        },
+      ],
+      activeDashboardId: "d1",
+    };
+  }
+
+  it("backfills icon, color, and pinnedTabs on bare dashboards", () => {
+    const result: any = migrateConfig(baseV19());
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    const d = result.dashboards[0];
+    expect(d.icon).toBe("LayoutDashboard");
+    expect(d.color).toBe("#3b82f6");
+    // The legacy v20-development `attachedServices` field is dropped.
+    expect(d.attachedServices).toBeUndefined();
+  });
+
+  it("leaves attachedInstances undefined on bare dashboards so future instances auto-attach", () => {
+    // The render-time fallback in useAttachedInstances treats absent as
+    // "every currently-known instance attached", which is the only way for
+    // instances added after the v20 upgrade to flow into legacy dashboards.
+    const result: any = migrateConfig(baseV19());
+    expect(result.dashboards[0].attachedInstances).toBeUndefined();
+  });
+
+  it("does NOT backfill attachedInstances even when services are populated (auto-attach mode)", () => {
+    const result: any = migrateConfig(baseV19());
+    expect(result.dashboards[0].attachedInstances).toBeUndefined();
+  });
+
+  it("defaults pinnedTabs to the pre-v20 bottom bar when the install has the underlying services", () => {
+    const withClient: any = baseV19();
+    withClient.services.qbittorrent = [
+      {
+        id: "q1",
+        enabled: true,
+        name: "qBit",
+        localUrl: "http://q",
+        remoteUrl: "",
+        useRemote: false,
+      },
+    ];
+    withClient.services.sonarr = [
+      {
+        id: "s1",
+        enabled: true,
+        name: "Sonarr",
+        localUrl: "",
+        remoteUrl: "",
+        useRemote: false,
+      },
+    ];
+    const result: any = migrateConfig(withClient);
+    expect(result.dashboards[0].pinnedTabs).toEqual([
+      "downloads",
+      "calendar",
+      "services",
+    ]);
+  });
+
+  it("drops the downloads pin when no download client is enabled", () => {
+    // Radarr is enabled, no qbit/sab/nzbget => downloads tab makes no sense.
+    const result: any = migrateConfig(baseV19());
+    expect(result.dashboards[0].pinnedTabs).toEqual(["calendar", "services"]);
+  });
+
+  it("drops the calendar pin when neither sonarr nor radarr is enabled", () => {
+    const payload = baseV19();
+    payload.services = {
+      qbittorrent: [
+        {
+          id: "q1",
+          enabled: true,
+          name: "qBit",
+          localUrl: "http://q",
+          remoteUrl: "",
+          useRemote: false,
+        },
+      ],
+    } as any;
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards[0].pinnedTabs).toEqual(["downloads", "services"]);
+  });
+
+  it("never drops the services pin (it's a meta surface)", () => {
+    // No services enabled at all → downloads/calendar both drop, services stays.
+    const payload = baseV19();
+    payload.services.radarr[0].enabled = false;
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards[0].pinnedTabs).toEqual(["services"]);
+  });
+
+  it("preserves pre-existing dashboard fields rather than overwriting them", () => {
+    const result: any = migrateConfig(
+      baseV19({
+        icon: "Film",
+        color: "#ef4444",
+        attachedInstances: ["r1"],
+        pinnedTabs: ["movies"],
+      }),
+    );
+    const d = result.dashboards[0];
+    expect(d.icon).toBe("Film");
+    expect(d.color).toBe("#ef4444");
+    expect(d.attachedInstances).toEqual(["r1"]);
+    expect(d.pinnedTabs).toEqual(["movies"]);
+  });
+
+  it("expands a legacy attachedServices kind list to live instance UUIDs", () => {
+    // A pre-rename build of v20 wrote attachedServices: ServiceId[]. The
+    // migration should expand each kind to all current instance UUIDs and
+    // drop the legacy field.
+    const payload = baseV19({
+      attachedServices: ["radarr"],
+    });
+    payload.services.radarr.push({
+      id: "r2",
+      enabled: true,
+      name: "Radarr 2",
+      localUrl: "",
+      remoteUrl: "",
+      useRemote: false,
+    });
+    const result: any = migrateConfig(payload);
+    const d = result.dashboards[0];
+    expect(d.attachedInstances).toEqual(["r1", "r2"]);
+    expect(d.attachedServices).toBeUndefined();
+  });
+
+  it("applies the migration to every dashboard, not just the first", () => {
+    const payload = baseV19();
+    payload.dashboards.push({
+      id: "d2",
+      name: "Server",
+      widgets: [],
+    } as any);
+    const result: any = migrateConfig(payload);
+    expect(result.dashboards).toHaveLength(2);
+    expect(result.dashboards[0].icon).toBe("LayoutDashboard");
+    expect(result.dashboards[1].icon).toBe("LayoutDashboard");
+    // Both dashboards stay in auto-attach mode (attachedInstances absent).
+    expect(result.dashboards[0].attachedInstances).toBeUndefined();
+    expect(result.dashboards[1].attachedInstances).toBeUndefined();
+  });
+});
+
 describe("end-to-end multi-step", () => {
   it("upgrades a fully populated v0 fixture all the way to the current version in one pass", () => {
     const v0 = {
@@ -1126,7 +1306,10 @@ describe("end-to-end multi-step", () => {
     const radarrUuid = result.services.radarr[0].id;
     expect(result.secrets[radarrUuid]).toEqual({ apiKey: "k1" });
     expect(result.secrets.radarr).toBeUndefined();
-    expect(result.activeInstance.radarr).toBe(radarrUuid);
+    // v21→v22 moved activeInstance onto each dashboard; the default dashboard
+    // is in auto-attach mode and carries the migrated radarr UUID.
+    expect(result.activeInstance).toBeUndefined();
+    expect(result.dashboards[0].activeInstance.radarr).toBe(radarrUuid);
   });
 
   it("upgrades a v3 fixture (typical post-v3 build) to the current version without touching steps 0-2", () => {
@@ -1197,5 +1380,177 @@ describe("end-to-end multi-step", () => {
     // The radarr secret is dropped because no radarr service entry exists.
     expect(result.secrets.radarr).toBeUndefined();
     expect(Object.keys(result.secrets)).toEqual([qbUuid]);
+  });
+});
+
+describe("v20 → v21 (per-instance notification overrides)", () => {
+  function baseV20() {
+    return {
+      version: 20,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "http://r",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [],
+          icon: "LayoutDashboard",
+          color: "#3b82f6",
+          pinnedTabs: [],
+        },
+      ],
+      activeDashboardId: "d1",
+    };
+  }
+
+  it("bumps version to v21 without altering notificationSettings", () => {
+    const payload: any = baseV20();
+    payload.notificationSettings = {
+      enabled: true,
+      torrentCompleted: true,
+      sabnzbdCompleted: true,
+      nzbgetCompleted: true,
+      radarrDownloaded: false,
+      sonarrDownloaded: true,
+      serviceOffline: true,
+      overseerrNewRequest: true,
+    };
+    const result: any = migrateConfig(payload);
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings).toEqual(payload.notificationSettings);
+  });
+
+  it("leaves perInstance untouched when present on the input", () => {
+    const payload: any = baseV20();
+    payload.notificationSettings = {
+      enabled: true,
+      torrentCompleted: true,
+      sabnzbdCompleted: true,
+      nzbgetCompleted: true,
+      radarrDownloaded: true,
+      sonarrDownloaded: true,
+      serviceOffline: true,
+      overseerrNewRequest: true,
+      perInstance: { r1: { radarrDownloaded: false } },
+    };
+    const result: any = migrateConfig(payload);
+    expect(result.notificationSettings.perInstance).toEqual({
+      r1: { radarrDownloaded: false },
+    });
+  });
+
+  it("leaves perInstance absent when the source payload omitted it", () => {
+    const result: any = migrateConfig(baseV20());
+    // notificationSettings itself may or may not be on the payload — the
+    // migration is a version stamp, so absence is preserved.
+    if (result.notificationSettings) {
+      expect(result.notificationSettings.perInstance).toBeUndefined();
+    }
+  });
+});
+
+describe("v21 → v22 (activeInstance becomes per-workspace)", () => {
+  function baseV21(
+    overrides: {
+      activeInstance?: Record<string, string | null>;
+      dashboards?: any[];
+      services?: Record<string, any[]>;
+    } = {},
+  ) {
+    return {
+      version: 21,
+      services: overrides.services ?? {
+        radarr: [
+          { id: "r1", enabled: true, name: "Radarr Home", localUrl: "", remoteUrl: "", useRemote: false },
+          { id: "r2", enabled: true, name: "Radarr Cabin", localUrl: "", remoteUrl: "", useRemote: false },
+        ],
+      },
+      secrets: {},
+      activeInstance: overrides.activeInstance ?? { radarr: "r1" },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: overrides.dashboards ?? [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [],
+          icon: "LayoutDashboard",
+          color: "#3b82f6",
+          pinnedTabs: [],
+        },
+      ],
+      activeDashboardId: "d1",
+    };
+  }
+
+  it("drops the top-level activeInstance after folding it into dashboards", () => {
+    const result: any = migrateConfig(baseV21());
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.activeInstance).toBeUndefined();
+  });
+
+  it("copies the global active instance onto an auto-attach dashboard", () => {
+    // attachedInstances absent ⇒ auto-attach ⇒ every UUID is implicitly attached,
+    // so the global pointer carries over verbatim.
+    const result: any = migrateConfig(baseV21());
+    expect(result.dashboards[0].activeInstance).toEqual({ radarr: "r1" });
+  });
+
+  it("filters the global active instance against curated attachedInstances", () => {
+    // A workspace that explicitly attaches only r2 should NOT inherit the
+    // global pointer to r1 — r1 isn't attached, so the kind has no pin and
+    // resolution falls back to the first attached enabled instance at runtime.
+    const result: any = migrateConfig(
+      baseV21({
+        activeInstance: { radarr: "r1" },
+        dashboards: [
+          {
+            id: "d1",
+            name: "Cabin",
+            widgets: [],
+            icon: "LayoutDashboard",
+            color: "#3b82f6",
+            pinnedTabs: [],
+            attachedInstances: ["r2"],
+          },
+        ],
+      }),
+    );
+    expect(result.dashboards[0].activeInstance).toBeUndefined();
+    expect(result.dashboards[0].attachedInstances).toEqual(["r2"]);
+  });
+
+  it("preserves a curated workspace's pin when the global pointer matches its attached set", () => {
+    const result: any = migrateConfig(
+      baseV21({
+        activeInstance: { radarr: "r2" },
+        dashboards: [
+          {
+            id: "d1",
+            name: "Cabin",
+            widgets: [],
+            icon: "LayoutDashboard",
+            color: "#3b82f6",
+            pinnedTabs: [],
+            attachedInstances: ["r2"],
+          },
+        ],
+      }),
+    );
+    expect(result.dashboards[0].activeInstance).toEqual({ radarr: "r2" });
   });
 });

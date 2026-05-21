@@ -8,7 +8,9 @@ const baseValid = () => ({
   exportedAt: "2026-04-27T00:00:00.000Z",
   services: {},
   secrets: {},
-  activeInstance: {},
+  // v22: top-level `activeInstance` is gone; per-workspace pins live on each
+  // dashboard. Tests that need to assert resolution should set
+  // `dashboards[0].activeInstance` directly.
   autoSwitchNetwork: false,
   homeNetworks: [],
   // v14: dashboards is required and must be non-empty. Every test below builds
@@ -316,46 +318,85 @@ describe("validateExportPayload — service secrets", () => {
   });
 });
 
-describe("validateExportPayload — activeInstance", () => {
-  it("defaults to null for kinds with no instances", () => {
+describe("validateExportPayload — dashboard.activeInstance (v22)", () => {
+  it("omits dashboard.activeInstance when not provided", () => {
     const result = validateExportPayload(baseValid());
-    expect(result.activeInstance.radarr).toBeNull();
+    expect(result.dashboards[0].activeInstance).toBeUndefined();
   });
 
-  it("falls back to first instance when stored UUID doesn't match any instance", () => {
+  it("preserves a valid per-dashboard activeInstance map", () => {
     const result = validateExportPayload({
       ...baseValid(),
       services: { radarr: [validInstance()] },
-      activeInstance: { radarr: "stale-uuid-from-deleted-instance" },
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          activeInstance: { radarr: TEST_INSTANCE_ID },
+        },
+      ],
     });
-    expect(result.activeInstance.radarr).toBe(TEST_INSTANCE_ID);
+    expect(result.dashboards[0].activeInstance).toEqual({
+      radarr: TEST_INSTANCE_ID,
+    });
   });
 
-  it("preserves a valid stored UUID", () => {
+  it("keeps a stale UUID — the resolver falls back at read time, not validation", () => {
+    // Cross-device imports may carry UUIDs the local install doesn't have yet;
+    // dropping them during validation would lose data on re-export.
     const result = validateExportPayload({
       ...baseValid(),
       services: { radarr: [validInstance()] },
-      activeInstance: { radarr: TEST_INSTANCE_ID },
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          activeInstance: { radarr: "stale-uuid-from-another-device" },
+        },
+      ],
     });
-    expect(result.activeInstance.radarr).toBe(TEST_INSTANCE_ID);
+    expect(result.dashboards[0].activeInstance).toEqual({
+      radarr: "stale-uuid-from-another-device",
+    });
   });
 
-  it("rejects a non-string activeInstance value", () => {
+  it("drops unknown service ids and non-string entries", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          activeInstance: {
+            radarr: TEST_INSTANCE_ID,
+            bogus: "id",
+            sonarr: 42,
+          },
+        },
+      ],
+    });
+    expect(result.dashboards[0].activeInstance).toEqual({
+      radarr: TEST_INSTANCE_ID,
+    });
+  });
+
+  it("rejects a dashboard with a non-object activeInstance", () => {
     expect(() =>
       validateExportPayload({
         ...baseValid(),
-        activeInstance: { radarr: 42 } as any,
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            activeInstance: ["radarr"] as any,
+          },
+        ],
       }),
-    ).toThrow(/activeInstance\.radarr/);
-  });
-
-  it("rejects activeInstance that is not a plain object", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        activeInstance: ["radarr"] as any,
-      }),
-    ).toThrow(/activeInstance/);
+    ).toThrow(/dashboards entry is invalid/);
   });
 });
 
@@ -617,6 +658,45 @@ describe("validateExportPayload — notification settings", () => {
       }),
     ).toThrow(/notificationSettings/);
   });
+
+  it("round-trips perInstance overrides (v21)", () => {
+    const perInstance = {
+      "inst-radarr-1": { radarrDownloaded: false, serviceOffline: true },
+      "inst-sonarr-2": { sonarrDownloaded: false },
+    };
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: { ...fullSettings, perInstance },
+    });
+    expect(result.notificationSettings?.perInstance).toEqual(perInstance);
+  });
+
+  it("drops unknown perInstance categories silently (forward-compat)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: {
+        ...fullSettings,
+        perInstance: {
+          "inst-1": { radarrDownloaded: false, futureCategory: true },
+        },
+      } as any,
+    });
+    expect(result.notificationSettings?.perInstance).toEqual({
+      "inst-1": { radarrDownloaded: false },
+    });
+  });
+
+  it("rejects perInstance with a non-boolean override value", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        notificationSettings: {
+          ...fullSettings,
+          perInstance: { "inst-1": { radarrDownloaded: "yes" as any } },
+        } as any,
+      }),
+    ).toThrow(/notificationSettings/);
+  });
 });
 
 describe("validateExportPayload — backend", () => {
@@ -736,6 +816,121 @@ describe("validateExportPayload — dashboards (slot widget IDs silent drop)", (
       activeDashboardId: "missing-id",
     });
     expect(result.activeDashboardId).toBe(TEST_DASHBOARD_ID);
+  });
+});
+
+describe("validateExportPayload — dashboards (v20 identity + workspace fields)", () => {
+  it("accepts a dashboard with icon, color, attachedInstances, and pinnedTabs", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Media",
+          widgets: [],
+          icon: "Film",
+          color: "#ef4444",
+          attachedInstances: ["inst-radarr-1", "inst-sonarr-1"],
+          pinnedTabs: ["movies", "tv"],
+        },
+      ],
+    });
+    const d = result.dashboards[0];
+    expect(d.icon).toBe("Film");
+    expect(d.color).toBe("#ef4444");
+    expect(d.attachedInstances).toEqual(["inst-radarr-1", "inst-sonarr-1"]);
+    expect(d.pinnedTabs).toEqual(["movies", "tv"]);
+  });
+
+  it("allows dashboards without any v20 fields (pre-v20 shape passes)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [{ id: TEST_DASHBOARD_ID, name: "Default", widgets: [] }],
+    });
+    const d = result.dashboards[0];
+    expect(d.icon).toBeUndefined();
+    expect(d.color).toBeUndefined();
+    expect(d.attachedInstances).toBeUndefined();
+    expect(d.pinnedTabs).toBeUndefined();
+  });
+
+  it("rejects a non-hex color string", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            color: "red",
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry/);
+  });
+
+  it("rejects a non-string icon", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            icon: 42,
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry/);
+  });
+
+  it("drops empty/malformed entries from attachedInstances without rejecting the dashboard", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          attachedInstances: ["uuid-1", "", 42, "uuid-2", "uuid-1"],
+        },
+      ],
+    });
+    // Empties and non-strings are dropped; duplicates dedupe.
+    expect(result.dashboards[0].attachedInstances).toEqual(["uuid-1", "uuid-2"]);
+  });
+
+  it("caps pinnedTabs at MAX_PINNED_TABS (3) and dedupes", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          pinnedTabs: ["a", "a", "b", "c", "d", "e"],
+        },
+      ],
+    });
+    expect(result.dashboards[0].pinnedTabs).toEqual(["a", "b", "c"]);
+  });
+
+  it("rejects non-array attachedInstances", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            attachedInstances: "uuid-1",
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry/);
   });
 });
 

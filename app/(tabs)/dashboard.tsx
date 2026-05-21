@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, Pressable } from "react-native";
+import { useRouter } from "expo-router";
 import {
   GripVertical,
   ChevronUp,
@@ -7,6 +8,8 @@ import {
   Pencil,
   Check,
   Settings,
+  SlidersHorizontal,
+  Sparkles,
   X,
   Plus,
   ChevronsUpDown,
@@ -21,11 +24,14 @@ import { CardErrorBoundary } from "@/components/common/error-boundary";
 import { ICON } from "@/lib/constants";
 import {
   WIDGET_REGISTRY,
+  isWidgetServiceAttached,
   isWidgetServiceEnabled,
 } from "@/components/dashboard/widget-registry";
 import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
+import { useAttachedKinds } from "@/hooks/use-active-dashboard";
+import { resolveDashboardColor } from "@/lib/dashboard-colors";
 
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
@@ -34,6 +40,7 @@ export default function DashboardScreen() {
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const removeSlot = useConfigStore((s) => s.removeSlot);
   const moveSlot = useConfigStore((s) => s.moveSlot);
+  const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [dashboardPickerVisible, setDashboardPickerVisible] = useState(false);
@@ -42,17 +49,25 @@ export default function DashboardScreen() {
   const activeDashboard =
     dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0];
   const slots = activeDashboard?.widgets ?? [];
+  // Dashboards with attachedInstances === undefined are in "auto-attach
+  // mode": they include every current and future service instance. Show a
+  // small banner so the semantic is visible and one-tap-curatable.
+  const isAutoAttach = activeDashboard?.attachedInstances === undefined;
+  const dashboardColor = resolveDashboardColor(activeDashboard?.color);
 
+  const attachedKinds = useAttachedKinds();
   const hasAnyEnabled = Object.values(services).some((s) => s.enabled);
 
-  // Slots whose required service is disabled get filtered out so users don't
-  // see broken cards. Service-health/calendar/wol-devices have `service: null`
-  // and so always render. Speed Stats accepts an array (qbit OR sab) — the
-  // helper handles all three shapes.
+  // Slots whose required service is disabled OR has no attached instance on
+  // this dashboard get filtered out so users don't see broken/irrelevant
+  // cards. Service-health/calendar/wol-devices have `service: null` and so
+  // always render. Speed Stats accepts an array (qbit OR sab) — the helpers
+  // handle all three shapes.
   const visibleSlots = slots.filter((slot) => {
     const widget = WIDGET_REGISTRY[slot.widgetId];
     if (!widget) return false;
-    return isWidgetServiceEnabled(widget, services);
+    if (!isWidgetServiceEnabled(widget, services)) return false;
+    return isWidgetServiceAttached(widget, attachedKinds);
   });
 
   function handleMove(slotId: string, direction: "up" | "down") {
@@ -98,20 +113,66 @@ export default function DashboardScreen() {
               title is tappable (lets them rename or add another). */}
           <Icon icon={ChevronsUpDown} size={ICON.SM} color="#71717a" />
         </TouchableOpacity>
-        {hasAnyEnabled && (
-          <TouchableOpacity
-            onPress={() => setEditMode((e) => !e)}
-            className="p-2"
-            hitSlop={8}
-          >
-            {editMode ? (
-              <Icon icon={Check} size={ICON.MD} color="#22c55e" />
-            ) : (
-              <Icon icon={Pencil} size={ICON.MD} color="#71717a" />
-            )}
-          </TouchableOpacity>
-        )}
+        <View className="flex-row items-center">
+          {activeDashboard && (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push(`/dashboard-edit/${activeDashboard.id}` as any);
+              }}
+              className="p-2"
+              hitSlop={8}
+              accessibilityLabel="Configure dashboard"
+            >
+              <Icon icon={SlidersHorizontal} size={ICON.MD} color="#71717a" />
+            </TouchableOpacity>
+          )}
+          {hasAnyEnabled && (
+            <TouchableOpacity
+              onPress={() => setEditMode((e) => !e)}
+              className="p-2"
+              hitSlop={8}
+              accessibilityLabel={editMode ? "Done editing widgets" : "Edit widgets"}
+            >
+              {editMode ? (
+                <Icon icon={Check} size={ICON.MD} color="#22c55e" />
+              ) : (
+                <Icon icon={Pencil} size={ICON.MD} color="#71717a" />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
+
+      {isAutoAttach && hasAnyEnabled && activeDashboard && (
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            router.push(`/dashboard-edit/${activeDashboard.id}` as any);
+          }}
+          className="flex-row items-center gap-2.5 rounded-xl px-3 py-2.5 mb-4 border active:opacity-80"
+          style={{
+            borderColor: `${dashboardColor}55`,
+            backgroundColor: `${dashboardColor}14`,
+          }}
+        >
+          <Icon icon={Sparkles} size={ICON.SM} color={dashboardColor} />
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-xs font-semibold">
+              Auto-attach mode
+            </Text>
+            <Text className="text-zinc-400 text-xs leading-4 mt-0.5">
+              This dashboard includes any service or instance you add.
+            </Text>
+          </View>
+          <Text
+            className="text-xs font-semibold"
+            style={{ color: dashboardColor }}
+          >
+            Curate
+          </Text>
+        </Pressable>
+      )}
 
       {!hasAnyEnabled ? (
         <View className="flex-1 items-center justify-center py-20">

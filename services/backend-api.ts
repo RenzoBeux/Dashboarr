@@ -143,8 +143,17 @@ export function pushConfigSnapshot(): Promise<void> {
     });
   });
 
-  const { enabled, torrentCompleted, radarrDownloaded, sonarrDownloaded, serviceOffline, overseerrNewRequest } =
-    configState.notificationSettings;
+  const {
+    enabled,
+    torrentCompleted,
+    sabnzbdCompleted,
+    nzbgetCompleted,
+    radarrDownloaded,
+    sonarrDownloaded,
+    serviceOffline,
+    overseerrNewRequest,
+    perInstance,
+  } = configState.notificationSettings;
 
   return request<void>("/config", {
     method: "PUT",
@@ -153,10 +162,15 @@ export function pushConfigSnapshot(): Promise<void> {
       notifications: {
         enabled,
         torrentCompleted,
+        sabnzbdCompleted,
+        nzbgetCompleted,
         radarrDownloaded,
         sonarrDownloaded,
         serviceOffline,
         overseerrNewRequest,
+        // v21: per-instance overrides. Sent as `undefined` when no overrides
+        // exist so the backend treats it the same as a pre-v21 client.
+        perInstance,
       },
     }),
   });

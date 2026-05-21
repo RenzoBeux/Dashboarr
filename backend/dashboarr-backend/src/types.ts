@@ -78,6 +78,28 @@ export const serviceInstanceSchema = z.object({
 
 export type ServiceInstancePayload = z.infer<typeof serviceInstanceSchema>;
 
+// v21: per-instance overrides keyed by instance UUID. A category absent from
+// an instance's record falls through to the global category toggle above.
+// Sent as `undefined` by older clients; defaulted to an empty record so the
+// dispatcher can always read `settings.perInstance?.[id]` safely.
+export const notifCategoryEnum = z.enum([
+  "torrentCompleted",
+  "sabnzbdCompleted",
+  "nzbgetCompleted",
+  "radarrDownloaded",
+  "sonarrDownloaded",
+  "serviceOffline",
+  "overseerrNewRequest",
+]);
+
+export type NotifCategory = z.infer<typeof notifCategoryEnum>;
+
+// Each instance maps to a subset of category booleans (records in Zod are
+// inherently partial — omitted keys mean "no override for that category").
+export const perInstanceOverridesSchema = z
+  .record(z.string().min(1), z.record(notifCategoryEnum, z.boolean()))
+  .optional();
+
 export const notificationSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   torrentCompleted: z.boolean().default(true),
@@ -87,6 +109,7 @@ export const notificationSettingsSchema = z.object({
   sonarrDownloaded: z.boolean().default(true),
   serviceOffline: z.boolean().default(true),
   overseerrNewRequest: z.boolean().default(true),
+  perInstance: perInstanceOverridesSchema,
 });
 
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;

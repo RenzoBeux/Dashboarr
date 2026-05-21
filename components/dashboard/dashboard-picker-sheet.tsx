@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import {
   Modal,
   View,
@@ -10,15 +10,15 @@ import {
   TextInput,
   Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import {
   Check,
   ChevronUp,
   ChevronDown,
-  Pencil,
   Plus,
+  Settings as SettingsIcon,
   Trash2,
   X,
-  LayoutDashboard,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import Animated, {
@@ -41,6 +41,8 @@ import { useConfigStore } from "@/store/config-store";
 import { ICON } from "@/lib/constants";
 import type { Dashboard } from "@/store/config-store";
 import { GlassSurface } from "@/components/ui/glass-surface";
+import { resolveDashboardIcon } from "@/lib/dashboard-icons";
+import { resolveDashboardColor } from "@/lib/dashboard-colors";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
@@ -56,22 +58,22 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const addDashboard = useConfigStore((s) => s.addDashboard);
   const removeDashboard = useConfigStore((s) => s.removeDashboard);
-  const renameDashboard = useConfigStore((s) => s.renameDashboard);
   const setActiveDashboard = useConfigStore((s) => s.setActiveDashboard);
   const moveDashboard = useConfigStore((s) => s.moveDashboard);
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [mounted, setMounted] = useState(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState("");
-  // Submitting via the keyboard return key fires `onSubmitEditing` and then,
-  // when the input loses focus, `onBlur` — both wired to the same commit
-  // function. The ref guard makes the second call a no-op so we don't add the
-  // dashboard twice (or rename it twice).
+  // Submit-only commit (via the keyboard return key or the inline check
+  // button). Tapping the backdrop, an existing dashboard, or the close button
+  // discards the draft — `onBlur`-commit was surprising because it conflated
+  // "I lost focus" with "I'm done", and users who tapped the backdrop expecting
+  // cancel got a new dashboard instead. Guard against the keyboard fire-once
+  // path: pressing Return also blurs the input, so the second call after the
+  // first commit needs to be a no-op.
   const creatingCommittedRef = useRef(false);
-  const renamingCommittedRef = useRef(false);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
   // `height` is 0 when the keyboard is hidden and goes to a negative value
@@ -91,11 +93,9 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
     } else if (mounted) {
       // Reset transient editing state when the sheet closes so reopening starts
       // fresh.
-      setRenamingId(null);
       setCreating(false);
       setCreateDraft("");
       creatingCommittedRef.current = false;
-      renamingCommittedRef.current = false;
       backdrop.value = withTiming(0, { duration: 180 });
       translateY.value = withTiming(
         OFFSCREEN,
@@ -134,24 +134,6 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
     onClose();
   }
 
-  function startRename(d: Dashboard) {
-    Haptics.selectionAsync();
-    renamingCommittedRef.current = false;
-    setRenamingId(d.id);
-    setRenameDraft(d.name);
-  }
-
-  function commitRename() {
-    if (renamingCommittedRef.current) return;
-    renamingCommittedRef.current = true;
-    if (!renamingId) return;
-    const trimmed = renameDraft.trim();
-    if (trimmed.length > 0) {
-      renameDashboard(renamingId, trimmed);
-    }
-    setRenamingId(null);
-  }
-
   function handleRemove(d: Dashboard) {
     if (dashboards.length <= 1) return;
     Alert.alert(
@@ -171,20 +153,52 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
     );
   }
 
+  function handleOpenEditor(d: Dashboard) {
+    Haptics.selectionAsync();
+    // Skip the sheet's 240ms slide-out animation here — the user is about
+    // to see a full-screen push, and that close animation just delays the
+    // route transition (since the Modal sits on top of the underlying nav
+    // stack until it unmounts). Snapping the modal closed lets the push
+    // start visually right away.
+    setCreating(false);
+    setCreateDraft("");
+    creatingCommittedRef.current = false;
+    translateY.value = OFFSCREEN;
+    backdrop.value = 0;
+    setMounted(false);
+    onClose();
+    router.push(`/dashboard-edit/${d.id}` as any);
+  }
+
   function commitCreate() {
     if (creatingCommittedRef.current) return;
-    creatingCommittedRef.current = true;
     const trimmed = createDraft.trim();
     if (trimmed.length === 0) {
-      setCreating(false);
+      // Nothing to commit yet — keep the row open so the user can keep typing
+      // instead of bouncing them out on accidental Return.
       return;
     }
+    creatingCommittedRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const created = addDashboard(trimmed);
     setActiveDashboard(created.id);
     setCreating(false);
     setCreateDraft("");
+    // Snap the picker closed and push to the editor in the same frame so a
+    // freshly-created dashboard is immediately configurable. The picker's
+    // 240ms slide-out would otherwise sit on top of the route push.
+    translateY.value = OFFSCREEN;
+    backdrop.value = 0;
+    setMounted(false);
     onClose();
+    router.push(`/dashboard-edit/${created.id}` as any);
+  }
+
+  function cancelCreate() {
+    Haptics.selectionAsync();
+    creatingCommittedRef.current = false;
+    setCreating(false);
+    setCreateDraft("");
   }
 
   return (
@@ -250,71 +264,68 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
               <View className="gap-2">
                 {dashboards.map((d, index) => {
                   const isActive = d.id === activeDashboardId;
-                  const isRenaming = renamingId === d.id;
                   const isFirst = index === 0;
                   const isLast = index === dashboards.length - 1;
+                  const rowIcon = resolveDashboardIcon(d.icon);
+                  const rowColor = resolveDashboardColor(d.color);
 
                   return (
                     <View
                       key={d.id}
                       className={`rounded-2xl border px-3 py-3 ${
                         isActive
-                          ? "bg-primary/10 border-primary/40"
+                          ? "border-primary/40"
                           : "bg-surface-light border-border/70"
                       }`}
+                      style={
+                        isActive
+                          ? { backgroundColor: `${rowColor}1A` }
+                          : undefined
+                      }
                     >
                       <View className="flex-row items-center gap-3">
-                        <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center">
-                          <Icon
-                            icon={isActive ? Check : LayoutDashboard}
-                            size={ICON.MD}
-                            color="#60a5fa"
-                          />
+                        <View
+                          className="w-10 h-10 rounded-xl items-center justify-center"
+                          style={{ backgroundColor: `${rowColor}26` }}
+                        >
+                          {isActive ? (
+                            <Icon icon={Check} size={ICON.MD} color={rowColor} />
+                          ) : (
+                            createElement(rowIcon, { size: 20, color: rowColor })
+                          )}
                         </View>
                         <View className="flex-1">
-                          {isRenaming ? (
-                            <TextInput
-                              value={renameDraft}
-                              onChangeText={setRenameDraft}
-                              onBlur={commitRename}
-                              onSubmitEditing={commitRename}
-                              autoFocus
-                              maxLength={40}
+                          <Pressable
+                            onPress={() => handleSelect(d.id)}
+                            hitSlop={6}
+                          >
+                            {/* Name gets the full row width (only the icon
+                                sits beside it) so longer names like
+                                "HomeServer" stay on a single line at every
+                                uiScale. Action buttons live on a second row
+                                below so they never squeeze this column.
+                                Renaming lives in the dedicated edit screen
+                                (tap the gear) — keeps this row tidy and
+                                avoids two name-edit affordances. */}
+                            <Text
                               className="text-zinc-100 text-base font-semibold"
-                              placeholder="Dashboard name"
-                              placeholderTextColor="#52525b"
-                            />
-                          ) : (
-                            <Pressable
-                              onPress={() => handleSelect(d.id)}
-                              hitSlop={6}
+                              numberOfLines={1}
                             >
-                              {/* Name gets the full row width (only the icon
-                                  sits beside it) so longer names like
-                                  "HomeServer" stay on a single line at every
-                                  uiScale. Action buttons live on a second row
-                                  below so they never squeeze this column. */}
-                              <Text
-                                className="text-zinc-100 text-base font-semibold"
-                                numberOfLines={1}
-                              >
-                                {d.name}
-                              </Text>
-                              <Text
-                                className="text-zinc-500 text-xs mt-0.5"
-                                numberOfLines={1}
-                              >
-                                {d.widgets.length === 0
-                                  ? "No widgets yet"
-                                  : `${d.widgets.length} widget${d.widgets.length === 1 ? "" : "s"}`}
-                              </Text>
-                            </Pressable>
-                          )}
+                              {d.name}
+                            </Text>
+                            <Text
+                              className="text-zinc-500 text-xs mt-0.5"
+                              numberOfLines={1}
+                            >
+                              {d.widgets.length === 0
+                                ? "No widgets yet"
+                                : `${d.widgets.length} widget${d.widgets.length === 1 ? "" : "s"}`}
+                            </Text>
+                          </Pressable>
                         </View>
                       </View>
 
-                      {!isRenaming && (
-                        <View className="flex-row items-center justify-end gap-1 mt-2">
+                      <View className="flex-row items-center justify-end gap-1 mt-2">
                           <Pressable
                             onPress={() => moveDashboard(d.id, "up")}
                             disabled={isFirst}
@@ -340,11 +351,11 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                             />
                           </Pressable>
                           <Pressable
-                            onPress={() => startRename(d)}
+                            onPress={() => handleOpenEditor(d)}
                             hitSlop={6}
                             className="p-1 ml-1"
                           >
-                            <Icon icon={Pencil} size={ICON.MD} color="#60a5fa" />
+                            <Icon icon={SettingsIcon} size={ICON.MD} color="#60a5fa" />
                           </Pressable>
                           <Pressable
                             onPress={() => handleRemove(d)}
@@ -361,7 +372,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                             />
                           </Pressable>
                         </View>
-                      )}
+
                     </View>
                   );
                 })}
@@ -374,14 +385,30 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                     <TextInput
                       value={createDraft}
                       onChangeText={setCreateDraft}
-                      onBlur={commitCreate}
                       onSubmitEditing={commitCreate}
+                      returnKeyType="done"
                       autoFocus
                       maxLength={40}
                       className="flex-1 text-zinc-100 text-base font-semibold"
                       placeholder="Dashboard name"
                       placeholderTextColor="#52525b"
                     />
+                    <Pressable
+                      onPress={cancelCreate}
+                      hitSlop={8}
+                      className="w-9 h-9 rounded-full bg-surface-light items-center justify-center active:opacity-70"
+                    >
+                      <Icon icon={X} size={ICON.SM} color="#a1a1aa" />
+                    </Pressable>
+                    <Pressable
+                      onPress={commitCreate}
+                      disabled={createDraft.trim().length === 0}
+                      hitSlop={8}
+                      className="w-9 h-9 rounded-full bg-primary/20 items-center justify-center active:opacity-70"
+                      style={{ opacity: createDraft.trim().length === 0 ? 0.4 : 1 }}
+                    >
+                      <Icon icon={Check} size={ICON.SM} color="#60a5fa" />
+                    </Pressable>
                   </View>
                 ) : (
                   <Pressable
@@ -406,3 +433,4 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
     </Modal>
   );
 }
+

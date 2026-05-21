@@ -4,9 +4,13 @@ import {
   WIDGET_ID_RENAMES,
   UI_SCALES,
   DEFAULT_UI_SCALE,
+  SERVICE_IDS,
 } from "@/lib/constants";
 import type { ExportPayload } from "@/store/config-store";
 import { generateInstanceId } from "@/lib/uuid";
+import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-icons";
+import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
+import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
 
 /**
  * Bump this when the export schema changes and add a matching migration.
@@ -59,8 +63,33 @@ import { generateInstanceId } from "@/lib/uuid";
  *         Users with auto-switch off keep their useRemote values.
  *   v19 — added nzbget service entry (no schema change; defaultInstances()
  *         backfills the new id at import time, so this is a version stamp only).
+ *   v20 — dashboards become workspaces. Each Dashboard gains optional `icon`
+ *         (lucide name), `color` (hex from palette), `attachedInstances`
+ *         (instance UUIDs; drives per-instance workspace filtering so a
+ *         multi-instance user can pin "Radarr Home" to one dashboard and
+ *         "Radarr Cabin" to another), and `pinnedTabs` (route names of
+ *         user-pinned middle bottom tabs).  Migration backfills sensible
+ *         defaults: icon = LayoutDashboard, color = blue,
+ *         attachedInstances = every UUID present in the payload (so
+ *         existing dashboards keep their global behavior), pinnedTabs = the
+ *         pre-v20 bar (downloads/calendar/services) intersected with what's
+ *         actually enabled on this install.
+ *   v21 — per-instance notification overrides. notificationSettings gains an
+ *         optional `perInstance: Record<instanceId, Partial<categories>>`
+ *         map that lets a user silence one Radarr instance without
+ *         affecting siblings. Pure version stamp — absence of the field
+ *         falls through to the existing global toggles via
+ *         shouldNotifyForInstance().
+ *   v22 — activeInstance becomes per-workspace. The top-level
+ *         `activeInstance: Record<ServiceId, string | null>` moves onto each
+ *         Dashboard as an optional `activeInstance: Partial<Record<ServiceId,
+ *         string>>` map. Migration folds the global pointer into every
+ *         dashboard, filtered to instance UUIDs the dashboard actually
+ *         attaches (auto-attach mode keeps the full set). Runtime fallback:
+ *         when a dashboard has no entry for a kind, resolve to the first
+ *         attached+enabled instance of that kind.
  */
-export const CURRENT_CONFIG_VERSION = 19;
+export const CURRENT_CONFIG_VERSION = 22;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -379,6 +408,90 @@ const migrations: Record<number, (payload: any) => any> = {
   // already iterates SERVICE_IDS and backfills a disabled instance for any
   // newly-added service, so older exports just need the version field bumped.
   18: (payload) => ({ ...payload, version: 19 }),
+
+  // v19 → v20: dashboards become workspaces. Backfill icon/color/pinned
+  // with sensible defaults. Deliberately leave `attachedInstances`
+  // undefined on migrated dashboards — the render-time fallback in
+  // `useAttachedInstances` treats absent as "every currently-known instance
+  // attached", which means future instances the user adds later also
+  // auto-attach to migrated dashboards. Once the user opens the editor and
+  // saves, the dashboard transitions to an explicit list (curated mode).
+  19: (payload) => {
+    const defaultPins = defaultPinnedTabsForInstall(payload.services ?? {});
+    const dashboards = Array.isArray(payload.dashboards)
+      ? payload.dashboards.map((d: any) => {
+          if (!d || typeof d !== "object") return d;
+          // Forward-fix: a pre-rename development build of v20 briefly used
+          // `attachedServices: ServiceId[]`. Expand it to instance UUIDs so
+          // those installs upgrade cleanly. New imports won't carry this.
+          let attachedInstances: string[] | undefined;
+          if (Array.isArray(d.attachedInstances)) {
+            attachedInstances = d.attachedInstances;
+          } else if (Array.isArray(d.attachedServices)) {
+            const kinds = new Set(d.attachedServices);
+            attachedInstances = [];
+            for (const id of SERVICE_IDS) {
+              if (!kinds.has(id)) continue;
+              for (const inst of (payload.services ?? {})[id] ?? []) {
+                if (inst && typeof inst.id === "string") {
+                  attachedInstances.push(inst.id);
+                }
+              }
+            }
+          }
+          const { attachedServices: _drop, ...rest } = d;
+          const base = {
+            ...rest,
+            icon: typeof d.icon === "string" ? d.icon : DEFAULT_DASHBOARD_ICON,
+            color: typeof d.color === "string" ? d.color : DEFAULT_DASHBOARD_COLOR,
+            pinnedTabs: Array.isArray(d.pinnedTabs) ? d.pinnedTabs : defaultPins,
+          };
+          return attachedInstances !== undefined
+            ? { ...base, attachedInstances }
+            : base;
+        })
+      : payload.dashboards;
+    return { ...payload, version: 20, dashboards };
+  },
+
+  // v20 → v21: per-instance notification overrides. Pure version stamp — the
+  // new `notificationSettings.perInstance` field is optional and `undefined`
+  // is the "no overrides" default. Older exports that lack the field are
+  // already correct after this bump.
+  20: (payload) => ({ ...payload, version: 21 }),
+
+  // v21 → v22: activeInstance migrates from a single global Record<ServiceId,
+  // string|null> at the top level onto each Dashboard as an optional
+  // `activeInstance: Partial<Record<ServiceId, string>>`. For each dashboard,
+  // we fold the global pointer in, filtered to instance UUIDs that the
+  // dashboard actually attaches (or the full set for auto-attach
+  // dashboards). The top-level field is dropped so storage doesn't carry two
+  // sources of truth.
+  21: (payload) => {
+    const global: Record<string, unknown> =
+      payload.activeInstance && typeof payload.activeInstance === "object"
+        ? (payload.activeInstance as Record<string, unknown>)
+        : {};
+    const dashboards = Array.isArray(payload.dashboards)
+      ? payload.dashboards.map((d: any) => {
+          if (!d || typeof d !== "object") return d;
+          const attached: string[] | undefined = Array.isArray(d.attachedInstances)
+            ? d.attachedInstances
+            : undefined;
+          const out: Record<string, string> = {};
+          for (const [kind, id] of Object.entries(global)) {
+            if (typeof id !== "string" || id.length === 0) continue;
+            if (attached === undefined || attached.includes(id)) {
+              out[kind] = id;
+            }
+          }
+          if (Object.keys(out).length === 0) return d;
+          return { ...d, activeInstance: out };
+        })
+      : payload.dashboards;
+    const { activeInstance: _drop, ...rest } = payload;
+    return { ...rest, version: 22, dashboards };
+  },
 };
 
 /**

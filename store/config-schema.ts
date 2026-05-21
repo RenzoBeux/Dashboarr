@@ -9,10 +9,19 @@ import type {
   WakeOnLanDevice,
   WidgetSlot,
 } from "@/store/config-store";
-import type { NotificationSettings } from "@/store/config-store";
+import type { NotificationSettings, NotifCategory } from "@/store/config-store";
+import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
+import { MAX_PINNED_TABS } from "@/lib/tab-routes";
+
+const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
 const SERVICE_ID_SET: ReadonlySet<string> = new Set(SERVICE_IDS);
 const WIDGET_ID_SET: ReadonlySet<string> = new Set(DASHBOARD_WIDGET_IDS);
+
+// Accepts the 8 hex characters palette swatches use. Restrictive on purpose —
+// rejects "transparent", named colors, and rgba() so the field stays a stable
+// JSON-serializable string the picker can map back to a palette entry.
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -136,7 +145,66 @@ function coerceDashboard(v: unknown): Dashboard | null {
     if (!slot) continue;
     widgets.push(slot);
   }
-  return { id: v.id, name: v.name, widgets };
+  const out: Dashboard = { id: v.id, name: v.name, widgets };
+  // v20: optional identity + workspace fields. Each is rejected only when
+  // present-but-malformed; absent fields fall back at render time via the
+  // resolve helpers, so old payloads validate cleanly.
+  if (v.icon !== undefined && v.icon !== null) {
+    if (typeof v.icon !== "string" || v.icon.length === 0 || v.icon.length > 64) {
+      return null;
+    }
+    out.icon = v.icon;
+  }
+  if (v.color !== undefined && v.color !== null) {
+    if (typeof v.color !== "string" || !HEX_COLOR_RE.test(v.color)) return null;
+    out.color = v.color;
+  }
+  if (v.attachedInstances !== undefined && v.attachedInstances !== null) {
+    if (!Array.isArray(v.attachedInstances)) return null;
+    const seen = new Set<string>();
+    const attached: string[] = [];
+    for (const id of v.attachedInstances) {
+      // Instance UUIDs aren't validated against a known set here (they're
+      // user-generated and may legitimately reference instances that don't
+      // exist on this device yet — e.g. cross-device import). Render-side
+      // intersects with live instances; non-matches are silently ignored.
+      if (typeof id !== "string" || id.length === 0 || id.length > 128) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      attached.push(id);
+    }
+    out.attachedInstances = attached;
+  }
+  if (v.pinnedTabs !== undefined && v.pinnedTabs !== null) {
+    if (!Array.isArray(v.pinnedTabs)) return null;
+    const seen = new Set<string>();
+    const pinned: string[] = [];
+    for (const tab of v.pinnedTabs) {
+      if (typeof tab !== "string" || tab.length === 0 || tab.length > 64) continue;
+      if (seen.has(tab)) continue;
+      seen.add(tab);
+      pinned.push(tab);
+      if (pinned.length >= MAX_PINNED_TABS) break;
+    }
+    out.pinnedTabs = pinned;
+  }
+  // v22: per-workspace active instance pin per kind. Stored UUIDs that point
+  // at instances the device doesn't currently have are kept — the resolver
+  // tolerates staleness, and cross-device imports may legitimately carry
+  // unknown UUIDs.
+  if (v.activeInstance !== undefined && v.activeInstance !== null) {
+    if (!isPlainObject(v.activeInstance)) return null;
+    const cleaned: Partial<Record<ServiceId, string>> = {};
+    for (const [kind, raw] of Object.entries(v.activeInstance)) {
+      if (!(SERVICE_IDS as readonly string[]).includes(kind)) continue;
+      if (typeof raw !== "string" || raw.length === 0 || raw.length > 128) continue;
+      cleaned[kind as ServiceId] = raw;
+    }
+    if (Object.keys(cleaned).length > 0) {
+      out.activeInstance = cleaned;
+    }
+  }
+  return out;
 }
 
 function coerceNotificationSettings(v: unknown): NotificationSettings | null {
@@ -163,6 +231,30 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     if (v[key] === undefined) continue;
     if (typeof v[key] !== "boolean") return null;
     out[key] = v[key] as boolean;
+  }
+  // v21: per-instance overrides. Validate the shape; drop unknown categories
+  // silently so a future-added category doesn't fail the whole import on an
+  // older app build, but reject malformed values (non-object, non-boolean) so
+  // we don't write garbage into the store.
+  if (v.perInstance !== undefined) {
+    if (!isPlainObject(v.perInstance)) return null;
+    const perInstance: Record<string, Partial<Record<NotifCategory, boolean>>> = {};
+    for (const [instanceId, overrides] of Object.entries(v.perInstance)) {
+      if (typeof instanceId !== "string" || instanceId.length === 0 || instanceId.length > 128) return null;
+      if (!isPlainObject(overrides)) return null;
+      const cleaned: Partial<Record<NotifCategory, boolean>> = {};
+      for (const [cat, val] of Object.entries(overrides)) {
+        if (!NOTIF_CATEGORY_SET.has(cat)) continue;
+        if (typeof val !== "boolean") return null;
+        cleaned[cat as NotifCategory] = val;
+      }
+      if (Object.keys(cleaned).length > 0) {
+        perInstance[instanceId] = cleaned;
+      }
+    }
+    if (Object.keys(perInstance).length > 0) {
+      out.perInstance = perInstance;
+    }
   }
   return out as NotificationSettings;
 }
@@ -238,25 +330,13 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     secrets[uuid] = coerced;
   }
 
-  // v13: activeInstance is Record<ServiceId, string | null>. Validate that
-  // every referenced UUID exists in the services list for that kind.
-  if (raw.activeInstance !== undefined && !isPlainObject(raw.activeInstance)) {
-    throw new Error("Config activeInstance is invalid");
-  }
-  const activeInstance = {} as Record<ServiceId, string | null>;
-  const rawActive = (raw.activeInstance as Record<string, unknown> | undefined) ?? {};
-  for (const id of SERVICE_IDS) {
-    const v = rawActive[id];
-    if (v === null || v === undefined) {
-      activeInstance[id] = null;
-      continue;
-    }
-    if (typeof v !== "string") {
-      throw new Error(`Config activeInstance.${id} is invalid`);
-    }
-    const list = services[id] ?? [];
-    activeInstance[id] = list.some((i) => i.id === v) ? v : (list[0]?.id ?? null);
-  }
+  // v22: top-level `activeInstance` was dropped; per-dashboard
+  // `dashboard.activeInstance` is now the source of truth (validated inside
+  // coerceDashboard below). The migration chain (v21→v22) folds any legacy
+  // top-level field onto each dashboard before we get here, so a v22+
+  // payload should never carry the legacy key — but coerceDashboard
+  // tolerates either shape going forward for forward-compat with imports
+  // that hand-edit the JSON.
 
   // v14: dashboards is the source of truth. Each entry must coerce cleanly;
   // unknown widget ids inside slots are dropped silently (forward-compat).
@@ -303,7 +383,6 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     exportedAt: raw.exportedAt,
     services,
     secrets,
-    activeInstance,
     autoSwitchNetwork: raw.autoSwitchNetwork,
     homeNetworks,
     dashboards,

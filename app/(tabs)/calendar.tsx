@@ -26,6 +26,7 @@ import { ICON, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
 import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { formatEpisodeCode, localDateKey } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
@@ -125,8 +126,21 @@ export default function CalendarScreen() {
     setBoolean(INCLUDE_UNMONITORED_KEY, value);
   };
 
-  const sonarrAll = useEnabledInstances("sonarr");
-  const radarrAll = useEnabledInstances("radarr");
+  const attachedInstances = useAttachedInstances();
+  const sonarrAllRaw = useEnabledInstances("sonarr");
+  const radarrAllRaw = useEnabledInstances("radarr");
+  // Workspace filter at per-instance granularity: only fan out to instances
+  // attached to the active dashboard. A "Movies-only" workspace that
+  // attached just Radarr-Home won't surface Sonarr at all, and won't pull
+  // calendar data from Radarr-Cabin either.
+  const sonarrAll = useMemo(
+    () => sonarrAllRaw.filter((i) => attachedInstances.has(i.id)),
+    [sonarrAllRaw, attachedInstances],
+  );
+  const radarrAll = useMemo(
+    () => radarrAllRaw.filter((i) => attachedInstances.has(i.id)),
+    [radarrAllRaw, attachedInstances],
+  );
 
   // Persisted per-kind instance filter. Default to "all" so existing single-
   // instance users see no behavior change; multi-instance users who pick a
@@ -310,6 +324,30 @@ export default function CalendarScreen() {
   const grid = useMemo(() => getCalendarGrid(year, month), [year, month]);
   const todayKey = localDateKey(today);
   const selectedItems = itemsByDate.get(selectedDate) ?? [];
+
+  // Workspace can be configured such that no calendar-able service is
+  // attached (e.g. user un-attached both Sonarr and Radarr after pinning the
+  // tab). The tab-bar redirect in _layout.tsx normally bounces them away, but
+  // they can still land here via a deep-link or the rare race during edit.
+  // Render a contextual empty state instead of an empty grid.
+  const hasAnyAttached = sonarrAllRaw.length > 0 || radarrAllRaw.length > 0;
+  const hasAnyOnDashboard = sonarrAll.length > 0 || radarrAll.length > 0;
+  if (!hasAnyOnDashboard) {
+    return (
+      <ScreenWrapper scrollable={false}>
+        <View className="flex-1 items-center justify-center gap-2 px-6">
+          <Text className="text-zinc-100 text-lg font-semibold">
+            {hasAnyAttached ? "Nothing attached here" : "No calendar source enabled"}
+          </Text>
+          <Text className="text-zinc-500 text-sm text-center">
+            {hasAnyAttached
+              ? "Open the dashboard switcher and attach Sonarr or Radarr to this workspace."
+              : "Enable Sonarr or Radarr in Settings to populate the calendar."}
+          </Text>
+        </View>
+      </ScreenWrapper>
+    );
+  }
 
   function goMonth(delta: number) {
     lightHaptic();
