@@ -973,8 +973,8 @@ export function getDemoResponse(
     case "bazarr": {
       if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;
       if (normalized.startsWith("/episodes/wanted")) return DEMO_BAZARR_WANTED_EPISODES;
-      if (normalized.startsWith("/history/movies")) return DEMO_BAZARR_HISTORY;
-      if (normalized.startsWith("/history/series")) return DEMO_BAZARR_HISTORY;
+      if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_HISTORY;
+      if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       return undefined;
