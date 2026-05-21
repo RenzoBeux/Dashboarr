@@ -63,8 +63,11 @@ function compareSeries(a: SonarrSeries, b: SonarrSeries, sort: SeriesSortKey): n
       return b.year - a.year;
     case "year-asc":
       return a.year - b.year;
-    case "size-desc":
-      return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+    case "size-desc": {
+      const aSize = a.statistics?.sizeOnDisk ?? a.sizeOnDisk ?? 0;
+      const bSize = b.statistics?.sizeOnDisk ?? b.sizeOnDisk ?? 0;
+      return bSize - aSize;
+    }
     case "next-airing-asc": {
       const aT = a.nextAiring ? new Date(a.nextAiring).getTime() : null;
       const bT = b.nextAiring ? new Date(b.nextAiring).getTime() : null;
