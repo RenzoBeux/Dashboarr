@@ -64,14 +64,12 @@ function pickRadarrDate(
     case "physical":
       return physical ?? null;
     case "any":
-    default: {
-      const candidates = [cinemas, digital, physical].filter(
-        (d): d is string => typeof d === "string" && d.length > 0,
-      );
-      if (candidates.length === 0) return null;
-      candidates.sort();
-      return candidates[0];
-    }
+    default:
+      // Match the Calendar tab's waterfall (digital → physical → cinemas)
+      // so the same movie lands on the same day in both views. Picking the
+      // earliest candidate diverged from the calendar and caused movies to
+      // appear under different dates across the two surfaces.
+      return digital ?? physical ?? cinemas ?? null;
   }
 }
 
@@ -144,7 +142,6 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + settings.daysAhead);
   const horizonIso = localDateKey(horizon);
-  const nowMs = Date.now();
 
   const items: CalendarItem[] = [];
   if (showSonarr) {
@@ -154,13 +151,11 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
       for (const ep of q.data ?? []) {
         const date = isoDate(ep.airDate);
         if (date < todayIso || date > horizonIso) continue;
-        // Drop episodes whose actual air time has already passed — matches
-        // Sonarr's own `series.nextAiring` rollover so "Releasing Soon" stays
-        // in sync with the "Next Airing" sort on the TV Shows tab. Otherwise
-        // a show airing at 8 PM ET sticks in "Today" until midnight local,
-        // long after Sonarr has advanced to the next episode.
-        if (ep.airDateUtc && new Date(ep.airDateUtc).getTime() <= nowMs)
-          continue;
+        // No air-time filter: the Calendar tab shows every episode that
+        // airs on a given day regardless of clock, and this widget must
+        // stay in lockstep with it (otherwise "Today" disappears from the
+        // dashboard the moment a show's primetime slot passes while the
+        // calendar still lists it).
         items.push({ kind: "episode", date, entry: ep, instanceId });
       }
     });
