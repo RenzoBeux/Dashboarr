@@ -63,8 +63,10 @@ function MetricRing({ percent, label, sublabel, icon }: MetricRingProps) {
   const stroke = Math.max(4, Math.round(STROKE_WIDTH * scale));
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const filled = circumference * (1 - Math.min(Math.max(percent, 0), 100) / 100);
-  const color = ringColor(percent);
+  const safePercent =
+    typeof percent === "number" && Number.isFinite(percent) ? percent : 0;
+  const filled = circumference * (1 - Math.min(Math.max(safePercent, 0), 100) / 100);
+  const color = ringColor(safePercent);
 
   return (
     <View className="items-center gap-1.5" style={{ minWidth: size + 8 }}>
@@ -94,7 +96,7 @@ function MetricRing({ percent, label, sublabel, icon }: MetricRingProps) {
         </Svg>
         <View className="absolute inset-0 items-center justify-center">
           <Text style={{ color }} className="text-sm font-bold leading-none">
-            {percent.toFixed(0)}
+            {safePercent.toFixed(0)}
             <Text style={{ color }} className="text-[0.6rem] font-semibold">
               %
             </Text>
@@ -249,7 +251,11 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
                   percent={cpu.total}
                   label="CPU"
                   icon={CpuIcon}
-                  sublabel={`${cpu.cpucore} ${cpu.cpucore === 1 ? "core" : "cores"}`}
+                  sublabel={
+                    typeof cpu.cpucore === "number"
+                      ? `${cpu.cpucore} ${cpu.cpucore === 1 ? "core" : "cores"}`
+                      : undefined
+                  }
                 />
               )}
               {settings.showRam && mem && (
