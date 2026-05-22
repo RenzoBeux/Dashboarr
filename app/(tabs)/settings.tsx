@@ -877,9 +877,10 @@ function ServiceEditor({
   const removeInstance = useConfigStore((s) => s.removeInstance);
 
   // First-save dashboard prompt is offered exactly once per editor session,
-  // after the user saves a freshly-created instance with usable credentials.
-  // `promptShown` keeps us from re-asking on subsequent saves in the same
-  // session if the user already engaged with (or skipped) the sheet.
+  // after the user saves an instance whose initial state was unconfigured
+  // (no URL, no credentials). `promptShown` keeps us from re-asking on
+  // subsequent saves in the same session if the user already engaged with
+  // (or skipped) the sheet.
   const [showAddToDashboards, setShowAddToDashboards] = useState(false);
   const [promptShown, setPromptShown] = useState(false);
 
@@ -907,6 +908,26 @@ function ServiceEditor({
     serviceId === "qbittorrent" ||
     serviceId === "glances" ||
     serviceId === "nzbget";
+
+  // Snapshot at mount whether this instance has never been configured before
+  // (no URL, no creds). Covers two flows that should both surface the prompt:
+  //   1. User taps "Add another instance" — `addInstance` creates an empty
+  //      slot which arrives here unconfigured.
+  //   2. User opens the fresh-install placeholder slot for a kind they've
+  //      never used (Bazarr after a reinstall, the default Sonarr row, etc.)
+  //      and configures it for the first time — no `addInstance` was called
+  //      so `isNew` is false, but this is still functionally a first-time
+  //      add from the user's perspective.
+  // Re-configuring an already-set-up instance (URL or creds present) won't
+  // trigger the prompt — the snapshot stays false through the session.
+  const [wasInitiallyUnconfigured] = useState(
+    () =>
+      config.localUrl.length === 0 &&
+      config.remoteUrl.length === 0 &&
+      (usesBasicAuth
+        ? !secrets.username && !secrets.password
+        : !secrets.apiKey),
+  );
 
   const headersJson = JSON.stringify(customHeaders);
   const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
@@ -1019,14 +1040,15 @@ function ServiceEditor({
       await qbClearSession(instanceId);
     }
 
-    // First-save dashboard prompt. Fires once per editor session for a
-    // freshly-created instance whose save produced a usable config (URL +
-    // credential). The sheet always opens — even when every existing
-    // dashboard is auto-attach and would implicitly include the new
-    // instance — because users on the default single-workspace install
-    // still benefit from seeing where it landed and the hint that
-    // widgets are added separately.
-    if (isNew && !promptShown) {
+    // First-save dashboard prompt. Fires once per editor session when the
+    // instance was unconfigured on entry (either freshly added via "Add
+    // another instance" or the untouched fresh-install placeholder) and the
+    // save produced a usable config (URL + credential). The sheet always
+    // opens — even when every existing dashboard is auto-attach and would
+    // implicitly include the new instance — because users on the default
+    // single-workspace install still benefit from seeing where it landed
+    // and the hint that widgets are added separately.
+    if ((isNew || wasInitiallyUnconfigured) && !promptShown) {
       const hasUrl = normLocal.length > 0 || normRemote.length > 0;
       const hasCreds = usesBasicAuth
         ? username.length > 0 || password.length > 0
