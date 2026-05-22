@@ -16,7 +16,7 @@ import {
   type ServiceHealthSettingsValue,
 } from "@/components/dashboard/widget-settings/service-health-settings";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
-import type { ServiceInstanceHealthStatus } from "@/lib/types";
+import type { HealthStatusKind, ServiceInstanceHealthStatus } from "@/lib/types";
 import type { ServiceInstance } from "@/store/config-store";
 
 // Matches the spring used by the Services tab and the Status widget's
@@ -32,8 +32,22 @@ interface RenderEntry {
   kindId: ServiceId;
   instanceId: string;
   label: string;
-  online: boolean;
+  status: HealthStatusKind;
 }
+
+// Tailwind class + iOS shadow color for the small corner dot, by tri-state.
+// Centralized so the Services tab and the Settings instance list use the
+// same palette — keeps "green/orange/red" consistent across the app.
+const DOT_BG: Record<HealthStatusKind, string> = {
+  ok: "bg-success",
+  auth_failed: "bg-warning",
+  offline: "bg-danger",
+};
+const DOT_SHADOW: Record<HealthStatusKind, string> = {
+  ok: "#22c55e",
+  auth_failed: "#f59e0b",
+  offline: "#ef4444",
+};
 
 export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<ServiceHealthSettingsValue>(
@@ -80,7 +94,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     );
     if (bound.length === 0) continue;
     for (const inst of bound) {
-      const status = healthByInstance.get(`${kindId}:${inst.id}`);
+      const health = healthByInstance.get(`${kindId}:${inst.id}`);
       entries.push({
         kindId,
         instanceId: inst.id,
@@ -88,7 +102,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         // ("qBit Home" / "qBit Cabin") can tell which one is offline at a
         // glance instead of seeing two identical "qBittorrent" tiles.
         label: inst.name,
-        online: status?.online ?? false,
+        status: health?.status ?? "offline",
       });
     }
   }
@@ -126,15 +140,13 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                   <ServiceLogo
                     id={entry.kindId}
                     size={ICON.LG}
-                    online={entry.online}
+                    online={entry.status !== "offline"}
                   />
                 </View>
                 <View
-                  className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${
-                    entry.online ? "bg-success" : "bg-danger"
-                  }`}
+                  className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${DOT_BG[entry.status]}`}
                   style={Platform.OS === "ios" ? {
-                    shadowColor: entry.online ? "#22c55e" : "#ef4444",
+                    shadowColor: DOT_SHADOW[entry.status],
                     shadowRadius: 6,
                     shadowOpacity: 0.6,
                     shadowOffset: { width: 0, height: 0 },

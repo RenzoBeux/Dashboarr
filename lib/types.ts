@@ -1242,24 +1242,39 @@ export interface BazarrProvider {
 
 // --- Shared Types ---
 
+// Tri-state status for the green/orange/red dots:
+//   - "ok"          server reachable AND credentials valid
+//   - "auth_failed" server reachable but credentials rejected
+//   - "offline"     server unreachable (network error, timeout, 5xx)
+export type HealthStatusKind = "ok" | "auth_failed" | "offline";
+
 // Health entry for a single configured instance — one kind can have many.
+// `online` is preserved for back-compat consumers that only care about
+// reachability (an auth_failed server is still "online" by that definition);
+// `status` is the richer tri-state used by the dot indicators.
 export interface ServiceInstanceHealthStatus {
   instanceId: string;
   instanceName: string;
   online: boolean;
+  status: HealthStatusKind;
   responseTime?: number;
+  // Server-supplied error message when status is "auth_failed" or "offline".
+  // Surfaced verbatim in places like the instance row subtitle so the user
+  // can tell whether it's a wrong API key vs. a TLS handshake failure.
+  message?: string;
 }
 
-// Aggregated health for a service kind. The top-level `online`/`responseTime`
-// are derived from `instances` so existing consumers (`healthData.find(s => s.id ===
-// "tautulli").online`) keep working as if each kind were a singleton: the kind
-// is "online" when at least one of its instances is reachable, and shows the
-// fastest of those response times. Per-instance breakdown lives under
-// `instances` for the notification watcher and the service-health card.
+// Aggregated health for a service kind. The top-level `online`/`status`/
+// `responseTime` are derived from `instances` so existing consumers
+// (`healthData.find(s => s.id === "tautulli").online`) keep working as if
+// each kind were a singleton. Aggregation prefers the best status across
+// instances: any "ok" → kind is "ok"; otherwise any "auth_failed" →
+// "auth_failed"; otherwise "offline".
 export interface ServiceHealthStatus {
   id: string;
   name: string;
   online: boolean;
+  status: HealthStatusKind;
   responseTime?: number;
   instances: ServiceInstanceHealthStatus[];
 }

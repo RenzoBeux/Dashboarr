@@ -403,6 +403,37 @@ export async function testServiceConnection(
   }
 }
 
+/**
+ * Health-check variant of `testServiceConnection` that reads the stored
+ * URL + credentials for the given instance from the config store, rather
+ * than taking them from a form. Used by `useServiceHealth` to power the
+ * tri-state dots on dashboards/services/settings — same per-service auth
+ * probes as the Test Connection button, so the green/orange/red verdicts
+ * stay consistent between the two surfaces.
+ */
+export async function checkInstanceHealth(
+  serviceId: ServiceId,
+  instanceId: string,
+): Promise<ConnectionTestResult> {
+  const store = useConfigStore.getState();
+  const inst = store.getInstance(serviceId, instanceId);
+  if (!inst) {
+    return { kind: "unreachable", message: "Instance not found" };
+  }
+  const url = store.getActiveUrl(serviceId, instanceId);
+  if (!url) {
+    return { kind: "unreachable", message: "No URL configured" };
+  }
+  const secrets = store.instanceSecrets[instanceId] ?? {};
+  return testServiceConnection(serviceId, {
+    url,
+    apiKey: secrets.apiKey,
+    username: secrets.username,
+    password: secrets.password,
+    customHeaders: secrets.customHeaders,
+  });
+}
+
 type ProbeOutcome =
   | { kind: "ok" }
   | { kind: "auth_failed"; message: string }

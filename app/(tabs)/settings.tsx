@@ -40,6 +40,17 @@ import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { BackHeader } from "@/components/common/back-header";
 import { testServiceConnection } from "@/lib/http-client";
+import { useServiceHealth } from "@/hooks/use-service-health";
+import type { HealthStatusKind } from "@/lib/types";
+
+// Same green/orange/red palette as the dashboard service-health card and the
+// Services tab — kept in sync so the indicator means the same thing across
+// every surface that shows a per-instance status dot.
+const DOT_BG: Record<HealthStatusKind, string> = {
+  ok: "bg-success",
+  auth_failed: "bg-warning",
+  offline: "bg-danger",
+};
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
@@ -191,6 +202,11 @@ export default function SettingsScreen() {
   const scale = useUiScale();
   const githubLogoSize = Math.round(20 * scale);
 
+  // Pull live health for every (kind, instance) pair so the kind-row dots can
+  // reflect ok/auth_failed/offline instead of just "any instance enabled".
+  // Cached + polled by the shared hook — no extra requests fired here.
+  const { data: healthData } = useServiceHealth();
+
   const notifEnabled = useConfigStore((s) => s.notificationSettings.enabled);
   const torrentCompleted = useConfigStore((s) => s.notificationSettings.torrentCompleted);
   const sabnzbdCompleted = useConfigStore((s) => s.notificationSettings.sabnzbdCompleted);
@@ -310,6 +326,13 @@ export default function SettingsScreen() {
               : list[0].localUrl || "No local URL"
             : "Tap to configure"
           : `${list.length} instances · ${enabledCount} enabled`;
+    // Only show the dot when the kind has at least one enabled instance —
+    // disabled kinds have nothing to be healthy about. Use the aggregated
+    // kind status from the health hook (best of any instance: ok >
+    // auth_failed > offline) so a healthy primary masks a broken secondary.
+    const kindHealth = enabledCount > 0
+      ? healthData?.find((h) => h.id === id)?.status
+      : undefined;
     return (
       <SettingsRow
         key={id}
@@ -318,8 +341,8 @@ export default function SettingsScreen() {
         subtitle={subtitle}
         onPress={() => setViewingService(id)}
         right={
-          enabledCount > 0 ? (
-            <View className="w-2 h-2 rounded-full bg-success" />
+          kindHealth ? (
+            <View className={`w-2 h-2 rounded-full ${DOT_BG[kindHealth]}`} />
           ) : null
         }
       />
@@ -646,6 +669,13 @@ function InstanceList({
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const dashboards = useConfigStore((s) => s.dashboards);
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
+  // Per-instance tri-state health for the row dot. The shared hook is already
+  // polling, so this is a pure index by instance UUID.
+  const { data: healthData } = useServiceHealth();
+  const healthByInstance = new Map<string, HealthStatusKind>();
+  for (const inst of healthData?.find((h) => h.id === serviceId)?.instances ?? []) {
+    healthByInstance.set(inst.instanceId, inst.status);
+  }
 
   // v22: how many workspaces attach a given instance UUID. Auto-attach mode
   // (attachedInstances === undefined) counts as attached. Only displayed
@@ -716,6 +746,12 @@ function InstanceList({
               : inst.localUrl || "No local URL"
             : "Disabled";
           const isActive = inst.id === activeId;
+          // Only enabled instances are actively probed; for disabled ones
+          // we want NO dot (not red) — there's nothing wrong, the user has
+          // just turned it off.
+          const instanceStatus = inst.enabled
+            ? healthByInstance.get(inst.id)
+            : undefined;
           return (
             <View
               key={inst.id}
@@ -750,8 +786,10 @@ function InstanceList({
                       })()
                     : null}
                 </View>
-                {inst.enabled ? (
-                  <View className="w-2 h-2 rounded-full bg-success mr-2" />
+                {instanceStatus ? (
+                  <View
+                    className={`w-2 h-2 rounded-full mr-2 ${DOT_BG[instanceStatus]}`}
+                  />
                 ) : null}
               </Pressable>
               {instances.length > 1 ? (

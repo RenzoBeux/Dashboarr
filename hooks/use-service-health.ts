@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { pingService } from "@/lib/http-client";
+import { checkInstanceHealth } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_IDS, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type {
+  HealthStatusKind,
   ServiceHealthStatus,
   ServiceInstanceHealthStatus,
 } from "@/lib/types";
@@ -33,6 +34,7 @@ export function useServiceHealth() {
               id,
               name: SERVICE_DEFAULTS[id].name,
               online: false,
+              status: "offline",
               instances: [],
             };
           }
@@ -43,21 +45,46 @@ export function useServiceHealth() {
                   instanceId: inst.id,
                   instanceName: inst.name,
                   online: false,
+                  status: "offline",
                 };
               }
-              const responseTime = await pingService(id, undefined, inst.id);
+              const result = await checkInstanceHealth(id, inst.id);
+              const status: HealthStatusKind =
+                result.kind === "ok"
+                  ? "ok"
+                  : result.kind === "auth_failed"
+                    ? "auth_failed"
+                    : "offline";
               return {
                 instanceId: inst.id,
                 instanceName: inst.name,
-                online: responseTime !== null,
-                responseTime: responseTime ?? undefined,
+                // Both ok and auth_failed servers respond to requests, so
+                // they count as "online" for the binary back-compat field.
+                // The tri-state dot consumers branch on `status` instead.
+                online: status !== "offline",
+                status,
+                responseTime:
+                  result.kind === "ok" ? result.responseTime : undefined,
+                message: result.kind === "ok" ? undefined : result.message,
               };
             }),
           );
-          // Aggregate: the kind is "online" if any instance is, and the
-          // representative response time is the fastest reachable one.
-          const onlineInstances = instanceHealths.filter((i) => i.online);
-          const responseTimes = onlineInstances
+          // Aggregate per kind: prefer the best status across instances so a
+          // user with two Radarrs (one healthy, one auth-failed) sees the kind
+          // as "ok" — the dashboard widgets that route to a kind will pick
+          // the healthy instance and the user can drill into Settings to fix
+          // the broken one. ok > auth_failed > offline.
+          const hasOk = instanceHealths.some((i) => i.status === "ok");
+          const hasAuthFailed = instanceHealths.some(
+            (i) => i.status === "auth_failed",
+          );
+          const kindStatus: HealthStatusKind = hasOk
+            ? "ok"
+            : hasAuthFailed
+              ? "auth_failed"
+              : "offline";
+          const responseTimes = instanceHealths
+            .filter((i) => i.status === "ok")
             .map((i) => i.responseTime)
             .filter((rt): rt is number => typeof rt === "number");
           // Display name preference: when only one instance is configured, use
@@ -69,7 +96,8 @@ export function useServiceHealth() {
           return {
             id,
             name,
-            online: onlineInstances.length > 0,
+            online: kindStatus !== "offline",
+            status: kindStatus,
             responseTime:
               responseTimes.length > 0 ? Math.min(...responseTimes) : undefined,
             instances: instanceHealths,

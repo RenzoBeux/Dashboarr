@@ -13,6 +13,15 @@ import { lightHaptic } from "@/lib/haptics";
 import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
+import type { HealthStatusKind } from "@/lib/types";
+
+// Same dot palette as the dashboard service-health card — kept in sync so the
+// user sees green/orange/red mean the same thing across surfaces.
+const DOT_BG: Record<HealthStatusKind, string> = {
+  ok: "bg-success",
+  auth_failed: "bg-warning",
+  offline: "bg-danger",
+};
 
 // Spring tuned to feel snappy but visible — too fast and the user can't tell a
 // tile moved; too slow and successive taps queue up before the previous one
@@ -132,7 +141,8 @@ export default function ServicesScreen() {
         {enabledServices.map((id, idx) => {
           const service = services[id];
           const status = health?.find((h) => h.id === id);
-          const online = status?.online ?? false;
+          const healthStatus: HealthStatusKind = status?.status ?? "offline";
+          const online = healthStatus !== "offline";
           const isFirst = idx === 0;
           const isLast = idx === enabledServices.length - 1;
 
@@ -164,9 +174,7 @@ export default function ServicesScreen() {
                   <ServiceLogo id={id} size={28} online={online} />
                 </View>
                 <View
-                  className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${
-                    online ? "bg-success" : "bg-danger"
-                  }`}
+                  className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${DOT_BG[healthStatus]}`}
                 />
               </View>
               <Text className="text-zinc-100 text-sm font-medium">{service.name}</Text>
