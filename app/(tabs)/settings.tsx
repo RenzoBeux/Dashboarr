@@ -63,6 +63,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
+import { AddToDashboardsSheet } from "@/components/dashboard/add-to-dashboards-sheet";
 import {
   forgetRememberedPassphrase,
   hasRememberedPassphrase,
@@ -137,6 +138,7 @@ export default function SettingsScreen() {
   const [editingInstance, setEditingInstance] = useState<{
     serviceId: ServiceId;
     instanceId: string;
+    isNew?: boolean;
   } | null>(null);
   const [exportStage, setExportStage] = useState<ExportStage | null>(null);
   const [importStage, setImportStage] = useState<ImportStage | null>(null);
@@ -272,6 +274,7 @@ export default function SettingsScreen() {
       <ServiceEditor
         serviceId={editingInstance.serviceId}
         instanceId={editingInstance.instanceId}
+        isNew={editingInstance.isNew ?? false}
         onBack={() => setEditingInstance(null)}
         onDeleted={() => setEditingInstance(null)}
       />
@@ -283,8 +286,12 @@ export default function SettingsScreen() {
       <InstanceList
         serviceId={viewingService}
         onBack={() => setViewingService(null)}
-        onEditInstance={(instanceId) =>
-          setEditingInstance({ serviceId: viewingService, instanceId })
+        onEditInstance={(instanceId, options) =>
+          setEditingInstance({
+            serviceId: viewingService,
+            instanceId,
+            isNew: options?.isNew,
+          })
         }
       />
     );
@@ -624,7 +631,10 @@ function InstanceList({
 }: {
   serviceId: ServiceId;
   onBack: () => void;
-  onEditInstance: (instanceId: string) => void;
+  onEditInstance: (
+    instanceId: string,
+    options?: { isNew?: boolean },
+  ) => void;
 }) {
   const instances = useConfigStore(
     (s) => s.serviceInstances[serviceId] ?? EMPTY_INSTANCES,
@@ -674,7 +684,7 @@ function InstanceList({
     const defaultName =
       existing === 0 ? kindLabel : `${kindLabel} ${existing + 1}`;
     const inst = addInstance(serviceId, { name: defaultName });
-    onEditInstance(inst.id);
+    onEditInstance(inst.id, { isNew: true });
   };
 
   const performDelete = async (instanceId: string) => {
@@ -839,11 +849,13 @@ function InstanceList({
 function ServiceEditor({
   serviceId,
   instanceId,
+  isNew,
   onBack,
   onDeleted,
 }: {
   serviceId: ServiceId;
   instanceId: string;
+  isNew: boolean;
   onBack: () => void;
   onDeleted: () => void;
 }) {
@@ -863,6 +875,13 @@ function ServiceEditor({
   const updateInstanceSecrets = useConfigStore((s) => s.updateInstanceSecrets);
   const toggleInstance = useConfigStore((s) => s.toggleInstance);
   const removeInstance = useConfigStore((s) => s.removeInstance);
+
+  // First-save dashboard prompt is offered exactly once per editor session,
+  // after the user saves a freshly-created instance with usable credentials.
+  // `promptShown` keeps us from re-asking on subsequent saves in the same
+  // session if the user already engaged with (or skipped) the sheet.
+  const [showAddToDashboards, setShowAddToDashboards] = useState(false);
+  const [promptShown, setPromptShown] = useState(false);
 
   const config = inst ?? {
     enabled: false,
@@ -999,6 +1018,26 @@ function ServiceEditor({
     if (serviceId === "qbittorrent") {
       await qbClearSession(instanceId);
     }
+
+    // First-save dashboard prompt. Fires once per editor session for a
+    // freshly-created instance whose save produced a usable config (URL +
+    // credential). The sheet always opens — even when every existing
+    // dashboard is auto-attach and would implicitly include the new
+    // instance — because users on the default single-workspace install
+    // still benefit from seeing where it landed and the hint that
+    // widgets are added separately.
+    if (isNew && !promptShown) {
+      const hasUrl = normLocal.length > 0 || normRemote.length > 0;
+      const hasCreds = usesBasicAuth
+        ? username.length > 0 || password.length > 0
+        : apiKey.length > 0;
+      if (hasUrl && hasCreds) {
+        setPromptShown(true);
+        setShowAddToDashboards(true);
+        return;
+      }
+    }
+
     onBack();
   };
 
@@ -1172,6 +1211,16 @@ function ServiceEditor({
         confirmLabel="Delete"
         onConfirm={() => void performDelete()}
         onCancel={() => setConfirmDelete(false)}
+      />
+
+      <AddToDashboardsSheet
+        visible={showAddToDashboards}
+        instanceId={instanceId}
+        instanceName={config.name}
+        onClose={() => {
+          setShowAddToDashboards(false);
+          onBack();
+        }}
       />
     </ScreenWrapper>
   );
