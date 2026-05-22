@@ -1214,7 +1214,6 @@ export type BazarrWantedMoviesResponse = BazarrWantedResponse<BazarrWantedMovie>
 export type BazarrWantedEpisodesResponse = BazarrWantedResponse<BazarrWantedEpisode>;
 
 export interface BazarrHistoryItem {
-  id: number;
   action: number;
   timestamp: string;
   description: string;
@@ -1225,6 +1224,9 @@ export interface BazarrHistoryItem {
   seriesTitle?: string;
   episodeTitle?: string;
   subtitles_path?: string;
+  radarrId?: number;
+  sonarrSeriesId?: number;
+  sonarrEpisodeId?: number;
 }
 
 export interface BazarrHistoryResponse {

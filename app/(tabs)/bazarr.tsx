@@ -231,13 +231,13 @@ function History() {
 
   return (
     <View className="gap-2">
-      {combined.slice(0, 50).map((item) => {
+      {combined.slice(0, 50).map((item, idx) => {
         const displayTitle =
           item._kind === "movie"
             ? item.title
             : `${item.seriesTitle ?? ""} · ${item.episodeTitle ?? ""}`;
         return (
-          <Card key={`${item._kind}-${item.id}`}>
+          <Card key={`${item._kind}-${item.timestamp ?? ""}-${item.provider ?? ""}-${idx}`}>
             <View className="flex-row items-start justify-between">
               <View className="flex-1 pr-2">
                 <Text className="text-zinc-200 text-sm" numberOfLines={1}>
