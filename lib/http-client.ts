@@ -315,3 +315,319 @@ export async function pingService(
     return null;
   }
 }
+
+/**
+ * Rich connection test that validates BOTH URL reachability AND credentials.
+ *
+ * Differs from `pingService` in two ways:
+ *   - reads credentials from the caller (the in-progress form values), not
+ *     the saved SecureStore record, so users can validate before saving
+ *   - returns auth_failed separately from unreachable, by probing an
+ *     endpoint that genuinely requires authentication on each service.
+ *
+ * Services without an authenticated `pingPath` (Plex `/identity`, Jellyfin
+ * `/System/Info/Public`, Overseerr `/status`) use a different probe path
+ * here. Services that always return HTTP 200 for bad credentials (SABnzbd,
+ * Tautulli, qBittorrent) inspect the response body to detect auth failure.
+ */
+export type ConnectionTestResult =
+  | { kind: "ok"; responseTime: number }
+  | { kind: "auth_failed"; message: string }
+  | { kind: "unreachable"; message: string };
+
+export interface ConnectionTestInput {
+  url: string;
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  // Per-instance custom headers from the editor form. Merged on top of the
+  // global headers from the store the same way serviceRequest does, so the
+  // probe matches the wire shape of real requests (reverse-proxy headers,
+  // overrides, etc.).
+  customHeaders?: Record<string, string>;
+}
+
+export async function testServiceConnection(
+  serviceId: ServiceId,
+  input: ConnectionTestInput,
+): Promise<ConnectionTestResult> {
+  const store = useConfigStore.getState();
+  if (store.demoMode) {
+    return { kind: "ok", responseTime: 45 };
+  }
+
+  const baseUrl = input.url.trim();
+  if (!baseUrl) {
+    return { kind: "unreachable", message: "No URL configured" };
+  }
+
+  const customHeaders: Record<string, string> = {
+    ...store.globalCustomHeaders,
+    ...(input.customHeaders ?? {}),
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const start = Date.now();
+
+  try {
+    const result = await runConnectionProbe(
+      serviceId,
+      baseUrl,
+      input,
+      customHeaders,
+      controller.signal,
+    );
+    if (result.kind === "ok") {
+      return { kind: "ok", responseTime: Date.now() - start };
+    }
+    return result;
+  } catch (err) {
+    if (
+      (err instanceof DOMException && err.name === "AbortError") ||
+      (err instanceof Error && err.name === "AbortError")
+    ) {
+      return { kind: "unreachable", message: "Request timed out" };
+    }
+    return {
+      kind: "unreachable",
+      message:
+        err instanceof TypeError
+          ? "Network error — check URL and connectivity"
+          : err instanceof Error
+            ? err.message
+            : "Network error",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+type ProbeOutcome =
+  | { kind: "ok" }
+  | { kind: "auth_failed"; message: string }
+  | { kind: "unreachable"; message: string };
+
+async function runConnectionProbe(
+  serviceId: ServiceId,
+  baseUrl: string,
+  input: ConnectionTestInput,
+  customHeaders: Record<string, string>,
+  signal: AbortSignal,
+): Promise<ProbeOutcome> {
+  const defaults = SERVICE_DEFAULTS[serviceId];
+  const apiKey = input.apiKey ?? "";
+  const username = input.username ?? "";
+  const password = input.password ?? "";
+
+  const makeHeaders = (extra?: Record<string, string>): Headers => {
+    const h = new Headers();
+    for (const [k, v] of Object.entries(customHeaders)) h.set(k, v);
+    if (extra) {
+      for (const [k, v] of Object.entries(extra)) h.set(k, v);
+    }
+    return h;
+  };
+
+  switch (serviceId) {
+    case "qbittorrent": {
+      // Cookie-session auth — body "Ok." = success, anything else = bad creds.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/auth/login");
+      const headers = makeHeaders({
+        "Content-Type": "application/x-www-form-urlencoded",
+      });
+      const body = `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`;
+      const res = await fetch(url, { method: "POST", headers, body, signal });
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong username or password" };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const text = (await res.text()).trim();
+      if (text === "Ok.") return { kind: "ok" };
+      return { kind: "auth_failed", message: "Wrong username or password" };
+    }
+
+    case "sabnzbd": {
+      // Bad key returns HTTP 200 with `{ "error": "API Key Incorrect" }`.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "", {
+        mode: "version",
+        apikey: apiKey,
+        output: "json",
+      });
+      const res = await fetch(url, { method: "GET", headers: makeHeaders(), signal });
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      try {
+        const json = (await res.json()) as Record<string, unknown> | null;
+        if (json && typeof json.error === "string") {
+          return { kind: "auth_failed", message: json.error };
+        }
+        if (json && typeof json.version === "string") return { kind: "ok" };
+        return { kind: "unreachable", message: "Unexpected SABnzbd response" };
+      } catch {
+        return { kind: "unreachable", message: "Invalid JSON response" };
+      }
+    }
+
+    case "nzbget": {
+      // JSON-RPC POST with Basic auth. Bad creds → 401.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "");
+      const extra: Record<string, string> = { "Content-Type": "application/json" };
+      if (username || password) {
+        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+      }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: makeHeaders(extra),
+        body: JSON.stringify({ version: "1.1", method: "version", params: [] }),
+        signal,
+      });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong username or password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      try {
+        const json = (await res.json()) as Record<string, unknown> | null;
+        if (json && "result" in json) return { kind: "ok" };
+        return { kind: "unreachable", message: "Unexpected JSON-RPC response" };
+      } catch {
+        return { kind: "unreachable", message: "Invalid JSON response" };
+      }
+    }
+
+    case "tautulli": {
+      // Tautulli returns 200 with `{response:{result:"error",message:...}}` for
+      // bad keys. Use cmd=get_server_friendly_name as a cheap authenticated probe.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "", {
+        apikey: apiKey,
+        cmd: "get_server_friendly_name",
+      });
+      const res = await fetch(url, { method: "GET", headers: makeHeaders(), signal });
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      try {
+        const json = (await res.json()) as { response?: { result?: string; message?: string } } | null;
+        const response = json?.response;
+        if (response?.result === "success") return { kind: "ok" };
+        if (response?.result === "error") {
+          return {
+            kind: "auth_failed",
+            message:
+              typeof response.message === "string" && response.message.length > 0
+                ? response.message
+                : "Invalid API key",
+          };
+        }
+        return { kind: "unreachable", message: "Unexpected Tautulli response" };
+      } catch {
+        return { kind: "unreachable", message: "Invalid JSON response" };
+      }
+    }
+
+    case "plex": {
+      // /library/sections requires X-Plex-Token; bad token → 401.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/library/sections");
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Plex-Token", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid Plex token" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "jellyfin": {
+      // /Users/Me requires X-Emby-Token; bad token → 401.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/Users/Me");
+      const headers = makeHeaders();
+      if (apiKey) headers.set("X-Emby-Token", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid Jellyfin token" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "overseerr": {
+      // /auth/me returns the API key's user; 403 for bad key.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/auth/me");
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "glances": {
+      // Glances may or may not require auth depending on server config. If the
+      // user provided creds and the server still rejects, that's auth failure.
+      // If the user provided no creds and the server demands them, surface a
+      // more helpful "server requires credentials" message instead.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const extra: Record<string, string> = {};
+      if (username || password) {
+        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+      }
+      const res = await fetch(url, { method: "GET", headers: makeHeaders(extra), signal });
+      if (res.status === 401 || res.status === 403) {
+        return {
+          kind: "auth_failed",
+          message:
+            username || password
+              ? "Wrong username or password"
+              : "Server requires credentials",
+        };
+      }
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "radarr":
+    case "sonarr":
+    case "prowlarr":
+    case "bazarr": {
+      // *arr family: /system/status returns 200 with X-Api-Key, 401 without.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    default: {
+      // Exhaustiveness check — a new ServiceId without a probe case fails here.
+      const _exhaustive: never = serviceId;
+      return {
+        kind: "unreachable",
+        message: `Unsupported service: ${String(_exhaustive)}`,
+      };
+    }
+  }
+}

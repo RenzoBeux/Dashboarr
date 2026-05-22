@@ -39,7 +39,7 @@ import { useIntroStore } from "@/store/intro-store";
 import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { BackHeader } from "@/components/common/back-header";
-import { pingService } from "@/lib/http-client";
+import { testServiceConnection } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
@@ -1071,13 +1071,24 @@ function ServiceEditor({
       if (config.useRemote) setRemoteUrl(testUrl);
       else setLocalUrl(testUrl);
     }
-    const responseTime = await pingService(serviceId, testUrl || undefined, instanceId);
+    // Pass the in-progress form values directly so the test reflects what the
+    // user typed, not what's saved — they expect Test to validate the field
+    // contents before they commit to Save.
+    const result = await testServiceConnection(serviceId, {
+      url: testUrl,
+      apiKey,
+      username,
+      password,
+      customHeaders,
+    });
     setTesting(false);
 
-    if (responseTime !== null) {
-      toast(`Connected in ${responseTime}ms`, "success");
+    if (result.kind === "ok") {
+      toast(`Connected in ${result.responseTime}ms`, "success");
+    } else if (result.kind === "auth_failed") {
+      toast(`Auth failed: ${result.message}`, "error");
     } else {
-      toast("Could not reach service. Check URL and network.", "error");
+      toast(`Could not reach service: ${result.message}`, "error");
     }
   };
 
