@@ -23,6 +23,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useConfigStore } from "@/store/config-store";
@@ -77,6 +78,10 @@ export function WidgetSettingsSheet({
   } | null>(null);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
+  // `keyboard.height.value` is 0 when hidden and -keyboardHeight when shown.
+  // Adding it to translateY lifts the sheet above the keyboard so the "Hide
+  // users" TextInputs inside widget settings stay visible on iOS.
+  const keyboard = useReanimatedKeyboardAnimation();
 
   const visible = slotId !== null;
 
@@ -109,7 +114,7 @@ export function WidgetSettingsSheet({
   }, [visible]);
 
   const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: translateY.value + keyboard.height.value }],
   }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
 

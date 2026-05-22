@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
-import { Modal, View, Text, KeyboardAvoidingView, Platform, Pressable } from "react-native";
+import { Modal, View, Text, Platform, Pressable } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { cssInterop } from "nativewind";
 import { Fingerprint } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Toggle } from "@/components/ui/toggle";
+
+cssInterop(KeyboardAwareScrollView, {
+  className: "style",
+  contentContainerClassName: "contentContainerStyle",
+});
 
 export type PassphraseMode = "export" | "import";
 
@@ -85,9 +92,13 @@ export function PassphrasePrompt({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1 bg-black/70 items-center justify-center px-6"
+      <KeyboardAwareScrollView
+        className="flex-1 bg-black/70"
+        contentContainerClassName="flex-grow items-center justify-center px-6 py-6"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        bottomOffset={20}
+        showsVerticalScrollIndicator={false}
       >
         <Card className="w-full max-w-md gap-4">
           <Text className="text-zinc-100 text-lg font-semibold">{title}</Text>
@@ -151,7 +162,7 @@ export function PassphrasePrompt({
             />
           </View>
         </Card>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </Modal>
   );
 }
