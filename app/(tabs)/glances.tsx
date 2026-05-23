@@ -33,6 +33,17 @@ function usageTextColor(percent: number): string {
   return "text-success";
 }
 
+// Glances returns different shapes per host OS — macOS/Windows omit several
+// fields (most notably `iowait`). Use these helpers so a missing value renders
+// as a dash instead of crashing with "undefined.toFixed".
+function fmt(n: number | null | undefined, dp: number): string {
+  return typeof n === "number" && Number.isFinite(n) ? n.toFixed(dp) : "—";
+}
+
+function pct(n: number | null | undefined): number {
+  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+}
+
 export default function GlancesScreen() {
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["glances"]]);
@@ -64,8 +75,8 @@ function CpuCard() {
       <CardHeader>
         <CardTitle>CPU</CardTitle>
         {cpu && (
-          <Text className={`text-2xl font-bold ${usageTextColor(cpu.total)}`}>
-            {cpu.total.toFixed(1)}%
+          <Text className={`text-2xl font-bold ${usageTextColor(pct(cpu.total))}`}>
+            {fmt(cpu.total, 1)}%
           </Text>
         )}
       </CardHeader>
@@ -76,13 +87,21 @@ function CpuCard() {
         <EmptyState title="No data" />
       ) : (
         <View className="gap-4">
-          <ProgressBar progress={cpu.total / 100} color={usageBarColor(cpu.total)} />
+          <ProgressBar progress={pct(cpu.total) / 100} color={usageBarColor(pct(cpu.total))} />
 
           <View className="flex-row gap-3">
-            <StatPill label="User" value={`${cpu.user.toFixed(1)}%`} />
-            <StatPill label="System" value={`${cpu.system.toFixed(1)}%`} />
-            <StatPill label="I/O Wait" value={`${cpu.iowait.toFixed(1)}%`} />
-            <StatPill label="Cores" value={String(cpu.cpucore)} />
+            {typeof cpu.user === "number" && (
+              <StatPill label="User" value={`${fmt(cpu.user, 1)}%`} />
+            )}
+            {typeof cpu.system === "number" && (
+              <StatPill label="System" value={`${fmt(cpu.system, 1)}%`} />
+            )}
+            {typeof cpu.iowait === "number" && (
+              <StatPill label="I/O Wait" value={`${fmt(cpu.iowait, 1)}%`} />
+            )}
+            {typeof cpu.cpucore === "number" && (
+              <StatPill label="Cores" value={String(cpu.cpucore)} />
+            )}
           </View>
 
           {load && (
@@ -91,9 +110,9 @@ function CpuCard() {
                 Load Average
               </Text>
               <View className="flex-row gap-3">
-                <StatPill label="1 min" value={load.min1.toFixed(2)} />
-                <StatPill label="5 min" value={load.min5.toFixed(2)} />
-                <StatPill label="15 min" value={load.min15.toFixed(2)} />
+                <StatPill label="1 min" value={fmt(load.min1, 2)} />
+                <StatPill label="5 min" value={fmt(load.min5, 2)} />
+                <StatPill label="15 min" value={fmt(load.min15, 2)} />
               </View>
             </View>
           )}
@@ -111,12 +130,12 @@ function CpuCard() {
                     </Text>
                     <View className="flex-1">
                       <ProgressBar
-                        progress={core.total / 100}
-                        color={usageBarColor(core.total)}
+                        progress={pct(core.total) / 100}
+                        color={usageBarColor(pct(core.total))}
                       />
                     </View>
-                    <Text className={`text-xs font-medium w-10 text-right ${usageTextColor(core.total)}`}>
-                      {core.total.toFixed(0)}%
+                    <Text className={`text-xs font-medium w-10 text-right ${usageTextColor(pct(core.total))}`}>
+                      {fmt(core.total, 0)}%
                     </Text>
                   </View>
                 ))}
@@ -137,8 +156,8 @@ function MemoryCard() {
       <CardHeader>
         <CardTitle>Memory</CardTitle>
         {mem && (
-          <Text className={`text-2xl font-bold ${usageTextColor(mem.percent)}`}>
-            {mem.percent.toFixed(1)}%
+          <Text className={`text-2xl font-bold ${usageTextColor(pct(mem.percent))}`}>
+            {fmt(mem.percent, 1)}%
           </Text>
         )}
       </CardHeader>
@@ -149,7 +168,7 @@ function MemoryCard() {
         <EmptyState title="No data" />
       ) : (
         <View className="gap-4">
-          <ProgressBar progress={mem.percent / 100} color={usageBarColor(mem.percent)} />
+          <ProgressBar progress={pct(mem.percent) / 100} color={usageBarColor(pct(mem.percent))} />
 
           <View className="flex-row gap-3 flex-wrap">
             <StatPill label="Used" value={formatBytes(mem.used)} />
@@ -157,11 +176,21 @@ function MemoryCard() {
             <StatPill label="Total" value={formatBytes(mem.total)} />
           </View>
 
-          <View className="flex-row gap-3 flex-wrap">
-            <StatPill label="Available" value={formatBytes(mem.available)} />
-            <StatPill label="Cached" value={formatBytes(mem.cached)} />
-            <StatPill label="Buffers" value={formatBytes(mem.buffers)} />
-          </View>
+          {(typeof mem.available === "number" ||
+            typeof mem.cached === "number" ||
+            typeof mem.buffers === "number") && (
+            <View className="flex-row gap-3 flex-wrap">
+              {typeof mem.available === "number" && (
+                <StatPill label="Available" value={formatBytes(mem.available)} />
+              )}
+              {typeof mem.cached === "number" && (
+                <StatPill label="Cached" value={formatBytes(mem.cached)} />
+              )}
+              {typeof mem.buffers === "number" && (
+                <StatPill label="Buffers" value={formatBytes(mem.buffers)} />
+              )}
+            </View>
+          )}
         </View>
       )}
     </Card>
@@ -213,7 +242,7 @@ function GpuDetail({ gpu }: { gpu: GlancesGpuItem }) {
           <View className="flex-row justify-between mb-1">
             <Text className="text-zinc-500 text-xs">Compute</Text>
             <Text className={`text-xs font-medium ${usageTextColor(proc)}`}>
-              {proc.toFixed(1)}%
+              {fmt(proc, 1)}%
             </Text>
           </View>
           <ProgressBar progress={proc / 100} color={usageBarColor(proc)} />
@@ -225,7 +254,7 @@ function GpuDetail({ gpu }: { gpu: GlancesGpuItem }) {
           <View className="flex-row justify-between mb-1">
             <Text className="text-zinc-500 text-xs">VRAM</Text>
             <Text className={`text-xs font-medium ${usageTextColor(mem)}`}>
-              {mem.toFixed(1)}%
+              {fmt(mem, 1)}%
             </Text>
           </View>
           <ProgressBar progress={mem / 100} color={usageBarColor(mem)} />
@@ -235,10 +264,10 @@ function GpuDetail({ gpu }: { gpu: GlancesGpuItem }) {
       {(typeof gpu.temperature === "number" || typeof gpu.fan_speed === "number") && (
         <View className="flex-row gap-3 flex-wrap mt-1">
           {typeof gpu.temperature === "number" && (
-            <StatPill label="Temp" value={`${gpu.temperature.toFixed(0)}°C`} />
+            <StatPill label="Temp" value={`${fmt(gpu.temperature, 0)}°C`} />
           )}
           {typeof gpu.fan_speed === "number" && (
-            <StatPill label="Fan" value={`${gpu.fan_speed.toFixed(0)} RPM`} />
+            <StatPill label="Fan" value={`${fmt(gpu.fan_speed, 0)} RPM`} />
           )}
         </View>
       )}
@@ -284,11 +313,11 @@ function DiskDetail({ disk }: { disk: GlancesFsItem }) {
           </Text>
           <Text className="text-zinc-600 text-xs">{disk.device_name}</Text>
         </View>
-        <Text className={`text-sm font-bold ${usageTextColor(disk.percent)}`}>
-          {disk.percent.toFixed(1)}%
+        <Text className={`text-sm font-bold ${usageTextColor(pct(disk.percent))}`}>
+          {fmt(disk.percent, 1)}%
         </Text>
       </View>
-      <ProgressBar progress={disk.percent / 100} color={usageBarColor(disk.percent)} className="mb-1.5" />
+      <ProgressBar progress={pct(disk.percent) / 100} color={usageBarColor(pct(disk.percent))} className="mb-1.5" />
       <View className="flex-row gap-3">
         <Text className="text-zinc-500 text-xs">Used {formatBytes(disk.used)}</Text>
         <Text className="text-zinc-500 text-xs">Free {formatBytes(disk.free)}</Text>

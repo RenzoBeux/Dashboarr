@@ -1106,22 +1106,25 @@ export interface JellyfinSession {
 // --- Glances Types ---
 
 export interface GlancesCpu {
+  // Only `total` is guaranteed across platforms — Glances computes it itself.
+  // The rest depend on the host OS: macOS/Windows omit `iowait`, and some
+  // older builds/proxies may drop other fields too.
   total: number;
-  user: number;
-  system: number;
-  idle: number;
-  iowait: number;
-  cpucore: number;
+  user?: number;
+  system?: number;
+  idle?: number;
+  iowait?: number;
+  cpucore?: number;
 }
 
 export interface GlancesMem {
   total: number;
   used: number;
   free: number;
-  available: number;
+  available?: number;
   percent: number;
-  cached: number;
-  buffers: number;
+  cached?: number;
+  buffers?: number;
 }
 
 export interface GlancesFsItem {
@@ -1137,9 +1140,9 @@ export interface GlancesFsItem {
 export interface GlancesPerCpuItem {
   cpu_number: number;
   total: number;
-  user: number;
-  system: number;
-  idle: number;
+  user?: number;
+  system?: number;
+  idle?: number;
 }
 
 export interface GlancesLoad {
