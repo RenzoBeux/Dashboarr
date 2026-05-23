@@ -248,6 +248,33 @@ export async function qbClearSession(instanceId?: string): Promise<void> {
   }
 }
 
+/**
+ * Health-probe variant used by the polling health hook. Unlike the form-driven
+ * Test Connection flow (which POSTs to /auth/login on every check), this reuses
+ * the cached SID via qbRequest so the probe doesn't:
+ *   • create parallel sessions that race against the app's own qbLogin cookie
+ *   • count against qBittorrent's brute-force lockout (5 failed logins / min)
+ *     when a transient network blip flips one probe into a "Fails." response
+ * If the cached session is missing or expired, qbRequest's 403 recovery does
+ * exactly one re-login — same as a real API call — so a genuinely-broken
+ * credential still surfaces as auth_failed.
+ */
+export async function qbHealthCheck(
+  instanceId: string,
+): Promise<"ok" | "auth_failed" | "offline"> {
+  try {
+    const version = await qbRequest<string>("/app/version", undefined, instanceId);
+    if (typeof version === "string" && version.length > 0) return "ok";
+    return "offline";
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("authentication failed") || msg.includes(": 403")) {
+      return "auth_failed";
+    }
+    return "offline";
+  }
+}
+
 // --- Transfer Info ---
 
 export function getTransferInfo(instanceId?: string): Promise<QBTransferInfo> {
