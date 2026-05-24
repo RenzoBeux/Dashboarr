@@ -11,6 +11,23 @@ export interface QBTransferInfo {
   connection_status: "connected" | "firewalled" | "disconnected";
 }
 
+// Subset of qBittorrent's /sync/maindata `server_state` we care about. Unlike
+// /transfer/info — which only exposes per-session counters (`*_info_data`)
+// that reset on every qBit restart — server_state also carries lifetime
+// totals (`alltime_dl`, `alltime_ul`). The Speed Stats widget uses the
+// lifetime values so the dashboard "X GB total" persists across restarts;
+// see #104. The endpoint returns many more fields (free disk, ratio, etc.)
+// that we omit until something else needs them.
+export interface QBServerState {
+  alltime_dl: number;
+  alltime_ul: number;
+  dl_info_speed: number;
+  dl_info_data: number;
+  up_info_speed: number;
+  up_info_data: number;
+  connection_status: "connected" | "firewalled" | "disconnected";
+}
+
 // qBittorrent 5.0 renamed `pausedUP`/`pausedDL` to `stoppedUP`/`stoppedDL`.
 // Both are kept here so the app works against 4.x and 5.x servers.
 export type TorrentState =

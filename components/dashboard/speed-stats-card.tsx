@@ -4,7 +4,7 @@ import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getTransferInfo } from "@/services/qbittorrent-api";
+import { getServerState } from "@/services/qbittorrent-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
@@ -36,13 +36,16 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     ? resolveBoundInstances(settings.sabInstanceIds, allSabInstances)
     : [];
 
-  // Fan out across the resolved instances and sum their transfer counters so
-  // a single Speed pill represents the whole stack at a glance. Each instance
-  // keeps its own cache slot via the [serviceId, instanceId, …] queryKey shape.
+  // Fan out across the resolved instances and sum their counters so a single
+  // Speed pill represents the whole stack at a glance. Each instance keeps
+  // its own cache slot via the [serviceId, instanceId, …] queryKey shape.
+  // Uses /sync/maindata (server_state) instead of /transfer/info because
+  // only server_state carries lifetime totals (alltime_dl/alltime_ul) — the
+  // dashboard "X GB total" used to reset when qBit restarted (#104).
   const qbitQueries = useQueries({
     queries: qbitInstances.map((inst) => ({
-      queryKey: ["qbittorrent", inst.id, "transfer"] as const,
-      queryFn: () => getTransferInfo(inst.id),
+      queryKey: ["qbittorrent", inst.id, "serverState"] as const,
+      queryFn: () => getServerState(inst.id),
       refetchInterval: POLLING_INTERVALS.transferSpeed,
     })),
   });
@@ -92,14 +95,21 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
 
   let dlSpeed = 0;
   let upSpeed = 0;
-  let dlTotal = 0;
-  let upTotal = 0;
+  let dlAlltime = 0;
+  let upAlltime = 0;
+  let dlSession = 0;
+  let upSession = 0;
   for (const q of qbitQueries) {
     if (!q.data) continue;
     dlSpeed += q.data.dl_info_speed;
     upSpeed += q.data.up_info_speed;
-    dlTotal += q.data.dl_info_data;
-    upTotal += q.data.up_info_data;
+    // server_state carries both counters — alltime persists across restarts,
+    // session resets on each qBit start. The widget's `totalsScope` setting
+    // picks which subtitle(s) to render (see #104).
+    dlAlltime += q.data.alltime_dl;
+    upAlltime += q.data.alltime_ul;
+    dlSession += q.data.dl_info_data;
+    upSession += q.data.up_info_data;
   }
   for (const q of sabQueries) {
     if (!q.data) continue;
@@ -114,31 +124,58 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // would silently understate the stack and confuse the user. The settings
   // toggle warns about this; the card just stops showing the misleading number.
   const showDlTotal = sabInstances.length === 0;
+  const scope = settings.totalsScope;
+
+  const dlTotalLines = buildTotalLines(scope, dlAlltime, dlSession);
+  const upTotalLines = buildTotalLines(scope, upAlltime, upSession);
 
   return (
     <Card className="flex-row gap-3">
       <SpeedPill
         direction="down"
         speed={formatSpeed(dlSpeed)}
-        total={showDlTotal ? formatBytes(dlTotal) : null}
+        totalLines={showDlTotal ? dlTotalLines : []}
       />
       <SpeedPill
         direction="up"
         speed={formatSpeed(upSpeed)}
-        total={formatBytes(upTotal)}
+        totalLines={upTotalLines}
       />
     </Card>
   );
 }
 
+function buildTotalLines(
+  scope: SpeedStatsSettingsValue["totalsScope"],
+  alltime: number,
+  session: number,
+): { label: string; value: string }[] {
+  // Labels stay short ("total"/"session") so they fit inside the pill at
+  // uiScale 1.3 — longer words like "all-time" overflow the 50%-width pill
+  // even with min-w-0 + ellipsize. In Both mode the two rows are adjacent,
+  // so "total" reads unambiguously as "lifetime" against the "session" row.
+  switch (scope) {
+    case "session":
+      return [{ label: "session", value: formatBytes(session) }];
+    case "both":
+      return [
+        { label: "total", value: formatBytes(alltime) },
+        { label: "session", value: formatBytes(session) },
+      ];
+    case "alltime":
+    default:
+      return [{ label: "total", value: formatBytes(alltime) }];
+  }
+}
+
 function SpeedPill({
   direction,
   speed,
-  total,
+  totalLines,
 }: {
   direction: "down" | "up";
   speed: string;
-  total: string | null;
+  totalLines: { label: string; value: string }[];
 }) {
   const isDown = direction === "down";
   const ArrowIcon = isDown ? ArrowDown : ArrowUp;
@@ -148,11 +185,27 @@ function SpeedPill({
   return (
     <View className={`flex-1 flex-row items-center gap-3 rounded-xl p-3 ${bgClass}`}>
       <Icon icon={ArrowIcon} size={18} color={isDown ? "#3b82f6" : "#22c55e"} />
-      <View>
-        <Text className={`text-lg font-bold ${colorClass}`}>{speed}</Text>
-        {total !== null && (
-          <Text className="text-zinc-500 text-xs">{total} total</Text>
-        )}
+      {/* `flex-1 min-w-0` is what lets the text column actually shrink inside
+          the flex row — without min-w-0 a long subtitle (e.g. "1.23 TB
+          session" at uiScale 1.3) keeps the intrinsic width and pushes the
+          pill past 50% of the card. numberOfLines={1} then ellipsizes the
+          worst-case string cleanly. */}
+      <View className="flex-1 min-w-0">
+        <Text
+          className={`text-lg font-bold ${colorClass}`}
+          numberOfLines={1}
+        >
+          {speed}
+        </Text>
+        {totalLines.map((line) => (
+          <Text
+            key={line.label}
+            className="text-zinc-500 text-xs"
+            numberOfLines={1}
+          >
+            {line.value} {line.label}
+          </Text>
+        ))}
       </View>
     </View>
   );

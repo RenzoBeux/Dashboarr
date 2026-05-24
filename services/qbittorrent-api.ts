@@ -6,6 +6,7 @@ import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
 import type {
   QBTransferInfo,
+  QBServerState,
   QBTorrent,
   QBTorrentFile,
   QBTorrentTracker,
@@ -279,6 +280,23 @@ export async function qbHealthCheck(
 
 export function getTransferInfo(instanceId?: string): Promise<QBTransferInfo> {
   return qbRequest<QBTransferInfo>("/transfer/info", undefined, instanceId);
+}
+
+// Fetches qBittorrent's server-wide state via /sync/maindata. Unlike
+// /transfer/info this exposes lifetime totals (alltime_dl, alltime_ul), used
+// by the Speed Stats widget so totals survive a qBit restart (#104). The
+// /sync/maindata response also carries torrents/categories — we discard them
+// here. `rid=0` always asks for a full snapshot; we don't track rid because
+// every call is independent.
+export async function getServerState(
+  instanceId?: string,
+): Promise<QBServerState> {
+  const data = await qbRequest<{ server_state: QBServerState }>(
+    "/sync/maindata?rid=0",
+    undefined,
+    instanceId,
+  );
+  return data.server_state;
 }
 
 // --- Torrents ---

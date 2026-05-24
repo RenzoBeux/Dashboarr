@@ -27,6 +27,23 @@ const DEMO_QB_TRANSFER_INFO = {
   connection_status: "connected",
 };
 
+// /sync/maindata response shape — the Speed Stats widget reads the all-time
+// counters (alltime_dl/alltime_ul) so demo mode shows realistic lifetime
+// totals rather than just the small session deltas above.
+const DEMO_QB_MAINDATA = {
+  rid: 0,
+  full_update: true,
+  server_state: {
+    alltime_dl: 891289600000,
+    alltime_ul: 892323840000,
+    dl_info_speed: 5242880,
+    dl_info_data: 107374182400,
+    up_info_speed: 1048576,
+    up_info_data: 21474836480,
+    connection_status: "connected",
+  },
+};
+
 const DEMO_QB_TORRENTS = [
   {
     hash: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
@@ -991,6 +1008,7 @@ export function getDemoResponse(
     }
     case "qbittorrent": {
       if (normalized === "/transfer/info") return DEMO_QB_TRANSFER_INFO;
+      if (normalized.startsWith("/sync/maindata")) return DEMO_QB_MAINDATA;
       if (normalized.startsWith("/torrents/info")) return DEMO_QB_TORRENTS;
       if (normalized.startsWith("/torrents/files")) return [];
       if (normalized.startsWith("/torrents/trackers")) return [];
