@@ -1,5 +1,14 @@
-import { useState } from "react";
-import { View, Text, ScrollView } from "react-native";
+import { useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  FlatList,
+  RefreshControl,
+  type RefreshControlProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { Image } from "expo-image";
 import {
   Play,
@@ -11,7 +20,7 @@ import {
   Check,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
-import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +44,8 @@ import {
 } from "@/hooks/use-jellyfin";
 import { getJellyfinImageUrl, isJellyfinTranscoding, ticksToMs } from "@/services/jellyfin-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { usePosterCellWidth } from "@/hooks/use-poster-cell";
+import { usePosterCellLayout } from "@/hooks/use-poster-cell";
+import { useUiScale } from "@/hooks/use-ui-scale";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
 import type { JellyfinItem, JellyfinLibrary, JellyfinSession } from "@/lib/types";
@@ -88,11 +98,31 @@ export default function JellyfinScreen() {
   const [recentSortOpen, setRecentSortOpen] = useState(false);
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["jellyfin"]]);
+  const { horizontalPadding } = usePosterCellLayout();
+  const bottomPadding = useScreenBottomPadding();
+  const uiScale = useUiScale();
 
   const jellyfinHealth = healthData?.find((s) => s.id === "jellyfin");
 
-  return (
-    <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
+  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  const contentContainerStyle = {
+    paddingHorizontal: horizontalPadding,
+    paddingTop: 7 * uiScale,
+    paddingBottom: bottomPadding,
+  };
+
+  const refreshCtl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor="#3b82f6"
+      colors={["#3b82f6"]}
+      progressBackgroundColor="#18181b"
+    />
+  );
+
+  const header = (
+    <>
       <ServiceHeader name="Jellyfin" online={jellyfinHealth?.online} serviceId="jellyfin" />
 
       <View className="flex-row items-center gap-2 mb-4">
@@ -124,11 +154,32 @@ export default function JellyfinScreen() {
           />
         )}
       </View>
+    </>
+  );
 
-      {tab === "playing" && <NowPlaying />}
-      {tab === "recent" && <RecentlyAdded sort={recentSort} />}
-      {tab === "resume" && <ContinueWatching />}
-      {tab === "libraries" && <Libraries />}
+  return (
+    <ScreenWrapper scrollable={false}>
+      {tab === "recent" && (
+        <RecentlyAdded
+          sort={recentSort}
+          listHeader={header}
+          refreshControl={refreshCtl}
+          contentContainerStyle={contentContainerStyle}
+        />
+      )}
+      {tab !== "recent" && (
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={contentContainerStyle}
+          refreshControl={refreshCtl}
+          showsVerticalScrollIndicator={false}
+        >
+          {header}
+          {tab === "playing" && <NowPlaying />}
+          {tab === "resume" && <ContinueWatching />}
+          {tab === "libraries" && <Libraries />}
+        </ScrollView>
+      )}
 
       <ActionSheet
         visible={recentSortOpen}
@@ -238,34 +289,60 @@ function SessionCard({ session }: { session: JellyfinSession }) {
   );
 }
 
-function RecentlyAdded({ sort }: { sort: JellyfinRecentSortKey }) {
+function RecentlyAdded({
+  sort,
+  listHeader,
+  refreshControl,
+  contentContainerStyle,
+}: {
+  sort: JellyfinRecentSortKey;
+  listHeader: React.ReactElement;
+  refreshControl: React.ReactElement<RefreshControlProps>;
+  contentContainerStyle: StyleProp<ViewStyle>;
+}) {
   const { data: items, isLoading } = useJellyfinRecentlyAdded();
-  const cellWidth = usePosterCellWidth();
+  const { width: cellWidth, columns, gap } = usePosterCellLayout();
 
-  if (isLoading) {
-    return (
-      <View className="flex-row flex-wrap gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} style={{ width: cellWidth }}>
-            <Skeleton width="100%" height={150} borderRadius={12} />
-            <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
-          </View>
-        ))}
-      </View>
-    );
-  }
-  if (!items?.length) {
+  const sorted = useMemo(() => {
+    if (!items) return [];
+    return [...items].sort((a, b) => compareRecent(a, b, sort));
+  }, [items, sort]);
+
+  const emptyState = useMemo(() => {
+    if (isLoading) {
+      return (
+        <View className="flex-row flex-wrap" style={{ gap }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <View key={i} style={{ width: cellWidth }}>
+              <Skeleton width="100%" height={150} borderRadius={12} />
+              <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
+            </View>
+          ))}
+        </View>
+      );
+    }
     return <EmptyState title="Nothing recently added" />;
-  }
-
-  const sorted = [...items].sort((a, b) => compareRecent(a, b, sort));
+  }, [isLoading, cellWidth, gap]);
 
   return (
-    <View className="flex-row flex-wrap gap-3">
-      {sorted.map((item) => (
-        <MediaPoster key={item.Id} item={item} />
-      ))}
-    </View>
+    <FlatList
+      // numColumns cannot change at runtime without a remount.
+      key={columns}
+      data={sorted}
+      keyExtractor={(item) => item.Id}
+      renderItem={({ item }) => <MediaPoster item={item} />}
+      numColumns={columns}
+      columnWrapperStyle={{ gap, marginBottom: gap }}
+      ListHeaderComponent={listHeader}
+      ListEmptyComponent={emptyState}
+      refreshControl={refreshControl}
+      contentContainerStyle={contentContainerStyle}
+      initialNumToRender={12}
+      maxToRenderPerBatch={12}
+      windowSize={5}
+      removeClippedSubviews
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
@@ -371,7 +448,7 @@ function MediaPoster({ item }: { item: JellyfinItem }) {
   const thumbUrl = getJellyfinImageUrl(item, "Primary", 200, 300);
   const title =
     item.Type === "Episode" && item.SeriesName ? item.SeriesName : item.Name;
-  const cellWidth = usePosterCellWidth();
+  const { width: cellWidth } = usePosterCellLayout();
 
   return (
     <View style={{ width: cellWidth }}>
