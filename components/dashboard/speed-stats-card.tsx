@@ -150,12 +150,16 @@ function buildTotalLines(
   alltime: number,
   session: number,
 ): { label: string; value: string }[] {
+  // Labels stay short ("total"/"session") so they fit inside the pill at
+  // uiScale 1.3 — longer words like "all-time" overflow the 50%-width pill
+  // even with min-w-0 + ellipsize. In Both mode the two rows are adjacent,
+  // so "total" reads unambiguously as "lifetime" against the "session" row.
   switch (scope) {
     case "session":
       return [{ label: "session", value: formatBytes(session) }];
     case "both":
       return [
-        { label: "all-time", value: formatBytes(alltime) },
+        { label: "total", value: formatBytes(alltime) },
         { label: "session", value: formatBytes(session) },
       ];
     case "alltime":
@@ -181,10 +185,24 @@ function SpeedPill({
   return (
     <View className={`flex-1 flex-row items-center gap-3 rounded-xl p-3 ${bgClass}`}>
       <Icon icon={ArrowIcon} size={18} color={isDown ? "#3b82f6" : "#22c55e"} />
-      <View>
-        <Text className={`text-lg font-bold ${colorClass}`}>{speed}</Text>
+      {/* `flex-1 min-w-0` is what lets the text column actually shrink inside
+          the flex row — without min-w-0 a long subtitle (e.g. "1.23 TB
+          session" at uiScale 1.3) keeps the intrinsic width and pushes the
+          pill past 50% of the card. numberOfLines={1} then ellipsizes the
+          worst-case string cleanly. */}
+      <View className="flex-1 min-w-0">
+        <Text
+          className={`text-lg font-bold ${colorClass}`}
+          numberOfLines={1}
+        >
+          {speed}
+        </Text>
         {totalLines.map((line) => (
-          <Text key={line.label} className="text-zinc-500 text-xs">
+          <Text
+            key={line.label}
+            className="text-zinc-500 text-xs"
+            numberOfLines={1}
+          >
             {line.value} {line.label}
           </Text>
         ))}
