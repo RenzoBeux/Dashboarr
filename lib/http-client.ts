@@ -582,8 +582,11 @@ async function runConnectionProbe(
     }
 
     case "jellyfin": {
-      // /Users/Me requires X-Emby-Token; bad token → 401.
-      const url = buildUrl(baseUrl, defaults.apiBasePath, "/Users/Me");
+      // /System/Info validates auth without needing a user-bound token —
+      // /Users/Me returns 400 for server-wide API keys because they lack a
+      // user context. /System/Info accepts both API keys and user tokens, so
+      // it matches every Jellyfin auth shape this app supports.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/System/Info");
       const headers = makeHeaders();
       if (apiKey) headers.set("X-Emby-Token", apiKey);
       const res = await fetch(url, { method: "GET", headers, signal });

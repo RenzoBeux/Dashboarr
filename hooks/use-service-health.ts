@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { checkInstanceHealth } from "@/lib/http-client";
+import { qbHealthCheck } from "@/services/qbittorrent-api";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_IDS, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type {
@@ -46,6 +47,21 @@ export function useServiceHealth() {
                   instanceName: inst.name,
                   online: false,
                   status: "offline",
+                };
+              }
+              // qBittorrent routes through its own session-aware probe so the
+              // poll doesn't POST /auth/login every cycle — that was racing
+              // with the app's qbLogin cookie cache and tripping qBT's
+              // brute-force lockout on transient hiccups (see #105, #106).
+              if (id === "qbittorrent") {
+                const start = Date.now();
+                const status = await qbHealthCheck(inst.id);
+                return {
+                  instanceId: inst.id,
+                  instanceName: inst.name,
+                  online: status !== "offline",
+                  status,
+                  responseTime: status === "ok" ? Date.now() - start : undefined,
                 };
               }
               const result = await checkInstanceHealth(id, inst.id);
