@@ -95,16 +95,21 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
 
   let dlSpeed = 0;
   let upSpeed = 0;
-  let dlTotal = 0;
-  let upTotal = 0;
+  let dlAlltime = 0;
+  let upAlltime = 0;
+  let dlSession = 0;
+  let upSession = 0;
   for (const q of qbitQueries) {
     if (!q.data) continue;
     dlSpeed += q.data.dl_info_speed;
     upSpeed += q.data.up_info_speed;
-    // Lifetime totals — persist across qBit restarts. See #104 and the
-    // QBServerState comment in lib/types.ts.
-    dlTotal += q.data.alltime_dl;
-    upTotal += q.data.alltime_ul;
+    // server_state carries both counters — alltime persists across restarts,
+    // session resets on each qBit start. The widget's `totalsScope` setting
+    // picks which subtitle(s) to render (see #104).
+    dlAlltime += q.data.alltime_dl;
+    upAlltime += q.data.alltime_ul;
+    dlSession += q.data.dl_info_data;
+    upSession += q.data.up_info_data;
   }
   for (const q of sabQueries) {
     if (!q.data) continue;
@@ -119,31 +124,54 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // would silently understate the stack and confuse the user. The settings
   // toggle warns about this; the card just stops showing the misleading number.
   const showDlTotal = sabInstances.length === 0;
+  const scope = settings.totalsScope;
+
+  const dlTotalLines = buildTotalLines(scope, dlAlltime, dlSession);
+  const upTotalLines = buildTotalLines(scope, upAlltime, upSession);
 
   return (
     <Card className="flex-row gap-3">
       <SpeedPill
         direction="down"
         speed={formatSpeed(dlSpeed)}
-        total={showDlTotal ? formatBytes(dlTotal) : null}
+        totalLines={showDlTotal ? dlTotalLines : []}
       />
       <SpeedPill
         direction="up"
         speed={formatSpeed(upSpeed)}
-        total={formatBytes(upTotal)}
+        totalLines={upTotalLines}
       />
     </Card>
   );
 }
 
+function buildTotalLines(
+  scope: SpeedStatsSettingsValue["totalsScope"],
+  alltime: number,
+  session: number,
+): { label: string; value: string }[] {
+  switch (scope) {
+    case "session":
+      return [{ label: "session", value: formatBytes(session) }];
+    case "both":
+      return [
+        { label: "all-time", value: formatBytes(alltime) },
+        { label: "session", value: formatBytes(session) },
+      ];
+    case "alltime":
+    default:
+      return [{ label: "total", value: formatBytes(alltime) }];
+  }
+}
+
 function SpeedPill({
   direction,
   speed,
-  total,
+  totalLines,
 }: {
   direction: "down" | "up";
   speed: string;
-  total: string | null;
+  totalLines: { label: string; value: string }[];
 }) {
   const isDown = direction === "down";
   const ArrowIcon = isDown ? ArrowDown : ArrowUp;
@@ -155,9 +183,11 @@ function SpeedPill({
       <Icon icon={ArrowIcon} size={18} color={isDown ? "#3b82f6" : "#22c55e"} />
       <View>
         <Text className={`text-lg font-bold ${colorClass}`}>{speed}</Text>
-        {total !== null && (
-          <Text className="text-zinc-500 text-xs">{total} total</Text>
-        )}
+        {totalLines.map((line) => (
+          <Text key={line.label} className="text-zinc-500 text-xs">
+            {line.value} {line.label}
+          </Text>
+        ))}
       </View>
     </View>
   );

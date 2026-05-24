@@ -12,6 +12,21 @@ import {
   resolveBoundInstances,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { ChipGroup } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+
+// Which counter the "X GB total" subtitle reflects on the pill.
+//   alltime — qBittorrent's lifetime totals (alltime_dl/alltime_ul). Survives
+//             qBit restarts. Default — matches qB's own User Statistics view.
+//   session — per-session totals (dl_info_data/up_info_data). Resets every
+//             time qBit restarts. Old pre-#104 behavior.
+//   both    — render both rows stacked under the speed.
+export type SpeedStatsTotalsScope = "alltime" | "session" | "both";
+
+const TOTALS_SCOPE_OPTIONS: readonly { value: SpeedStatsTotalsScope; label: string }[] = [
+  { value: "alltime", label: "All-time" },
+  { value: "session", label: "Session" },
+  { value: "both", label: "Both" },
+];
 
 export interface SpeedStatsSettingsValue extends Record<string, unknown> {
   // Which qBittorrent instances to graph. "all" sums every enabled instance's
@@ -24,12 +39,15 @@ export interface SpeedStatsSettingsValue extends Record<string, unknown> {
   // Which SAB instances to fold in when `includeSab` is on. Same shape as
   // `instanceIds`; "all" auto-includes newly-added SAB instances.
   sabInstanceIds: InstanceBindingValue;
+  // Which transfer-counter the subtitle reflects. See SpeedStatsTotalsScope.
+  totalsScope: SpeedStatsTotalsScope;
 }
 
 export const SPEED_STATS_DEFAULT_SETTINGS: SpeedStatsSettingsValue = {
   instanceIds: INSTANCE_BINDING_ALL,
   includeSab: false,
   sabInstanceIds: INSTANCE_BINDING_ALL,
+  totalsScope: "alltime",
 };
 
 export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -74,6 +92,15 @@ export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
           serviceId="qbittorrent"
           value={settings.instanceIds}
           onChange={(instanceIds) => update({ instanceIds })}
+        />
+      )}
+
+      {qbitInstances.length > 0 && (
+        <ChipGroup
+          label="Totals shown"
+          options={TOTALS_SCOPE_OPTIONS}
+          value={settings.totalsScope}
+          onChange={(totalsScope) => update({ totalsScope })}
         />
       )}
 
