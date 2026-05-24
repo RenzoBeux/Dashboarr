@@ -47,6 +47,7 @@ import { useBackendStore } from "@/store/backend-store";
 import { queryClient } from "@/lib/query-client";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
+import { normalizeServiceUrl } from "@/lib/url-validation";
 import { generateInstanceId } from "@/lib/uuid";
 
 export interface WakeOnLanDevice {
@@ -1902,7 +1903,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const useRemote =
       inst.useRemote ||
       (state.autoSwitchNetwork && state.networkAwayFromHome);
-    return useRemote ? inst.remoteUrl : inst.localUrl;
+    // Normalize on read so every consumer (serviceRequest, pingService, health
+    // probes, widgets) sees a scheme-prefixed URL even when the stored value
+    // was saved without one. The editor's onBlur normalizes on edit, but
+    // historical/migrated values can lack http://, which causes fetch to
+    // throw "Invalid URL" — see #106.
+    return normalizeServiceUrl(useRemote ? inst.remoteUrl : inst.localUrl);
   },
 
   getActiveDashboard: () => {
