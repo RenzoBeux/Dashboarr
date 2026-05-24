@@ -4,7 +4,7 @@ import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getTransferInfo } from "@/services/qbittorrent-api";
+import { getServerState } from "@/services/qbittorrent-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
@@ -36,13 +36,16 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     ? resolveBoundInstances(settings.sabInstanceIds, allSabInstances)
     : [];
 
-  // Fan out across the resolved instances and sum their transfer counters so
-  // a single Speed pill represents the whole stack at a glance. Each instance
-  // keeps its own cache slot via the [serviceId, instanceId, …] queryKey shape.
+  // Fan out across the resolved instances and sum their counters so a single
+  // Speed pill represents the whole stack at a glance. Each instance keeps
+  // its own cache slot via the [serviceId, instanceId, …] queryKey shape.
+  // Uses /sync/maindata (server_state) instead of /transfer/info because
+  // only server_state carries lifetime totals (alltime_dl/alltime_ul) — the
+  // dashboard "X GB total" used to reset when qBit restarted (#104).
   const qbitQueries = useQueries({
     queries: qbitInstances.map((inst) => ({
-      queryKey: ["qbittorrent", inst.id, "transfer"] as const,
-      queryFn: () => getTransferInfo(inst.id),
+      queryKey: ["qbittorrent", inst.id, "serverState"] as const,
+      queryFn: () => getServerState(inst.id),
       refetchInterval: POLLING_INTERVALS.transferSpeed,
     })),
   });
@@ -98,8 +101,10 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     if (!q.data) continue;
     dlSpeed += q.data.dl_info_speed;
     upSpeed += q.data.up_info_speed;
-    dlTotal += q.data.dl_info_data;
-    upTotal += q.data.up_info_data;
+    // Lifetime totals — persist across qBit restarts. See #104 and the
+    // QBServerState comment in lib/types.ts.
+    dlTotal += q.data.alltime_dl;
+    upTotal += q.data.alltime_ul;
   }
   for (const q of sabQueries) {
     if (!q.data) continue;

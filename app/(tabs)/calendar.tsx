@@ -366,19 +366,24 @@ export default function CalendarScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      {/* Month header */}
-      <View className="flex-row items-center justify-between mb-3">
-        <View className="flex-row items-center gap-1">
-          <Pressable onPress={() => goMonth(-1)} className="p-2 active:opacity-70">
-            <Icon icon={ChevronLeft} size={ICON.LG} color="#a1a1aa" />
-          </Pressable>
-          <Text className="text-zinc-100 text-lg font-bold min-w-[12rem] text-center">
-            {MONTH_NAMES[month]} {year}
-          </Text>
-          <Pressable onPress={() => goMonth(1)} className="p-2 active:opacity-70">
-            <Icon icon={ChevronRight} size={ICON.LG} color="#a1a1aa" />
-          </Pressable>
-        </View>
+      {/* Month header. The month label uses `flex-1` (not a fixed min-width)
+          so chevrons + label + Today pill stay on-screen at every uiScale.
+          The previous `min-w-[12rem]` was hard-coded for scale 1.0 and pushed
+          Today off the right edge at 1.3 — see #99. `numberOfLines={1}` keeps
+          the label on a single line if it ever still runs out of room. */}
+      <View className="flex-row items-center mb-3 gap-1">
+        <Pressable onPress={() => goMonth(-1)} className="p-2 active:opacity-70">
+          <Icon icon={ChevronLeft} size={ICON.LG} color="#a1a1aa" />
+        </Pressable>
+        <Text
+          className="text-zinc-100 text-lg font-bold flex-1 text-center"
+          numberOfLines={1}
+        >
+          {MONTH_NAMES[month]} {year}
+        </Text>
+        <Pressable onPress={() => goMonth(1)} className="p-2 active:opacity-70">
+          <Icon icon={ChevronRight} size={ICON.LG} color="#a1a1aa" />
+        </Pressable>
         <Pressable
           onPress={goToday}
           className="px-3 py-1.5 rounded-lg bg-primary/20 active:opacity-70"
