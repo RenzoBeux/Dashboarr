@@ -6,9 +6,19 @@ const SCREEN_PADDING_REM = 1;
 const CELL_GAP_REM = 0.75;
 const REM_BASE = 14;
 
+export interface PosterCellLayout {
+  width: number;
+  columns: number;
+  gap: number;
+  horizontalPadding: number;
+}
+
 /**
- * Cell width (in dp) for a poster grid that's 3-up at default scale and
- * drops to 2-up at any larger accessibility scale.
+ * Layout for a poster grid that's 3-up at default scale and drops to 2-up at
+ * any larger accessibility scale. Returns the per-cell width plus the column
+ * count and gap/padding values so callers driving virtualized lists
+ * (FlatList numColumns / columnWrapperStyle) can stay in sync with the
+ * legacy flex-wrap renderers.
  *
  * Why numeric instead of percentage classes (`w-[30%]` etc.):
  * With `inlineRem: false`, gap-3 and px-4 scale at runtime via the rem
@@ -19,14 +29,19 @@ const REM_BASE = 14;
  *
  * Apply via inline `style={{ width: cellWidth }}`, NOT className.
  */
-export function usePosterCellWidth(): number {
+export function usePosterCellLayout(): PosterCellLayout {
   const { width: screenWidth } = useWindowDimensions();
   const scale = useUiScale();
-  const padding = SCREEN_PADDING_REM * REM_BASE * scale;
+  const horizontalPadding = SCREEN_PADDING_REM * REM_BASE * scale;
   const gap = CELL_GAP_REM * REM_BASE * scale;
   // 3 cols at Normal, 2 cols at Large+ so posters get noticeably bigger.
-  const cols = scale >= 1.15 ? 2 : 3;
-  const contentWidth = screenWidth - 2 * padding;
+  const columns = scale >= 1.15 ? 2 : 3;
+  const contentWidth = screenWidth - 2 * horizontalPadding;
   // Floor avoids sub-pixel rounding pushing the row over container width.
-  return Math.floor((contentWidth - (cols - 1) * gap) / cols);
+  const width = Math.floor((contentWidth - (columns - 1) * gap) / columns);
+  return { width, columns, gap, horizontalPadding };
+}
+
+export function usePosterCellWidth(): number {
+  return usePosterCellLayout().width;
 }

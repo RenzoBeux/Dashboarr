@@ -1,4 +1,13 @@
-import { View, Text, Pressable } from "react-native";
+import { useMemo } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  FlatList,
+  type RefreshControlProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { Image } from "expo-image";
 import type { LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -6,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useServiceImage } from "@/hooks/use-service-image";
-import { usePosterCellWidth } from "@/hooks/use-poster-cell";
+import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 
 export type MonitorFilter = "monitored" | "unmonitored" | "all";
 
@@ -44,6 +53,20 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
   renderFooter: (item: T) => string;
   onItemPress: (item: T) => void;
   onItemLongPress: (item: T) => void;
+  /**
+   * Rendered above the grid inside the FlatList so it scrolls with the
+   * content. Use this for the screen's header (service header, tab chips,
+   * filter button) when this grid is the screen's scroll container.
+   */
+  ListHeaderComponent?: React.ReactElement | null;
+  /** Pull-to-refresh; forwarded directly to the underlying FlatList. */
+  refreshControl?: React.ReactElement<RefreshControlProps>;
+  /**
+   * Extra contentContainerStyle merged on top of the grid's row spacing —
+   * use this for screen padding (horizontal + bottom) when this grid is the
+   * screen's scroll container.
+   */
+  contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
 export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>({
@@ -59,40 +82,46 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   renderFooter,
   onItemPress,
   onItemLongPress,
+  ListHeaderComponent,
+  refreshControl,
+  contentContainerStyle,
 }: MonitoredLibraryGridProps<T, S>) {
-  const cellWidth = usePosterCellWidth();
+  const { width: cellWidth, columns, gap } = usePosterCellLayout();
 
-  if (isLoading) {
-    return (
-      <View className="flex-row flex-wrap gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <View key={i} style={{ width: cellWidth }}>
-            <Skeleton width="100%" height={150} borderRadius={12} />
-            <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
-          </View>
-        ))}
-      </View>
-    );
-  }
-  if (error) {
-    return <ErrorBanner error={error} title="Failed to load library" />;
-  }
-  if (!data?.length) {
-    return (
-      <EmptyState
-        icon={<Icon icon={placeholderIcon} size={32} color="#71717a" />}
-        title={`No ${nounPlural} in library`}
-      />
-    );
-  }
+  const sorted = useMemo(() => {
+    if (!data) return [];
+    const filtered = data.filter((item) => {
+      if (monitorFilter === "monitored") return item.monitored;
+      if (monitorFilter === "unmonitored") return !item.monitored;
+      return true;
+    });
+    return [...filtered].sort((a, b) => compare(a, b, sort));
+  }, [data, monitorFilter, sort, compare]);
 
-  const filtered = data.filter((item) => {
-    if (monitorFilter === "monitored") return item.monitored;
-    if (monitorFilter === "unmonitored") return !item.monitored;
-    return true;
-  });
-
-  if (!filtered.length) {
+  const emptyState = useMemo(() => {
+    if (isLoading) {
+      return (
+        <View className="flex-row flex-wrap" style={{ gap }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <View key={i} style={{ width: cellWidth }}>
+              <Skeleton width="100%" height={150} borderRadius={12} />
+              <Skeleton width="75%" height={10} borderRadius={4} className="mt-1.5" />
+            </View>
+          ))}
+        </View>
+      );
+    }
+    if (error) {
+      return <ErrorBanner error={error} title="Failed to load library" />;
+    }
+    if (!data?.length) {
+      return (
+        <EmptyState
+          icon={<Icon icon={placeholderIcon} size={32} color="#71717a" />}
+          title={`No ${nounPlural} in library`}
+        />
+      );
+    }
     const title =
       monitorFilter === "monitored"
         ? `No monitored ${nounPlural}`
@@ -105,15 +134,16 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
         title={title}
       />
     );
-  }
-
-  const sorted = [...filtered].sort((a, b) => compare(a, b, sort));
+  }, [isLoading, error, data, nounPlural, monitorFilter, placeholderIcon, cellWidth, gap]);
 
   return (
-    <View className="flex-row flex-wrap gap-3">
-      {sorted.map((item) => (
+    <FlatList
+      // numColumns cannot change at runtime without a remount.
+      key={columns}
+      data={sorted}
+      keyExtractor={(item) => String(item.id)}
+      renderItem={({ item }) => (
         <LibraryPoster
-          key={item.id}
           item={item}
           serviceId={serviceId}
           placeholderIcon={placeholderIcon}
@@ -121,8 +151,19 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
           onPress={() => onItemPress(item)}
           onLongPress={() => onItemLongPress(item)}
         />
-      ))}
-    </View>
+      )}
+      numColumns={columns}
+      columnWrapperStyle={{ gap, marginBottom: gap }}
+      ListHeaderComponent={ListHeaderComponent}
+      ListEmptyComponent={emptyState}
+      refreshControl={refreshControl}
+      contentContainerStyle={contentContainerStyle}
+      initialNumToRender={12}
+      maxToRenderPerBatch={12}
+      windowSize={5}
+      removeClippedSubviews
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
@@ -143,7 +184,7 @@ function LibraryPoster<T extends MonitoredItem>({
 }) {
   const poster = item.images.find((i) => i.coverType === "poster");
   const { src, onError } = useServiceImage(poster, serviceId);
-  const cellWidth = usePosterCellWidth();
+  const { width: cellWidth } = usePosterCellLayout();
 
   return (
     <Pressable

@@ -1,9 +1,17 @@
 import { useState, useMemo } from "react";
-import { View, Text, Pressable, Alert, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  Alert,
+  ScrollView,
+  RefreshControl,
+  type RefreshControlProps,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Search, Tv, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
-import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -30,6 +38,8 @@ import {
 } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { usePosterCellLayout } from "@/hooks/use-poster-cell";
+import { useUiScale } from "@/hooks/use-ui-scale";
 import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
 import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
@@ -90,6 +100,9 @@ export default function TVScreen() {
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
+  const { horizontalPadding } = usePosterCellLayout();
+  const bottomPadding = useScreenBottomPadding();
+  const uiScale = useUiScale();
 
   const searchSeries = useSearchForSeries();
   const searchEpisodes = useSearchForEpisodes();
@@ -191,8 +204,25 @@ export default function TVScreen() {
     setSheetTarget({ kind: "calendar", item: ep });
   };
 
-  return (
-    <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
+  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  const contentContainerStyle = {
+    paddingHorizontal: horizontalPadding,
+    paddingTop: 7 * uiScale,
+    paddingBottom: bottomPadding,
+  };
+
+  const refreshCtl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor="#3b82f6"
+      colors={["#3b82f6"]}
+      progressBackgroundColor="#18181b"
+    />
+  );
+
+  const header = (
+    <>
       <View className="flex-row items-center justify-between">
         <ServiceHeader name="TV Shows" online={sonarrHealth?.online} serviceId="sonarr" />
         <Pressable
@@ -230,9 +260,32 @@ export default function TVScreen() {
           />
         </View>
       )}
+    </>
+  );
 
-      {tab === "library" && <SeriesLibrary monitorFilter={monitorFilter} sort={sort} onLongPress={openSeriesSheet} />}
-      {tab === "calendar" && <CalendarView onLongPress={openCalendarSheet} />}
+  return (
+    <ScreenWrapper scrollable={false}>
+      {tab === "library" && (
+        <SeriesLibrary
+          monitorFilter={monitorFilter}
+          sort={sort}
+          onLongPress={openSeriesSheet}
+          listHeader={header}
+          refreshControl={refreshCtl}
+          contentContainerStyle={contentContainerStyle}
+        />
+      )}
+      {tab === "calendar" && (
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={contentContainerStyle}
+          refreshControl={refreshCtl}
+          showsVerticalScrollIndicator={false}
+        >
+          {header}
+          <CalendarView onLongPress={openCalendarSheet} />
+        </ScrollView>
+      )}
 
       <ActionSheet
         visible={sheetTarget !== null}
@@ -264,10 +317,16 @@ function SeriesLibrary({
   monitorFilter,
   sort,
   onLongPress,
+  listHeader,
+  refreshControl,
+  contentContainerStyle,
 }: {
   monitorFilter: MonitorFilter;
   sort: SeriesSortKey;
   onLongPress: (series: SonarrSeries) => void;
+  listHeader: React.ReactElement;
+  refreshControl: React.ReactElement<RefreshControlProps>;
+  contentContainerStyle: React.ComponentProps<typeof MonitoredLibraryGrid>["contentContainerStyle"];
 }) {
   const { data: series, isLoading, error } = useSonarrSeries();
   const router = useRouter();
@@ -286,6 +345,9 @@ function SeriesLibrary({
       renderFooter={(s) => `${s.seasonCount} season${s.seasonCount !== 1 ? "s" : ""}`}
       onItemPress={(s) => router.push(`/series/${s.id}`)}
       onItemLongPress={onLongPress}
+      ListHeaderComponent={listHeader}
+      refreshControl={refreshControl}
+      contentContainerStyle={contentContainerStyle}
     />
   );
 }

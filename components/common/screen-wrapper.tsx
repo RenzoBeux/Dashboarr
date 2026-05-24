@@ -15,6 +15,19 @@ cssInterop(KeyboardAwareScrollView, {
 
 const SCROLL_BOTTOM_PADDING = 24;
 
+/**
+ * Bottom padding (in dp) that a screen-level scroll container needs so its
+ * content clears the tab bar. Matches the value ScreenWrapper uses
+ * internally — use this from custom scroll containers (e.g. a FlatList that
+ * replaces ScreenWrapper as the screen scroller) so behavior stays in sync
+ * with the iOS 26 floating-glass tab bar.
+ */
+export function useScreenBottomPadding(): number {
+  const tabBarHeight = useContext(BottomTabBarHeightContext);
+  const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
+  return SCROLL_BOTTOM_PADDING + (usesFloatingTabBar ? tabBarHeight : 0);
+}
+
 interface ScreenWrapperProps extends ViewProps {
   scrollable?: boolean;
   refreshing?: boolean;
@@ -46,8 +59,7 @@ export function ScreenWrapper({
       ? ["top", "left", "right"]
       : ["top", "left", "right", "bottom"];
   const safeAreaEdges = baseEdges as readonly ("top" | "left" | "right" | "bottom")[];
-  const scrollPaddingBottom =
-    SCROLL_BOTTOM_PADDING + (usesFloatingTabBar ? tabBarHeight : 0);
+  const scrollPaddingBottom = useScreenBottomPadding();
 
   if (scrollable) {
     return (
