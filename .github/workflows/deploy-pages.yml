@@ -1,0 +1,48 @@
+name: Deploy GitHub Pages
+
+# Publishes the static landing page in docs/ to GitHub Pages.
+# Only runs when files under docs/ change — this replaces the legacy
+# "deploy from branch" mode, which rebuilt on EVERY push to main
+# regardless of whether the site actually changed.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy-pages.yml'
+  # Allow a manual redeploy from the Actions tab when needed.
+  workflow_dispatch:
+
+# One deployment at a time; never cancel an in-progress publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload docs/ artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
