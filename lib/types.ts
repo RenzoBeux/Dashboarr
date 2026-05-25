@@ -73,6 +73,11 @@ export interface QBTorrent {
   num_seeds: number;
   num_leechs: number;
   ratio: number;
+  // Per-torrent share limits from /torrents/info, sharing the setShareLimits
+  // sentinels: -2 = use global limit, -1 = no limit. seeding_time_limit is in
+  // minutes. (Elapsed seeding_time, by contrast, is reported in seconds.)
+  ratio_limit: number;
+  seeding_time_limit: number;
   eta: number;
   state: TorrentState;
   category: string;

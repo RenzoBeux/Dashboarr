@@ -500,6 +500,35 @@ export function setUploadLimit(
   );
 }
 
+// --- Share Limits (per-torrent) ---
+
+// /torrents/setShareLimits. ratioLimit is a float; seedingTimeLimit and
+// inactiveSeedingTimeLimit are in minutes. For all three, -2 = use the global
+// limit and -1 = no limit. We don't surface the inactive-seeding limit in the
+// UI, so we always send -2 to leave the user's global setting untouched.
+export function setShareLimits(
+  hashes: string[],
+  ratioLimit: number,
+  seedingTimeLimit: number,
+  instanceId?: string,
+): Promise<void> {
+  const body = new URLSearchParams({
+    hashes: hashes.join("|"),
+    ratioLimit: String(ratioLimit),
+    seedingTimeLimit: String(seedingTimeLimit),
+    inactiveSeedingTimeLimit: "-2",
+  }).toString();
+  return qbRequest(
+    "/torrents/setShareLimits",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    },
+    instanceId,
+  );
+}
+
 // --- Alternative Speed Mode ---
 
 // /transfer/speedLimitsMode returns "0" (off) or "1" (on) as plain text.

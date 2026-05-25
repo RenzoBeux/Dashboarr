@@ -10,6 +10,7 @@ import {
   addTorrentMagnet,
   setDownloadLimit,
   setUploadLimit,
+  setShareLimits,
   getSpeedLimitsMode,
   toggleSpeedLimitsMode,
   getSpeedPreferences,
@@ -196,6 +197,27 @@ export function useAddTorrent(instanceId?: string) {
   const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
   return useMutation({
     mutationFn: (magnetUri: string) => addTorrentMagnet(magnetUri, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
+    },
+  });
+}
+
+// --- Share Limits ---
+
+export function useSetShareLimits(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
+  return useMutation({
+    mutationFn: ({
+      hashes,
+      ratioLimit,
+      seedingTimeLimit,
+    }: {
+      hashes: string[];
+      ratioLimit: number;
+      seedingTimeLimit: number;
+    }) => setShareLimits(hashes, ratioLimit, seedingTimeLimit, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
     },
