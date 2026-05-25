@@ -30,12 +30,14 @@ import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
 import {
   useSonarrSeries,
+  useSonarrQueue,
   useSonarrCalendar,
   useSearchForSeries,
   useSearchForEpisodes,
   useToggleSeriesMonitored,
   useDeleteSeries,
 } from "@/hooks/use-sonarr";
+import { BAR_KIND_COLOR, cornerColorFor, sonarrBarKind } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
@@ -329,7 +331,13 @@ function SeriesLibrary({
   contentContainerStyle: React.ComponentProps<typeof MonitoredLibraryGrid>["contentContainerStyle"];
 }) {
   const { data: series, isLoading, error } = useSonarrSeries();
+  const { data: queue } = useSonarrQueue();
   const router = useRouter();
+
+  const downloading = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.seriesId)),
+    [queue],
+  );
 
   return (
     <MonitoredLibraryGrid
@@ -343,6 +351,10 @@ function SeriesLibrary({
       placeholderIcon={Tv}
       nounPlural="shows"
       renderFooter={(s) => `${s.seasonCount} season${s.seasonCount !== 1 ? "s" : ""}`}
+      posterStatus={(s) => ({
+        barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
+        cornerColor: cornerColorFor(s.status),
+      })}
       onItemPress={(s) => router.push(`/series/${s.id}`)}
       onItemLongPress={onLongPress}
       ListHeaderComponent={listHeader}

@@ -16,6 +16,13 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
+import { useUiScale } from "@/hooks/use-ui-scale";
+
+/** Sonarr/Radarr-style poster overlay: bottom status bar + top-right corner triangle. */
+export interface PosterStatus {
+  barColor: string | null;
+  cornerColor: string | null;
+}
 
 export type MonitorFilter = "monitored" | "unmonitored" | "all";
 
@@ -51,6 +58,12 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
   nounPlural: string;
   /** Footer line under the poster title (e.g. year or season count). */
   renderFooter: (item: T) => string;
+  /**
+   * Sonarr/Radarr-style status overlay for each poster (bottom color bar +
+   * corner triangle). Computed at the screen level since it needs the download
+   * queue. Omit to render plain posters.
+   */
+  posterStatus?: (item: T) => PosterStatus;
   onItemPress: (item: T) => void;
   onItemLongPress: (item: T) => void;
   /**
@@ -80,6 +93,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   placeholderIcon,
   nounPlural,
   renderFooter,
+  posterStatus,
   onItemPress,
   onItemLongPress,
   ListHeaderComponent,
@@ -148,6 +162,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
           serviceId={serviceId}
           placeholderIcon={placeholderIcon}
           footer={renderFooter(item)}
+          status={posterStatus?.(item)}
           onPress={() => onItemPress(item)}
           onLongPress={() => onItemLongPress(item)}
         />
@@ -172,6 +187,7 @@ function LibraryPoster<T extends MonitoredItem>({
   serviceId,
   placeholderIcon,
   footer,
+  status,
   onPress,
   onLongPress,
 }: {
@@ -179,6 +195,7 @@ function LibraryPoster<T extends MonitoredItem>({
   serviceId: "radarr" | "sonarr";
   placeholderIcon: LucideIcon;
   footer: string;
+  status?: PosterStatus;
   onPress: () => void;
   onLongPress: () => void;
 }) {
@@ -194,25 +211,59 @@ function LibraryPoster<T extends MonitoredItem>({
       style={{ width: cellWidth }}
       className="active:opacity-80"
     >
-      {src ? (
-        <Image
-          source={{ uri: src }}
-          className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={200}
-          recyclingKey={src}
-          onError={onError}
-        />
-      ) : (
-        <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Icon icon={placeholderIcon} size={24} color="#71717a" />
-        </View>
-      )}
+      <View className="relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-surface-light">
+        {src ? (
+          <Image
+            source={{ uri: src }}
+            className="w-full h-full"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={src}
+            onError={onError}
+          />
+        ) : (
+          <View className="w-full h-full items-center justify-center">
+            <Icon icon={placeholderIcon} size={24} color="#71717a" />
+          </View>
+        )}
+        {status?.cornerColor ? <PosterCornerTriangle color={status.cornerColor} /> : null}
+        {status?.barColor ? (
+          <View
+            className="absolute bottom-0 left-0 right-0 h-1.5"
+            style={{ backgroundColor: status.barColor }}
+          />
+        ) : null}
+      </View>
       <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
         {item.title}
       </Text>
       <Text className="text-zinc-600 text-xs">{footer}</Text>
     </Pressable>
+  );
+}
+
+/**
+ * Top-right corner triangle, replicating the *arr poster ribbon. Built with the
+ * border-trick (a box with two adjacent borders, the others transparent). Size
+ * is multiplied by the UI scale so it grows with the accessibility setting.
+ */
+function PosterCornerTriangle({ color }: { color: string }) {
+  const uiScale = useUiScale();
+  const size = Math.round(20 * uiScale);
+  // Mirrors Sonarr's CSS (border-width: 0 N N 0; right border colored, bottom
+  // transparent) → right-angle at the top-right corner.
+  return (
+    <View
+      className="absolute top-0 right-0"
+      style={{
+        width: 0,
+        height: 0,
+        borderRightWidth: size,
+        borderBottomWidth: size,
+        borderRightColor: color,
+        borderBottomColor: "transparent",
+      }}
+    />
   );
 }

@@ -43,6 +43,7 @@ import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { mediumHaptic } from "@/lib/haptics";
+import { BAR_KIND_COLOR, cornerColorFor, radarrBarKind } from "@/lib/arr-poster-status";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 
 type MovieSheetTarget =
@@ -321,7 +322,13 @@ function MovieLibrary({
   contentContainerStyle: React.ComponentProps<typeof MonitoredLibraryGrid>["contentContainerStyle"];
 }) {
   const { data: movies, isLoading, error } = useRadarrMovies();
+  const { data: queue } = useRadarrQueue();
   const router = useRouter();
+
+  const downloading = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+    [queue],
+  );
 
   return (
     <MonitoredLibraryGrid
@@ -335,6 +342,10 @@ function MovieLibrary({
       placeholderIcon={Film}
       nounPlural="movies"
       renderFooter={(m) => String(m.year)}
+      posterStatus={(m) => ({
+        barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
+        cornerColor: cornerColorFor(m.status),
+      })}
       onItemPress={(m) => router.push(`/movie/${m.id}`)}
       onItemLongPress={onLongPress}
       ListHeaderComponent={listHeader}
