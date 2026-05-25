@@ -97,6 +97,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "./plugins/withCleartextTraffic",
     "./plugins/withDevVariant",
     "./plugins/withFmtConstevalFix",
+    "./plugins/withInsecureTls",
     [
       "expo-location",
       {

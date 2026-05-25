@@ -76,6 +76,12 @@ export interface ServiceConfig {
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+  // v23: opt this server out of TLS certificate validation (accept self-signed
+  // / otherwise-invalid certs). Per-instance and off by default. The hostnames
+  // of instances with this on are pushed to the native layer (see
+  // lib/insecure-tls.ts), which bypasses trust evaluation for exactly those
+  // hosts. Absent/undefined behaves like false.
+  ignoreCertErrors?: boolean;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
@@ -418,6 +424,7 @@ function defaultServiceConfig(id: ServiceId): ServiceConfig {
     localUrl: "",
     remoteUrl: "",
     useRemote: false,
+    ignoreCertErrors: false,
   };
 }
 

@@ -22,6 +22,7 @@ import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
 import { useNetworkAutoSwitch } from "@/hooks/use-network";
 import { pushConfigSnapshot } from "@/services/backend-api";
+import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { ToastContainer } from "@/components/ui/toast";
 import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
@@ -163,6 +164,24 @@ function UiScaleBridge() {
   return null;
 }
 
+// Keeps the native TLS-bypass allowlist in lockstep with config: which hosts
+// the user opted out of certificate validation for. Pushes once on hydrate and
+// again on every config change (the sync itself dedupes, so unrelated changes
+// are cheap). Without this the native module would never learn the allowlist
+// and every connection would validate certs normally.
+function InsecureTlsBridge() {
+  const configHydrated = useConfigStore((s) => s.hydrated);
+
+  useEffect(() => {
+    if (!configHydrated) return;
+    syncInsecureHosts();
+    const unsub = useConfigStore.subscribe(syncInsecureHosts);
+    return unsub;
+  }, [configHydrated]);
+
+  return null;
+}
+
 function ConfigSyncBridge() {
   const sharedSecret = useBackendStore((s) => s.sharedSecret);
   const backendHydrated = useBackendStore((s) => s.hydrated);
@@ -264,6 +283,9 @@ export default function RootLayout() {
               </SilentErrorBoundary>
               <SilentErrorBoundary label="config-sync">
                 <ConfigSyncBridge />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="insecure-tls">
+                <InsecureTlsBridge />
               </SilentErrorBoundary>
               <SilentErrorBoundary label="ui-scale">
                 <UiScaleBridge />

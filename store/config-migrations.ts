@@ -88,8 +88,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         attaches (auto-attach mode keeps the full set). Runtime fallback:
  *         when a dashboard has no entry for a kind, resolve to the first
  *         attached+enabled instance of that kind.
+ *   v23 — per-instance `ignoreCertErrors` on ServiceConfig (opt a server out
+ *         of TLS certificate validation). Pure version stamp — optional field,
+ *         absence means false.
  */
-export const CURRENT_CONFIG_VERSION = 22;
+export const CURRENT_CONFIG_VERSION = 23;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -492,6 +495,12 @@ const migrations: Record<number, (payload: any) => any> = {
     const { activeInstance: _drop, ...rest } = payload;
     return { ...rest, version: 22, dashboards };
   },
+
+  // v22 → v23: per-instance `ignoreCertErrors` (opt a server out of TLS
+  // certificate validation). Pure version stamp — the field is optional and
+  // absent means false, so older exports are already correct. The schema
+  // validator (coerceServiceInstance) coerces the field on import.
+  22: (payload) => ({ ...payload, version: 23 }),
 };
 
 /**

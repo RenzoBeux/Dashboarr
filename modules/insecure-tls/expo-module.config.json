@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["InsecureTlsModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.insecuretls.InsecureTlsModule"]
+  }
+}
