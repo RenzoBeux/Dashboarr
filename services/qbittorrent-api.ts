@@ -100,8 +100,15 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
 
   if (!response.ok) return false;
 
-  const text = await response.text();
-  if (text !== "Ok.") return false;
+  // qBittorrent 5.2.0+ replies 204 No Content (empty body) on a successful
+  // login — changelog "WEBAPI: Send 204 when WebAPI response contains no
+  // data". Older builds reply 200 with body "Ok."; a rejected login replies
+  // 200 with "Fails.". Treat 204 as success and only validate the body on a
+  // 200 so newer servers stop being misread as auth failures.
+  if (response.status !== 204) {
+    const text = await response.text();
+    if (text.trim() !== "Ok.") return false;
+  }
 
   // Try to extract the SID so we can attach it as a Cookie header. If we
   // can't read Set-Cookie (iOS always strips it; Android usually does because
