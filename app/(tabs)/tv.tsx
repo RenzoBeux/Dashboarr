@@ -40,7 +40,6 @@ import {
 import { BAR_KIND_COLOR, cornerColorFor, sonarrBarKind } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
 import { mediumHaptic } from "@/lib/haptics";
@@ -102,7 +101,6 @@ export default function TVScreen() {
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
-  const { horizontalPadding } = usePosterCellLayout();
   const bottomPadding = useScreenBottomPadding();
   const uiScale = useUiScale();
 
@@ -206,9 +204,9 @@ export default function TVScreen() {
     setSheetTarget({ kind: "calendar", item: ep });
   };
 
-  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
+  // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
-    paddingHorizontal: horizontalPadding,
     paddingTop: 7 * uiScale,
     paddingBottom: bottomPadding,
   };

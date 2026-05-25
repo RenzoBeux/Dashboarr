@@ -98,15 +98,14 @@ export default function JellyfinScreen() {
   const [recentSortOpen, setRecentSortOpen] = useState(false);
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["jellyfin"]]);
-  const { horizontalPadding } = usePosterCellLayout();
   const bottomPadding = useScreenBottomPadding();
   const uiScale = useUiScale();
 
   const jellyfinHealth = healthData?.find((s) => s.id === "jellyfin");
 
-  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
+  // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
-    paddingHorizontal: horizontalPadding,
     paddingTop: 7 * uiScale,
     paddingBottom: bottomPadding,
   };

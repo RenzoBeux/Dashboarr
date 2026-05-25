@@ -40,7 +40,6 @@ import {
 } from "@/hooks/use-radarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { mediumHaptic } from "@/lib/haptics";
 import { BAR_KIND_COLOR, cornerColorFor, radarrBarKind } from "@/lib/arr-poster-status";
@@ -116,7 +115,6 @@ export default function MoviesScreen() {
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["radarr"]]);
-  const { horizontalPadding } = usePosterCellLayout();
   const bottomPadding = useScreenBottomPadding();
   const uiScale = useUiScale();
 
@@ -196,9 +194,9 @@ export default function MoviesScreen() {
     setSheetTarget({ kind: "queue", item });
   };
 
-  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
+  // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
-    paddingHorizontal: horizontalPadding,
     paddingTop: 7 * uiScale,
     paddingBottom: bottomPadding,
   };
