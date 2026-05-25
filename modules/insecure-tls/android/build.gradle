@@ -13,3 +13,7 @@ android {
     versionName '1.0.0'
   }
 }
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+}
