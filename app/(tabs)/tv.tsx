@@ -32,6 +32,7 @@ import {
   ActionSheet,
   type ActionSheetAction,
 } from "@/components/ui/action-sheet";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import {
@@ -126,6 +127,7 @@ export default function TVScreen() {
   const setSort = useSortStore((s) => s.setSeries);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
+  const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
@@ -242,14 +244,7 @@ export default function TVScreen() {
 
   const handleSearchMissing = () => {
     mediumHaptic();
-    Alert.alert(
-      "Search Missing Episodes",
-      "Sonarr will search every monitored missing episode in your library. This can queue a lot of grabs at once.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Search", onPress: () => searchMissing.mutate() },
-      ],
-    );
+    setMissingConfirmOpen(true);
   };
 
   // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
@@ -371,6 +366,19 @@ export default function TVScreen() {
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         sortValue={sort}
         onSortChange={setSort}
+      />
+
+      <ConfirmModal
+        visible={missingConfirmOpen}
+        title="Search Missing Episodes"
+        message="Sonarr will search every monitored missing episode in your library. This can queue a lot of grabs at once."
+        icon={ScanSearch}
+        confirmLabel="Search"
+        onConfirm={() => {
+          setMissingConfirmOpen(false);
+          searchMissing.mutate();
+        }}
+        onCancel={() => setMissingConfirmOpen(false)}
       />
     </ScreenWrapper>
   );

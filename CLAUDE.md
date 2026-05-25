@@ -73,6 +73,12 @@ Notes:
 - Pull-to-refresh on all screens
 - Haptic feedback on key interactions
 
+## Confirmations & Dialogs — MUST follow
+
+- **Never use React Native's native `Alert.alert` (or any OS-native dialog) for confirmations.** It looks out of place against the app's dark, styled UI. Always use the styled **`ConfirmModal`** from `components/common/confirm-modal.tsx` — state-driven (`visible` + `onConfirm` / `onCancel`), with `tone="danger"` for destructive actions and an optional `icon`. Reference: the "Search Missing" confirm in `app/(tabs)/tv.tsx` and the delete confirms in `app/series/[id].tsx` / `app/movie/[id].tsx`.
+- `ConfirmModal` is a two-button (cancel + confirm) dialog. For **3+ choices** (e.g. "Delete" vs "Delete + Files"), use the styled **`ActionSheet`** (`components/ui/action-sheet.tsx`) instead — never a multi-button native `Alert`.
+- For transient success/error feedback, use the **`toast`** / **`toastError`** helpers from `components/ui/toast.tsx`, not `Alert`.
+
 ## UI Scale (Accessibility) — MUST follow when writing any new UI
 
 The app exposes a global UI scale preference (1.0 / 1.15 / 1.3) wired via NativeWind v4's reactive `rem` observable. `app/_layout.tsx` calls `rem.set(14 * uiScale)` whenever the setting changes, which scales every rem-based style across the running app with no remount. **Every new UI element must scale with this setting.** The rules:
