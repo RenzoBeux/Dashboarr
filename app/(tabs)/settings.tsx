@@ -928,6 +928,7 @@ function ServiceEditor({
     localUrl: "",
     remoteUrl: "",
     useRemote: false,
+    ignoreCertErrors: false,
   };
 
   const [name, setName] = useState(config.name);
@@ -1200,6 +1201,14 @@ function ServiceEditor({
           value={config.useRemote}
           onValueChange={(v) =>
             updateInstance(serviceId, instanceId, { useRemote: v })
+          }
+        />
+        <Toggle
+          label="Allow invalid certificates"
+          description="Skip TLS certificate checks for this server, accepting self-signed or otherwise invalid certs. Only enable for servers you trust on a network you control."
+          value={config.ignoreCertErrors ?? false}
+          onValueChange={(v) =>
+            updateInstance(serviceId, instanceId, { ignoreCertErrors: v })
           }
         />
       </Card>

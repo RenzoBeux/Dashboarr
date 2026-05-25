@@ -245,6 +245,26 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.radarr[0].name).toBe("Radarr 4K");
     expect(result.services.radarr[1].name).toBe("Radarr 1080p");
   });
+
+  it("round-trips ignoreCertErrors=true (v23)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { radarr: [validInstance({ ignoreCertErrors: true })] },
+    });
+    expect(result.services.radarr[0].ignoreCertErrors).toBe(true);
+  });
+
+  it("defaults ignoreCertErrors to false when absent or non-boolean", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        radarr: [validInstance()],
+        sonarr: [validInstance({ id: "uuid-s", ignoreCertErrors: "yes" })],
+      },
+    });
+    expect(result.services.radarr[0].ignoreCertErrors).toBe(false);
+    expect(result.services.sonarr[0].ignoreCertErrors).toBe(false);
+  });
 });
 
 describe("validateExportPayload — service IDs (forward-compat silent drop)", () => {

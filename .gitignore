@@ -12,6 +12,13 @@ dist/
 web-build/
 android/
 ios/
+# The above ignore the prebuilt root native projects (CNG regenerates them).
+# In-tree local Expo modules keep their native sources in git, so un-ignore
+# those — otherwise the android/ and ios/ rules above would silently drop them.
+!modules/*/android/
+!modules/*/android/**
+!modules/*/ios/
+!modules/*/ios/**
 .env
 .env.local
 .claude/

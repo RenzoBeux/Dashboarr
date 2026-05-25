@@ -74,6 +74,9 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
     localUrl: v.localUrl,
     remoteUrl: v.remoteUrl,
     useRemote: v.useRemote,
+    // v23: optional. Coerce to a strict boolean so a missing/garbage value
+    // (older exports, hand-edited files) lands on the secure default.
+    ignoreCertErrors: v.ignoreCertErrors === true,
   };
 }
 
