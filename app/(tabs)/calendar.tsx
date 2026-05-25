@@ -1,14 +1,11 @@
 import { useState, useMemo } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useQueries } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Tv,
-  Film,
   Eye,
   EyeOff,
   Check,
@@ -28,8 +25,8 @@ import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { formatEpisodeCode, localDateKey } from "@/lib/utils";
-import { useServiceImage } from "@/hooks/use-service-image";
 import { lightHaptic } from "@/lib/haptics";
 import { getBoolean, setBoolean, getString, setString } from "@/store/storage";
 import type { ServiceId } from "@/lib/constants";
@@ -611,44 +608,15 @@ function EpisodeRow({
   episode: SonarrCalendarEntry;
   onPress: () => void;
 }) {
-  const poster = episode.series.images.find((i) => i.coverType === "poster");
-  const { src, onError } = useServiceImage(poster, "sonarr");
-
   return (
-    <Card onPress={onPress}>
-      <View className="flex-row items-center gap-3">
-        {src ? (
-          <Image
-            source={{ uri: src }}
-            className="w-10 h-14 rounded-lg bg-surface-light"
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            transition={200}
-            recyclingKey={src}
-            onError={onError}
-          />
-        ) : (
-          <View className="w-10 h-14 rounded-lg bg-surface-light items-center justify-center">
-            <Icon icon={Tv} size={16} color="#71717a" />
-          </View>
-        )}
-        <View
-          className={`w-1 h-10 rounded-full ${
-            episode.hasFile ? "bg-success" : "bg-zinc-600"
-          }`}
-        />
-        <View className="flex-1">
-          <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
-            {episode.series.title}
-          </Text>
-          <Text className="text-zinc-500 text-xs">
-            {formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} —{" "}
-            {episode.title}
-          </Text>
-        </View>
-        <Icon icon={Tv} size={14} color="#22c55e" />
-      </View>
-    </Card>
+    <CalendarEventRow
+      images={episode.series.images}
+      service="sonarr"
+      title={episode.series.title}
+      subtitle={`${formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} — ${episode.title}`}
+      hasFile={episode.hasFile}
+      onPress={onPress}
+    />
   );
 }
 
@@ -659,44 +627,15 @@ function MovieRow({
   movie: RadarrMovie;
   onPress: () => void;
 }) {
-  const releaseType = getMovieReleaseType(movie);
-  const poster = movie.images.find((i) => i.coverType === "poster");
-  const { src, onError } = useServiceImage(poster, "radarr");
-
   return (
-    <Card onPress={onPress}>
-      <View className="flex-row items-center gap-3">
-        {src ? (
-          <Image
-            source={{ uri: src }}
-            className="w-10 h-14 rounded-lg bg-surface-light"
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            transition={200}
-            recyclingKey={src}
-            onError={onError}
-          />
-        ) : (
-          <View className="w-10 h-14 rounded-lg bg-surface-light items-center justify-center">
-            <Icon icon={Film} size={16} color="#71717a" />
-          </View>
-        )}
-        <View
-          className={`w-1 h-10 rounded-full ${
-            movie.hasFile ? "bg-success" : "bg-zinc-600"
-          }`}
-        />
-        <View className="flex-1">
-          <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
-            {movie.title}
-          </Text>
-          <Text className="text-zinc-500 text-xs">
-            {movie.year} — {releaseType}
-          </Text>
-        </View>
-        <Icon icon={Film} size={14} color="#f59e0b" />
-      </View>
-    </Card>
+    <CalendarEventRow
+      images={movie.images}
+      service="radarr"
+      title={movie.title}
+      subtitle={`${movie.year} — ${getMovieReleaseType(movie)}`}
+      hasFile={movie.hasFile}
+      onPress={onPress}
+    />
   );
 }
 
