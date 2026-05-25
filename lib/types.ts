@@ -1192,6 +1192,22 @@ export interface GlancesGpuItem {
   fan_speed: number | null;
 }
 
+export interface GlancesContainerItem {
+  id: string;
+  name: string;
+  // One of: running, paused, created, restarting, removing, exited, dead, and
+  // (when a Docker healthcheck is configured) healthy/unhealthy/starting.
+  status: string;
+  // Docker reports image as a single-element list of comma-joined tags; Podman
+  // and some builds send a plain string. Normalize at render time.
+  image?: string | string[];
+  cpu_percent?: number | null;
+  memory_usage?: number | null;
+  memory_limit?: number | null;
+  uptime?: string;
+  engine?: string;
+}
+
 // --- Bazarr Types ---
 
 export interface BazarrMissingSubtitle {

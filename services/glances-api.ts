@@ -7,6 +7,7 @@ import type {
   GlancesLoad,
   GlancesDiskIOItem,
   GlancesGpuItem,
+  GlancesContainerItem,
 } from "@/lib/types";
 
 // Per-instance routing: every function takes an optional `instanceId`.
@@ -62,6 +63,17 @@ export async function getGpu(instanceId?: string): Promise<GlancesGpuItem[]> {
   // endpoint can 404, so swallow that into [] rather than surfacing as error.
   try {
     return await serviceRequest<GlancesGpuItem[]>("glances", "/gpu", { instanceId });
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) return [];
+    throw e;
+  }
+}
+
+export async function getContainers(instanceId?: string): Promise<GlancesContainerItem[]> {
+  // The containers plugin 404s when no engine (Docker/Podman) is installed or
+  // the plugin is disabled — treat that as "no containers" rather than error.
+  try {
+    return await serviceRequest<GlancesContainerItem[]>("glances", "/containers", { instanceId });
   } catch (e) {
     if (e instanceof HttpError && e.status === 404) return [];
     throw e;
