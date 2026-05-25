@@ -462,7 +462,10 @@ async function runConnectionProbe(
 
   switch (serviceId) {
     case "qbittorrent": {
-      // Cookie-session auth — body "Ok." = success, anything else = bad creds.
+      // Cookie-session auth. Older qBittorrent replies 200 with body "Ok." on
+      // success and "Fails." on bad creds; qBittorrent 5.2.0+ replies 204 No
+      // Content (empty body) on success — changelog "WEBAPI: Send 204 when
+      // WebAPI response contains no data". Accept either success shape.
       const url = buildUrl(baseUrl, defaults.apiBasePath, "/auth/login");
       const headers = makeHeaders({
         "Content-Type": "application/x-www-form-urlencoded",
@@ -473,6 +476,7 @@ async function runConnectionProbe(
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (res.status === 401 || res.status === 403)
         return { kind: "auth_failed", message: "Wrong username or password" };
+      if (res.status === 204) return { kind: "ok" };
       if (!res.ok)
         return { kind: "unreachable", message: `Unexpected status ${res.status}` };
       const text = (await res.text()).trim();
