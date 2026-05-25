@@ -348,7 +348,15 @@ function SeriesLibrary({
       serviceId="sonarr"
       placeholderIcon={Tv}
       nounPlural="shows"
-      renderFooter={(s) => `${s.seasonCount} season${s.seasonCount !== 1 ? "s" : ""}`}
+      renderFooter={(s) => {
+        // Sonarr v3 /series has no top-level seasonCount; read statistics (or
+        // count non-special seasons), matching app/series/[id].tsx.
+        const count =
+          s.statistics?.seasonCount ??
+          s.seasons.filter((x) => x.seasonNumber > 0).length ??
+          0;
+        return `${count} season${count !== 1 ? "s" : ""}`;
+      }}
       posterStatus={(s) => ({
         barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
         cornerColor: cornerColorFor(s.status),
