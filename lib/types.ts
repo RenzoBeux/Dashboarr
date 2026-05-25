@@ -315,6 +315,7 @@ export interface RadarrMovie {
   rootFolderPath: string;
   movieFile?: RadarrMovieFile;
   genres?: string[];
+  tags?: number[];
   certification?: string;
   studio?: string;
 }
@@ -470,6 +471,7 @@ export interface SonarrSeries {
   rootFolderPath: string;
   ratings?: RatingsBundle;
   genres?: string[];
+  tags?: number[];
   certification?: string;
   firstAired?: string;
   nextAiring?: string;

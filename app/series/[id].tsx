@@ -43,6 +43,7 @@ import {
   useUpdateSeriesQualityProfile,
   useSonarrRootFolders,
   useUpdateSeriesRootFolder,
+  useSonarrTags,
 } from "@/hooks/use-sonarr";
 import {
   formatEpisodeCode,
@@ -75,6 +76,7 @@ export default function SeriesDetailScreen() {
   const updateProfile = useUpdateSeriesQualityProfile(instanceId);
   const { data: rootFolders } = useSonarrRootFolders(instanceId);
   const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
+  const { data: tags } = useSonarrTags(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
@@ -129,6 +131,11 @@ export default function SeriesDetailScreen() {
   const qualityProfileName = qualityProfiles?.find(
     (p) => p.id === series.qualityProfileId,
   )?.name;
+
+  const tagLabels =
+    series.tags
+      ?.map((tagId) => tags?.find((t) => t.id === tagId)?.label)
+      .filter((label): label is string => !!label) ?? [];
 
   const handleToggleMonitor = () => {
     toggleSeries.mutate({ seriesId: series.id, monitored: !series.monitored });
@@ -236,6 +243,21 @@ export default function SeriesDetailScreen() {
               >
                 {series.genres.map((g) => (
                   <Badge key={g} label={g} variant="default" />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {tagLabels.length > 0 ? (
+            <View className="mb-5">
+              <SectionLabel>Tags</SectionLabel>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerClassName="gap-2"
+              >
+                {tagLabels.map((label) => (
+                  <Badge key={label} label={label} variant="info" />
                 ))}
               </ScrollView>
             </View>
