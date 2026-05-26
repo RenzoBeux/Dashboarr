@@ -31,7 +31,10 @@ import { ExpandableText } from "@/components/common/expandable-text";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { ActionSheet } from "@/components/ui/action-sheet";
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   useSonarrSeriesById,
@@ -702,8 +705,39 @@ function EpisodeRow({
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
   const searchEpisode = useSearchForEpisodes(instanceId);
   const deleteFile = useDeleteEpisodeFile(instanceId);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const mediaInfo = episodeFile?.mediaInfo;
+
+  // Search/delete live in the "⋯" sheet so the row stays uncluttered and the
+  // automatic-vs-interactive search distinction reads clearly as labeled rows.
+  const episodeActions: ActionSheetAction[] = [
+    {
+      label: "Automatic Search",
+      icon: <Icon icon={Search} size={20} color="#a1a1aa" />,
+      onPress: () => searchEpisode.mutate([episode.id]),
+    },
+    {
+      label: "Interactive Search",
+      icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        router.push(
+          `/series/releases/${seriesId}?episodeId=${episode.id}${
+            instanceId ? `&instanceId=${instanceId}` : ""
+          }`,
+        ),
+    },
+    ...(episodeFile
+      ? [
+          {
+            label: "Delete File",
+            icon: <Icon icon={Trash2} size={20} color="#ef4444" />,
+            variant: "danger" as const,
+            onPress: () => setConfirmDelete(true),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -731,44 +765,7 @@ function EpisodeRow({
             <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
           ) : null}
         </View>
-        <View className="flex-row items-center gap-0.5">
-          <Pressable
-            onPress={() => searchEpisode.mutate([episode.id])}
-            disabled={searchEpisode.isPending}
-            hitSlop={8}
-            className={`p-1.5 active:opacity-70 ${searchEpisode.isPending ? "opacity-50" : ""}`}
-            accessibilityRole="button"
-            accessibilityLabel="Automatic search"
-          >
-            <Icon icon={Search} size={18} color="#a1a1aa" />
-          </Pressable>
-          <Pressable
-            onPress={() =>
-              router.push(
-                `/series/releases/${seriesId}?episodeId=${episode.id}${
-                  instanceId ? `&instanceId=${instanceId}` : ""
-                }`,
-              )
-            }
-            hitSlop={8}
-            className="p-1.5 active:opacity-70"
-            accessibilityRole="button"
-            accessibilityLabel="Interactive search"
-          >
-            <Icon icon={UserSearch} size={18} color="#a1a1aa" />
-          </Pressable>
-          {episodeFile ? (
-            <Pressable
-              onPress={() => setConfirmDelete(true)}
-              disabled={deleteFile.isPending}
-              hitSlop={8}
-              className={`p-1.5 active:opacity-70 ${deleteFile.isPending ? "opacity-50" : ""}`}
-              accessibilityRole="button"
-              accessibilityLabel="Delete episode file"
-            >
-              <Icon icon={Trash2} size={18} color="#ef4444" />
-            </Pressable>
-          ) : null}
+        <View className="flex-row items-center gap-1">
           <Pressable
             onPress={() =>
               toggleMonitored.mutate({
@@ -777,7 +774,7 @@ function EpisodeRow({
               })
             }
             disabled={toggleMonitored.isPending}
-            className={`p-1.5 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
+            className={`p-2 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={
@@ -793,8 +790,25 @@ function EpisodeRow({
               fill={episode.monitored ? "#3b82f6" : "transparent"}
             />
           </Pressable>
+          <Pressable
+            onPress={() => setSheetOpen(true)}
+            hitSlop={8}
+            className="p-2 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Episode actions"
+          >
+            <Icon icon={MoreHorizontal} size={18} color="#a1a1aa" />
+          </Pressable>
         </View>
       </View>
+
+      <ActionSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)}
+        subtitle={episode.title}
+        actions={episodeActions}
+      />
 
       <ConfirmModal
         visible={confirmDelete}
