@@ -655,7 +655,8 @@ function SeasonAccordion({
       {expanded && episodes && (
         <View className="mt-3 gap-1">
           {episodes
-            .sort((a, b) => a.episodeNumber - b.episodeNumber)
+            // Descending (latest episode first) to match Sonarr's web UI.
+            .sort((a, b) => b.episodeNumber - a.episodeNumber)
             .map((ep) => (
               <EpisodeRow
                 key={ep.id}
