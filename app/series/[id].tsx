@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Check,
   Search,
+  UserSearch,
   Trash2,
   Bookmark,
   MoreHorizontal,
@@ -38,6 +39,7 @@ import {
   useSonarrEpisodeFiles,
   useToggleEpisodeMonitored,
   useDeleteEpisodeFile,
+  useSearchForEpisodes,
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
@@ -698,6 +700,7 @@ function EpisodeRow({
 }) {
   const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
+  const searchEpisode = useSearchForEpisodes(instanceId);
   const deleteFile = useDeleteEpisodeFile(instanceId);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const mediaInfo = episodeFile?.mediaInfo;
@@ -728,55 +731,69 @@ function EpisodeRow({
             <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
           ) : null}
         </View>
-        <Pressable
-          onPress={() =>
-            router.push(
-              `/series/releases/${seriesId}?episodeId=${episode.id}${
-                instanceId ? `&instanceId=${instanceId}` : ""
-              }`,
-            )
-          }
-          hitSlop={6}
-          className="p-1 active:opacity-70 mr-1"
-        >
-          <Icon icon={Search} size={12} color="#a1a1aa" />
-        </Pressable>
-        {episodeFile ? (
+        <View className="flex-row items-center gap-0.5">
           <Pressable
-            onPress={() => setConfirmDelete(true)}
-            disabled={deleteFile.isPending}
-            hitSlop={6}
-            className={`p-1 active:opacity-70 mr-1 ${deleteFile.isPending ? "opacity-50" : ""}`}
+            onPress={() => searchEpisode.mutate([episode.id])}
+            disabled={searchEpisode.isPending}
+            hitSlop={8}
+            className={`p-1.5 active:opacity-70 ${searchEpisode.isPending ? "opacity-50" : ""}`}
             accessibilityRole="button"
-            accessibilityLabel="Delete episode file"
+            accessibilityLabel="Automatic search"
           >
-            <Icon icon={Trash2} size={12} color="#ef4444" />
+            <Icon icon={Search} size={18} color="#a1a1aa" />
           </Pressable>
-        ) : null}
-        <Pressable
-          onPress={() =>
-            toggleMonitored.mutate({
-              episodeId: episode.id,
-              monitored: !episode.monitored,
-            })
-          }
-          disabled={toggleMonitored.isPending}
-          className={`p-1 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={
-            episode.monitored
-              ? "Monitored — tap to unmonitor"
-              : "Not monitored — tap to monitor"
-          }
-        >
-          <Icon
-            icon={Bookmark}
-            size={14}
-            color={episode.monitored ? "#3b82f6" : "#52525b"}
-            fill={episode.monitored ? "#3b82f6" : "transparent"}
-          />
-        </Pressable>
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/series/releases/${seriesId}?episodeId=${episode.id}${
+                  instanceId ? `&instanceId=${instanceId}` : ""
+                }`,
+              )
+            }
+            hitSlop={8}
+            className="p-1.5 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Interactive search"
+          >
+            <Icon icon={UserSearch} size={18} color="#a1a1aa" />
+          </Pressable>
+          {episodeFile ? (
+            <Pressable
+              onPress={() => setConfirmDelete(true)}
+              disabled={deleteFile.isPending}
+              hitSlop={8}
+              className={`p-1.5 active:opacity-70 ${deleteFile.isPending ? "opacity-50" : ""}`}
+              accessibilityRole="button"
+              accessibilityLabel="Delete episode file"
+            >
+              <Icon icon={Trash2} size={18} color="#ef4444" />
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() =>
+              toggleMonitored.mutate({
+                episodeId: episode.id,
+                monitored: !episode.monitored,
+              })
+            }
+            disabled={toggleMonitored.isPending}
+            className={`p-1.5 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              episode.monitored
+                ? "Monitored — tap to unmonitor"
+                : "Not monitored — tap to monitor"
+            }
+          >
+            <Icon
+              icon={Bookmark}
+              size={18}
+              color={episode.monitored ? "#3b82f6" : "#52525b"}
+              fill={episode.monitored ? "#3b82f6" : "transparent"}
+            />
+          </Pressable>
+        </View>
       </View>
 
       <ConfirmModal
