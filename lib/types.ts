@@ -73,6 +73,11 @@ export interface QBTorrent {
   num_seeds: number;
   num_leechs: number;
   ratio: number;
+  // Per-torrent share limits from /torrents/info, sharing the setShareLimits
+  // sentinels: -2 = use global limit, -1 = no limit. seeding_time_limit is in
+  // minutes. (Elapsed seeding_time, by contrast, is reported in seconds.)
+  ratio_limit: number;
+  seeding_time_limit: number;
   eta: number;
   state: TorrentState;
   category: string;
@@ -315,6 +320,7 @@ export interface RadarrMovie {
   rootFolderPath: string;
   movieFile?: RadarrMovieFile;
   genres?: string[];
+  tags?: number[];
   certification?: string;
   studio?: string;
 }
@@ -470,6 +476,7 @@ export interface SonarrSeries {
   rootFolderPath: string;
   ratings?: RatingsBundle;
   genres?: string[];
+  tags?: number[];
   certification?: string;
   firstAired?: string;
   nextAiring?: string;
@@ -1190,6 +1197,22 @@ export interface GlancesGpuItem {
   proc: number | null;
   temperature: number | null;
   fan_speed: number | null;
+}
+
+export interface GlancesContainerItem {
+  id: string;
+  name: string;
+  // One of: running, paused, created, restarting, removing, exited, dead, and
+  // (when a Docker healthcheck is configured) healthy/unhealthy/starting.
+  status: string;
+  // Docker reports image as a single-element list of comma-joined tags; Podman
+  // and some builds send a plain string. Normalize at render time.
+  image?: string | string[];
+  cpu_percent?: number | null;
+  memory_usage?: number | null;
+  memory_limit?: number | null;
+  uptime?: string;
+  engine?: string;
 }
 
 // --- Bazarr Types ---

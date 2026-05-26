@@ -9,15 +9,30 @@ import {
   type RefreshControlProps,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Tv, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
+import {
+  Search,
+  Tv,
+  Eye,
+  EyeOff,
+  Trash2,
+  Info,
+  ScanSearch,
+} from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
-import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
+import {
+  ScreenWrapper,
+  useScreenBottomPadding,
+} from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from "@/components/ui/action-sheet";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import {
@@ -25,20 +40,30 @@ import {
   MONITOR_FILTER_OPTIONS,
   type MonitorFilter,
 } from "@/components/common/monitored-library-grid";
-import { useSortStore, SORT_DEFAULTS, type SeriesSortKey } from "@/store/sort-store";
+import {
+  useSortStore,
+  SORT_DEFAULTS,
+  type SeriesSortKey,
+} from "@/store/sort-store";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
 import {
   useSonarrSeries,
+  useSonarrQueue,
   useSonarrCalendar,
   useSearchForSeries,
   useSearchForEpisodes,
+  useSearchAllMissingEpisodes,
   useToggleSeriesMonitored,
   useDeleteSeries,
 } from "@/hooks/use-sonarr";
+import {
+  BAR_KIND_COLOR,
+  cornerColorFor,
+  sonarrBarKind,
+} from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
 import { mediumHaptic } from "@/lib/haptics";
@@ -61,7 +86,11 @@ const SORT_OPTIONS: { key: SeriesSortKey; label: string }[] = [
   { key: "size-desc", label: "Size: Largest First" },
 ];
 
-function compareSeries(a: SonarrSeries, b: SonarrSeries, sort: SeriesSortKey): number {
+function compareSeries(
+  a: SonarrSeries,
+  b: SonarrSeries,
+  sort: SeriesSortKey,
+): number {
   switch (sort) {
     case "added-desc":
       return new Date(b.added).getTime() - new Date(a.added).getTime();
@@ -92,20 +121,22 @@ function compareSeries(a: SonarrSeries, b: SonarrSeries, sort: SeriesSortKey): n
 
 export default function TVScreen() {
   const [tab, setTab] = useState<Tab>("library");
-  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
+  const [monitorFilter, setMonitorFilter] =
+    useState<MonitorFilter>("monitored");
   const sort = useSortStore((s) => s.series);
   const setSort = useSortStore((s) => s.setSeries);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
+  const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
-  const { horizontalPadding } = usePosterCellLayout();
   const bottomPadding = useScreenBottomPadding();
   const uiScale = useUiScale();
 
   const searchSeries = useSearchForSeries();
   const searchEpisodes = useSearchForEpisodes();
+  const searchMissing = useSearchAllMissingEpisodes();
   const toggleMonitor = useToggleSeriesMonitored();
   const deleteMutation = useDeleteSeries();
 
@@ -178,7 +209,14 @@ export default function TVScreen() {
         onPress: () => router.push(`/series/${ep.seriesId}`),
       },
     ];
-  }, [sheetTarget, searchSeries, searchEpisodes, toggleMonitor, deleteMutation, router]);
+  }, [
+    sheetTarget,
+    searchSeries,
+    searchEpisodes,
+    toggleMonitor,
+    deleteMutation,
+    router,
+  ]);
 
   const sheetTitle =
     sheetTarget?.kind === "series"
@@ -204,9 +242,14 @@ export default function TVScreen() {
     setSheetTarget({ kind: "calendar", item: ep });
   };
 
-  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  const handleSearchMissing = () => {
+    mediumHaptic();
+    setMissingConfirmOpen(true);
+  };
+
+  // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
+  // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
-    paddingHorizontal: horizontalPadding,
     paddingTop: 7 * uiScale,
     paddingBottom: bottomPadding,
   };
@@ -224,13 +267,28 @@ export default function TVScreen() {
   const header = (
     <>
       <View className="flex-row items-center justify-between">
-        <ServiceHeader name="TV Shows" online={sonarrHealth?.online} serviceId="sonarr" />
-        <Pressable
-          onPress={() => router.push("/series/search")}
-          className="p-2 active:opacity-70"
-        >
-          <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
-        </Pressable>
+        <ServiceHeader
+          name="TV Shows"
+          online={sonarrHealth?.online}
+          serviceId="sonarr"
+        />
+        <View className="flex-row items-center">
+          <Pressable
+            onPress={handleSearchMissing}
+            disabled={searchMissing.isPending}
+            className="p-2 active:opacity-70"
+            accessibilityLabel="Search all missing episodes"
+          >
+            <Icon icon={ScanSearch} size={ICON.LG} color="#a1a1aa" />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/series/search")}
+            className="p-2 active:opacity-70"
+            accessibilityLabel="Add series"
+          >
+            <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -309,6 +367,19 @@ export default function TVScreen() {
         sortValue={sort}
         onSortChange={setSort}
       />
+
+      <ConfirmModal
+        visible={missingConfirmOpen}
+        title="Search Missing Episodes"
+        message="Sonarr will search every monitored missing episode in your library. This can queue a lot of grabs at once."
+        icon={ScanSearch}
+        confirmLabel="Search"
+        onConfirm={() => {
+          setMissingConfirmOpen(false);
+          searchMissing.mutate();
+        }}
+        onCancel={() => setMissingConfirmOpen(false)}
+      />
     </ScreenWrapper>
   );
 }
@@ -326,10 +397,18 @@ function SeriesLibrary({
   onLongPress: (series: SonarrSeries) => void;
   listHeader: React.ReactElement;
   refreshControl: React.ReactElement<RefreshControlProps>;
-  contentContainerStyle: React.ComponentProps<typeof MonitoredLibraryGrid>["contentContainerStyle"];
+  contentContainerStyle: React.ComponentProps<
+    typeof MonitoredLibraryGrid
+  >["contentContainerStyle"];
 }) {
   const { data: series, isLoading, error } = useSonarrSeries();
+  const { data: queue } = useSonarrQueue();
   const router = useRouter();
+
+  const downloading = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.seriesId)),
+    [queue],
+  );
 
   return (
     <MonitoredLibraryGrid
@@ -342,7 +421,19 @@ function SeriesLibrary({
       serviceId="sonarr"
       placeholderIcon={Tv}
       nounPlural="shows"
-      renderFooter={(s) => `${s.seasonCount} season${s.seasonCount !== 1 ? "s" : ""}`}
+      renderFooter={(s) => {
+        // Sonarr v3 /series has no top-level seasonCount; read statistics (or
+        // count non-special seasons), matching app/series/[id].tsx.
+        const count =
+          s.statistics?.seasonCount ??
+          s.seasons.filter((x) => x.seasonNumber > 0).length ??
+          0;
+        return `${count} season${count !== 1 ? "s" : ""}`;
+      }}
+      posterStatus={(s) => ({
+        barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
+        cornerColor: cornerColorFor(s.status),
+      })}
       onItemPress={(s) => router.push(`/series/${s.id}`)}
       onItemLongPress={onLongPress}
       ListHeaderComponent={listHeader}
@@ -352,7 +443,11 @@ function SeriesLibrary({
   );
 }
 
-function CalendarView({ onLongPress }: { onLongPress: (ep: SonarrCalendarEntry) => void }) {
+function CalendarView({
+  onLongPress,
+}: {
+  onLongPress: (ep: SonarrCalendarEntry) => void;
+}) {
   const { data: episodes, isLoading, error } = useSonarrCalendar();
   const router = useRouter();
 

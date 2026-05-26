@@ -37,6 +37,7 @@ import {
   useUpdateMovieQualityProfile,
   useRadarrRootFolders,
   useUpdateMovieRootFolder,
+  useRadarrTags,
 } from "@/hooks/use-radarr";
 import { useServiceImage } from "@/hooks/use-service-image";
 import {
@@ -61,6 +62,7 @@ export default function MovieDetailScreen() {
   const updateProfile = useUpdateMovieQualityProfile(instanceId);
   const { data: rootFolders } = useRadarrRootFolders(instanceId);
   const updateRootFolder = useUpdateMovieRootFolder(instanceId);
+  const { data: tags } = useRadarrTags(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
@@ -104,6 +106,11 @@ export default function MovieDetailScreen() {
   const qualityProfileName = qualityProfiles?.find(
     (p) => p.id === movie.qualityProfileId,
   )?.name;
+
+  const tagLabels =
+    movie.tags
+      ?.map((tagId) => tags?.find((t) => t.id === tagId)?.label)
+      .filter((label): label is string => !!label) ?? [];
 
   const handleToggleMonitor = () => {
     toggleMonitored.mutate({ movieId: movie.id, monitored: !movie.monitored });
@@ -227,6 +234,21 @@ export default function MovieDetailScreen() {
               >
                 {movie.genres.map((g) => (
                   <Badge key={g} label={g} variant="default" />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {tagLabels.length > 0 ? (
+            <View className="mb-5">
+              <SectionLabel>Tags</SectionLabel>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerClassName="gap-2"
+              >
+                {tagLabels.map((label) => (
+                  <Badge key={label} label={label} variant="info" />
                 ))}
               </ScrollView>
             </View>

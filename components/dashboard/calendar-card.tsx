@@ -23,20 +23,9 @@ import {
   getDateOffset,
   localDateKey,
 } from "@/lib/utils";
-import {
-  getCalendar as getSonarrCalendar,
-  getSonarrPoster,
-  getSonarrFanart,
-} from "@/services/sonarr-api";
-import {
-  getCalendar as getRadarrCalendar,
-  getRadarrPoster,
-  getRadarrFanart,
-} from "@/services/radarr-api";
-import {
-  MediaBackdropRow,
-  BACKDROP_ROW_HEIGHT,
-} from "@/components/dashboard/media-backdrop-row";
+import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
+import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
+import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
 
@@ -265,11 +254,7 @@ function CalendarSkeleton() {
           <Skeleton width={80} height={12} borderRadius={4} />
           <View className="gap-2">
             {Array.from({ length: 2 }).map((_, rowIdx) => (
-              <Skeleton
-                key={rowIdx}
-                height={BACKDROP_ROW_HEIGHT}
-                borderRadius={12}
-              />
+              <Skeleton key={rowIdx} width="100%" height={72} borderRadius={12} />
             ))}
           </View>
         </View>
@@ -300,15 +285,6 @@ function titleOf(item: CalendarItem): string {
   return item.kind === "episode" ? item.entry.series.title : item.movie.title;
 }
 
-function StatusDot({ hasFile }: { hasFile: boolean }) {
-  return (
-    <View
-      className="w-2 h-2 rounded-full"
-      style={{ backgroundColor: hasFile ? "#22c55e" : "#52525b" }}
-    />
-  );
-}
-
 function EpisodeRow({
   entry,
   onPress,
@@ -317,13 +293,12 @@ function EpisodeRow({
   onPress: () => void;
 }) {
   return (
-    <MediaBackdropRow
-      posterUrl={getSonarrPoster(entry.series.images)}
-      backdropUrl={getSonarrFanart(entry.series.images)}
+    <CalendarEventRow
+      images={entry.series.images}
+      service="sonarr"
       title={entry.series.title}
       subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
-      rightAccessory={<StatusDot hasFile={entry.hasFile} />}
-      mediaType="tv"
+      hasFile={entry.hasFile}
       onPress={onPress}
     />
   );
@@ -337,13 +312,12 @@ function MovieRow({
   onPress: () => void;
 }) {
   return (
-    <MediaBackdropRow
-      posterUrl={getRadarrPoster(movie.images)}
-      backdropUrl={getRadarrFanart(movie.images)}
+    <CalendarEventRow
+      images={movie.images}
+      service="radarr"
       title={movie.title}
       subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
-      rightAccessory={<StatusDot hasFile={movie.hasFile} />}
-      mediaType="movie"
+      hasFile={movie.hasFile}
       onPress={onPress}
     />
   );

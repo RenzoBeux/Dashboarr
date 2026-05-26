@@ -40,9 +40,9 @@ import {
 } from "@/hooks/use-radarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { mediumHaptic } from "@/lib/haptics";
+import { BAR_KIND_COLOR, cornerColorFor, radarrBarKind } from "@/lib/arr-poster-status";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 
 type MovieSheetTarget =
@@ -115,7 +115,6 @@ export default function MoviesScreen() {
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["radarr"]]);
-  const { horizontalPadding } = usePosterCellLayout();
   const bottomPadding = useScreenBottomPadding();
   const uiScale = useUiScale();
 
@@ -195,9 +194,9 @@ export default function MoviesScreen() {
     setSheetTarget({ kind: "queue", item });
   };
 
-  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
+  // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
-    paddingHorizontal: horizontalPadding,
     paddingTop: 7 * uiScale,
     paddingBottom: bottomPadding,
   };
@@ -321,7 +320,13 @@ function MovieLibrary({
   contentContainerStyle: React.ComponentProps<typeof MonitoredLibraryGrid>["contentContainerStyle"];
 }) {
   const { data: movies, isLoading, error } = useRadarrMovies();
+  const { data: queue } = useRadarrQueue();
   const router = useRouter();
+
+  const downloading = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+    [queue],
+  );
 
   return (
     <MonitoredLibraryGrid
@@ -335,6 +340,10 @@ function MovieLibrary({
       placeholderIcon={Film}
       nounPlural="movies"
       renderFooter={(m) => String(m.year)}
+      posterStatus={(m) => ({
+        barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
+        cornerColor: cornerColorFor(m.status),
+      })}
       onItemPress={(m) => router.push(`/movie/${m.id}`)}
       onItemLongPress={onLongPress}
       ListHeaderComponent={listHeader}

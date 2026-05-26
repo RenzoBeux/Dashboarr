@@ -4,6 +4,7 @@ import {
   getSeriesById,
   getEpisodes,
   getEpisodeFiles,
+  deleteEpisodeFile,
   getCalendar,
   getQueue,
   getHistory,
@@ -15,6 +16,7 @@ import {
   updateSeries,
   searchForSeries,
   searchForEpisodes,
+  searchAllMissingEpisodes,
   getQualityProfiles,
   getRootFolders,
   getTags,
@@ -71,7 +73,8 @@ export function useSonarrCalendar(days = 7, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "calendar", days],
-    queryFn: () => getCalendar(getDateOffset(0), getDateOffset(days), {}, id ?? undefined),
+    queryFn: () =>
+      getCalendar(getDateOffset(0), getDateOffset(days), {}, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled: enabled && !!id,
   });
@@ -152,10 +155,30 @@ export function useToggleEpisodeMonitored(instanceId?: string) {
   });
 }
 
+export function useDeleteEpisodeFile(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: (episodeFileId: number) =>
+      deleteEpisodeFile(episodeFileId, id ?? undefined),
+    onSuccess: () => {
+      // Refresh the episode list, file map, and series stats (file counts).
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "episodes"] });
+      queryClient.invalidateQueries({
+        queryKey: ["sonarr", id, "episodeFiles"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
+      toast("Episode file deleted");
+    },
+    onError: (err) => toastError("Delete failed", err),
+  });
+}
+
 export function useSearchForSeries(instanceId?: string) {
   const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
   return useMutation({
-    mutationFn: (seriesId: number) => searchForSeries(seriesId, id ?? undefined),
+    mutationFn: (seriesId: number) =>
+      searchForSeries(seriesId, id ?? undefined),
     onSuccess: () => toast("Search started"),
     onError: (err) => toastError("Search failed", err),
   });
@@ -164,8 +187,18 @@ export function useSearchForSeries(instanceId?: string) {
 export function useSearchForEpisodes(instanceId?: string) {
   const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
   return useMutation({
-    mutationFn: (episodeIds: number[]) => searchForEpisodes(episodeIds, id ?? undefined),
+    mutationFn: (episodeIds: number[]) =>
+      searchForEpisodes(episodeIds, id ?? undefined),
     onSuccess: () => toast("Search started"),
+    onError: (err) => toastError("Search failed", err),
+  });
+}
+
+export function useSearchAllMissingEpisodes(instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: () => searchAllMissingEpisodes(id ?? undefined),
+    onSuccess: () => toast("Searching all missing episodes"),
     onError: (err) => toastError("Search failed", err),
   });
 }
@@ -183,9 +216,15 @@ export function useToggleSeriesMonitored(instanceId?: string) {
     }) => toggleSeriesMonitored(seriesId, monitored, id ?? undefined),
     onMutate: async ({ seriesId, monitored }) => {
       await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series"] });
-      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      await queryClient.cancelQueries({
+        queryKey: ["sonarr", id, "series", seriesId],
+      });
 
-      const prevList = queryClient.getQueryData<SonarrSeries[]>(["sonarr", id, "series"]);
+      const prevList = queryClient.getQueryData<SonarrSeries[]>([
+        "sonarr",
+        id,
+        "series",
+      ]);
       const prevDetail = queryClient.getQueryData<SonarrSeries>([
         "sonarr",
         id,
@@ -213,13 +252,18 @@ export function useToggleSeriesMonitored(instanceId?: string) {
         queryClient.setQueryData(["sonarr", id, "series"], context.prevList);
       }
       if (context?.prevDetail) {
-        queryClient.setQueryData(["sonarr", id, "series", seriesId], context.prevDetail);
+        queryClient.setQueryData(
+          ["sonarr", id, "series", seriesId],
+          context.prevDetail,
+        );
       }
       toastError("Failed to update monitoring", err);
     },
     onSettled: (_data, _err, { seriesId }) => {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
-      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      queryClient.invalidateQueries({
+        queryKey: ["sonarr", id, "series", seriesId],
+      });
     },
   });
 }
@@ -242,13 +286,12 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
         seriesId,
       ]);
       if (!cached) throw new Error("Series not loaded");
-      return updateSeries(
-        { ...cached, qualityProfileId },
-        id ?? undefined,
-      );
+      return updateSeries({ ...cached, qualityProfileId }, id ?? undefined);
     },
     onMutate: async ({ seriesId, qualityProfileId }) => {
-      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      await queryClient.cancelQueries({
+        queryKey: ["sonarr", id, "series", seriesId],
+      });
       await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series"] });
 
       const prevDetail = queryClient.getQueryData<SonarrSeries>([
@@ -293,7 +336,9 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
       toastError("Failed to update quality profile", err);
     },
     onSettled: (_data, _err, { seriesId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      queryClient.invalidateQueries({
+        queryKey: ["sonarr", id, "series", seriesId],
+      });
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
     },
   });
@@ -319,14 +364,14 @@ export function useUpdateSeriesRootFolder(instanceId?: string) {
         seriesId,
       ]);
       if (!cached) throw new Error("Series not loaded");
-      return updateSeries(
-        { ...cached, rootFolderPath },
-        id ?? undefined,
-        { moveFiles },
-      );
+      return updateSeries({ ...cached, rootFolderPath }, id ?? undefined, {
+        moveFiles,
+      });
     },
     onMutate: async ({ seriesId, rootFolderPath }) => {
-      await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      await queryClient.cancelQueries({
+        queryKey: ["sonarr", id, "series", seriesId],
+      });
       await queryClient.cancelQueries({ queryKey: ["sonarr", id, "series"] });
 
       const prevDetail = queryClient.getQueryData<SonarrSeries>([
@@ -371,7 +416,9 @@ export function useUpdateSeriesRootFolder(instanceId?: string) {
       toastError("Failed to update root folder", err);
     },
     onSettled: (_data, _err, { seriesId }) => {
-      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series", seriesId] });
+      queryClient.invalidateQueries({
+        queryKey: ["sonarr", id, "series", seriesId],
+      });
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
     },
   });
@@ -407,7 +454,10 @@ export function useSonarrTags(instanceId?: string) {
   });
 }
 
-export function useSonarrReleasesForEpisode(episodeId: number, instanceId?: string) {
+export function useSonarrReleasesForEpisode(
+  episodeId: number,
+  instanceId?: string,
+) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "releases", "episode", episodeId],
@@ -428,7 +478,8 @@ export function useSonarrReleasesForSeason(
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "releases", "season", seriesId, seasonNumber],
-    queryFn: () => getReleasesForSeason(seriesId, seasonNumber, id ?? undefined),
+    queryFn: () =>
+      getReleasesForSeason(seriesId, seasonNumber, id ?? undefined),
     enabled: enabled && seriesId > 0 && seasonNumber >= 0 && !!id,
     staleTime: 60_000,
     gcTime: 5 * 60_000,

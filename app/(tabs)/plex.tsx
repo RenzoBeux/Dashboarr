@@ -92,15 +92,14 @@ export default function PlexScreen() {
   const [recentSortOpen, setRecentSortOpen] = useState(false);
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["plex"]]);
-  const { horizontalPadding } = usePosterCellLayout();
   const bottomPadding = useScreenBottomPadding();
   const uiScale = useUiScale();
 
   const plexHealth = healthData?.find((s) => s.id === "plex");
 
-  // pt-2 = 0.5rem; matched at runtime so accessibility scale applies.
+  // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
+  // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
-    paddingHorizontal: horizontalPadding,
     paddingTop: 7 * uiScale,
     paddingBottom: bottomPadding,
   };

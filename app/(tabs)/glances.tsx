@@ -1,5 +1,6 @@
-import { View, Text } from "react-native";
-import { Cpu, MemoryStick, HardDrive, Activity, Gpu } from "lucide-react-native";
+import { View, Text, Pressable } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { HardDrive, Activity, Gpu, ChevronDown, ChevronUp, Container } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -15,11 +16,14 @@ import {
   useGlancesFs,
   useGlancesDiskIO,
   useGlancesGpu,
+  useGlancesContainers,
 } from "@/hooks/use-glances";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { useGlancesUiStore } from "@/store/glances-ui-store";
+import { lightHaptic } from "@/lib/haptics";
 import { formatBytes, formatSpeed } from "@/lib/utils";
-import type { GlancesFsItem, GlancesDiskIOItem, GlancesGpuItem } from "@/lib/types";
+import type { GlancesFsItem, GlancesDiskIOItem, GlancesGpuItem, GlancesContainerItem } from "@/lib/types";
 
 function usageBarColor(percent: number): string {
   if (percent >= 85) return "bg-red-500";
@@ -58,6 +62,7 @@ export default function GlancesScreen() {
         <GpuCard />
         <DisksCard />
         <DiskIOCard />
+        <ContainersCard />
       </View>
     </ScreenWrapper>
   );
@@ -67,6 +72,8 @@ function CpuCard() {
   const { data: cpu, isLoading: cpuLoading } = useGlancesCpu();
   const { data: perCpu, isLoading: perCpuLoading } = useGlancesPerCpu();
   const { data: load, isLoading: loadLoading } = useGlancesLoad();
+  const perCoreExpanded = useGlancesUiStore((s) => s.perCoreExpanded);
+  const setPerCoreExpanded = useGlancesUiStore((s) => s.setPerCoreExpanded);
 
   const isLoading = cpuLoading || perCpuLoading || loadLoading;
 
@@ -119,27 +126,46 @@ function CpuCard() {
 
           {perCpu && perCpu.length > 0 && (
             <View>
-              <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2">
-                Per Core
-              </Text>
-              <View className="gap-1.5">
-                {perCpu.map((core) => (
-                  <View key={core.cpu_number} className="flex-row items-center gap-2">
-                    <Text className="text-zinc-500 text-xs w-10">
-                      Core {core.cpu_number}
-                    </Text>
-                    <View className="flex-1">
-                      <ProgressBar
-                        progress={pct(core.total) / 100}
-                        color={usageBarColor(pct(core.total))}
-                      />
+              <Pressable
+                onPress={() => {
+                  lightHaptic();
+                  setPerCoreExpanded(!perCoreExpanded);
+                }}
+                className="flex-row items-center justify-between active:opacity-70"
+              >
+                <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
+                  Per Core
+                </Text>
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-zinc-600 text-xs">{perCpu.length} cores</Text>
+                  <Icon
+                    icon={perCoreExpanded ? ChevronUp : ChevronDown}
+                    size={16}
+                    color="#71717a"
+                  />
+                </View>
+              </Pressable>
+
+              {perCoreExpanded && (
+                <Animated.View entering={FadeIn.duration(150)} className="gap-1.5 mt-2">
+                  {perCpu.map((core) => (
+                    <View key={core.cpu_number} className="flex-row items-center gap-2">
+                      <Text className="text-zinc-500 text-xs w-10">
+                        Core {core.cpu_number}
+                      </Text>
+                      <View className="flex-1">
+                        <ProgressBar
+                          progress={pct(core.total) / 100}
+                          color={usageBarColor(pct(core.total))}
+                        />
+                      </View>
+                      <Text className={`text-xs font-medium w-10 text-right ${usageTextColor(pct(core.total))}`}>
+                        {fmt(core.total, 0)}%
+                      </Text>
                     </View>
-                    <Text className={`text-xs font-medium w-10 text-right ${usageTextColor(pct(core.total))}`}>
-                      {fmt(core.total, 0)}%
-                    </Text>
-                  </View>
-                ))}
-              </View>
+                  ))}
+                </Animated.View>
+              )}
             </View>
           )}
         </View>
@@ -374,6 +400,127 @@ function DiskIORow({ drive }: { drive: GlancesDiskIOItem }) {
         <Text className="text-zinc-400 text-xs">R {formatSpeed(readRate)}</Text>
         <Text className="text-zinc-400 text-xs">W {formatSpeed(writeRate)}</Text>
       </View>
+    </View>
+  );
+}
+
+// Glances reports the raw engine status string (running, paused, exited, …).
+// Map each to a dot + text color so the list reads as a status board.
+function containerStatusStyle(status: string): { dot: string; text: string } {
+  const s = status.toLowerCase();
+  if (s === "running" || s === "healthy") return { dot: "bg-success", text: "text-success" };
+  if (s === "dead" || s === "unhealthy") return { dot: "bg-red-500", text: "text-red-400" };
+  if (["paused", "restarting", "created", "removing", "starting"].includes(s)) {
+    return { dot: "bg-amber-500", text: "text-amber-400" };
+  }
+  // exited / stopped / unknown — neutral "not running".
+  return { dot: "bg-zinc-600", text: "text-zinc-500" };
+}
+
+// Docker sends image as a single-element list of comma-joined tags; Podman and
+// some builds send a plain string. Collapse both to one readable tag.
+function containerImage(image: GlancesContainerItem["image"]): string {
+  if (!image) return "";
+  const joined = Array.isArray(image) ? image.join(", ") : image;
+  return joined.split(",")[0]?.trim() ?? "";
+}
+
+function isContainerRunning(status: string): boolean {
+  const s = status.toLowerCase();
+  return s === "running" || s === "healthy" || s === "starting";
+}
+
+function ContainersCard() {
+  const { data: containers, isLoading } = useGlancesContainers();
+  const expanded = useGlancesUiStore((s) => s.containersExpanded);
+  const setExpanded = useGlancesUiStore((s) => s.setContainersExpanded);
+
+  // Hide entirely when the host has no container engine — getContainers swallows
+  // the plugin's 404 into [], so an empty list isn't an error condition.
+  if (!isLoading && (!containers || containers.length === 0)) return null;
+
+  const runningCount = containers?.filter((c) => isContainerRunning(c.status)).length ?? 0;
+
+  return (
+    <Card>
+      <Pressable
+        onPress={() => {
+          lightHaptic();
+          setExpanded(!expanded);
+        }}
+        className="flex-row items-center justify-between active:opacity-70"
+      >
+        <View className="flex-row items-center gap-2">
+          <Icon icon={Container} size={18} color="#a1a1aa" />
+          <CardTitle>Containers</CardTitle>
+        </View>
+        <View className="flex-row items-center gap-2">
+          {containers && (
+            <Text className="text-zinc-500 text-xs">
+              {runningCount}/{containers.length} running
+            </Text>
+          )}
+          <Icon icon={expanded ? ChevronUp : ChevronDown} size={18} color="#71717a" />
+        </View>
+      </Pressable>
+
+      {isLoading ? (
+        <View className="mt-4">
+          <SkeletonCardContent rows={3} />
+        </View>
+      ) : expanded ? (
+        <Animated.View entering={FadeIn.duration(150)} className="gap-3 mt-4">
+          {/* Running first, then by name — keeps the active set at the top. */}
+          {[...containers!]
+            .sort((a, b) => {
+              const ra = isContainerRunning(a.status) ? 0 : 1;
+              const rb = isContainerRunning(b.status) ? 0 : 1;
+              return ra - rb || a.name.localeCompare(b.name);
+            })
+            .map((c) => (
+              <ContainerRow key={c.id || c.name} container={c} />
+            ))}
+        </Animated.View>
+      ) : null}
+    </Card>
+  );
+}
+
+function ContainerRow({ container }: { container: GlancesContainerItem }) {
+  const style = containerStatusStyle(container.status);
+  const running = isContainerRunning(container.status);
+  const image = containerImage(container.image);
+  const cpu = typeof container.cpu_percent === "number" ? container.cpu_percent : null;
+  const mem = typeof container.memory_usage === "number" ? container.memory_usage : null;
+
+  return (
+    <View className="flex-row items-center gap-3">
+      <View className={`w-2 h-2 rounded-full ${style.dot}`} />
+      <View className="flex-1 mr-2">
+        <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
+          {container.name}
+        </Text>
+        <View className="flex-row items-center gap-2">
+          <Text className={`text-xs ${style.text}`}>{container.status}</Text>
+          {image ? (
+            <Text className="text-zinc-600 text-xs flex-1" numberOfLines={1}>
+              {image}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {running && (cpu !== null || mem !== null) && (
+        <View className="items-end">
+          {cpu !== null && (
+            <Text className={`text-xs font-medium ${usageTextColor(cpu)}`}>
+              {fmt(cpu, 1)}%
+            </Text>
+          )}
+          {mem !== null && (
+            <Text className="text-zinc-500 text-xs">{formatBytes(mem)}</Text>
+          )}
+        </View>
+      )}
     </View>
   );
 }

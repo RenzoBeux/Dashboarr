@@ -893,6 +893,14 @@ const DEMO_GLANCES_DISKIO = [
 const DEMO_GLANCES_GPU = [
   { key: "gpu_id", gpu_id: "0", name: "NVIDIA GeForce RTX 3060", mem: 42.5, proc: 28.0, temperature: 54, fan_speed: 38 },
 ];
+const DEMO_GLANCES_CONTAINERS = [
+  { id: "a1b2c3d4e5f6", name: "plex", status: "running", image: ["plexinc/pms-docker:latest"], cpu_percent: 18.4, memory_usage: 1503238553, memory_limit: 8589934592, uptime: "6 days", engine: "docker" },
+  { id: "b2c3d4e5f6a1", name: "qbittorrent", status: "running", image: ["lscr.io/linuxserver/qbittorrent:latest"], cpu_percent: 4.2, memory_usage: 524288000, memory_limit: 8589934592, uptime: "6 days", engine: "docker" },
+  { id: "c3d4e5f6a1b2", name: "sonarr", status: "running", image: ["lscr.io/linuxserver/sonarr:latest"], cpu_percent: 1.1, memory_usage: 312475648, memory_limit: 8589934592, uptime: "2 days", engine: "docker" },
+  { id: "d4e5f6a1b2c3", name: "radarr", status: "running", image: ["lscr.io/linuxserver/radarr:latest"], cpu_percent: 0.9, memory_usage: 298844160, memory_limit: 8589934592, uptime: "2 days", engine: "docker" },
+  { id: "e5f6a1b2c3d4", name: "prowlarr", status: "paused", image: ["lscr.io/linuxserver/prowlarr:latest"], cpu_percent: 0, memory_usage: 0, memory_limit: 8589934592, uptime: "", engine: "docker" },
+  { id: "f6a1b2c3d4e5", name: "bazarr", status: "exited", image: ["lscr.io/linuxserver/bazarr:latest"], cpu_percent: 0, memory_usage: 0, memory_limit: 8589934592, uptime: "", engine: "docker" },
+];
 
 // --- Bazarr ---
 
@@ -1004,6 +1012,7 @@ export function getDemoResponse(
       if (normalized === "/load") return DEMO_GLANCES_LOAD;
       if (normalized === "/diskio") return DEMO_GLANCES_DISKIO;
       if (normalized === "/gpu") return DEMO_GLANCES_GPU;
+      if (normalized === "/containers") return DEMO_GLANCES_CONTAINERS;
       return undefined;
     }
     case "qbittorrent": {

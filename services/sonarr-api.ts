@@ -42,8 +42,13 @@ export function getSeries(instanceId?: string): Promise<SonarrSeries[]> {
   return serviceRequest<SonarrSeries[]>("sonarr", "/series", { instanceId });
 }
 
-export function getSeriesById(id: number, instanceId?: string): Promise<SonarrSeries> {
-  return serviceRequest<SonarrSeries>("sonarr", `/series/${id}`, { instanceId });
+export function getSeriesById(
+  id: number,
+  instanceId?: string,
+): Promise<SonarrSeries> {
+  return serviceRequest<SonarrSeries>("sonarr", `/series/${id}`, {
+    instanceId,
+  });
 }
 
 // --- Episodes ---
@@ -58,8 +63,13 @@ export function getEpisodes(
   });
 }
 
-export function getEpisode(id: number, instanceId?: string): Promise<SonarrEpisode> {
-  return serviceRequest<SonarrEpisode>("sonarr", `/episode/${id}`, { instanceId });
+export function getEpisode(
+  id: number,
+  instanceId?: string,
+): Promise<SonarrEpisode> {
+  return serviceRequest<SonarrEpisode>("sonarr", `/episode/${id}`, {
+    instanceId,
+  });
 }
 
 // --- Episode Files ---
@@ -70,6 +80,18 @@ export function getEpisodeFiles(
 ): Promise<SonarrEpisodeFile[]> {
   return serviceRequest<SonarrEpisodeFile[]>("sonarr", "/episodefile", {
     params: { seriesId },
+    instanceId,
+  });
+}
+
+// Deletes a single episode's downloaded file. The episode stays in the library
+// but flips back to missing (hasFile=false).
+export function deleteEpisodeFile(
+  episodeFileId: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", `/episodefile/${episodeFileId}`, {
+    method: "DELETE",
     instanceId,
   });
 }
@@ -244,16 +266,23 @@ export function updateSeries(
   options?: { moveFiles?: boolean },
 ): Promise<SonarrSeries> {
   const query = options?.moveFiles ? "?moveFiles=true" : "";
-  return serviceRequest<SonarrSeries>("sonarr", `/series/${series.id}${query}`, {
-    method: "PUT",
-    body: JSON.stringify(series),
-    instanceId,
-  });
+  return serviceRequest<SonarrSeries>(
+    "sonarr",
+    `/series/${series.id}${query}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(series),
+      instanceId,
+    },
+  );
 }
 
 // --- Search Commands ---
 
-export function searchForSeries(seriesId: number, instanceId?: string): Promise<void> {
+export function searchForSeries(
+  seriesId: number,
+  instanceId?: string,
+): Promise<void> {
   return serviceRequest<void>("sonarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "SeriesSearch", seriesId }),
@@ -268,6 +297,17 @@ export function searchForEpisodes(
   return serviceRequest<void>("sonarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "EpisodeSearch", episodeIds }),
+    instanceId,
+  });
+}
+
+// Searches every monitored missing episode in the library. With no params the
+// MissingEpisodeSearch command defaults to Monitored across all series — the
+// equivalent of Sonarr's Wanted › Missing › "Search All" button.
+export function searchAllMissingEpisodes(instanceId?: string): Promise<void> {
+  return serviceRequest<void>("sonarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "MissingEpisodeSearch" }),
     instanceId,
   });
 }
@@ -332,8 +372,12 @@ export interface SonarrRootFolder {
   freeSpace: number;
 }
 
-export function getRootFolders(instanceId?: string): Promise<SonarrRootFolder[]> {
-  return serviceRequest<SonarrRootFolder[]>("sonarr", "/rootfolder", { instanceId });
+export function getRootFolders(
+  instanceId?: string,
+): Promise<SonarrRootFolder[]> {
+  return serviceRequest<SonarrRootFolder[]>("sonarr", "/rootfolder", {
+    instanceId,
+  });
 }
 
 // --- Tags ---

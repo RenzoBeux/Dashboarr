@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Check,
   Search,
+  UserSearch,
   Trash2,
   Bookmark,
   MoreHorizontal,
@@ -30,19 +31,25 @@ import { ExpandableText } from "@/components/common/expandable-text";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { ActionSheet } from "@/components/ui/action-sheet";
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   useSonarrSeriesById,
   useSonarrEpisodes,
   useSonarrEpisodeFiles,
   useToggleEpisodeMonitored,
+  useDeleteEpisodeFile,
+  useSearchForEpisodes,
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
   useUpdateSeriesQualityProfile,
   useSonarrRootFolders,
   useUpdateSeriesRootFolder,
+  useSonarrTags,
 } from "@/hooks/use-sonarr";
 import {
   formatEpisodeCode,
@@ -66,7 +73,11 @@ export default function SeriesDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
-  const { data: series, isLoading, error } = useSonarrSeriesById(Number(id), instanceId);
+  const {
+    data: series,
+    isLoading,
+    error,
+  } = useSonarrSeriesById(Number(id), instanceId);
   const { data: episodes } = useSonarrEpisodes(Number(id), instanceId);
   const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id), instanceId);
   const toggleSeries = useToggleSeriesMonitored(instanceId);
@@ -75,11 +86,14 @@ export default function SeriesDetailScreen() {
   const updateProfile = useUpdateSeriesQualityProfile(instanceId);
   const { data: rootFolders } = useSonarrRootFolders(instanceId);
   const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
+  const { data: tags } = useSonarrTags(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
   const [rootFolderVisible, setRootFolderVisible] = useState(false);
-  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(null);
+  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
+    null,
+  );
   const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
 
   const episodeFileMap = useMemo(() => {
@@ -106,7 +120,11 @@ export default function SeriesDetailScreen() {
     return (
       <ScreenWrapper>
         <BackHeader />
-        <ErrorBanner error={error} title="Failed to load series" className="mt-4" />
+        <ErrorBanner
+          error={error}
+          title="Failed to load series"
+          className="mt-4"
+        />
       </ScreenWrapper>
     );
   }
@@ -129,6 +147,11 @@ export default function SeriesDetailScreen() {
   const qualityProfileName = qualityProfiles?.find(
     (p) => p.id === series.qualityProfileId,
   )?.name;
+
+  const tagLabels =
+    series.tags
+      ?.map((tagId) => tags?.find((t) => t.id === tagId)?.label)
+      .filter((label): label is string => !!label) ?? [];
 
   const handleToggleMonitor = () => {
     toggleSeries.mutate({ seriesId: series.id, monitored: !series.monitored });
@@ -236,6 +259,21 @@ export default function SeriesDetailScreen() {
               >
                 {series.genres.map((g) => (
                   <Badge key={g} label={g} variant="default" />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {tagLabels.length > 0 ? (
+            <View className="mb-5">
+              <SectionLabel>Tags</SectionLabel>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerClassName="gap-2"
+              >
+                {tagLabels.map((label) => (
+                  <Badge key={label} label={label} variant="info" />
                 ))}
               </ScrollView>
             </View>
@@ -548,9 +586,7 @@ function AboutRow({
       >
         {value}
       </Text>
-      {onPress ? (
-        <Icon icon={ChevronRight} size={14} color="#71717a" />
-      ) : null}
+      {onPress ? <Icon icon={ChevronRight} size={14} color="#71717a" /> : null}
     </>
   );
 
@@ -633,7 +669,8 @@ function SeasonAccordion({
       {expanded && episodes && (
         <View className="mt-3 gap-1">
           {episodes
-            .sort((a, b) => a.episodeNumber - b.episodeNumber)
+            // Descending (latest episode first) to match Sonarr's web UI.
+            .sort((a, b) => b.episodeNumber - a.episodeNumber)
             .map((ep) => (
               <EpisodeRow
                 key={ep.id}
@@ -666,67 +703,129 @@ function EpisodeRow({
 }) {
   const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
+  const searchEpisode = useSearchForEpisodes(instanceId);
+  const deleteFile = useDeleteEpisodeFile(instanceId);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const mediaInfo = episodeFile?.mediaInfo;
 
+  // Search/delete live in the "⋯" sheet so the row stays uncluttered and the
+  // automatic-vs-interactive search distinction reads clearly as labeled rows.
+  const episodeActions: ActionSheetAction[] = [
+    {
+      label: "Automatic Search",
+      icon: <Icon icon={Search} size={20} color="#a1a1aa" />,
+      onPress: () => searchEpisode.mutate([episode.id]),
+    },
+    {
+      label: "Interactive Search",
+      icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        router.push(
+          `/series/releases/${seriesId}?episodeId=${episode.id}${
+            instanceId ? `&instanceId=${instanceId}` : ""
+          }`,
+        ),
+    },
+    ...(episodeFile
+      ? [
+          {
+            label: "Delete File",
+            icon: <Icon icon={Trash2} size={20} color="#ef4444" />,
+            variant: "danger" as const,
+            onPress: () => setConfirmDelete(true),
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <View className="flex-row items-center py-1.5 border-b border-border/30">
-      <View
-        className={`w-1.5 h-6 rounded-full mr-2 ${
-          episode.hasFile ? "bg-success" : "bg-zinc-600"
-        }`}
-      />
-      <View className="flex-1">
-        <Text className="text-zinc-300 text-xs" numberOfLines={1}>
-          {formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} —{" "}
-          {episode.title}
-        </Text>
-        {mediaInfo ? (
-          <Text className="text-zinc-600 text-xs">
-            {formatResolution(mediaInfo.resolution)} · {mediaInfo.videoCodec} ·{" "}
-            {mediaInfo.audioCodec} {formatAudioChannels(mediaInfo.audioChannels)}
-            {mediaInfo.videoDynamicRangeType
-              ? ` · ${mediaInfo.videoDynamicRangeType}`
-              : ""}
-          </Text>
-        ) : episode.airDate ? (
-          <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
-        ) : null}
-      </View>
-      <Pressable
-        onPress={() =>
-          router.push(
-            `/series/releases/${seriesId}?episodeId=${episode.id}${
-              instanceId ? `&instanceId=${instanceId}` : ""
-            }`,
-          )
-        }
-        hitSlop={6}
-        className="p-1 active:opacity-70 mr-1"
-      >
-        <Icon icon={Search} size={12} color="#a1a1aa" />
-      </Pressable>
-      <Pressable
-        onPress={() =>
-          toggleMonitored.mutate({
-            episodeId: episode.id,
-            monitored: !episode.monitored,
-          })
-        }
-        disabled={toggleMonitored.isPending}
-        className={`p-1 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityLabel={
-          episode.monitored ? "Monitored — tap to unmonitor" : "Not monitored — tap to monitor"
-        }
-      >
-        <Icon
-          icon={Bookmark}
-          size={14}
-          color={episode.monitored ? "#3b82f6" : "#52525b"}
-          fill={episode.monitored ? "#3b82f6" : "transparent"}
+    <>
+      <View className="flex-row items-center py-1.5 border-b border-border/30">
+        <View
+          className={`w-1.5 h-6 rounded-full mr-2 ${
+            episode.hasFile ? "bg-success" : "bg-zinc-600"
+          }`}
         />
-      </Pressable>
-    </View>
+        <View className="flex-1">
+          <Text className="text-zinc-300 text-xs" numberOfLines={1}>
+            {formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} —{" "}
+            {episode.title}
+          </Text>
+          {mediaInfo ? (
+            <Text className="text-zinc-600 text-xs">
+              {formatResolution(mediaInfo.resolution)} · {mediaInfo.videoCodec}{" "}
+              · {mediaInfo.audioCodec}{" "}
+              {formatAudioChannels(mediaInfo.audioChannels)}
+              {mediaInfo.videoDynamicRangeType
+                ? ` · ${mediaInfo.videoDynamicRangeType}`
+                : ""}
+            </Text>
+          ) : episode.airDate ? (
+            <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
+          ) : null}
+        </View>
+        <View className="flex-row items-center gap-1">
+          <Pressable
+            onPress={() =>
+              toggleMonitored.mutate({
+                episodeId: episode.id,
+                monitored: !episode.monitored,
+              })
+            }
+            disabled={toggleMonitored.isPending}
+            className={`p-2 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              episode.monitored
+                ? "Monitored — tap to unmonitor"
+                : "Not monitored — tap to monitor"
+            }
+          >
+            <Icon
+              icon={Bookmark}
+              size={18}
+              color={episode.monitored ? "#3b82f6" : "#52525b"}
+              fill={episode.monitored ? "#3b82f6" : "transparent"}
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => setSheetOpen(true)}
+            hitSlop={8}
+            className="p-2 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel="Episode actions"
+          >
+            <Icon icon={MoreHorizontal} size={18} color="#a1a1aa" />
+          </Pressable>
+        </View>
+      </View>
+
+      <ActionSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)}
+        subtitle={episode.title}
+        actions={episodeActions}
+      />
+
+      <ConfirmModal
+        visible={confirmDelete}
+        title="Delete Episode File"
+        message={`Delete the file for ${formatEpisodeCode(
+          episode.seasonNumber,
+          episode.episodeNumber,
+        )}? The episode stays in the library but will be marked missing.`}
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          setConfirmDelete(false);
+          if (episodeFile) deleteFile.mutate(episodeFile.id);
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </>
   );
 }
