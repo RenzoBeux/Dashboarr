@@ -4,6 +4,7 @@ import {
   getSeriesById,
   getEpisodes,
   getEpisodeFiles,
+  deleteEpisodeFile,
   getCalendar,
   getQueue,
   getHistory,
@@ -151,6 +152,25 @@ export function useToggleEpisodeMonitored(instanceId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "episodes"] });
     },
+  });
+}
+
+export function useDeleteEpisodeFile(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: (episodeFileId: number) =>
+      deleteEpisodeFile(episodeFileId, id ?? undefined),
+    onSuccess: () => {
+      // Refresh the episode list, file map, and series stats (file counts).
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "episodes"] });
+      queryClient.invalidateQueries({
+        queryKey: ["sonarr", id, "episodeFiles"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
+      toast("Episode file deleted");
+    },
+    onError: (err) => toastError("Delete failed", err),
   });
 }
 

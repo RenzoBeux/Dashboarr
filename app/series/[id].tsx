@@ -37,6 +37,7 @@ import {
   useSonarrEpisodes,
   useSonarrEpisodeFiles,
   useToggleEpisodeMonitored,
+  useDeleteEpisodeFile,
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
@@ -67,7 +68,11 @@ export default function SeriesDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
-  const { data: series, isLoading, error } = useSonarrSeriesById(Number(id), instanceId);
+  const {
+    data: series,
+    isLoading,
+    error,
+  } = useSonarrSeriesById(Number(id), instanceId);
   const { data: episodes } = useSonarrEpisodes(Number(id), instanceId);
   const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id), instanceId);
   const toggleSeries = useToggleSeriesMonitored(instanceId);
@@ -81,7 +86,9 @@ export default function SeriesDetailScreen() {
   const [actionsVisible, setActionsVisible] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
   const [rootFolderVisible, setRootFolderVisible] = useState(false);
-  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(null);
+  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
+    null,
+  );
   const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
 
   const episodeFileMap = useMemo(() => {
@@ -108,7 +115,11 @@ export default function SeriesDetailScreen() {
     return (
       <ScreenWrapper>
         <BackHeader />
-        <ErrorBanner error={error} title="Failed to load series" className="mt-4" />
+        <ErrorBanner
+          error={error}
+          title="Failed to load series"
+          className="mt-4"
+        />
       </ScreenWrapper>
     );
   }
@@ -570,9 +581,7 @@ function AboutRow({
       >
         {value}
       </Text>
-      {onPress ? (
-        <Icon icon={ChevronRight} size={14} color="#71717a" />
-      ) : null}
+      {onPress ? <Icon icon={ChevronRight} size={14} color="#71717a" /> : null}
     </>
   );
 
@@ -689,67 +698,103 @@ function EpisodeRow({
 }) {
   const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
+  const deleteFile = useDeleteEpisodeFile(instanceId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const mediaInfo = episodeFile?.mediaInfo;
 
   return (
-    <View className="flex-row items-center py-1.5 border-b border-border/30">
-      <View
-        className={`w-1.5 h-6 rounded-full mr-2 ${
-          episode.hasFile ? "bg-success" : "bg-zinc-600"
-        }`}
-      />
-      <View className="flex-1">
-        <Text className="text-zinc-300 text-xs" numberOfLines={1}>
-          {formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} —{" "}
-          {episode.title}
-        </Text>
-        {mediaInfo ? (
-          <Text className="text-zinc-600 text-xs">
-            {formatResolution(mediaInfo.resolution)} · {mediaInfo.videoCodec} ·{" "}
-            {mediaInfo.audioCodec} {formatAudioChannels(mediaInfo.audioChannels)}
-            {mediaInfo.videoDynamicRangeType
-              ? ` · ${mediaInfo.videoDynamicRangeType}`
-              : ""}
-          </Text>
-        ) : episode.airDate ? (
-          <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
-        ) : null}
-      </View>
-      <Pressable
-        onPress={() =>
-          router.push(
-            `/series/releases/${seriesId}?episodeId=${episode.id}${
-              instanceId ? `&instanceId=${instanceId}` : ""
-            }`,
-          )
-        }
-        hitSlop={6}
-        className="p-1 active:opacity-70 mr-1"
-      >
-        <Icon icon={Search} size={12} color="#a1a1aa" />
-      </Pressable>
-      <Pressable
-        onPress={() =>
-          toggleMonitored.mutate({
-            episodeId: episode.id,
-            monitored: !episode.monitored,
-          })
-        }
-        disabled={toggleMonitored.isPending}
-        className={`p-1 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityLabel={
-          episode.monitored ? "Monitored — tap to unmonitor" : "Not monitored — tap to monitor"
-        }
-      >
-        <Icon
-          icon={Bookmark}
-          size={14}
-          color={episode.monitored ? "#3b82f6" : "#52525b"}
-          fill={episode.monitored ? "#3b82f6" : "transparent"}
+    <>
+      <View className="flex-row items-center py-1.5 border-b border-border/30">
+        <View
+          className={`w-1.5 h-6 rounded-full mr-2 ${
+            episode.hasFile ? "bg-success" : "bg-zinc-600"
+          }`}
         />
-      </Pressable>
-    </View>
+        <View className="flex-1">
+          <Text className="text-zinc-300 text-xs" numberOfLines={1}>
+            {formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} —{" "}
+            {episode.title}
+          </Text>
+          {mediaInfo ? (
+            <Text className="text-zinc-600 text-xs">
+              {formatResolution(mediaInfo.resolution)} · {mediaInfo.videoCodec}{" "}
+              · {mediaInfo.audioCodec}{" "}
+              {formatAudioChannels(mediaInfo.audioChannels)}
+              {mediaInfo.videoDynamicRangeType
+                ? ` · ${mediaInfo.videoDynamicRangeType}`
+                : ""}
+            </Text>
+          ) : episode.airDate ? (
+            <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
+          ) : null}
+        </View>
+        <Pressable
+          onPress={() =>
+            router.push(
+              `/series/releases/${seriesId}?episodeId=${episode.id}${
+                instanceId ? `&instanceId=${instanceId}` : ""
+              }`,
+            )
+          }
+          hitSlop={6}
+          className="p-1 active:opacity-70 mr-1"
+        >
+          <Icon icon={Search} size={12} color="#a1a1aa" />
+        </Pressable>
+        {episodeFile ? (
+          <Pressable
+            onPress={() => setConfirmDelete(true)}
+            disabled={deleteFile.isPending}
+            hitSlop={6}
+            className={`p-1 active:opacity-70 mr-1 ${deleteFile.isPending ? "opacity-50" : ""}`}
+            accessibilityRole="button"
+            accessibilityLabel="Delete episode file"
+          >
+            <Icon icon={Trash2} size={12} color="#ef4444" />
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={() =>
+            toggleMonitored.mutate({
+              episodeId: episode.id,
+              monitored: !episode.monitored,
+            })
+          }
+          disabled={toggleMonitored.isPending}
+          className={`p-1 active:opacity-70 ${toggleMonitored.isPending ? "opacity-50" : ""}`}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={
+            episode.monitored
+              ? "Monitored — tap to unmonitor"
+              : "Not monitored — tap to monitor"
+          }
+        >
+          <Icon
+            icon={Bookmark}
+            size={14}
+            color={episode.monitored ? "#3b82f6" : "#52525b"}
+            fill={episode.monitored ? "#3b82f6" : "transparent"}
+          />
+        </Pressable>
+      </View>
+
+      <ConfirmModal
+        visible={confirmDelete}
+        title="Delete Episode File"
+        message={`Delete the file for ${formatEpisodeCode(
+          episode.seasonNumber,
+          episode.episodeNumber,
+        )}? The episode stays in the library but will be marked missing.`}
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          setConfirmDelete(false);
+          if (episodeFile) deleteFile.mutate(episodeFile.id);
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
+    </>
   );
 }

@@ -84,6 +84,18 @@ export function getEpisodeFiles(
   });
 }
 
+// Deletes a single episode's downloaded file. The episode stays in the library
+// but flips back to missing (hasFile=false).
+export function deleteEpisodeFile(
+  episodeFileId: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", `/episodefile/${episodeFileId}`, {
+    method: "DELETE",
+    instanceId,
+  });
+}
+
 // --- Calendar ---
 
 export function getCalendar(
