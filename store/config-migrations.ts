@@ -91,8 +91,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v23 — per-instance `ignoreCertErrors` on ServiceConfig (opt a server out
  *         of TLS certificate validation). Pure version stamp — optional field,
  *         absence means false.
+ *   v24 — added the emby service entry. Pure version stamp — defaultInstances()
+ *         iterates SERVICE_IDS and backfills a disabled emby instance at import
+ *         time, so older exports just need the version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 23;
+export const CURRENT_CONFIG_VERSION = 24;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -501,6 +504,11 @@ const migrations: Record<number, (payload: any) => any> = {
   // absent means false, so older exports are already correct. The schema
   // validator (coerceServiceInstance) coerces the field on import.
   22: (payload) => ({ ...payload, version: 23 }),
+
+  // v23 → v24: emby added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack an emby entry
+  // get the disabled default automatically — nothing to transform here.
+  23: (payload) => ({ ...payload, version: 24 }),
 };
 
 /**

@@ -185,7 +185,8 @@ export async function serviceRequest<T>(
       headers.set("X-Plex-Token", secrets.apiKey);
       headers.set("Accept", "application/json");
     }
-  } else if (serviceId === "jellyfin") {
+  } else if (serviceId === "jellyfin" || serviceId === "emby") {
+    // Emby and Jellyfin both authenticate with the X-Emby-Token header.
     if (secrets.apiKey) {
       headers.set("X-Emby-Token", secrets.apiKey);
     }
@@ -272,7 +273,7 @@ export async function pingService(
   if (serviceId === "plex") {
     if (secrets.apiKey) headers.set("X-Plex-Token", secrets.apiKey);
     headers.set("Accept", "application/json");
-  } else if (serviceId === "jellyfin") {
+  } else if (serviceId === "jellyfin" || serviceId === "emby") {
     if (secrets.apiKey) headers.set("X-Emby-Token", secrets.apiKey);
   } else if (serviceId === "glances") {
     if (secrets.username && secrets.password) {
@@ -585,17 +586,21 @@ async function runConnectionProbe(
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 
+    case "emby":
     case "jellyfin": {
-      // /System/Info validates auth without needing a user-bound token —
-      // /Users/Me returns 400 for server-wide API keys because they lack a
-      // user context. /System/Info accepts both API keys and user tokens, so
-      // it matches every Jellyfin auth shape this app supports.
+      // Emby and Jellyfin share this probe. /System/Info validates auth without
+      // needing a user-bound token — /Users/Me returns 400 for server-wide API
+      // keys because they lack a user context. /System/Info accepts both API
+      // keys and user tokens, so it matches every auth shape this app supports.
       const url = buildUrl(baseUrl, defaults.apiBasePath, "/System/Info");
       const headers = makeHeaders();
       if (apiKey) headers.set("X-Emby-Token", apiKey);
       const res = await fetch(url, { method: "GET", headers, signal });
       if (res.status === 401 || res.status === 403)
-        return { kind: "auth_failed", message: "Invalid Jellyfin token" };
+        return {
+          kind: "auth_failed",
+          message: `Invalid ${serviceId === "emby" ? "Emby" : "Jellyfin"} token`,
+        };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (res.ok) return { kind: "ok" };

@@ -1059,8 +1059,11 @@ export function getDemoResponse(
                 : true; // pausedownload, resumedownload, editqueue, append all return bool
       return { version: "1.1", result };
     }
+    // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
+    case "emby":
     case "jellyfin": {
-      if (basePath === "/System/Info/Public") return { Version: "10.8.13", ServerName: "Demo Jellyfin" };
+      if (basePath === "/System/Info/Public")
+        return { Version: "10.8.13", ServerName: serviceId === "emby" ? "Demo Emby" : "Demo Jellyfin" };
       if (basePath === "/Users/Me") return DEMO_JELLYFIN_ME;
       if (basePath === "/Users") return DEMO_JELLYFIN_USERS;
       if (basePath === "/Sessions") return DEMO_JELLYFIN_SESSIONS;

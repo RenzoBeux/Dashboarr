@@ -48,7 +48,7 @@ async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise
     "# Back-compat — secret in the URL path (works with services that can't send custom headers):",
   ];
   for (const id of SERVICE_IDS) {
-    if (id === "qbittorrent" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "glances") continue;
+    if (id === "qbittorrent" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "emby" || id === "glances") continue;
     lines.push(`${id.padEnd(10)} ${webhookBase}/${id}/${webhookSecret}`);
   }
   const content = lines.join("\n") + "\n";

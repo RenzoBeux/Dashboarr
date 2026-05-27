@@ -19,6 +19,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   bazarr:      ["serviceOffline"],
   glances:     ["serviceOffline"],
   jellyfin:    ["serviceOffline"],
+  emby:        ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

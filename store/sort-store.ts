@@ -22,7 +22,7 @@ export type PlexRecentSortKey =
   | "year-asc";
 
 // Jellyfin's "Recently Added" tab sorts on the same axes as Plex's, so reuse
-// the type instead of forking a parallel one.
+// the type instead of forking a parallel one. Emby shares it too.
 export type JellyfinRecentSortKey = PlexRecentSortKey;
 
 // Overseerr's API only sorts DESC — asc options would be a lie. See
@@ -51,6 +51,7 @@ interface SortPreferences {
   series: SeriesSortKey;
   plexRecent: PlexRecentSortKey;
   jellyfinRecent: JellyfinRecentSortKey;
+  embyRecent: JellyfinRecentSortKey;
   requests: RequestsSortKey;
   downloads: DownloadsSortKey;
   releases: ReleasesSortKey;
@@ -61,6 +62,7 @@ export const SORT_DEFAULTS: SortPreferences = {
   series: "added-desc",
   plexRecent: "added-desc",
   jellyfinRecent: "added-desc",
+  embyRecent: "added-desc",
   requests: "created-desc",
   downloads: "progress-desc",
   releases: "seeders-desc",
@@ -72,6 +74,7 @@ interface SortStore extends SortPreferences {
   setSeries: (v: SeriesSortKey) => void;
   setPlexRecent: (v: PlexRecentSortKey) => void;
   setJellyfinRecent: (v: JellyfinRecentSortKey) => void;
+  setEmbyRecent: (v: JellyfinRecentSortKey) => void;
   setRequests: (v: RequestsSortKey) => void;
   setDownloads: (v: DownloadsSortKey) => void;
   setReleases: (v: ReleasesSortKey) => void;
@@ -83,6 +86,7 @@ function snapshot(state: SortPreferences): SortPreferences {
     series: state.series,
     plexRecent: state.plexRecent,
     jellyfinRecent: state.jellyfinRecent,
+    embyRecent: state.embyRecent,
     requests: state.requests,
     downloads: state.downloads,
     releases: state.releases,
@@ -115,6 +119,10 @@ export const useSortStore = create<SortStore>((set, get) => ({
   setJellyfinRecent: (jellyfinRecent) => {
     set({ jellyfinRecent });
     setJSON(STORAGE_KEY, snapshot({ ...get(), jellyfinRecent }));
+  },
+  setEmbyRecent: (embyRecent) => {
+    set({ embyRecent });
+    setJSON(STORAGE_KEY, snapshot({ ...get(), embyRecent }));
   },
   setRequests: (requests) => {
     set({ requests });

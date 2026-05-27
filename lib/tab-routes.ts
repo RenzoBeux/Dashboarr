@@ -16,6 +16,7 @@ export const PICKABLE_SERVICE_TABS = [
   "indexers",
   "plex",
   "jellyfin",
+  "emby",
   "glances",
   "bazarr",
 ] as const;
@@ -44,6 +45,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   prowlarr: "indexers",
   plex: "plex",
   jellyfin: "jellyfin",
+  emby: "emby",
   glances: "glances",
   bazarr: "bazarr",
 };
@@ -58,6 +60,7 @@ const TAB_TO_SERVICE: Partial<Record<PickableServiceTab, ServiceId>> = {
   indexers: "prowlarr",
   plex: "plex",
   jellyfin: "jellyfin",
+  emby: "emby",
   glances: "glances",
   bazarr: "bazarr",
 };
