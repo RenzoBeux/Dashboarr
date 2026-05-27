@@ -67,6 +67,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "calendar",
   "tautulli-activity",
   "overseerr-requests",
+  "combined-now-playing",
   "plex-now-playing",
   "jellyfin-now-playing",
   "emby-now-playing",

@@ -20,6 +20,10 @@ interface MediaPosterTileProps {
   subtitle?: string;
   cornerBadge?: PosterBadge;
   bottomLeftBadge?: PosterBadge;
+  // Free-form node pinned to the top-left corner — used for a small source
+  // logo on the combined now-playing widget. Sits on a subtle scrim for
+  // legibility over bright posters.
+  topLeftBadge?: React.ReactNode;
   bottomOverlay?: React.ReactNode;
   fallbackIcon?: LucideIcon;
   mediaType?: "movie" | "tv";
@@ -35,6 +39,7 @@ export function MediaPosterTile({
   subtitle,
   cornerBadge,
   bottomLeftBadge,
+  topLeftBadge,
   bottomOverlay,
   fallbackIcon,
   mediaType,
@@ -81,6 +86,12 @@ export function MediaPosterTile({
         ) : (
           <View className="w-full h-full items-center justify-center">
             <Icon icon={FallbackIcon} size={24} color="#71717a" />
+          </View>
+        )}
+
+        {topLeftBadge && (
+          <View className="absolute top-1.5 left-1.5 rounded-md bg-black/55 p-0.5">
+            {topLeftBadge}
           </View>
         )}
 

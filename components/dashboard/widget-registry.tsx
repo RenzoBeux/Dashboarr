@@ -29,6 +29,7 @@ import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
 import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-playing-card";
 import { EmbyNowPlayingCard } from "@/components/dashboard/emby-now-playing-card";
+import { CombinedNowPlayingCard } from "@/components/dashboard/combined-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
@@ -77,6 +78,11 @@ import {
   EMBY_NOW_PLAYING_DEFAULT_SETTINGS,
   type EmbyNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/emby-now-playing-settings";
+import {
+  CombinedNowPlayingSettings,
+  COMBINED_NOW_PLAYING_DEFAULT_SETTINGS,
+  type CombinedNowPlayingSettingsValue,
+} from "@/components/dashboard/widget-settings/combined-now-playing-settings";
 import {
   TautulliActivitySettings,
   TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
@@ -278,6 +284,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: OverseerrRequestsSettings,
     defaultSettings: OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   },
+  "combined-now-playing": {
+    id: "combined-now-playing",
+    label: "Now Playing (All Servers)",
+    description: "Live streams across Plex, Jellyfin and Emby in one row",
+    icon: PlayCircle,
+    service: ["plex", "jellyfin", "emby"],
+    component: CombinedNowPlayingCard,
+    settingsComponent: CombinedNowPlayingSettings,
+    defaultSettings: COMBINED_NOW_PLAYING_DEFAULT_SETTINGS,
+  },
   "plex-now-playing": {
     id: "plex-now-playing",
     label: "Plex Now Playing",
@@ -356,6 +372,7 @@ export type {
   PlexNowPlayingSettingsValue,
   JellyfinNowPlayingSettingsValue,
   EmbyNowPlayingSettingsValue,
+  CombinedNowPlayingSettingsValue,
   TautulliActivitySettingsValue,
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
