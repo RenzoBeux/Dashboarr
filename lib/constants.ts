@@ -64,6 +64,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "sabnzbd-queue",
   "nzbget-queue",
   "radarr-queue",
+  "recently-downloaded",
   "calendar",
   "tautulli-activity",
   "overseerr-requests",
