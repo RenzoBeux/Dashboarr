@@ -11,6 +11,7 @@ import {
   Inbox,
   MonitorPlay,
   Newspaper,
+  PackageCheck,
   PlayCircle,
   Power,
   Radar,
@@ -23,6 +24,7 @@ import { DownloadCard } from "@/components/dashboard/download-card";
 import { SabnzbdQueueCard } from "@/components/dashboard/sabnzbd-queue-card";
 import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
+import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
@@ -103,6 +105,11 @@ import {
   RADARR_QUEUE_DEFAULT_SETTINGS,
   type RadarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import {
+  RecentlyDownloadedSettings,
+  RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
+  type RecentlyDownloadedSettingsValue,
+} from "@/components/dashboard/widget-settings/recently-downloaded-settings";
 import {
   ProwlarrStatsSettings,
   PROWLARR_STATS_DEFAULT_SETTINGS,
@@ -254,6 +261,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: RadarrQueueSettings,
     defaultSettings: RADARR_QUEUE_DEFAULT_SETTINGS,
   },
+  "recently-downloaded": {
+    id: "recently-downloaded",
+    label: "Recently Downloaded",
+    description: "Latest imported movies and episodes from Radarr and Sonarr",
+    icon: PackageCheck,
+    service: ["sonarr", "radarr"],
+    component: RecentlyDownloadedCard,
+    settingsComponent: RecentlyDownloadedSettings,
+    defaultSettings: RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
+  },
   "calendar": {
     id: "calendar",
     label: "Calendar",
@@ -377,6 +394,7 @@ export type {
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
   RadarrQueueSettingsValue,
+  RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
   BazarrWantedSettingsValue,
 };
