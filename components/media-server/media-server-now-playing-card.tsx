@@ -4,14 +4,15 @@ import { useQueries } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getSessions } from "@/services/plex-api";
+import { getSessions } from "@/services/jellyfin-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import type { MediaServerId } from "@/lib/media-server-config";
 import {
-  PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
-  type PlexNowPlayingSettingsValue,
-} from "@/components/dashboard/widget-settings/plex-now-playing-settings";
+  STREAMING_NOW_PLAYING_DEFAULT_SETTINGS,
+  type StreamingNowPlayingSettingsValue,
+} from "@/components/dashboard/widget-settings/streaming-now-playing-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
@@ -19,33 +20,37 @@ import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 import { NowPlayingStreamTile } from "@/components/dashboard/now-playing-stream-tile";
-import { parseHiddenUsers, plexSessionToStream } from "@/lib/now-playing-stream";
+import { mediaServerSessionToStream, parseHiddenUsers } from "@/lib/now-playing-stream";
 
-export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
-  const { settings } = useWidgetSettings<PlexNowPlayingSettingsValue>(
+// Shared now-playing dashboard card for Jellyfin and Emby — identical session
+// data, parameterized by serviceId. See lib/media-server-config.ts.
+export function MediaServerNowPlayingCard({
+  slotId,
+  serviceId,
+  displayName,
+}: WidgetComponentProps & { serviceId: MediaServerId; displayName: string }) {
+  const { settings } = useWidgetSettings<StreamingNowPlayingSettingsValue>(
     slotId,
-    PLEX_NOW_PLAYING_DEFAULT_SETTINGS,
+    STREAMING_NOW_PLAYING_DEFAULT_SETTINGS,
   );
-  const allInstances = useEnabledInstances("plex");
+  const allInstances = useEnabledInstances(serviceId);
   const instances = resolveBoundInstances(settings.instanceIds, allInstances);
   const router = useRouter();
 
   const queries = useQueries({
     queries: instances.map((inst) => ({
-      queryKey: ["plex", inst.id, "sessions"] as const,
-      queryFn: () => getSessions(inst.id),
+      queryKey: [serviceId, inst.id, "sessions"] as const,
+      queryFn: () => getSessions(inst.id, serviceId),
       refetchInterval: POLLING_INTERVALS.activeTorrents,
     })),
   });
-  // Initial-load gate only — see lib/multi-instance-query.ts. Once any Plex
-  // returns sessions we keep rendering them across refetches even if a sibling
-  // instance is currently failing.
+  // Initial-load gate only — once any instance returns sessions, render them
+  // even if a sibling instance is currently failing its retry loop. Prevents
+  // the "one offline server flickers the card every 5s" problem.
   const { isInitialLoading } = aggregateMultiInstanceState(queries);
 
-  // Tag every session with its source instance so per-tile poster URLs hit the
-  // right Plex (thumb paths are token-scoped), then normalize to a stream.
   const allStreams = queries.flatMap((q, i) =>
-    (q.data ?? []).map((s) => plexSessionToStream(s, instances[i].id)),
+    (q.data ?? []).map((s) => mediaServerSessionToStream(s, instances[i].id, serviceId)),
   );
 
   const hiddenUsers = parseHiddenUsers(settings.hideUsers);
@@ -63,8 +68,8 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
   return (
     <Card>
       <CardHeaderLink
-        title="Plex"
-        onPress={() => router.push("/(tabs)/plex")}
+        title={displayName}
+        onPress={() => router.push(`/(tabs)/${serviceId}`)}
         trailing={
           filtered.length > 0 ? (
             <Badge
@@ -76,7 +81,7 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
       />
 
       {instances.length === 0 ? (
-        <EmptyState compact title="No Plex instances enabled" />
+        <EmptyState compact title={`No ${displayName} instances enabled`} />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
       ) : display.length === 0 ? (
@@ -96,7 +101,7 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
             />
           ))}
           {hasMore && (
-            <ViewAllTile onPress={() => router.push("/(tabs)/plex")} />
+            <ViewAllTile onPress={() => router.push(`/(tabs)/${serviceId}`)} />
           )}
         </ScrollView>
       )}

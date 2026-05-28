@@ -1127,6 +1127,16 @@ export interface JellyfinSession {
   TranscodingInfo?: JellyfinTranscodingInfo;
 }
 
+// Emby and Jellyfin return identical wire shapes, so the shared media-server
+// layer (services/jellyfin-api.ts, the hooks factory, the screen/widget) reads
+// these under service-neutral names. Aliases, not new interfaces — one set of
+// types serves both.
+export type MediaServerUser = JellyfinUser;
+export type MediaServerLibrary = JellyfinLibrary;
+export type MediaServerItem = JellyfinItem;
+export type MediaServerItemsResponse = JellyfinItemsResponse;
+export type MediaServerSession = JellyfinSession;
+
 // --- Glances Types ---
 
 export interface GlancesCpu {

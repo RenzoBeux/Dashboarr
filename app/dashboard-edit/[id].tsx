@@ -59,6 +59,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   indexers: "Indexers",
   plex: "Plex",
   jellyfin: "Jellyfin",
+  emby: "Emby",
   glances: "Glances",
   bazarr: "Bazarr",
 };

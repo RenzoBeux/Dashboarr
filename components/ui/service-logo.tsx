@@ -8,6 +8,7 @@ import QbittorrentLogo from "@/assets/services/qbittorrent.svg";
 import SabnzbdLogo from "@/assets/services/sabnzbd.svg";
 import NzbgetLogo from "@/assets/services/nzbget.svg";
 import JellyfinLogo from "@/assets/services/jellyfin.svg";
+import EmbyLogo from "@/assets/services/emby.svg";
 import OverseerrLogo from "@/assets/services/overseerr.svg";
 import PlexLogo from "@/assets/services/plex.svg";
 
@@ -16,6 +17,7 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   sabnzbd: SabnzbdLogo,
   nzbget: NzbgetLogo,
   jellyfin: JellyfinLogo,
+  emby: EmbyLogo,
   overseerr: OverseerrLogo,
   plex: PlexLogo,
 };

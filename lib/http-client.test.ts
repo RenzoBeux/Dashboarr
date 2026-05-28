@@ -50,6 +50,7 @@ const FIXTURE_KINDS = [
   { id: "sonarr", url: "http://sonarr.local:8989", secrets: { apiKey: "sonarr-key" } },
   { id: "plex", url: "http://plex.local:32400", secrets: { apiKey: "plex-token" } },
   { id: "jellyfin", url: "http://jelly.local:8096", secrets: { apiKey: "jelly-token" } },
+  { id: "emby", url: "http://emby.local:8096", secrets: { apiKey: "emby-token" } },
   { id: "glances", url: "http://glances.local:61208", secrets: { username: "u", password: "p" } },
 ];
 
@@ -199,6 +200,14 @@ describe("serviceRequest — custom header injection", () => {
     };
     await serviceRequest("jellyfin", "/System/Info/Public");
     expect(getSentHeaders().get("X-Emby-Token")).toBe("jelly-token");
+  });
+
+  it("authenticates Emby with X-Emby-Token (same scheme as Jellyfin)", async () => {
+    mockStateRef.current.secrets.emby.customHeaders = {
+      "X-Emby-Token": "spoofed",
+    };
+    await serviceRequest("emby", "/System/Info/Public");
+    expect(getSentHeaders().get("X-Emby-Token")).toBe("emby-token");
   });
 
   it("never lets a custom header overwrite Basic auth on Glances", async () => {

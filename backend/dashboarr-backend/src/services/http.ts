@@ -86,7 +86,8 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
-  if (id === "jellyfin") {
+  if (id === "jellyfin" || id === "emby") {
+    // Emby and Jellyfin both authenticate with the X-Emby-Token header.
     if (config.apiKey) {
       headers.set("X-Emby-Token", config.apiKey);
     }

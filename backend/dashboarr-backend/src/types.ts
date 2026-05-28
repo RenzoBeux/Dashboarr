@@ -11,6 +11,7 @@ export const SERVICE_IDS = [
   "prowlarr",
   "plex",
   "jellyfin",
+  "emby",
   "glances",
   "bazarr",
 ] as const;
@@ -168,6 +169,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   prowlarr: "/api/v1",
   plex: "",
   jellyfin: "",
+  emby: "",
   glances: "/api/4",
   bazarr: "/api",
 };
@@ -185,6 +187,7 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   prowlarr: "/system/status",
   plex: "/identity",
   jellyfin: "/System/Info/Public",
+  emby: "/System/Info/Public",
   glances: "/cpu",
   bazarr: "/system/status",
 };

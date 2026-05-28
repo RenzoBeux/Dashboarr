@@ -11,6 +11,7 @@ import {
   Film,
   Inbox,
   LayoutGrid,
+  MonitorPlay,
   PlayCircle,
   Radar,
   Settings,
@@ -46,6 +47,7 @@ const TAB_ICONS: Record<TabRouteId, LucideIcon> = {
   indexers: Radar,
   plex: PlayCircle,
   jellyfin: Clapperboard,
+  emby: MonitorPlay,
   glances: Cpu,
   bazarr: Captions,
 };

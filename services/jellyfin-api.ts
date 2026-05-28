@@ -1,5 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { serviceRequest } from "@/lib/http-client";
+import { getMediaServerConfig, type MediaServerId } from "@/lib/media-server-config";
 import type {
   JellyfinItem,
   JellyfinItemsResponse,
@@ -19,18 +20,27 @@ export function isJellyfinTranscoding(session: JellyfinSession): boolean {
   return info.IsVideoDirect === false || info.IsAudioDirect === false;
 }
 
-// Per-instance routing: every function takes an optional `instanceId` to
-// scope the request to a specific Jellyfin instance. When omitted, the user's
-// active Jellyfin is used (legacy single-instance behavior).
+// Per-instance routing: every function takes an optional `instanceId` to scope
+// the request to a specific instance. When omitted, the active instance is
+// used (legacy single-instance behavior). The trailing `serviceId` selects the
+// media server kind — it defaults to "jellyfin" so existing call sites are
+// unaffected; Emby call sites pass "emby". Jellyfin and Emby share this entire
+// API (see lib/media-server-config.ts), differing only in image sizing params.
 
 // --- Users ---
 
-export async function getCurrentUser(instanceId?: string): Promise<JellyfinUser> {
-  return serviceRequest<JellyfinUser>("jellyfin", "/Users/Me", { instanceId });
+export async function getCurrentUser(
+  instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
+): Promise<JellyfinUser> {
+  return serviceRequest<JellyfinUser>(serviceId, "/Users/Me", { instanceId });
 }
 
-export async function getUsers(instanceId?: string): Promise<JellyfinUser[]> {
-  return serviceRequest<JellyfinUser[]>("jellyfin", "/Users", { instanceId });
+export async function getUsers(
+  instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
+): Promise<JellyfinUser[]> {
+  return serviceRequest<JellyfinUser[]>(serviceId, "/Users", { instanceId });
 }
 
 // Resolve the userId associated with the configured API key. Tries the cheap
@@ -38,15 +48,18 @@ export async function getUsers(instanceId?: string): Promise<JellyfinUser[]> {
 // scanning `/Users` and picking the first non-disabled administrator. Used by
 // the hook layer so user-scoped queries can run without making the user paste
 // a userId into the config form.
-export async function resolveUserId(instanceId?: string): Promise<string | null> {
+export async function resolveUserId(
+  instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
+): Promise<string | null> {
   try {
-    const me = await getCurrentUser(instanceId);
+    const me = await getCurrentUser(instanceId, serviceId);
     if (me?.Id) return me.Id;
   } catch {
     // ignore — fall through to /Users
   }
   try {
-    const users = await getUsers(instanceId);
+    const users = await getUsers(instanceId, serviceId);
     const admin = users.find((u) => u.Policy?.IsAdministrator && !u.Policy?.IsDisabled);
     if (admin) return admin.Id;
     const enabled = users.find((u) => !u.Policy?.IsDisabled);
@@ -61,9 +74,10 @@ export async function resolveUserId(instanceId?: string): Promise<string | null>
 export async function getLibraries(
   userId: string,
   instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
 ): Promise<JellyfinLibrary[]> {
   const data = await serviceRequest<JellyfinItemsResponse>(
-    "jellyfin",
+    serviceId,
     `/Users/${encodeURIComponent(userId)}/Views`,
     { instanceId },
   );
@@ -77,6 +91,7 @@ export async function getRecentlyAdded(
   parentId?: string,
   count = 20,
   instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
 ): Promise<JellyfinItem[]> {
   const params: Record<string, string | number | boolean> = {
     Limit: count,
@@ -84,7 +99,7 @@ export async function getRecentlyAdded(
   };
   if (parentId) params.ParentId = parentId;
   return serviceRequest<JellyfinItem[]>(
-    "jellyfin",
+    serviceId,
     `/Users/${encodeURIComponent(userId)}/Items/Latest`,
     { params, instanceId },
   );
@@ -96,9 +111,10 @@ export async function getResumeItems(
   userId: string,
   count = 20,
   instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
 ): Promise<JellyfinItem[]> {
   const data = await serviceRequest<JellyfinItemsResponse>(
-    "jellyfin",
+    serviceId,
     `/Users/${encodeURIComponent(userId)}/Items/Resume`,
     {
       params: {
@@ -114,10 +130,13 @@ export async function getResumeItems(
 
 // --- Now Playing (Sessions) ---
 
-export async function getSessions(instanceId?: string): Promise<JellyfinSession[]> {
+export async function getSessions(
+  instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
+): Promise<JellyfinSession[]> {
   // Server-wide endpoint — returns every connected session, not just the
   // current user's. Filter on the client if/when needed.
-  const data = await serviceRequest<JellyfinSession[]>("jellyfin", "/Sessions", {
+  const data = await serviceRequest<JellyfinSession[]>(serviceId, "/Sessions", {
     params: { ActiveWithinSeconds: 960 },
     instanceId,
   });
@@ -140,12 +159,13 @@ export function getJellyfinImageUrl(
   width = 300,
   height = 450,
   instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
 ): string | null {
   if (!item) return null;
   const store = useConfigStore.getState();
-  const targetId = instanceId ?? store.getActiveInstanceId("jellyfin");
+  const targetId = instanceId ?? store.getActiveInstanceId(serviceId);
   if (!targetId) return null;
-  const baseUrl = store.getActiveUrl("jellyfin", targetId);
+  const baseUrl = store.getActiveUrl(serviceId, targetId);
   const secrets = store.instanceSecrets[targetId] ?? {};
   if (!baseUrl) return null;
   const trimmed = baseUrl.replace(/\/+$/, "");
@@ -173,9 +193,10 @@ export function getJellyfinImageUrl(
 
   if (!tag) return null;
 
+  // Jellyfin and Emby differ here: Jellyfin honors fillWidth/fillHeight, Emby
+  // only maxWidth/maxHeight. The per-service config supplies the right pair.
   const params = new URLSearchParams({
-    fillWidth: String(width),
-    fillHeight: String(height),
+    ...getMediaServerConfig(serviceId).imageSizeParams(width, height),
     quality: "90",
     tag,
   });
@@ -191,8 +212,9 @@ export function getJellyfinImageSource(
   width = 300,
   height = 450,
   instanceId?: string,
+  serviceId: MediaServerId = "jellyfin",
 ): { uri: string; cacheKey: string } | null {
-  const uri = getJellyfinImageUrl(item, type, width, height, instanceId);
+  const uri = getJellyfinImageUrl(item, type, width, height, instanceId, serviceId);
   if (!uri) return null;
   const cacheKey = uri.replace(/[?&]api_key=[^&]*/g, "");
   return { uri, cacheKey };
