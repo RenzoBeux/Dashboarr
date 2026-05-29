@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Pressable,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { Search, AlertTriangle, X, Check } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import type { UseQueryResult } from "@tanstack/react-query";
@@ -26,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
 import { getHttpErrorMessage } from "@/lib/http-client";
+import { useDeferredBack } from "@/hooks/use-deferred-back";
 import { useSortStore, type ReleasesSortKey } from "@/store/sort-store";
 
 type Release = ArrRelease | SonarrRelease;
@@ -166,7 +166,7 @@ export function ReleasesPicker({
   query,
   instanceId,
 }: ReleasesPickerProps) {
-  const router = useRouter();
+  const deferredBack = useDeferredBack();
   const sortKey = useSortStore((s) => s.releases);
   const setSortKey = useSortStore((s) => s.setReleases);
 
@@ -449,9 +449,13 @@ export function ReleasesPicker({
         onClose={() => setSelected(null)}
         onGrabbed={() => {
           // After a grab succeeds, pop back to the detail screen so the user
-          // sees their queue update in context.
-          setTimeout(() => router.back(), 250);
+          // sees their queue update in context — but only once the sheet has
+          // fully dismissed (navigating mid-dismiss hangs iOS/Fabric). Replaces
+          // a fixed setTimeout guess with the sheet's real onClosed signal.
+          deferredBack.arm();
+          deferredBack.back();
         }}
+        onClosed={deferredBack.onClosed}
       />
     </View>
   );

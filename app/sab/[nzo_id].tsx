@@ -1,5 +1,6 @@
-import { View, Text, Alert, ActivityIndicator } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { View, Text, ActivityIndicator } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -8,6 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
+import { ActionSheet } from "@/components/ui/action-sheet";
+import { useDeferredBack } from "@/hooks/use-deferred-back";
 import {
   useSabQueue,
   useSabHistory,
@@ -36,7 +39,6 @@ export default function SabSlotDetailScreen() {
     nzo_id: string;
     instanceId?: string;
   }>();
-  const router = useRouter();
   const {
     data: queue,
     isLoading: queueLoading,
@@ -51,6 +53,8 @@ export default function SabSlotDetailScreen() {
   const resumeSlot = useResumeSabSlot(instanceId);
   const deleteSlot = useDeleteSabSlot(instanceId);
   const deleteHistory = useDeleteSabHistorySlot(instanceId);
+  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
+  const deferredBack = useDeferredBack();
 
   const queueSlot = queue?.slots.find((s) => s.nzo_id === nzo_id);
   const historySlot = history?.slots.find((s) => s.nzo_id === nzo_id);
@@ -93,34 +97,16 @@ export default function SabSlotDetailScreen() {
     : 0;
   const isPaused = status === "Paused";
 
-  const handleDelete = () => {
-    Alert.alert("Delete Download", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          if (inQueue) {
-            deleteSlot.mutate({ nzoId: nzo_id });
-          } else {
-            deleteHistory.mutate({ nzoId: nzo_id });
-          }
-          router.back();
-        },
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => {
-          if (inQueue) {
-            deleteSlot.mutate({ nzoId: nzo_id, deleteFiles: true });
-          } else {
-            deleteHistory.mutate({ nzoId: nzo_id, deleteFiles: true });
-          }
-          router.back();
-        },
-      },
-    ]);
+  const runDelete = (deleteFiles: boolean) => {
+    if (inQueue) {
+      deleteSlot.mutate({ nzoId: nzo_id, deleteFiles });
+    } else {
+      deleteHistory.mutate({ nzoId: nzo_id, deleteFiles });
+    }
+    // Pop back, but only once the sheet is fully dismissed — navigating mid-
+    // dismiss hangs the JS thread on iOS/Fabric. See useDeferredBack.
+    deferredBack.arm();
+    deferredBack.back();
   };
 
   return (
@@ -199,12 +185,34 @@ export default function SabSlotDetailScreen() {
         <Button
           label="Delete"
           variant="danger"
-          onPress={handleDelete}
+          onPress={() => setDeleteSheetOpen(true)}
           loading={deleteSlot.isPending || deleteHistory.isPending}
           icon={<Icon icon={Trash2} size={16} color="white" />}
           className="flex-1"
         />
       </View>
+
+      <ActionSheet
+        visible={deleteSheetOpen}
+        onClose={() => setDeleteSheetOpen(false)}
+        onClosed={deferredBack.onClosed}
+        title={name}
+        subtitle="Delete this download?"
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(true),
+          },
+        ]}
+      />
     </ScreenWrapper>
   );
 }

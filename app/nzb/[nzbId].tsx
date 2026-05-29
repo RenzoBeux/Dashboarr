@@ -1,5 +1,6 @@
-import { View, Text, Alert, ActivityIndicator } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { View, Text, ActivityIndicator } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -8,6 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
+import { ActionSheet } from "@/components/ui/action-sheet";
+import { useDeferredBack } from "@/hooks/use-deferred-back";
 import {
   useDeleteNzbgetGroup,
   useDeleteNzbgetHistorySlot,
@@ -60,7 +63,6 @@ export default function NzbgetSlotDetailScreen() {
     nzbId: string;
     instanceId?: string;
   }>();
-  const router = useRouter();
   const numericId = Number(nzbId);
 
   const {
@@ -78,6 +80,8 @@ export default function NzbgetSlotDetailScreen() {
   const resumeSlot = useResumeNzbgetGroup(instanceId);
   const deleteSlot = useDeleteNzbgetGroup(instanceId);
   const deleteHistory = useDeleteNzbgetHistorySlot(instanceId);
+  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
+  const deferredBack = useDeferredBack();
 
   const queueGroup = groups?.find((g) => g.NZBID === numericId);
   const historyItem = historyItems?.find((h) => h.NZBID === numericId);
@@ -133,34 +137,16 @@ export default function NzbgetSlotDetailScreen() {
       ? formatEta(Math.round(remainingBytes / overallSpeed))
       : undefined;
 
-  const handleDelete = () => {
-    Alert.alert("Delete Download", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          if (inQueue) {
-            deleteSlot.mutate({ nzbId: numericId });
-          } else {
-            deleteHistory.mutate({ nzbId: numericId });
-          }
-          router.back();
-        },
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => {
-          if (inQueue) {
-            deleteSlot.mutate({ nzbId: numericId, deleteFiles: true });
-          } else {
-            deleteHistory.mutate({ nzbId: numericId, deleteFiles: true });
-          }
-          router.back();
-        },
-      },
-    ]);
+  const runDelete = (deleteFiles: boolean) => {
+    if (inQueue) {
+      deleteSlot.mutate({ nzbId: numericId, deleteFiles });
+    } else {
+      deleteHistory.mutate({ nzbId: numericId, deleteFiles });
+    }
+    // Pop back, but only once the sheet is fully dismissed — navigating mid-
+    // dismiss hangs the JS thread on iOS/Fabric. See useDeferredBack.
+    deferredBack.arm();
+    deferredBack.back();
   };
 
   return (
@@ -237,12 +223,34 @@ export default function NzbgetSlotDetailScreen() {
         <Button
           label="Delete"
           variant="danger"
-          onPress={handleDelete}
+          onPress={() => setDeleteSheetOpen(true)}
           loading={deleteSlot.isPending || deleteHistory.isPending}
           icon={<Icon icon={Trash2} size={16} color="white" />}
           className="flex-1"
         />
       </View>
+
+      <ActionSheet
+        visible={deleteSheetOpen}
+        onClose={() => setDeleteSheetOpen(false)}
+        onClosed={deferredBack.onClosed}
+        title={name}
+        subtitle="Delete this download?"
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(true),
+          },
+        ]}
+      />
     </ScreenWrapper>
   );
 }
