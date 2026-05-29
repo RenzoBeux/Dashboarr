@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, Alert, Linking } from "react-native";
+import { View, Text, Linking } from "react-native";
 import { Sparkles } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { toast, toastError } from "@/components/ui/toast";
 import {
   NATIVE_VERSION,
@@ -17,6 +18,12 @@ import {
 
 export function AppVersionCard() {
   const [checking, setChecking] = useState(false);
+  const [storeUpdate, setStoreUpdate] = useState<{
+    message: string;
+    confirmLabel: string;
+    url: string;
+  } | null>(null);
+  const [otaUpdate, setOtaUpdate] = useState(false);
   const updateId = getCurrentUpdateId();
   const updateIdLabel = updateId ? updateId.slice(0, 8) : "embedded";
 
@@ -52,40 +59,16 @@ export function AppVersionCard() {
         storeResult.source === "github" ? "Open release" : "Open store";
 
       if (storeResult.hasUpdate && storeResult.storeVersion) {
-        Alert.alert(
-          "Update available",
-          `A newer version (${storeResult.storeVersion}) is available on ${sourceLabel}. You're on ${NATIVE_VERSION}.`,
-          [
-            { text: "Later", style: "cancel" },
-            {
-              text: openButtonLabel,
-              onPress: () => {
-                if (storeResult.storeUrl) Linking.openURL(storeResult.storeUrl);
-              },
-            },
-          ],
-        );
+        setStoreUpdate({
+          message: `A newer version (${storeResult.storeVersion}) is available on ${sourceLabel}. You're on ${NATIVE_VERSION}.`,
+          confirmLabel: openButtonLabel,
+          url: storeResult.storeUrl ?? "",
+        });
         return;
       }
 
       if (otaResult.available) {
-        Alert.alert(
-          "Update available",
-          "A new over-the-air update is available. Install and restart now?",
-          [
-            { text: "Later", style: "cancel" },
-            {
-              text: "Install",
-              onPress: async () => {
-                try {
-                  await downloadAndApplyOtaUpdate();
-                } catch (err) {
-                  toastError("Failed to install update", err);
-                }
-              },
-            },
-          ],
-        );
+        setOtaUpdate(true);
         return;
       }
 
@@ -94,7 +77,7 @@ export function AppVersionCard() {
           otaSettled.error instanceof Error
             ? otaSettled.error.message
             : String(otaSettled.error);
-        Alert.alert("OTA check failed", msg || "Unknown error checking for updates.");
+        toast(msg || "Unknown error checking for updates.", "error");
         return;
       }
 
@@ -129,6 +112,38 @@ export function AppVersionCard() {
         onPress={handleCheck}
         variant="outline"
         loading={checking}
+      />
+
+      <ConfirmModal
+        visible={storeUpdate !== null}
+        title="Update available"
+        message={storeUpdate?.message ?? ""}
+        icon={Sparkles}
+        confirmLabel={storeUpdate?.confirmLabel ?? "Open"}
+        cancelLabel="Later"
+        onConfirm={() => {
+          if (storeUpdate?.url) Linking.openURL(storeUpdate.url);
+          setStoreUpdate(null);
+        }}
+        onCancel={() => setStoreUpdate(null)}
+      />
+
+      <ConfirmModal
+        visible={otaUpdate}
+        title="Update available"
+        message="A new over-the-air update is available. Install and restart now?"
+        icon={Sparkles}
+        confirmLabel="Install"
+        cancelLabel="Later"
+        onConfirm={async () => {
+          setOtaUpdate(false);
+          try {
+            await downloadAndApplyOtaUpdate();
+          } catch (err) {
+            toastError("Failed to install update", err);
+          }
+        }}
+        onCancel={() => setOtaUpdate(false)}
       />
     </Card>
   );

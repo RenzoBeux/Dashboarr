@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { usePreventRemove } from "@react-navigation/native";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -141,6 +141,9 @@ export default function DashboardEditScreen() {
   const navigation = useNavigation();
   const allowRemoveRef = useRef(false);
   const pendingActionRef = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
+  // On iOS the actual navigation is deferred to the modal's onClosed; this marks
+  // that the user confirmed (vs cancelled) so onClosed knows to proceed.
+  const discardConfirmedRef = useRef(false);
   const [discardOpen, setDiscardOpen] = useState(false);
 
   usePreventRemove(
@@ -157,8 +160,7 @@ export default function DashboardEditScreen() {
     }, [navigation]),
   );
 
-  function confirmDiscard() {
-    setDiscardOpen(false);
+  function performDiscard() {
     const action = pendingActionRef.current;
     pendingActionRef.current = null;
     allowRemoveRef.current = true;
@@ -166,6 +168,18 @@ export default function DashboardEditScreen() {
       navigation.dispatch(action);
     } else {
       router.back();
+    }
+  }
+
+  function confirmDiscard() {
+    setDiscardOpen(false);
+    // iOS: navigate only after the modal has fully dismissed — popping or
+    // dispatching mid-dismiss hangs the JS thread on Fabric (see useModalClosed
+    // / useDeferredBack). Android has no such constraint, so go immediately.
+    if (Platform.OS === "ios") {
+      discardConfirmedRef.current = true;
+    } else {
+      performDiscard();
     }
   }
 
@@ -608,6 +622,12 @@ export default function DashboardEditScreen() {
           pendingActionRef.current = null;
         }}
         onConfirm={confirmDiscard}
+        onClosed={() => {
+          if (discardConfirmedRef.current) {
+            discardConfirmedRef.current = false;
+            performDiscard();
+          }
+        }}
       />
 
       <DashboardIconPickerSheet

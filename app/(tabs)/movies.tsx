@@ -1,9 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
   Pressable,
-  Alert,
   ScrollView,
   RefreshControl,
   type RefreshControlProps,
@@ -21,6 +20,7 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   MonitoredLibraryGrid,
   MONITOR_FILTER_OPTIONS,
@@ -124,6 +124,21 @@ export default function MoviesScreen() {
 
   const radarrHealth = healthData?.find((s) => s.id === "radarr");
 
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: number;
+    title: string;
+    tmdbId?: number;
+    withFiles: boolean;
+  } | null>(null);
+  // Set from the actions sheet, promoted to the confirm modal only after the
+  // sheet has fully closed — never stack two native modals on iOS.
+  const deleteIntent = useRef<{
+    id: number;
+    title: string;
+    tmdbId?: number;
+    withFiles: boolean;
+  } | null>(null);
+
   const sheetMovie: RadarrMovie | undefined =
     sheetTarget?.kind === "movie"
       ? sheetTarget.item
@@ -160,25 +175,25 @@ export default function MoviesScreen() {
         icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
         variant: "danger",
         onPress: () => {
-          Alert.alert("Delete Movie", `Delete "${movie.title}"?`, [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Delete",
-              style: "destructive",
-              onPress: () =>
-                deleteMutation.mutate({ id: movie.id, tmdbId: movie.tmdbId }),
-            },
-            {
-              text: "Delete + Files",
-              style: "destructive",
-              onPress: () =>
-                deleteMutation.mutate({
-                  id: movie.id,
-                  deleteFiles: true,
-                  tmdbId: movie.tmdbId,
-                }),
-            },
-          ]);
+          deleteIntent.current = {
+            id: movie.id,
+            title: movie.title,
+            tmdbId: movie.tmdbId,
+            withFiles: false,
+          };
+        },
+      },
+      {
+        label: "Delete + Files",
+        icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+        variant: "danger",
+        onPress: () => {
+          deleteIntent.current = {
+            id: movie.id,
+            title: movie.title,
+            tmdbId: movie.tmdbId,
+            withFiles: true,
+          };
         },
       },
     ];
@@ -281,6 +296,12 @@ export default function MoviesScreen() {
       <ActionSheet
         visible={sheetTarget !== null}
         onClose={() => setSheetTarget(null)}
+        onClosed={() => {
+          if (deleteIntent.current) {
+            setPendingDelete(deleteIntent.current);
+            deleteIntent.current = null;
+          }
+        }}
         title={sheetMovie?.title}
         subtitle={sheetMovie ? String(sheetMovie.year) : undefined}
         actions={actions}
@@ -299,6 +320,32 @@ export default function MoviesScreen() {
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         sortValue={sort}
         onSortChange={setSort}
+      />
+
+      <ConfirmModal
+        visible={pendingDelete !== null}
+        title={pendingDelete?.withFiles ? "Delete movie + files?" : "Delete movie?"}
+        message={
+          pendingDelete
+            ? pendingDelete.withFiles
+              ? `Remove "${pendingDelete.title}" from Radarr and delete files from disk. This can't be undone.`
+              : `Remove "${pendingDelete.title}" from Radarr. Files on disk will be kept.`
+            : ""
+        }
+        icon={Trash2}
+        tone="danger"
+        confirmLabel={pendingDelete?.withFiles ? "Delete + Files" : "Delete"}
+        onConfirm={() => {
+          if (pendingDelete) {
+            deleteMutation.mutate({
+              id: pendingDelete.id,
+              deleteFiles: pendingDelete.withFiles,
+              tmdbId: pendingDelete.tmdbId,
+            });
+          }
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
       />
     </ScreenWrapper>
   );

@@ -8,7 +8,6 @@ import {
   Dimensions,
   StyleSheet,
   TextInput,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -64,6 +63,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   const insets = useSafeAreaInsets();
 
   const [mounted, setMounted] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<Dashboard | null>(null);
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState("");
   // Submit-only commit (via the keyboard return key or the inline check
@@ -136,21 +136,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
 
   function handleRemove(d: Dashboard) {
     if (dashboards.length <= 1) return;
-    Alert.alert(
-      "Delete dashboard?",
-      `"${d.name}" and its widget settings will be removed. This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            removeDashboard(d.id);
-          },
-        },
-      ],
-    );
+    setPendingRemove(d);
   }
 
   function handleOpenEditor(d: Dashboard) {
@@ -428,6 +414,57 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
               </View>
             </ScrollView>
           </Animated.View>
+
+          {/* In-sheet confirm — a nested native Modal can't reliably present
+              over this one on iOS, so we overlay the confirm inside the sheet's
+              own Modal instead of stacking a ConfirmModal. */}
+          {pendingRemove && (
+            <View
+              style={StyleSheet.absoluteFill}
+              className="items-center justify-center px-8"
+            >
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                className="bg-black/70"
+                onPress={() => setPendingRemove(null)}
+              />
+              <View className="w-full max-w-md rounded-2xl bg-surface border border-border p-5 gap-4">
+                <View className="flex-row items-center gap-3">
+                  <View className="bg-danger/15 rounded-xl p-2.5">
+                    <Icon icon={Trash2} size={20} color="#ef4444" />
+                  </View>
+                  <Text className="text-zinc-100 text-lg font-semibold flex-1">
+                    Delete dashboard?
+                  </Text>
+                </View>
+                <Text className="text-zinc-400 text-sm leading-5">
+                  {`"${pendingRemove.name}" and its widget settings will be removed. This cannot be undone.`}
+                </Text>
+                <View className="flex-row gap-3 mt-1">
+                  <Pressable
+                    onPress={() => setPendingRemove(null)}
+                    className="flex-1 rounded-xl border border-border py-2.5 items-center active:opacity-70"
+                  >
+                    <Text className="text-zinc-300 text-sm font-semibold">
+                      Cancel
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                      removeDashboard(pendingRemove.id);
+                      setPendingRemove(null);
+                    }}
+                    className="flex-1 rounded-xl bg-danger py-2.5 items-center active:opacity-70"
+                  >
+                    <Text className="text-white text-sm font-semibold">
+                      Delete
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       </GestureHandlerRootView>
     </Modal>

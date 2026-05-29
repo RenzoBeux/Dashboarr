@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { View, Text, Alert, BackHandler, Pressable, Linking, Platform } from "react-native";
+import { useCallback, useRef, useState } from "react";
+import { View, Text, BackHandler, Pressable, Linking, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
@@ -71,6 +71,7 @@ import {
 import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
 import type { PassphraseMode, PassphraseResult } from "@/components/common/passphrase-prompt";
 import { ConfirmModal } from "@/components/common/confirm-modal";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
@@ -942,6 +943,14 @@ function ServiceEditor({
   );
   const [testing, setTesting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [unsavedOpen, setUnsavedOpen] = useState(false);
+  // Chosen in the unsaved-changes sheet, run only after it has fully closed —
+  // "Save" can open the HTTP-warning modal, and stacking modals hangs iOS.
+  const unsavedIntent = useRef<"save" | "discard" | null>(null);
+  const [httpWarning, setHttpWarning] = useState<{
+    message: string;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
 
   const usesBasicAuth =
     serviceId === "qbittorrent" ||
@@ -985,15 +994,7 @@ function ServiceEditor({
       onBack();
       return;
     }
-    Alert.alert(
-      "Unsaved changes",
-      "Your URL or credentials haven't been saved. What would you like to do?",
-      [
-        { text: "Keep editing", style: "cancel" },
-        { text: "Discard", style: "destructive", onPress: onBack },
-        { text: "Save", onPress: () => void handleSave() },
-      ],
-    );
+    setUnsavedOpen(true);
   };
 
   // Intercept Android hardware back / swipe-back so it closes the editor
@@ -1010,10 +1011,7 @@ function ServiceEditor({
 
   const confirmHttpWarning = (message: string) =>
     new Promise<boolean>((resolve) => {
-      Alert.alert("Remote URL uses HTTP", message, [
-        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-        { text: "Save anyway", style: "destructive", onPress: () => resolve(true) },
-      ]);
+      setHttpWarning({ message, resolve });
     });
 
   const handleSave = async () => {
@@ -1300,6 +1298,51 @@ function ServiceEditor({
         onClose={() => {
           setShowAddToDashboards(false);
           onBack();
+        }}
+      />
+
+      <ActionSheet
+        visible={unsavedOpen}
+        onClose={() => setUnsavedOpen(false)}
+        onClosed={() => {
+          const intent = unsavedIntent.current;
+          unsavedIntent.current = null;
+          if (intent === "discard") onBack();
+          else if (intent === "save") void handleSave();
+        }}
+        title="Unsaved changes"
+        subtitle="Your URL or credentials haven't been saved."
+        actions={[
+          {
+            label: "Save",
+            onPress: () => {
+              unsavedIntent.current = "save";
+            },
+          },
+          {
+            label: "Discard",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => {
+              unsavedIntent.current = "discard";
+            },
+          },
+        ]}
+      />
+
+      <ConfirmModal
+        visible={httpWarning !== null}
+        title="Remote URL uses HTTP"
+        message={httpWarning?.message ?? ""}
+        tone="danger"
+        confirmLabel="Save anyway"
+        onConfirm={() => {
+          httpWarning?.resolve(true);
+          setHttpWarning(null);
+        }}
+        onCancel={() => {
+          httpWarning?.resolve(false);
+          setHttpWarning(null);
         }}
       />
     </ScreenWrapper>

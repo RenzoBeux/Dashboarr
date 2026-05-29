@@ -31,6 +31,7 @@ import { formatBytes, formatReleaseAge } from "@/lib/utils";
 import { getQualityColor } from "@/lib/quality-colors";
 import { useGrabRadarrRelease } from "@/hooks/use-radarr";
 import { useGrabSonarrRelease } from "@/hooks/use-sonarr";
+import { useModalClosed } from "@/hooks/use-modal-closed";
 import type { ArrRelease, SonarrRelease } from "@/lib/types";
 
 const { height: SCREEN_H } = Dimensions.get("window");
@@ -43,6 +44,11 @@ interface ReleaseDetailSheetProps {
   instanceId?: string;
   onClose: () => void;
   onGrabbed?: () => void;
+  /**
+   * Fired once the sheet's native `<Modal>` is fully gone — the safe point to
+   * navigate on iOS (see `useModalClosed`).
+   */
+  onClosed?: () => void;
 }
 
 export function ReleaseDetailSheet({
@@ -51,9 +57,11 @@ export function ReleaseDetailSheet({
   instanceId,
   onClose,
   onGrabbed,
+  onClosed,
 }: ReleaseDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
+  const handleDismiss = useModalClosed(mounted, onClosed);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
@@ -118,7 +126,13 @@ export function ReleaseDetailSheet({
 
   if (!release) {
     return (
-      <Modal visible={mounted} transparent animationType="none" statusBarTranslucent>
+      <Modal
+        visible={mounted}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onDismiss={handleDismiss}
+      >
         <View />
       </Modal>
     );
@@ -144,6 +158,7 @@ export function ReleaseDetailSheet({
       animationType="none"
       statusBarTranslucent
       onRequestClose={onClose}
+      onDismiss={handleDismiss}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View className="flex-1 justify-end">

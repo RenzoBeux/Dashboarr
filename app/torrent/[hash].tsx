@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { View, Text, Alert, ActivityIndicator } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { View, Text, ActivityIndicator } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import {
   Pause,
   Play,
@@ -17,7 +17,9 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { ShareLimitsSheet } from "@/components/qbittorrent/share-limits-sheet";
+import { useDeferredBack } from "@/hooks/use-deferred-back";
 import {
   useTorrent,
   useTorrentFiles,
@@ -31,7 +33,6 @@ import { isTorrentPaused } from "@/lib/types";
 
 export default function TorrentDetailScreen() {
   const { hash } = useLocalSearchParams<{ hash: string }>();
-  const router = useRouter();
   const { data: torrent, isLoading, error } = useTorrent(hash);
   const { data: files } = useTorrentFiles(hash);
   const { data: trackers } = useTorrentTrackers(hash);
@@ -39,6 +40,8 @@ export default function TorrentDetailScreen() {
   const resumeMutation = useResumeTorrent();
   const deleteMutation = useDeleteTorrent();
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
+  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
+  const deferredBack = useDeferredBack();
 
   if (!torrent) {
     return (
@@ -65,26 +68,12 @@ export default function TorrentDetailScreen() {
 
   const isPaused = isTorrentPaused(torrent.state);
 
-  const handleDelete = () => {
-    Alert.alert("Delete Torrent", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          deleteMutation.mutate({ hashes: [hash] });
-          router.back();
-        },
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => {
-          deleteMutation.mutate({ hashes: [hash], deleteFiles: true });
-          router.back();
-        },
-      },
-    ]);
+  const runDelete = (deleteFiles: boolean) => {
+    deleteMutation.mutate({ hashes: [hash], deleteFiles });
+    // Pop back, but only once the sheet is fully dismissed — navigating mid-
+    // dismiss hangs the JS thread on iOS/Fabric. See useDeferredBack.
+    deferredBack.arm();
+    deferredBack.back();
   };
 
   return (
@@ -194,7 +183,7 @@ export default function TorrentDetailScreen() {
           <Button
             label="Delete"
             variant="danger"
-            onPress={handleDelete}
+            onPress={() => setDeleteSheetOpen(true)}
             loading={deleteMutation.isPending}
             icon={<Icon icon={Trash2} size={16} color="white" />}
             className="flex-1"
@@ -216,6 +205,28 @@ export default function TorrentDetailScreen() {
         hash={hash}
         ratioLimit={torrent.ratio_limit ?? -2}
         seedingTimeLimit={torrent.seeding_time_limit ?? -2}
+      />
+
+      <ActionSheet
+        visible={deleteSheetOpen}
+        onClose={() => setDeleteSheetOpen(false)}
+        onClosed={deferredBack.onClosed}
+        title={torrent.name}
+        subtitle="Remove this torrent from qBittorrent?"
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(true),
+          },
+        ]}
       />
     </>
   );

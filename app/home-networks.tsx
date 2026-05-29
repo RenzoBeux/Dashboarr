@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, Alert, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Wifi, Plus, Pencil, Trash2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { toast } from "@/components/ui/toast";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useConfigStore } from "@/store/config-store";
 import { detectWifi, normalizeBssid } from "@/lib/wifi";
 import type { HomeNetwork } from "@/store/config-store";
@@ -28,6 +29,7 @@ export default function HomeNetworksScreen() {
   const [ssid, setSsid] = useState("");
   const [bssid, setBssid] = useState("");
   const [detecting, setDetecting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<HomeNetwork | null>(null);
 
   const resetForm = () => {
     setSsid("");
@@ -129,22 +131,11 @@ export default function HomeNetworksScreen() {
     setMode("list");
   };
 
-  const handleDelete = (network: HomeNetwork) => {
-    Alert.alert(
-      "Remove network",
-      `Stop treating "${network.ssid}" as a home network?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: () => {
-            removeHomeNetwork(network.id);
-            toast(`${network.ssid} removed`, "success");
-          },
-        },
-      ],
-    );
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    removeHomeNetwork(pendingDelete.id);
+    toast(`${pendingDelete.ssid} removed`, "success");
+    setPendingDelete(null);
   };
 
   if (mode === "add" || mode === "edit") {
@@ -275,7 +266,7 @@ export default function HomeNetworksScreen() {
                     <Icon icon={Pencil} size={16} color="#71717a" />
                   </Pressable>
                   <Pressable
-                    onPress={() => handleDelete(network)}
+                    onPress={() => setPendingDelete(network)}
                     className="p-2 active:opacity-70"
                   >
                     <Icon icon={Trash2} size={16} color="#71717a" />
@@ -305,6 +296,21 @@ export default function HomeNetworksScreen() {
           </View>
         </View>
       )}
+
+      <ConfirmModal
+        visible={pendingDelete !== null}
+        title="Remove network"
+        message={
+          pendingDelete
+            ? `Stop treating "${pendingDelete.ssid}" as a home network?`
+            : ""
+        }
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Remove"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </ScreenWrapper>
   );
 }
