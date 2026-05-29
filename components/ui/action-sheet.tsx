@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightHaptic, errorHaptic } from "@/lib/haptics";
 import { ICON } from "@/lib/constants";
 import { GlassSurface } from "@/components/ui/glass-surface";
+import { useModalClosed } from "@/hooks/use-modal-closed";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX = Math.round(SCREEN_H * 0.85);
@@ -49,6 +50,13 @@ interface ActionSheetProps {
   title?: string;
   subtitle?: string;
   actions: ActionSheetAction[];
+  /**
+   * Fired once the sheet is fully dismissed (its native `<Modal>` is gone).
+   * Use this — not the action's `onPress` — to open another modal or navigate,
+   * so iOS never presents/unmounts a second view controller while this one is
+   * still tearing down (which hangs the JS thread on Fabric).
+   */
+  onClosed?: () => void;
 }
 
 export function ActionSheet({
@@ -57,9 +65,13 @@ export function ActionSheet({
   title,
   subtitle,
   actions,
+  onClosed,
 }: ActionSheetProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
+  // Fire onClosed once the sheet's native <Modal> is fully gone — the safe
+  // point to open another modal / navigate on iOS. See useModalClosed.
+  const handleDismiss = useModalClosed(mounted, onClosed);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
@@ -118,6 +130,7 @@ export function ActionSheet({
       animationType="none"
       statusBarTranslucent
       onRequestClose={onClose}
+      onDismiss={handleDismiss}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View className="flex-1 justify-end">

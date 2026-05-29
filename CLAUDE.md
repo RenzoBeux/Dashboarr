@@ -79,6 +79,21 @@ Notes:
 - `ConfirmModal` is a two-button (cancel + confirm) dialog. For **3+ choices** (e.g. "Delete" vs "Delete + Files"), use the styled **`ActionSheet`** (`components/ui/action-sheet.tsx`) instead — never a multi-button native `Alert`.
 - For transient success/error feedback, use the **`toast`** / **`toastError`** helpers from `components/ui/toast.tsx`, not `Alert`.
 
+### Modal sequencing on iOS — MUST follow (causes a frozen-app, force-quit hang)
+
+`ConfirmModal` and `ActionSheet` are React Native `<Modal>`s — on iOS each is a separate `UIViewController` presented over the screen. iOS will **not** present (or unmount the screen behind) a second view controller while another is mid-dismiss. On the New Architecture (Fabric, which this app uses) doing so **hangs the JS thread**: a transparent layer keeps eating touches, there is no crash log, and the user must force-quit. It is **intermittent and iOS-only** — it's a race between how fast your async work resolves and the ~300ms dismiss animation, so a fast LAN service triggers it while a slower one hides it, and Android (plain-view modals) never reproduces it. This was issue #83 (deleting a Radarr movie). Two forbidden shapes:
+
+1. **Opening a second modal from inside the first.** Never call `setPendingX(true)` / open a `ConfirmModal`/`ActionSheet` from an `ActionSheet` action's `onPress` — that presents while the sheet is still dismissing.
+2. **Navigating while a modal dismisses.** Never call `router.back()` / `router.push()` / `navigation.dispatch()` in a mutation's `onSuccess` (or a confirm's `onConfirm`) that also closed a modal in the same flow — the screen unmounts mid-dismiss.
+
+**The fix — sequence on the dismiss, never on the tap:**
+- Both `ConfirmModal` and `ActionSheet` expose an **`onClosed`** prop that fires once the modal is *fully* gone (backed by `hooks/use-modal-closed.ts`: iOS `onDismiss` fast-path + a timer backstop, since `onDismiss` is historically flaky on Fabric and absent on Android — so it is robust even if `onDismiss` never fires).
+- To **open another modal**, stash the choice in a `useRef` from the action's `onPress` and promote it to the next modal in the first sheet's `onClosed`.
+- To **navigate after a confirm**, use **`hooks/use-deferred-back.ts`** (`useDeferredBack`): call `arm()` before closing, `back()` in the mutation's `onSuccess`, and wire `onClosed={deferredBack.onClosed}` — it pops only after the modal is fully dismissed on iOS (immediate on Android).
+- Never paper over this with `setTimeout(() => router.back(), 250)` or similar fixed delays — that's the guess that keeps failing. Use the `onClosed` signal.
+
+Canonical reference: the delete flow in `app/movie/[id].tsx` and `app/series/[id].tsx` (actions sheet → confirm → pop). When adding any flow that chains a sheet into a dialog, or navigates right after a confirm, copy that wiring.
+
 ## UI Scale (Accessibility) — MUST follow when writing any new UI
 
 The app exposes a global UI scale preference (1.0 / 1.15 / 1.3) wired via NativeWind v4's reactive `rem` observable. `app/_layout.tsx` calls `rem.set(14 * uiScale)` whenever the setting changes, which scales every rem-based style across the running app with no remount. **Every new UI element must scale with this setting.** The rules:

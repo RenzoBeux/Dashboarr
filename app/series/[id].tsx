@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useRef, useState, useMemo } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -58,6 +58,7 @@ import {
   formatResolution,
 } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { useDeferredBack } from "@/hooks/use-deferred-back";
 import type {
   SonarrEpisode,
   SonarrEpisodeFile,
@@ -73,6 +74,7 @@ export default function SeriesDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
+  const deferredBack = useDeferredBack();
   const {
     data: series,
     isLoading,
@@ -95,6 +97,12 @@ export default function SeriesDetailScreen() {
     null,
   );
   const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
+  // Chosen in the actions sheet, promoted to the confirm modal only once that
+  // sheet has fully closed — never stack two native modals on iOS.
+  const deleteIntent = useRef<DeleteMode>(null);
+  // Same deal: a picked root folder, opened into the "move files?" sheet only
+  // after the root-folder sheet is fully gone.
+  const rootFolderIntent = useRef<string | null>(null);
 
   const episodeFileMap = useMemo(() => {
     const map = new Map<number, SonarrEpisodeFile>();
@@ -159,17 +167,21 @@ export default function SeriesDetailScreen() {
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
+    const withFiles = pendingDelete === "withFiles";
+    // Close the confirm modal first, then pop the screen only after it has
+    // fully dismissed — popping mid-dismiss hangs the JS thread on iOS/Fabric.
+    deferredBack.arm();
+    setPendingDelete(null);
     deleteSeries.mutate(
       {
         id: series.id,
-        deleteFiles: pendingDelete === "withFiles",
+        deleteFiles: withFiles,
       },
       {
-        onSuccess: () => router.back(),
+        onSuccess: () => deferredBack.back(),
         onError: (err) => toastError("Failed to delete show", err),
       },
     );
-    setPendingDelete(null);
   };
 
   const actions: MediaActionItem[] = [
@@ -313,6 +325,12 @@ export default function SeriesDetailScreen() {
       <ActionSheet
         visible={actionsVisible}
         onClose={() => setActionsVisible(false)}
+        onClosed={() => {
+          if (deleteIntent.current) {
+            setPendingDelete(deleteIntent.current);
+            deleteIntent.current = null;
+          }
+        }}
         title={series.title}
         actions={[
           {
@@ -320,8 +338,7 @@ export default function SeriesDetailScreen() {
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
             onPress: () => {
-              setActionsVisible(false);
-              setPendingDelete("keep");
+              deleteIntent.current = "keep";
             },
           },
           {
@@ -329,8 +346,7 @@ export default function SeriesDetailScreen() {
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
             onPress: () => {
-              setActionsVisible(false);
-              setPendingDelete("withFiles");
+              deleteIntent.current = "withFiles";
             },
           },
         ]}
@@ -363,6 +379,12 @@ export default function SeriesDetailScreen() {
       <ActionSheet
         visible={rootFolderVisible}
         onClose={() => setRootFolderVisible(false)}
+        onClosed={() => {
+          if (rootFolderIntent.current) {
+            setPendingRootFolder(rootFolderIntent.current);
+            rootFolderIntent.current = null;
+          }
+        }}
         title="Root Folder"
         subtitle={series.title}
         actions={(rootFolders ?? []).map((f) => ({
@@ -376,8 +398,7 @@ export default function SeriesDetailScreen() {
           ),
           onPress: () => {
             if (f.path === series.rootFolderPath) return;
-            setRootFolderVisible(false);
-            setPendingRootFolder(f.path);
+            rootFolderIntent.current = f.path;
           },
         }))}
       />
@@ -436,6 +457,7 @@ export default function SeriesDetailScreen() {
         }
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
+        onClosed={deferredBack.onClosed}
       />
     </>
   );
@@ -707,6 +729,9 @@ function EpisodeRow({
   const deleteFile = useDeleteEpisodeFile(instanceId);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Open the confirm only after the actions sheet has fully closed (iOS can't
+  // present a second modal while the first is dismissing).
+  const wantDeleteFile = useRef(false);
   const mediaInfo = episodeFile?.mediaInfo;
 
   // Search/delete live in the "⋯" sheet so the row stays uncluttered and the
@@ -733,7 +758,9 @@ function EpisodeRow({
             label: "Delete File",
             icon: <Icon icon={Trash2} size={20} color="#ef4444" />,
             variant: "danger" as const,
-            onPress: () => setConfirmDelete(true),
+            onPress: () => {
+              wantDeleteFile.current = true;
+            },
           },
         ]
       : []),
@@ -805,6 +832,12 @@ function EpisodeRow({
       <ActionSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
+        onClosed={() => {
+          if (wantDeleteFile.current) {
+            wantDeleteFile.current = false;
+            setConfirmDelete(true);
+          }
+        }}
         title={formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)}
         subtitle={episode.title}
         actions={episodeActions}
