@@ -1,9 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
   Pressable,
-  Alert,
   ScrollView,
   RefreshControl,
   type RefreshControlProps,
@@ -128,6 +127,18 @@ export default function TVScreen() {
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: number;
+    title: string;
+    withFiles: boolean;
+  } | null>(null);
+  // Set from the actions sheet, promoted to the confirm modal only after the
+  // sheet has fully closed — never stack two native modals on iOS.
+  const deleteIntent = useRef<{
+    id: number;
+    title: string;
+    withFiles: boolean;
+  } | null>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
@@ -176,20 +187,23 @@ export default function TVScreen() {
           icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
           variant: "danger",
           onPress: () => {
-            Alert.alert("Delete Series", `Delete "${series.title}"?`, [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Delete",
-                style: "destructive",
-                onPress: () => deleteMutation.mutate({ id: series.id }),
-              },
-              {
-                text: "Delete + Files",
-                style: "destructive",
-                onPress: () =>
-                  deleteMutation.mutate({ id: series.id, deleteFiles: true }),
-              },
-            ]);
+            deleteIntent.current = {
+              id: series.id,
+              title: series.title,
+              withFiles: false,
+            };
+          },
+        },
+        {
+          label: "Delete + Files",
+          icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+          variant: "danger",
+          onPress: () => {
+            deleteIntent.current = {
+              id: series.id,
+              title: series.title,
+              withFiles: true,
+            };
           },
         },
       ];
@@ -348,6 +362,12 @@ export default function TVScreen() {
       <ActionSheet
         visible={sheetTarget !== null}
         onClose={() => setSheetTarget(null)}
+        onClosed={() => {
+          if (deleteIntent.current) {
+            setPendingDelete(deleteIntent.current);
+            deleteIntent.current = null;
+          }
+        }}
         title={sheetTitle}
         subtitle={sheetSubtitle}
         actions={actions}
@@ -379,6 +399,31 @@ export default function TVScreen() {
           searchMissing.mutate();
         }}
         onCancel={() => setMissingConfirmOpen(false)}
+      />
+
+      <ConfirmModal
+        visible={pendingDelete !== null}
+        title={pendingDelete?.withFiles ? "Delete show + files?" : "Delete show?"}
+        message={
+          pendingDelete
+            ? pendingDelete.withFiles
+              ? `Remove "${pendingDelete.title}" from Sonarr and delete all episode files from disk. This can't be undone.`
+              : `Remove "${pendingDelete.title}" from Sonarr. Files on disk will be kept.`
+            : ""
+        }
+        icon={Trash2}
+        tone="danger"
+        confirmLabel={pendingDelete?.withFiles ? "Delete + Files" : "Delete"}
+        onConfirm={() => {
+          if (pendingDelete) {
+            deleteMutation.mutate({
+              id: pendingDelete.id,
+              deleteFiles: pendingDelete.withFiles,
+            });
+          }
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
       />
     </ScreenWrapper>
   );

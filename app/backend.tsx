@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { View, Text, Pressable, Alert, ActivityIndicator, Platform } from "react-native";
+import { View, Text, Pressable, ActivityIndicator, Platform } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { toast, toastError } from "@/components/ui/toast";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useBackendStore } from "@/store/backend-store";
 import {
   getBackendHealth,
@@ -51,6 +52,8 @@ export default function BackendScreen() {
 
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
+  const [confirmUnpair, setConfirmUnpair] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
   const [backendUrl, setBackendUrl] = useState("");
   const [manualToken, setManualToken] = useState("");
   const [permission, requestPermission] = useCameraPermissions();
@@ -144,57 +147,41 @@ export default function BackendScreen() {
     }
   }, []);
 
-  const handleUnpair = useCallback(() => {
-    Alert.alert("Unpair backend", "This will stop push notifications from this backend. Continue?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Unpair",
-        style: "destructive",
-        onPress: async () => {
-          setBusy(true);
-          try {
-            try {
-              await unregisterDevice();
-            } catch {
-              /* ignore — unpair locally even if server is unreachable */
-            }
-            await unpair();
-            toast("Backend unpaired", "success");
-          } finally {
-            setBusy(false);
-          }
-        },
-      },
-    ]);
+  const handleUnpair = useCallback(() => setConfirmUnpair(true), []);
+
+  const performUnpair = useCallback(async () => {
+    setConfirmUnpair(false);
+    setBusy(true);
+    try {
+      try {
+        await unregisterDevice();
+      } catch {
+        /* ignore — unpair locally even if server is unreachable */
+      }
+      await unpair();
+      toast("Backend unpaired", "success");
+    } finally {
+      setBusy(false);
+    }
   }, [unpair]);
 
-  const handleRotate = useCallback(() => {
-    Alert.alert(
-      "Rotate backend secret",
-      "This unpairs the current shared secret. Scan a fresh pairing QR from your backend to get a new one. Push notifications will stop until you re-pair.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Rotate",
-          style: "destructive",
-          onPress: async () => {
-            setBusy(true);
-            try {
-              try {
-                await unregisterDevice();
-              } catch {
-                /* ignore — rotate locally even if server is unreachable */
-              }
-              await unpair();
-              // Drops us into the un-paired summary state; user scans a new QR.
-              toast("Secret rotated — scan a new pairing QR", "success");
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ],
-    );
+  const handleRotate = useCallback(() => setConfirmRotate(true), []);
+
+  const performRotate = useCallback(async () => {
+    setConfirmRotate(false);
+    setBusy(true);
+    try {
+      try {
+        await unregisterDevice();
+      } catch {
+        /* ignore — rotate locally even if server is unreachable */
+      }
+      await unpair();
+      // Drops us into the un-paired summary state; user scans a new QR.
+      toast("Secret rotated — scan a new pairing QR", "success");
+    } finally {
+      setBusy(false);
+    }
   }, [unpair]);
 
   useEffect(() => {
@@ -373,6 +360,28 @@ export default function BackendScreen() {
           </View>
         </>
       )}
+
+      <ConfirmModal
+        visible={confirmUnpair}
+        title="Unpair backend"
+        message="This will stop push notifications from this backend. Continue?"
+        icon={Unlink}
+        tone="danger"
+        confirmLabel="Unpair"
+        onConfirm={performUnpair}
+        onCancel={() => setConfirmUnpair(false)}
+      />
+
+      <ConfirmModal
+        visible={confirmRotate}
+        title="Rotate backend secret"
+        message="This unpairs the current shared secret. Scan a fresh pairing QR from your backend to get a new one. Push notifications will stop until you re-pair."
+        icon={RefreshCw}
+        tone="danger"
+        confirmLabel="Rotate"
+        onConfirm={performRotate}
+        onCancel={() => setConfirmRotate(false)}
+      />
     </ScreenWrapper>
   );
 }

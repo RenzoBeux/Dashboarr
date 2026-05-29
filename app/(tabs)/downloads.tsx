@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Pressable,
-  Alert,
   BackHandler,
   FlatList,
   RefreshControl,
@@ -32,6 +31,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { errorHaptic, lightHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 import {
@@ -272,6 +272,7 @@ function QbittorrentDownloadsScreen({
   const setSort = useSortStore((s) => s.setDownloads);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [speedLimitsOpen, setSpeedLimitsOpen] = useState(false);
+  const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -382,27 +383,15 @@ function QbittorrentDownloadsScreen({
   const handleBulkDelete = () => {
     const hashes = selectedHashes();
     if (hashes.length === 0) return;
-    Alert.alert("Delete Torrents", `Delete ${hashes.length} torrent(s)?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          deleteMutation.mutate({ hashes });
-          multiSelect.clear();
-        },
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          deleteMutation.mutate({ hashes, deleteFiles: true });
-          multiSelect.clear();
-        },
-      },
-    ]);
+    setBulkDelete({ count: hashes.length });
+  };
+
+  const runBulkDelete = (deleteFiles: boolean) => {
+    const hashes = selectedHashes();
+    if (hashes.length === 0) return;
+    errorHaptic();
+    deleteMutation.mutate({ hashes, deleteFiles });
+    multiSelect.clear();
   };
 
   const handleTorrentPress = (torrent: QBTorrent) => {
@@ -624,6 +613,27 @@ function QbittorrentDownloadsScreen({
         visible={speedLimitsOpen}
         onClose={() => setSpeedLimitsOpen(false)}
       />
+
+      <ActionSheet
+        visible={bulkDelete !== null}
+        onClose={() => setBulkDelete(null)}
+        title="Delete torrents"
+        subtitle={bulkDelete ? `${bulkDelete.count} selected` : ""}
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runBulkDelete(false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runBulkDelete(true),
+          },
+        ]}
+      />
     </SafeAreaView>
   );
 }
@@ -709,21 +719,7 @@ function TorrentListItem({
   const isPaused = isTorrentPaused(torrent.state);
   const badgeVariant = getTorrentBadgeVariant(torrent.state);
 
-  const handleDelete = () => {
-    Alert.alert("Delete Torrent", `Delete "${truncateText(torrent.name, 30)}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => onDelete(torrent, false),
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => onDelete(torrent, true),
-      },
-    ]);
-  };
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   return (
     <Card
@@ -781,7 +777,7 @@ function TorrentListItem({
               )}
             </Pressable>
             <Pressable
-              onPress={handleDelete}
+              onPress={() => setDeleteOpen(true)}
               disabled={busy}
               className={`p-1.5 active:opacity-70 ${busy ? "opacity-50" : ""}`}
               hitSlop={6}
@@ -791,6 +787,27 @@ function TorrentListItem({
           </View>
         )}
       </View>
+
+      <ActionSheet
+        visible={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete torrent"
+        subtitle={truncateText(torrent.name, 40)}
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => onDelete(torrent, false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => onDelete(torrent, true),
+          },
+        ]}
+      />
     </Card>
   );
 }

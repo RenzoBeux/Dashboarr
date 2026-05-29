@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, Pressable, Alert, Platform, ScrollView } from "react-native";
+import { View, Text, Pressable, Platform, ScrollView } from "react-native";
 import { toast, toastError } from "@/components/ui/toast";
 import { Search, Power, AlertTriangle, CheckCircle, XCircle } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -143,24 +144,22 @@ function IndexerList() {
 
 function IndexerSearch() {
   const [query, setQuery] = useState("");
+  const [pendingGrab, setPendingGrab] = useState<ProwlarrSearchResult | null>(
+    null,
+  );
   const { data: results, isLoading } = useProwlarrSearch(query);
   const grabRelease = useGrabRelease();
 
-  const handleGrab = (result: ProwlarrSearchResult) => {
-    Alert.alert("Grab Release", `Send "${result.title}" to download client?`, [
-      { text: "Cancel", style: "cancel" },
+  const confirmGrab = () => {
+    if (!pendingGrab) return;
+    grabRelease.mutate(
+      { guid: pendingGrab.guid, indexerId: pendingGrab.indexerId },
       {
-        text: "Grab",
-        onPress: () =>
-          grabRelease.mutate(
-            { guid: result.guid, indexerId: result.indexerId },
-            {
-              onSuccess: () => toast("Sent to download client"),
-              onError: (err) => toastError("Failed to grab release", err),
-            },
-          ),
+        onSuccess: () => toast("Sent to download client"),
+        onError: (err) => toastError("Failed to grab release", err),
       },
-    ]);
+    );
+    setPendingGrab(null);
   };
 
   return (
@@ -183,7 +182,7 @@ function IndexerSearch() {
         <View className="gap-2">
           {results.slice(0, 50).map((result) => (
             <Card key={result.guid}>
-              <Pressable onPress={() => handleGrab(result)} className="active:opacity-80">
+              <Pressable onPress={() => setPendingGrab(result)} className="active:opacity-80">
                 <Text className="text-zinc-200 text-sm" numberOfLines={2}>
                   {result.title}
                 </Text>
@@ -209,6 +208,19 @@ function IndexerSearch() {
           ))}
         </View>
       )}
+
+      <ConfirmModal
+        visible={pendingGrab !== null}
+        title="Grab Release"
+        message={
+          pendingGrab
+            ? `Send "${pendingGrab.title}" to download client?`
+            : ""
+        }
+        confirmLabel="Grab"
+        onConfirm={confirmGrab}
+        onCancel={() => setPendingGrab(null)}
+      />
     </View>
   );
 }

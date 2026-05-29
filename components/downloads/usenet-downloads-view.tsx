@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { View, Text, Pressable, Alert, BackHandler } from "react-native";
+import { View, Text, Pressable, BackHandler } from "react-native";
 import { toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import {
@@ -21,6 +21,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -83,6 +84,7 @@ export function UsenetDownloadsView({
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [nzbUrl, setNzbUrl] = useState("");
+  const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
 
   const { data: queue, error: queueError } = adapter.useQueue();
   const { data: history, error: historyError } = adapter.useHistory(50);
@@ -163,39 +165,21 @@ export function UsenetDownloadsView({
   const handleBulkDelete = () => {
     const sel = selectedItems();
     if (sel.length === 0) return;
-    Alert.alert("Delete Downloads", `Delete ${sel.length} item(s)?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          sel.forEach((s) => {
-            if (s.source === "history") {
-              deleteHistorySlot.mutate({ id: s.id });
-            } else {
-              deleteSlot.mutate({ id: s.id });
-            }
-          });
-          multiSelect.clear();
-        },
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          sel.forEach((s) => {
-            if (s.source === "history") {
-              deleteHistorySlot.mutate({ id: s.id, deleteFiles: true });
-            } else {
-              deleteSlot.mutate({ id: s.id, deleteFiles: true });
-            }
-          });
-          multiSelect.clear();
-        },
-      },
-    ]);
+    setBulkDelete({ count: sel.length });
+  };
+
+  const runBulkDelete = (deleteFiles: boolean) => {
+    const sel = selectedItems();
+    if (sel.length === 0) return;
+    errorHaptic();
+    sel.forEach((s) => {
+      if (s.source === "history") {
+        deleteHistorySlot.mutate({ id: s.id, deleteFiles });
+      } else {
+        deleteSlot.mutate({ id: s.id, deleteFiles });
+      }
+    });
+    multiSelect.clear();
   };
 
   const handleItemPress = (item: UnifiedItem) => {
@@ -355,6 +339,27 @@ export function UsenetDownloadsView({
         sortValue={sort}
         onSortChange={setSort}
       />
+
+      <ActionSheet
+        visible={bulkDelete !== null}
+        onClose={() => setBulkDelete(null)}
+        title="Delete downloads"
+        subtitle={bulkDelete ? `${bulkDelete.count} selected` : ""}
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runBulkDelete(false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runBulkDelete(true),
+          },
+        ]}
+      />
     </>
   );
 }
@@ -452,34 +457,15 @@ function SlotListItem({
   const badgeVariant = usenetBadgeVariant(item.status);
   const showProgress = inQueue || item.status === "completed";
 
-  const handleDelete = () => {
-    Alert.alert("Delete Download", `Delete "${truncateText(item.name, 30)}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          if (item.source === "history") {
-            deleteHistory.mutate({ id: item.id });
-          } else {
-            deleteSlot.mutate({ id: item.id });
-          }
-        },
-      },
-      {
-        text: "Delete + Files",
-        style: "destructive",
-        onPress: () => {
-          errorHaptic();
-          if (item.source === "history") {
-            deleteHistory.mutate({ id: item.id, deleteFiles: true });
-          } else {
-            deleteSlot.mutate({ id: item.id, deleteFiles: true });
-          }
-        },
-      },
-    ]);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const runDelete = (deleteFiles: boolean) => {
+    errorHaptic();
+    if (item.source === "history") {
+      deleteHistory.mutate({ id: item.id, deleteFiles });
+    } else {
+      deleteSlot.mutate({ id: item.id, deleteFiles });
+    }
   };
 
   const togglePending = pauseSlot.isPending || resumeSlot.isPending;
@@ -543,7 +529,7 @@ function SlotListItem({
               </Pressable>
             )}
             <Pressable
-              onPress={handleDelete}
+              onPress={() => setDeleteOpen(true)}
               disabled={deletePending}
               className={`p-1.5 active:opacity-70 ${deletePending ? "opacity-50" : ""}`}
               hitSlop={6}
@@ -553,6 +539,27 @@ function SlotListItem({
           </View>
         )}
       </View>
+
+      <ActionSheet
+        visible={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete download"
+        subtitle={truncateText(item.name, 40)}
+        actions={[
+          {
+            label: "Delete",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(false),
+          },
+          {
+            label: "Delete + Files",
+            icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
+            variant: "danger",
+            onPress: () => runDelete(true),
+          },
+        ]}
+      />
     </Card>
   );
 }

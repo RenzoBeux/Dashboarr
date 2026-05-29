@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { Zap, Plus, Pencil, Trash2, X } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { toast, toastError } from "@/components/ui/toast";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useConfigStore } from "@/store/config-store";
 import { sendWakeOnLan } from "@/lib/wake-on-lan";
 import type { WakeOnLanDevice } from "@/store/config-store";
@@ -29,6 +30,9 @@ export default function WakeOnLanScreen() {
   const [broadcastAddress, setBroadcastAddress] = useState("");
   const [port, setPort] = useState("");
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<WakeOnLanDevice | null>(
+    null,
+  );
 
   const resetForm = () => {
     setName("");
@@ -78,22 +82,11 @@ export default function WakeOnLanScreen() {
     setMode("list");
   };
 
-  const handleDelete = (device: WakeOnLanDevice) => {
-    Alert.alert(
-      "Delete Device",
-      `Remove "${device.name}" from Wake-on-LAN?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            setWolDevices(wolDevices.filter((d) => d.id !== device.id));
-            toast(`${device.name} removed`, "success");
-          },
-        },
-      ],
-    );
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    setWolDevices(wolDevices.filter((d) => d.id !== pendingDelete.id));
+    toast(`${pendingDelete.name} removed`, "success");
+    setPendingDelete(null);
   };
 
   const handleWake = async (device: WakeOnLanDevice) => {
@@ -210,7 +203,7 @@ export default function WakeOnLanScreen() {
                   <Pressable onPress={() => startEdit(device)} className="p-2 active:opacity-70">
                     <Icon icon={Pencil} size={16} color="#71717a" />
                   </Pressable>
-                  <Pressable onPress={() => handleDelete(device)} className="p-2 active:opacity-70">
+                  <Pressable onPress={() => setPendingDelete(device)} className="p-2 active:opacity-70">
                     <Icon icon={Trash2} size={16} color="#71717a" />
                   </Pressable>
                 </View>
@@ -227,6 +220,21 @@ export default function WakeOnLanScreen() {
           ))}
         </View>
       )}
+
+      <ConfirmModal
+        visible={pendingDelete !== null}
+        title="Delete Device"
+        message={
+          pendingDelete
+            ? `Remove "${pendingDelete.name}" from Wake-on-LAN?`
+            : ""
+        }
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </ScreenWrapper>
   );
 }
