@@ -12,6 +12,7 @@ import {
   searchForMovie,
   toggleMovieMonitored,
   updateMovie,
+  changeMovieRootFolder,
   getQualityProfiles,
   getRootFolders,
   getTags,
@@ -295,20 +296,7 @@ export function useUpdateMovieRootFolder(instanceId?: string) {
       movieId: number;
       rootFolderPath: string;
       moveFiles: boolean;
-    }) => {
-      const cached = queryClient.getQueryData<RadarrMovie>([
-        "radarr",
-        id,
-        "movie",
-        movieId,
-      ]);
-      if (!cached) throw new Error("Movie not loaded");
-      return updateMovie(
-        { ...cached, rootFolderPath },
-        id ?? undefined,
-        { moveFiles },
-      );
-    },
+    }) => changeMovieRootFolder(movieId, rootFolderPath, moveFiles, id ?? undefined),
     onMutate: async ({ movieId, rootFolderPath }) => {
       await queryClient.cancelQueries({ queryKey: ["radarr", id, "movie", movieId] });
       await queryClient.cancelQueries({ queryKey: ["radarr", id, "movies"] });

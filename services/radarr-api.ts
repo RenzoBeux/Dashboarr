@@ -213,6 +213,30 @@ export function toggleMovieMonitored(
   });
 }
 
+// --- Change Root Folder (via bulk editor endpoint) ---
+//
+// The single PUT /movie/{id}?moveFiles=true does NOT work for a root-folder
+// change: it derives the move destination from the body's stale `path` (so
+// source == destination, no move) and the single-movie save overload never
+// recomputes `path` from the new `rootFolderPath` — leaving an inconsistent
+// record that "reverts" to the old location on the next GET (issue #83). The
+// editor endpoint derives the destination from `rootFolderPath` server-side and
+// rewrites `path` consistently. Send ONLY the id + rootFolderPath + moveFiles —
+// never echo back the old `path`. moveFiles:false still changes the root (Path
+// rebuilt under the new root, files left in place); moveFiles:true also moves.
+export function changeMovieRootFolder(
+  movieId: number,
+  rootFolderPath: string,
+  moveFiles: boolean,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("radarr", "/movie/editor", {
+    method: "PUT",
+    body: JSON.stringify({ movieIds: [movieId], rootFolderPath, moveFiles }),
+    instanceId,
+  });
+}
+
 // --- Update Movie (full PUT) ---
 //
 // Radarr expects the entire movie resource on PUT. Our `RadarrMovie` type is a

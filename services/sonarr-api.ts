@@ -255,6 +255,27 @@ export function toggleSeriesMonitored(
   });
 }
 
+// --- Change Root Folder (via bulk editor endpoint) ---
+//
+// See Radarr's changeMovieRootFolder for the full rationale. The single PUT
+// /series/{id}?moveFiles=true reverts the change: Sonarr derives the move
+// destination from the body's stale `path` (no move) and recomputes
+// `rootFolderPath` from that unchanged `path` on every GET, so the picked root
+// snaps back (issue #83). The editor rewrites `path` from `rootFolderPath`
+// server-side. Send ONLY the id + rootFolderPath + moveFiles.
+export function changeSeriesRootFolder(
+  seriesId: number,
+  rootFolderPath: string,
+  moveFiles: boolean,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", "/series/editor", {
+    method: "PUT",
+    body: JSON.stringify({ seriesIds: [seriesId], rootFolderPath, moveFiles }),
+    instanceId,
+  });
+}
+
 // --- Update Series (full PUT) ---
 //
 // Sonarr expects the entire series resource on PUT. As with Radarr, we forward
