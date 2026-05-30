@@ -94,8 +94,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v24 — added the emby service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled emby instance at import
  *         time, so older exports just need the version field bumped.
+ *   v25 — added the tracearr service entry. Pure version stamp — defaultInstances()
+ *         iterates SERVICE_IDS and backfills a disabled tracearr instance at
+ *         import time, so older exports just need the version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 24;
+export const CURRENT_CONFIG_VERSION = 25;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -509,6 +512,13 @@ const migrations: Record<number, (payload: any) => any> = {
   // defaultInstances() afterward, so older payloads that lack an emby entry
   // get the disabled default automatically — nothing to transform here.
   23: (payload) => ({ ...payload, version: 24 }),
+
+  // v24 → v25: tracearr added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack a tracearr entry
+  // get the disabled default automatically — nothing to transform here. The
+  // "tautulli-activity" → "stream-monitor" widget rename is handled separately
+  // by WIDGET_ID_RENAMES on both the hydrate and import paths.
+  24: (payload) => ({ ...payload, version: 25 }),
 };
 
 /**

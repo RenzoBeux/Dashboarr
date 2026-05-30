@@ -15,6 +15,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   overseerr:   ["overseerrNewRequest", "serviceOffline"],
   prowlarr:    ["serviceOffline"],
   tautulli:    ["serviceOffline"],
+  tracearr:    ["serviceOffline"],
   plex:        ["serviceOffline"],
   bazarr:      ["serviceOffline"],
   glances:     ["serviceOffline"],

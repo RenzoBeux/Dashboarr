@@ -41,7 +41,10 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   radarr: "movies",
   sonarr: "tv",
   overseerr: "requests",
+  // Both stream monitors share the Activity tab — it aggregates whichever of
+  // Tautulli / Tracearr is attached (see lib/monitor-adapter.ts).
   tautulli: "activity",
+  tracearr: "activity",
   prowlarr: "indexers",
   plex: "plex",
   jellyfin: "jellyfin",
@@ -50,19 +53,20 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   bazarr: "bazarr",
 };
 
-// Inverse — used when validating that a pinned tab still resolves to a
-// service in the active dashboard's attached set.
-const TAB_TO_SERVICE: Partial<Record<PickableServiceTab, ServiceId>> = {
-  movies: "radarr",
-  tv: "sonarr",
-  requests: "overseerr",
-  activity: "tautulli",
-  indexers: "prowlarr",
-  plex: "plex",
-  jellyfin: "jellyfin",
-  emby: "emby",
-  glances: "glances",
-  bazarr: "bazarr",
+// Inverse — the service kind(s) that back each tab. Used to decide pickability
+// (a tab is pickable when ANY of its kinds is attached) and to validate pins.
+// The Activity tab is shared by both stream monitors (Tautulli + Tracearr).
+const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
+  movies: ["radarr"],
+  tv: ["sonarr"],
+  requests: ["overseerr"],
+  activity: ["tautulli", "tracearr"],
+  indexers: ["prowlarr"],
+  plex: ["plex"],
+  jellyfin: ["jellyfin"],
+  emby: ["emby"],
+  glances: ["glances"],
+  bazarr: ["bazarr"],
 };
 
 export function tabForServiceId(id: ServiceId): PickableServiceTab | null {
@@ -70,7 +74,7 @@ export function tabForServiceId(id: ServiceId): PickableServiceTab | null {
 }
 
 export function serviceForTab(tab: PickableServiceTab): ServiceId | null {
-  return TAB_TO_SERVICE[tab] ?? null;
+  return TAB_TO_SERVICES[tab]?.[0] ?? null;
 }
 
 const DOWNLOAD_KINDS: ServiceId[] = ["qbittorrent", "sabnzbd", "nzbget"];
@@ -88,8 +92,8 @@ export function pickableTabIdsFor(
   if (CALENDAR_KINDS.some((k) => attached.has(k))) out.push("calendar");
   out.push("services");
   for (const tab of PICKABLE_SERVICE_TABS) {
-    const svc = TAB_TO_SERVICE[tab];
-    if (svc && attached.has(svc)) out.push(tab);
+    const svcs = TAB_TO_SERVICES[tab];
+    if (svcs && svcs.some((s) => attached.has(s))) out.push(tab);
   }
   return out;
 }

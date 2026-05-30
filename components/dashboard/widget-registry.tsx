@@ -26,7 +26,7 @@ import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
-import { TautulliActivityCard } from "@/components/dashboard/tautulli-activity-card";
+import { StreamMonitorCard } from "@/components/dashboard/stream-monitor-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
 import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-playing-card";
@@ -86,10 +86,10 @@ import {
   type CombinedNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/combined-now-playing-settings";
 import {
-  TautulliActivitySettings,
-  TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
-  type TautulliActivitySettingsValue,
-} from "@/components/dashboard/widget-settings/tautulli-activity-settings";
+  StreamMonitorSettings,
+  STREAM_MONITOR_DEFAULT_SETTINGS,
+  type StreamMonitorSettingsValue,
+} from "@/components/dashboard/widget-settings/stream-monitor-settings";
 import {
   OverseerrRequestsSettings,
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
@@ -281,15 +281,15 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: CalendarSettings,
     defaultSettings: CALENDAR_DEFAULT_SETTINGS,
   },
-  "tautulli-activity": {
-    id: "tautulli-activity",
-    label: "Tautulli Activity",
-    description: "Current Plex streams and bandwidth",
+  "stream-monitor": {
+    id: "stream-monitor",
+    label: "Stream Activity",
+    description: "Live streams + bandwidth from Tautulli and Tracearr",
     icon: Activity,
-    service: "tautulli",
-    component: TautulliActivityCard,
-    settingsComponent: TautulliActivitySettings,
-    defaultSettings: TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
+    service: ["tautulli", "tracearr"],
+    component: StreamMonitorCard,
+    settingsComponent: StreamMonitorSettings,
+    defaultSettings: STREAM_MONITOR_DEFAULT_SETTINGS,
   },
   "overseerr-requests": {
     id: "overseerr-requests",
@@ -390,7 +390,7 @@ export type {
   JellyfinNowPlayingSettingsValue,
   EmbyNowPlayingSettingsValue,
   CombinedNowPlayingSettingsValue,
-  TautulliActivitySettingsValue,
+  StreamMonitorSettingsValue,
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
   RadarrQueueSettingsValue,

@@ -4,6 +4,7 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
 import type { NowPlayingStream } from "@/lib/now-playing-stream";
+import { SERVICE_ROUTES } from "@/lib/service-routes";
 
 // Renders one normalized NowPlayingStream as a poster tile. Shared by the Plex,
 // Jellyfin/Emby, and combined now-playing cards so the tile presentation lives
@@ -45,7 +46,11 @@ export function NowPlayingStreamTile({
       }
       bottomOverlay={<PosterProgressStrip progress={stream.progress} />}
       mediaType={stream.mediaType}
-      onPress={() => router.push(`/(tabs)/${stream.serviceId}`)}
+      onPress={() =>
+        router.push(
+          (SERVICE_ROUTES[stream.serviceId] ?? `/(tabs)/${stream.serviceId}`) as any,
+        )
+      }
     />
   );
 }

@@ -6,6 +6,7 @@ export const SERVICE_IDS = [
   "sonarr",
   "overseerr",
   "tautulli",
+  "tracearr",
   "prowlarr",
   "plex",
   "jellyfin",
@@ -38,6 +39,15 @@ export const SERVICE_DEFAULTS: Record<
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
   overseerr: { name: "Seerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
   tautulli: { name: "Tautulli", defaultPort: 8181, apiBasePath: "/api/v2", pingPath: "/home" },
+  // Tracearr's read-only public API lives under /api/v1/public with Bearer-token
+  // auth (Authorization: Bearer trr_pub_<token>). /health is the authenticated
+  // ping/probe endpoint. Default Docker port is 3000.
+  tracearr: {
+    name: "Tracearr",
+    defaultPort: 3000,
+    apiBasePath: "/api/v1/public",
+    pingPath: "/health",
+  },
   prowlarr: { name: "Prowlarr", defaultPort: 9696, apiBasePath: "/api/v1", pingPath: "/system/status" },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
   jellyfin: { name: "Jellyfin", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
@@ -66,7 +76,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "radarr-queue",
   "recently-downloaded",
   "calendar",
-  "tautulli-activity",
+  "stream-monitor",
   "overseerr-requests",
   "combined-now-playing",
   "plex-now-playing",
@@ -95,6 +105,9 @@ export const DEFAULT_DASHBOARD_NAME = "Default";
 // stored values so users keep their dashboard layout across upgrades.
 export const WIDGET_ID_RENAMES: Record<string, WidgetId> = {
   "sonarr-calendar": "calendar",
+  // The Tautulli-only "Now Playing" widget was generalized into a unified
+  // Tautulli + Tracearr stream monitor. Existing dashboards keep their slot.
+  "tautulli-activity": "stream-monitor",
 };
 
 // MMKV key prefixes

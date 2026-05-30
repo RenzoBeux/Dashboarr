@@ -2,6 +2,7 @@ import { View } from "react-native";
 import { Toggle } from "@/components/ui/toggle";
 import { TextInput } from "@/components/ui/text-input";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useEnabledInstances } from "@/hooks/use-instance-target";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
   InstancePickerRow,
@@ -14,21 +15,21 @@ import {
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
 
-export interface TautulliActivitySettingsValue extends Record<string, unknown> {
-  instanceIds: InstanceBindingValue;
+export interface StreamMonitorSettingsValue extends Record<string, unknown> {
+  tautulliInstanceIds: InstanceBindingValue;
+  tracearrInstanceIds: InstanceBindingValue;
   maxItems: number;
   hideUsers: string;
-  showBitrate: boolean;
   showTranscoding: boolean;
   showUserAndDevice: boolean;
   showBandwidthSummary: boolean;
 }
 
-export const TAUTULLI_ACTIVITY_DEFAULT_SETTINGS: TautulliActivitySettingsValue = {
-  instanceIds: INSTANCE_BINDING_ALL,
-  maxItems: 3,
+export const STREAM_MONITOR_DEFAULT_SETTINGS: StreamMonitorSettingsValue = {
+  tautulliInstanceIds: INSTANCE_BINDING_ALL,
+  tracearrInstanceIds: INSTANCE_BINDING_ALL,
+  maxItems: 5,
   hideUsers: "",
-  showBitrate: false,
   showTranscoding: true,
   showUserAndDevice: true,
   showBandwidthSummary: true,
@@ -40,19 +41,39 @@ const MAX_OPTIONS: { value: number; label: string }[] = [
   { value: 10, label: "10" },
 ];
 
-export function TautulliActivitySettings({ slotId }: WidgetSettingsComponentProps) {
-  const { settings, update } = useWidgetSettings<TautulliActivitySettingsValue>(
+export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) {
+  const { settings, update } = useWidgetSettings<StreamMonitorSettingsValue>(
     slotId,
-    TAUTULLI_ACTIVITY_DEFAULT_SETTINGS,
+    STREAM_MONITOR_DEFAULT_SETTINGS,
   );
+
+  // Only offer an instance picker for a monitor the user actually runs.
+  const hasTautulli = useEnabledInstances("tautulli").length > 0;
+  const hasTracearr = useEnabledInstances("tracearr").length > 0;
 
   return (
     <View className="px-4 py-2 gap-5">
-      <InstancePickerRow
-        serviceId="tautulli"
-        value={settings.instanceIds}
-        onChange={(instanceIds) => update({ instanceIds })}
-      />
+      <SettingsSection label="Monitors">
+        <View className="gap-4">
+          {hasTautulli && (
+            <InstancePickerRow
+              serviceId="tautulli"
+              label="Tautulli instances"
+              value={settings.tautulliInstanceIds}
+              onChange={(tautulliInstanceIds) => update({ tautulliInstanceIds })}
+            />
+          )}
+          {hasTracearr && (
+            <InstancePickerRow
+              serviceId="tracearr"
+              label="Tracearr instances"
+              value={settings.tracearrInstanceIds}
+              onChange={(tracearrInstanceIds) => update({ tracearrInstanceIds })}
+            />
+          )}
+        </View>
+      </SettingsSection>
+
       <SettingsSection label="Filters">
         <TextInput
           label="Hide users"
@@ -71,14 +92,9 @@ export function TautulliActivitySettings({ slotId }: WidgetSettingsComponentProp
           />
           <Toggle
             label="Transcoding indicator"
-            description="Highlights direct play, copy, or transcode"
+            description="Marks streams that are transcoding"
             value={settings.showTranscoding}
             onValueChange={(showTranscoding) => update({ showTranscoding })}
-          />
-          <Toggle
-            label="Per-stream bitrate"
-            value={settings.showBitrate}
-            onValueChange={(showBitrate) => update({ showBitrate })}
           />
           <Toggle
             label="Total bandwidth"

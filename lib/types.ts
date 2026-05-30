@@ -850,6 +850,96 @@ export interface TautulliLibraryStats {
   };
 }
 
+// --- Tracearr Types ---
+// Read-only public API (/api/v1/public). Only the fields the app consumes are
+// typed; see the upstream OpenAPI (routes/public.openapi.ts) for the full shape.
+
+export type TracearrMediaType = "movie" | "episode" | "track" | "live" | "photo" | "unknown";
+export type TracearrPlaybackState = "playing" | "paused" | "stopped";
+
+// GET /streams → active playback sessions with codec/quality + summary.
+export interface TracearrStream {
+  id: string;
+  serverId: string;
+  serverName: string;
+  username: string;
+  userAvatarUrl: string | null;
+  mediaTitle: string;
+  mediaType: TracearrMediaType;
+  showTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  year: number | null;
+  durationMs: number | null;
+  state: TracearrPlaybackState;
+  progressMs: number;
+  startedAt: string;
+  // posterUrl is a RELATIVE path (/api/v1/images/proxy?...) served without auth.
+  thumbPath: string | null;
+  posterUrl: string | null;
+  // Stream quality / transcode signals.
+  isTranscode: boolean | null;
+  videoDecision: "directplay" | "copy" | "transcode" | null;
+  audioDecision: "directplay" | "copy" | "transcode" | null;
+  // DisplayValues — human-readable strings (e.g. "4K", "1080p").
+  resolution: string | null;
+  // DeviceInfo.
+  device: string | null;
+  player: string | null;
+  product: string | null;
+  platform: string | null;
+}
+
+export interface TracearrStreamSummary {
+  total: number;
+  transcodes: number;
+  directStreams: number;
+  directPlays: number;
+  totalBitrate: string; // e.g. "45.2 Mbps"
+}
+
+export interface TracearrStreamsResponse {
+  data: TracearrStream[];
+  summary: TracearrStreamSummary;
+}
+
+// GET /history → paginated session history (grouped by unique play).
+export interface TracearrSessionHistory {
+  id: string;
+  serverId: string;
+  serverName: string;
+  state: TracearrPlaybackState;
+  mediaTitle: string;
+  mediaType: TracearrMediaType;
+  showTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  year: number | null;
+  durationMs: number | null;
+  progressMs: number | null;
+  totalDurationMs: number | null;
+  startedAt: string;
+  stoppedAt: string | null;
+  watched: boolean;
+  resolution: string | null;
+  thumbPath: string | null;
+  posterUrl: string | null;
+  device: string | null;
+  player: string | null;
+  platform: string | null;
+  user: {
+    id: string;
+    username: string;
+    thumbUrl: string | null;
+    avatarUrl: string | null;
+  };
+}
+
+export interface TracearrHistoryResponse {
+  data: TracearrSessionHistory[];
+  meta: { total: number; page: number; pageSize: number };
+}
+
 // --- Prowlarr Types ---
 
 export interface ProwlarrIndexer {

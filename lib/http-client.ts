@@ -190,6 +190,12 @@ export async function serviceRequest<T>(
     if (secrets.apiKey) {
       headers.set("X-Emby-Token", secrets.apiKey);
     }
+  } else if (serviceId === "tracearr") {
+    // Tracearr's public API uses a Bearer token (Authorization: Bearer
+    // trr_pub_<token>). Image-proxy URLs are public, so only API calls need it.
+    if (secrets.apiKey) {
+      headers.set("Authorization", `Bearer ${secrets.apiKey}`);
+    }
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr use X-Api-Key
     if (secrets.apiKey) {
@@ -288,6 +294,8 @@ export async function pingService(
     headers.set("Content-Type", "application/json");
   } else if (serviceId === "sabnzbd") {
     // apikey already in query params
+  } else if (serviceId === "tracearr") {
+    if (secrets.apiKey) headers.set("Authorization", `Bearer ${secrets.apiKey}`);
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -641,6 +649,21 @@ async function runConnectionProbe(
               : "Server requires credentials",
         };
       }
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "tracearr": {
+      // Tracearr's /health endpoint requires the Bearer token, so it doubles
+      // as an auth probe: 401/403 → bad key, 2xx → reachable + authenticated.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (res.ok) return { kind: "ok" };

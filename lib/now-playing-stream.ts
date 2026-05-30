@@ -6,6 +6,7 @@ import {
   ticksToMs,
 } from "@/services/jellyfin-api";
 import type { MediaServerId } from "@/lib/media-server-config";
+import type { ServiceId } from "@/lib/constants";
 
 // The media servers whose live sessions the combined "Now Playing" widget
 // aggregates. Tautulli is deliberately excluded — it reports Plex's own
@@ -16,9 +17,14 @@ export type NowPlayingServiceId = (typeof NOW_PLAYING_SERVICE_IDS)[number];
 // Normalized shape every server's session maps into, so one tile/row renders
 // them all (mirrors lib/usenet-adapter.ts for SAB/NZBGet). Poster matches the
 // expo-image source returned by the getXImageSource helpers.
+//
+// `serviceId` is the broad ServiceId (not just the media-server subset) because
+// the Tautulli/Tracearr stream monitor reuses this shape and tile too — see
+// lib/monitor-adapter.ts. The combined media-server card still scopes itself to
+// NOW_PLAYING_SERVICE_IDS so Tautulli's Plex streams aren't double-counted.
 export interface NowPlayingStream {
   key: string;
-  serviceId: NowPlayingServiceId;
+  serviceId: ServiceId;
   instanceId: string;
   title: string;
   user?: string;
@@ -29,6 +35,10 @@ export interface NowPlayingStream {
   progress: number; // 0–1
   poster: { uri: string; cacheKey: string } | null;
   mediaType: "movie" | "tv";
+  // Human-readable resolution label ("4K", "1080p", …) when the source reports
+  // it. Used by the Activity tab's stream cards; left undefined by media-server
+  // mappers that don't surface it.
+  resolution?: string | null;
 }
 
 // Hidden-users filter input ("alice, bob" → {"alice","bob"}). Shared by the
