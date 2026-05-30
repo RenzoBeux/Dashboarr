@@ -34,6 +34,25 @@ export function resolveBoundInstances<T extends { id: string }>(
   return allInstances.filter((i) => allowed.has(i.id));
 }
 
+/**
+ * True when the binding names specific instances (a legacy scalar id or a
+ * non-empty subset array) rather than the "all"/aggregate default.
+ *
+ * An explicit pick is a deliberate per-widget choice that should win over the
+ * dashboard's workspace `attachedInstances` filter: the picker lists every
+ * enabled instance of the kind, so a user can select one that isn't attached
+ * to the current workspace and reasonably expect it to show. Surfaces that
+ * fan out across "all" attached instances still apply the workspace filter
+ * for the default case (see ServiceHealthCard). Without this distinction an
+ * instance shown as selectable + selected in the widget settings would be
+ * silently hidden — see #106.
+ */
+export function isExplicitInstanceBinding(value: StoredInstanceBinding): boolean {
+  if (value == null || value === INSTANCE_BINDING_ALL) return false;
+  if (typeof value === "string") return true;
+  return Array.isArray(value) && value.length > 0;
+}
+
 interface InstancePickerRowProps {
   serviceId: ServiceId;
   value: InstanceBindingValue;

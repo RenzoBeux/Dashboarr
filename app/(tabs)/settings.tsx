@@ -288,7 +288,14 @@ export default function SettingsScreen() {
 
   if (editingInstance) {
     return (
+      // Key by instance id so the editor fully remounts when switching between
+      // instances. The form seeds its URL/credential fields from `inst` via
+      // useState initializers (which run once per mount); without a per-instance
+      // key those fields would keep a previous instance's values — the "remote
+      // URL shows blank until you tap it" symptom — and a Save could then
+      // persist the stale/empty value over a good stored URL (#106).
       <ServiceEditor
+        key={editingInstance.instanceId}
         serviceId={editingInstance.serviceId}
         instanceId={editingInstance.instanceId}
         isNew={editingInstance.isNew ?? false}
