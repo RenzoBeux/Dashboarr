@@ -14,6 +14,7 @@ import {
   toggleEpisodeMonitored,
   toggleSeriesMonitored,
   updateSeries,
+  changeSeriesRootFolder,
   searchForSeries,
   searchForEpisodes,
   searchAllMissingEpisodes,
@@ -356,18 +357,7 @@ export function useUpdateSeriesRootFolder(instanceId?: string) {
       seriesId: number;
       rootFolderPath: string;
       moveFiles: boolean;
-    }) => {
-      const cached = queryClient.getQueryData<SonarrSeries>([
-        "sonarr",
-        id,
-        "series",
-        seriesId,
-      ]);
-      if (!cached) throw new Error("Series not loaded");
-      return updateSeries({ ...cached, rootFolderPath }, id ?? undefined, {
-        moveFiles,
-      });
-    },
+    }) => changeSeriesRootFolder(seriesId, rootFolderPath, moveFiles, id ?? undefined),
     onMutate: async ({ seriesId, rootFolderPath }) => {
       await queryClient.cancelQueries({
         queryKey: ["sonarr", id, "series", seriesId],
