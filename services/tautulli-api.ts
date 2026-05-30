@@ -123,10 +123,16 @@ export async function getServerIdentity(
 // music tracks must use `cover`, not `poster`.
 type TautulliFallback = "poster" | "cover" | "art";
 
-// Build a pms_image_proxy URL from a Plex image PATH (e.g. a session's `thumb`
+// Build a Tautulli image URL from a Plex image PATH (e.g. a session's `thumb`
 // or `parent_thumb`, like "/library/metadata/123/thumb"). Tautulli re-derives
 // the rating_key from the path, so passing the session's own thumb path is the
 // robust approach for every media type (mirrors Tautulli's own activity UI).
+//
+// Goes through the API route (/api/v2?cmd=pms_image_proxy) rather than the web
+// /pms_image_proxy route: Tautulli 2.17.0 put @requireAuth (session-cookie) on
+// the web route (CVE-2026-31804), so an apikey-only client gets a login
+// redirect instead of the image and posters render blank (issue #141). The API
+// route authenticates with the apikey we already send and returns raw bytes.
 export function getTautulliImageUrl(
   imgPath: string,
   width = 300,
@@ -137,9 +143,10 @@ export function getTautulliImageUrl(
   const store = useConfigStore.getState();
   const targetId = instanceId ?? store.getActiveInstanceId("tautulli");
   if (!targetId) return "";
-  const baseUrl = store.getActiveUrl("tautulli", targetId);
+  const baseUrl = store.getActiveUrl("tautulli", targetId).replace(/\/+$/, "");
+  if (!baseUrl) return "";
   const secrets = store.instanceSecrets[targetId] ?? {};
-  return `${baseUrl}/pms_image_proxy?img=${imgPath}&width=${width}&height=${height}&fallback=${fallback}&apikey=${secrets.apiKey}`;
+  return `${baseUrl}/api/v2?cmd=pms_image_proxy&img=${imgPath}&width=${width}&height=${height}&fallback=${fallback}&apikey=${secrets.apiKey}`;
 }
 
 // expo-image source with a token-stripped cacheKey so rotating the apikey
