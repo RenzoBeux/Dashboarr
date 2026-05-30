@@ -8,6 +8,7 @@ export const SERVICE_IDS = [
   "sonarr",
   "overseerr",
   "tautulli",
+  "tracearr",
   "prowlarr",
   "plex",
   "jellyfin",
@@ -166,6 +167,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   sonarr: "/api/v3",
   overseerr: "/api/v1",
   tautulli: "/api/v2",
+  tracearr: "/api/v1/public",
   prowlarr: "/api/v1",
   plex: "",
   jellyfin: "",
@@ -184,6 +186,9 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   sonarr: "/system/status",
   overseerr: "/status",
   tautulli: "/home",
+  // Tracearr's /health is Bearer-authed, so it doubles as a reachability +
+  // auth probe (mirrors the app's runConnectionProbe).
+  tracearr: "/health",
   prowlarr: "/system/status",
   plex: "/identity",
   jellyfin: "/System/Info/Public",

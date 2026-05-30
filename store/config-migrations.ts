@@ -139,6 +139,40 @@ export function migrateSlotSettingsBindings(
   return next ?? settings;
 }
 
+// v25 generalized the Tautulli-only "Now Playing" widget (tautulli-activity)
+// into the unified Tautulli + Tracearr stream monitor (stream-monitor), which
+// split its single `instanceIds` binding into per-source `tautulliInstanceIds`
+// / `tracearrInstanceIds`. Without this, an upgrading user who scoped the old
+// widget to specific Tautulli instances would silently fall back to "all".
+// Idempotent: drops the legacy key once the new one exists. Returns the same
+// reference when nothing changed so callers can treat reference-equality as
+// "nothing to persist".
+function migrateStreamMonitorBindings(
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!("instanceIds" in settings)) return settings;
+  const { instanceIds, ...rest } = settings;
+  // If the new key is already present the old one is just stale — drop it.
+  if ("tautulliInstanceIds" in rest) return rest;
+  return { ...rest, tautulliInstanceIds: instanceIds };
+}
+
+/**
+ * Migrate one widget slot's settings to the current shape: the generic v15
+ * binding-field renames, plus any widget-specific renames keyed by the
+ * (already WIDGET_ID_RENAMES-resolved) widget id. Applied on both the hydrate
+ * and import paths so locally-upgraded and re-imported configs converge.
+ * Returns the same reference when nothing changed.
+ */
+export function migrateWidgetSlotSettings(
+  widgetId: string,
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  const bound = migrateSlotSettingsBindings(settings);
+  if (widgetId === "stream-monitor") return migrateStreamMonitorBindings(bound);
+  return bound;
+}
+
 /**
  * Each key N is a function that transforms a version-N payload into version N+1.
  * To add a new migration:

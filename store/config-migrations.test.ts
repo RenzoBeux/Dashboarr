@@ -1,4 +1,8 @@
-import { CURRENT_CONFIG_VERSION, migrateConfig } from "./config-migrations";
+import {
+  CURRENT_CONFIG_VERSION,
+  migrateConfig,
+  migrateWidgetSlotSettings,
+} from "./config-migrations";
 import { DEFAULT_DASHBOARD_WIDGETS } from "@/lib/constants";
 
 describe("migrateConfig — entry point", () => {
@@ -1552,5 +1556,48 @@ describe("v21 → v22 (activeInstance becomes per-workspace)", () => {
       }),
     );
     expect(result.dashboards[0].activeInstance).toEqual({ radarr: "r2" });
+  });
+});
+
+describe("migrateWidgetSlotSettings (v25 stream-monitor split)", () => {
+  it("moves the old tautulli-activity instanceIds onto tautulliInstanceIds", () => {
+    expect(
+      migrateWidgetSlotSettings("stream-monitor", {
+        instanceIds: ["uuid-tautulli"],
+        maxItems: 3,
+      }),
+    ).toEqual({ tautulliInstanceIds: ["uuid-tautulli"], maxItems: 3 });
+  });
+
+  it("preserves the 'all' sentinel through the split", () => {
+    expect(
+      migrateWidgetSlotSettings("stream-monitor", { instanceIds: "all" }),
+    ).toEqual({ tautulliInstanceIds: "all" });
+  });
+
+  it("chains the v15 scalar rename into the per-source binding", () => {
+    // A pre-v15 slot carried a scalar instanceId; both renames must apply.
+    expect(
+      migrateWidgetSlotSettings("stream-monitor", { instanceId: "uuid-x" }),
+    ).toEqual({ tautulliInstanceIds: ["uuid-x"] });
+  });
+
+  it("drops a stale instanceIds when tautulliInstanceIds already exists", () => {
+    expect(
+      migrateWidgetSlotSettings("stream-monitor", {
+        instanceIds: "all",
+        tautulliInstanceIds: ["winner"],
+      }),
+    ).toEqual({ tautulliInstanceIds: ["winner"] });
+  });
+
+  it("leaves other widgets' instanceIds untouched", () => {
+    const settings = { instanceIds: ["uuid-radarr"], maxItems: 5 };
+    expect(migrateWidgetSlotSettings("radarr-queue", settings)).toEqual(settings);
+  });
+
+  it("returns the same reference when nothing changes", () => {
+    const settings = { maxItems: 5, showTranscoding: true };
+    expect(migrateWidgetSlotSettings("stream-monitor", settings)).toBe(settings);
   });
 });

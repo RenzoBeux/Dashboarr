@@ -5,7 +5,6 @@ import type {
   TracearrSessionHistory,
   TracearrStream,
 } from "@/lib/types";
-import { formatBytes } from "@/lib/utils";
 import {
   getActivity as getTautulliActivity,
   getHistory as getTautulliHistory,
@@ -154,8 +153,11 @@ const tautulliAdapter: MonitorAdapter = {
     return {
       streams: sessions.map((s) => tautulliSessionToStream(s, instanceId)),
       streamCount: parseInt(activity?.stream_count ?? "0", 10) || sessions.length,
+      // Tautulli reports total_bandwidth in kbps. Show it as Mbps to match
+      // Tracearr's summary.totalBitrate ("X Mbps") so a combined Tautulli +
+      // Tracearr view uses one unit instead of mixing "MB/s" with "Mbps".
       bandwidthLabel: activity
-        ? `${formatBytes((activity.total_bandwidth || 0) * 1000)}/s`
+        ? `${((activity.total_bandwidth || 0) / 1000).toFixed(1)} Mbps`
         : undefined,
     };
   },

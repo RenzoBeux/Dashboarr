@@ -93,6 +93,14 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
+  if (id === "tracearr") {
+    // Tracearr's public API uses a Bearer token (Authorization: Bearer
+    // trr_pub_<token>), mirroring the app's http-client.
+    if (config.apiKey) {
+      headers.set("Authorization", `Bearer ${config.apiKey}`);
+    }
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }
