@@ -1,6 +1,6 @@
 {
   "name": "dashboarr",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "main": "expo-router/entry",
   "packageManager": "pnpm@9.15.4",
   "scripts": {
