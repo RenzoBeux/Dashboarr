@@ -94,8 +94,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v24 — added the emby service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled emby instance at import
  *         time, so older exports just need the version field bumped.
+ *   v25 — added the tracearr service entry. Pure version stamp — defaultInstances()
+ *         iterates SERVICE_IDS and backfills a disabled tracearr instance at
+ *         import time, so older exports just need the version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 24;
+export const CURRENT_CONFIG_VERSION = 25;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -134,6 +137,40 @@ export function migrateSlotSettingsBindings(
     delete next[oldKey];
   }
   return next ?? settings;
+}
+
+// v25 generalized the Tautulli-only "Now Playing" widget (tautulli-activity)
+// into the unified Tautulli + Tracearr stream monitor (stream-monitor), which
+// split its single `instanceIds` binding into per-source `tautulliInstanceIds`
+// / `tracearrInstanceIds`. Without this, an upgrading user who scoped the old
+// widget to specific Tautulli instances would silently fall back to "all".
+// Idempotent: drops the legacy key once the new one exists. Returns the same
+// reference when nothing changed so callers can treat reference-equality as
+// "nothing to persist".
+function migrateStreamMonitorBindings(
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!("instanceIds" in settings)) return settings;
+  const { instanceIds, ...rest } = settings;
+  // If the new key is already present the old one is just stale — drop it.
+  if ("tautulliInstanceIds" in rest) return rest;
+  return { ...rest, tautulliInstanceIds: instanceIds };
+}
+
+/**
+ * Migrate one widget slot's settings to the current shape: the generic v15
+ * binding-field renames, plus any widget-specific renames keyed by the
+ * (already WIDGET_ID_RENAMES-resolved) widget id. Applied on both the hydrate
+ * and import paths so locally-upgraded and re-imported configs converge.
+ * Returns the same reference when nothing changed.
+ */
+export function migrateWidgetSlotSettings(
+  widgetId: string,
+  settings: Record<string, unknown>,
+): Record<string, unknown> {
+  const bound = migrateSlotSettingsBindings(settings);
+  if (widgetId === "stream-monitor") return migrateStreamMonitorBindings(bound);
+  return bound;
 }
 
 /**
@@ -509,6 +546,13 @@ const migrations: Record<number, (payload: any) => any> = {
   // defaultInstances() afterward, so older payloads that lack an emby entry
   // get the disabled default automatically — nothing to transform here.
   23: (payload) => ({ ...payload, version: 24 }),
+
+  // v24 → v25: tracearr added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack a tracearr entry
+  // get the disabled default automatically — nothing to transform here. The
+  // "tautulli-activity" → "stream-monitor" widget rename is handled separately
+  // by WIDGET_ID_RENAMES on both the hydrate and import paths.
+  24: (payload) => ({ ...payload, version: 25 }),
 };
 
 /**

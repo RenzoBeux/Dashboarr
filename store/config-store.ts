@@ -35,7 +35,7 @@ import { MAX_PINNED_TABS } from "@/lib/tab-routes";
 import {
   CURRENT_CONFIG_VERSION,
   migrateConfig,
-  migrateSlotSettingsBindings,
+  migrateWidgetSlotSettings,
 } from "@/store/config-migrations";
 import { validateExportPayload } from "@/store/config-schema";
 import {
@@ -618,9 +618,9 @@ function buildLegacyDashboard(
       const slot: WidgetSlot = { id: generateInstanceId(), widgetId };
       if (settings && Object.keys(settings).length > 0) {
         // Pre-v14 widgetSettings carried scalar `instanceId` — fold the v15
-        // rename in here so users coming from v13 land on the new shape in a
-        // single hydrate pass.
-        slot.settings = migrateSlotSettingsBindings({ ...settings });
+        // rename (and any widget-specific renames) in here so users coming from
+        // v13 land on the new shape in a single hydrate pass.
+        slot.settings = migrateWidgetSlotSettings(widgetId, { ...settings });
       }
       return slot;
     }),
@@ -955,11 +955,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
             if (!VALID_WIDGET_IDS.has(remapped)) continue;
             const slot: WidgetSlot = { id: w.id, widgetId: remapped as WidgetId };
             if (isPlainObject(w.settings)) {
-              // Apply the v14→v15 binding-field rename to locally-persisted
-              // dashboards too — without this, an upgrading user's stored
-              // `instanceId` keys would never get rewritten unless they
+              // Apply the v14→v15 binding-field rename (and widget-specific
+              // renames like tautulli-activity's instanceIds → tautulliInstanceIds)
+              // to locally-persisted dashboards too — without this, an upgrading
+              // user's stored keys would never get rewritten unless they
               // re-imported their config.
-              const migrated = migrateSlotSettingsBindings(
+              const migrated = migrateWidgetSlotSettings(
+                remapped,
                 w.settings as Record<string, unknown>,
               );
               if (migrated !== w.settings) {

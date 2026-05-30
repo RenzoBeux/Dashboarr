@@ -737,6 +737,132 @@ const DEMO_TAUTULLI_SERVER_IDENTITY = {
   version: "2.13.4",
 };
 
+// --- Tracearr ---
+// Shapes match the read-only public API (/api/v1/public). posterUrl is null in
+// demo mode (no image proxy), so tiles fall back to the placeholder.
+
+const DEMO_TRACEARR_STREAMS = {
+  data: [
+    {
+      id: "11111111-1111-1111-1111-111111111111",
+      serverId: "aaaaaaaa-0000-0000-0000-000000000001",
+      serverName: "Main Plex",
+      username: "john_smith",
+      userAvatarUrl: null,
+      mediaTitle: "Dune: Part Two",
+      mediaType: "movie",
+      showTitle: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      year: 2024,
+      durationMs: 9960000,
+      state: "playing",
+      progressMs: 4681200,
+      startedAt: new Date((NOW_TS - 2800) * 1000).toISOString(),
+      thumbPath: null,
+      posterUrl: null,
+      isTranscode: false,
+      videoDecision: "directplay",
+      audioDecision: "directplay",
+      resolution: "4K",
+      device: "Apple TV",
+      player: "Plex for Apple TV",
+      product: "Plex for Apple TV",
+      platform: "tvOS",
+    },
+    {
+      id: "22222222-2222-2222-2222-222222222222",
+      serverId: "aaaaaaaa-0000-0000-0000-000000000002",
+      serverName: "Jellyfin",
+      username: "sarah_c",
+      userAvatarUrl: null,
+      mediaTitle: "The Big Door Prize",
+      mediaType: "episode",
+      showTitle: "Fallout",
+      seasonNumber: 1,
+      episodeNumber: 3,
+      year: 2024,
+      durationMs: 3720000,
+      state: "paused",
+      progressMs: 855600,
+      startedAt: new Date((NOW_TS - 1200) * 1000).toISOString(),
+      thumbPath: null,
+      posterUrl: null,
+      isTranscode: true,
+      videoDecision: "transcode",
+      audioDecision: "copy",
+      resolution: "1080p",
+      device: "Chrome",
+      player: "Jellyfin Web",
+      product: "Jellyfin Web",
+      platform: "Chrome",
+    },
+  ],
+  summary: {
+    total: 2,
+    transcodes: 1,
+    directStreams: 0,
+    directPlays: 1,
+    totalBitrate: "22.5 Mbps",
+  },
+};
+
+const DEMO_TRACEARR_HISTORY = {
+  data: [
+    {
+      id: "aaaa1111-0000-0000-0000-000000000001",
+      serverId: "aaaaaaaa-0000-0000-0000-000000000001",
+      serverName: "Main Plex",
+      state: "stopped",
+      mediaTitle: "Oppenheimer",
+      mediaType: "movie",
+      showTitle: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      year: 2023,
+      durationMs: 3600000,
+      progressMs: 3600000,
+      totalDurationMs: 3600000,
+      startedAt: new Date((NOW_TS - 7200) * 1000).toISOString(),
+      stoppedAt: new Date((NOW_TS - 3600) * 1000).toISOString(),
+      watched: true,
+      resolution: "4K",
+      thumbPath: null,
+      posterUrl: null,
+      device: "Apple TV",
+      player: "Plex for Apple TV",
+      platform: "tvOS",
+      user: { id: "u1", username: "john_smith", thumbUrl: null, avatarUrl: null },
+    },
+    {
+      id: "aaaa1111-0000-0000-0000-000000000002",
+      serverId: "aaaaaaaa-0000-0000-0000-000000000002",
+      serverName: "Jellyfin",
+      state: "stopped",
+      mediaTitle: "The Big Door Prize",
+      mediaType: "episode",
+      showTitle: "Fallout",
+      seasonNumber: 1,
+      episodeNumber: 3,
+      year: 2024,
+      durationMs: 3060000,
+      progressMs: 3060000,
+      totalDurationMs: 3720000,
+      startedAt: new Date((NOW_TS - 90000) * 1000).toISOString(),
+      stoppedAt: new Date((NOW_TS - 86400) * 1000).toISOString(),
+      watched: false,
+      resolution: "1080p",
+      thumbPath: null,
+      posterUrl: null,
+      device: "Chrome",
+      player: "Jellyfin Web",
+      platform: "Chrome",
+      user: { id: "u2", username: "sarah_c", thumbUrl: null, avatarUrl: null },
+    },
+  ],
+  meta: { total: 2, page: 1, pageSize: 30 },
+};
+
 // --- Prowlarr ---
 
 const DEMO_PROWLARR_INDEXERS = [
@@ -1058,6 +1184,11 @@ export function getDemoResponse(
                 ? "21.1"
                 : true; // pausedownload, resumedownload, editqueue, append all return bool
       return { version: "1.1", result };
+    }
+    case "tracearr": {
+      if (basePath === "/streams") return DEMO_TRACEARR_STREAMS;
+      if (basePath === "/history") return DEMO_TRACEARR_HISTORY;
+      return undefined;
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
     case "emby":
