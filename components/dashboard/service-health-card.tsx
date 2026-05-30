@@ -10,7 +10,10 @@ import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import {
+  resolveBoundInstances,
+  isExplicitInstanceBinding,
+} from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   SERVICE_HEALTH_DEFAULT_SETTINGS,
   type ServiceHealthSettingsValue,
@@ -84,14 +87,23 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     );
     if (allInstances.length === 0) continue;
     const binding = settings.instances[kindId];
-    // Workspace filter at per-instance granularity: the user attached
-    // specific instances to this dashboard (e.g. "Radarr Home" but not
-    // "Radarr Cabin"), so drop bound instances that aren't attached.
-    // This prevents the Cabin Radarr's offline status from showing up on
-    // the Home dashboard's health grid.
-    const bound = resolveBoundInstances(binding, allInstances).filter((inst) =>
-      attachedInstances.has(inst.id),
-    );
+    const resolved = resolveBoundInstances(binding, allInstances);
+    // Workspace filter at per-instance granularity, but ONLY for the default
+    // "all" aggregate: the user attached specific instances to this dashboard
+    // (e.g. "Radarr Home" but not "Radarr Cabin"), so a widget bound to "all"
+    // drops instances that aren't attached — that keeps the Cabin Radarr's
+    // offline status off the Home dashboard's health grid.
+    //
+    // When the user has *explicitly* picked instances in this widget's
+    // settings, honor that selection as-is. The picker lists every enabled
+    // instance of the kind, so the user can select one that isn't attached to
+    // the active workspace and expects it to show; the explicit per-widget
+    // pick is a deliberate choice that wins over the workspace default.
+    // Without this, an instance shown as selectable + selected in the widget
+    // settings was silently hidden — that was the second half of #106.
+    const bound = isExplicitInstanceBinding(binding)
+      ? resolved
+      : resolved.filter((inst) => attachedInstances.has(inst.id));
     if (bound.length === 0) continue;
     for (const inst of bound) {
       const health = healthByInstance.get(`${kindId}:${inst.id}`);
