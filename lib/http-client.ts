@@ -3,6 +3,7 @@ import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
+import { normalizeServiceUrl } from "@/lib/url-validation";
 
 export { buildUrl };
 
@@ -421,18 +422,61 @@ export async function checkInstanceHealth(
   if (!inst) {
     return { kind: "unreachable", message: "Instance not found" };
   }
-  const url = store.getActiveUrl(serviceId, instanceId);
-  if (!url) {
-    return { kind: "unreachable", message: "No URL configured" };
-  }
   const secrets = store.instanceSecrets[instanceId] ?? {};
-  return testServiceConnection(serviceId, {
-    url,
+  const input = {
     apiKey: secrets.apiKey,
     username: secrets.username,
     password: secrets.password,
     customHeaders: secrets.customHeaders,
-  });
+  };
+
+  // Dual-URL fallback. Probe the active (auto-switch-resolved) URL first, then
+  // the OTHER configured URL if the first is unreachable. A wrong local/remote
+  // pick — e.g. auto-switch deciding "away" on the LAN because iOS couldn't
+  // read the Wi-Fi SSID — would otherwise show a perfectly reachable service
+  // as offline (#106). The dot answers "is this service reachable by either
+  // configured route", so it stays green whenever the box is up, regardless of
+  // which URL the resolver currently favors.
+  //
+  // Only "unreachable" falls through to the next candidate: "auth_failed" means
+  // the server answered (the other URL is the same server with the same key, so
+  // retrying is pointless) and "ok" is already a success.
+  const resolved = store.getActiveUrl(serviceId, instanceId);
+  const local = normalizeServiceUrl(inst.localUrl);
+  const remote = normalizeServiceUrl(inst.remoteUrl);
+  const candidates = healthProbeUrls(resolved, local, remote);
+  if (candidates.length === 0) {
+    return { kind: "unreachable", message: "No URL configured" };
+  }
+
+  let last: ConnectionTestResult = {
+    kind: "unreachable",
+    message: "No URL configured",
+  };
+  for (const url of candidates) {
+    last = await testServiceConnection(serviceId, { url, ...input });
+    if (last.kind !== "unreachable") return last;
+  }
+  return last;
+}
+
+/**
+ * Ordered, de-duplicated probe targets for a health check: the resolved
+ * (active) URL first, then whichever of local/remote it didn't pick. Empty
+ * strings are dropped so a kind with only one URL configured yields a single
+ * candidate.
+ */
+function healthProbeUrls(
+  resolved: string,
+  local: string,
+  remote: string,
+): string[] {
+  const other = resolved === local ? remote : local;
+  const out: string[] = [];
+  for (const u of [resolved, other]) {
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return out;
 }
 
 type ProbeOutcome =
