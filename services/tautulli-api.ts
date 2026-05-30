@@ -6,6 +6,7 @@ import type {
   TautulliActivity,
   TautulliHistoryResponse,
   TautulliLibraryStats,
+  TautulliSession,
 } from "@/lib/types";
 
 /**
@@ -116,29 +117,78 @@ export async function getServerIdentity(
 
 // --- Poster URL helper ---
 
+// pms_image_proxy fallback placeholders. `poster` is the video poster, `cover`
+// is the (square) music album placeholder, `art` is the backdrop. Using the
+// wrong one yields a generic placeholder instead of the real image — notably,
+// music tracks must use `cover`, not `poster`.
+type TautulliFallback = "poster" | "cover" | "art";
+
+// Build a pms_image_proxy URL from a Plex image PATH (e.g. a session's `thumb`
+// or `parent_thumb`, like "/library/metadata/123/thumb"). Tautulli re-derives
+// the rating_key from the path, so passing the session's own thumb path is the
+// robust approach for every media type (mirrors Tautulli's own activity UI).
 export function getTautulliImageUrl(
-  ratingKey: string | number,
+  imgPath: string,
   width = 300,
   height = 450,
   instanceId?: string,
+  fallback: TautulliFallback = "poster",
 ): string {
   const store = useConfigStore.getState();
   const targetId = instanceId ?? store.getActiveInstanceId("tautulli");
   if (!targetId) return "";
   const baseUrl = store.getActiveUrl("tautulli", targetId);
   const secrets = store.instanceSecrets[targetId] ?? {};
-  return `${baseUrl}/pms_image_proxy?img=/library/metadata/${ratingKey}/thumb&width=${width}&height=${height}&fallback=poster&apikey=${secrets.apiKey}`;
+  return `${baseUrl}/pms_image_proxy?img=${imgPath}&width=${width}&height=${height}&fallback=${fallback}&apikey=${secrets.apiKey}`;
 }
 
 // expo-image source with a token-stripped cacheKey so rotating the apikey
 // doesn't invalidate every cached poster.
 export function getTautulliImageSource(
-  ratingKey: string | number,
+  imgPath: string,
   width = 300,
   height = 450,
   instanceId?: string,
+  fallback: TautulliFallback = "poster",
 ): { uri: string; cacheKey: string } {
-  const uri = getTautulliImageUrl(ratingKey, width, height, instanceId);
+  const uri = getTautulliImageUrl(imgPath, width, height, instanceId, fallback);
   const cacheKey = uri.replace(/[?&]apikey=[^&]*/g, "");
   return { uri, cacheKey };
+}
+
+// Pick the right now-playing artwork for a session by media type and return an
+// expo-image source. Music tracks resolve to the album (parent) cover with
+// `fallback=cover` — a track's own `/thumb` is normally empty in Plex, which is
+// why album art came back blank (issue #141). Episodes use the show
+// (grandparent) poster; movies use their own thumb. Returns null when the
+// source exposes no usable image path.
+export function getTautulliSessionPoster(
+  session: TautulliSession,
+  width = 220,
+  height = 330,
+  instanceId?: string,
+): { uri: string; cacheKey: string } | null {
+  const metadataThumb = (ratingKey: string) =>
+    ratingKey ? `/library/metadata/${ratingKey}/thumb` : "";
+
+  let imgPath: string;
+  let fallback: TautulliFallback;
+  if (session.media_type === "track") {
+    // Album (parent) cover — the track's own /thumb is normally empty.
+    imgPath =
+      session.parent_thumb || metadataThumb(session.parent_rating_key) || session.thumb;
+    fallback = "cover";
+  } else if (session.media_type === "episode") {
+    // Show (grandparent) poster.
+    imgPath =
+      session.grandparent_thumb ||
+      metadataThumb(session.grandparent_rating_key) ||
+      session.thumb;
+    fallback = "poster";
+  } else {
+    imgPath = session.thumb || metadataThumb(session.rating_key);
+    fallback = "poster";
+  }
+  if (!imgPath) return null;
+  return getTautulliImageSource(imgPath, width, height, instanceId, fallback);
 }

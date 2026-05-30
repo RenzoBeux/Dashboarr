@@ -8,7 +8,7 @@ import type {
 import {
   getActivity as getTautulliActivity,
   getHistory as getTautulliHistory,
-  getTautulliImageSource,
+  getTautulliSessionPoster,
 } from "@/services/tautulli-api";
 import {
   getHistory as getTracearrHistory,
@@ -58,11 +58,6 @@ export interface MonitorAdapter {
 
 function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPlayingStream {
   const pct = parseInt(s.progress_percent, 10);
-  // For episodes prefer the show poster (grandparent); fall back to the item.
-  const ratingKey =
-    s.media_type === "episode" && s.grandparent_rating_key
-      ? s.grandparent_rating_key
-      : s.rating_key;
   return {
     key: `tautulli:${instanceId}:${s.session_key}`,
     serviceId: "tautulli",
@@ -74,7 +69,9 @@ function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPla
     state: s.state,
     transcoding: s.transcode_decision === "transcode",
     progress: Number.isNaN(pct) ? 0 : pct / 100,
-    poster: ratingKey ? getTautulliImageSource(ratingKey, 220, 330, instanceId) : null,
+    // Picks the album cover for music, show poster for episodes, item thumb for
+    // movies — each with the correct pms_image_proxy fallback (issue #141).
+    poster: getTautulliSessionPoster(s, 220, 330, instanceId),
     mediaType: s.media_type === "episode" ? "tv" : "movie",
     resolution: s.video_resolution || null,
   };
