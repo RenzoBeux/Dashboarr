@@ -23,7 +23,6 @@ import {
   useScreenBottomPadding,
 } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
-import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -63,6 +62,7 @@ import {
 } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
 import { mediumHaptic } from "@/lib/haptics";
@@ -530,28 +530,16 @@ function CalendarView({
             </Text>
             <View className="gap-2">
               {entries.map((ep) => (
-                <Card
+                <CalendarEventRow
                   key={ep.id}
+                  images={ep.series.images}
+                  service="sonarr"
+                  title={ep.series.title}
+                  subtitle={`${formatEpisodeCode(ep.seasonNumber, ep.episodeNumber)} — ${ep.title}`}
+                  hasFile={ep.hasFile}
                   onPress={() => router.push(`/series/${ep.seriesId}`)}
                   onLongPress={() => onLongPress(ep)}
-                >
-                  <View className="flex-row items-center gap-2">
-                    <View
-                      className={`w-1 h-10 rounded-full ${
-                        ep.hasFile ? "bg-success" : "bg-zinc-600"
-                      }`}
-                    />
-                    <View className="flex-1">
-                      <Text className="text-zinc-200 text-sm" numberOfLines={1}>
-                        {ep.series.title}
-                      </Text>
-                      <Text className="text-zinc-500 text-xs">
-                        {formatEpisodeCode(ep.seasonNumber, ep.episodeNumber)} —{" "}
-                        {ep.title}
-                      </Text>
-                    </View>
-                  </View>
-                </Card>
+                />
               ))}
             </View>
           </View>
