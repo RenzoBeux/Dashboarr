@@ -36,6 +36,8 @@ export interface CalendarEventRowProps {
   /** Drives the status indicators: green when downloaded, gray when missing. */
   hasFile: boolean;
   onPress: () => void;
+  /** Optional long-press (e.g. the TV calendar opens an episode action sheet). */
+  onLongPress?: () => void;
 }
 
 /**
@@ -53,6 +55,7 @@ export function CalendarEventRow({
   subtitle,
   hasFile,
   onPress,
+  onLongPress,
 }: CalendarEventRowProps) {
   const scale = useUiScale();
   const rowHeight = Math.round(ROW_HEIGHT * scale);
@@ -70,6 +73,7 @@ export function CalendarEventRow({
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       className="active:opacity-80 overflow-hidden rounded-xl bg-surface-light"
       style={{ height: rowHeight }}
     >
