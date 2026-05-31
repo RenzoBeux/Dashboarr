@@ -1067,6 +1067,80 @@ const DEMO_SYSTEM_STATUS = { version: "5.14.0.9376", isDebug: false, isProductio
 
 // --- Lookup functions ---
 
+// --- rtorrent (XML-RPC) demo fixtures ---
+// The rtorrent api POSTs XML-RPC and runs the response through the real XML
+// parser (lib/xmlrpc.ts), so the demo router must return canned XML STRINGS,
+// not JS objects. The fixtures deliberately mix <i8> (byte counts) and <i4>
+// (rates/flags) so the parser's typed-value path is exercised in demo too.
+type RtVal = { s: string } | { i: number } | { i8: number };
+function rtValue(v: RtVal): string {
+  if ("s" in v) return `<value><string>${v.s}</string></value>`;
+  if ("i8" in v) return `<value><i8>${v.i8}</i8></value>`;
+  return `<value><i4>${v.i}</i4></value>`;
+}
+function rtArray(vals: RtVal[]): string {
+  return `<value><array><data>${vals.map(rtValue).join("")}</data></array></value>`;
+}
+function rtResponse(topValue: string): string {
+  return `<?xml version="1.0"?><methodResponse><params><param>${topValue}</param></params></methodResponse>`;
+}
+// d.multicall2 rows, in services/rtorrent-api.ts D_FIELDS order: hash, name,
+// size_bytes, bytes_done, completed_bytes, left_bytes, down.rate, up.rate,
+// state, is_active, complete, hashing, is_hash_checking, ratio(per-mille),
+// message, custom1(label), directory, base_path, timestamp.started.
+const DEMO_RTORRENT_ROWS: RtVal[][] = [
+  [
+    { s: "00000000000000000000000000000000000000A1" },
+    { s: "Ubuntu 24.04.1 LTS Desktop amd64" },
+    { i8: 5_400_000_000 }, { i8: 2_160_000_000 }, { i8: 2_160_000_000 },
+    { i8: 3_240_000_000 }, { i: 5_400_000 }, { i: 180_000 },
+    { i: 1 }, { i: 1 }, { i: 0 }, { i: 0 }, { i: 0 }, { i: 240 },
+    { s: "" }, { s: "linux-isos" }, { s: "/downloads" },
+    { s: "/downloads/ubuntu-24.04.1-desktop-amd64.iso" }, { i: 1_716_800_000 },
+  ],
+  [
+    { s: "00000000000000000000000000000000000000B2" },
+    { s: "Debian 12.5.0 amd64 netinst" },
+    { i8: 3_900_000_000 }, { i8: 3_900_000_000 }, { i8: 3_900_000_000 },
+    { i8: 0 }, { i: 0 }, { i: 920_000 },
+    { i: 1 }, { i: 1 }, { i: 1 }, { i: 0 }, { i: 0 }, { i: 1_840 },
+    { s: "" }, { s: "linux-isos" }, { s: "/downloads" },
+    { s: "/downloads/debian-12.5.0-amd64-netinst.iso" }, { i: 1_716_600_000 },
+  ],
+  [
+    { s: "00000000000000000000000000000000000000C3" },
+    { s: "Arch Linux 2024.05.01 x86_64" },
+    { i8: 1_050_000_000 }, { i8: 525_000_000 }, { i8: 525_000_000 },
+    { i8: 525_000_000 }, { i: 0 }, { i: 0 },
+    { i: 1 }, { i: 0 }, { i: 0 }, { i: 0 }, { i: 0 }, { i: 0 },
+    { s: "" }, { s: "" }, { s: "/downloads" },
+    { s: "/downloads/archlinux-2024.05.01-x86_64.iso" }, { i: 1_716_500_000 },
+  ],
+];
+const DEMO_RTORRENT_MULTICALL_XML = rtResponse(
+  `<value><array><data>${DEMO_RTORRENT_ROWS.map(rtArray).join("")}</data></array></value>`,
+);
+// system.multicall wraps each sub-call result in a single-element array. Stats
+// order matches getRtorrentGlobalStats: down.rate, up.rate, down.total,
+// up.total, down.max_rate, up.max_rate.
+const DEMO_RTORRENT_STATS_XML = rtResponse(
+  `<value><array><data>${[
+    rtArray([{ i: 5_400_000 }]),
+    rtArray([{ i: 1_100_000 }]),
+    rtArray([{ i8: 850_000_000_000 }]),
+    rtArray([{ i8: 420_000_000_000 }]),
+    rtArray([{ i: 0 }]),
+    rtArray([{ i: 0 }]),
+  ].join("")}</data></array></value>`,
+);
+// Generic system.multicall ack for actions (start/stop/erase/set-limits). The
+// action helpers ignore the body, so any well-formed array decodes fine.
+const DEMO_RTORRENT_OK_XML = rtResponse(
+  `<value><array><data>${rtArray([{ i: 0 }])}</data></array></value>`,
+);
+// Single-value response for load.start (add torrent).
+const DEMO_RTORRENT_SCALAR_OK_XML = rtResponse(`<value><i4>0</i4></value>`);
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -1189,6 +1263,21 @@ export function getDemoResponse(
       if (basePath === "/streams") return DEMO_TRACEARR_STREAMS;
       if (basePath === "/history") return DEMO_TRACEARR_HISTORY;
       return undefined;
+    }
+    case "rtorrent": {
+      // rtorrent dispatches off the XML-RPC methodName in the request body and
+      // returns canned XML (the api parses it). system.multicall is used for
+      // both the global-stats fan-out and the action acks, distinguished by
+      // whether the body references the throttle getters.
+      const method = body?.match(/<methodName>([^<]+)<\/methodName>/)?.[1] ?? "";
+      if (method === "d.multicall2") return DEMO_RTORRENT_MULTICALL_XML;
+      if (method === "system.multicall") {
+        return body?.includes("throttle.global_down.rate")
+          ? DEMO_RTORRENT_STATS_XML
+          : DEMO_RTORRENT_OK_XML;
+      }
+      // load.start / load.raw_start / scalar setters → trivial OK.
+      return DEMO_RTORRENT_SCALAR_OK_XML;
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
     case "emby":

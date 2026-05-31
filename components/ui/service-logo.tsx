@@ -5,6 +5,8 @@ import { useUiScale } from "@/hooks/use-ui-scale";
 import type { ServiceId } from "@/lib/constants";
 
 import QbittorrentLogo from "@/assets/services/qbittorrent.svg";
+// Placeholder download-badge mark — replace with official rtorrent/ruTorrent art.
+import RtorrentLogo from "@/assets/services/rtorrent.svg";
 import SabnzbdLogo from "@/assets/services/sabnzbd.svg";
 import NzbgetLogo from "@/assets/services/nzbget.svg";
 import JellyfinLogo from "@/assets/services/jellyfin.svg";
@@ -14,6 +16,7 @@ import PlexLogo from "@/assets/services/plex.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
+  rtorrent: RtorrentLogo,
   sabnzbd: SabnzbdLogo,
   nzbget: NzbgetLogo,
   jellyfin: JellyfinLogo,

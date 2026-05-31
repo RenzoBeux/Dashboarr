@@ -53,8 +53,12 @@ export function DownloadsSettings({ slotId }: WidgetSettingsComponentProps) {
 
   return (
     <View className="px-4 py-2 gap-5">
+      {/* Binds only qBittorrent instances — rtorrent has no per-widget binding
+          yet (phase 2) and always aggregates every enabled instance. The
+          explicit label keeps that scope clear when both clients are present. */}
       <InstancePickerRow
         serviceId="qbittorrent"
+        label="qBittorrent instances"
         value={settings.instanceIds}
         onChange={(instanceIds) => update({ instanceIds })}
       />

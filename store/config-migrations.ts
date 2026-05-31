@@ -97,8 +97,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v25 — added the tracearr service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled tracearr instance at
  *         import time, so older exports just need the version field bumped.
+ *   v26 — added the rtorrent service entry. Pure version stamp — defaultInstances()
+ *         iterates SERVICE_IDS and backfills a disabled rtorrent instance at
+ *         import time, so older exports just need the version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 25;
+export const CURRENT_CONFIG_VERSION = 26;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -553,6 +556,11 @@ const migrations: Record<number, (payload: any) => any> = {
   // "tautulli-activity" → "stream-monitor" widget rename is handled separately
   // by WIDGET_ID_RENAMES on both the hydrate and import paths.
   24: (payload) => ({ ...payload, version: 25 }),
+
+  // v25 → v26: rtorrent added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack an rtorrent entry
+  // get the disabled default automatically — nothing to transform here.
+  25: (payload) => ({ ...payload, version: 26 }),
 };
 
 /**
