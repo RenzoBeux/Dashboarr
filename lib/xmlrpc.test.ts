@@ -54,6 +54,17 @@ describe("xmlrpc request builder", () => {
     expect(xml).toContain("<i8>5120</i8>");
   });
 
+  it("degrades non-finite int/i8 to 0 instead of emitting <i4>NaN</i4>", () => {
+    const xml = buildMethodCall("throttle.global_down.max_rate.set_kb", [
+      { t: "int", v: NaN },
+      { t: "i8", v: Infinity },
+    ]);
+    expect(xml).toContain("<i4>0</i4>");
+    expect(xml).toContain("<i8>0</i8>");
+    expect(xml).not.toContain("NaN");
+    expect(xml).not.toContain("Infinity");
+  });
+
   it("builds a system.multicall with struct entries", () => {
     const xml = buildSystemMulticall([
       { method: "d.stop", params: [{ t: "string", v: "HASH1" }] },

@@ -75,9 +75,17 @@ const num = (v: unknown): number => {
 };
 const text = (v: unknown): string => (typeof v === "string" ? v : String(v ?? ""));
 
-// rtorrent has no single status field — derive one from the flags, first match
-// wins (a hash check suspends transfer, so it outranks downloading/seeding).
-function deriveStatus(row: {
+// rtorrent exposes no single status field and no "is errored" boolean — only
+// d.message, which carries BOTH genuine failures AND routine, benign tracker
+// chatter ("Tried all trackers.", "Timeout was reached"). So derive the real
+// transfer state from the flags FIRST (first match wins — a hash check suspends
+// transfer, so it outranks downloading/seeding) and only fall back to "errored"
+// for a torrent that is genuinely stuck: started, active, incomplete, making no
+// progress, AND carrying a message. A seeding/downloading/checking/paused
+// torrent keeps its real state even with a message (the message is still
+// surfaced via errorMessage), so normal tracker notes no longer paint healthy
+// torrents red. See #20 review.
+export function deriveStatus(row: {
   message: string;
   hashing: number;
   isHashChecking: number;
@@ -86,12 +94,15 @@ function deriveStatus(row: {
   complete: number;
   downRate: number;
 }): TorrentStatus {
-  if (row.message.trim().length > 0) return "errored";
   if (row.hashing !== 0 || row.isHashChecking !== 0) return "checking";
   if (row.state === 0) return "paused"; // stopped (closed)
   if (row.isActive === 0) return "paused"; // started but paused
   if (row.complete === 1) return "seeding";
-  return row.downRate > 0 ? "downloading" : "stalled";
+  if (row.downRate > 0) return "downloading";
+  // Started, active, incomplete, no download progress. rtorrent's only failure
+  // signal is a message, so a message here means a real stall/error; an empty
+  // message is just a stalled (no-peers) torrent.
+  return row.message.trim().length > 0 ? "errored" : "stalled";
 }
 
 function capitalize(s: string): string {
@@ -249,6 +260,24 @@ export async function eraseTorrents(
 }
 
 // --- Add ---
+// savePath/label are interpolated into rtorrent COMMAND strings
+// (d.directory.set="…" / d.custom1.set=…) that rtorrent's own parser evaluates
+// AFTER XML decoding — a layer escapeXml (XML-only) does not protect. rtorrent
+// offers no escape there, so strip the characters that would break out of the
+// argument: a double-quote closes the quoted literal early and a control char
+// (newline, CR, NUL, …) ends/splits the command. Paths/labels containing these
+// are exceedingly rare; stripping is safer than silently corrupting the add.
+export function sanitizeCommandArg(s: string): string {
+  // Path/label chars (spaces, hyphens, slashes, …) are preserved; only the
+  // double-quote and ASCII control chars are dropped.
+  let out = "";
+  for (const ch of s) {
+    if (ch === '"' || ch.charCodeAt(0) < 0x20) continue;
+    out += ch;
+  }
+  return out;
+}
+
 export async function addRtorrentTorrent(
   uriOrMagnet: string,
   opts: { label?: string; savePath?: string } = {},
@@ -259,8 +288,10 @@ export async function addRtorrentTorrent(
   // arg makes rtorrent treat it as the target and fail ("Could not find
   // info-hash").
   const params: XmlRpcParam[] = [str(""), str(uriOrMagnet)];
-  if (opts.savePath) params.push(str(`d.directory.set="${opts.savePath}"`));
-  if (opts.label) params.push(str(`d.custom1.set=${opts.label}`));
+  const savePath = opts.savePath ? sanitizeCommandArg(opts.savePath) : "";
+  const label = opts.label ? sanitizeCommandArg(opts.label) : "";
+  if (savePath) params.push(str(`d.directory.set="${savePath}"`));
+  if (label) params.push(str(`d.custom1.set=${label}`));
   await rpc("load.start", params, instanceId);
 }
 

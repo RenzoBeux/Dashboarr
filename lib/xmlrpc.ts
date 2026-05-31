@@ -16,14 +16,21 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Coerce to a wire-safe integer: a non-finite input (NaN/Infinity) would
+// otherwise serialize to <i4>NaN</i4> / <i8>Infinity</i8>, which rtorrent
+// rejects as a malformed integer. Degrade to 0 instead.
+function intText(v: number): string {
+  return String(Number.isFinite(v) ? Math.trunc(v) : 0);
+}
+
 function serializeValue(p: XmlRpcParam): string {
   switch (p.t) {
     case "string":
       return `<value><string>${escapeXml(p.v)}</string></value>`;
     case "int":
-      return `<value><i4>${Math.trunc(p.v)}</i4></value>`;
+      return `<value><i4>${intText(p.v)}</i4></value>`;
     case "i8":
-      return `<value><i8>${Math.trunc(p.v)}</i8></value>`;
+      return `<value><i8>${intText(p.v)}</i8></value>`;
     case "base64":
       return `<value><base64>${p.v}</base64></value>`;
     case "array":

@@ -319,14 +319,26 @@ export async function pingService(
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    // NZBGet's ping is a JSON-RPC `version` POST, not a GET — every NZBGet
-    // method (including version) lives at /jsonrpc and rejects GET.
+    // Two services have no GET ping endpoint and must POST instead: NZBGet's
+    // JSON-RPC `version` lives at /jsonrpc and rejects GET; rtorrent's /RPC2
+    // SCGI mount only speaks XML-RPC, so a GET hits nothing (or ruTorrent's
+    // HTML, which would read as a false "online").
     const isNzbget = serviceId === "nzbget";
+    const isRtorrent = serviceId === "rtorrent";
+    let method = "GET";
+    let body: string | undefined;
+    if (isNzbget) {
+      method = "POST";
+      body = JSON.stringify({ version: "1.1", method: "version", params: [] });
+    } else if (isRtorrent) {
+      method = "POST";
+      body =
+        '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>';
+      headers.set("Content-Type", "text/xml");
+    }
     const response = await fetch(url, {
-      method: isNzbget ? "POST" : "GET",
-      body: isNzbget
-        ? JSON.stringify({ version: "1.1", method: "version", params: [] })
-        : undefined,
+      method,
+      body,
       headers,
       signal: controller.signal,
     });
@@ -691,7 +703,9 @@ async function runConnectionProbe(
       // UI) means the URL points somewhere other than the RPC mount.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
       const extra: Record<string, string> = { "Content-Type": "text/xml" };
-      if (username && password) {
+      // Match the nzbget/glances probes: send Basic auth if EITHER field is set
+      // (a token-in-password / empty-username setup is valid).
+      if (username || password) {
         extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
       }
       const res = await fetch(url, {

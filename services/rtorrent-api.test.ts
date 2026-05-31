@@ -23,6 +23,8 @@ import { useConfigStore } from "@/store/config-store";
 import {
   getRtorrentTorrents,
   getRtorrentGlobalStats,
+  deriveStatus,
+  sanitizeCommandArg,
 } from "@/services/rtorrent-api";
 
 // Exercises the full rtorrent read path end-to-end in demo mode: the api builds
@@ -68,5 +70,71 @@ describe("rtorrent-api (demo mode)", () => {
     expect(stats.upTotalLifetime).toBe(420_000_000_000);
     expect(stats.dlLimit).toBe(0);
     expect(stats.upLimit).toBe(0);
+  });
+});
+
+// deriveStatus has no rtorrent "is errored" flag to lean on, so a non-empty
+// d.message used to outrank everything and paint healthy torrents red. These
+// lock in the post-review precedence: real transfer state first, "errored" only
+// for a genuinely stuck (started + active + incomplete + no progress) torrent.
+describe("deriveStatus precedence", () => {
+  const base = {
+    message: "",
+    hashing: 0,
+    isHashChecking: 0,
+    state: 1,
+    isActive: 1,
+    complete: 0,
+    downRate: 0,
+  };
+
+  it("keeps a seeding torrent seeding even with a tracker message", () => {
+    expect(
+      deriveStatus({ ...base, complete: 1, message: "Tried all trackers." }),
+    ).toBe("seeding");
+  });
+
+  it("keeps a downloading torrent downloading even with a message", () => {
+    expect(
+      deriveStatus({ ...base, downRate: 5000, message: "Timeout was reached" }),
+    ).toBe("downloading");
+  });
+
+  it("ranks a hash check above a message", () => {
+    expect(deriveStatus({ ...base, hashing: 1, message: "whatever" })).toBe(
+      "checking",
+    );
+    expect(
+      deriveStatus({ ...base, isHashChecking: 1, message: "whatever" }),
+    ).toBe("checking");
+  });
+
+  it("reports a stopped/inactive torrent as paused, not errored", () => {
+    expect(deriveStatus({ ...base, state: 0, message: "Tried all trackers." })).toBe(
+      "paused",
+    );
+    expect(
+      deriveStatus({ ...base, isActive: 0, message: "Tried all trackers." }),
+    ).toBe("paused");
+  });
+
+  it("only flags errored when an active, incomplete, idle torrent carries a message", () => {
+    // active + incomplete + downRate 0 + message => the real stuck case.
+    expect(deriveStatus({ ...base, message: "Connection refused" })).toBe(
+      "errored",
+    );
+    // same shape but no message => just stalled.
+    expect(deriveStatus({ ...base })).toBe("stalled");
+  });
+});
+
+describe("sanitizeCommandArg", () => {
+  it("strips double-quotes and control chars but keeps path/label chars", () => {
+    expect(sanitizeCommandArg("/data/movies")).toBe("/data/movies");
+    expect(sanitizeCommandArg("linux-isos 2024")).toBe("linux-isos 2024");
+    // A quote would close rtorrent's d.directory.set="…" literal early.
+    expect(sanitizeCommandArg('/data/m"v')).toBe("/data/mv");
+    // Newline / CR / tab would split the command.
+    expect(sanitizeCommandArg("lab\nel\tx\r")).toBe("labelx");
   });
 });

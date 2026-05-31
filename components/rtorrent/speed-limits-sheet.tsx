@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal, View, Text, ActivityIndicator, Platform } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { cssInterop } from "nativewind";
@@ -49,13 +49,21 @@ export function RtorrentSpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetP
   const [dl, setDl] = useState("");
   const [up, setUp] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Seed the inputs once per open, from the first stats snapshot available.
+  // Guarding with a ref (instead of re-seeding on every stats.data change) means
+  // a background poll landing mid-edit can't overwrite what the user typed.
+  const seeded = useRef(false);
 
-  // Seed the inputs from the server when the sheet opens (or stats reload).
   useEffect(() => {
-    if (!visible || !stats.data) return;
+    if (!visible) {
+      seeded.current = false;
+      return;
+    }
+    if (seeded.current || !stats.data) return;
     setDl(bytesPerSecToKbStr(stats.data.dlLimit));
     setUp(bytesPerSecToKbStr(stats.data.upLimit));
     setError(null);
+    seeded.current = true;
   }, [visible, stats.data]);
 
   const handleSave = async () => {
