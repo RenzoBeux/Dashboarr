@@ -138,6 +138,16 @@ export function TorrentDownloadsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetch, statsResult.refetch]);
 
+  // iOS: clear the spinner on blur so a refresh still in flight when the user
+  // leaves the tab doesn't strand the native UIRefreshControl visible-but-
+  // frozen on return (#147). Mirrors the guard in usePullToRefresh for screens
+  // that hand-roll the refreshing boolean instead of using that hook.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setRefreshing(false);
+    }, []),
+  );
+
   // Only the rows whose hashes are actually in-flight should disable —
   // mutating one torrent shouldn't gray out every other row's buttons.
   const busyHashes = new Set<string>([
