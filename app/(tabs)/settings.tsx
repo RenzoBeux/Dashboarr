@@ -20,6 +20,7 @@ import {
   Bug,
   Heart,
   BookOpen,
+  Film,
 } from "lucide-react-native";
 import GithubLogo from "@/assets/services/github.svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -594,6 +595,12 @@ export default function SettingsScreen() {
           label="Show workspace tour"
           subtitle="Replay the multi-dashboard intro"
           onPress={replayWorkspaceIntro}
+        />
+        <SettingsRow
+          icon={Film}
+          label="Movie & TV data by TMDB"
+          subtitle="This product uses the TMDB API but is not endorsed or certified by TMDB."
+          onPress={() => void Linking.openURL("https://www.themoviedb.org")}
         />
       </SettingsGroup>
 
