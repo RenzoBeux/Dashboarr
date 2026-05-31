@@ -1110,15 +1110,23 @@ function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    const rawTestUrl = config.useRemote ? remoteUrl : localUrl;
+    // Resolve which URL the app will actually use, mirroring getActiveUrl:
+    // the per-instance "always remote" override OR auto-switch deciding we're
+    // currently away from home. Testing only `useRemote ? remote : local`
+    // (ignoring auto-switch) was misleading — it could report a green local
+    // probe while the dashboard silently resolved the empty remote URL and
+    // every service failed. We still test the in-progress form values, not the
+    // saved ones, so Test validates what the user typed before they Save.
+    const { autoSwitchNetwork, networkAwayFromHome } = useConfigStore.getState();
+    const useRemote =
+      config.useRemote || (autoSwitchNetwork && networkAwayFromHome);
+    const which = useRemote ? "remote" : "local";
+    const rawTestUrl = useRemote ? remoteUrl : localUrl;
     const testUrl = normalizeServiceUrl(rawTestUrl);
     if (testUrl !== rawTestUrl) {
-      if (config.useRemote) setRemoteUrl(testUrl);
+      if (useRemote) setRemoteUrl(testUrl);
       else setLocalUrl(testUrl);
     }
-    // Pass the in-progress form values directly so the test reflects what the
-    // user typed, not what's saved — they expect Test to validate the field
-    // contents before they commit to Save.
     const result = await testServiceConnection(serviceId, {
       url: testUrl,
       apiKey,
@@ -1129,11 +1137,11 @@ function ServiceEditor({
     setTesting(false);
 
     if (result.kind === "ok") {
-      toast(`Connected in ${result.responseTime}ms`, "success");
+      toast(`Connected via ${which} URL in ${result.responseTime}ms`, "success");
     } else if (result.kind === "auth_failed") {
-      toast(`Auth failed: ${result.message}`, "error");
+      toast(`Auth failed (${which} URL): ${result.message}`, "error");
     } else {
-      toast(`Could not reach service: ${result.message}`, "error");
+      toast(`Could not reach ${which} URL: ${result.message}`, "error");
     }
   };
 
