@@ -180,6 +180,14 @@ export async function serviceRequest<T>(
       headers.set("Authorization", `Basic ${encoded}`);
     }
     headers.set("Content-Type", "application/json");
+  } else if (serviceId === "rtorrent") {
+    // rtorrent/ruTorrent: HTTP Basic auth in front of the XML-RPC mount. The
+    // api module (services/rtorrent-api.ts) sets Content-Type: text/xml on the
+    // body itself, so don't force JSON here.
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
   } else if (serviceId === "plex") {
     if (secrets.apiKey) {
       headers.set("X-Plex-Token", secrets.apiKey);
@@ -292,6 +300,11 @@ export async function pingService(
       headers.set("Authorization", `Basic ${encoded}`);
     }
     headers.set("Content-Type", "application/json");
+  } else if (serviceId === "rtorrent") {
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
   } else if (serviceId === "sabnzbd") {
     // apikey already in query params
   } else if (serviceId === "tracearr") {
@@ -668,6 +681,37 @@ async function runConnectionProbe(
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (res.ok) return { kind: "ok" };
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "rtorrent": {
+      // rtorrent has no GET endpoint — POST a tiny XML-RPC system.listMethods
+      // to the /RPC2 mount. Basic auth guards it: 401/403 → bad creds. A
+      // well-formed <methodResponse> (even a <fault>) means we reached an
+      // XML-RPC endpoint and authenticated; an HTML body (e.g. the ruTorrent
+      // UI) means the URL points somewhere other than the RPC mount.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const extra: Record<string, string> = { "Content-Type": "text/xml" };
+      if (username && password) {
+        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+      }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: makeHeaders(extra),
+        body: '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>',
+        signal,
+      });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong username or password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const text = await res.text();
+      if (text.includes("<methodResponse")) return { kind: "ok" };
+      return {
+        kind: "unreachable",
+        message: "Not an XML-RPC endpoint — check the URL points at /RPC2",
+      };
     }
 
     case "radarr":

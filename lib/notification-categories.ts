@@ -8,6 +8,10 @@ export type { NotifCategory };
 // appear on the kind that actually emits them.
 export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   qbittorrent: ["torrentCompleted", "serviceOffline"],
+  // rtorrent has no completion watcher/backend poller in v1, so only the
+  // offline category is surfaced (a torrentCompleted toggle would be a dead
+  // switch nothing emits). Phase 2 adds the watcher + "torrentCompleted".
+  rtorrent:    ["serviceOffline"],
   sabnzbd:     ["sabnzbdCompleted", "serviceOffline"],
   nzbget:      ["nzbgetCompleted",  "serviceOffline"],
   radarr:      ["radarrDownloaded", "serviceOffline"],

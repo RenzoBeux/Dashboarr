@@ -961,6 +961,7 @@ function ServiceEditor({
 
   const usesBasicAuth =
     serviceId === "qbittorrent" ||
+    serviceId === "rtorrent" ||
     serviceId === "glances" ||
     serviceId === "nzbget";
 

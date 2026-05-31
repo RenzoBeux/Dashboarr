@@ -1,5 +1,6 @@
 export const SERVICE_IDS = [
   "qbittorrent",
+  "rtorrent",
   "sabnzbd",
   "nzbget",
   "radarr",
@@ -26,6 +27,19 @@ export const SERVICE_DEFAULTS: Record<
     defaultPort: 8080,
     apiBasePath: "/api/v2",
     pingPath: "/app/version",
+  },
+  // rtorrent/ruTorrent speak XML-RPC over the SCGI HTTP mount, conventionally
+  // /RPC2 (the mount ships in the standard ruTorrent web-server config and also
+  // covers bare rtorrent). apiBasePath is that mount; users with a nested mount
+  // include the prefix in their base URL. defaultPort is the web-server port in
+  // front of rtorrent (not rtorrent's internal SCGI port). HTTP Basic auth.
+  // The api module (services/rtorrent-api.ts) POSTs XML-RPC; there is no GET
+  // ping endpoint, so pingPath is empty (the connection probe POSTs instead).
+  rtorrent: {
+    name: "rTorrent",
+    defaultPort: 8080,
+    apiBasePath: "/RPC2",
+    pingPath: "",
   },
   // SAB has no REST routes — every call is /api?mode=<command>. The empty
   // pingPath combined with mode=version (injected as a param in pingService)
