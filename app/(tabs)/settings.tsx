@@ -569,7 +569,29 @@ export default function SettingsScreen() {
 
       <SettingsGroup
         title="About"
-        footer="Dashboarr is open-source under GPL-3.0. Contributions and bug reports are welcome."
+        footer={
+          <>
+            Dashboarr is open-source under GPL-3.0. Contributions and bug reports
+            are welcome.
+            {"\n\n"}
+            Movie & TV metadata from{" "}
+            <Text
+              className="text-zinc-500"
+              onPress={() => void Linking.openURL("https://www.themoviedb.org")}
+            >
+              TMDB
+            </Text>{" "}
+            and{" "}
+            <Text
+              className="text-zinc-500"
+              onPress={() => void Linking.openURL("https://thetvdb.com")}
+            >
+              TheTVDB
+            </Text>
+            . This product uses the TMDB API but is not endorsed or certified by
+            TMDB.
+          </>
+        }
       >
         <SettingsRow
           leading={<GithubLogo width={githubLogoSize} height={githubLogoSize} />}

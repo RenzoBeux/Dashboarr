@@ -1,7 +1,9 @@
 import { serviceRequest } from "@/lib/http-client";
 import type {
+  OverseerrMediaType,
   OverseerrRequestsResponse,
   OverseerrSearchResponse,
+  OverseerrGenreSliderItem,
   OverseerrRequest,
   OverseerrRequestCount,
   OverseerrTrendingResult,
@@ -112,6 +114,61 @@ export function getRecentlyAdded(
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
   return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/recently-added", {
+    instanceId,
+  });
+}
+
+// --- Browse by network / studio / genre ---
+// Path-param discover endpoints. Only `page` is sent — Overseerr's
+// express-openapi-validator 500s on undeclared query params, so `language` is
+// intentionally omitted. Responses carry an extra network/studio/genre object
+// alongside `results`, which we ignore (OverseerrSearchResponse reads results).
+
+export function getNetworkContent(
+  networkId: number,
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", `/discover/tv/network/${networkId}`, {
+    params: { page },
+    instanceId,
+  });
+}
+
+export function getStudioContent(
+  studioId: number,
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", `/discover/movies/studio/${studioId}`, {
+    params: { page },
+    instanceId,
+  });
+}
+
+// Genre ids differ between movie and tv, so the caller picks the media type
+// (which also selects the endpoint).
+export function getGenreContent(
+  mediaType: OverseerrMediaType,
+  genreId: number,
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  const path =
+    mediaType === "movie"
+      ? `/discover/movies/genre/${genreId}`
+      : `/discover/tv/genre/${genreId}`;
+  return serviceRequest<OverseerrSearchResponse>("overseerr", path, {
+    params: { page },
+    instanceId,
+  });
+}
+
+export function getGenreSlider(
+  mediaType: OverseerrMediaType,
+  instanceId?: string,
+): Promise<OverseerrGenreSliderItem[]> {
+  return serviceRequest<OverseerrGenreSliderItem[]>("overseerr", `/discover/genreslider/${mediaType}`, {
     instanceId,
   });
 }

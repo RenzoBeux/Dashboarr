@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Search,
   Check,
@@ -32,6 +32,10 @@ import { ICON } from "@/lib/constants";
 import { successHaptic, errorHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
 import { PosterCard } from "@/components/overseerr/poster-card";
+import {
+  DiscoverCollectionSlider,
+  type DiscoverSliderItem,
+} from "@/components/overseerr/discover-collection-slider";
 import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { MediaDetailModal } from "@/components/overseerr/media-detail-modal";
 import {
@@ -43,13 +47,24 @@ import {
   useOverseerrPopularMovies,
   useOverseerrPopularTV,
   useOverseerrUpcomingMovies,
+  useOverseerrGenreSlider,
   useApproveRequest,
   useDeclineRequest,
 } from "@/hooks/use-overseerr";
-import { getPosterUrl } from "@/services/overseerr-api";
+import { getPosterUrl, getBackdropUrl } from "@/services/overseerr-api";
+import {
+  NETWORKS,
+  STUDIOS,
+  getDiscoverLogoUrl,
+  type DiscoverCollectionKind,
+} from "@/lib/overseerr-discover";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import type { OverseerrRequest, OverseerrMediaResult } from "@/lib/types";
+import type {
+  OverseerrRequest,
+  OverseerrMediaResult,
+  OverseerrMediaType,
+} from "@/lib/types";
 
 type Tab = "discover" | "search" | "requests";
 type RequestFilter =
@@ -78,6 +93,28 @@ function sortToParams(sort: RequestsSortKey): { sort: "added" | "modified" } {
 }
 
 const GRID_GAP = 12;
+
+// Static logo tiles for the network/studio sliders (computed once).
+const NETWORK_ITEMS: DiscoverSliderItem[] = NETWORKS.map((c) => ({
+  id: c.id,
+  name: c.name,
+  imageUrl: getDiscoverLogoUrl(c.logoPath),
+}));
+const STUDIO_ITEMS: DiscoverSliderItem[] = STUDIOS.map((c) => ({
+  id: c.id,
+  name: c.name,
+  imageUrl: getDiscoverLogoUrl(c.logoPath),
+}));
+
+function toGenreItems(
+  genres: { id: number; name: string; backdrops: string[] }[] | undefined,
+): DiscoverSliderItem[] {
+  return (genres ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    imageUrl: getBackdropUrl(g.backdrops?.[0]),
+  }));
+}
 
 const TAB_CONFIG: { key: Tab; label: string; icon: typeof Compass }[] = [
   { key: "discover", label: "Discover", icon: Compass },
@@ -176,10 +213,36 @@ function DiscoverTab({
 }: {
   onItemPress: (item: OverseerrMediaResult) => void;
 }) {
+  const router = useRouter();
   const trending = useOverseerrTrending();
   const popularMovies = useOverseerrPopularMovies();
   const popularTV = useOverseerrPopularTV();
   const upcoming = useOverseerrUpcomingMovies();
+  const movieGenres = useOverseerrGenreSlider("movie");
+  const tvGenres = useOverseerrGenreSlider("tv");
+
+  const movieGenreItems = useMemo(
+    () => toGenreItems(movieGenres.data),
+    [movieGenres.data],
+  );
+  const tvGenreItems = useMemo(() => toGenreItems(tvGenres.data), [tvGenres.data]);
+
+  const openCollection = useCallback(
+    (
+      kind: DiscoverCollectionKind,
+      item: DiscoverSliderItem,
+      mediaType?: OverseerrMediaType,
+    ) => {
+      const params = new URLSearchParams({
+        kind,
+        id: String(item.id),
+        title: item.name,
+      });
+      if (kind === "genre" && mediaType) params.set("mediaType", mediaType);
+      router.push(`/overseerr/discover-list?${params.toString()}`);
+    },
+    [router],
+  );
 
   return (
     <View>
@@ -200,6 +263,32 @@ function DiscoverTab({
         items={popularTV.data?.results}
         isLoading={popularTV.isLoading}
         onItemPress={onItemPress}
+      />
+      <DiscoverCollectionSlider
+        title="Networks"
+        variant="logo"
+        items={NETWORK_ITEMS}
+        onItemPress={(item) => openCollection("network", item)}
+      />
+      <DiscoverCollectionSlider
+        title="Studios"
+        variant="logo"
+        items={STUDIO_ITEMS}
+        onItemPress={(item) => openCollection("studio", item)}
+      />
+      <DiscoverCollectionSlider
+        title="Movie Genres"
+        variant="genre"
+        items={movieGenreItems}
+        isLoading={movieGenres.isLoading}
+        onItemPress={(item) => openCollection("genre", item, "movie")}
+      />
+      <DiscoverCollectionSlider
+        title="TV Genres"
+        variant="genre"
+        items={tvGenreItems}
+        isLoading={tvGenres.isLoading}
+        onItemPress={(item) => openCollection("genre", item, "tv")}
       />
       <MediaRow
         title="Upcoming Movies"
