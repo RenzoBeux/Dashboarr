@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useInfiniteQuery,
+} from "@tanstack/react-query";
 import {
   getRequests,
   getRequestCount,
@@ -7,6 +12,10 @@ import {
   getPopularMovies,
   getPopularTV,
   getUpcomingMovies,
+  getNetworkContent,
+  getStudioContent,
+  getGenreContent,
+  getGenreSlider,
   requestMovie,
   requestTV,
   approveRequest,
@@ -24,6 +33,7 @@ import type {
   OverseerrMovieDetails,
   OverseerrTVDetails,
 } from "@/lib/types";
+import type { DiscoverCollectionKind } from "@/lib/overseerr-discover";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
@@ -115,6 +125,48 @@ export function useOverseerrUpcomingMovies(instanceId?: string) {
     queryFn: () => getUpcomingMovies(1, id ?? undefined),
     enabled: enabled && !!id,
     staleTime: 300000,
+  });
+}
+
+// --- Browse by network / studio / genre ---
+
+// Paginated discover list for a single network, studio, or genre. `kind`
+// selects the endpoint; `genreMediaType` is only consulted when kind ===
+// "genre" (network → tv, studio → movie are implied by the endpoint). The
+// endpoints are 1-based and report totalPages, so we page until page ===
+// totalPages.
+export function useOverseerrDiscoverList(
+  kind: DiscoverCollectionKind,
+  id: number,
+  genreMediaType: OverseerrMediaType = "movie",
+  instanceId?: string,
+) {
+  const { instanceId: target, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useInfiniteQuery({
+    queryKey: ["overseerr", target, "discoverList", kind, id, genreMediaType],
+    queryFn: ({ pageParam }) => {
+      if (kind === "network") return getNetworkContent(id, pageParam, target ?? undefined);
+      if (kind === "studio") return getStudioContent(id, pageParam, target ?? undefined);
+      return getGenreContent(genreMediaType, id, pageParam, target ?? undefined);
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
+    enabled: enabled && !!target && id > 0,
+    staleTime: 300000,
+  });
+}
+
+export function useOverseerrGenreSlider(
+  mediaType: OverseerrMediaType,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useQuery({
+    queryKey: ["overseerr", id, "genreSlider", mediaType],
+    queryFn: () => getGenreSlider(mediaType, id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: 3600000, // 1 hour — genres rarely change
   });
 }
 

@@ -680,6 +680,14 @@ export interface OverseerrSearchResponse {
   results: OverseerrMediaResult[];
 }
 
+// One entry from /discover/genreslider/{movie,tv}: a genre plus a few backdrop
+// paths used to illustrate the genre tile.
+export interface OverseerrGenreSliderItem {
+  id: number;
+  name: string;
+  backdrops: string[];
+}
+
 export interface OverseerrMovieDetails {
   id: number;
   title: string;
