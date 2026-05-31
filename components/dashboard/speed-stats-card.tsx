@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getServerState } from "@/services/qbittorrent-api";
+import { getRtorrentGlobalStats } from "@/services/rtorrent-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
@@ -25,6 +26,10 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   );
   const allQbitInstances = useEnabledInstances("qbittorrent");
   const allSabInstances = useEnabledInstances("sabnzbd");
+  // rtorrent has no per-widget instance binding yet (phase 2) — fold in every
+  // enabled rtorrent instance so its live speeds + lifetime totals show up. Like
+  // qBittorrent (and unlike SAB) it reports upload speed and lifetime counters.
+  const rtInstances = useEnabledInstances("rtorrent");
   const qbitInstances = resolveBoundInstances(settings.instanceIds, allQbitInstances);
   // When the user has no qBit configured at all, the toggle is moot — fold any
   // enabled SAB instances in automatically so a SAB-only user sees real numbers
@@ -60,6 +65,16 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
+  // rtorrent reports current dl/up rate + cumulative totals via the same
+  // ["rtorrent", id, "globalStats"] key the adapter uses, so the cache is shared.
+  const rtQueries = useQueries({
+    queries: rtInstances.map((inst) => ({
+      queryKey: ["rtorrent", inst.id, "globalStats"] as const,
+      queryFn: () => getRtorrentGlobalStats(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
   // Show the skeleton only on the very first cold load; once any instance has
   // returned a transfer snapshot, keep rendering the summed pill even if one
   // instance later goes offline. The sum gracefully drops to the live
@@ -68,9 +83,11 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const { isInitialLoading } = aggregateMultiInstanceState([
     ...qbitQueries,
     ...sabQueries,
+    ...rtQueries,
   ]);
 
-  const hasAnyInstance = qbitInstances.length + sabInstances.length > 0;
+  const hasAnyInstance =
+    qbitInstances.length + sabInstances.length + rtInstances.length > 0;
 
   if (isInitialLoading || !hasAnyInstance) {
     return (
@@ -117,6 +134,15 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     // bytes/s so normalize here.
     const kbps = parseFloat(q.data.kbpersec);
     if (Number.isFinite(kbps)) dlSpeed += kbps * 1024;
+  }
+  for (const q of rtQueries) {
+    if (!q.data) continue;
+    dlSpeed += q.data.dlSpeed;
+    upSpeed += q.data.upSpeed;
+    // rtorrent's global totals are cumulative since the rtorrent process
+    // started, so fold them into the "total" bucket alongside qBit's alltime.
+    dlAlltime += q.data.dlTotalLifetime;
+    upAlltime += q.data.upTotalLifetime;
   }
 
   // Hide the lifetime-total subtitle on the down pill when SAB is in the mix —

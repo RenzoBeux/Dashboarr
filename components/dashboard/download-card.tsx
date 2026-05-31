@@ -12,7 +12,6 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { usePauseTorrent, useResumeTorrent } from "@/hooks/use-qbittorrent";
 import { useTorrentPosterMap } from "@/hooks/use-torrent-poster-map";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { lightHaptic } from "@/lib/haptics";
@@ -33,6 +32,10 @@ import {
   type QBTorrentFilter,
   type GetTorrentsOptions,
 } from "@/services/qbittorrent-api";
+import { getRtorrentTorrents } from "@/services/rtorrent-api";
+import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
+import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
+import type { TorrentStatus, UnifiedTorrent } from "@/lib/torrent-adapter";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
@@ -42,6 +45,24 @@ import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
 const ETA_UNKNOWN = 8640000;
+
+// Source-agnostic display row. Each client computes its own `group` with its
+// native classifier (so qBittorrent's exact grouping is preserved) and the rest
+// of the card operates uniformly on these rows.
+interface DownloadRow {
+  serviceId: "qbittorrent" | "rtorrent";
+  instanceId: string;
+  hash: string;
+  name: string;
+  progress: number;
+  dlSpeed: number;
+  upSpeed: number;
+  eta: number;
+  addedOn: number;
+  isPaused: boolean;
+  group: StateGroup;
+  canDrillIn: boolean;
+}
 
 function classifyState(state: TorrentState): StateGroup {
   if (state === "error" || state === "missingFiles") return "errored";
@@ -69,22 +90,75 @@ function classifyState(state: TorrentState): StateGroup {
   return "other";
 }
 
-function compareTorrents(a: QBTorrent, b: QBTorrent, sortBy: DownloadsSortBy): number {
+// rtorrent normalized status → display group. Transitional states (stalled /
+// checking / queued) split on completeness the same way qBittorrent's DL/UP
+// suffixes do.
+function classifyRtStatus(status: TorrentStatus, progress: number): StateGroup {
+  switch (status) {
+    case "errored":
+      return "errored";
+    case "paused":
+      return "paused";
+    case "seeding":
+      return "seeding";
+    case "downloading":
+      return "downloading";
+    case "stalled":
+    case "checking":
+    case "queued":
+      return progress >= 1 ? "seeding" : "downloading";
+    case "other":
+      return "other";
+  }
+}
+
+function qbRow(t: QBTorrent, instanceId: string): DownloadRow {
+  return {
+    serviceId: "qbittorrent",
+    instanceId,
+    hash: t.hash,
+    name: t.name,
+    progress: t.progress,
+    dlSpeed: t.dlspeed,
+    upSpeed: t.upspeed,
+    eta: t.eta,
+    addedOn: t.added_on,
+    isPaused: isTorrentPaused(t.state),
+    group: classifyState(t.state),
+    canDrillIn: true,
+  };
+}
+
+function rtRow(t: UnifiedTorrent, instanceId: string): DownloadRow {
+  return {
+    serviceId: "rtorrent",
+    instanceId,
+    hash: t.hash,
+    name: t.name,
+    progress: t.progress,
+    dlSpeed: t.dlSpeed,
+    upSpeed: t.upSpeed,
+    eta: t.eta,
+    addedOn: t.addedOn,
+    isPaused: t.status === "paused",
+    group: classifyRtStatus(t.status, t.progress),
+    canDrillIn: false,
+  };
+}
+
+function compareRows(a: DownloadRow, b: DownloadRow, sortBy: DownloadsSortBy): number {
   switch (sortBy) {
-    case "speed": {
-      const aSpeed = a.dlspeed + a.upspeed;
-      const bSpeed = b.dlspeed + b.upspeed;
-      return bSpeed - aSpeed;
-    }
+    case "speed":
+      return b.dlSpeed + b.upSpeed - (a.dlSpeed + a.upSpeed);
     case "progress":
       return b.progress - a.progress;
     case "eta": {
-      const aEta = !a.eta || a.eta >= ETA_UNKNOWN ? Number.POSITIVE_INFINITY : a.eta;
-      const bEta = !b.eta || b.eta >= ETA_UNKNOWN ? Number.POSITIVE_INFINITY : b.eta;
-      return aEta - bEta;
+      const ae = !a.eta || a.eta >= ETA_UNKNOWN || a.eta < 0 ? Number.POSITIVE_INFINITY : a.eta;
+      const be = !b.eta || b.eta >= ETA_UNKNOWN || b.eta < 0 ? Number.POSITIVE_INFINITY : b.eta;
+      return ae - be;
     }
     case "added":
-      return b.added_on - a.added_on;
+      return b.addedOn - a.addedOn;
   }
 }
 
@@ -125,14 +199,6 @@ const STATE_BADGE: Record<
   other: null,
 };
 
-// A torrent paired with the qBit instance it came from. The instance id is
-// threaded into the per-tile mutations so a Pause/Resume tap from the
-// aggregated card hits the right server.
-interface AggregatedTorrent {
-  torrent: QBTorrent;
-  instanceId: string;
-}
-
 export function DownloadCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<DownloadsSettingsValue>(
     slotId,
@@ -147,21 +213,26 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   };
   // Aggregate across all enabled qBittorrent instances when bound to "all";
   // narrow to the bound subset otherwise. Each instance keeps its own cache
-  // slot via the [serviceId, instanceId, …] queryKey shape that every
-  // per-service hook adopted, so two qBits don't trample each other's data
-  // even though we're driving them from the same component.
-  const allInstances = useEnabledInstances("qbittorrent");
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
-  const queries = useQueries({
-    queries: instances.map((inst) => ({
-      queryKey: [
-        "qbittorrent",
-        inst.id,
-        "torrents",
-        "list",
-        queryOptions,
-      ] as const,
+  // slot via the [serviceId, instanceId, …] queryKey shape.
+  const allQbInstances = useEnabledInstances("qbittorrent");
+  const qbInstances = resolveBoundInstances(settings.instanceIds, allQbInstances);
+  // rtorrent has no per-widget instance binding yet (phase 2) — include every
+  // enabled rtorrent instance, fetched in full (rtorrent returns the whole
+  // library in one call) and classified/sorted/capped client-side below.
+  const rtInstances = useEnabledInstances("rtorrent");
+
+  const qbQueries = useQueries({
+    queries: qbInstances.map((inst) => ({
+      queryKey: ["qbittorrent", inst.id, "torrents", "list", queryOptions] as const,
       queryFn: () => getTorrents(queryOptions, inst.id),
+      refetchInterval: POLLING_INTERVALS.activeTorrents,
+      enabled: true,
+    })),
+  });
+  const rtQueries = useQueries({
+    queries: rtInstances.map((inst) => ({
+      queryKey: ["rtorrent", inst.id, "torrents", "all"] as const,
+      queryFn: () => getRtorrentTorrents(inst.id),
       refetchInterval: POLLING_INTERVALS.activeTorrents,
       enabled: true,
     })),
@@ -176,23 +247,33 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   if (settings.showErrored) allowedGroups.add("errored");
 
   // Skeleton only when no instance has produced data yet; once any instance is
-  // back, render whatever we have so a single failing qBit doesn't flicker the
-  // card every refetch tick. See lib/multi-instance-query.ts for the rationale.
-  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
-  // Tag each torrent with its source instance so per-tile actions know which
-  // qBittorrent to call for pause/resume.
-  const aggregated: AggregatedTorrent[] = queries.flatMap((q, i) =>
-    (q.data ?? []).map((t) => ({ torrent: t, instanceId: instances[i].id })),
-  );
+  // back, render whatever we have so a single failing client doesn't flicker
+  // the card every refetch tick. See lib/multi-instance-query.ts.
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState([
+    ...qbQueries,
+    ...rtQueries,
+  ]);
 
-  const filtered = aggregated
-    .filter((row) => allowedGroups.has(classifyState(row.torrent.state)))
-    .sort((a, b) => compareTorrents(a.torrent, b.torrent, settings.sortBy));
+  const totalInstances = qbInstances.length + rtInstances.length;
+
+  // Tag each torrent with its source so per-tile actions hit the right client.
+  const rows: DownloadRow[] = [
+    ...qbQueries.flatMap((q, i) =>
+      (q.data ?? []).map((t) => qbRow(t, qbInstances[i].id)),
+    ),
+    ...rtQueries.flatMap((q, i) =>
+      (q.data ?? []).map((t) => rtRow(t, rtInstances[i].id)),
+    ),
+  ];
+
+  const filtered = rows
+    .filter((row) => allowedGroups.has(row.group))
+    .sort((a, b) => compareRows(a, b, settings.sortBy));
 
   const displayTorrents = filtered.slice(0, settings.maxItems);
   const hasMore = filtered.length > settings.maxItems;
   const allHidden = allowedGroups.size === 0;
-  const showMultiInstanceLabel = instances.length > 1;
+  const showMultiInstanceLabel = totalInstances > 1;
 
   return (
     <Card>
@@ -203,14 +284,14 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
           filtered.length > 0 ? (
             <Text className="text-zinc-500 text-sm">
               {filtered.length}
-              {showMultiInstanceLabel ? ` · ${instances.length}` : ""}
+              {showMultiInstanceLabel ? ` · ${totalInstances}` : ""}
             </Text>
           ) : null
         }
       />
 
-      {instances.length === 0 ? (
-        <EmptyState compact title="No qBittorrent instances enabled" />
+      {totalInstances === 0 ? (
+        <EmptyState compact title="No torrent clients enabled" />
       ) : allHidden ? (
         <Text className="text-zinc-500 text-sm py-1">
           All states hidden — enable one in the widget settings.
@@ -221,7 +302,7 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
         <EmptyState
           icon={<Icon icon={AlertTriangle} size={32} color="#f59e0b" />}
           title="Couldn't load downloads"
-          message="Check qBittorrent is reachable and credentials are correct."
+          message="Check your torrent client is reachable and credentials are correct."
         />
       ) : displayTorrents.length === 0 ? (
         <EmptyState compact title="Nothing to show" />
@@ -233,10 +314,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
         >
           {displayTorrents.map((row) => (
             <TorrentTile
-              key={`${row.instanceId}:${row.torrent.hash}`}
-              torrent={row.torrent}
-              instanceId={row.instanceId}
-              posterEntry={posterMap.get(row.torrent.hash.toLowerCase())}
+              key={`${row.serviceId}:${row.instanceId}:${row.hash}`}
+              row={row}
+              posterEntry={posterMap.get(row.hash.toLowerCase())}
             />
           ))}
           {hasMore && (
@@ -249,12 +329,10 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
 }
 
 function TorrentTile({
-  torrent,
-  instanceId,
+  row,
   posterEntry,
 }: {
-  torrent: QBTorrent;
-  instanceId: string;
+  row: DownloadRow;
   posterEntry: ReturnType<typeof useTorrentPosterMap>["get"] extends (
     k: string,
   ) => infer R
@@ -262,38 +340,39 @@ function TorrentTile({
     : never;
 }) {
   const router = useRouter();
+  // serviceId is fixed per tile (the row key includes it), so the adapter ref —
+  // and thus its hooks — stays stable across this tile's renders.
+  const adapter =
+    row.serviceId === "rtorrent" ? rtorrentTorrentAdapter : qbittorrentTorrentAdapter;
   // Mutations are scoped to the source instance so a Pause tap on a tile from
-  // qBit A doesn't accidentally pause a same-hash torrent on qBit B.
-  const pauseMutation = usePauseTorrent(instanceId);
-  const resumeMutation = useResumeTorrent(instanceId);
+  // instance A doesn't pause a same-hash torrent on instance B.
+  const pauseMutation = adapter.usePauseTorrent(row.instanceId);
+  const resumeMutation = adapter.useResumeTorrent(row.instanceId);
 
-  const isDownloading =
-    torrent.state.includes("DL") || torrent.state === "downloading";
-  const isPaused = isTorrentPaused(torrent.state);
-  const stateGroup = classifyState(torrent.state);
-  const stateBadge = STATE_BADGE[stateGroup];
+  const stateBadge = STATE_BADGE[row.group];
 
   const handleToggle = () => {
     lightHaptic();
-    if (isPaused) {
-      resumeMutation.mutate([torrent.hash]);
+    if (row.isPaused) {
+      resumeMutation.mutate([row.hash]);
     } else {
-      pauseMutation.mutate([torrent.hash]);
+      pauseMutation.mutate([row.hash]);
     }
   };
 
-  const subtitle = isDownloading
-    ? formatSpeed(torrent.dlspeed)
-    : torrent.eta > 0 && torrent.eta < ETA_UNKNOWN
-      ? `ETA ${formatEta(torrent.eta)}`
-      : torrent.upspeed > 0
-        ? `↑ ${formatSpeed(torrent.upspeed)}`
-        : undefined;
+  const subtitle =
+    row.group === "downloading"
+      ? formatSpeed(row.dlSpeed)
+      : row.eta > 0 && row.eta < ETA_UNKNOWN
+        ? `ETA ${formatEta(row.eta)}`
+        : row.upSpeed > 0
+          ? `↑ ${formatSpeed(row.upSpeed)}`
+          : undefined;
 
   return (
     <MediaPosterTile
       posterUrl={posterEntry?.posterUrl ?? null}
-      title={posterEntry?.title ?? torrent.name}
+      title={posterEntry?.title ?? row.name}
       subtitle={subtitle}
       cornerBadge={
         stateBadge
@@ -301,16 +380,16 @@ function TorrentTile({
           : undefined
       }
       bottomLeftBadge={{
-        icon: isPaused ? Play : Pause,
-        color: isPaused
+        icon: row.isPaused ? Play : Pause,
+        color: row.isPaused
           ? "rgba(59, 130, 246, 0.9)"
           : "rgba(245, 158, 11, 0.9)",
         onPress: handleToggle,
       }}
-      bottomOverlay={<PosterProgressStrip progress={torrent.progress} />}
+      bottomOverlay={<PosterProgressStrip progress={row.progress} />}
       mediaType={posterEntry?.mediaType}
       fallbackIcon={!posterEntry ? Download : undefined}
-      onPress={() => router.push(`/torrent/${torrent.hash}`)}
+      onPress={row.canDrillIn ? () => router.push(`/torrent/${row.hash}`) : undefined}
     />
   );
 }

@@ -49,6 +49,7 @@ When implementing or debugging a service integration, consult the upstream API d
 | Service | API doc URL | Notes |
 | --- | --- | --- |
 | qBittorrent | https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0) | WebUI API v2; cookie-session auth via `/api/v2/auth/login`. We target qBittorrent 5.0+. The 4.1 wiki page exists for older builds but is not our target. |
+| rtorrent / ruTorrent | https://github.com/rakshasa/rtorrent/wiki/RPC-Setup-XMLRPC + https://docs.rtorrent.org/ | XML-RPC over the SCGI HTTP mount (conventionally `/RPC2`, works for bare rtorrent and ruTorrent); HTTP Basic auth. We use `d.multicall2` to list, `system.multicall` to batch actions/global stats, `load.start` (empty first target arg!) to add. Request XML is built by string concat; responses parsed with `fast-xml-parser` in `lib/xmlrpc.ts`. Status derived from `d.state`/`d.is_active`/`d.complete`/`d.hashing`/`d.message`; `d.ratio` is per-mille. Delete-with-data needs ruTorrent's erasedata plugin. |
 | NZBGet | https://nzbget.com/documentation/api/ | JSON-RPC 2.0 over `POST /jsonrpc`; positional params only. HTTP Basic Auth using ControlUsername/ControlPassword from `nzbget.conf`. 64-bit byte counts split into Lo/Hi pairs — recombine via `combineHiLo()` in `lib/utils.ts`. |
 | Radarr | https://radarr.video/docs/api/ | OpenAPI/Swagger; live spec also served by each instance at `/api/v3/openapi.json`. We use the `v3` API. |
 | Sonarr | https://sonarr.tv/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v3/openapi.json`. We use the `v3` API. |
