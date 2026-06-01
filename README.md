@@ -39,15 +39,18 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | Service | What you can do |
 |---|---|
 | **qBittorrent** | View queue, pause/resume/delete torrents, speed stats, transfer progress |
+| **rTorrent / ruTorrent** | View queue, pause/resume/delete torrents, global speed stats, transfer progress |
 | **SABnzbd** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **NZBGet** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |
 | **Sonarr** | Search & add shows, episode monitoring, airing calendar/schedule |
 | **Seerr** | Browse & search media, request movies/shows, approve/decline requests |
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
+| **Tracearr** | Live streams with codec/quality details, bandwidth, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
 | **Plex** | Now playing, recently added, on deck, library browsing |
 | **Jellyfin** | Now playing, recently added, continue watching, library browsing |
+| **Emby** | Now playing, recently added, continue watching, library browsing |
 | **Bazarr** | Wanted subtitles for movies & episodes, history, on-demand subtitle search |
 | **Glances** | Server CPU, RAM, disk, and network stats |
 
