@@ -28,6 +28,19 @@ export function formatSpeed(bytesPerSecond: number): string {
 }
 
 /**
+ * Format a kilobit/second value as a streaming bitrate (e.g., 18.4 Mbps,
+ * 1.20 Gbps). Streaming bandwidth is conventionally read in bits, not bytes —
+ * use this (not formatSpeed) for Plex/Tautulli/Jellyfin/Emby throughput.
+ */
+export function formatBitrate(kbps: number): string {
+  if (!Number.isFinite(kbps) || kbps <= 0) return "0 Mbps";
+  const mbps = kbps / 1000;
+  if (mbps >= 1000) return `${(mbps / 1000).toFixed(2)} Gbps`;
+  if (mbps >= 100) return `${Math.round(mbps)} Mbps`;
+  return `${mbps.toFixed(1)} Mbps`;
+}
+
+/**
  * Format seconds to ETA string (e.g., 2h 15m, 45m, 30s)
  */
 export function formatEta(seconds: number): string {

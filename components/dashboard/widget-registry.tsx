@@ -2,6 +2,7 @@ import {
   Activity,
   CalendarDays,
   Captions,
+  Cast,
   Clapperboard,
   Cpu,
   Download,
@@ -27,6 +28,7 @@ import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { StreamMonitorCard } from "@/components/dashboard/stream-monitor-card";
+import { StreamingBandwidthCard } from "@/components/dashboard/streaming-bandwidth-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
 import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-playing-card";
@@ -90,6 +92,11 @@ import {
   STREAM_MONITOR_DEFAULT_SETTINGS,
   type StreamMonitorSettingsValue,
 } from "@/components/dashboard/widget-settings/stream-monitor-settings";
+import {
+  StreamingBandwidthSettings,
+  STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
+  type StreamingBandwidthSettingsValue,
+} from "@/components/dashboard/widget-settings/streaming-bandwidth-settings";
 import {
   OverseerrRequestsSettings,
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
@@ -291,6 +298,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: StreamMonitorSettings,
     defaultSettings: STREAM_MONITOR_DEFAULT_SETTINGS,
   },
+  "streaming-bandwidth": {
+    id: "streaming-bandwidth",
+    label: "Streaming Bandwidth",
+    description: "Live WAN/LAN streaming bandwidth from Plex, Tautulli, Jellyfin or Emby",
+    icon: Cast,
+    service: ["tautulli", "plex", "jellyfin", "emby"],
+    component: StreamingBandwidthCard,
+    settingsComponent: StreamingBandwidthSettings,
+    defaultSettings: STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
+  },
   "overseerr-requests": {
     id: "overseerr-requests",
     label: "Seerr Requests",
@@ -391,6 +408,7 @@ export type {
   EmbyNowPlayingSettingsValue,
   CombinedNowPlayingSettingsValue,
   StreamMonitorSettingsValue,
+  StreamingBandwidthSettingsValue,
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
   RadarrQueueSettingsValue,

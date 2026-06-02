@@ -652,9 +652,10 @@ const DEMO_TAUTULLI_ACTIVITY = {
   stream_count_direct_play: 1,
   stream_count_direct_stream: 0,
   stream_count_transcode: 1,
-  total_bandwidth: 14680064,
-  wan_bandwidth: 8388608,
-  lan_bandwidth: 6291456,
+  // kbps — consistent with the two demo sessions below (8000 + 6000).
+  total_bandwidth: 14000,
+  wan_bandwidth: 8000,
+  lan_bandwidth: 6000,
   sessions: [
     {
       session_key: "abc123",
@@ -993,7 +994,31 @@ const DEMO_JELLYFIN_SESSIONS = [
       RunTimeTicks: 9960000 * 10000,
       ImageTags: { Primary: "tag-1" },
     },
-    PlayState: { PositionTicks: 4681200 * 10000, IsPaused: false, PlayMethod: "DirectPlay" },
+    PlayState: { PositionTicks: 4681200 * 10000, IsPaused: false, PlayMethod: "Transcode" },
+    // Local transcode → LAN bucket (4 Mbps).
+    TranscodingInfo: { VideoCodec: "h264", Bitrate: 4000000, CompletionPercentage: 0 },
+  },
+  {
+    Id: "session-demo-2",
+    UserId: DEMO_JELLYFIN_USER_ID,
+    UserName: "alex",
+    Client: "Jellyfin Android",
+    DeviceName: "Pixel 8",
+    DeviceId: "device-2",
+    ApplicationVersion: "2.6.1",
+    RemoteEndPoint: "203.0.113.45",
+    IsActive: true,
+    NowPlayingItem: {
+      Id: "jf-2",
+      Name: "Severance",
+      Type: "Episode",
+      ProductionYear: 2024,
+      RunTimeTicks: 3120000 * 10000,
+      ImageTags: { Primary: "tag-1" },
+    },
+    PlayState: { PositionTicks: 1200000 * 10000, IsPaused: false, PlayMethod: "Transcode" },
+    // Remote transcode → WAN bucket (8 Mbps).
+    TranscodingInfo: { VideoCodec: "h264", Bitrate: 8000000, CompletionPercentage: 0 },
   },
 ];
 

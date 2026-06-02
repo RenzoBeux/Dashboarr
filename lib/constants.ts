@@ -91,6 +91,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "recently-downloaded",
   "calendar",
   "stream-monitor",
+  "streaming-bandwidth",
   "overseerr-requests",
   "combined-now-playing",
   "plex-now-playing",
