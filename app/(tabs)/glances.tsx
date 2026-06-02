@@ -19,7 +19,7 @@ import {
   useGlancesGpu,
   useGlancesContainers,
 } from "@/hooks/use-glances";
-import { rankedInterfaces, type GlancesNetRate } from "@/services/glances-api";
+import { rankedInterfaces, isVirtualInterface, type GlancesNetRate } from "@/services/glances-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
@@ -412,8 +412,11 @@ function NetworkCard() {
   const expanded = useGlancesUiStore((s) => s.networkExpanded);
   const setExpanded = useGlancesUiStore((s) => s.setNetworkExpanded);
 
-  // Up, non-loopback interfaces sorted by throughput (real NIC on top).
+  // Up, non-loopback interfaces sorted by throughput (real NIC on top), split
+  // so Docker/veth noise sits under its own label like the widget's picker.
   const interfaces = net ? rankedInterfaces(net) : [];
+  const physical = interfaces.filter((i) => !isVirtualInterface(i.interface_name));
+  const virtual = interfaces.filter((i) => isVirtualInterface(i.interface_name));
 
   // Hide entirely on hosts that expose no usable interface — same as DiskIO.
   if (!isLoading && interfaces.length === 0) return null;
@@ -447,9 +450,23 @@ function NetworkCard() {
         </View>
       ) : expanded ? (
         <Animated.View entering={FadeIn.duration(150)} className="gap-3 mt-4">
-          {interfaces.map((iface) => (
+          {physical.map((iface) => (
             <NetworkRow key={iface.interface_name} iface={iface} />
           ))}
+          {virtual.length > 0 && (
+            <>
+              {/* Only label the group when real NICs sit above it; on a
+                  Docker-only host the virtual rows are the whole list. */}
+              {physical.length > 0 && (
+                <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mt-1">
+                  Virtual / Docker
+                </Text>
+              )}
+              {virtual.map((iface) => (
+                <NetworkRow key={iface.interface_name} iface={iface} />
+              ))}
+            </>
+          )}
         </Animated.View>
       ) : null}
     </Card>
