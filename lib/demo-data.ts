@@ -1016,6 +1016,14 @@ const DEMO_GLANCES_DISKIO = [
   { disk_name: "sda", read_bytes: 4096000, write_bytes: 1048576, read_count: 128, write_count: 32, time_since_update: 1 },
   { disk_name: "sdb", read_bytes: 20971520, write_bytes: 8388608, read_count: 512, write_count: 256, time_since_update: 1 },
 ];
+const DEMO_GLANCES_NET = [
+  { interface_name: "eth0", is_up: true, bytes_recv: 8650752, bytes_sent: 1153024, bytes_recv_rate_per_sec: 8650752, bytes_sent_rate_per_sec: 1153024, speed: 1000000000, time_since_update: 1 },
+  { interface_name: "wg0", is_up: true, bytes_recv: 245760, bytes_sent: 92160, bytes_recv_rate_per_sec: 245760, bytes_sent_rate_per_sec: 92160, speed: 0, time_since_update: 1 },
+  // Virtual (Docker) interfaces — grouped/hidden in the picker, excluded from "all".
+  { interface_name: "docker0", is_up: true, bytes_recv: 131072, bytes_sent: 196608, bytes_recv_rate_per_sec: 131072, bytes_sent_rate_per_sec: 196608, speed: 0, time_since_update: 1 },
+  { interface_name: "veth9a1b2c", is_up: true, bytes_recv: 40960, bytes_sent: 20480, bytes_recv_rate_per_sec: 40960, bytes_sent_rate_per_sec: 20480, speed: 10000000000, time_since_update: 1 },
+  { interface_name: "lo", is_up: true, bytes_recv: 524288, bytes_sent: 524288, bytes_recv_rate_per_sec: 524288, bytes_sent_rate_per_sec: 524288, speed: 0, time_since_update: 1 },
+];
 const DEMO_GLANCES_GPU = [
   { key: "gpu_id", gpu_id: "0", name: "NVIDIA GeForce RTX 3060", mem: 42.5, proc: 28.0, temperature: 54, fan_speed: 38 },
 ];
@@ -1211,6 +1219,7 @@ export function getDemoResponse(
       if (normalized === "/percpu") return DEMO_GLANCES_PERCPU;
       if (normalized === "/load") return DEMO_GLANCES_LOAD;
       if (normalized === "/diskio") return DEMO_GLANCES_DISKIO;
+      if (normalized === "/network") return DEMO_GLANCES_NET;
       if (normalized === "/gpu") return DEMO_GLANCES_GPU;
       if (normalized === "/containers") return DEMO_GLANCES_CONTAINERS;
       return undefined;

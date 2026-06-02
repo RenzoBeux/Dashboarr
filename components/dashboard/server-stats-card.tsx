@@ -5,6 +5,7 @@ import {
   MemoryStick,
   Gpu as GpuIconSvg,
   HardDrive,
+  Network,
   ServerCrash,
 } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
@@ -12,7 +13,7 @@ import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { getCpu, getMem, getFs, getGpu } from "@/services/glances-api";
+import { getCpu, getMem, getFs, getGpu, getNet, selectInterfaces, type GlancesNetRate } from "@/services/glances-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -22,7 +23,7 @@ import {
 } from "@/components/dashboard/widget-settings/server-stats-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatSpeed } from "@/lib/utils";
 import type { GlancesFsItem, GlancesGpuItem } from "@/lib/types";
 import type { ServiceInstance } from "@/store/config-store";
 
@@ -198,27 +199,43 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
         refetchInterval: FAST_POLL,
         enabled: settings.showGpu,
       },
+      {
+        queryKey: ["glances", instance.id, "net"] as const,
+        queryFn: () => getNet(instance.id),
+        refetchInterval: FAST_POLL,
+        enabled: settings.showNetwork,
+      },
     ],
   });
-  const [cpuQuery, memQuery, fsQuery, gpuQuery] = queries;
+  const [cpuQuery, memQuery, fsQuery, gpuQuery, netQuery] = queries;
   const cpu = settings.showCpu ? cpuQuery.data : undefined;
   const mem = settings.showRam ? memQuery.data : undefined;
   const fs = settings.showDisks ? fsQuery.data : undefined;
   const gpus = settings.showGpu ? gpuQuery.data : undefined;
+  const netRows = settings.showNetwork
+    ? selectInterfaces(netQuery.data, settings.networkInterfaces, { activeOnly: true })
+    : [];
 
   const isLoading =
     (settings.showCpu && cpuQuery.isLoading) ||
     (settings.showRam && memQuery.isLoading) ||
     (settings.showDisks && fsQuery.isLoading) ||
-    (settings.showGpu && gpuQuery.isLoading);
-  const hasData = cpu || mem || (fs && fs.length > 0) || (gpus && gpus.length > 0);
+    (settings.showGpu && gpuQuery.isLoading) ||
+    (settings.showNetwork && netQuery.isLoading);
+  const hasData =
+    cpu ||
+    mem ||
+    (fs && fs.length > 0) ||
+    (gpus && gpus.length > 0) ||
+    netRows.length > 0;
   const showError =
     !isLoading &&
     !hasData &&
     ((settings.showCpu && cpuQuery.isError) ||
       (settings.showRam && memQuery.isError) ||
       (settings.showDisks && fsQuery.isError) ||
-      (settings.showGpu && gpuQuery.isError));
+      (settings.showGpu && gpuQuery.isError) ||
+      (settings.showNetwork && netQuery.isError));
 
   const gpuRings = buildGpuRings(gpus);
   const hasRings =
@@ -226,7 +243,9 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
     (settings.showRam && mem) ||
     gpuRings.length > 0;
   const hasDisks = settings.showDisks && fs && fs.length > 0;
-  const showDivider = hasRings && hasDisks;
+  const hasNetwork = settings.showNetwork && netRows.length > 0;
+  const showRingDisksDivider = hasRings && hasDisks;
+  const showNetworkDivider = (hasRings || hasDisks) && hasNetwork;
 
   return (
     <View className="gap-3">
@@ -278,7 +297,7 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
             </View>
           )}
 
-          {showDivider && <View className="h-px bg-border" />}
+          {showRingDisksDivider && <View className="h-px bg-border" />}
 
           {hasDisks && (
             <View className="gap-2">
@@ -287,8 +306,33 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
               ))}
             </View>
           )}
+
+          {showNetworkDivider && <View className="h-px bg-border" />}
+
+          {hasNetwork && (
+            <View className="gap-2">
+              {netRows.map((iface) => (
+                <NetRow key={iface.interface_name} iface={iface} />
+              ))}
+            </View>
+          )}
         </>
       )}
+    </View>
+  );
+}
+
+function NetRow({ iface }: { iface: GlancesNetRate }) {
+  return (
+    <View className="flex-row justify-between items-center gap-2">
+      <View className="flex-row items-center gap-1.5 flex-1 min-w-0">
+        <Icon icon={Network} size={11} color="#a1a1aa" />
+        <Text className="text-zinc-300 text-xs font-medium" numberOfLines={1}>
+          {iface.alias || iface.interface_name}
+        </Text>
+      </View>
+      <Text className="text-zinc-400 text-[0.7rem]">↓ {formatSpeed(iface.rx)}</Text>
+      <Text className="text-zinc-400 text-[0.7rem]">↑ {formatSpeed(iface.tx)}</Text>
     </View>
   );
 }

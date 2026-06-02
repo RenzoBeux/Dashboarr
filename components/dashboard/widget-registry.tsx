@@ -204,7 +204,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   "server-stats": {
     id: "server-stats",
     label: "Server Stats",
-    description: "CPU, RAM and disk usage from Glances",
+    description: "CPU, RAM, disk and network from Glances",
     icon: Cpu,
     service: "glances",
     component: ServerStatsCard,
