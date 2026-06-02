@@ -214,9 +214,9 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   "speed-stats": {
     id: "speed-stats",
     label: "Speed Stats",
-    description: "Live download and upload speeds",
+    description: "Live download/upload speeds from clients or server network",
     icon: Gauge,
-    service: ["qbittorrent", "sabnzbd"],
+    service: ["qbittorrent", "sabnzbd", "glances"],
     component: SpeedStatsCard,
     settingsComponent: SpeedStatsSettings,
     defaultSettings: SPEED_STATS_DEFAULT_SETTINGS,
