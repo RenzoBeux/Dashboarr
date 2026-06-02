@@ -26,6 +26,10 @@ export interface ServerStatsSettingsValue extends Record<string, unknown> {
   showGpu: boolean;
   showDisks: boolean;
   showNetwork: boolean;
+  // Load average (1/5/15 min) and CPU I/O wait — off by default to keep the
+  // widget compact; the Glances screen always shows them.
+  showLoad: boolean;
+  showIoWait: boolean;
   // Which interfaces the network section shows. "all" = every active,
   // non-loopback interface; an array restricts to those names.
   networkInterfaces: NetworkInterfacesValue;
@@ -40,6 +44,8 @@ export const SERVER_STATS_DEFAULT_SETTINGS: ServerStatsSettingsValue = {
   // Off by default: hosts with many Docker containers expose a lot of
   // interfaces, so "all interfaces" is noisy. Opt in and pick the NIC(s).
   showNetwork: false,
+  showLoad: false,
+  showIoWait: false,
   networkInterfaces: NETWORK_INTERFACES_ALL,
 };
 
@@ -87,6 +93,18 @@ export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
             description="Live send/receive rate per interface"
             value={settings.showNetwork}
             onValueChange={(showNetwork) => update({ showNetwork })}
+          />
+          <Toggle
+            label="Load average"
+            description="System load over 1, 5 and 15 minutes"
+            value={settings.showLoad}
+            onValueChange={(showLoad) => update({ showLoad })}
+          />
+          <Toggle
+            label="I/O wait"
+            description="Share of CPU time waiting on disk/network I/O"
+            value={settings.showIoWait}
+            onValueChange={(showIoWait) => update({ showIoWait })}
           />
         </ToggleCard>
       </SettingsSection>
