@@ -8,7 +8,7 @@ import {
   type RefreshControlProps,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Film, Eye, EyeOff, Trash2, Info } from "lucide-react-native";
+import { Search, Film, Eye, EyeOff, Trash2, Info, ScanSearch } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -35,6 +35,7 @@ import {
   useRadarrQueue,
   useWantedMissing,
   useSearchForMovie,
+  useSearchAllMissingMovies,
   useToggleMovieMonitored,
   useDeleteMovie,
 } from "@/hooks/use-radarr";
@@ -119,8 +120,10 @@ export default function MoviesScreen() {
   const uiScale = useUiScale();
 
   const searchMutation = useSearchForMovie();
+  const searchMissing = useSearchAllMissingMovies();
   const toggleMonitor = useToggleMovieMonitored();
   const deleteMutation = useDeleteMovie();
+  const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
 
   const radarrHealth = healthData?.find((s) => s.id === "radarr");
 
@@ -209,6 +212,11 @@ export default function MoviesScreen() {
     setSheetTarget({ kind: "queue", item });
   };
 
+  const handleSearchMissing = () => {
+    mediumHaptic();
+    setMissingConfirmOpen(true);
+  };
+
   // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
   // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
   const contentContainerStyle = {
@@ -230,12 +238,25 @@ export default function MoviesScreen() {
     <>
       <View className="flex-row items-center justify-between">
         <ServiceHeader name="Movies" online={radarrHealth?.online} serviceId="radarr" />
-        <Pressable
-          onPress={() => router.push("/movie/search")}
-          className="p-2 active:opacity-70"
-        >
-          <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
-        </Pressable>
+        <View className="flex-row items-center">
+          {tab === "wanted" && (
+            <Pressable
+              onPress={handleSearchMissing}
+              disabled={searchMissing.isPending}
+              className="p-2 active:opacity-70"
+              accessibilityLabel="Search all missing movies"
+            >
+              <Icon icon={ScanSearch} size={ICON.LG} color="#a1a1aa" />
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => router.push("/movie/search")}
+            className="p-2 active:opacity-70"
+            accessibilityLabel="Add movie"
+          >
+            <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -280,7 +301,15 @@ export default function MoviesScreen() {
           contentContainerStyle={contentContainerStyle}
         />
       )}
-      {tab !== "library" && (
+      {tab === "wanted" && (
+        <MovieWanted
+          onLongPress={openMovieSheet}
+          listHeader={header}
+          refreshControl={refreshCtl}
+          contentContainerStyle={contentContainerStyle}
+        />
+      )}
+      {tab === "queue" && (
         <ScrollView
           className="flex-1"
           contentContainerStyle={contentContainerStyle}
@@ -288,8 +317,7 @@ export default function MoviesScreen() {
           showsVerticalScrollIndicator={false}
         >
           {header}
-          {tab === "queue" && <MovieQueue onLongPress={openQueueSheet} />}
-          {tab === "wanted" && <MovieWanted />}
+          <MovieQueue onLongPress={openQueueSheet} />
         </ScrollView>
       )}
 
@@ -320,6 +348,19 @@ export default function MoviesScreen() {
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         sortValue={sort}
         onSortChange={setSort}
+      />
+
+      <ConfirmModal
+        visible={missingConfirmOpen}
+        title="Search Missing Movies"
+        message="Radarr will search every monitored missing movie in your library. This can queue a lot of grabs at once."
+        icon={ScanSearch}
+        confirmLabel="Search"
+        onConfirm={() => {
+          setMissingConfirmOpen(false);
+          searchMissing.mutate();
+        }}
+        onCancel={() => setMissingConfirmOpen(false)}
       />
 
       <ConfirmModal
@@ -435,20 +476,63 @@ function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => v
   );
 }
 
-function MovieWanted() {
-  const { data: wanted, isLoading } = useWantedMissing();
+function MovieWanted({
+  onLongPress,
+  listHeader,
+  refreshControl,
+  contentContainerStyle,
+}: {
+  onLongPress: (movie: RadarrMovie) => void;
+  listHeader: React.ReactElement;
+  refreshControl: React.ReactElement<RefreshControlProps>;
+  contentContainerStyle: React.ComponentProps<
+    typeof MonitoredLibraryGrid
+  >["contentContainerStyle"];
+}) {
+  const { data: wanted, isLoading, error } = useWantedMissing();
+  const { data: queue } = useRadarrQueue();
+  const router = useRouter();
 
-  if (isLoading) return <SkeletonCardContent rows={2} />;
+  const downloading = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+    [queue],
+  );
+
+  const count = wanted?.totalRecords ?? 0;
+  const header = (
+    <>
+      {listHeader}
+      {!isLoading && (
+        <View className="mb-4">
+          <Text className="text-zinc-400 text-sm">
+            {count} missing {count === 1 ? "movie" : "movies"}
+          </Text>
+        </View>
+      )}
+    </>
+  );
 
   return (
-    <View>
-      <Text className="text-zinc-400 text-sm mb-3">
-        {wanted?.totalRecords ?? 0} missing movies
-      </Text>
-      <EmptyState
-        title="Full wanted list"
-        message="View in Radarr for complete list"
-      />
-    </View>
+    <MonitoredLibraryGrid
+      data={wanted?.records}
+      isLoading={isLoading}
+      error={error}
+      monitorFilter="all"
+      sort="title-asc"
+      compare={compareMovies}
+      serviceId="radarr"
+      placeholderIcon={Film}
+      nounPlural="missing movies"
+      renderFooter={(m) => String(m.year)}
+      posterStatus={(m) => ({
+        barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
+        cornerColor: cornerColorFor(m.status),
+      })}
+      onItemPress={(m) => router.push(`/movie/${m.id}`)}
+      onItemLongPress={onLongPress}
+      ListHeaderComponent={header}
+      refreshControl={refreshControl}
+      contentContainerStyle={contentContainerStyle}
+    />
   );
 }
