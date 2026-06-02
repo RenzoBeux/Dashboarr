@@ -1,6 +1,7 @@
 import { View, Text } from "react-native";
-import { Globe, Network } from "lucide-react-native";
+import { Globe, Network, ServerCrash } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ThroughputPill,
@@ -25,7 +26,7 @@ import {
   type StreamingServiceId,
   type WanLanKbps,
 } from "@/lib/streaming-bandwidth";
-import { POLLING_INTERVALS } from "@/lib/constants";
+import { POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
 import { formatBitrate } from "@/lib/utils";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import type {
@@ -125,8 +126,9 @@ export function StreamingBandwidthCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const { isInitialLoading } = aggregateMultiInstanceState(queries);
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
   const hasSource = !!service && instances.length > 0;
+  const serviceLabel = service ? SERVICE_DEFAULTS[service].name : "";
 
   const title = settings.title.trim();
   const header = title ? (
@@ -142,6 +144,22 @@ export function StreamingBandwidthCard({ slotId }: WidgetComponentProps) {
         <Text className="text-zinc-500 text-sm">
           No streaming server selected. Pick one in widget settings.
         </Text>
+      </Card>
+    );
+  }
+
+  // Every bound instance errored without ever returning data — surface that
+  // instead of a misleading "0 Mbps" that reads as "nothing streaming".
+  if (isAllErrored) {
+    return (
+      <Card>
+        {header}
+        <View className="flex-row items-center gap-2 py-1">
+          <Icon icon={ServerCrash} size={16} color="#71717a" />
+          <Text className="text-zinc-500 text-sm">
+            Could not reach {serviceLabel}
+          </Text>
+        </View>
       </Card>
     );
   }
@@ -188,6 +206,13 @@ export function StreamingBandwidthCard({ slotId }: WidgetComponentProps) {
           subtitles={["LAN"]}
         />
       </View>
+      {/* Jellyfin/Emby only expose a bitrate while transcoding, so direct-play
+          streams read as 0 — say so rather than look broken. */}
+      {(service === "jellyfin" || service === "emby") && (
+        <Text className="text-zinc-600 text-[0.7rem] mt-2">
+          Transcoded streams only — direct play isn&apos;t counted
+        </Text>
+      )}
     </Card>
   );
 }

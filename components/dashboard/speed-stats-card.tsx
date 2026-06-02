@@ -1,6 +1,7 @@
 import { View, Text } from "react-native";
-import { ArrowDown, ArrowUp } from "lucide-react-native";
+import { ArrowDown, ArrowUp, ServerCrash } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
+import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ThroughputPill,
@@ -116,7 +117,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // instance later goes offline. The sum gracefully drops to the live
   // instances' contributions instead of flickering back to skeleton on each
   // retry.
-  const { isInitialLoading } = aggregateMultiInstanceState([
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState([
     ...qbitQueries,
     ...sabQueries,
     ...rtQueries,
@@ -144,6 +145,22 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
         <Text className="text-zinc-500 text-sm">
           No sources selected. Enable download clients or server network in widget settings.
         </Text>
+      </Card>
+    );
+  }
+
+  // Every bound source errored without ever returning data — surface that
+  // instead of a misleading "0 B/s" that reads as "idle".
+  if (isAllErrored) {
+    return (
+      <Card>
+        {header}
+        <View className="flex-row items-center gap-2 py-1">
+          <Icon icon={ServerCrash} size={16} color="#71717a" />
+          <Text className="text-zinc-500 text-sm">
+            Could not reach {useNetwork ? "Glances" : "the download clients"}
+          </Text>
+        </View>
       </Card>
     );
   }
