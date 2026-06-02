@@ -10,6 +10,7 @@ import {
 import { getServerState } from "@/services/qbittorrent-api";
 import { getRtorrentGlobalStats } from "@/services/rtorrent-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
+import { getNzbgetStatus } from "@/services/nzbget-api";
 import { getNet, selectInterfaces } from "@/services/glances-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
@@ -31,6 +32,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   );
   const allQbitInstances = useEnabledInstances("qbittorrent");
   const allSabInstances = useEnabledInstances("sabnzbd");
+  const allNzbgetInstances = useEnabledInstances("nzbget");
   const allRtInstances = useEnabledInstances("rtorrent");
   const allGlancesInstances = useEnabledInstances("glances");
 
@@ -39,7 +41,11 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // NIC Glances reports. The selection is forced when only one kind is
   // configured (see resolveSpeedStatsSource).
   const hasClients =
-    allQbitInstances.length + allSabInstances.length + allRtInstances.length > 0;
+    allQbitInstances.length +
+      allSabInstances.length +
+      allNzbgetInstances.length +
+      allRtInstances.length >
+    0;
   const source = resolveSpeedStatsSource(
     settings.source,
     hasClients,
@@ -54,13 +60,18 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     ? resolveBoundInstances(settings.instanceIds, allQbitInstances)
     : [];
   // When the user has no qBit configured at all, the toggle is moot — fold any
-  // enabled SAB instances in automatically so a SAB-only user sees real numbers
-  // instead of a perpetual skeleton. Once they enable qBit, the explicit toggle
-  // takes over again.
+  // enabled SAB/NZBGet instances in automatically so a usenet-only user sees
+  // real numbers instead of a perpetual skeleton. Once they enable qBit, the
+  // explicit toggles take over again.
   const effectiveIncludeSab =
     useClients && (settings.includeSab || allQbitInstances.length === 0);
   const sabInstances = effectiveIncludeSab
     ? resolveBoundInstances(settings.sabInstanceIds, allSabInstances)
+    : [];
+  const effectiveIncludeNzbget =
+    useClients && (settings.includeNzbget || allQbitInstances.length === 0);
+  const nzbgetInstances = effectiveIncludeNzbget
+    ? resolveBoundInstances(settings.nzbgetInstanceIds, allNzbgetInstances)
     : [];
   const rtInstances = useClients ? allRtInstances : [];
   // Glances interfaces: received bytes → down pill, sent bytes → up pill.
@@ -88,6 +99,16 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     queries: sabInstances.map((inst) => ({
       queryKey: ["sabnzbd", inst.id, "queue"] as const,
       queryFn: () => getSabQueue(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
+  // NZBGet mirrors SAB: instantaneous download rate only (bytes/sec, already in
+  // bytes so no normalization). The status RPC carries DownloadRate.
+  const nzbgetQueries = useQueries({
+    queries: nzbgetInstances.map((inst) => ({
+      queryKey: ["nzbget", inst.id, "status"] as const,
+      queryFn: () => getNzbgetStatus(inst.id),
       refetchInterval: POLLING_INTERVALS.transferSpeed,
     })),
   });
@@ -120,6 +141,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState([
     ...qbitQueries,
     ...sabQueries,
+    ...nzbgetQueries,
     ...rtQueries,
     ...glancesQueries,
   ]);
@@ -127,6 +149,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const hasAnySource =
     qbitInstances.length +
       sabInstances.length +
+      nzbgetInstances.length +
       rtInstances.length +
       glancesInstances.length >
     0;
@@ -202,6 +225,11 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     const kbps = parseFloat(q.data.kbpersec);
     if (Number.isFinite(kbps)) dlSpeed += kbps * 1024;
   }
+  for (const q of nzbgetQueries) {
+    if (!q.data) continue;
+    // DownloadRate is already bytes/sec; download-only like SAB.
+    if (Number.isFinite(q.data.DownloadRate)) dlSpeed += q.data.DownloadRate;
+  }
   for (const q of rtQueries) {
     if (!q.data) continue;
     dlSpeed += q.data.dlSpeed;
@@ -222,12 +250,14 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   }
 
   // Lifetime totals are a client-only concept (qBit/rtorrent counters), so they
-  // only apply to a client-source widget. (SAB still suppresses the down total
-  // below — it adds live download speed with no matching counter.)
+  // only apply to a client-source widget. SAB and NZBGet suppress the down total
+  // — they add live download speed with no matching lifetime counter.
   const clientTotalsMeaningful = useClients;
   const scope = settings.totalsScope;
   const dlTotalLines =
-    clientTotalsMeaningful && sabInstances.length === 0
+    clientTotalsMeaningful &&
+    sabInstances.length === 0 &&
+    nzbgetInstances.length === 0
       ? buildTotalLines(scope, dlAlltime, dlSession)
       : [];
   const upTotalLines = clientTotalsMeaningful
