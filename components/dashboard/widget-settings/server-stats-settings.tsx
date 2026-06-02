@@ -8,6 +8,11 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
+  NetworkInterfacePickerRow,
+  NETWORK_INTERFACES_ALL,
+  type NetworkInterfacesValue,
+} from "@/components/dashboard/widget-settings/network-interface-picker-row";
+import {
   SettingsSection,
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
@@ -20,6 +25,14 @@ export interface ServerStatsSettingsValue extends Record<string, unknown> {
   showRam: boolean;
   showGpu: boolean;
   showDisks: boolean;
+  showNetwork: boolean;
+  // Load average (1/5/15 min) and CPU I/O wait — off by default to keep the
+  // widget compact; the Glances screen always shows them.
+  showLoad: boolean;
+  showIoWait: boolean;
+  // Which interfaces the network section shows. "all" = every active,
+  // non-loopback interface; an array restricts to those names.
+  networkInterfaces: NetworkInterfacesValue;
 }
 
 export const SERVER_STATS_DEFAULT_SETTINGS: ServerStatsSettingsValue = {
@@ -28,6 +41,12 @@ export const SERVER_STATS_DEFAULT_SETTINGS: ServerStatsSettingsValue = {
   showRam: true,
   showGpu: true,
   showDisks: true,
+  // Off by default: hosts with many Docker containers expose a lot of
+  // interfaces, so "all interfaces" is noisy. Opt in and pick the NIC(s).
+  showNetwork: false,
+  showLoad: false,
+  showIoWait: false,
+  networkInterfaces: NETWORK_INTERFACES_ALL,
 };
 
 export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -69,8 +88,35 @@ export function ServerStatsSettings({ slotId }: WidgetSettingsComponentProps) {
             value={settings.showDisks}
             onValueChange={(showDisks) => update({ showDisks })}
           />
+          <Toggle
+            label="Network throughput"
+            description="Live send/receive rate per interface"
+            value={settings.showNetwork}
+            onValueChange={(showNetwork) => update({ showNetwork })}
+          />
+          <Toggle
+            label="Load average"
+            description="System load over 1, 5 and 15 minutes"
+            value={settings.showLoad}
+            onValueChange={(showLoad) => update({ showLoad })}
+          />
+          <Toggle
+            label="I/O wait"
+            description="Share of CPU time waiting on disk/network I/O"
+            value={settings.showIoWait}
+            onValueChange={(showIoWait) => update({ showIoWait })}
+          />
         </ToggleCard>
       </SettingsSection>
+      {settings.showNetwork ? (
+        <SettingsSection label="Network">
+          <NetworkInterfacePickerRow
+            instanceIds={settings.instanceIds}
+            value={settings.networkInterfaces}
+            onChange={(networkInterfaces) => update({ networkInterfaces })}
+          />
+        </SettingsSection>
+      ) : null}
     </View>
   );
 }

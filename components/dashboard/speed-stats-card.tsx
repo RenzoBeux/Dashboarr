@@ -1,18 +1,24 @@
 import { View, Text } from "react-native";
-import { ArrowDown, ArrowUp } from "lucide-react-native";
+import { ArrowDown, ArrowUp, ServerCrash } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ThroughputPill,
+  ThroughputPillSkeleton,
+} from "@/components/dashboard/throughput-pill";
 import { getServerState } from "@/services/qbittorrent-api";
 import { getRtorrentGlobalStats } from "@/services/rtorrent-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
+import { getNzbgetStatus } from "@/services/nzbget-api";
+import { getNet, selectInterfaces } from "@/services/glances-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { formatSpeed, formatBytes } from "@/lib/utils";
 import {
   SPEED_STATS_DEFAULT_SETTINGS,
+  resolveSpeedStatsSource,
   type SpeedStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/speed-stats-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
@@ -26,19 +32,51 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   );
   const allQbitInstances = useEnabledInstances("qbittorrent");
   const allSabInstances = useEnabledInstances("sabnzbd");
-  // rtorrent has no per-widget instance binding yet (phase 2) — fold in every
-  // enabled rtorrent instance so its live speeds + lifetime totals show up. Like
-  // qBittorrent (and unlike SAB) it reports upload speed and lifetime counters.
-  const rtInstances = useEnabledInstances("rtorrent");
-  const qbitInstances = resolveBoundInstances(settings.instanceIds, allQbitInstances);
+  const allNzbgetInstances = useEnabledInstances("nzbget");
+  const allRtInstances = useEnabledInstances("rtorrent");
+  const allGlancesInstances = useEnabledInstances("glances");
+
+  // A widget shows exactly one source — download clients OR server network —
+  // so the pills never double-count traffic a client pushes through the same
+  // NIC Glances reports. The selection is forced when only one kind is
+  // configured (see resolveSpeedStatsSource).
+  const hasClients =
+    allQbitInstances.length +
+      allSabInstances.length +
+      allNzbgetInstances.length +
+      allRtInstances.length >
+    0;
+  const source = resolveSpeedStatsSource(
+    settings.source,
+    hasClients,
+    allGlancesInstances.length > 0,
+  );
+  const useClients = source === "clients";
+  const useNetwork = source === "network";
+
+  // qBittorrent binds per-widget; rtorrent folds in every enabled instance (no
+  // per-widget binding yet, phase 2).
+  const qbitInstances = useClients
+    ? resolveBoundInstances(settings.instanceIds, allQbitInstances)
+    : [];
   // When the user has no qBit configured at all, the toggle is moot — fold any
-  // enabled SAB instances in automatically so a SAB-only user sees real numbers
-  // instead of a perpetual skeleton. Once they enable qBit, the explicit toggle
-  // takes over again.
+  // enabled SAB/NZBGet instances in automatically so a usenet-only user sees
+  // real numbers instead of a perpetual skeleton. Once they enable qBit, the
+  // explicit toggles take over again.
   const effectiveIncludeSab =
-    settings.includeSab || allQbitInstances.length === 0;
+    useClients && (settings.includeSab || allQbitInstances.length === 0);
   const sabInstances = effectiveIncludeSab
     ? resolveBoundInstances(settings.sabInstanceIds, allSabInstances)
+    : [];
+  const effectiveIncludeNzbget =
+    useClients && (settings.includeNzbget || allQbitInstances.length === 0);
+  const nzbgetInstances = effectiveIncludeNzbget
+    ? resolveBoundInstances(settings.nzbgetInstanceIds, allNzbgetInstances)
+    : [];
+  const rtInstances = useClients ? allRtInstances : [];
+  // Glances interfaces: received bytes → down pill, sent bytes → up pill.
+  const glancesInstances = useNetwork
+    ? resolveBoundInstances(settings.glancesInstanceIds, allGlancesInstances)
     : [];
 
   // Fan out across the resolved instances and sum their counters so a single
@@ -65,6 +103,16 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
+  // NZBGet mirrors SAB: instantaneous download rate only (bytes/sec, already in
+  // bytes so no normalization). The status RPC carries DownloadRate.
+  const nzbgetQueries = useQueries({
+    queries: nzbgetInstances.map((inst) => ({
+      queryKey: ["nzbget", inst.id, "status"] as const,
+      queryFn: () => getNzbgetStatus(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
   // rtorrent reports current dl/up rate + cumulative totals via the same
   // ["rtorrent", id, "globalStats"] key the adapter uses, so the cache is shared.
   const rtQueries = useQueries({
@@ -75,36 +123,78 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
+  // Shares the ["glances", id, "net"] key with the Server Stats widget and the
+  // Glances screen, so the cache is reused across all three.
+  const glancesQueries = useQueries({
+    queries: glancesInstances.map((inst) => ({
+      queryKey: ["glances", inst.id, "net"] as const,
+      queryFn: () => getNet(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
   // Show the skeleton only on the very first cold load; once any instance has
   // returned a transfer snapshot, keep rendering the summed pill even if one
   // instance later goes offline. The sum gracefully drops to the live
   // instances' contributions instead of flickering back to skeleton on each
   // retry.
-  const { isInitialLoading } = aggregateMultiInstanceState([
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState([
     ...qbitQueries,
     ...sabQueries,
+    ...nzbgetQueries,
     ...rtQueries,
+    ...glancesQueries,
   ]);
 
-  const hasAnyInstance =
-    qbitInstances.length + sabInstances.length + rtInstances.length > 0;
+  const hasAnySource =
+    qbitInstances.length +
+      sabInstances.length +
+      nzbgetInstances.length +
+      rtInstances.length +
+      glancesInstances.length >
+    0;
 
-  if (isInitialLoading || !hasAnyInstance) {
+  const title = settings.title.trim();
+  const header = title ? (
+    <CardHeader>
+      <CardTitle>{title}</CardTitle>
+    </CardHeader>
+  ) : null;
+
+  if (!hasAnySource) {
     return (
-      <Card className="flex-row gap-3">
-        <View className="flex-1 flex-row items-center gap-3 rounded-xl p-3 bg-blue-600/10">
-          <Skeleton width={18} height={18} borderRadius={4} />
-          <View className="gap-1.5">
-            <Skeleton width={80} height={20} />
-            <Skeleton width={60} height={12} />
-          </View>
+      <Card>
+        {header}
+        <Text className="text-zinc-500 text-sm">
+          No sources selected. Enable download clients or server network in widget settings.
+        </Text>
+      </Card>
+    );
+  }
+
+  // Every bound source errored without ever returning data — surface that
+  // instead of a misleading "0 B/s" that reads as "idle".
+  if (isAllErrored) {
+    return (
+      <Card>
+        {header}
+        <View className="flex-row items-center gap-2 py-1">
+          <Icon icon={ServerCrash} size={16} color="#71717a" />
+          <Text className="text-zinc-500 text-sm">
+            Could not reach {useNetwork ? "Glances" : "the download clients"}
+          </Text>
         </View>
-        <View className="flex-1 flex-row items-center gap-3 rounded-xl p-3 bg-green-600/10">
-          <Skeleton width={18} height={18} borderRadius={4} />
-          <View className="gap-1.5">
-            <Skeleton width={80} height={20} />
-            <Skeleton width={60} height={12} />
-          </View>
+      </Card>
+    );
+  }
+
+  if (isInitialLoading) {
+    return (
+      <Card>
+        {header}
+        <View className="flex-row gap-3">
+          <ThroughputPillSkeleton tone="down" />
+          <ThroughputPillSkeleton tone="up" />
         </View>
       </Card>
     );
@@ -135,6 +225,11 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     const kbps = parseFloat(q.data.kbpersec);
     if (Number.isFinite(kbps)) dlSpeed += kbps * 1024;
   }
+  for (const q of nzbgetQueries) {
+    if (!q.data) continue;
+    // DownloadRate is already bytes/sec; download-only like SAB.
+    if (Number.isFinite(q.data.DownloadRate)) dlSpeed += q.data.DownloadRate;
+  }
   for (const q of rtQueries) {
     if (!q.data) continue;
     dlSpeed += q.data.dlSpeed;
@@ -144,29 +239,52 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     dlAlltime += q.data.dlTotalLifetime;
     upAlltime += q.data.upTotalLifetime;
   }
+  for (const q of glancesQueries) {
+    if (!q.data) continue;
+    // Received → down, sent → up. Glances exposes no lifetime counter, so it
+    // contributes to live speed only (handled by the totals guard below).
+    for (const iface of selectInterfaces(q.data, settings.glancesInterfaces)) {
+      dlSpeed += iface.rx;
+      upSpeed += iface.tx;
+    }
+  }
 
-  // Hide the lifetime-total subtitle on the down pill when SAB is in the mix —
-  // SAB's queue endpoint exposes no equivalent counter, so the qBit-only sum
-  // would silently understate the stack and confuse the user. The settings
-  // toggle warns about this; the card just stops showing the misleading number.
-  const showDlTotal = sabInstances.length === 0;
+  // Lifetime totals are a client-only concept (qBit/rtorrent counters), so they
+  // only apply to a client-source widget. SAB and NZBGet suppress the down total
+  // — they add live download speed with no matching lifetime counter.
+  const clientTotalsMeaningful = useClients;
   const scope = settings.totalsScope;
-
-  const dlTotalLines = buildTotalLines(scope, dlAlltime, dlSession);
-  const upTotalLines = buildTotalLines(scope, upAlltime, upSession);
+  const dlTotalLines =
+    clientTotalsMeaningful &&
+    sabInstances.length === 0 &&
+    nzbgetInstances.length === 0
+      ? buildTotalLines(scope, dlAlltime, dlSession)
+      : [];
+  const upTotalLines = clientTotalsMeaningful
+    ? buildTotalLines(scope, upAlltime, upSession)
+    : [];
 
   return (
-    <Card className="flex-row gap-3">
-      <SpeedPill
-        direction="down"
-        speed={formatSpeed(dlSpeed)}
-        totalLines={showDlTotal ? dlTotalLines : []}
-      />
-      <SpeedPill
-        direction="up"
-        speed={formatSpeed(upSpeed)}
-        totalLines={upTotalLines}
-      />
+    <Card>
+      {header}
+      <View className="flex-row gap-3">
+        <ThroughputPill
+          icon={ArrowDown}
+          iconColor="#3b82f6"
+          bgClass="bg-blue-600/10"
+          valueClass="text-download"
+          value={formatSpeed(dlSpeed)}
+          subtitles={dlTotalLines.map((l) => `${l.value} ${l.label}`)}
+        />
+        <ThroughputPill
+          icon={ArrowUp}
+          iconColor="#22c55e"
+          bgClass="bg-green-600/10"
+          valueClass="text-upload"
+          value={formatSpeed(upSpeed)}
+          subtitles={upTotalLines.map((l) => `${l.value} ${l.label}`)}
+        />
+      </View>
     </Card>
   );
 }
@@ -194,45 +312,3 @@ function buildTotalLines(
   }
 }
 
-function SpeedPill({
-  direction,
-  speed,
-  totalLines,
-}: {
-  direction: "down" | "up";
-  speed: string;
-  totalLines: { label: string; value: string }[];
-}) {
-  const isDown = direction === "down";
-  const ArrowIcon = isDown ? ArrowDown : ArrowUp;
-  const colorClass = isDown ? "text-download" : "text-upload";
-  const bgClass = isDown ? "bg-blue-600/10" : "bg-green-600/10";
-
-  return (
-    <View className={`flex-1 flex-row items-center gap-3 rounded-xl p-3 ${bgClass}`}>
-      <Icon icon={ArrowIcon} size={18} color={isDown ? "#3b82f6" : "#22c55e"} />
-      {/* `flex-1 min-w-0` is what lets the text column actually shrink inside
-          the flex row — without min-w-0 a long subtitle (e.g. "1.23 TB
-          session" at uiScale 1.3) keeps the intrinsic width and pushes the
-          pill past 50% of the card. numberOfLines={1} then ellipsizes the
-          worst-case string cleanly. */}
-      <View className="flex-1 min-w-0">
-        <Text
-          className={`text-lg font-bold ${colorClass}`}
-          numberOfLines={1}
-        >
-          {speed}
-        </Text>
-        {totalLines.map((line) => (
-          <Text
-            key={line.label}
-            className="text-zinc-500 text-xs"
-            numberOfLines={1}
-          >
-            {line.value} {line.label}
-          </Text>
-        ))}
-      </View>
-    </View>
-  );
-}

@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { TriangleAlert } from "lucide-react-native";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { Toggle } from "@/components/ui/toggle";
+import { TextInput } from "@/components/ui/text-input";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
@@ -12,7 +13,15 @@ import {
   resolveBoundInstances,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
-import { ChipGroup } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+import {
+  NetworkInterfacePickerRow,
+  NETWORK_INTERFACES_ALL,
+  type NetworkInterfacesValue,
+} from "@/components/dashboard/widget-settings/network-interface-picker-row";
+import {
+  ChipGroup,
+  SettingsSection,
+} from "@/components/dashboard/widget-settings/widget-settings-blocks";
 
 // Which counter the "X GB total" subtitle reflects on the pill.
 //   alltime — qBittorrent's lifetime totals (alltime_dl/alltime_ul). Survives
@@ -28,7 +37,26 @@ const TOTALS_SCOPE_OPTIONS: readonly { value: SpeedStatsTotalsScope; label: stri
   { value: "both", label: "Both" },
 ];
 
+// A widget shows ONE source at a time, so its purpose is unambiguous and the
+// pills never double-count (download-client traffic flows through the same NIC
+// Glances reports, so summing them would count it twice). Place several widgets
+// with different titles for different purposes.
+//   clients — qBittorrent / SABnzbd / rTorrent transfer speeds.
+//   network — Glances interface throughput (received → down, sent → up).
+export type SpeedStatsSource = "clients" | "network";
+
+const SOURCE_OPTIONS: readonly { value: SpeedStatsSource; label: string }[] = [
+  { value: "clients", label: "Download clients" },
+  { value: "network", label: "Server network" },
+];
+
 export interface SpeedStatsSettingsValue extends Record<string, unknown> {
+  // Optional label shown above the pills (like the service widgets' titles).
+  // Empty = no header. Lets a user place several Speed Stats widgets for
+  // different purposes ("Torrents", "Internet", …).
+  title: string;
+  // Which single data source the widget shows. See SpeedStatsSource.
+  source: SpeedStatsSource;
   // Which qBittorrent instances to graph. "all" sums every enabled instance's
   // speeds into one card; an array of UUIDs sums just those servers.
   instanceIds: InstanceBindingValue;
@@ -39,16 +67,45 @@ export interface SpeedStatsSettingsValue extends Record<string, unknown> {
   // Which SAB instances to fold in when `includeSab` is on. Same shape as
   // `instanceIds`; "all" auto-includes newly-added SAB instances.
   sabInstanceIds: InstanceBindingValue;
+  // NZBGet mirror of the SAB pair — download-only, no upload or lifetime total.
+  includeNzbget: boolean;
+  nzbgetInstanceIds: InstanceBindingValue;
   // Which transfer-counter the subtitle reflects. See SpeedStatsTotalsScope.
   totalsScope: SpeedStatsTotalsScope;
+  // Which Glances instances to read interfaces from (when source = network).
+  glancesInstanceIds: InstanceBindingValue;
+  // Which interfaces to sum. "all" = every active, non-loopback, real interface.
+  glancesInterfaces: NetworkInterfacesValue;
 }
 
 export const SPEED_STATS_DEFAULT_SETTINGS: SpeedStatsSettingsValue = {
+  title: "",
+  source: "clients",
   instanceIds: INSTANCE_BINDING_ALL,
   includeSab: false,
   sabInstanceIds: INSTANCE_BINDING_ALL,
+  includeNzbget: false,
+  nzbgetInstanceIds: INSTANCE_BINDING_ALL,
   totalsScope: "alltime",
+  glancesInstanceIds: INSTANCE_BINDING_ALL,
+  glancesInterfaces: NETWORK_INTERFACES_ALL,
 };
+
+/**
+ * The source actually used, given what's configured. When only one kind is
+ * available the choice is forced (so a Glances-only setup shows network without
+ * the user touching the selector); when both are configured the stored choice
+ * wins. Shared by the card and the settings panel so they never disagree.
+ */
+export function resolveSpeedStatsSource(
+  source: SpeedStatsSource,
+  hasClients: boolean,
+  hasGlances: boolean,
+): SpeedStatsSource {
+  if (hasClients && hasGlances) return source;
+  if (hasGlances) return "network";
+  return "clients";
+}
 
 export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<SpeedStatsSettingsValue>(
@@ -57,88 +114,175 @@ export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
   );
   const qbitInstances = useEnabledInstances("qbittorrent");
   const sabInstances = useEnabledInstances("sabnzbd");
-  const [showSabWarning, setShowSabWarning] = useState(false);
+  const nzbgetInstances = useEnabledInstances("nzbget");
+  const rtInstances = useEnabledInstances("rtorrent");
+  const glancesInstances = useEnabledInstances("glances");
+  const hasClients =
+    qbitInstances.length +
+      sabInstances.length +
+      nzbgetInstances.length +
+      rtInstances.length >
+    0;
+  const hasGlances = glancesInstances.length > 0;
+  const source = resolveSpeedStatsSource(settings.source, hasClients, hasGlances);
 
-  // SAB exposes neither a session nor lifetime data counter the way qBit does
-  // (the `queue` envelope only carries instantaneous `kbpersec`), so the moment
-  // a user folds SAB into a card that already has a qBit binding, the "X total"
-  // subtitle becomes incomplete. Surface that explicitly the first time they
-  // flip the toggle on so they don't read the qBit number as a stack total.
+  // SAB/NZBGet expose only an instantaneous download speed (no upload, no
+  // lifetime counter), so folding either into a card that already has a qBit
+  // binding makes the "X total" subtitle incomplete. Warn the first time the
+  // user flips a toggle on. One modal, parameterized by which client.
+  const [pendingUsenet, setPendingUsenet] = useState<null | "sab" | "nzbget">(null);
+  const usenetLabel = pendingUsenet === "nzbget" ? "NZBGet" : "SABnzbd";
   const hasBoundQbit =
     resolveBoundInstances(settings.instanceIds, qbitInstances).length > 0;
 
   const handleIncludeSabChange = (next: boolean) => {
     if (next && hasBoundQbit && !settings.includeSab) {
-      setShowSabWarning(true);
+      setPendingUsenet("sab");
       return;
     }
     update({ includeSab: next });
   };
 
-  const confirmSabWarning = () => {
-    setShowSabWarning(false);
-    update({ includeSab: true });
+  const handleIncludeNzbgetChange = (next: boolean) => {
+    if (next && hasBoundQbit && !settings.includeNzbget) {
+      setPendingUsenet("nzbget");
+      return;
+    }
+    update({ includeNzbget: next });
   };
 
-  // When no qBit is configured, the "Include SABnzbd" toggle is moot — the
-  // card auto-includes SAB anyway since it's the only source. Show the SAB
+  const confirmUsenetWarning = () => {
+    if (pendingUsenet === "sab") update({ includeSab: true });
+    else if (pendingUsenet === "nzbget") update({ includeNzbget: true });
+    setPendingUsenet(null);
+  };
+
+  // When no qBit is configured, the include toggles are moot — the card
+  // auto-includes the usenet client anyway since it's the only source. Show the
   // picker directly in that case so the setting matches what the card does.
   const sabIsOnlySource = qbitInstances.length === 0 && sabInstances.length > 0;
+  const nzbgetIsOnlySource =
+    qbitInstances.length === 0 && nzbgetInstances.length > 0;
 
   return (
     <View className="px-4 py-2 gap-5">
-      {qbitInstances.length > 0 && (
-        <InstancePickerRow
-          serviceId="qbittorrent"
-          value={settings.instanceIds}
-          onChange={(instanceIds) => update({ instanceIds })}
+      <SettingsSection label="Title">
+        <TextInput
+          placeholder="e.g. Torrents, Internet"
+          value={settings.title}
+          onChangeText={(title) => update({ title })}
+          maxLength={24}
+          returnKeyType="done"
         />
-      )}
+      </SettingsSection>
 
-      {qbitInstances.length > 0 && (
+      {hasClients && hasGlances && (
         <ChipGroup
-          label="Totals shown"
-          options={TOTALS_SCOPE_OPTIONS}
-          value={settings.totalsScope}
-          onChange={(totalsScope) => update({ totalsScope })}
+          label="Source"
+          options={SOURCE_OPTIONS}
+          value={source}
+          onChange={(next) => update({ source: next })}
         />
       )}
 
-      {sabInstances.length > 0 && !sabIsOnlySource && (
+      {source === "clients" && (
         <>
-          <Toggle
-            label="Include SABnzbd"
-            description="Adds Usenet download speed to the down pill. SAB has no uploads and no lifetime total."
-            value={settings.includeSab}
-            onValueChange={handleIncludeSabChange}
-          />
+          {qbitInstances.length > 0 && (
+            <InstancePickerRow
+              serviceId="qbittorrent"
+              value={settings.instanceIds}
+              onChange={(instanceIds) => update({ instanceIds })}
+            />
+          )}
 
-          {settings.includeSab && (
+          {qbitInstances.length > 0 && (
+            <ChipGroup
+              label="Totals shown"
+              options={TOTALS_SCOPE_OPTIONS}
+              value={settings.totalsScope}
+              onChange={(totalsScope) => update({ totalsScope })}
+            />
+          )}
+
+          {sabInstances.length > 0 && !sabIsOnlySource && (
+            <>
+              <Toggle
+                label="Include SABnzbd"
+                description="Adds Usenet download speed to the down pill. SAB has no uploads and no lifetime total."
+                value={settings.includeSab}
+                onValueChange={handleIncludeSabChange}
+              />
+
+              {settings.includeSab && (
+                <InstancePickerRow
+                  serviceId="sabnzbd"
+                  value={settings.sabInstanceIds}
+                  onChange={(sabInstanceIds) => update({ sabInstanceIds })}
+                />
+              )}
+            </>
+          )}
+
+          {sabIsOnlySource && (
             <InstancePickerRow
               serviceId="sabnzbd"
               value={settings.sabInstanceIds}
               onChange={(sabInstanceIds) => update({ sabInstanceIds })}
             />
           )}
+
+          {nzbgetInstances.length > 0 && !nzbgetIsOnlySource && (
+            <>
+              <Toggle
+                label="Include NZBGet"
+                description="Adds Usenet download speed to the down pill. NZBGet has no uploads and no lifetime total."
+                value={settings.includeNzbget}
+                onValueChange={handleIncludeNzbgetChange}
+              />
+
+              {settings.includeNzbget && (
+                <InstancePickerRow
+                  serviceId="nzbget"
+                  value={settings.nzbgetInstanceIds}
+                  onChange={(nzbgetInstanceIds) => update({ nzbgetInstanceIds })}
+                />
+              )}
+            </>
+          )}
+
+          {nzbgetIsOnlySource && (
+            <InstancePickerRow
+              serviceId="nzbget"
+              value={settings.nzbgetInstanceIds}
+              onChange={(nzbgetInstanceIds) => update({ nzbgetInstanceIds })}
+            />
+          )}
         </>
       )}
 
-      {sabIsOnlySource && (
-        <InstancePickerRow
-          serviceId="sabnzbd"
-          value={settings.sabInstanceIds}
-          onChange={(sabInstanceIds) => update({ sabInstanceIds })}
-        />
+      {source === "network" && hasGlances && (
+        <>
+          <InstancePickerRow
+            serviceId="glances"
+            value={settings.glancesInstanceIds}
+            onChange={(glancesInstanceIds) => update({ glancesInstanceIds })}
+          />
+          <NetworkInterfacePickerRow
+            instanceIds={settings.glancesInstanceIds}
+            value={settings.glancesInterfaces}
+            onChange={(glancesInterfaces) => update({ glancesInterfaces })}
+          />
+        </>
       )}
 
       <ConfirmModal
-        visible={showSabWarning}
-        title="Lifetime total won't include SAB"
-        message="SABnzbd's API doesn't expose a lifetime data counter, so the 'total' shown under the download speed will only reflect your qBittorrent instances. Live speed will still be the combined total."
+        visible={pendingUsenet !== null}
+        title={`Lifetime total won't include ${usenetLabel}`}
+        message={`${usenetLabel}'s API doesn't expose a lifetime data counter, so the 'total' shown under the download speed will only reflect your qBittorrent instances. Live speed will still be the combined total.`}
         icon={TriangleAlert}
-        confirmLabel="Add SABnzbd"
-        onConfirm={confirmSabWarning}
-        onCancel={() => setShowSabWarning(false)}
+        confirmLabel={`Add ${usenetLabel}`}
+        onConfirm={confirmUsenetWarning}
+        onCancel={() => setPendingUsenet(null)}
       />
     </View>
   );

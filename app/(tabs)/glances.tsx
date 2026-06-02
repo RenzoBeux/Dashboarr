@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { HardDrive, Activity, Gpu, ChevronDown, ChevronUp, Container } from "lucide-react-native";
+import { HardDrive, Activity, Gpu, ChevronDown, ChevronUp, Container, Network } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -15,9 +15,11 @@ import {
   useGlancesMem,
   useGlancesFs,
   useGlancesDiskIO,
+  useGlancesNet,
   useGlancesGpu,
   useGlancesContainers,
 } from "@/hooks/use-glances";
+import { rankedInterfaces, isVirtualInterface, type GlancesNetRate } from "@/services/glances-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
@@ -62,6 +64,7 @@ export default function GlancesScreen() {
         <GpuCard />
         <DisksCard />
         <DiskIOCard />
+        <NetworkCard />
         <ContainersCard />
       </View>
     </ScreenWrapper>
@@ -399,6 +402,89 @@ function DiskIORow({ drive }: { drive: GlancesDiskIOItem }) {
       <View className="flex-row gap-4">
         <Text className="text-zinc-400 text-xs">R {formatSpeed(readRate)}</Text>
         <Text className="text-zinc-400 text-xs">W {formatSpeed(writeRate)}</Text>
+      </View>
+    </View>
+  );
+}
+
+function NetworkCard() {
+  const { data: net, isLoading } = useGlancesNet();
+  const expanded = useGlancesUiStore((s) => s.networkExpanded);
+  const setExpanded = useGlancesUiStore((s) => s.setNetworkExpanded);
+
+  // Up, non-loopback interfaces sorted by throughput (real NIC on top), split
+  // so Docker/veth noise sits under its own label like the widget's picker.
+  const interfaces = net ? rankedInterfaces(net) : [];
+  const physical = interfaces.filter((i) => !isVirtualInterface(i.interface_name));
+  const virtual = interfaces.filter((i) => isVirtualInterface(i.interface_name));
+
+  // Hide entirely on hosts that expose no usable interface — same as DiskIO.
+  if (!isLoading && interfaces.length === 0) return null;
+
+  return (
+    <Card>
+      <Pressable
+        onPress={() => {
+          lightHaptic();
+          setExpanded(!expanded);
+        }}
+        className="flex-row items-center justify-between active:opacity-70"
+      >
+        <View className="flex-row items-center gap-2">
+          <Icon icon={Network} size={18} color="#a1a1aa" />
+          <CardTitle>Network</CardTitle>
+        </View>
+        <View className="flex-row items-center gap-2">
+          {!isLoading && (
+            <Text className="text-zinc-500 text-xs">
+              {interfaces.length} {interfaces.length === 1 ? "interface" : "interfaces"}
+            </Text>
+          )}
+          <Icon icon={expanded ? ChevronUp : ChevronDown} size={18} color="#71717a" />
+        </View>
+      </Pressable>
+
+      {isLoading ? (
+        <View className="mt-4">
+          <SkeletonCardContent rows={2} />
+        </View>
+      ) : expanded ? (
+        <Animated.View entering={FadeIn.duration(150)} className="gap-3 mt-4">
+          {physical.map((iface) => (
+            <NetworkRow key={iface.interface_name} iface={iface} />
+          ))}
+          {virtual.length > 0 && (
+            <>
+              {/* Only label the group when real NICs sit above it; on a
+                  Docker-only host the virtual rows are the whole list. */}
+              {physical.length > 0 && (
+                <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mt-1">
+                  Virtual / Docker
+                </Text>
+              )}
+              {virtual.map((iface) => (
+                <NetworkRow key={iface.interface_name} iface={iface} />
+              ))}
+            </>
+          )}
+        </Animated.View>
+      ) : null}
+    </Card>
+  );
+}
+
+function NetworkRow({ iface }: { iface: GlancesNetRate }) {
+  return (
+    <View className="flex-row items-center justify-between">
+      <View className="flex-row items-center gap-2 flex-1 mr-2">
+        <Icon icon={Network} size={14} color="#a1a1aa" />
+        <Text className="text-zinc-300 text-sm" numberOfLines={1}>
+          {iface.alias || iface.interface_name}
+        </Text>
+      </View>
+      <View className="flex-row gap-4">
+        <Text className="text-zinc-400 text-xs">↓ {formatSpeed(iface.rx)}</Text>
+        <Text className="text-zinc-400 text-xs">↑ {formatSpeed(iface.tx)}</Text>
       </View>
     </View>
   );

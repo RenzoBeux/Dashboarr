@@ -9,23 +9,29 @@ const STORAGE_KEY = "ui.glancesSections";
 interface GlancesSectionPrefs {
   perCoreExpanded: boolean;
   containersExpanded: boolean;
+  networkExpanded: boolean;
 }
 
 export const GLANCES_SECTION_DEFAULTS: GlancesSectionPrefs = {
   perCoreExpanded: false,
   containersExpanded: true,
+  // Collapsed by default — Docker-heavy hosts expose many interfaces and the
+  // section is just-in-case detail, not a primary metric.
+  networkExpanded: false,
 };
 
 interface GlancesUiStore extends GlancesSectionPrefs {
   hydrate: () => void;
   setPerCoreExpanded: (v: boolean) => void;
   setContainersExpanded: (v: boolean) => void;
+  setNetworkExpanded: (v: boolean) => void;
 }
 
 function snapshot(state: GlancesSectionPrefs): GlancesSectionPrefs {
   return {
     perCoreExpanded: state.perCoreExpanded,
     containersExpanded: state.containersExpanded,
+    networkExpanded: state.networkExpanded,
   };
 }
 
@@ -46,5 +52,9 @@ export const useGlancesUiStore = create<GlancesUiStore>((set, get) => ({
   setContainersExpanded: (containersExpanded) => {
     set({ containersExpanded });
     setJSON(STORAGE_KEY, snapshot({ ...get(), containersExpanded }));
+  },
+  setNetworkExpanded: (networkExpanded) => {
+    set({ networkExpanded });
+    setJSON(STORAGE_KEY, snapshot({ ...get(), networkExpanded }));
   },
 }));

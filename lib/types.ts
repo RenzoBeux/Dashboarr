@@ -1293,6 +1293,24 @@ export interface GlancesDiskIOItem {
   time_since_update: number;
 }
 
+export interface GlancesNetItem {
+  interface_name: string;
+  // Optional human alias configured in Glances; prefer it for display.
+  alias?: string | null;
+  is_up?: boolean;
+  // bytes_recv/bytes_sent are the deltas since the last sample (same as the
+  // diskio plugin), so rate = bytes / time_since_update. Glances v4 also ships
+  // the pre-computed *_rate_per_sec fields; prefer those when present.
+  bytes_recv: number;
+  bytes_sent: number;
+  bytes_all?: number;
+  bytes_recv_rate_per_sec?: number | null;
+  bytes_sent_rate_per_sec?: number | null;
+  // Max link speed in bits/sec (0 when the OS can't report it).
+  speed?: number;
+  time_since_update: number;
+}
+
 export interface GlancesGpuItem {
   key: string;
   gpu_id: string;

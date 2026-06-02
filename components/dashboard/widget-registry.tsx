@@ -2,6 +2,7 @@ import {
   Activity,
   CalendarDays,
   Captions,
+  Cast,
   Clapperboard,
   Cpu,
   Download,
@@ -27,6 +28,7 @@ import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { StreamMonitorCard } from "@/components/dashboard/stream-monitor-card";
+import { StreamingBandwidthCard } from "@/components/dashboard/streaming-bandwidth-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
 import { PlexNowPlayingCard } from "@/components/dashboard/plex-now-playing-card";
 import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-playing-card";
@@ -90,6 +92,11 @@ import {
   STREAM_MONITOR_DEFAULT_SETTINGS,
   type StreamMonitorSettingsValue,
 } from "@/components/dashboard/widget-settings/stream-monitor-settings";
+import {
+  StreamingBandwidthSettings,
+  STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
+  type StreamingBandwidthSettingsValue,
+} from "@/components/dashboard/widget-settings/streaming-bandwidth-settings";
 import {
   OverseerrRequestsSettings,
   OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
@@ -204,7 +211,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   "server-stats": {
     id: "server-stats",
     label: "Server Stats",
-    description: "CPU, RAM and disk usage from Glances",
+    description: "CPU, RAM, disk and network from Glances",
     icon: Cpu,
     service: "glances",
     component: ServerStatsCard,
@@ -214,9 +221,9 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
   "speed-stats": {
     id: "speed-stats",
     label: "Speed Stats",
-    description: "Live download and upload speeds",
+    description: "Live download/upload speeds from clients or server network",
     icon: Gauge,
-    service: ["qbittorrent", "sabnzbd"],
+    service: ["qbittorrent", "sabnzbd", "nzbget", "rtorrent", "glances"],
     component: SpeedStatsCard,
     settingsComponent: SpeedStatsSettings,
     defaultSettings: SPEED_STATS_DEFAULT_SETTINGS,
@@ -290,6 +297,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     component: StreamMonitorCard,
     settingsComponent: StreamMonitorSettings,
     defaultSettings: STREAM_MONITOR_DEFAULT_SETTINGS,
+  },
+  "streaming-bandwidth": {
+    id: "streaming-bandwidth",
+    label: "Streaming Bandwidth",
+    description: "Live WAN/LAN streaming bandwidth from Plex, Tautulli, Jellyfin or Emby",
+    icon: Cast,
+    service: ["tautulli", "plex", "jellyfin", "emby"],
+    component: StreamingBandwidthCard,
+    settingsComponent: StreamingBandwidthSettings,
+    defaultSettings: STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
   },
   "overseerr-requests": {
     id: "overseerr-requests",
@@ -391,6 +408,7 @@ export type {
   EmbyNowPlayingSettingsValue,
   CombinedNowPlayingSettingsValue,
   StreamMonitorSettingsValue,
+  StreamingBandwidthSettingsValue,
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
   RadarrQueueSettingsValue,

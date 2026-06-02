@@ -652,9 +652,10 @@ const DEMO_TAUTULLI_ACTIVITY = {
   stream_count_direct_play: 1,
   stream_count_direct_stream: 0,
   stream_count_transcode: 1,
-  total_bandwidth: 14680064,
-  wan_bandwidth: 8388608,
-  lan_bandwidth: 6291456,
+  // kbps — consistent with the two demo sessions below (8000 + 6000).
+  total_bandwidth: 14000,
+  wan_bandwidth: 8000,
+  lan_bandwidth: 6000,
   sessions: [
     {
       session_key: "abc123",
@@ -993,7 +994,31 @@ const DEMO_JELLYFIN_SESSIONS = [
       RunTimeTicks: 9960000 * 10000,
       ImageTags: { Primary: "tag-1" },
     },
-    PlayState: { PositionTicks: 4681200 * 10000, IsPaused: false, PlayMethod: "DirectPlay" },
+    PlayState: { PositionTicks: 4681200 * 10000, IsPaused: false, PlayMethod: "Transcode" },
+    // Local transcode → LAN bucket (4 Mbps).
+    TranscodingInfo: { VideoCodec: "h264", Bitrate: 4000000, CompletionPercentage: 0 },
+  },
+  {
+    Id: "session-demo-2",
+    UserId: DEMO_JELLYFIN_USER_ID,
+    UserName: "alex",
+    Client: "Jellyfin Android",
+    DeviceName: "Pixel 8",
+    DeviceId: "device-2",
+    ApplicationVersion: "2.6.1",
+    RemoteEndPoint: "203.0.113.45",
+    IsActive: true,
+    NowPlayingItem: {
+      Id: "jf-2",
+      Name: "Severance",
+      Type: "Episode",
+      ProductionYear: 2024,
+      RunTimeTicks: 3120000 * 10000,
+      ImageTags: { Primary: "tag-1" },
+    },
+    PlayState: { PositionTicks: 1200000 * 10000, IsPaused: false, PlayMethod: "Transcode" },
+    // Remote transcode → WAN bucket (8 Mbps).
+    TranscodingInfo: { VideoCodec: "h264", Bitrate: 8000000, CompletionPercentage: 0 },
   },
 ];
 
@@ -1015,6 +1040,14 @@ const DEMO_GLANCES_LOAD = { min1: 3.42, min5: 2.87, min15: 2.61, cpucore: 8 };
 const DEMO_GLANCES_DISKIO = [
   { disk_name: "sda", read_bytes: 4096000, write_bytes: 1048576, read_count: 128, write_count: 32, time_since_update: 1 },
   { disk_name: "sdb", read_bytes: 20971520, write_bytes: 8388608, read_count: 512, write_count: 256, time_since_update: 1 },
+];
+const DEMO_GLANCES_NET = [
+  { interface_name: "eth0", is_up: true, bytes_recv: 8650752, bytes_sent: 1153024, bytes_recv_rate_per_sec: 8650752, bytes_sent_rate_per_sec: 1153024, speed: 1000000000, time_since_update: 1 },
+  { interface_name: "wg0", is_up: true, bytes_recv: 245760, bytes_sent: 92160, bytes_recv_rate_per_sec: 245760, bytes_sent_rate_per_sec: 92160, speed: 0, time_since_update: 1 },
+  // Virtual (Docker) interfaces — grouped/hidden in the picker, excluded from "all".
+  { interface_name: "docker0", is_up: true, bytes_recv: 131072, bytes_sent: 196608, bytes_recv_rate_per_sec: 131072, bytes_sent_rate_per_sec: 196608, speed: 0, time_since_update: 1 },
+  { interface_name: "veth9a1b2c", is_up: true, bytes_recv: 40960, bytes_sent: 20480, bytes_recv_rate_per_sec: 40960, bytes_sent_rate_per_sec: 20480, speed: 10000000000, time_since_update: 1 },
+  { interface_name: "lo", is_up: true, bytes_recv: 524288, bytes_sent: 524288, bytes_recv_rate_per_sec: 524288, bytes_sent_rate_per_sec: 524288, speed: 0, time_since_update: 1 },
 ];
 const DEMO_GLANCES_GPU = [
   { key: "gpu_id", gpu_id: "0", name: "NVIDIA GeForce RTX 3060", mem: 42.5, proc: 28.0, temperature: 54, fan_speed: 38 },
@@ -1211,6 +1244,7 @@ export function getDemoResponse(
       if (normalized === "/percpu") return DEMO_GLANCES_PERCPU;
       if (normalized === "/load") return DEMO_GLANCES_LOAD;
       if (normalized === "/diskio") return DEMO_GLANCES_DISKIO;
+      if (normalized === "/network") return DEMO_GLANCES_NET;
       if (normalized === "/gpu") return DEMO_GLANCES_GPU;
       if (normalized === "/containers") return DEMO_GLANCES_CONTAINERS;
       return undefined;
