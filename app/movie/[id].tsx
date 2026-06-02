@@ -227,7 +227,14 @@ export default function MovieDetailScreen() {
 
           <MediaStatsStrip stats={stats} className="mb-5" />
 
-          <MovieFileBlock movie={movie} />
+          <MovieFileBlock
+            movie={movie}
+            onPressRoot={
+              rootFolders && rootFolders.length > 0
+                ? () => setRootFolderVisible(true)
+                : undefined
+            }
+          />
 
           {movie.overview ? (
             <View className="mb-5">
@@ -267,15 +274,6 @@ export default function MovieDetailScreen() {
           ) : null}
 
           <ReleaseDatesBlock movie={movie} />
-
-          <AboutBlock
-            movie={movie}
-            onPressRoot={
-              rootFolders && rootFolders.length > 0
-                ? () => setRootFolderVisible(true)
-                : undefined
-            }
-          />
         </View>
       </ScreenWrapper>
 
@@ -466,11 +464,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function MovieFileBlock({ movie }: { movie: RadarrMovie }) {
-  if (!movie.hasFile || !movie.movieFile) return null;
-  const file = movie.movieFile;
-  const fileName = file.relativePath?.split(/[/\\]/).pop() ?? movie.title;
-  const info = file.mediaInfo;
+function MovieFileBlock({
+  movie,
+  onPressRoot,
+}: {
+  movie: RadarrMovie;
+  onPressRoot?: () => void;
+}) {
+  const file = movie.hasFile ? movie.movieFile : undefined;
+  const fileName = file?.relativePath?.split(/[/\\]/).pop() ?? movie.title;
+  const info = file?.mediaInfo;
   const techParts: string[] = [];
   if (info) {
     techParts.push(formatResolution(info.resolution));
@@ -484,39 +487,53 @@ function MovieFileBlock({ movie }: { movie: RadarrMovie }) {
   return (
     <View className="mb-5">
       <SectionLabel>File</SectionLabel>
-      <View className="rounded-2xl bg-surface border border-border overflow-hidden flex-row">
-        <View className="w-1 bg-success" />
-        <View className="flex-1 p-4">
-          <View className="flex-row items-start justify-between gap-2 mb-2">
-            <Text
-              className="text-zinc-100 text-sm font-medium flex-1"
-              numberOfLines={2}
-            >
-              {fileName}
-            </Text>
-            <View className="bg-primary/15 border border-primary/30 rounded-md px-2 py-1">
-              <Text className="text-primary text-[0.65rem] font-bold uppercase tracking-wide">
-                {file.quality.quality.name}
+      <View className="rounded-2xl bg-surface border border-border overflow-hidden">
+        {file ? (
+          <View className="flex-row">
+            <View className="w-1 bg-success" />
+            <View className="flex-1 p-4">
+              <View className="flex-row items-start justify-between gap-2 mb-2">
+                <Text
+                  className="text-zinc-100 text-sm font-medium flex-1"
+                  numberOfLines={2}
+                >
+                  {fileName}
+                </Text>
+                <View className="bg-primary/15 border border-primary/30 rounded-md px-2 py-1">
+                  <Text className="text-primary text-[0.65rem] font-bold uppercase tracking-wide">
+                    {file.quality.quality.name}
+                  </Text>
+                </View>
+              </View>
+              {techParts.length > 0 ? (
+                <View className="flex-row flex-wrap gap-1.5 mt-1">
+                  {techParts.map((part) => (
+                    <View
+                      key={part}
+                      className="bg-zinc-800 rounded px-2 py-0.5 border border-border/40"
+                    >
+                      <Text className="text-zinc-300 text-[0.65rem] font-semibold uppercase tracking-wide">
+                        {part}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text className="text-yellow-500 text-xs font-semibold mt-2">
+                {formatBytes(file.size)}
               </Text>
             </View>
           </View>
-          {techParts.length > 0 ? (
-            <View className="flex-row flex-wrap gap-1.5 mt-1">
-              {techParts.map((part) => (
-                <View
-                  key={part}
-                  className="bg-zinc-800 rounded px-2 py-0.5 border border-border/40"
-                >
-                  <Text className="text-zinc-300 text-[0.65rem] font-semibold uppercase tracking-wide">
-                    {part}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <Text className="text-yellow-500 text-xs font-semibold mt-2">
-            {formatBytes(file.size)}
-          </Text>
+        ) : null}
+        <View
+          className={`p-4 gap-2.5 ${file ? "border-t border-border" : ""}`}
+        >
+          <AboutRow
+            label="Root"
+            value={movie.rootFolderPath}
+            onPress={onPressRoot}
+          />
+          <AboutRow label="Added" value={formatReleaseDate(movie.added)} />
         </View>
       </View>
     </View>
@@ -555,28 +572,6 @@ function ReleaseDatesBlock({ movie }: { movie: RadarrMovie }) {
             </Text>
           </View>
         ))}
-      </View>
-    </View>
-  );
-}
-
-function AboutBlock({
-  movie,
-  onPressRoot,
-}: {
-  movie: RadarrMovie;
-  onPressRoot?: () => void;
-}) {
-  return (
-    <View className="mb-5">
-      <SectionLabel>About</SectionLabel>
-      <View className="rounded-2xl bg-surface border border-border p-4 gap-2.5">
-        <AboutRow
-          label="Root"
-          value={movie.rootFolderPath}
-          onPress={onPressRoot}
-        />
-        <AboutRow label="Added" value={formatReleaseDate(movie.added)} />
       </View>
     </View>
   );

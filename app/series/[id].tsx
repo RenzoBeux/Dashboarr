@@ -254,6 +254,15 @@ export default function SeriesDetailScreen() {
 
           <EpisodeProgressBlock series={series} />
 
+          <AboutBlock
+            series={series}
+            onPressRoot={
+              rootFolders && rootFolders.length > 0
+                ? () => setRootFolderVisible(true)
+                : undefined
+            }
+          />
+
           {series.overview ? (
             <View className="mb-5">
               <SectionLabel>Overview</SectionLabel>
@@ -290,15 +299,6 @@ export default function SeriesDetailScreen() {
               </ScrollView>
             </View>
           ) : null}
-
-          <AboutBlock
-            series={series}
-            onPressRoot={
-              rootFolders && rootFolders.length > 0
-                ? () => setRootFolderVisible(true)
-                : undefined
-            }
-          />
 
           <View className="mb-2">
             <SectionLabel>Seasons</SectionLabel>
