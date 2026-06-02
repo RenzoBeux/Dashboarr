@@ -4,12 +4,13 @@ import {
   getMovie,
   getQueue,
   getHistory,
-  getWantedMissing,
+  getAllWantedMissing,
   getCalendar,
   searchMovies,
   addMovie,
   deleteMovie,
   searchForMovie,
+  searchAllMissingMovies,
   toggleMovieMonitored,
   updateMovie,
   changeMovieRootFolder,
@@ -79,11 +80,17 @@ export function useRadarrHistory(instanceId?: string) {
   });
 }
 
+// Fetches the complete wanted/missing list (all pages). Only mounted by the
+// Movies "Wanted" tab, so the full walk doesn't run while the user is elsewhere.
+// The key is namespaced with "all" so it never aliases the count-only
+// ["radarr", id, "wanted"] entry the dashboard's RadarrQueueCard owns — sharing
+// a key would let its 1-record badge fetch clobber the full list (and vice
+// versa), collapsing the grid to a single poster.
 export function useWantedMissing(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", id, "wanted"],
-    queryFn: () => getWantedMissing(1, 1, id ?? undefined),
+    queryKey: ["radarr", id, "wanted", "all"],
+    queryFn: () => getAllWantedMissing(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });
@@ -151,6 +158,15 @@ export function useSearchForMovie(instanceId?: string) {
   return useMutation({
     mutationFn: (movieId: number) => searchForMovie(movieId, id ?? undefined),
     onSuccess: () => toast("Search started"),
+    onError: (err) => toastError("Search failed", err),
+  });
+}
+
+export function useSearchAllMissingMovies(instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  return useMutation({
+    mutationFn: () => searchAllMissingMovies(id ?? undefined),
+    onSuccess: () => toast("Searching all missing movies"),
     onError: (err) => toastError("Search failed", err),
   });
 }

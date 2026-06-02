@@ -93,6 +93,29 @@ export function getWantedMissing(
   });
 }
 
+// Walks every page of the wanted/missing list. getWantedMissing above is the
+// cheap count-only call used for dashboard badges; this one fetches page 1 to
+// learn the total, then pulls the remaining pages in parallel and concatenates
+// them so the Wanted view shows the complete list, not a single page (issue #156).
+export async function getAllWantedMissing(
+  instanceId?: string,
+): Promise<RadarrWantedMissing> {
+  const pageSize = 100;
+  const first = await getWantedMissing(1, pageSize, instanceId);
+  const totalPages = Math.max(1, Math.ceil(first.totalRecords / pageSize));
+  if (totalPages <= 1) return first;
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) =>
+      getWantedMissing(i + 2, pageSize, instanceId),
+    ),
+  );
+  const records = rest.reduce(
+    (acc, page) => acc.concat(page.records),
+    [...first.records],
+  );
+  return { ...first, pageSize: records.length, records };
+}
+
 // --- Search ---
 
 export function searchMovies(
@@ -170,6 +193,18 @@ export function searchForMovie(movieId: number, instanceId?: string): Promise<vo
   return serviceRequest<void>("radarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "MoviesSearch", movieIds: [movieId] }),
+    instanceId,
+  });
+}
+
+// Searches every monitored missing movie. With no FilterKey/FilterValue the
+// MissingMoviesSearch command defaults to all monitored missing movies — the
+// equivalent of Radarr's Wanted › Missing › "Search All" button (mirrors
+// Sonarr's searchAllMissingEpisodes).
+export function searchAllMissingMovies(instanceId?: string): Promise<void> {
+  return serviceRequest<void>("radarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "MissingMoviesSearch" }),
     instanceId,
   });
 }
