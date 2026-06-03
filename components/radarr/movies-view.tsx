@@ -108,9 +108,16 @@ function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): num
 
 // Movies (Radarr) library/queue/wanted view. Extracted from the standalone
 // Movies tab so it can also render inside the combined Library tab. `topSlot`
-// renders above the service header — the Library tab passes its Movies/TV
-// segmented control here.
-export function MoviesView({ topSlot }: { topSlot?: React.ReactNode }) {
+// renders above the service header (used by the standalone tab); `embedded`
+// drops the screen chrome (SafeAreaView + demo banner) so the Library pager can
+// own a single fixed safe-area + segmented control and just page this content.
+export function MoviesView({
+  topSlot,
+  embedded = false,
+}: {
+  topSlot?: React.ReactNode;
+  embedded?: boolean;
+}) {
   const [tab, setTab] = useState<Tab>("library");
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
   const sort = useSortStore((s) => s.movies);
@@ -294,8 +301,8 @@ export function MoviesView({ topSlot }: { topSlot?: React.ReactNode }) {
     </>
   );
 
-  return (
-    <ScreenWrapper scrollable={false}>
+  const body = (
+    <>
       {tab === "library" && (
         <MovieLibrary
           monitorFilter={monitorFilter}
@@ -393,7 +400,13 @@ export function MoviesView({ topSlot }: { topSlot?: React.ReactNode }) {
         }}
         onCancel={() => setPendingDelete(null)}
       />
-    </ScreenWrapper>
+    </>
+  );
+
+  return embedded ? (
+    <View className="flex-1 px-4">{body}</View>
+  ) : (
+    <ScreenWrapper scrollable={false}>{body}</ScreenWrapper>
   );
 }
 

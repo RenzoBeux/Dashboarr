@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, useWindowDimensions } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,6 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useLocalSearchParams } from "expo-router";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { DemoBanner } from "@/components/common/demo-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
@@ -18,9 +20,10 @@ import { TvView } from "@/components/sonarr/tv-view";
 type LibrarySection = "movies" | "tv";
 
 // Combined Library tab: hosts the Movies (Radarr) and TV (Sonarr) libraries
-// behind a top segmented control. When only one of the two is available it
-// renders that view directly (no switcher), mirroring the Downloads tab's
-// single-client behavior.
+// behind a single fixed segmented control. The control stays put while the
+// content pages horizontally underneath it (see LibraryPager) — so switching
+// reads as "one screen, paging content", not swapping whole screens. When only
+// one of the two is available it renders that view directly (no switcher).
 export default function LibraryScreen() {
   const radarrEnabled = useConfigStore((s) => s.services.radarr?.enabled ?? false);
   const sonarrEnabled = useConfigStore((s) => s.services.sonarr?.enabled ?? false);
@@ -62,84 +65,80 @@ export default function LibraryScreen() {
     );
   }
 
-  const showSwitcher = sections.length > 1;
   const activeSection: LibrarySection = sections.includes(section)
     ? section
     : sections[0];
 
-  const handleSectionChange = (next: LibrarySection) => {
-    if (next === activeSection) return;
-    lightHaptic();
-    setSection(next);
-  };
-
-  const switcher = showSwitcher ? (
-    <LibrarySegmentedControl
-      value={activeSection}
-      sections={sections}
-      onChange={handleSectionChange}
-    />
-  ) : null;
-
-  // Single section: render directly, no animation needed.
-  if (!showSwitcher) {
-    return activeSection === "movies" ? (
-      <MoviesView topSlot={switcher} />
-    ) : (
-      <TvView topSlot={switcher} />
-    );
+  // Single section: render the standalone view (its own safe area + chrome).
+  if (sections.length === 1) {
+    return activeSection === "movies" ? <MoviesView /> : <TvView />;
   }
 
-  // Both sections: keep BOTH views mounted as cross-fading layers. Switching
-  // no longer remounts/refetches — each view's scroll position, sub-tab and
-  // loaded data are preserved, and the inactive view stays warm so the swap is
-  // instant. The two switchers sit at the same spot, so the highlight appears
-  // to glide across as the layers cross-fade. Movies slides off to the left and
-  // TV in from the right (and vice-versa) for a subtle directional feel.
   return (
-    <View className="flex-1 bg-background">
-      <SectionLayer active={activeSection === "movies"} offset={-16}>
-        <MoviesView topSlot={switcher} />
-      </SectionLayer>
-      <SectionLayer active={activeSection === "tv"} offset={16}>
-        <TvView topSlot={switcher} />
-      </SectionLayer>
-    </View>
+    <LibraryPager
+      sections={sections}
+      activeSection={activeSection}
+      onChange={(next) => {
+        if (next === activeSection) return;
+        lightHaptic();
+        setSection(next);
+      }}
+    />
   );
 }
 
-// One absolutely-positioned, cross-fading layer. `offset` is where it rests
-// (px) while inactive — negative slides it left, positive right — so the two
-// layers move in opposite directions during the transition.
-function SectionLayer({
-  active,
-  offset,
-  children,
+// Fixed segmented control + horizontally paging content. Both views stay
+// mounted (no remount/refetch on switch); only the content row translates, so
+// the control and safe area never move.
+function LibraryPager({
+  sections,
+  activeSection,
+  onChange,
 }: {
-  active: boolean;
-  offset: number;
-  children: React.ReactNode;
+  sections: LibrarySection[];
+  activeSection: LibrarySection;
+  onChange: (next: LibrarySection) => void;
 }) {
-  const progress = useSharedValue(active ? 1 : 0);
+  const { width } = useWindowDimensions();
+  const activeIndex = sections.indexOf(activeSection);
+  const offset = useSharedValue(-activeIndex * width);
+
   useEffect(() => {
-    progress.value = withTiming(active ? 1 : 0, {
-      duration: 220,
+    offset.value = withTiming(-activeIndex * width, {
+      duration: 260,
       easing: Easing.out(Easing.cubic),
     });
-  }, [active, progress]);
+  }, [activeIndex, width, offset]);
 
-  const style = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateX: (1 - progress.value) * offset }],
+  const rowStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: offset.value }],
   }));
 
   return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, style]}
-      pointerEvents={active ? "auto" : "none"}
-    >
-      {children}
-    </Animated.View>
+    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-background">
+      <DemoBanner />
+      <View className="px-4">
+        <LibrarySegmentedControl
+          value={activeSection}
+          sections={sections}
+          onChange={onChange}
+        />
+      </View>
+      <View className="flex-1 overflow-hidden">
+        <Animated.View
+          style={[
+            { flexDirection: "row", height: "100%", width: width * sections.length },
+            rowStyle,
+          ]}
+        >
+          {sections.map((s) => (
+            <View key={s} style={{ width }}>
+              {s === "movies" ? <MoviesView embedded /> : <TvView embedded />}
+            </View>
+          ))}
+        </Animated.View>
+      </View>
+    </SafeAreaView>
   );
 }
 

@@ -120,9 +120,16 @@ function compareSeries(
 
 // TV (Sonarr) library/calendar view. Extracted from the standalone TV tab so
 // it can also render inside the combined Library tab. `topSlot` renders above
-// the service header — the Library tab passes its Movies/TV segmented control
-// here.
-export function TvView({ topSlot }: { topSlot?: React.ReactNode }) {
+// the service header (used by the standalone tab); `embedded` drops the screen
+// chrome (SafeAreaView + demo banner) so the Library pager can own a single
+// fixed safe-area + segmented control and just page this content.
+export function TvView({
+  topSlot,
+  embedded = false,
+}: {
+  topSlot?: React.ReactNode;
+  embedded?: boolean;
+}) {
   const [tab, setTab] = useState<Tab>("library");
   const [monitorFilter, setMonitorFilter] =
     useState<MonitorFilter>("monitored");
@@ -340,8 +347,8 @@ export function TvView({ topSlot }: { topSlot?: React.ReactNode }) {
     </>
   );
 
-  return (
-    <ScreenWrapper scrollable={false}>
+  const body = (
+    <>
       {tab === "library" && (
         <SeriesLibrary
           monitorFilter={monitorFilter}
@@ -430,7 +437,13 @@ export function TvView({ topSlot }: { topSlot?: React.ReactNode }) {
         }}
         onCancel={() => setPendingDelete(null)}
       />
-    </ScreenWrapper>
+    </>
+  );
+
+  return embedded ? (
+    <View className="flex-1 px-4">{body}</View>
+  ) : (
+    <ScreenWrapper scrollable={false}>{body}</ScreenWrapper>
   );
 }
 
