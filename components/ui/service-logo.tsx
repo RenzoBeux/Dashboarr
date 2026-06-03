@@ -27,6 +27,7 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   rtorrent: require("@/assets/services/rtorrent.png"),
   radarr: require("@/assets/services/radarr.png"),
   sonarr: require("@/assets/services/sonarr.png"),
+  lidarr: require("@/assets/services/lidarr.png"),
   prowlarr: require("@/assets/services/prowlarr.png"),
   tautulli: require("@/assets/services/tautulli.png"),
   tracearr: require("@/assets/services/tracearr.png"),

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useConfigStore } from "@/store/config-store";
 import { redactUrl } from "@/lib/http-client";
-import type { ServiceId } from "@/lib/constants";
+import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
 
 interface ServiceImage {
   url: string;
@@ -29,11 +29,14 @@ export function useServiceImage(
   if (image?.url && baseUrl) {
     const base = baseUrl.replace(/\/+$/, "");
     let path = image.url.startsWith("/") ? image.url : `/${image.url}`;
-    // Radarr/Sonarr return /MediaCover/... which requires session auth.
-    // The API endpoint /api/v3/MediaCover/... accepts apikey auth.
+    // Radarr/Sonarr/Lidarr return /MediaCover/... which requires session auth.
+    // The API endpoint <apiBasePath>/MediaCover/... accepts apikey auth — and
+    // the version differs per service (Radarr/Sonarr are /api/v3, Lidarr /api/v1),
+    // so derive it from SERVICE_DEFAULTS rather than hardcoding v3.
     // Use -500 variant (e.g. poster-500.jpg) to avoid blowing Fresco's memory pool.
-    if (path.startsWith("/MediaCover/")) {
-      path = `/api/v3${path.replace(/\/(poster|banner|fanart)\.jpg/, "/$1-500.jpg")}`;
+    if (/^\/MediaCover\//i.test(path)) {
+      const apiBase = SERVICE_DEFAULTS[serviceId].apiBasePath;
+      path = `${apiBase}${path.replace(/\/(poster|banner|fanart)\.jpg/, "/$1-500.jpg")}`;
     }
     const separator = path.includes("?") ? "&" : "?";
     localUrl = `${base}${path}${apiKey ? `${separator}apikey=${apiKey}` : ""}`;

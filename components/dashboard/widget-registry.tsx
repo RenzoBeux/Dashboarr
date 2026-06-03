@@ -10,6 +10,7 @@ import {
   Gauge,
   HeartPulse,
   Inbox,
+  Disc3,
   MonitorPlay,
   Newspaper,
   PackageCheck,
@@ -25,6 +26,7 @@ import { DownloadCard } from "@/components/dashboard/download-card";
 import { SabnzbdQueueCard } from "@/components/dashboard/sabnzbd-queue-card";
 import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
+import { LidarrQueueCard } from "@/components/dashboard/lidarr-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { StreamMonitorCard } from "@/components/dashboard/stream-monitor-card";
@@ -112,6 +114,11 @@ import {
   RADARR_QUEUE_DEFAULT_SETTINGS,
   type RadarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import {
+  LidarrQueueSettings,
+  LIDARR_QUEUE_DEFAULT_SETTINGS,
+  type LidarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/lidarr-queue-settings";
 import {
   RecentlyDownloadedSettings,
   RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
@@ -268,6 +275,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: RadarrQueueSettings,
     defaultSettings: RADARR_QUEUE_DEFAULT_SETTINGS,
   },
+  "lidarr-queue": {
+    id: "lidarr-queue",
+    label: "Lidarr Queue",
+    description: "Albums currently downloading or grabbed",
+    icon: Disc3,
+    service: "lidarr",
+    component: LidarrQueueCard,
+    settingsComponent: LidarrQueueSettings,
+    defaultSettings: LIDARR_QUEUE_DEFAULT_SETTINGS,
+  },
   "recently-downloaded": {
     id: "recently-downloaded",
     label: "Recently Downloaded",
@@ -412,6 +429,7 @@ export type {
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
   RadarrQueueSettingsValue,
+  LidarrQueueSettingsValue,
   RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
   BazarrWantedSettingsValue,

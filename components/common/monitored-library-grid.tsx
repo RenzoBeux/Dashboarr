@@ -52,10 +52,16 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
   monitorFilter: MonitorFilter;
   sort: S;
   compare: (a: T, b: T, sort: S) => number;
-  serviceId: "radarr" | "sonarr";
+  serviceId: "radarr" | "sonarr" | "lidarr";
   placeholderIcon: LucideIcon;
   /** Plural noun used in empty state titles, e.g. "movies" / "shows". */
   nounPlural: string;
+  /**
+   * Which `coverType` to render as the poster. Radarr movies / Sonarr series /
+   * Lidarr artists use "poster"; Lidarr albums use "cover". Defaults to
+   * "poster".
+   */
+  posterCoverType?: string;
   /** Footer line under the poster title (e.g. year or season count). */
   renderFooter: (item: T) => string;
   /**
@@ -92,6 +98,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   serviceId,
   placeholderIcon,
   nounPlural,
+  posterCoverType = "poster",
   renderFooter,
   posterStatus,
   onItemPress,
@@ -160,6 +167,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
         <LibraryPoster
           item={item}
           serviceId={serviceId}
+          posterCoverType={posterCoverType}
           placeholderIcon={placeholderIcon}
           footer={renderFooter(item)}
           status={posterStatus?.(item)}
@@ -185,6 +193,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
 function LibraryPoster<T extends MonitoredItem>({
   item,
   serviceId,
+  posterCoverType,
   placeholderIcon,
   footer,
   status,
@@ -192,14 +201,15 @@ function LibraryPoster<T extends MonitoredItem>({
   onLongPress,
 }: {
   item: T;
-  serviceId: "radarr" | "sonarr";
+  serviceId: "radarr" | "sonarr" | "lidarr";
+  posterCoverType: string;
   placeholderIcon: LucideIcon;
   footer: string;
   status?: PosterStatus;
   onPress: () => void;
   onLongPress: () => void;
 }) {
-  const poster = item.images.find((i) => i.coverType === "poster");
+  const poster = item.images.find((i) => i.coverType === posterCoverType);
   const { src, onError } = useServiceImage(poster, serviceId);
   const { width: cellWidth } = usePosterCellLayout();
 

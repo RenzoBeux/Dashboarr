@@ -18,6 +18,7 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   nzbget: "/(tabs)/downloads?client=nzbget",
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
+  lidarr: "/(tabs)/music",
   overseerr: "/(tabs)/requests",
   tautulli: "/(tabs)/activity",
   tracearr: "/(tabs)/activity",

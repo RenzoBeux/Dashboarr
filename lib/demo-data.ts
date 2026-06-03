@@ -594,6 +594,131 @@ const DEMO_SONARR_QUEUE = {
   ],
 };
 
+// --- Lidarr ---
+
+function makeArtist(
+  id: number,
+  name: string,
+  foreignId: string,
+  albumCount: number,
+  trackCount: number,
+  fileCount: number,
+  status = "continuing",
+) {
+  return {
+    id,
+    artistName: name,
+    foreignArtistId: foreignId,
+    sortName: name.toLowerCase(),
+    overview: `${name} is an acclaimed act with a deep, genre-defining catalog.`,
+    artistType: "Group",
+    status,
+    ended: status === "ended",
+    monitored: true,
+    qualityProfileId: 1,
+    metadataProfileId: 1,
+    rootFolderPath: "/music",
+    path: `/music/${name}`,
+    genres: ["Rock", "Electronic"],
+    images: [],
+    added: daysFromNowFull(-180),
+    statistics: {
+      albumCount,
+      trackFileCount: fileCount,
+      trackCount,
+      totalTrackCount: trackCount,
+      sizeOnDisk: fileCount * 8_000_000,
+      percentOfTracks: trackCount ? (fileCount / trackCount) * 100 : 0,
+    },
+  };
+}
+
+function makeAlbum(
+  id: number,
+  title: string,
+  artistId: number,
+  year: number,
+  trackCount: number,
+  fileCount: number,
+) {
+  return {
+    id,
+    title,
+    artistId,
+    foreignAlbumId: `album-${id}`,
+    overview: `${title} is a landmark release.`,
+    monitored: true,
+    albumType: "Album",
+    releaseDate: `${year}-05-01`,
+    genres: ["Rock"],
+    images: [],
+    duration: trackCount * 240_000,
+    mediumCount: 1,
+    statistics: {
+      trackFileCount: fileCount,
+      trackCount,
+      totalTrackCount: trackCount,
+      sizeOnDisk: fileCount * 8_000_000,
+      percentOfTracks: trackCount ? (fileCount / trackCount) * 100 : 0,
+    },
+  };
+}
+
+const DEMO_LIDARR_ARTISTS = [
+  makeArtist(1, "Radiohead", "a74b1b7f-71a5-4011-9441-d0b5e4122711", 9, 92, 92),
+  makeArtist(2, "Daft Punk", "056e4f3e-d505-4dad-8ec1-d04f521cbb56", 4, 41, 28),
+  makeArtist(3, "Pink Floyd", "83d91898-7763-47d7-b03b-b92132375c47", 15, 165, 165, "ended"),
+];
+
+const DEMO_LIDARR_ALBUMS = [
+  { ...makeAlbum(11, "OK Computer", 1, 1997, 12, 12), artist: DEMO_LIDARR_ARTISTS[0] },
+  { ...makeAlbum(12, "In Rainbows", 1, 2007, 10, 10), artist: DEMO_LIDARR_ARTISTS[0] },
+  { ...makeAlbum(21, "Discovery", 2, 2001, 14, 14), artist: DEMO_LIDARR_ARTISTS[1] },
+  { ...makeAlbum(22, "Random Access Memories", 2, 2013, 13, 6), artist: DEMO_LIDARR_ARTISTS[1] },
+  { ...makeAlbum(31, "The Dark Side of the Moon", 3, 1973, 10, 10), artist: DEMO_LIDARR_ARTISTS[2] },
+];
+
+const DEMO_LIDARR_TRACKS = [
+  { id: 1101, title: "Airbag", trackNumber: "1", absoluteTrackNumber: 1, duration: 284_000, mediumNumber: 1, hasFile: true, albumId: 11, artistId: 1 },
+  { id: 1102, title: "Paranoid Android", trackNumber: "2", absoluteTrackNumber: 2, duration: 383_000, mediumNumber: 1, hasFile: true, albumId: 11, artistId: 1 },
+  { id: 1103, title: "Subterranean Homesick Alien", trackNumber: "3", absoluteTrackNumber: 3, duration: 267_000, mediumNumber: 1, hasFile: true, albumId: 11, artistId: 1 },
+  { id: 1104, title: "Exit Music (For a Film)", trackNumber: "4", absoluteTrackNumber: 4, duration: 264_000, mediumNumber: 1, hasFile: true, albumId: 11, artistId: 1 },
+];
+
+const DEMO_LIDARR_QUEUE = {
+  page: 1,
+  pageSize: 20,
+  totalRecords: 1,
+  records: [
+    {
+      id: 401,
+      artistId: 2,
+      albumId: 22,
+      title: "Daft.Punk.Random.Access.Memories.2013.FLAC",
+      status: "downloading",
+      trackedDownloadStatus: "ok",
+      trackedDownloadState: "downloading",
+      statusMessages: [],
+      size: 524_288_000,
+      sizeleft: 262_144_000,
+      timeleft: "00:08:00",
+      estimatedCompletionTime: daysFromNowFull(0.01),
+      protocol: "torrent",
+      downloadClient: "qBittorrent",
+      quality: { quality: { name: "FLAC" } },
+      artist: DEMO_LIDARR_ARTISTS[1],
+      album: DEMO_LIDARR_ALBUMS[3],
+    },
+  ],
+};
+
+const DEMO_LIDARR_WANTED = {
+  page: 1,
+  pageSize: 20,
+  totalRecords: 1,
+  records: [DEMO_LIDARR_ALBUMS[3]],
+};
+
 // --- Overseerr ---
 
 const DEMO_OVERSEERR_REQUESTS = {
@@ -1257,6 +1382,38 @@ export function getDemoResponse(
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/series/lookup")) return [];
       if (normalized.startsWith("/episode")) return [];
+      return undefined;
+    }
+    case "lidarr": {
+      if (normalized === "/artist") return DEMO_LIDARR_ARTISTS;
+      if (normalized === "/artist/lookup") return [];
+      if (normalized === "/artist/:id") {
+        const artistId = Number(basePath.split("/").pop());
+        return DEMO_LIDARR_ARTISTS.find((a) => a.id === artistId) ?? DEMO_LIDARR_ARTISTS[0];
+      }
+      if (normalized === "/album/:id") {
+        const albumId = Number(basePath.split("/").pop());
+        return DEMO_LIDARR_ALBUMS.find((a) => a.id === albumId) ?? DEMO_LIDARR_ALBUMS[0];
+      }
+      if (normalized === "/album") {
+        const artistId = params?.artistId != null ? Number(params.artistId) : null;
+        return artistId == null
+          ? DEMO_LIDARR_ALBUMS
+          : DEMO_LIDARR_ALBUMS.filter((a) => a.artistId === artistId);
+      }
+      if (normalized.startsWith("/track")) {
+        const albumId = params?.albumId != null ? Number(params.albumId) : null;
+        return albumId == null
+          ? DEMO_LIDARR_TRACKS
+          : DEMO_LIDARR_TRACKS.filter((t) => t.albumId === albumId);
+      }
+      if (normalized.startsWith("/queue")) return DEMO_LIDARR_QUEUE;
+      if (normalized.startsWith("/wanted/missing")) return DEMO_LIDARR_WANTED;
+      if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Lossless" }, { id: 2, name: "Standard" }];
+      if (normalized.startsWith("/metadataprofile")) return [{ id: 1, name: "Standard" }];
+      if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/music", freeSpace: 2199023255552 }];
+      if (normalized.startsWith("/tag")) return [];
+      if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       return undefined;
     }
     case "overseerr": {

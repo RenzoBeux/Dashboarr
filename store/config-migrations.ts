@@ -100,8 +100,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v26 — added the rtorrent service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled rtorrent instance at
  *         import time, so older exports just need the version field bumped.
+ *   v27 — added the lidarr service entry. Pure version stamp — defaultInstances()
+ *         iterates SERVICE_IDS and backfills a disabled lidarr instance at
+ *         import time, so older exports just need the version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 26;
+export const CURRENT_CONFIG_VERSION = 27;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -561,6 +564,11 @@ const migrations: Record<number, (payload: any) => any> = {
   // defaultInstances() afterward, so older payloads that lack an rtorrent entry
   // get the disabled default automatically — nothing to transform here.
   25: (payload) => ({ ...payload, version: 26 }),
+
+  // v26 → v27: lidarr added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack a lidarr entry
+  // get the disabled default automatically — nothing to transform here.
+  26: (payload) => ({ ...payload, version: 27 }),
 };
 
 /**

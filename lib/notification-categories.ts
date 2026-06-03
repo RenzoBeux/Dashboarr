@@ -16,6 +16,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   nzbget:      ["nzbgetCompleted",  "serviceOffline"],
   radarr:      ["radarrDownloaded", "serviceOffline"],
   sonarr:      ["sonarrDownloaded", "serviceOffline"],
+  // Lidarr has no album-import completion watcher/backend poller in v1, so only
+  // the offline category is surfaced (an "album downloaded" toggle would be a
+  // dead switch nothing emits yet). Mirrors rtorrent's offline-only stance.
+  lidarr:      ["serviceOffline"],
   overseerr:   ["overseerrNewRequest", "serviceOffline"],
   prowlarr:    ["serviceOffline"],
   tautulli:    ["serviceOffline"],
