@@ -309,6 +309,8 @@ export async function pingService(
     // apikey already in query params
   } else if (serviceId === "tracearr") {
     if (secrets.apiKey) headers.set("Authorization", `Bearer ${secrets.apiKey}`);
+  } else if (serviceId === "jellystat") {
+    if (secrets.apiKey) headers.set("x-api-token", secrets.apiKey);
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -689,6 +691,28 @@ async function runConnectionProbe(
       const res = await fetch(url, { method: "GET", headers, signal });
       if (res.status === 401 || res.status === 403)
         return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "jellystat": {
+      // JellyStat's authenticate middleware guards /stats: a missing/empty key
+      // → 401, a wrong key → 403, and (notably) 404 when the server has no API
+      // keys configured at all. getLibraryOverview is a cheap authenticated GET
+      // that exercises all of these, so it doubles as the auth probe.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("x-api-token", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid or missing API key" };
+      if (res.status === 404)
+        return {
+          kind: "auth_failed",
+          message: "No API keys configured in JellyStat — create one in its Settings",
+        };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (res.ok) return { kind: "ok" };

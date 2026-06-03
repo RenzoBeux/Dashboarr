@@ -1454,6 +1454,122 @@ export function getDemoTautulliResponse(cmd: string): unknown {
   }
 }
 
+// --- JellyStat demo data ---
+// JellyStat-shaped equivalents of the Tautulli demo set, so demo mode shows the
+// Activity history + JellyStat stats screen populated. Deterministic (no RNG)
+// so screenshots look identical every launch. `count` is sent as a string to
+// mirror node-postgres bigint serialization (callers coerce with Number()).
+const DEMO_JELLYSTAT_LIBRARIES = [
+  { Id: "lib-movies", Name: "Movies" },
+  { Id: "lib-shows", Name: "Shows" },
+];
+
+const DEMO_JELLYSTAT_VIEWS_OVER_TIME = (() => {
+  const stats = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    const key = d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" });
+    stats.push({
+      Key: key,
+      Movies: { count: String((weekend ? 4 : 1) + (i % 2)), duration: (weekend ? 4 : 1) * 95 },
+      Shows: { count: String((weekend ? 6 : 2) + (i % 3)), duration: (weekend ? 6 : 2) * 42 },
+    });
+  }
+  return { libraries: DEMO_JELLYSTAT_LIBRARIES, stats };
+})();
+
+const DEMO_JELLYSTAT_VIEWS_BY_DAYS = {
+  libraries: DEMO_JELLYSTAT_LIBRARIES,
+  stats: [
+    { Key: "Sunday", Movies: { count: "12" }, Shows: { count: "19" } },
+    { Key: "Monday", Movies: { count: "3" }, Shows: { count: "9" } },
+    { Key: "Tuesday", Movies: { count: "2" }, Shows: { count: "7" } },
+    { Key: "Wednesday", Movies: { count: "3" }, Shows: { count: "8" } },
+    { Key: "Thursday", Movies: { count: "4" }, Shows: { count: "10" } },
+    { Key: "Friday", Movies: { count: "6" }, Shows: { count: "13" } },
+    { Key: "Saturday", Movies: { count: "14" }, Shows: { count: "22" } },
+  ],
+};
+
+const DEMO_JELLYSTAT_VIEWS_BY_HOUR = (() => {
+  const tv = [1, 0, 0, 0, 0, 0, 1, 3, 4, 3, 2, 3, 5, 4, 3, 4, 6, 9, 14, 18, 22, 17, 9, 4];
+  const mv = [0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 1, 2, 3, 2, 2, 3, 4, 6, 10, 13, 16, 12, 6, 2];
+  return {
+    libraries: DEMO_JELLYSTAT_LIBRARIES,
+    stats: Array.from({ length: 24 }, (_, h) => ({
+      Key: h,
+      Movies: { count: String(mv[h]) },
+      Shows: { count: String(tv[h]) },
+    })),
+  };
+})();
+
+const DEMO_JELLYSTAT_ACTIVE_USERS = [
+  { Plays: "142", UserId: "u1", Name: "john_smith" },
+  { Plays: "98", UserId: "u2", Name: "sarah_c" },
+  { Plays: "51", UserId: "u3", Name: "mike_d" },
+  { Plays: "23", UserId: "u4", Name: "emma_w" },
+];
+
+const DEMO_JELLYSTAT_PLAYBACK_ACTIVITY = {
+  current_page: 1,
+  pages: 1,
+  size: 30,
+  sort: "ActivityDateInserted",
+  desc: true,
+  results: [
+    {
+      Id: "js-1",
+      UserName: "john_smith",
+      NowPlayingItemName: "The Pilot",
+      SeriesName: "Stranger Things",
+      EpisodeId: "ep-1",
+      Client: "Jellyfin Android",
+      DeviceName: "Pixel 8",
+      PlayMethod: "DirectPlay",
+      PlaybackDuration: "2820",
+      ActivityDateInserted: new Date(Date.now() - 3 * 3600000).toISOString(),
+    },
+    {
+      Id: "js-2",
+      UserName: "sarah_c",
+      NowPlayingItemName: "Dune: Part Two",
+      Client: "Jellyfin Web",
+      DeviceName: "Chrome",
+      PlayMethod: "Transcode",
+      PlaybackDuration: "9600",
+      ActivityDateInserted: new Date(Date.now() - 26 * 3600000).toISOString(),
+    },
+    {
+      Id: "js-3",
+      UserName: "mike_d",
+      NowPlayingItemName: "Chapter Two",
+      SeriesName: "The Bear",
+      EpisodeId: "ep-2",
+      Client: "Jellyfin tvOS",
+      DeviceName: "Living Room Apple TV",
+      PlayMethod: "DirectPlay",
+      PlaybackDuration: "1860",
+      ActivityDateInserted: new Date(Date.now() - 50 * 3600000).toISOString(),
+    },
+  ],
+};
+
+export function getDemoJellystatResponse(path: string): unknown {
+  const basePath = path.split("?")[0]!;
+  switch (basePath) {
+    case "/proxy/getSessions": return [];
+    case "/stats/getPlaybackActivity": return DEMO_JELLYSTAT_PLAYBACK_ACTIVITY;
+    case "/stats/getViewsOverTime": return DEMO_JELLYSTAT_VIEWS_OVER_TIME;
+    case "/stats/getViewsByDays": return DEMO_JELLYSTAT_VIEWS_BY_DAYS;
+    case "/stats/getViewsByHour": return DEMO_JELLYSTAT_VIEWS_BY_HOUR;
+    case "/stats/getMostActiveUsers": return DEMO_JELLYSTAT_ACTIVE_USERS;
+    case "/stats/getLibraryOverview": return DEMO_JELLYSTAT_LIBRARIES;
+    default: return undefined;
+  }
+}
+
 export function getDemoPlexResponse(path: string): unknown {
   const basePath = path.split("?")[0]!;
   if (basePath === "/library/sections") return DEMO_PLEX_LIBRARIES;

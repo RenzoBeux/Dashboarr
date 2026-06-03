@@ -42,10 +42,11 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   radarr: "movies",
   sonarr: "tv",
   overseerr: "requests",
-  // Both stream monitors share the Activity tab — it aggregates whichever of
-  // Tautulli / Tracearr is attached (see lib/monitor-adapter.ts).
+  // The stream monitors share the Activity tab — it aggregates whichever of
+  // Tautulli / Tracearr / JellyStat is attached (see lib/monitor-adapter.ts).
   tautulli: "activity",
   tracearr: "activity",
+  jellystat: "activity",
   prowlarr: "indexers",
   plex: "plex",
   jellyfin: "jellyfin",
@@ -69,7 +70,8 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   requests: ["overseerr"],
   // Jellyfin/Emby are additive here — SERVICE_TO_TAB still points them at their
   // dedicated tabs, but the Activity tab is also pickable when they're attached.
-  activity: ["tautulli", "tracearr", "jellyfin", "emby"],
+  // JellyStat is an Activity-only stream monitor (history + stats for Jellyfin).
+  activity: ["tautulli", "tracearr", "jellystat", "jellyfin", "emby"],
   indexers: ["prowlarr"],
   plex: ["plex"],
   jellyfin: ["jellyfin"],

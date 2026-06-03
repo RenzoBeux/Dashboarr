@@ -21,6 +21,7 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   overseerr: "/(tabs)/requests",
   tautulli: "/(tabs)/activity",
   tracearr: "/(tabs)/activity",
+  jellystat: "/(tabs)/activity",
   prowlarr: "/(tabs)/indexers",
   plex: "/(tabs)/plex",
   jellyfin: "/(tabs)/jellyfin",

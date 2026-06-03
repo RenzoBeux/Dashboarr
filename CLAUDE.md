@@ -60,6 +60,7 @@ When implementing or debugging a service integration, consult the upstream API d
 | Bazarr | https://wiki.bazarr.media/ + live Swagger at `<bazarr>/api/swagger` | Each running instance exposes its own Swagger UI; the wiki covers setup, the Swagger UI is the authoritative endpoint reference. |
 | Glances | https://glances.readthedocs.io/en/latest/api.html | REST API exposed when Glances runs in webserver mode (`-w`). We use API v4. |
 | Jellyfin | https://api.jellyfin.org/ | OpenAPI; live spec also at `/api-docs/openapi.json`. Auth via `MediaBrowser Token="…"` header. |
+| JellyStat | https://github.com/CyferShepard/Jellystat (live Swagger at `<host>/swagger`) | Jellyfin stats server (Tautulli-analog). Root-mounted REST (`/stats`, `/api`, `/proxy`); auth via `x-api-token` header. Postgres `bigint` columns (Count/Plays/PlaybackDuration) serialize as strings — coerce. Live sessions via `/proxy/getSessions` pass the raw Jellyfin payload through. See `services/jellystat-api.ts`. |
 
 Notes:
 - The `backend/dashboarr-backend/` Node.js service is in-tree and not a third-party API — its surface is whatever we define there.

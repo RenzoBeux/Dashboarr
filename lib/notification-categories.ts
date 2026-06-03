@@ -20,6 +20,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   prowlarr:    ["serviceOffline"],
   tautulli:    ["serviceOffline"],
   tracearr:    ["serviceOffline"],
+  jellystat:   ["serviceOffline"],
   plex:        ["serviceOffline"],
   bazarr:      ["serviceOffline"],
   glances:     ["serviceOffline"],

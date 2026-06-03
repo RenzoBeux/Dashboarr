@@ -1,5 +1,6 @@
 import {
   formatBitrateKbps,
+  isLocalEndpoint,
   mediaServerSessionToStream,
   type NowPlayingStream,
   type StreamDetails,
@@ -7,6 +8,8 @@ import {
 } from "@/lib/now-playing-stream";
 import type { MediaServerId } from "@/lib/media-server-config";
 import type {
+  JellyfinSession,
+  JellystatActivityRow,
   TautulliHistoryItem,
   TautulliSession,
   TracearrSessionHistory,
@@ -22,7 +25,15 @@ import {
   getStreams as getTracearrStreams,
   getTracearrImageSource,
 } from "@/services/tracearr-api";
-import { getSessions as getMediaServerSessions } from "@/services/jellyfin-api";
+import {
+  getSessions as getMediaServerSessions,
+  isJellyfinTranscoding,
+  ticksToMs,
+} from "@/services/jellyfin-api";
+import {
+  getPlaybackActivity as getJellystatHistory,
+  getSessions as getJellystatSessions,
+} from "@/services/jellystat-api";
 
 /**
  * Shared adapter unifying the "active-stream monitor" services behind one
@@ -31,11 +42,13 @@ import { getSessions as getMediaServerSessions } from "@/services/jellyfin-api";
  * needs service-specific knowledge: all render the normalized NowPlayingStream
  * (via NowPlayingStreamTile).
  *
- * Tautulli and Tracearr expose both live streams AND watch history. Jellyfin
- * and Emby expose live sessions only (no history endpoint we consume), so they
- * set `supportsHistory: false` and the Activity tab's History view omits them.
+ * Tautulli, Tracearr, and JellyStat expose both live streams AND watch history.
+ * Jellyfin and Emby expose live sessions only (no history endpoint we consume),
+ * so they set `supportsHistory: false` and the Activity tab's History view omits
+ * them. JellyStat surfaces history/stats for Jellyfin the way Tautulli does for
+ * Plex; its live sessions come from JellyStat's /proxy/getSessions passthrough.
  */
-export const MONITOR_KINDS = ["tautulli", "tracearr", "jellyfin", "emby"] as const;
+export const MONITOR_KINDS = ["tautulli", "tracearr", "jellystat", "jellyfin", "emby"] as const;
 export type MonitorKind = (typeof MONITOR_KINDS)[number];
 
 // Aggregate live-activity result for one monitor instance.
@@ -55,7 +68,10 @@ export interface MonitorHistoryItem {
   device: string;
   durationMin: number;
   watched: boolean;
-  percentComplete: number;
+  // 0–100 completion when the source reports it (Tautulli/Tracearr). JellyStat
+  // logs watch duration but not item runtime, so it can't compute completion —
+  // it leaves this unset and the History row simply omits the percentage.
+  percentComplete?: number;
   date: Date;
   poster: { uri: string; cacheKey: string } | null;
 }
@@ -245,6 +261,61 @@ function tracearrHistoryToItem(
   };
 }
 
+// --- Mappers: JellyStat ---
+
+// JellyStat's /proxy/getSessions returns the raw Jellyfin Sessions payload, so
+// these reuse the Jellyfin helpers (ticksToMs, isJellyfinTranscoding). Unlike
+// the native Jellyfin adapter we can't build a poster — JellyStat doesn't proxy
+// item images and we don't hold the Jellyfin URL/key here — so poster is null
+// (the Activity tab's stream cards don't render posters anyway).
+function jellystatSessionToStream(s: JellyfinSession, instanceId: string): NowPlayingStream {
+  const item = s.NowPlayingItem;
+  const durationMs = ticksToMs(item?.RunTimeTicks);
+  const positionMs = ticksToMs(s.PlayState?.PositionTicks);
+  const title =
+    item?.Type === "Episode" && item.SeriesName
+      ? `${item.SeriesName} — ${item.Name}`
+      : (item?.Name ?? "Unknown");
+  return {
+    key: `jellystat:${instanceId}:${s.Id}`,
+    serviceId: "jellystat",
+    instanceId,
+    title,
+    user: s.UserName,
+    device: s.Client,
+    isLocal: isLocalEndpoint(s.RemoteEndPoint),
+    state: s.PlayState?.IsPaused ? "paused" : "playing",
+    transcoding: isJellyfinTranscoding(s),
+    progress: durationMs > 0 ? positionMs / durationMs : 0,
+    poster: null,
+    mediaType: item?.Type === "Episode" ? "tv" : "movie",
+  };
+}
+
+function jellystatActivityToHistoryItem(
+  r: JellystatActivityRow,
+  instanceId: string,
+): MonitorHistoryItem {
+  const title =
+    r.SeriesName && r.EpisodeId
+      ? `${r.SeriesName} — ${r.NowPlayingItemName ?? ""}`.trim()
+      : (r.NowPlayingItemName ?? "Unknown");
+  // PlaybackDuration is seconds, serialized as a string by node-postgres.
+  const seconds = Number(r.PlaybackDuration ?? 0);
+  return {
+    key: `jellystat:${instanceId}:${r.Id}`,
+    title,
+    user: r.UserName ?? "",
+    device: r.DeviceName || r.Client || "",
+    durationMin: Math.round((Number.isFinite(seconds) ? seconds : 0) / 60),
+    // JellyStat only logs real playback sessions, so treat each as a watch
+    // event. It exposes no item runtime, so percentComplete stays unset.
+    watched: true,
+    date: new Date(r.ActivityDateInserted ?? Date.now()),
+    poster: null,
+  };
+}
+
 // --- Adapters ---
 
 const tautulliAdapter: MonitorAdapter = {
@@ -307,9 +378,26 @@ function mediaServerMonitorAdapter(kind: MediaServerId): MonitorAdapter {
   };
 }
 
+const jellystatAdapter: MonitorAdapter = {
+  kind: "jellystat",
+  supportsHistory: true,
+  async getActivity(instanceId) {
+    const sessions = await getJellystatSessions(instanceId);
+    return {
+      streams: sessions.map((s) => jellystatSessionToStream(s, instanceId)),
+      streamCount: sessions.length,
+    };
+  },
+  async getHistory(length, instanceId) {
+    const rows = await getJellystatHistory(length, 1, instanceId);
+    return rows.map((r) => jellystatActivityToHistoryItem(r, instanceId));
+  },
+};
+
 const ADAPTERS: Record<MonitorKind, MonitorAdapter> = {
   tautulli: tautulliAdapter,
   tracearr: tracearrAdapter,
+  jellystat: jellystatAdapter,
   jellyfin: mediaServerMonitorAdapter("jellyfin"),
   emby: mediaServerMonitorAdapter("emby"),
 };

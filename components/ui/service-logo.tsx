@@ -30,6 +30,7 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   prowlarr: require("@/assets/services/prowlarr.png"),
   tautulli: require("@/assets/services/tautulli.png"),
   tracearr: require("@/assets/services/tracearr.png"),
+  jellystat: require("@/assets/services/jellystat.png"),
   bazarr: require("@/assets/services/bazarr.png"),
   glances: require("@/assets/services/glances.png"),
 };
