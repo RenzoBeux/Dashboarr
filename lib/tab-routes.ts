@@ -11,6 +11,7 @@ export type PickableMetaTab = (typeof PICKABLE_META_TABS)[number];
 export const PICKABLE_SERVICE_TABS = [
   "movies",
   "tv",
+  "library",
   "requests",
   "activity",
   "indexers",
@@ -59,6 +60,11 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
 const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   movies: ["radarr"],
   tv: ["sonarr"],
+  // The Library tab combines both Radarr and Sonarr behind a Movies/TV
+  // switcher, so it's pickable when either is attached. It's an additive
+  // alternative to the dedicated Movies/TV tabs — SERVICE_TO_TAB still maps
+  // radarr→movies and sonarr→tv so existing deep-links are unchanged.
+  library: ["radarr", "sonarr"],
   requests: ["overseerr"],
   activity: ["tautulli", "tracearr"],
   indexers: ["prowlarr"],
