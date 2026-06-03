@@ -754,6 +754,7 @@ async function runConnectionProbe(
 
     case "radarr":
     case "sonarr":
+    case "lidarr":
     case "prowlarr":
     case "bazarr": {
       // *arr family: /system/status returns 200 with X-Api-Key, 401 without.

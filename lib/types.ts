@@ -603,6 +603,150 @@ export interface SonarrSearchResult {
   network: string;
 }
 
+// --- Lidarr Types ---
+// Lidarr is an *arr sibling on the v1 API. Artists map to Radarr movies /
+// Sonarr series (the monitored library entity); albums map to seasons (the
+// child entity with their own monitor + search). Artist covers use coverType
+// "poster"; album covers use "cover".
+
+export interface LidarrImage {
+  coverType:
+    | "poster"
+    | "banner"
+    | "fanart"
+    | "cover"
+    | "disc"
+    | "logo"
+    | "headshot";
+  url: string;
+  remoteUrl: string;
+}
+
+export interface LidarrArtistStatistics {
+  albumCount?: number;
+  trackFileCount: number;
+  trackCount: number;
+  totalTrackCount: number;
+  sizeOnDisk: number;
+  percentOfTracks?: number;
+}
+
+export interface LidarrAlbumStatistics {
+  trackFileCount: number;
+  trackCount: number;
+  totalTrackCount: number;
+  sizeOnDisk: number;
+  percentOfTracks?: number;
+}
+
+export interface LidarrArtist {
+  id: number;
+  artistName: string;
+  foreignArtistId: string;
+  mbId?: string;
+  sortName?: string;
+  overview?: string;
+  artistType?: string;
+  disambiguation?: string;
+  // "continuing" | "ended" — drives the corner ribbon like Sonarr's series.
+  status: string;
+  ended?: boolean;
+  monitored: boolean;
+  qualityProfileId: number;
+  metadataProfileId: number;
+  rootFolderPath?: string;
+  path?: string;
+  genres?: string[];
+  images: LidarrImage[];
+  ratings?: RatingsBundle;
+  added: string;
+  tags?: number[];
+  statistics?: LidarrArtistStatistics;
+}
+
+export interface LidarrAlbum {
+  id: number;
+  title: string;
+  disambiguation?: string;
+  overview?: string;
+  artistId: number;
+  foreignAlbumId: string;
+  monitored: boolean;
+  albumType: string;
+  secondaryTypes?: string[];
+  releaseDate?: string;
+  genres?: string[];
+  images: LidarrImage[];
+  ratings?: RatingsBundle;
+  duration?: number;
+  mediumCount?: number;
+  // Present on the wanted/missing + queue payloads (Lidarr nests the parent
+  // artist) so screens can resolve the artist without a second fetch.
+  artist?: LidarrArtist;
+  statistics?: LidarrAlbumStatistics;
+}
+
+export interface LidarrTrack {
+  id: number;
+  title: string;
+  trackNumber?: string;
+  absoluteTrackNumber?: number;
+  duration?: number;
+  mediumNumber?: number;
+  hasFile: boolean;
+  trackFileId?: number;
+  albumId: number;
+  artistId: number;
+}
+
+export interface LidarrQueueItem {
+  id: number;
+  artistId?: number;
+  albumId?: number;
+  title: string;
+  status: string;
+  trackedDownloadStatus?: string;
+  trackedDownloadState?: string;
+  statusMessages?: { title: string; messages: string[] }[];
+  size: number;
+  sizeleft: number;
+  timeleft?: string;
+  estimatedCompletionTime?: string;
+  protocol: string;
+  downloadId?: string;
+  downloadClient?: string;
+  quality: { quality: { name: string } };
+  artist?: LidarrArtist;
+  album?: LidarrAlbum;
+}
+
+export interface LidarrQueue {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: LidarrQueueItem[];
+}
+
+export interface LidarrWantedMissing {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: LidarrAlbum[];
+}
+
+export interface LidarrArtistSearchResult {
+  foreignArtistId: string;
+  artistName: string;
+  overview?: string;
+  artistType?: string;
+  disambiguation?: string;
+  status?: string;
+  images: LidarrImage[];
+  genres?: string[];
+  ratings?: RatingsBundle;
+  remotePoster?: string;
+}
+
 // --- Overseerr Types ---
 
 export type OverseerrMediaType = "movie" | "tv";

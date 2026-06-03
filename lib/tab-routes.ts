@@ -12,6 +12,7 @@ export const PICKABLE_SERVICE_TABS = [
   "movies",
   "tv",
   "library",
+  "music",
   "requests",
   "activity",
   "indexers",
@@ -41,6 +42,7 @@ export const MAX_PINNED_TABS = 3;
 const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   radarr: "movies",
   sonarr: "tv",
+  lidarr: "music",
   overseerr: "requests",
   // The stream monitors share the Activity tab — it aggregates whichever of
   // Tautulli / Tracearr / JellyStat is attached (see lib/monitor-adapter.ts).
@@ -67,6 +69,7 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   // alternative to the dedicated Movies/TV tabs — SERVICE_TO_TAB still maps
   // radarr→movies and sonarr→tv so existing deep-links are unchanged.
   library: ["radarr", "sonarr"],
+  music: ["lidarr"],
   requests: ["overseerr"],
   // Jellyfin/Emby are additive here — SERVICE_TO_TAB still points them at their
   // dedicated tabs, but the Activity tab is also pickable when they're attached.

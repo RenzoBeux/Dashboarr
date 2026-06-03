@@ -48,7 +48,7 @@ interface AddMediaSheetProps {
     overview?: string;
     images: MediaImage[];
   } | null;
-  serviceId: "radarr" | "sonarr";
+  serviceId: "radarr" | "sonarr" | "lidarr";
   sheetTitle: string;
   submitLabel: string;
   metaLine?: string;

@@ -100,11 +100,14 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v26 — added the rtorrent service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled rtorrent instance at
  *         import time, so older exports just need the version field bumped.
- *   v27 — added the jellystat service entry. Pure version stamp — defaultInstances()
+ *   v27 — added the lidarr service entry. Pure version stamp — defaultInstances()
+ *         iterates SERVICE_IDS and backfills a disabled lidarr instance at
+ *         import time, so older exports just need the version field bumped.
+ *   v28 — added the jellystat service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled jellystat instance at
  *         import time, so older exports just need the version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 27;
+export const CURRENT_CONFIG_VERSION = 28;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -565,10 +568,15 @@ const migrations: Record<number, (payload: any) => any> = {
   // get the disabled default automatically — nothing to transform here.
   25: (payload) => ({ ...payload, version: 26 }),
 
-  // v26 → v27: jellystat added to SERVICE_IDS. importConfig merges over
-  // defaultInstances() afterward, so older payloads that lack a jellystat entry
+  // v26 → v27: lidarr added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack a lidarr entry
   // get the disabled default automatically — nothing to transform here.
   26: (payload) => ({ ...payload, version: 27 }),
+
+  // v27 → v28: jellystat added to SERVICE_IDS. importConfig merges over
+  // defaultInstances() afterward, so older payloads that lack a jellystat entry
+  // get the disabled default automatically — nothing to transform here.
+  27: (payload) => ({ ...payload, version: 28 }),
 };
 
 /**
