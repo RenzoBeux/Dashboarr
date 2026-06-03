@@ -42,23 +42,33 @@ interface MonitorSource {
 }
 
 // Resolve every enabled instance across the stream monitors (Tautulli +
-// Tracearr) and the media servers with live sessions (Jellyfin + Emby) into a
-// flat source list. The per-kind hook calls keep a stable order.
+// Tracearr + JellyStat) and the media servers with live sessions (Jellyfin +
+// Emby) into a flat source list. The per-kind hook calls keep a stable order.
 function useMonitorSources(): MonitorSource[] {
   const tautulli = useEnabledInstances("tautulli");
   const tracearr = useEnabledInstances("tracearr");
+  const jellystat = useEnabledInstances("jellystat");
   const jellyfin = useEnabledInstances("jellyfin");
   const emby = useEnabledInstances("emby");
   return useMemo<MonitorSource[]>(
     () => [
       ...tautulli.map((i) => ({ kind: "tautulli" as MonitorKind, instanceId: i.id })),
       ...tracearr.map((i) => ({ kind: "tracearr" as MonitorKind, instanceId: i.id })),
+      ...jellystat.map((i) => ({ kind: "jellystat" as MonitorKind, instanceId: i.id })),
       ...jellyfin.map((i) => ({ kind: "jellyfin" as MonitorKind, instanceId: i.id })),
       ...emby.map((i) => ({ kind: "emby" as MonitorKind, instanceId: i.id })),
     ],
-    [tautulli, tracearr, jellyfin, emby],
+    [tautulli, tracearr, jellystat, jellyfin, emby],
   );
 }
+
+// Stream monitors with a dedicated stats screen (charts + most active users).
+// Tautulli covers Plex; JellyStat covers Jellyfin. A button is shown per
+// configured source — the logo disambiguates when both are present.
+const STATS_SOURCES: { kind: MonitorKind; route: "/tautulli-stats" | "/jellystat-stats"; label: string }[] = [
+  { kind: "tautulli", route: "/tautulli-stats", label: "Tautulli stats" },
+  { kind: "jellystat", route: "/jellystat-stats", label: "JellyStat stats" },
+];
 
 export default function ActivityScreen() {
   const [tab, setTab] = useState<Tab>("streams");
@@ -67,9 +77,11 @@ export default function ActivityScreen() {
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["monitor"]]);
 
-  // Charts are Tautulli-only, so the Stats button only shows when a Tautulli
-  // instance is configured.
-  const hasTautulli = sources.some((s) => s.kind === "tautulli");
+  // Which stats screens to surface — one button per configured stats source.
+  const statsSources = useMemo(
+    () => STATS_SOURCES.filter((ss) => sources.some((s) => s.kind === ss.kind)),
+    [sources],
+  );
 
   // Kind-aggregated online: green when any enabled monitor kind is reachable.
   const enabledKinds = new Set(sources.map((s) => s.kind));
@@ -81,8 +93,8 @@ export default function ActivityScreen() {
   // Show the source logo on each row only when more than one source contributes.
   const showSource = enabledKinds.size > 1;
 
-  // Only Tautulli/Tracearr expose history; Jellyfin/Emby are live-only. Hide the
-  // History tab entirely when no configured source supports it.
+  // Tautulli/Tracearr/JellyStat expose history; Jellyfin/Emby are live-only.
+  // Hide the History tab entirely when no configured source supports it.
   const historySources = useMemo(
     () => sources.filter((s) => getMonitorAdapter(s.kind).supportsHistory),
     [sources],
@@ -95,21 +107,30 @@ export default function ActivityScreen() {
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <View className="flex-row items-center justify-between">
         <ServiceHeader name="Activity" online={online} />
-        {hasTautulli && (
-          <Pressable
-            onPress={() => router.push("/tautulli-stats")}
-            className="p-2 active:opacity-70"
-            accessibilityLabel="Tautulli stats"
-          >
-            <Icon icon={ChartColumn} size={ICON.LG} color="#a1a1aa" />
-          </Pressable>
+        {statsSources.length > 0 && (
+          <View className="flex-row items-center gap-1">
+            {statsSources.map((ss) => (
+              <Pressable
+                key={ss.kind}
+                onPress={() => router.push(ss.route)}
+                className="p-2 active:opacity-70"
+                accessibilityLabel={ss.label}
+              >
+                {statsSources.length > 1 ? (
+                  <ServiceLogo id={ss.kind} size={ICON.LG} />
+                ) : (
+                  <Icon icon={ChartColumn} size={ICON.LG} color="#a1a1aa" />
+                )}
+              </Pressable>
+            ))}
+          </View>
         )}
       </View>
 
       {sources.length === 0 ? (
         <EmptyState
           title="No monitor configured"
-          message="Enable Tautulli, Tracearr, Jellyfin, or Emby in Settings"
+          message="Enable Tautulli, Tracearr, JellyStat, Jellyfin, or Emby in Settings"
         />
       ) : (
         <>
@@ -355,7 +376,9 @@ function HistoryRow({ item }: { item: MonitorHistoryItem }) {
         </Text>
         <Text className="text-zinc-500 text-xs">{meta}</Text>
       </View>
-      <Text className="text-zinc-500 text-xs">{item.percentComplete}%</Text>
+      {item.percentComplete != null && (
+        <Text className="text-zinc-500 text-xs">{item.percentComplete}%</Text>
+      )}
     </Card>
   );
 }

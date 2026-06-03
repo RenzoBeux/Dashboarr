@@ -1054,6 +1054,72 @@ export interface TautulliHomeStat {
   rows: TautulliHomeStatRow[];
 }
 
+// --- JellyStat Types ---
+// JellyStat is a Jellyfin statistics server (analogous to Tautulli for Plex).
+// Only the fields the app consumes are typed. JellyStat's backend is Postgres
+// via node-postgres, which serializes `bigint` columns (Count, Plays,
+// PlaybackDuration) as STRINGS — hence the `number | string` unions; callers
+// coerce with Number(). Field names match the DB columns verbatim. Live now-
+// playing comes from /proxy/getSessions, which passes the raw Jellyfin Sessions
+// payload through unchanged, so those reuse JellyfinSession.
+
+// One row from GET /stats/getPlaybackActivity (a jf_playback_activity row).
+export interface JellystatActivityRow {
+  Id: string;
+  UserName?: string;
+  NowPlayingItemName?: string;
+  SeriesName?: string;
+  SeasonId?: string;
+  EpisodeId?: string;
+  Client?: string;
+  DeviceName?: string;
+  RemoteEndPoint?: string;
+  PlayMethod?: string;
+  // Seconds of playback recorded for the session.
+  PlaybackDuration?: number | string;
+  // ISO timestamp the activity row was inserted.
+  ActivityDateInserted?: string;
+}
+
+// Pagination envelope shared by JellyStat's paginated endpoints.
+export interface JellystatPaginated<T> {
+  current_page: number;
+  pages: number;
+  size: number;
+  sort: string;
+  desc: boolean;
+  results: T[];
+}
+
+// One per-library bucket inside a getViews* stats row ({ count, duration }).
+export interface JellystatViewBucket {
+  count: number | string;
+  duration?: number | string;
+}
+
+// One bucket row from getViewsOverTime / getViewsByDays / getViewsByHour. `Key`
+// is the bucket label — a formatted date string ("Jun 03, 2026"), a full day
+// name ("Monday"), or a numeric hour 0–23 (getViewsByHour returns it as a
+// number, not a string). The remaining keys are library names mapping to their
+// per-bucket counts. The index type spans both so callers coerce with
+// String(Key) / Number(bucket.count).
+export interface JellystatViewStat {
+  Key: string | number;
+  [bucket: string]: string | number | JellystatViewBucket;
+}
+
+export interface JellystatViewsResponse {
+  libraries: { Id: string; Name: string }[];
+  stats: JellystatViewStat[];
+}
+
+// One row from POST /stats/getMostActiveUsers.
+export interface JellystatActiveUser {
+  Plays: number | string;
+  UserId: string;
+  Name: string;
+}
+
 // --- Tracearr Types ---
 // Read-only public API (/api/v1/public). Only the fields the app consumes are
 // typed; see the upstream OpenAPI (routes/public.openapi.ts) for the full shape.

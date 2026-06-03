@@ -9,6 +9,7 @@ export const SERVICE_IDS = [
   "overseerr",
   "tautulli",
   "tracearr",
+  "jellystat",
   "prowlarr",
   "plex",
   "jellyfin",
@@ -64,6 +65,17 @@ export const SERVICE_DEFAULTS: Record<
     defaultPort: 3000,
     apiBasePath: "/api/v1/public",
     pingPath: "/health",
+  },
+  // JellyStat is a Jellyfin statistics server (analogous to Tautulli for Plex).
+  // Its REST API lives at the server root (/stats, /api, /proxy) — no version
+  // prefix — and authenticates with an `x-api-token` header (see
+  // services/jellystat-api.ts). Default Docker port is 3000. getLibraryOverview
+  // is a cheap authenticated GET used as the ping/probe endpoint.
+  jellystat: {
+    name: "Jellystat",
+    defaultPort: 3000,
+    apiBasePath: "",
+    pingPath: "/stats/getLibraryOverview",
   },
   prowlarr: { name: "Prowlarr", defaultPort: 9696, apiBasePath: "/api/v1", pingPath: "/system/status" },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
