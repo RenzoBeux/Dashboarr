@@ -1,6 +1,9 @@
 import {
+  formatBitrateKbps,
   mediaServerSessionToStream,
   type NowPlayingStream,
+  type StreamDetails,
+  type StreamTrackDetail,
 } from "@/lib/now-playing-stream";
 import type { MediaServerId } from "@/lib/media-server-config";
 import type {
@@ -68,6 +71,95 @@ export interface MonitorAdapter {
 
 // --- Mappers: Tautulli ---
 
+// Tautulli per-track decision → display label + whether it's an actual
+// transcode/burn (drives badge color). Returns null for tracks not in play.
+function decisionLabel(d: string): { text: string; transcoding: boolean } | null {
+  switch (d) {
+    case "transcode":
+      return { text: "Transcode", transcoding: true };
+    case "copy":
+      return { text: "Direct Stream", transcoding: false };
+    case "burn":
+      return { text: "Burn", transcoding: true };
+    case "direct play":
+      return { text: "Direct Play", transcoding: false };
+    default:
+      return null;
+  }
+}
+
+function toKbps(v: string | undefined): number | undefined {
+  if (!v) return undefined;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) || n <= 0 ? undefined : n;
+}
+
+// "H264 1080p → H264 720p" when transcoding to a different target, else the
+// single source/stream descriptor.
+function srcDstSummary(src: string, dst: string, transcoding: boolean): string {
+  if (transcoding && dst && dst !== src) return `${src} → ${dst}`;
+  return dst || src || "—";
+}
+
+function tautulliSessionToDetails(s: TautulliSession): StreamDetails | undefined {
+  const tracks: StreamTrackDetail[] = [];
+
+  const video = decisionLabel(s.video_decision);
+  if (video) {
+    const src = [s.video_codec?.toUpperCase(), s.video_full_resolution].filter(Boolean).join(" ");
+    const dst = [s.stream_video_codec?.toUpperCase(), s.stream_video_full_resolution]
+      .filter(Boolean)
+      .join(" ");
+    tracks.push({
+      label: "Video",
+      decision: video.text,
+      transcoding: video.transcoding,
+      summary: srcDstSummary(src, dst, video.transcoding),
+      bitrateLabel: formatBitrateKbps(toKbps(s.stream_video_bitrate) ?? toKbps(s.video_bitrate)),
+    });
+  }
+
+  const audio = decisionLabel(s.audio_decision);
+  if (audio) {
+    const src = [s.audio_codec?.toUpperCase(), s.audio_channel_layout].filter(Boolean).join(" ");
+    const dst = [s.stream_audio_codec?.toUpperCase(), s.stream_audio_channel_layout]
+      .filter(Boolean)
+      .join(" ");
+    tracks.push({
+      label: "Audio",
+      decision: audio.text,
+      transcoding: audio.transcoding,
+      summary: srcDstSummary(src, dst, audio.transcoding),
+      bitrateLabel: formatBitrateKbps(toKbps(s.stream_audio_bitrate) ?? toKbps(s.audio_bitrate)),
+    });
+  }
+
+  const subtitle = decisionLabel(s.subtitle_decision);
+  if (subtitle) {
+    tracks.push({
+      label: "Subtitle",
+      decision: subtitle.text,
+      transcoding: subtitle.transcoding,
+      summary:
+        [s.subtitle_codec?.toUpperCase(), s.subtitle_language].filter(Boolean).join(" ") || "—",
+    });
+  }
+
+  if (tracks.length === 0) return undefined;
+
+  const container =
+    s.container && s.stream_container && s.container !== s.stream_container
+      ? `${s.container.toUpperCase()} → ${s.stream_container.toUpperCase()}`
+      : s.stream_container?.toUpperCase() || s.container?.toUpperCase() || undefined;
+
+  return {
+    tracks,
+    container,
+    totalBitrateLabel: formatBitrateKbps(toKbps(s.stream_bitrate) ?? toKbps(s.bitrate)),
+    qualityProfile: s.quality_profile || undefined,
+  };
+}
+
 function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPlayingStream {
   const pct = parseInt(s.progress_percent, 10);
   return {
@@ -86,6 +178,7 @@ function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPla
     poster: getTautulliSessionPoster(s, 220, 330, instanceId),
     mediaType: s.media_type === "episode" ? "tv" : "movie",
     resolution: s.video_resolution || null,
+    details: tautulliSessionToDetails(s),
   };
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { View, Text, ScrollView } from "react-native";
-import { Play, Pause, Loader } from "lucide-react-native";
+import { Play, Pause, Loader, ChevronDown, ChevronUp } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -17,13 +17,14 @@ import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import { lightHaptic } from "@/lib/haptics";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   getMonitorAdapter,
   type MonitorHistoryItem,
   type MonitorKind,
 } from "@/lib/monitor-adapter";
-import type { NowPlayingStream } from "@/lib/now-playing-stream";
+import type { NowPlayingStream, StreamDetails } from "@/lib/now-playing-stream";
 
 type Tab = "streams" | "history";
 
@@ -188,27 +189,47 @@ function StreamCard({
   stream: NowPlayingStream;
   showSource: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const StateIcon =
     stream.state === "paused" ? Pause : stream.state === "buffering" ? Loader : Play;
   const stateColor = stream.state === "playing" ? "#22c55e" : "#f59e0b";
 
   const meta = [stream.user, stream.device].filter(Boolean);
+  const details = stream.details;
+  // Only Tautulli supplies the per-track breakdown today, so only those cards
+  // are tappable to expand.
+  const expandable = !!details && details.tracks.length > 0;
 
   return (
-    <Card>
+    <Card
+      onPress={
+        expandable
+          ? () => {
+              lightHaptic();
+              setExpanded((e) => !e);
+            }
+          : undefined
+      }
+    >
       <View className="flex-row items-center gap-2 mb-2">
         <Icon icon={StateIcon} size={16} color={stateColor} />
         <Text className="text-zinc-200 text-sm font-medium flex-1" numberOfLines={1}>
           {stream.title}
         </Text>
         {showSource && <ServiceLogo id={stream.serviceId} size={16} />}
+        {expandable && (
+          <Icon icon={expanded ? ChevronUp : ChevronDown} size={16} color="#71717a" />
+        )}
       </View>
 
       <ProgressBar progress={stream.progress} showLabel className="mb-2" />
 
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row items-center gap-2 flex-wrap">
         <Badge label={stream.transcoding ? "Transcode" : "Direct Play"} variant={stream.transcoding ? "warning" : "success"} />
         {stream.resolution && <Badge label={stream.resolution} variant="default" />}
+        {details?.totalBitrateLabel && (
+          <Badge label={details.totalBitrateLabel} variant="default" />
+        )}
       </View>
 
       {meta.length > 0 && (
@@ -221,7 +242,41 @@ function StreamCard({
           ))}
         </View>
       )}
+
+      {expandable && expanded && <StreamDetailSection details={details} />}
     </Card>
+  );
+}
+
+function StreamDetailSection({ details }: { details: StreamDetails }) {
+  return (
+    <View className="mt-3 pt-3 border-t border-border/50 gap-2">
+      {details.tracks.map((track) => (
+        <View key={track.label} className="flex-row items-center gap-2">
+          <Text className="text-zinc-500 text-xs w-16">{track.label}</Text>
+          <Badge
+            label={track.decision}
+            variant={track.transcoding ? "warning" : "success"}
+          />
+          <Text className="text-zinc-400 text-xs flex-1" numberOfLines={1}>
+            {track.summary}
+          </Text>
+          {track.bitrateLabel && (
+            <Text className="text-zinc-500 text-xs">{track.bitrateLabel}</Text>
+          )}
+        </View>
+      ))}
+      {(details.container || details.qualityProfile) && (
+        <Text className="text-zinc-500 text-xs mt-1">
+          {[
+            details.container ? `Container: ${details.container}` : null,
+            details.qualityProfile ? `Quality: ${details.qualityProfile}` : null,
+          ]
+            .filter(Boolean)
+            .join("  ·  ")}
+        </Text>
+      )}
+    </View>
   );
 }
 
