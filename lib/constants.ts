@@ -166,6 +166,10 @@ export const STORAGE_KEYS = {
   // first dismissal; the Settings → About → "Show workspace tour" row
   // resets it to false so users can replay.
   workspaceIntroSeen: "app.onboarding.workspaceIntroSeen",
+  // One-shot flag for the Library tab's "swipe between Movies/TV" coachmark.
+  // Set true once the hint has been dismissed (swipe, tap, or timeout) so it
+  // never nags again.
+  librarySwipeHintSeen: "app.onboarding.librarySwipeHintSeen",
   // Sticky hash→poster mapping for the Downloads widget. The *arr queue only
   // lists in-flight downloads, so without persistence the cover would vanish
   // the instant Radarr/Sonarr imports the file (#88). Populated additively

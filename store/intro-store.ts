@@ -12,12 +12,15 @@ interface IntroState {
   hydrated: boolean;
   // True after the user dismisses (Skip or Got-it) the carousel at least once.
   workspaceIntroSeen: boolean;
+  // True once the Library tab's swipe coachmark has been dismissed.
+  librarySwipeHintSeen: boolean;
   // Bumped by the "Show workspace tour" Settings row to force a re-mount
   // even when the seen flag was just set in the same session.
   showRequestVersion: number;
 
   hydrate: () => void;
   markWorkspaceIntroSeen: () => void;
+  markLibrarySwipeHintSeen: () => void;
   // Re-trigger from Settings → About → "Show workspace tour".
   replayWorkspaceIntro: () => void;
 }
@@ -25,18 +28,25 @@ interface IntroState {
 export const useIntroStore = create<IntroState>((set) => ({
   hydrated: false,
   workspaceIntroSeen: false,
+  librarySwipeHintSeen: false,
   showRequestVersion: 0,
 
   hydrate: () => {
     set({
       hydrated: true,
       workspaceIntroSeen: getBoolean(STORAGE_KEYS.workspaceIntroSeen),
+      librarySwipeHintSeen: getBoolean(STORAGE_KEYS.librarySwipeHintSeen),
     });
   },
 
   markWorkspaceIntroSeen: () => {
     setBoolean(STORAGE_KEYS.workspaceIntroSeen, true);
     set({ workspaceIntroSeen: true });
+  },
+
+  markLibrarySwipeHintSeen: () => {
+    setBoolean(STORAGE_KEYS.librarySwipeHintSeen, true);
+    set({ librarySwipeHintSeen: true });
   },
 
   replayWorkspaceIntro: () => {

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { memo, useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -123,7 +123,7 @@ function compareSeries(
 // the service header (used by the standalone tab); `embedded` drops the screen
 // chrome (SafeAreaView + demo banner) so the Library pager can own a single
 // fixed safe-area + segmented control and just page this content.
-export function TvView({
+export const TvView = memo(function TvView({
   topSlot,
   embedded = false,
 }: {
@@ -445,7 +445,7 @@ export function TvView({
   ) : (
     <ScreenWrapper scrollable={false}>{body}</ScreenWrapper>
   );
-}
+});
 
 function SeriesLibrary({
   monitorFilter,

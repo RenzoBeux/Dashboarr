@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { memo, useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -111,7 +111,7 @@ function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): num
 // renders above the service header (used by the standalone tab); `embedded`
 // drops the screen chrome (SafeAreaView + demo banner) so the Library pager can
 // own a single fixed safe-area + segmented control and just page this content.
-export function MoviesView({
+export const MoviesView = memo(function MoviesView({
   topSlot,
   embedded = false,
 }: {
@@ -408,7 +408,7 @@ export function MoviesView({
   ) : (
     <ScreenWrapper scrollable={false}>{body}</ScreenWrapper>
   );
-}
+});
 
 function MovieLibrary({
   monitorFilter,
