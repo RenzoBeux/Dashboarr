@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
-import { View, Text, ScrollView } from "react-native";
-import { Play, Pause, Loader } from "lucide-react-native";
+import { View, Text, ScrollView, Pressable } from "react-native";
+import { useRouter } from "expo-router";
+import {
+  Play,
+  Pause,
+  Loader,
+  ChevronDown,
+  ChevronUp,
+  ChartColumn,
+} from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -17,13 +25,14 @@ import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
-import { POLLING_INTERVALS } from "@/lib/constants";
+import { lightHaptic } from "@/lib/haptics";
+import { POLLING_INTERVALS, ICON } from "@/lib/constants";
 import {
   getMonitorAdapter,
   type MonitorHistoryItem,
   type MonitorKind,
 } from "@/lib/monitor-adapter";
-import type { NowPlayingStream } from "@/lib/now-playing-stream";
+import type { NowPlayingStream, StreamDetails } from "@/lib/now-playing-stream";
 
 type Tab = "streams" | "history";
 
@@ -32,26 +41,35 @@ interface MonitorSource {
   instanceId: string;
 }
 
-// Resolve every enabled instance across both stream monitors (Tautulli +
-// Tracearr) into a flat source list. MONITOR_KINDS has fixed length, so the
-// per-kind hook calls keep a stable order.
+// Resolve every enabled instance across the stream monitors (Tautulli +
+// Tracearr) and the media servers with live sessions (Jellyfin + Emby) into a
+// flat source list. The per-kind hook calls keep a stable order.
 function useMonitorSources(): MonitorSource[] {
   const tautulli = useEnabledInstances("tautulli");
   const tracearr = useEnabledInstances("tracearr");
+  const jellyfin = useEnabledInstances("jellyfin");
+  const emby = useEnabledInstances("emby");
   return useMemo<MonitorSource[]>(
     () => [
       ...tautulli.map((i) => ({ kind: "tautulli" as MonitorKind, instanceId: i.id })),
       ...tracearr.map((i) => ({ kind: "tracearr" as MonitorKind, instanceId: i.id })),
+      ...jellyfin.map((i) => ({ kind: "jellyfin" as MonitorKind, instanceId: i.id })),
+      ...emby.map((i) => ({ kind: "emby" as MonitorKind, instanceId: i.id })),
     ],
-    [tautulli, tracearr],
+    [tautulli, tracearr, jellyfin, emby],
   );
 }
 
 export default function ActivityScreen() {
   const [tab, setTab] = useState<Tab>("streams");
   const sources = useMonitorSources();
+  const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["monitor"]]);
+
+  // Charts are Tautulli-only, so the Stats button only shows when a Tautulli
+  // instance is configured.
+  const hasTautulli = sources.some((s) => s.kind === "tautulli");
 
   // Kind-aggregated online: green when any enabled monitor kind is reachable.
   const enabledKinds = new Set(sources.map((s) => s.kind));
@@ -60,35 +78,63 @@ export default function ActivityScreen() {
       ? undefined
       : [...enabledKinds].some((k) => healthData?.find((s) => s.id === k)?.online);
 
-  // Show the source logo on each row only when both monitors contribute streams.
+  // Show the source logo on each row only when more than one source contributes.
   const showSource = enabledKinds.size > 1;
+
+  // Only Tautulli/Tracearr expose history; Jellyfin/Emby are live-only. Hide the
+  // History tab entirely when no configured source supports it.
+  const historySources = useMemo(
+    () => sources.filter((s) => getMonitorAdapter(s.kind).supportsHistory),
+    [sources],
+  );
+  const tabs: Tab[] = historySources.length > 0 ? ["streams", "history"] : ["streams"];
+  // Fall back to Streams if History became unavailable (e.g. Tautulli removed).
+  const activeTab: Tab = tabs.includes(tab) ? tab : "streams";
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Activity" online={online} />
+      <View className="flex-row items-center justify-between">
+        <ServiceHeader name="Activity" online={online} />
+        {hasTautulli && (
+          <Pressable
+            onPress={() => router.push("/tautulli-stats")}
+            className="p-2 active:opacity-70"
+            accessibilityLabel="Tautulli stats"
+          >
+            <Icon icon={ChartColumn} size={ICON.LG} color="#a1a1aa" />
+          </Pressable>
+        )}
+      </View>
 
       {sources.length === 0 ? (
-        <EmptyState title="No monitor configured" message="Enable Tautulli or Tracearr in Settings" />
+        <EmptyState
+          title="No monitor configured"
+          message="Enable Tautulli, Tracearr, Jellyfin, or Emby in Settings"
+        />
       ) : (
         <>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2"
-            className="mb-4"
-          >
-            {(["streams", "history"] as Tab[]).map((t) => (
-              <FilterChip
-                key={t}
-                label={t.charAt(0).toUpperCase() + t.slice(1)}
-                selected={tab === t}
-                onPress={() => setTab(t)}
-              />
-            ))}
-          </ScrollView>
+          {tabs.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-2"
+              className="mb-4"
+            >
+              {tabs.map((t) => (
+                <FilterChip
+                  key={t}
+                  label={t.charAt(0).toUpperCase() + t.slice(1)}
+                  selected={activeTab === t}
+                  onPress={() => setTab(t)}
+                />
+              ))}
+            </ScrollView>
+          )}
 
-          {tab === "streams" && <ActiveStreams sources={sources} showSource={showSource} />}
-          {tab === "history" && <HistoryList sources={sources} />}
+          {activeTab === "streams" && (
+            <ActiveStreams sources={sources} showSource={showSource} />
+          )}
+          {activeTab === "history" && <HistoryList sources={historySources} />}
         </>
       )}
     </ScreenWrapper>
@@ -167,27 +213,47 @@ function StreamCard({
   stream: NowPlayingStream;
   showSource: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const StateIcon =
     stream.state === "paused" ? Pause : stream.state === "buffering" ? Loader : Play;
   const stateColor = stream.state === "playing" ? "#22c55e" : "#f59e0b";
 
   const meta = [stream.user, stream.device].filter(Boolean);
+  const details = stream.details;
+  // Only Tautulli supplies the per-track breakdown today, so only those cards
+  // are tappable to expand.
+  const expandable = !!details && details.tracks.length > 0;
 
   return (
-    <Card>
+    <Card
+      onPress={
+        expandable
+          ? () => {
+              lightHaptic();
+              setExpanded((e) => !e);
+            }
+          : undefined
+      }
+    >
       <View className="flex-row items-center gap-2 mb-2">
         <Icon icon={StateIcon} size={16} color={stateColor} />
         <Text className="text-zinc-200 text-sm font-medium flex-1" numberOfLines={1}>
           {stream.title}
         </Text>
         {showSource && <ServiceLogo id={stream.serviceId} size={16} />}
+        {expandable && (
+          <Icon icon={expanded ? ChevronUp : ChevronDown} size={16} color="#71717a" />
+        )}
       </View>
 
       <ProgressBar progress={stream.progress} showLabel className="mb-2" />
 
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row items-center gap-2 flex-wrap">
         <Badge label={stream.transcoding ? "Transcode" : "Direct Play"} variant={stream.transcoding ? "warning" : "success"} />
         {stream.resolution && <Badge label={stream.resolution} variant="default" />}
+        {details?.totalBitrateLabel && (
+          <Badge label={details.totalBitrateLabel} variant="default" />
+        )}
       </View>
 
       {meta.length > 0 && (
@@ -200,7 +266,41 @@ function StreamCard({
           ))}
         </View>
       )}
+
+      {expandable && expanded && <StreamDetailSection details={details} />}
     </Card>
+  );
+}
+
+function StreamDetailSection({ details }: { details: StreamDetails }) {
+  return (
+    <View className="mt-3 pt-3 border-t border-border/50 gap-2">
+      {details.tracks.map((track) => (
+        <View key={track.label} className="flex-row items-center gap-2">
+          <Text className="text-zinc-500 text-xs w-16">{track.label}</Text>
+          <Badge
+            label={track.decision}
+            variant={track.transcoding ? "warning" : "success"}
+          />
+          <Text className="text-zinc-400 text-xs flex-1" numberOfLines={1}>
+            {track.summary}
+          </Text>
+          {track.bitrateLabel && (
+            <Text className="text-zinc-500 text-xs">{track.bitrateLabel}</Text>
+          )}
+        </View>
+      ))}
+      {(details.container || details.qualityProfile) && (
+        <Text className="text-zinc-500 text-xs mt-1">
+          {[
+            details.container ? `Container: ${details.container}` : null,
+            details.qualityProfile ? `Quality: ${details.qualityProfile}` : null,
+          ]
+            .filter(Boolean)
+            .join("  ·  ")}
+        </Text>
+      )}
+    </View>
   );
 }
 

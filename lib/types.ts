@@ -806,6 +806,32 @@ export interface TautulliSession {
   duration: string;
   view_offset: string;
   ip_address: string;
+  // --- Per-track transcode detail (get_activity returns all of these). ---
+  // Decisions are "direct play" | "copy" (direct stream) | "transcode";
+  // subtitle may also be "burn". Empty string when not applicable.
+  video_decision: string;
+  audio_decision: string;
+  subtitle_decision: string;
+  // Source codecs/resolution/channels vs. what's actually being streamed.
+  video_codec: string;
+  stream_video_codec: string;
+  video_full_resolution: string;
+  stream_video_full_resolution: string;
+  audio_codec: string;
+  stream_audio_codec: string;
+  audio_channel_layout: string;
+  stream_audio_channel_layout: string;
+  subtitle_codec: string;
+  subtitle_language: string;
+  container: string;
+  stream_container: string;
+  // Bitrates are kbps as strings ("0"/"" when unknown).
+  bitrate: string;
+  stream_bitrate: string;
+  video_bitrate: string;
+  stream_video_bitrate: string;
+  audio_bitrate: string;
+  stream_audio_bitrate: string;
 }
 
 export interface TautulliHistoryItem {
@@ -856,6 +882,32 @@ export interface TautulliLibraryStats {
       child_count?: string;
     }[];
   };
+}
+
+// Shared shape returned by Tautulli's get_plays_by_* chart endpoints: one
+// `categories` axis (dates / weekdays / hours) and one series per media type.
+export interface TautulliPlaysChart {
+  categories: string[];
+  series: { name: string; data: number[] }[];
+}
+
+// One row inside a get_home_stats group (e.g. a top user or top item).
+export interface TautulliHomeStatRow {
+  friendly_name?: string;
+  user?: string;
+  title?: string;
+  total_plays?: number;
+  total_duration?: number;
+  user_id?: number;
+  thumb?: string;
+  user_thumb?: string;
+}
+
+// One get_home_stats group (top_users, top_movies, …) with its rows.
+export interface TautulliHomeStat {
+  stat_id: string;
+  stat_title?: string;
+  rows: TautulliHomeStatRow[];
 }
 
 // --- Tracearr Types ---

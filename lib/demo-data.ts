@@ -690,6 +690,27 @@ const DEMO_TAUTULLI_ACTIVITY = {
       duration: "9960000",
       view_offset: "4681200",
       ip_address: "192.168.1.45",
+      video_decision: "direct play",
+      audio_decision: "direct play",
+      subtitle_decision: "",
+      video_codec: "hevc",
+      stream_video_codec: "hevc",
+      video_full_resolution: "1080p",
+      stream_video_full_resolution: "1080p",
+      audio_codec: "eac3",
+      stream_audio_codec: "eac3",
+      audio_channel_layout: "5.1",
+      stream_audio_channel_layout: "5.1",
+      subtitle_codec: "",
+      subtitle_language: "",
+      container: "mkv",
+      stream_container: "mkv",
+      bitrate: "8000",
+      stream_bitrate: "8000",
+      video_bitrate: "7232",
+      stream_video_bitrate: "7232",
+      audio_bitrate: "768",
+      stream_audio_bitrate: "768",
     },
     {
       session_key: "def456",
@@ -717,6 +738,27 @@ const DEMO_TAUTULLI_ACTIVITY = {
       duration: "3720000",
       view_offset: "855600",
       ip_address: "74.125.100.1",
+      video_decision: "transcode",
+      audio_decision: "transcode",
+      subtitle_decision: "burn",
+      video_codec: "hevc",
+      stream_video_codec: "h264",
+      video_full_resolution: "1080p",
+      stream_video_full_resolution: "720p",
+      audio_codec: "truehd",
+      stream_audio_codec: "aac",
+      audio_channel_layout: "7.1",
+      stream_audio_channel_layout: "2.0",
+      subtitle_codec: "pgs",
+      subtitle_language: "English",
+      container: "mkv",
+      stream_container: "mp4",
+      bitrate: "9000",
+      stream_bitrate: "6000",
+      video_bitrate: "9000",
+      stream_video_bitrate: "5232",
+      audio_bitrate: "1509",
+      stream_audio_bitrate: "256",
     },
   ],
 };
@@ -1347,12 +1389,67 @@ export function getDemoResponse(
   }
 }
 
+// 30-day play history with a deterministic weekend-heavy pattern (no RNG so the
+// demo charts look identical every launch). time_range is ignored in demo.
+const DEMO_TAUTULLI_PLAYS_BY_DATE = (() => {
+  const categories: string[] = [];
+  const tv: number[] = [];
+  const movies: number[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    categories.push(d.toISOString().slice(0, 10));
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    tv.push((weekend ? 6 : 2) + (i % 3));
+    movies.push((weekend ? 4 : 1) + (i % 2));
+  }
+  return { categories, series: [{ name: "TV", data: tv }, { name: "Movies", data: movies }] };
+})();
+
+const DEMO_TAUTULLI_PLAYS_BY_DOW = {
+  categories: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+  series: [
+    { name: "TV", data: [9, 7, 8, 10, 13, 22, 19] },
+    { name: "Movies", data: [3, 2, 3, 4, 6, 14, 12] },
+  ],
+};
+
+const DEMO_TAUTULLI_PLAYS_BY_HOD = {
+  categories: Array.from({ length: 24 }, (_, h) => String(h)),
+  series: [
+    {
+      name: "TV",
+      data: [1, 0, 0, 0, 0, 0, 1, 3, 4, 3, 2, 3, 5, 4, 3, 4, 6, 9, 14, 18, 22, 17, 9, 4],
+    },
+    {
+      name: "Movies",
+      data: [0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 1, 2, 3, 2, 2, 3, 4, 6, 10, 13, 16, 12, 6, 2],
+    },
+  ],
+};
+
+const DEMO_TAUTULLI_HOME_STATS = [
+  {
+    stat_id: "top_users",
+    stat_title: "Most Active Users",
+    rows: [
+      { friendly_name: "john_smith", user: "john_smith", total_plays: 142, total_duration: 512000 },
+      { friendly_name: "sarah_c", user: "sarah_c", total_plays: 98, total_duration: 333000 },
+      { friendly_name: "mike_d", user: "mike_d", total_plays: 51, total_duration: 180400 },
+      { friendly_name: "emma_w", user: "emma_w", total_plays: 23, total_duration: 88000 },
+    ],
+  },
+];
+
 export function getDemoTautulliResponse(cmd: string): unknown {
   switch (cmd) {
     case "get_activity": return DEMO_TAUTULLI_ACTIVITY;
     case "get_history": return DEMO_TAUTULLI_HISTORY;
     case "get_libraries_table": return DEMO_TAUTULLI_LIBRARIES;
     case "get_server_identity": return DEMO_TAUTULLI_SERVER_IDENTITY;
+    case "get_plays_by_date": return DEMO_TAUTULLI_PLAYS_BY_DATE;
+    case "get_plays_by_dayofweek": return DEMO_TAUTULLI_PLAYS_BY_DOW;
+    case "get_plays_by_hourofday": return DEMO_TAUTULLI_PLAYS_BY_HOD;
+    case "get_home_stats": return DEMO_TAUTULLI_HOME_STATS;
     default: return undefined;
   }
 }

@@ -39,6 +39,39 @@ export interface NowPlayingStream {
   // it. Used by the Activity tab's stream cards; left undefined by media-server
   // mappers that don't surface it.
   resolution?: string | null;
+  // Rich per-track transcode breakdown, when the source exposes it (Tautulli).
+  // The Activity tab makes a card expandable to show this; sources that don't
+  // provide it leave it undefined.
+  details?: StreamDetails;
+}
+
+// One decoded track row (video / audio / subtitle) for the per-stream detail.
+export interface StreamTrackDetail {
+  label: "Video" | "Audio" | "Subtitle";
+  // Display decision: "Direct Play" | "Direct Stream" | "Transcode" | "Burn".
+  decision: string;
+  // Drives the badge color — true only for an actual transcode/burn.
+  transcoding: boolean;
+  // Codec/resolution/channel summary, e.g. "H264 1080p" or "DTS 5.1 → AAC 2.0".
+  summary: string;
+  // Per-track bitrate label ("3.0 Mbps", "256 kbps") when known.
+  bitrateLabel?: string;
+}
+
+export interface StreamDetails {
+  tracks: StreamTrackDetail[];
+  // Source → stream container when remuxed/transcoded (e.g. "MKV → MP4").
+  container?: string;
+  // Overall stream bitrate label ("8.4 Mbps").
+  totalBitrateLabel?: string;
+  // Tautulli's quality-profile label ("Original", "1080p 8 Mbps", …).
+  qualityProfile?: string;
+}
+
+// kbps → compact label. Returns undefined for 0/unknown so callers can omit it.
+export function formatBitrateKbps(kbps: number | undefined): string | undefined {
+  if (!kbps || kbps <= 0 || Number.isNaN(kbps)) return undefined;
+  return kbps >= 1000 ? `${(kbps / 1000).toFixed(1)} Mbps` : `${Math.round(kbps)} kbps`;
 }
 
 // Hidden-users filter input ("alice, bob" → {"alice","bob"}). Shared by the

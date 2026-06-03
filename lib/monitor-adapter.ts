@@ -1,4 +1,11 @@
-import type { NowPlayingStream } from "@/lib/now-playing-stream";
+import {
+  formatBitrateKbps,
+  mediaServerSessionToStream,
+  type NowPlayingStream,
+  type StreamDetails,
+  type StreamTrackDetail,
+} from "@/lib/now-playing-stream";
+import type { MediaServerId } from "@/lib/media-server-config";
 import type {
   TautulliHistoryItem,
   TautulliSession,
@@ -15,15 +22,20 @@ import {
   getStreams as getTracearrStreams,
   getTracearrImageSource,
 } from "@/services/tracearr-api";
+import { getSessions as getMediaServerSessions } from "@/services/jellyfin-api";
 
 /**
- * Shared adapter unifying the two "active-stream monitor" services — Tautulli
- * and Tracearr — behind one normalized surface (mirrors lib/usenet-adapter.ts
- * for SAB/NZBGet). The Activity tab and the Stream Activity dashboard widget
- * consume this so neither needs service-specific knowledge: both render the
- * normalized NowPlayingStream (via NowPlayingStreamTile) and MonitorHistoryItem.
+ * Shared adapter unifying the "active-stream monitor" services behind one
+ * normalized surface (mirrors lib/usenet-adapter.ts for SAB/NZBGet). The
+ * Activity tab and the Stream Activity dashboard widget consume this so neither
+ * needs service-specific knowledge: all render the normalized NowPlayingStream
+ * (via NowPlayingStreamTile).
+ *
+ * Tautulli and Tracearr expose both live streams AND watch history. Jellyfin
+ * and Emby expose live sessions only (no history endpoint we consume), so they
+ * set `supportsHistory: false` and the Activity tab's History view omits them.
  */
-export const MONITOR_KINDS = ["tautulli", "tracearr"] as const;
+export const MONITOR_KINDS = ["tautulli", "tracearr", "jellyfin", "emby"] as const;
 export type MonitorKind = (typeof MONITOR_KINDS)[number];
 
 // Aggregate live-activity result for one monitor instance.
@@ -50,11 +62,103 @@ export interface MonitorHistoryItem {
 
 export interface MonitorAdapter {
   kind: MonitorKind;
+  // Whether this source has a watch-history surface. When false, getHistory
+  // returns [] and the Activity tab leaves it out of the History view.
+  supportsHistory: boolean;
   getActivity(instanceId: string): Promise<MonitorActivity>;
   getHistory(length: number, instanceId: string): Promise<MonitorHistoryItem[]>;
 }
 
 // --- Mappers: Tautulli ---
+
+// Tautulli per-track decision → display label + whether it's an actual
+// transcode/burn (drives badge color). Returns null for tracks not in play.
+function decisionLabel(d: string): { text: string; transcoding: boolean } | null {
+  switch (d) {
+    case "transcode":
+      return { text: "Transcode", transcoding: true };
+    case "copy":
+      return { text: "Direct Stream", transcoding: false };
+    case "burn":
+      return { text: "Burn", transcoding: true };
+    case "direct play":
+      return { text: "Direct Play", transcoding: false };
+    default:
+      return null;
+  }
+}
+
+function toKbps(v: string | undefined): number | undefined {
+  if (!v) return undefined;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) || n <= 0 ? undefined : n;
+}
+
+// "H264 1080p → H264 720p" when transcoding to a different target, else the
+// single source/stream descriptor.
+function srcDstSummary(src: string, dst: string, transcoding: boolean): string {
+  if (transcoding && dst && dst !== src) return `${src} → ${dst}`;
+  return dst || src || "—";
+}
+
+function tautulliSessionToDetails(s: TautulliSession): StreamDetails | undefined {
+  const tracks: StreamTrackDetail[] = [];
+
+  const video = decisionLabel(s.video_decision);
+  if (video) {
+    const src = [s.video_codec?.toUpperCase(), s.video_full_resolution].filter(Boolean).join(" ");
+    const dst = [s.stream_video_codec?.toUpperCase(), s.stream_video_full_resolution]
+      .filter(Boolean)
+      .join(" ");
+    tracks.push({
+      label: "Video",
+      decision: video.text,
+      transcoding: video.transcoding,
+      summary: srcDstSummary(src, dst, video.transcoding),
+      bitrateLabel: formatBitrateKbps(toKbps(s.stream_video_bitrate) ?? toKbps(s.video_bitrate)),
+    });
+  }
+
+  const audio = decisionLabel(s.audio_decision);
+  if (audio) {
+    const src = [s.audio_codec?.toUpperCase(), s.audio_channel_layout].filter(Boolean).join(" ");
+    const dst = [s.stream_audio_codec?.toUpperCase(), s.stream_audio_channel_layout]
+      .filter(Boolean)
+      .join(" ");
+    tracks.push({
+      label: "Audio",
+      decision: audio.text,
+      transcoding: audio.transcoding,
+      summary: srcDstSummary(src, dst, audio.transcoding),
+      bitrateLabel: formatBitrateKbps(toKbps(s.stream_audio_bitrate) ?? toKbps(s.audio_bitrate)),
+    });
+  }
+
+  const subtitle = decisionLabel(s.subtitle_decision);
+  if (subtitle) {
+    tracks.push({
+      label: "Subtitle",
+      decision: subtitle.text,
+      transcoding: subtitle.transcoding,
+      summary:
+        [s.subtitle_codec?.toUpperCase(), s.subtitle_language].filter(Boolean).join(" ") || "—",
+    });
+  }
+
+  if (tracks.length === 0) return undefined;
+
+  const container =
+    s.container && s.stream_container && s.container !== s.stream_container
+      ? `${s.container.toUpperCase()} → ${s.stream_container.toUpperCase()}`
+      : s.stream_container?.toUpperCase() || s.container?.toUpperCase() || undefined;
+
+  return {
+    tracks,
+    container,
+    totalBitrateLabel: formatBitrateKbps(toKbps(s.stream_bitrate) ?? toKbps(s.bitrate)),
+    qualityProfile: s.quality_profile || undefined,
+  };
+}
 
 function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPlayingStream {
   const pct = parseInt(s.progress_percent, 10);
@@ -74,6 +178,7 @@ function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPla
     poster: getTautulliSessionPoster(s, 220, 330, instanceId),
     mediaType: s.media_type === "episode" ? "tv" : "movie",
     resolution: s.video_resolution || null,
+    details: tautulliSessionToDetails(s),
   };
 }
 
@@ -144,6 +249,7 @@ function tracearrHistoryToItem(
 
 const tautulliAdapter: MonitorAdapter = {
   kind: "tautulli",
+  supportsHistory: true,
   async getActivity(instanceId) {
     const activity = await getTautulliActivity(instanceId);
     const sessions = activity?.sessions ?? [];
@@ -166,6 +272,7 @@ const tautulliAdapter: MonitorAdapter = {
 
 const tracearrAdapter: MonitorAdapter = {
   kind: "tracearr",
+  supportsHistory: true,
   async getActivity(instanceId) {
     const res = await getTracearrStreams(instanceId);
     const data = res?.data ?? [];
@@ -181,9 +288,30 @@ const tracearrAdapter: MonitorAdapter = {
   },
 };
 
+// Jellyfin and Emby share the same Sessions API (only the serviceId differs),
+// so one factory produces both. Live sessions only — getHistory is a no-op.
+function mediaServerMonitorAdapter(kind: MediaServerId): MonitorAdapter {
+  return {
+    kind,
+    supportsHistory: false,
+    async getActivity(instanceId) {
+      const sessions = await getMediaServerSessions(instanceId, kind);
+      return {
+        streams: sessions.map((s) => mediaServerSessionToStream(s, instanceId, kind)),
+        streamCount: sessions.length,
+      };
+    },
+    async getHistory() {
+      return [];
+    },
+  };
+}
+
 const ADAPTERS: Record<MonitorKind, MonitorAdapter> = {
   tautulli: tautulliAdapter,
   tracearr: tracearrAdapter,
+  jellyfin: mediaServerMonitorAdapter("jellyfin"),
+  emby: mediaServerMonitorAdapter("emby"),
 };
 
 export function getMonitorAdapter(kind: MonitorKind): MonitorAdapter {

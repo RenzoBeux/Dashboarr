@@ -56,7 +56,8 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
 
 // Inverse — the service kind(s) that back each tab. Used to decide pickability
 // (a tab is pickable when ANY of its kinds is attached) and to validate pins.
-// The Activity tab is shared by both stream monitors (Tautulli + Tracearr).
+// The Activity tab aggregates the stream monitors (Tautulli + Tracearr) plus
+// the media servers' live sessions (Jellyfin + Emby) — see lib/monitor-adapter.ts.
 const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   movies: ["radarr"],
   tv: ["sonarr"],
@@ -66,7 +67,9 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   // radarr→movies and sonarr→tv so existing deep-links are unchanged.
   library: ["radarr", "sonarr"],
   requests: ["overseerr"],
-  activity: ["tautulli", "tracearr"],
+  // Jellyfin/Emby are additive here — SERVICE_TO_TAB still points them at their
+  // dedicated tabs, but the Activity tab is also pickable when they're attached.
+  activity: ["tautulli", "tracearr", "jellyfin", "emby"],
   indexers: ["prowlarr"],
   plex: ["plex"],
   jellyfin: ["jellyfin"],
