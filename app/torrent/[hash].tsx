@@ -8,6 +8,7 @@ import {
   ArrowDown,
   ArrowUp,
   Gauge,
+  Megaphone,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
+import { toast, toastError } from "@/components/ui/toast";
 import { ShareLimitsSheet } from "@/components/qbittorrent/share-limits-sheet";
 import { useDeferredBack } from "@/hooks/use-deferred-back";
 import {
@@ -26,6 +28,7 @@ import {
   useTorrentTrackers,
   usePauseTorrent,
   useResumeTorrent,
+  useReannounceTorrent,
   useDeleteTorrent,
 } from "@/hooks/use-qbittorrent";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
@@ -38,6 +41,7 @@ export default function TorrentDetailScreen() {
   const { data: trackers } = useTorrentTrackers(hash);
   const pauseMutation = usePauseTorrent();
   const resumeMutation = useResumeTorrent();
+  const reannounceMutation = useReannounceTorrent();
   const deleteMutation = useDeleteTorrent();
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
@@ -67,6 +71,13 @@ export default function TorrentDetailScreen() {
   }
 
   const isPaused = isTorrentPaused(torrent.state);
+
+  const handleReannounce = () => {
+    reannounceMutation.mutate([hash], {
+      onSuccess: () => toast("Reannounce requested"),
+      onError: (err) => toastError("Failed to reannounce", err),
+    });
+  };
 
   const runDelete = (deleteFiles: boolean) => {
     deleteMutation.mutate({ hashes: [hash], deleteFiles });
@@ -190,13 +201,23 @@ export default function TorrentDetailScreen() {
           />
         </View>
 
-        <Button
-          label="Share Limits"
-          variant="outline"
-          onPress={() => setShareLimitsOpen(true)}
-          icon={<Icon icon={Gauge} size={16} color="#a1a1aa" />}
-          className="mt-3"
-        />
+        <View className="flex-row gap-3 mt-3">
+          <Button
+            label="Reannounce"
+            variant="outline"
+            onPress={handleReannounce}
+            loading={reannounceMutation.isPending}
+            icon={<Icon icon={Megaphone} size={16} color="#a1a1aa" />}
+            className="flex-1"
+          />
+          <Button
+            label="Share Limits"
+            variant="outline"
+            onPress={() => setShareLimitsOpen(true)}
+            icon={<Icon icon={Gauge} size={16} color="#a1a1aa" />}
+            className="flex-1"
+          />
+        </View>
       </ScreenWrapper>
 
       <ShareLimitsSheet

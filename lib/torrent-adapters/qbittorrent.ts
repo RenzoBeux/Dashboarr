@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
   useInfiniteTorrents,
+  useTorrentCategories,
   usePauseTorrent as useQbPauseTorrent,
   useResumeTorrent as useQbResumeTorrent,
   useDeleteTorrent as useQbDeleteTorrent,
@@ -132,6 +133,7 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
     const { sort, reverse } = sortKeyToQB(opts.sort);
     const q = useInfiniteTorrents({
       filter: tabFilterToQB(opts.filter),
+      category: opts.category,
       sort,
       reverse,
       pageSize: 50,
@@ -150,6 +152,11 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
       fetchNextPage: () => q.fetchNextPage(),
       refetch: () => q.refetch(),
     };
+  },
+
+  useCategories: (instanceId?: string): string[] => {
+    const { data } = useTorrentCategories(instanceId);
+    return data ?? [];
   },
 
   useGlobalStats: (instanceId?: string): UseQueryResult<TorrentGlobalStats> => {

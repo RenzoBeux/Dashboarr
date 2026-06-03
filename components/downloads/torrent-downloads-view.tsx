@@ -59,6 +59,11 @@ const FILTER_OPTIONS: { key: TorrentFilterType; label: string }[] = [
   { key: "paused", label: "Paused" },
 ];
 
+// Sentinel for the category filter's "all" choice. qBittorrent treats an
+// omitted `category` param as all and an empty string as uncategorized, so we
+// can't reuse "" for "all" — this maps to "omit the param" before the request.
+const ALL_CATEGORIES = "__all__";
+
 const SORT_OPTIONS: { key: DownloadsSortKey; label: string }[] = [
   { key: "progress-desc", label: "Progress: High → Low" },
   { key: "progress-asc", label: "Progress: Low → High" },
@@ -87,6 +92,7 @@ export function TorrentDownloadsView({
   segmentedControl,
 }: ViewProps) {
   const [filter, setFilter] = useState<TorrentFilterType>("all");
+  const [category, setCategory] = useState<string>(ALL_CATEGORIES);
   const sort = useSortStore((s) => s.downloads);
   const setSort = useSortStore((s) => s.setDownloads);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
@@ -95,6 +101,9 @@ export function TorrentDownloadsView({
   const [magnetUri, setMagnetUri] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
+  // "all" sentinel → omit the param entirely (qBittorrent reads no param as
+  // "all categories"); "" stays "" so it maps to uncategorized.
+  const categoryParam = category === ALL_CATEGORIES ? undefined : category;
   const {
     torrents,
     isLoading,
@@ -104,7 +113,8 @@ export function TorrentDownloadsView({
     isFetchNextPageError,
     fetchNextPage,
     refetch,
-  } = adapter.useTorrents({ filter, sort });
+  } = adapter.useTorrents({ filter, sort, category: categoryParam });
+  const categories = adapter.useCategories();
   const statsResult = adapter.useGlobalStats();
   const stats = statsResult.data;
   const { data: healthData } = useServiceHealth();
@@ -158,12 +168,13 @@ export function TorrentDownloadsView({
 
   const multiSelect = useMultiSelect<UnifiedTorrent>((t) => t.hash);
 
-  // Selection refers to specific torrent hashes; if the active filter changes
-  // those hashes may no longer be in the loaded set, so drop the selection.
+  // Selection refers to specific torrent hashes; if the active filter or
+  // category changes those hashes may no longer be in the loaded set, so drop
+  // the selection.
   useEffect(() => {
     if (multiSelect.isActive) multiSelect.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [filter, category]);
 
   const serviceHealth = healthData?.find((s) => s.id === adapter.serviceId);
 
@@ -236,6 +247,38 @@ export function TorrentDownloadsView({
 
   const bulkBusy =
     pauseMutation.isPending || resumeMutation.isPending || deleteMutation.isPending;
+
+  // Category filter is qBittorrent-only and only worth showing once the server
+  // actually has categories defined.
+  const showCategoryFilter =
+    adapter.capabilities.categories && categories.length > 0;
+  const categoryLabelFor = (c: string) =>
+    c === ALL_CATEGORIES ? "All categories" : c === "" ? "Uncategorized" : c;
+  const categorySections = showCategoryFilter
+    ? [
+        {
+          label: "Category",
+          options: [
+            { key: ALL_CATEGORIES, label: "All categories" },
+            { key: "", label: "Uncategorized" },
+            ...categories.map((c) => ({ key: c, label: c })),
+          ],
+          value: category,
+          onChange: setCategory,
+        },
+      ]
+    : undefined;
+
+  const categoryActive = showCategoryFilter && category !== ALL_CATEGORIES;
+  const filterSummary = [
+    FILTER_OPTIONS.find((f) => f.key === filter)?.label ?? "",
+    categoryActive ? categoryLabelFor(category) : null,
+    SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const filterActive =
+    filter !== "all" || sort !== SORT_DEFAULTS.downloads || categoryActive;
 
   const header = multiSelect.isActive ? (
     <SelectionBar
@@ -318,9 +361,9 @@ export function TorrentDownloadsView({
 
       <View className="mb-4">
         <FilterSortButton
-          summary={`${FILTER_OPTIONS.find((f) => f.key === filter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+          summary={filterSummary}
           onPress={() => setFilterSortOpen(true)}
-          active={filter !== "all" || sort !== SORT_DEFAULTS.downloads}
+          active={filterActive}
         />
       </View>
     </>
@@ -424,6 +467,7 @@ export function TorrentDownloadsView({
         filterOptions={FILTER_OPTIONS}
         filterValue={filter}
         onFilterChange={setFilter}
+        extraSections={categorySections}
         sortOptions={SORT_OPTIONS}
         sortValue={sort}
         onSortChange={setSort}

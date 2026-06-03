@@ -2,10 +2,12 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tansta
 import {
   getTransferInfo,
   getTorrents,
+  getCategories,
   getTorrentFiles,
   getTorrentTrackers,
   pauseTorrents,
   resumeTorrents,
+  reannounceTorrents,
   deleteTorrents,
   addTorrentMagnet,
   setDownloadLimit,
@@ -77,12 +79,16 @@ export function useTorrents(options: GetTorrentsOptions = {}, instanceId?: strin
  */
 export function useInfiniteTorrents({
   filter,
+  category,
   sort,
   reverse,
   pageSize = 50,
   instanceId,
 }: {
   filter?: QBTorrentFilter;
+  // qBittorrent category filter: undefined → all, "" → uncategorized, name →
+  // that category. Threaded into the query key so changing it resets paging.
+  category?: string;
   sort?: keyof QBTorrent;
   reverse?: boolean;
   pageSize?: number;
@@ -95,11 +101,17 @@ export function useInfiniteTorrents({
       id,
       "torrents",
       "infinite",
-      { filter: filter ?? "all", sort: sort ?? null, reverse: reverse ?? false, pageSize },
+      {
+        filter: filter ?? "all",
+        category: category ?? null,
+        sort: sort ?? null,
+        reverse: reverse ?? false,
+        pageSize,
+      },
     ],
     queryFn: ({ pageParam }) =>
       getTorrents(
-        { filter, sort, reverse, limit: pageSize, offset: pageParam },
+        { filter, category, sort, reverse, limit: pageSize, offset: pageParam },
         id ?? undefined,
       ),
     initialPageParam: 0,
@@ -149,6 +161,17 @@ export function useTorrentTrackers(hash: string, instanceId?: string) {
   });
 }
 
+// Category names for the downloads-view category filter. Categories change
+// rarely, so no polling — the list refreshes on mount/refetch.
+export function useTorrentCategories(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("qbittorrent", instanceId);
+  return useQuery({
+    queryKey: ["qbittorrent", id, "categories"],
+    queryFn: () => getCategories(id ?? undefined),
+    enabled: enabled && !!id,
+  });
+}
+
 // Mutations target the active qBittorrent instance. The dashboard
 // aggregation path (step 6) builds slot components that scope their own hooks
 // per instance, so even mutations triggered from a per-instance widget hit
@@ -169,6 +192,17 @@ export function useResumeTorrent(instanceId?: string) {
   const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
   return useMutation({
     mutationFn: (hashes: string[]) => resumeTorrents(hashes, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
+    },
+  });
+}
+
+export function useReannounceTorrent(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
+  return useMutation({
+    mutationFn: (hashes: string[]) => reannounceTorrents(hashes, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
     },

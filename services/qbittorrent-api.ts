@@ -374,6 +374,20 @@ export function getTorrentTrackers(
   );
 }
 
+// /torrents/categories returns an object keyed by category name:
+//   { "Movies": { name: "Movies", savePath: "/data/movies" }, ... }
+// The filter UI only needs the names, so we return them sorted. An empty/
+// unexpected body yields [] so the category filter just doesn't render.
+export async function getCategories(instanceId?: string): Promise<string[]> {
+  const data = await qbRequest<Record<string, unknown>>(
+    "/torrents/categories",
+    undefined,
+    instanceId,
+  );
+  if (!data || typeof data !== "object") return [];
+  return Object.keys(data).sort((a, b) => a.localeCompare(b));
+}
+
 // --- Torrent Actions ---
 
 // qBittorrent 5.0 renamed /torrents/pause → /torrents/stop and
@@ -432,6 +446,24 @@ export function resumeTorrents(
     "/torrents/start",
     "/torrents/resume",
     `hashes=${hashes.join("|")}`,
+    instanceId,
+  );
+}
+
+// /torrents/reannounce forces an immediate tracker re-announce for the given
+// hashes. Returns 200 with no body. Useful to kick a stalled torrent that's
+// waiting on its next scheduled announce.
+export function reannounceTorrents(
+  hashes: string[],
+  instanceId?: string,
+): Promise<void> {
+  return qbRequest(
+    "/torrents/reannounce",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `hashes=${hashes.join("|")}`,
+    },
     instanceId,
   );
 }

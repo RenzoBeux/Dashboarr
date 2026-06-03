@@ -104,6 +104,10 @@ export type TorrentFilterType =
 export interface TorrentListFilter {
   filter: TorrentFilterType;
   sort: DownloadsSortKey;
+  // Category filter (qBittorrent only — clients without `capabilities.categories`
+  // ignore it). undefined → all categories, "" → uncategorized, name → that
+  // category. The view maps its "all" sentinel to undefined before passing.
+  category?: string;
 }
 
 // Uniform list result. THE abstraction that hides server-vs-client pagination:
@@ -136,6 +140,13 @@ export interface TorrentAdapter {
 
   // The list hook — abstracts server-vs-client pagination (see TorrentListResult).
   useTorrents: (opts: TorrentListFilter, instanceId?: string) => TorrentListResult;
+
+  // Category names for the category filter. Always called by the shared view
+  // (so it must be a stable hook), but only surfaced when
+  // capabilities.categories is true. Clients without categories return []. The
+  // returned names map 1:1 onto the values the view passes back via
+  // TorrentListFilter.category.
+  useCategories: (instanceId?: string) => string[];
 
   // Global transfer stats for the per-tab speed header.
   useGlobalStats: (instanceId?: string) => UseQueryResult<TorrentGlobalStats>;

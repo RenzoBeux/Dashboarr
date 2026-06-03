@@ -44,6 +44,13 @@ const DEMO_QB_MAINDATA = {
   },
 };
 
+// Mirrors GET /torrents/categories — keyed by name. Matches the categories
+// used by the demo torrents below so the category filter has something to show.
+const DEMO_QB_CATEGORIES = {
+  movies: { name: "movies", savePath: "/data/torrents/movies" },
+  tv: { name: "tv", savePath: "/data/torrents/tv" },
+};
+
 const DEMO_QB_TORRENTS = [
   {
     hash: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
@@ -1252,9 +1259,18 @@ export function getDemoResponse(
     case "qbittorrent": {
       if (normalized === "/transfer/info") return DEMO_QB_TRANSFER_INFO;
       if (normalized.startsWith("/sync/maindata")) return DEMO_QB_MAINDATA;
-      if (normalized.startsWith("/torrents/info")) return DEMO_QB_TORRENTS;
+      if (normalized.startsWith("/torrents/categories")) return DEMO_QB_CATEGORIES;
+      if (normalized.startsWith("/torrents/info")) {
+        // Honor the `category` query param so the demo category filter works:
+        // omitted → all, "" → uncategorized, name → that category.
+        const cat = new URLSearchParams(path.split("?")[1] ?? "").get("category");
+        return cat === null
+          ? DEMO_QB_TORRENTS
+          : DEMO_QB_TORRENTS.filter((t) => t.category === cat);
+      }
       if (normalized.startsWith("/torrents/files")) return [];
       if (normalized.startsWith("/torrents/trackers")) return [];
+      if (normalized.startsWith("/torrents/reannounce")) return {};
       if (normalized.startsWith("/app/version")) return "5.0.0";
       return undefined;
     }

@@ -114,6 +114,10 @@ export const rtorrentTorrentAdapter: TorrentAdapter = {
     };
   },
 
+  // rtorrent has single labels (custom1), not qBittorrent-style categories, so
+  // the category filter is never shown (capabilities.categories is false).
+  useCategories: (): string[] => [],
+
   useGlobalStats: (instanceId?: string): UseQueryResult<TorrentGlobalStats> =>
     useRtorrentGlobalStats(instanceId),
 
