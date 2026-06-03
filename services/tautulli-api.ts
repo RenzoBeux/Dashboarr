@@ -5,7 +5,9 @@ import { getDemoTautulliResponse } from "@/lib/demo-data";
 import type {
   TautulliActivity,
   TautulliHistoryResponse,
+  TautulliHomeStat,
   TautulliLibraryStats,
+  TautulliPlaysChart,
   TautulliSession,
 } from "@/lib/types";
 
@@ -104,6 +106,57 @@ export function getLibraryStats(instanceId?: string): Promise<
 > {
   return tautulliRequest("get_libraries_table", { length: 50 }, instanceId).then(
     (data: any) => data.data,
+  );
+}
+
+// --- Charts / Stats ---
+
+// All get_plays_by_* endpoints share the { categories, series } shape and a
+// `time_range` (days) param.
+export function getPlaysByDate(
+  timeRange = 30,
+  instanceId?: string,
+): Promise<TautulliPlaysChart> {
+  return tautulliRequest<TautulliPlaysChart>(
+    "get_plays_by_date",
+    { time_range: timeRange },
+    instanceId,
+  );
+}
+
+export function getPlaysByDayOfWeek(
+  timeRange = 30,
+  instanceId?: string,
+): Promise<TautulliPlaysChart> {
+  return tautulliRequest<TautulliPlaysChart>(
+    "get_plays_by_dayofweek",
+    { time_range: timeRange },
+    instanceId,
+  );
+}
+
+export function getPlaysByHourOfDay(
+  timeRange = 30,
+  instanceId?: string,
+): Promise<TautulliPlaysChart> {
+  return tautulliRequest<TautulliPlaysChart>(
+    "get_plays_by_hourofday",
+    { time_range: timeRange },
+    instanceId,
+  );
+}
+
+// get_home_stats returns several stat groups (top users, top movies, …); the
+// stats screen picks the ones it renders by stat_id.
+export function getHomeStats(
+  timeRange = 30,
+  statsCount = 5,
+  instanceId?: string,
+): Promise<TautulliHomeStat[]> {
+  return tautulliRequest<TautulliHomeStat[]>(
+    "get_home_stats",
+    { time_range: timeRange, stats_count: statsCount, stats_type: "plays" },
+    instanceId,
   );
 }
 

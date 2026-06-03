@@ -884,6 +884,32 @@ export interface TautulliLibraryStats {
   };
 }
 
+// Shared shape returned by Tautulli's get_plays_by_* chart endpoints: one
+// `categories` axis (dates / weekdays / hours) and one series per media type.
+export interface TautulliPlaysChart {
+  categories: string[];
+  series: { name: string; data: number[] }[];
+}
+
+// One row inside a get_home_stats group (e.g. a top user or top item).
+export interface TautulliHomeStatRow {
+  friendly_name?: string;
+  user?: string;
+  title?: string;
+  total_plays?: number;
+  total_duration?: number;
+  user_id?: number;
+  thumb?: string;
+  user_thumb?: string;
+}
+
+// One get_home_stats group (top_users, top_movies, …) with its rows.
+export interface TautulliHomeStat {
+  stat_id: string;
+  stat_title?: string;
+  rows: TautulliHomeStatRow[];
+}
+
 // --- Tracearr Types ---
 // Read-only public API (/api/v1/public). Only the fields the app consumes are
 // typed; see the upstream OpenAPI (routes/public.openapi.ts) for the full shape.

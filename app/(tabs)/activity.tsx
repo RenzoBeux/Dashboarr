@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
-import { View, Text, ScrollView } from "react-native";
-import { Play, Pause, Loader, ChevronDown, ChevronUp } from "lucide-react-native";
+import { View, Text, ScrollView, Pressable } from "react-native";
+import { useRouter } from "expo-router";
+import {
+  Play,
+  Pause,
+  Loader,
+  ChevronDown,
+  ChevronUp,
+  ChartColumn,
+} from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -18,7 +26,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import { lightHaptic } from "@/lib/haptics";
-import { POLLING_INTERVALS } from "@/lib/constants";
+import { POLLING_INTERVALS, ICON } from "@/lib/constants";
 import {
   getMonitorAdapter,
   type MonitorHistoryItem,
@@ -55,8 +63,13 @@ function useMonitorSources(): MonitorSource[] {
 export default function ActivityScreen() {
   const [tab, setTab] = useState<Tab>("streams");
   const sources = useMonitorSources();
+  const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["monitor"]]);
+
+  // Charts are Tautulli-only, so the Stats button only shows when a Tautulli
+  // instance is configured.
+  const hasTautulli = sources.some((s) => s.kind === "tautulli");
 
   // Kind-aggregated online: green when any enabled monitor kind is reachable.
   const enabledKinds = new Set(sources.map((s) => s.kind));
@@ -80,7 +93,18 @@ export default function ActivityScreen() {
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Activity" online={online} />
+      <View className="flex-row items-center justify-between">
+        <ServiceHeader name="Activity" online={online} />
+        {hasTautulli && (
+          <Pressable
+            onPress={() => router.push("/tautulli-stats")}
+            className="p-2 active:opacity-70"
+            accessibilityLabel="Tautulli stats"
+          >
+            <Icon icon={ChartColumn} size={ICON.LG} color="#a1a1aa" />
+          </Pressable>
+        )}
+      </View>
 
       {sources.length === 0 ? (
         <EmptyState
