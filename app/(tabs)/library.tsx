@@ -1,10 +1,17 @@
 import { useState, useEffect } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useLocalSearchParams } from "expo-router";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
+import { lightHaptic } from "@/lib/haptics";
 import { MoviesView } from "@/components/radarr/movies-view";
 import { TvView } from "@/components/sonarr/tv-view";
 
@@ -60,22 +67,79 @@ export default function LibraryScreen() {
     ? section
     : sections[0];
 
+  const handleSectionChange = (next: LibrarySection) => {
+    if (next === activeSection) return;
+    lightHaptic();
+    setSection(next);
+  };
+
   const switcher = showSwitcher ? (
     <LibrarySegmentedControl
       value={activeSection}
       sections={sections}
-      onChange={setSection}
+      onChange={handleSectionChange}
     />
   ) : null;
 
-  // Both views render through ScreenWrapper themselves; the switcher is passed
-  // as their topSlot so it sits above the service header. Switching between
-  // <MoviesView/> and <TvView/> naturally remounts (different component types),
-  // resetting each view's internal sub-tab/filter state.
-  return activeSection === "movies" ? (
-    <MoviesView topSlot={switcher} />
-  ) : (
-    <TvView topSlot={switcher} />
+  // Single section: render directly, no animation needed.
+  if (!showSwitcher) {
+    return activeSection === "movies" ? (
+      <MoviesView topSlot={switcher} />
+    ) : (
+      <TvView topSlot={switcher} />
+    );
+  }
+
+  // Both sections: keep BOTH views mounted as cross-fading layers. Switching
+  // no longer remounts/refetches — each view's scroll position, sub-tab and
+  // loaded data are preserved, and the inactive view stays warm so the swap is
+  // instant. The two switchers sit at the same spot, so the highlight appears
+  // to glide across as the layers cross-fade. Movies slides off to the left and
+  // TV in from the right (and vice-versa) for a subtle directional feel.
+  return (
+    <View className="flex-1 bg-background">
+      <SectionLayer active={activeSection === "movies"} offset={-16}>
+        <MoviesView topSlot={switcher} />
+      </SectionLayer>
+      <SectionLayer active={activeSection === "tv"} offset={16}>
+        <TvView topSlot={switcher} />
+      </SectionLayer>
+    </View>
+  );
+}
+
+// One absolutely-positioned, cross-fading layer. `offset` is where it rests
+// (px) while inactive — negative slides it left, positive right — so the two
+// layers move in opposite directions during the transition.
+function SectionLayer({
+  active,
+  offset,
+  children,
+}: {
+  active: boolean;
+  offset: number;
+  children: React.ReactNode;
+}) {
+  const progress = useSharedValue(active ? 1 : 0);
+  useEffect(() => {
+    progress.value = withTiming(active ? 1 : 0, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [active, progress]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateX: (1 - progress.value) * offset }],
+  }));
+
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, style]}
+      pointerEvents={active ? "auto" : "none"}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
