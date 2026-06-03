@@ -32,18 +32,22 @@ interface MonitorSource {
   instanceId: string;
 }
 
-// Resolve every enabled instance across both stream monitors (Tautulli +
-// Tracearr) into a flat source list. MONITOR_KINDS has fixed length, so the
-// per-kind hook calls keep a stable order.
+// Resolve every enabled instance across the stream monitors (Tautulli +
+// Tracearr) and the media servers with live sessions (Jellyfin + Emby) into a
+// flat source list. The per-kind hook calls keep a stable order.
 function useMonitorSources(): MonitorSource[] {
   const tautulli = useEnabledInstances("tautulli");
   const tracearr = useEnabledInstances("tracearr");
+  const jellyfin = useEnabledInstances("jellyfin");
+  const emby = useEnabledInstances("emby");
   return useMemo<MonitorSource[]>(
     () => [
       ...tautulli.map((i) => ({ kind: "tautulli" as MonitorKind, instanceId: i.id })),
       ...tracearr.map((i) => ({ kind: "tracearr" as MonitorKind, instanceId: i.id })),
+      ...jellyfin.map((i) => ({ kind: "jellyfin" as MonitorKind, instanceId: i.id })),
+      ...emby.map((i) => ({ kind: "emby" as MonitorKind, instanceId: i.id })),
     ],
-    [tautulli, tracearr],
+    [tautulli, tracearr, jellyfin, emby],
   );
 }
 
@@ -60,35 +64,52 @@ export default function ActivityScreen() {
       ? undefined
       : [...enabledKinds].some((k) => healthData?.find((s) => s.id === k)?.online);
 
-  // Show the source logo on each row only when both monitors contribute streams.
+  // Show the source logo on each row only when more than one source contributes.
   const showSource = enabledKinds.size > 1;
+
+  // Only Tautulli/Tracearr expose history; Jellyfin/Emby are live-only. Hide the
+  // History tab entirely when no configured source supports it.
+  const historySources = useMemo(
+    () => sources.filter((s) => getMonitorAdapter(s.kind).supportsHistory),
+    [sources],
+  );
+  const tabs: Tab[] = historySources.length > 0 ? ["streams", "history"] : ["streams"];
+  // Fall back to Streams if History became unavailable (e.g. Tautulli removed).
+  const activeTab: Tab = tabs.includes(tab) ? tab : "streams";
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Activity" online={online} />
 
       {sources.length === 0 ? (
-        <EmptyState title="No monitor configured" message="Enable Tautulli or Tracearr in Settings" />
+        <EmptyState
+          title="No monitor configured"
+          message="Enable Tautulli, Tracearr, Jellyfin, or Emby in Settings"
+        />
       ) : (
         <>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2"
-            className="mb-4"
-          >
-            {(["streams", "history"] as Tab[]).map((t) => (
-              <FilterChip
-                key={t}
-                label={t.charAt(0).toUpperCase() + t.slice(1)}
-                selected={tab === t}
-                onPress={() => setTab(t)}
-              />
-            ))}
-          </ScrollView>
+          {tabs.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-2"
+              className="mb-4"
+            >
+              {tabs.map((t) => (
+                <FilterChip
+                  key={t}
+                  label={t.charAt(0).toUpperCase() + t.slice(1)}
+                  selected={activeTab === t}
+                  onPress={() => setTab(t)}
+                />
+              ))}
+            </ScrollView>
+          )}
 
-          {tab === "streams" && <ActiveStreams sources={sources} showSource={showSource} />}
-          {tab === "history" && <HistoryList sources={sources} />}
+          {activeTab === "streams" && (
+            <ActiveStreams sources={sources} showSource={showSource} />
+          )}
+          {activeTab === "history" && <HistoryList sources={historySources} />}
         </>
       )}
     </ScreenWrapper>

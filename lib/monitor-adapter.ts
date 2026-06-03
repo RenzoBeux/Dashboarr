@@ -1,4 +1,8 @@
-import type { NowPlayingStream } from "@/lib/now-playing-stream";
+import {
+  mediaServerSessionToStream,
+  type NowPlayingStream,
+} from "@/lib/now-playing-stream";
+import type { MediaServerId } from "@/lib/media-server-config";
 import type {
   TautulliHistoryItem,
   TautulliSession,
@@ -15,15 +19,20 @@ import {
   getStreams as getTracearrStreams,
   getTracearrImageSource,
 } from "@/services/tracearr-api";
+import { getSessions as getMediaServerSessions } from "@/services/jellyfin-api";
 
 /**
- * Shared adapter unifying the two "active-stream monitor" services — Tautulli
- * and Tracearr — behind one normalized surface (mirrors lib/usenet-adapter.ts
- * for SAB/NZBGet). The Activity tab and the Stream Activity dashboard widget
- * consume this so neither needs service-specific knowledge: both render the
- * normalized NowPlayingStream (via NowPlayingStreamTile) and MonitorHistoryItem.
+ * Shared adapter unifying the "active-stream monitor" services behind one
+ * normalized surface (mirrors lib/usenet-adapter.ts for SAB/NZBGet). The
+ * Activity tab and the Stream Activity dashboard widget consume this so neither
+ * needs service-specific knowledge: all render the normalized NowPlayingStream
+ * (via NowPlayingStreamTile).
+ *
+ * Tautulli and Tracearr expose both live streams AND watch history. Jellyfin
+ * and Emby expose live sessions only (no history endpoint we consume), so they
+ * set `supportsHistory: false` and the Activity tab's History view omits them.
  */
-export const MONITOR_KINDS = ["tautulli", "tracearr"] as const;
+export const MONITOR_KINDS = ["tautulli", "tracearr", "jellyfin", "emby"] as const;
 export type MonitorKind = (typeof MONITOR_KINDS)[number];
 
 // Aggregate live-activity result for one monitor instance.
@@ -50,6 +59,9 @@ export interface MonitorHistoryItem {
 
 export interface MonitorAdapter {
   kind: MonitorKind;
+  // Whether this source has a watch-history surface. When false, getHistory
+  // returns [] and the Activity tab leaves it out of the History view.
+  supportsHistory: boolean;
   getActivity(instanceId: string): Promise<MonitorActivity>;
   getHistory(length: number, instanceId: string): Promise<MonitorHistoryItem[]>;
 }
@@ -144,6 +156,7 @@ function tracearrHistoryToItem(
 
 const tautulliAdapter: MonitorAdapter = {
   kind: "tautulli",
+  supportsHistory: true,
   async getActivity(instanceId) {
     const activity = await getTautulliActivity(instanceId);
     const sessions = activity?.sessions ?? [];
@@ -166,6 +179,7 @@ const tautulliAdapter: MonitorAdapter = {
 
 const tracearrAdapter: MonitorAdapter = {
   kind: "tracearr",
+  supportsHistory: true,
   async getActivity(instanceId) {
     const res = await getTracearrStreams(instanceId);
     const data = res?.data ?? [];
@@ -181,9 +195,30 @@ const tracearrAdapter: MonitorAdapter = {
   },
 };
 
+// Jellyfin and Emby share the same Sessions API (only the serviceId differs),
+// so one factory produces both. Live sessions only — getHistory is a no-op.
+function mediaServerMonitorAdapter(kind: MediaServerId): MonitorAdapter {
+  return {
+    kind,
+    supportsHistory: false,
+    async getActivity(instanceId) {
+      const sessions = await getMediaServerSessions(instanceId, kind);
+      return {
+        streams: sessions.map((s) => mediaServerSessionToStream(s, instanceId, kind)),
+        streamCount: sessions.length,
+      };
+    },
+    async getHistory() {
+      return [];
+    },
+  };
+}
+
 const ADAPTERS: Record<MonitorKind, MonitorAdapter> = {
   tautulli: tautulliAdapter,
   tracearr: tracearrAdapter,
+  jellyfin: mediaServerMonitorAdapter("jellyfin"),
+  emby: mediaServerMonitorAdapter("emby"),
 };
 
 export function getMonitorAdapter(kind: MonitorKind): MonitorAdapter {
