@@ -55,6 +55,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   movies: "Movies",
   tv: "TV",
   library: "Library",
+  music: "Music",
   requests: "Requests",
   activity: "Activity",
   indexers: "Indexers",

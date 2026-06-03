@@ -1,4 +1,4 @@
-import type { RadarrMovie, SonarrSeries } from "@/lib/types";
+import type { RadarrMovie, SonarrSeries, LidarrArtist, LidarrAlbum } from "@/lib/types";
 
 /**
  * Sonarr/Radarr-style poster status indicators (issue #47).
@@ -65,6 +65,45 @@ export function radarrBarKind(movie: RadarrMovie, isDownloading: boolean): Poste
   if (movie.isAvailable && movie.monitored) return "danger";
   if (!movie.monitored) return "warning";
   return "primary";
+}
+
+/**
+ * Lidarr artist progress bar — same shape as Sonarr's series logic, but the
+ * progress denominator is tracks (trackFileCount / trackCount). An `ended`
+ * artist that's fully downloaded reads green; an in-progress monitored artist
+ * reads red (missing), unmonitored reads amber.
+ */
+export function lidarrArtistBarKind(
+  artist: LidarrArtist,
+  isDownloading: boolean,
+): PosterBarKind {
+  if (isDownloading) return "purple";
+  const trackCount = artist.statistics?.trackCount ?? 0;
+  const fileCount = artist.statistics?.trackFileCount ?? 0;
+  const progress = trackCount ? (fileCount / trackCount) * 100 : 100;
+  if (progress >= 100) {
+    return artist.status === "ended" ? "success" : "primary";
+  }
+  if (artist.monitored) return "danger";
+  return "warning";
+}
+
+/**
+ * Lidarr album progress bar — tracks present vs. expected on the album. A fully
+ * downloaded album reads green; a monitored album missing tracks reads red;
+ * unmonitored reads amber.
+ */
+export function lidarrAlbumBarKind(
+  album: LidarrAlbum,
+  isDownloading: boolean,
+): PosterBarKind {
+  if (isDownloading) return "purple";
+  const trackCount = album.statistics?.trackCount ?? 0;
+  const fileCount = album.statistics?.trackFileCount ?? 0;
+  const progress = trackCount ? (fileCount / trackCount) * 100 : 100;
+  if (progress >= 100) return "success";
+  if (album.monitored) return "danger";
+  return "warning";
 }
 
 /**

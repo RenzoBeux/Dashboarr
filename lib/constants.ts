@@ -5,6 +5,7 @@ export const SERVICE_IDS = [
   "nzbget",
   "radarr",
   "sonarr",
+  "lidarr",
   "overseerr",
   "tautulli",
   "tracearr",
@@ -51,6 +52,8 @@ export const SERVICE_DEFAULTS: Record<
   nzbget: { name: "NZBGet", defaultPort: 6789, apiBasePath: "/jsonrpc", pingPath: "" },
   radarr: { name: "Radarr", defaultPort: 7878, apiBasePath: "/api/v3", pingPath: "/system/status" },
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
+  // Lidarr is an *arr sibling but on the v1 API (not v3 like Radarr/Sonarr).
+  lidarr: { name: "Lidarr", defaultPort: 8686, apiBasePath: "/api/v1", pingPath: "/system/status" },
   overseerr: { name: "Seerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
   tautulli: { name: "Tautulli", defaultPort: 8181, apiBasePath: "/api/v2", pingPath: "/home" },
   // Tracearr's read-only public API lives under /api/v1/public with Bearer-token
@@ -88,6 +91,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "sabnzbd-queue",
   "nzbget-queue",
   "radarr-queue",
+  "lidarr-queue",
   "recently-downloaded",
   "calendar",
   "stream-monitor",

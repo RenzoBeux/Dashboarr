@@ -14,6 +14,14 @@ export type MoviesSortKey =
 
 export type SeriesSortKey = MoviesSortKey;
 
+// Lidarr artists have no release year / next-airing axis, so they sort on a
+// narrower set than movies/series.
+export type ArtistsSortKey =
+  | "added-desc"
+  | "title-asc"
+  | "title-desc"
+  | "size-desc";
+
 export type PlexRecentSortKey =
   | "added-desc"
   | "title-asc"
@@ -49,6 +57,7 @@ export type ReleasesSortKey =
 interface SortPreferences {
   movies: MoviesSortKey;
   series: SeriesSortKey;
+  music: ArtistsSortKey;
   plexRecent: PlexRecentSortKey;
   jellyfinRecent: JellyfinRecentSortKey;
   embyRecent: JellyfinRecentSortKey;
@@ -60,6 +69,7 @@ interface SortPreferences {
 export const SORT_DEFAULTS: SortPreferences = {
   movies: "added-desc",
   series: "added-desc",
+  music: "added-desc",
   plexRecent: "added-desc",
   jellyfinRecent: "added-desc",
   embyRecent: "added-desc",
@@ -72,6 +82,7 @@ interface SortStore extends SortPreferences {
   hydrate: () => void;
   setMovies: (v: MoviesSortKey) => void;
   setSeries: (v: SeriesSortKey) => void;
+  setMusic: (v: ArtistsSortKey) => void;
   setPlexRecent: (v: PlexRecentSortKey) => void;
   setJellyfinRecent: (v: JellyfinRecentSortKey) => void;
   setEmbyRecent: (v: JellyfinRecentSortKey) => void;
@@ -84,6 +95,7 @@ function snapshot(state: SortPreferences): SortPreferences {
   return {
     movies: state.movies,
     series: state.series,
+    music: state.music,
     plexRecent: state.plexRecent,
     jellyfinRecent: state.jellyfinRecent,
     embyRecent: state.embyRecent,
@@ -111,6 +123,10 @@ export const useSortStore = create<SortStore>((set, get) => ({
   setSeries: (series) => {
     set({ series });
     setJSON(STORAGE_KEY, snapshot({ ...get(), series }));
+  },
+  setMusic: (music) => {
+    set({ music });
+    setJSON(STORAGE_KEY, snapshot({ ...get(), music }));
   },
   setPlexRecent: (plexRecent) => {
     set({ plexRecent });
