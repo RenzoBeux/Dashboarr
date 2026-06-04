@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import NetInfo from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
-import { evaluateHomeNetwork } from "@/lib/network";
+import {
+  evaluateHomeNetwork,
+  resolveEffectiveHomeNetworks,
+} from "@/lib/network";
 
 /**
  * Keeps the store's ephemeral `networkAwayFromHome` flag in sync with the actual
@@ -21,16 +24,33 @@ import { evaluateHomeNetwork } from "@/lib/network";
  */
 export function useNetworkAutoSwitch() {
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
-  const homeNetworks = useConfigStore((s) => s.homeNetworks);
+  // Re-evaluate whenever the global list changes OR the active dashboard's
+  // selection changes (#148). Both are raw store refs, so they stay stable
+  // until actually mutated; switching workspaces changes activeDashboardId —
+  // and so the selected `overrideIds` ref — which re-runs the effect. We depend
+  // on these inputs rather than the resolved list, since resolving a custom
+  // subset allocates a new array every render and would loop the effect.
+  const globalHomeNetworks = useConfigStore((s) => s.homeNetworks);
+  const overrideIds = useConfigStore(
+    (s) => s.dashboards.find((d) => d.id === s.activeDashboardId)?.homeNetworkIds,
+  );
 
   useEffect(() => {
     // Auto-switch off → the flag is ignored by getActiveUrl; nothing to do.
     if (!autoSwitchNetwork) return;
 
-    // No home networks → we can never confirm "home", so force the safe default
-    // (away → remote) rather than leaving a stale "home" flag that would use the
-    // private local URL off-network. The Home Networks screen warns the user.
-    if (homeNetworks.length === 0) {
+    // No effective home networks (none configured, or an empty custom
+    // selection) → we can never confirm "home", so force the safe default
+    // (away → remote) rather than leaving a stale "home" flag that would use
+    // the private local URL off-network. The Home Networks screen warns the user.
+    const { dashboards, activeDashboardId, homeNetworks } =
+      useConfigStore.getState();
+    const effective = resolveEffectiveHomeNetworks(
+      dashboards,
+      activeDashboardId,
+      homeNetworks,
+    );
+    if (effective.length === 0) {
       useConfigStore.getState().setNetworkAwayFromHome(true);
       return;
     }
@@ -42,12 +62,12 @@ export function useNetworkAutoSwitch() {
       debounceTimer = setTimeout(evaluate, 800);
     };
 
-    evaluate(); // eager startup evaluation
+    evaluate(); // eager startup / workspace-switch evaluation
     const unsubscribe = NetInfo.addEventListener(scheduleEvaluate);
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       unsubscribe();
     };
-  }, [autoSwitchNetwork, homeNetworks]);
+  }, [autoSwitchNetwork, globalHomeNetworks, overrideIds]);
 }

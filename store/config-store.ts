@@ -160,6 +160,17 @@ export interface Dashboard {
   // ignored by the resolver — they don't need to be cleaned eagerly, except
   // on instance delete (we prune to keep storage tidy).
   activeInstance?: Partial<Record<ServiceId, string>>;
+  // v29: optional per-workspace home-network selection (#148). Missing/undefined
+  // means "use ALL home networks" (the default), mirroring how
+  // `attachedInstances === undefined` means auto-attach. An explicit array
+  // selects a subset of the GLOBAL homeNetworks by id — ids that no longer match
+  // a live network are ignored at resolve time, and an empty array means "no
+  // home network for this workspace → always remote". Home networks themselves
+  // are created/edited/deleted only on the Home Networks screen; this is purely
+  // which of them attach to this workspace. Only the *active* dashboard's
+  // selection is evaluated (see resolveEffectiveHomeNetworks /
+  // evaluateHomeNetwork in lib/network.ts).
+  homeNetworkIds?: string[];
 }
 
 // Legacy widget-settings shape carried by v13 exports. v13→v14 migration folds
@@ -369,6 +380,12 @@ interface ConfigActions {
   setDashboardColor: (dashboardId: string, color: string) => void;
   setDashboardAttachedInstances: (dashboardId: string, instanceIds: string[]) => void;
   setDashboardPinnedTabs: (dashboardId: string, tabIds: string[]) => void;
+  // v29: per-workspace home-network selection (#148). Pass an array of global
+  // home-network ids to attach a custom subset, or `undefined` to use all.
+  setDashboardHomeNetworkIds: (
+    dashboardId: string,
+    ids: string[] | undefined,
+  ) => void;
 
   // Slots (v14+). Operate on the active dashboard's widget list. addWidget
   // returns the new slot so callers can reference it (e.g. open settings sheet).
@@ -1750,6 +1767,35 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
   },
 
+  setDashboardHomeNetworkIds: (dashboardId, ids) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== dashboardId) return d;
+        // `undefined` → drop the key so the workspace uses ALL home networks
+        // again (and picks up future ones), exactly like attachedInstances.
+        if (ids === undefined) {
+          const { homeNetworkIds: _omit, ...rest } = d;
+          return rest;
+        }
+        // Dedupe + drop empties. We don't validate ids against the live
+        // network list — cross-device imports may reference ids not present
+        // yet; the resolver ignores stale ids at read time. An empty result is
+        // a valid selection ("no home network here → always remote").
+        const seen = new Set<string>();
+        const sanitized: string[] = [];
+        for (const id of ids) {
+          if (typeof id !== "string" || id.length === 0) continue;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          sanitized.push(id);
+        }
+        return { ...d, homeNetworkIds: sanitized };
+      });
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
   // --- Slots (v14+) ---
 
   addWidget: (widgetId) => {
@@ -1919,6 +1965,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // probes, widgets) sees a scheme-prefixed URL even when the stored value
     // was saved without one. Historical/migrated values can lack http://, which
     // causes fetch to throw "Invalid URL" — see #106.
+    // NOTE: resolveActiveUrlKind (lib/url-validation.ts) mirrors this exact
+    // decision tree to report local-vs-remote for the L/R health-grid badge —
+    // keep the two in sync.
     const local = normalizeServiceUrl(inst.localUrl);
     const remote = normalizeServiceUrl(inst.remoteUrl);
 

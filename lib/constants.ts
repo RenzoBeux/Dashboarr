@@ -132,6 +132,11 @@ export const DEFAULT_DASHBOARD_WIDGETS: WidgetId[] = [
 // dashboard picker on fresh installs and after legacy migration.
 export const DEFAULT_DASHBOARD_NAME = "Default";
 
+// Cap on home-WiFi entries — applies both to the global list and to each
+// dashboard's optional per-workspace override (v29). Enforced by the editors,
+// the store, and the import schema so the three agree on one bound.
+export const MAX_HOME_NETWORKS = 20;
+
 // Old widget ids that have been renamed. Hydrate + import use this to remap
 // stored values so users keep their dashboard layout across upgrades.
 export const WIDGET_ID_RENAMES: Record<string, WidgetId> = {

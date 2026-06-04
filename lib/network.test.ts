@@ -15,7 +15,11 @@ jest.mock("@/store/config-store", () => ({
   useConfigStore: { getState: () => mockGetState() },
 }));
 
-import { isHomeNetwork, evaluateHomeNetwork } from "./network";
+import {
+  isHomeNetwork,
+  evaluateHomeNetwork,
+  resolveEffectiveHomeNetworks,
+} from "./network";
 
 const wifi = (ssid: string | null, bssid: string | null = null) =>
   ({ type: "wifi", isConnected: true, details: { ssid, bssid } }) as any;
@@ -66,6 +70,10 @@ describe("evaluateHomeNetwork", () => {
       demoMode: false,
       autoSwitchNetwork: true,
       homeNetworks: [{ id: "1", ssid: "Home", bssid: "" }],
+      // No dashboards by default → resolveEffectiveHomeNetworks falls back to
+      // the global list, so the pre-v29 cases below keep exercising it.
+      dashboards: [],
+      activeDashboardId: "",
       setNetworkAwayFromHome: jest.fn(),
       ...over,
     };
@@ -119,5 +127,121 @@ describe("evaluateHomeNetwork", () => {
 
     expect(mockFetch).not.toHaveBeenCalled();
     expect(store.setNetworkAwayFromHome).not.toHaveBeenCalled();
+  });
+
+  // --- v29: per-dashboard selection (#148) ---
+
+  // Two global networks; dashboards select a subset of them by id.
+  const twoNetworks = [
+    { id: "home", ssid: "Home", bssid: "" },
+    { id: "cabin", ssid: "Cabin", bssid: "" },
+  ];
+  const dashWithIds = (homeNetworkIds?: any) => ({
+    id: "d1",
+    name: "Cabin",
+    widgets: [],
+    ...(homeNetworkIds !== undefined ? { homeNetworkIds } : {}),
+  });
+
+  it("uses only the active dashboard's selected networks", async () => {
+    const store = fakeStore({
+      homeNetworks: twoNetworks,
+      dashboards: [dashWithIds(["cabin"])],
+      activeDashboardId: "d1",
+    });
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Cabin"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  it("treats a deselected network as away even though it's in the global list", async () => {
+    const store = fakeStore({
+      homeNetworks: twoNetworks,
+      dashboards: [dashWithIds(["cabin"])], // Home not selected
+      activeDashboardId: "d1",
+    });
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  it("no-ops when the active dashboard's selection is empty (always away)", async () => {
+    const store = fakeStore({
+      homeNetworks: twoNetworks,
+      dashboards: [dashWithIds([])],
+      activeDashboardId: "d1",
+    });
+    mockGetState.mockReturnValue(store);
+
+    await evaluateHomeNetwork();
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).not.toHaveBeenCalled();
+  });
+
+  it("uses all networks when the active dashboard has no selection", async () => {
+    const store = fakeStore({
+      homeNetworks: twoNetworks,
+      dashboards: [dashWithIds(undefined)],
+      activeDashboardId: "d1",
+    });
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("resolveEffectiveHomeNetworks", () => {
+  const global = [
+    { id: "home", ssid: "Home", bssid: "" },
+    { id: "cabin", ssid: "Cabin", bssid: "" },
+  ];
+  const dash = (homeNetworkIds?: any) =>
+    ({
+      id: "d1",
+      name: "Cabin",
+      widgets: [],
+      ...(homeNetworkIds !== undefined ? { homeNetworkIds } : {}),
+    }) as any;
+
+  it("returns the whole global list when the dashboard uses all", () => {
+    expect(resolveEffectiveHomeNetworks([dash(undefined)], "d1", global)).toBe(
+      global,
+    );
+  });
+
+  it("returns only the selected subset, in global order", () => {
+    expect(
+      resolveEffectiveHomeNetworks([dash(["cabin"])], "d1", global),
+    ).toEqual([{ id: "cabin", ssid: "Cabin", bssid: "" }]);
+  });
+
+  it("ignores stale ids that no longer match a live network", () => {
+    expect(
+      resolveEffectiveHomeNetworks([dash(["cabin", "gone"])], "d1", global),
+    ).toEqual([{ id: "cabin", ssid: "Cabin", bssid: "" }]);
+  });
+
+  it("returns an empty list for an explicit empty selection", () => {
+    expect(resolveEffectiveHomeNetworks([dash([])], "d1", global)).toEqual([]);
+  });
+
+  it("falls back to the global list when there are no dashboards", () => {
+    expect(resolveEffectiveHomeNetworks([], "d1", global)).toBe(global);
+  });
+
+  it("falls back to the first dashboard when the active id doesn't match", () => {
+    expect(
+      resolveEffectiveHomeNetworks([dash(["cabin"])], "missing", global),
+    ).toEqual([{ id: "cabin", ssid: "Cabin", bssid: "" }]);
   });
 });

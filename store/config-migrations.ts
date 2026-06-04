@@ -106,8 +106,14 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v28 — added the jellystat service entry. Pure version stamp — defaultInstances()
  *         iterates SERVICE_IDS and backfills a disabled jellystat instance at
  *         import time, so older exports just need the version field bumped.
+ *   v29 — optional per-workspace home-network selection (#148): each Dashboard
+ *         may carry a `homeNetworkIds: string[]` selecting a subset of the
+ *         global homeNetworks. Pure version stamp — absent means "use all home
+ *         networks", so the existing list keeps governing every dashboard and
+ *         older exports just need the version field bumped. coerceDashboard
+ *         validates the field on import.
  */
-export const CURRENT_CONFIG_VERSION = 28;
+export const CURRENT_CONFIG_VERSION = 29;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -577,6 +583,12 @@ const migrations: Record<number, (payload: any) => any> = {
   // defaultInstances() afterward, so older payloads that lack a jellystat entry
   // get the disabled default automatically — nothing to transform here.
   27: (payload) => ({ ...payload, version: 28 }),
+
+  // v28 → v29: optional per-workspace `homeNetworkIds` selection on each
+  // Dashboard (#148). Pure version stamp — the field is optional and absent
+  // means "use all home networks", so older exports are already correct.
+  // coerceDashboard coerces/validates the field on import.
+  28: (payload) => ({ ...payload, version: 29 }),
 };
 
 /**

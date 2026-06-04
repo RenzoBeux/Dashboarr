@@ -1,6 +1,6 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
-import type { HomeNetwork } from "@/store/config-store";
+import type { Dashboard, HomeNetwork } from "@/store/config-store";
 
 /**
  * Home-network detection — the single signal behind local/remote URL switching.
@@ -43,6 +43,31 @@ export function isHomeNetwork(
   });
 }
 
+/**
+ * The home-WiFi networks that actually govern local/remote switching right now:
+ * the active dashboard's selection resolved against the global list (#148).
+ * `homeNetworkIds === undefined` on a dashboard means "use ALL home networks"
+ * (the default); an explicit array selects that subset by id (stale ids that no
+ * longer match a live network are ignored), and an empty array means "none →
+ * always remote". Falls back to all when the active dashboard can't be resolved,
+ * so callers without a dashboard set (and pre-v29 state) keep global behavior.
+ *
+ * Only the active dashboard is consulted — switching workspaces re-evaluates
+ * (the useNetworkAutoSwitch effect re-runs when the selection or list changes).
+ */
+export function resolveEffectiveHomeNetworks(
+  dashboards: Dashboard[],
+  activeDashboardId: string,
+  globalHomeNetworks: HomeNetwork[],
+): HomeNetwork[] {
+  const active =
+    dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0];
+  const ids = active?.homeNetworkIds;
+  if (ids === undefined) return globalHomeNetworks;
+  const selected = new Set(ids);
+  return globalHomeNetworks.filter((n) => selected.has(n.id));
+}
+
 // Shared in-flight gate so startup / NetInfo-change / resume callers don't race.
 let evalInFlight = false;
 
@@ -57,15 +82,16 @@ export async function evaluateHomeNetwork(): Promise<void> {
   evalInFlight = true;
   try {
     const store = useConfigStore.getState();
-    if (
-      store.demoMode ||
-      !store.autoSwitchNetwork ||
-      store.homeNetworks.length === 0
-    ) {
+    const effective = resolveEffectiveHomeNetworks(
+      store.dashboards,
+      store.activeDashboardId,
+      store.homeNetworks,
+    );
+    if (store.demoMode || !store.autoSwitchNetwork || effective.length === 0) {
       return;
     }
     const state = await NetInfo.fetch();
-    store.setNetworkAwayFromHome(!isHomeNetwork(state, store.homeNetworks));
+    store.setNetworkAwayFromHome(!isHomeNetwork(state, effective));
   } finally {
     evalInFlight = false;
   }
