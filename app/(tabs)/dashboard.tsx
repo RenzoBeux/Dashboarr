@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -16,12 +16,12 @@ import {
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
-import { ICON } from "@/lib/constants";
+import { ICON, type WidgetId } from "@/lib/constants";
 import {
   WIDGET_REGISTRY,
   isWidgetServiceAttached,
@@ -33,6 +33,29 @@ import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sh
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 
+// Memoized so toggling editMode (which re-renders DashboardScreen) doesn't
+// re-render the heavy, data-fetching widget bodies. editMode only drives the
+// surrounding chrome (the per-slot control row + dashed border), so each
+// widget's props (widgetId/slotId) stay stable and React.memo skips the
+// expensive subtree — that's what makes entering edit mode feel instant on a
+// full dashboard instead of stalling while every widget re-runs its hooks.
+const WidgetSlotBody = memo(function WidgetSlotBody({
+  widgetId,
+  slotId,
+}: {
+  widgetId: WidgetId;
+  slotId: string;
+}) {
+  const widget = WIDGET_REGISTRY[widgetId];
+  if (!widget) return null;
+  const WidgetComponent = widget.component;
+  return (
+    <CardErrorBoundary>
+      <WidgetComponent slotId={slotId} />
+    </CardErrorBoundary>
+  );
+});
+
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
   const services = useConfigStore((s) => s.services);
@@ -42,9 +65,24 @@ export default function DashboardScreen() {
   const moveSlot = useConfigStore((s) => s.moveSlot);
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
+  const [showEditControls, setShowEditControls] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [dashboardPickerVisible, setDashboardPickerVisible] = useState(false);
   const [settingsForSlot, setSettingsForSlot] = useState<string | null>(null);
+
+  // Entering edit mode mounts a per-widget control row (several SVG icons each)
+  // for every visible widget at once — heavy enough to stall the tap. So show
+  // the cheap edit affordance (dashed border + banner) immediately on toggle,
+  // then mount the control rows on the next frame. The pencil tap feels instant
+  // and the controls pop in a frame later instead of freezing on the tap.
+  useEffect(() => {
+    if (!editMode) {
+      setShowEditControls(false);
+      return;
+    }
+    const handle = requestAnimationFrame(() => setShowEditControls(true));
+    return () => cancelAnimationFrame(handle);
+  }, [editMode]);
 
   const activeDashboard =
     dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0];
@@ -186,20 +224,16 @@ export default function DashboardScreen() {
       ) : (
         <View className="gap-4">
           {editMode && (
-            <Animated.View
-              entering={FadeIn}
-              exiting={FadeOut}
-              className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2"
-            >
+            <View className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2">
               <Text className="text-primary text-sm font-medium text-center">
                 Reorder, remove, or add widgets
               </Text>
-            </Animated.View>
+            </View>
           )}
           {visibleSlots.map((slot, visibleIndex) => {
             const widget = WIDGET_REGISTRY[slot.widgetId];
             if (!widget) return null;
-            const { component: WidgetComponent, label, settingsComponent } = widget;
+            const { label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleSlots.length - 1;
 
@@ -208,12 +242,8 @@ export default function DashboardScreen() {
                 key={slot.id}
                 entering={FadeInDown.delay(visibleIndex * 80).springify()}
               >
-                {editMode && (
-                  <Animated.View
-                    entering={FadeIn}
-                    exiting={FadeOut}
-                    className="flex-row items-center justify-between mb-1 px-1"
-                  >
+                {showEditControls && (
+                  <View className="flex-row items-center justify-between mb-1 px-1">
                     <View className="flex-row items-center gap-1.5 flex-1">
                       <Icon icon={GripVertical} size={ICON.SM} color="#52525b" />
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
@@ -254,7 +284,7 @@ export default function DashboardScreen() {
                         <Icon icon={X} size={ICON.MD} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
-                  </Animated.View>
+                  </View>
                 )}
                 <View
                   style={editMode ? {
@@ -265,24 +295,20 @@ export default function DashboardScreen() {
                     opacity: 0.85,
                   } : undefined}
                 >
-                  <CardErrorBoundary>
-                    <WidgetComponent slotId={slot.id} />
-                  </CardErrorBoundary>
+                  <WidgetSlotBody widgetId={slot.widgetId} slotId={slot.id} />
                 </View>
               </Animated.View>
             );
           })}
 
           {editMode && (
-            <Animated.View entering={FadeIn} exiting={FadeOut}>
-              <TouchableOpacity
-                onPress={openPicker}
-                className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
-              >
-                <Icon icon={Plus} size={ICON.MD} color="#a1a1aa" />
-                <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
-              </TouchableOpacity>
-            </Animated.View>
+            <TouchableOpacity
+              onPress={openPicker}
+              className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
+            >
+              <Icon icon={Plus} size={ICON.MD} color="#a1a1aa" />
+              <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
