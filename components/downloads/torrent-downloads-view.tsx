@@ -24,6 +24,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
 import { DemoBanner } from "@/components/common/demo-banner";
+import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +35,7 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { ActionSheet } from "@/components/ui/action-sheet";
-import { errorHaptic, lightHaptic, mediumHaptic } from "@/lib/haptics";
+import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 import {
   useSortStore,
@@ -99,7 +100,6 @@ export function TorrentDownloadsView({
   const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
 
   // "all" sentinel → omit the param entirely (qBittorrent reads no param as
   // "all categories"); "" stays "" so it maps to uncategorized.
@@ -136,27 +136,16 @@ export function TorrentDownloadsView({
     : (["top", "left", "right", "bottom"] as const);
   const listBottomPadding = 24 + (usesFloatingTabBar ? tabBarHeight : 0);
 
-  const onRefresh = useCallback(async () => {
-    lightHaptic();
-    setRefreshing(true);
-    try {
-      await refetch();
-      await statsResult.refetch();
-    } finally {
-      setRefreshing(false);
-    }
+  // Hand-rolled refresh (custom qBittorrent refetch instead of a query-key
+  // invalidate) routed through the shared spinner primitive so it gets the
+  // same bounded-wait, minimum-spin, and iOS focus/blur reset as every other
+  // screen — that's what keeps the native control from sticking (#147).
+  const doRefresh = useCallback(async () => {
+    await refetch();
+    await statsResult.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetch, statsResult.refetch]);
-
-  // iOS: clear the spinner on blur so a refresh still in flight when the user
-  // leaves the tab doesn't strand the native UIRefreshControl visible-but-
-  // frozen on return (#147). Mirrors the guard in usePullToRefresh for screens
-  // that hand-roll the refreshing boolean instead of using that hook.
-  useFocusEffect(
-    useCallback(() => {
-      return () => setRefreshing(false);
-    }, []),
-  );
+  const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
 
   // Only the rows whose hashes are actually in-flight should disable —
   // mutating one torrent shouldn't gray out every other row's buttons.

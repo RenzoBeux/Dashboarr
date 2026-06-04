@@ -1,46 +1,113 @@
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect } from "expo-router";
 import { lightHaptic } from "@/lib/haptics";
 
-/**
- * Hook that provides pull-to-refresh state tied to TanStack Query invalidation.
- * Pass optional query keys to only invalidate specific queries.
- */
-export function usePullToRefresh(queryKeys?: readonly unknown[][]) {
-  const [refreshing, setRefreshing] = useState(false);
-  const queryClient = useQueryClient();
+// The iOS UIRefreshControl (New Architecture / Fabric) retracts only when the
+// native side observes a clean `refreshing: true -> false` transition — see
+// RCTPullToRefreshViewComponentView.mm, which calls `endRefreshing` exactly on
+// that diff. Two guards keep that transition reliable and bounded (#147):
+//
+//   MIN_SPIN_MS — hold the spinner for at least this long before flipping to
+//     false, so the native `true` (begin animation) is guaranteed to land
+//     before we send `false` (end). A very fast refetch that flips false within
+//     the begin-animation window otherwise leaves the spinner visually pinned.
+//
+//   MAX_SPIN_MS — never let the spinner outlive a hung/unreachable service. A
+//     keyless `invalidateQueries()` (the dashboard) — or a scoped refetch —
+//     awaits every matching query's fetch to settle; with a 15s request abort +
+//     retry:2 + exponential backoff, a single dead service takes ~50s, which is
+//     exactly the "spinner never ends" the v1.8.1 fix never addressed (it only
+//     cleared the spinner on blur). We cap the wait and let the refetch finish
+//     in the background, so the cache still updates when the slow service lands.
+const MIN_SPIN_MS = 600;
+const MAX_SPIN_MS = 10000;
 
-  // iOS: react-native-screens detaches/freezes a blurred tab screen. If a
-  // pull-to-refresh is still in flight when the user switches tabs, the native
-  // UIRefreshControl is frozen mid-spin and never receives the later
-  // endRefreshing() once the invalidate resolves off-screen — it comes back
-  // visible-but-frozen (#147). Clearing `refreshing` on blur drives the
-  // control's prop to false while the screen is still attached, dismissing the
-  // spinner before detach. The in-flight invalidate keeps running regardless.
+/**
+ * Drives a pull-to-refresh spinner from an async refresh function with the
+ * timing guards above, re-entrancy protection, and iOS focus/blur resets so a
+ * spinner can never be stranded by a tab switch (react-native-screens detaches
+ * blurred tab screens, which froze the native control mid-spin — #147).
+ *
+ * Shared by `usePullToRefresh` (TanStack invalidation) and the hand-rolled
+ * torrent downloads view (custom refetch) so both get identical behavior.
+ */
+export function useRefreshSpinner(doRefresh: () => Promise<unknown>) {
+  const [refreshing, setRefreshing] = useState(false);
+  const mounted = useRef(true);
+  const running = useRef(false);
+  const endTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stop = useCallback(() => {
+    if (endTimer.current) {
+      clearTimeout(endTimer.current);
+      endTimer.current = null;
+    }
+    running.current = false;
+    if (mounted.current) setRefreshing(false);
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (endTimer.current) clearTimeout(endTimer.current);
+    };
+  }, []);
+
+  // iOS: react-native-screens detaches a blurred tab screen. Clearing the
+  // spinner (and any pending end-timer) on blur dismisses the native control
+  // while the screen is still attached, so it can't come back frozen mid-spin.
   useFocusEffect(
     useCallback(() => {
-      return () => setRefreshing(false);
-    }, []),
+      return () => stop();
+    }, [stop]),
   );
 
   const onRefresh = useCallback(async () => {
+    if (running.current) return; // ignore re-pulls while one is already in flight
+    running.current = true;
     lightHaptic();
     setRefreshing(true);
+    const startedAt = Date.now();
+
+    let capTimer: ReturnType<typeof setTimeout> | null = null;
+    const cap = new Promise<void>((resolve) => {
+      capTimer = setTimeout(resolve, MAX_SPIN_MS);
+    });
+
     try {
-      if (queryKeys) {
-        await Promise.all(
-          queryKeys.map((key) =>
-            queryClient.invalidateQueries({ queryKey: key }),
-          ),
-        );
-      } else {
-        await queryClient.invalidateQueries();
-      }
+      // Bound the wait: whichever settles first wins. The refetch keeps running
+      // after the cap — it just no longer holds the spinner hostage.
+      await Promise.race([
+        Promise.resolve(doRefresh()).catch(() => {}),
+        cap,
+      ]);
     } finally {
-      setRefreshing(false);
+      if (capTimer) clearTimeout(capTimer);
+      const wait = Math.max(0, MIN_SPIN_MS - (Date.now() - startedAt));
+      endTimer.current = setTimeout(stop, wait);
     }
-  }, [queryClient, queryKeys]);
+  }, [doRefresh, stop]);
 
   return { refreshing, onRefresh };
+}
+
+/**
+ * Pull-to-refresh tied to TanStack Query invalidation. Pass optional query keys
+ * to invalidate only specific queries; omit them to invalidate everything (the
+ * dashboard). Returns `{ refreshing, onRefresh }` for a RefreshControl.
+ */
+export function usePullToRefresh(queryKeys?: readonly unknown[][]) {
+  const queryClient = useQueryClient();
+  const doRefresh = useCallback(() => {
+    if (queryKeys) {
+      return Promise.all(
+        queryKeys.map((key) => queryClient.invalidateQueries({ queryKey: key })),
+      );
+    }
+    return queryClient.invalidateQueries();
+  }, [queryClient, queryKeys]);
+
+  return useRefreshSpinner(doRefresh);
 }
