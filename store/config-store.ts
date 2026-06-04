@@ -235,12 +235,15 @@ interface ConfigState {
   secrets: Record<ServiceId, ServiceSecrets>;
 
   autoSwitchNetwork: boolean;
-  // Runtime-cached network state: true when the phone is not on a configured
-  // home network. Driven by the NetInfo listener in `useNetworkAutoSwitch`.
-  // The URL resolver combines this with the per-instance `useRemote` config
-  // (which is a user override — "force remote even at home") so the toggle
-  // never gets clobbered by the auto-switch. Persisted between launches so
-  // requests fired before NetInfo's first event use last-known state.
+  // EPHEMERAL (never persisted). True when we are NOT on a confirmed home
+  // network, so the URL resolver prefers remote. Recomputed fresh each launch +
+  // on every network change + on app resume by evaluateHomeNetwork() in
+  // lib/network.ts. Defaults to TRUE (away → remote): we must never send the
+  // private local URL to an untrusted network before confirming we're home, or a
+  // stranger's device at the same private address harvests the API key. Local is
+  // therefore used ONLY on a confirmed home network. Was persisted; persisting a
+  // live network observation across launches caused the stale-cold-start half of
+  // #106.
   networkAwayFromHome: boolean;
   homeNetworks: HomeNetwork[];
   // v17: per-user display order for the Services tab. Unknown ids are skipped
@@ -344,6 +347,8 @@ interface ConfigActions {
   updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
 
   setAutoSwitch: (enabled: boolean) => void;
+  // Set by evaluateHomeNetwork() (lib/network.ts) on every network change.
+  // EPHEMERAL — never persisted.
   setNetworkAwayFromHome: (away: boolean) => void;
   addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
@@ -725,7 +730,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   services: deriveLegacyServices(initialInstances, initialActiveInstance),
   secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
-  networkAwayFromHome: false,
+  networkAwayFromHome: true,
   homeNetworks: [],
   servicesOrder: [],
   dashboards: initialDashboards,
@@ -909,7 +914,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Stash the legacy value and apply after the dashboards array exists.
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
-    const networkAwayFromHome = getBoolean(STORAGE_KEYS.networkAwayFromHome);
+    // Purge the orphaned persisted flag from older builds. networkAwayFromHome is
+    // now ephemeral runtime state, recomputed fresh each launch by
+    // evaluateHomeNetwork() (lib/network.ts) — persisting a live network
+    // observation caused #106's stale-cold-start false-red.
+    deleteKey("app.networkAwayFromHome");
 
     // Read the new array; if absent, migrate from legacy single-SSID keys so
     // upgraders who never re-import keep their auto-switch configuration.
@@ -1214,7 +1223,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
-      networkAwayFromHome,
       homeNetworks,
       servicesOrder,
       dashboards,
@@ -1515,8 +1523,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setNetworkAwayFromHome: (away) => {
+    // No-op when unchanged so NetInfo's chatty event stream doesn't re-key the
+    // health query for an identical value. EPHEMERAL — never persisted.
     if (get().networkAwayFromHome === away) return;
-    setBoolean(STORAGE_KEYS.networkAwayFromHome, away);
     set({ networkAwayFromHome: away });
   },
 
@@ -1906,18 +1915,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const targetId = instanceId ?? state.activeInstance[id] ?? list[0]?.id;
     const inst = list.find((i) => i.id === targetId);
     if (!inst) return "";
-    // useRemote is the user's force-remote override. autoSwitchNetwork +
-    // networkAwayFromHome handle the situational case (we're off the home
-    // network, so prefer remote). Either path picks remoteUrl.
-    const useRemote =
-      inst.useRemote ||
-      (state.autoSwitchNetwork && state.networkAwayFromHome);
     // Normalize on read so every consumer (serviceRequest, pingService, health
     // probes, widgets) sees a scheme-prefixed URL even when the stored value
-    // was saved without one. The editor's onBlur normalizes on edit, but
-    // historical/migrated values can lack http://, which causes fetch to
-    // throw "Invalid URL" — see #106.
-    return normalizeServiceUrl(useRemote ? inst.remoteUrl : inst.localUrl);
+    // was saved without one. Historical/migrated values can lack http://, which
+    // causes fetch to throw "Invalid URL" — see #106.
+    const local = normalizeServiceUrl(inst.localUrl);
+    const remote = normalizeServiceUrl(inst.remoteUrl);
+
+    // 1. The per-instance "always use remote" user override always wins.
+    if (inst.useRemote) return remote || local;
+    // 2. Auto-switch off → user opted out of switching; use local (or remote if
+    //    no local is configured).
+    if (!state.autoSwitchNetwork) return local || remote;
+    // 3. AWAY from a confirmed home network → REMOTE ONLY. We deliberately do
+    //    NOT fall back to the private local URL on an untrusted network: a
+    //    stranger's device at the same private address (e.g. 192.168.1.x on
+    //    airport WiFi) would receive our API key. No remote configured → "" → the
+    //    service is simply offline while away, which is the honest, safe result.
+    //    `networkAwayFromHome` defaults to true, so this also holds during the
+    //    brief cold-start window before evaluateHomeNetwork() confirms we're home.
+    if (state.networkAwayFromHome) return remote;
+    // 4. On a confirmed home network → local (or remote if no local configured).
+    return local || remote;
   },
 
   getActiveDashboard: () => {

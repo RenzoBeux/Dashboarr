@@ -402,7 +402,7 @@ export default function SettingsScreen() {
           label="Home Networks"
           subtitle={
             autoSwitchNetwork && homeNetworksCount === 0
-              ? "Add at least one to enable auto-switching"
+              ? "Add at least one — without it the app stays on remote URLs"
               : homeNetworksCount > 0
                 ? `${homeNetworksCount} network${homeNetworksCount > 1 ? "s" : ""} configured`
                 : "Configure your home WiFi networks"
@@ -1132,13 +1132,11 @@ function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    // Resolve which URL the app will actually use, mirroring getActiveUrl:
-    // the per-instance "always remote" override OR auto-switch deciding we're
-    // currently away from home. Testing only `useRemote ? remote : local`
-    // (ignoring auto-switch) was misleading — it could report a green local
-    // probe while the dashboard silently resolved the empty remote URL and
-    // every service failed. We still test the in-progress form values, not the
-    // saved ones, so Test validates what the user typed before they Save.
+    // Resolve which URL the app will actually use right now, mirroring
+    // getActiveUrl: the per-instance "always remote" override OR auto-switch
+    // deciding we're away from home (in which case the app uses remote only and
+    // never the local URL). We test the in-progress form values, not the saved
+    // ones, so Test validates what the user typed before they Save.
     const { autoSwitchNetwork, networkAwayFromHome } = useConfigStore.getState();
     const useRemote =
       config.useRemote || (autoSwitchNetwork && networkAwayFromHome);

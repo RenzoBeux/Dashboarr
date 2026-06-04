@@ -96,7 +96,7 @@ describe("getActiveUrl — URL normalization on read (#106)", () => {
     expect(useConfigStore.getState().getActiveUrl("radarr")).toBe("");
   });
 
-  it("picks remoteUrl when auto-switch decides we're away from home", () => {
+  it("picks remoteUrl when auto-switch is on and away from home", () => {
     seed({
       localUrl: "192.168.1.10:7878",
       remoteUrl: "radarr.example.com",
@@ -121,5 +121,66 @@ describe("getActiveUrl — URL normalization on read (#106)", () => {
       },
     } as Partial<ReturnType<typeof useConfigStore.getState>>);
     expect(useConfigStore.getState().getActiveUrl("radarr")).toBe("");
+  });
+});
+
+describe("getActiveUrl — secure local/remote selection (#106, #161)", () => {
+  const both = {
+    localUrl: "192.168.1.10:7878",
+    remoteUrl: "radarr.example.com",
+    useRemote: false,
+    autoSwitchNetwork: true,
+  };
+  const LOCAL = "http://192.168.1.10:7878";
+  const REMOTE = "http://radarr.example.com";
+
+  it("uses local on a confirmed home network", () => {
+    seed({ ...both, networkAwayFromHome: false });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(LOCAL);
+  });
+
+  it("uses remote when away from home", () => {
+    seed({ ...both, networkAwayFromHome: true });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(REMOTE);
+  });
+
+  it("honors the useRemote override even on a home network", () => {
+    seed({ ...both, useRemote: true, networkAwayFromHome: false });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(REMOTE);
+  });
+
+  it("uses local when auto-switch is off, regardless of the away flag", () => {
+    seed({ ...both, autoSwitchNetwork: false, networkAwayFromHome: true });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(LOCAL);
+  });
+
+  // The core security property: off-home, never fall through to the private
+  // local URL even when there's no remote to use — that would leak the API key
+  // to whatever device answers that address on an untrusted LAN (airport WiFi).
+  it("away with NO remote configured returns '' — never the local URL (credential-leak guard)", () => {
+    seed({ ...both, remoteUrl: "", networkAwayFromHome: true });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe("");
+  });
+
+  it("uses remote at home when no local URL is configured", () => {
+    seed({ ...both, localUrl: "", networkAwayFromHome: false });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(REMOTE);
+  });
+});
+
+describe("setNetworkAwayFromHome", () => {
+  it("updates the flag and is a no-op when unchanged", () => {
+    useConfigStore.setState({
+      networkAwayFromHome: true,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+
+    useConfigStore.getState().setNetworkAwayFromHome(false);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+
+    useConfigStore.getState().setNetworkAwayFromHome(false); // no-op
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+
+    useConfigStore.getState().setNetworkAwayFromHome(true);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
   });
 });

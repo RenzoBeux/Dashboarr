@@ -222,8 +222,9 @@ export default function HomeNetworksScreen() {
             No home networks configured
           </Text>
           <Text className="text-zinc-500 text-sm text-center px-6">
-            Add at least one network to enable automatic local/remote URL
-            switching.
+            Add the WiFi networks you trust as "home". Local URLs are used only
+            on these networks; everywhere else the app uses your remote URLs, so
+            your API keys are never sent to an untrusted LAN.
           </Text>
           <View className="flex-row gap-2 mt-2">
             <Button

@@ -168,11 +168,11 @@ export const STORAGE_KEYS = {
   // any SERVICE_IDS missing from the list are appended in their canonical
   // order — so adding a new service kind ships with a sensible default.
   servicesOrder: "app.servicesOrder",
-  // v18: cached network-state ("am I off my home network right now?"). The
-  // auto-switch hook updates this on every home↔away transition. Persisted
-  // so cold launches use last-known state for the brief moment before
-  // NetInfo fires; NetInfo overwrites it on first event.
-  networkAwayFromHome: "app.networkAwayFromHome",
+  // (removed) persisted app.networkAwayFromHome — it is now EPHEMERAL runtime
+  // state (config-store.networkAwayFromHome), recomputed each launch by
+  // evaluateHomeNetwork() in lib/network.ts. Persisting a live network
+  // observation caused the stale-cold-start half of #106; the orphaned key is
+  // purged in hydrate.
   // v18 one-shot marker: pre-v18 builds clobbered useRemote with derived
   // network state. On first v18 launch the hydrate path resets useRemote
   // (only for installs that had auto-switch on) so the user starts from a

@@ -22,6 +22,7 @@ import { NotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
 import { useNetworkAutoSwitch } from "@/hooks/use-network";
+import { evaluateHomeNetwork } from "@/lib/network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
@@ -32,6 +33,14 @@ import "../global.css";
 // Pause/resume polling based on app state
 function onAppStateChange(status: AppStateStatus) {
   focusManager.setFocused(status === "active");
+  if (status === "active") {
+    // The network may have changed while we were backgrounded — walked out the
+    // door, or toggled a VPN like Tailscale (whose interface changes don't
+    // deliver NetInfo events to a suspended JS runtime). Re-evaluate the home
+    // network so URLs and health dots reflect reality on resume (#161). Shares
+    // the evaluator's in-flight gate and no-ops when auto-switch is off.
+    void evaluateHomeNetwork();
+  }
 }
 
 // Notification payloads come from a paired backend. The backend is trusted,
