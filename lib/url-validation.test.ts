@@ -1,4 +1,8 @@
-import { validateServiceUrl, normalizeServiceUrl } from "./url-validation";
+import {
+  validateServiceUrl,
+  normalizeServiceUrl,
+  resolveActiveUrlKind,
+} from "./url-validation";
 
 describe("validateServiceUrl", () => {
   describe("empty input", () => {
@@ -97,5 +101,46 @@ describe("normalizeServiceUrl", () => {
 
   it("trims input", () => {
     expect(normalizeServiceUrl("  localhost:8989  ")).toBe("http://localhost:8989");
+  });
+});
+
+describe("resolveActiveUrlKind", () => {
+  const inst = (over: Partial<{ localUrl: string; remoteUrl: string; useRemote: boolean }> = {}) => ({
+    localUrl: "192.168.1.10:7878",
+    remoteUrl: "https://remote.example.com",
+    useRemote: false,
+    ...over,
+  });
+
+  it("returns null when neither URL is configured", () => {
+    expect(resolveActiveUrlKind({ localUrl: "", remoteUrl: "", useRemote: false }, true, false)).toBeNull();
+  });
+
+  it("is remote when the per-instance useRemote override is set", () => {
+    expect(resolveActiveUrlKind(inst({ useRemote: true }), true, false)).toBe("remote");
+  });
+
+  it("falls back to local when useRemote is set but no remote is configured", () => {
+    expect(resolveActiveUrlKind(inst({ useRemote: true, remoteUrl: "" }), true, false)).toBe("local");
+  });
+
+  it("is local when auto-switch is off (uses local regardless of network)", () => {
+    expect(resolveActiveUrlKind(inst(), false, true)).toBe("local");
+  });
+
+  it("falls back to remote when auto-switch is off and no local is configured", () => {
+    expect(resolveActiveUrlKind(inst({ localUrl: "" }), false, true)).toBe("remote");
+  });
+
+  it("is remote when away from home (no local fallback — the security invariant)", () => {
+    expect(resolveActiveUrlKind(inst(), true, true)).toBe("remote");
+  });
+
+  it("is local on a confirmed home network", () => {
+    expect(resolveActiveUrlKind(inst(), true, false)).toBe("local");
+  });
+
+  it("falls back to remote at home when no local is configured", () => {
+    expect(resolveActiveUrlKind(inst({ localUrl: "" }), true, false)).toBe("remote");
   });
 });

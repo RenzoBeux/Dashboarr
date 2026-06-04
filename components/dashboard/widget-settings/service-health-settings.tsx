@@ -26,11 +26,16 @@ export interface ServiceHealthSettingsValue extends Record<string, unknown> {
   // second qBittorrent later auto-shows it on this widget instead of being
   // silently ignored. Each rendered instance gets its own indicator chip.
   instances: Partial<Record<ServiceId, InstanceBindingValue>>;
+  // Whether to show the L/R corner badge (#148) marking each instance as using
+  // its local or remote URL. Defaults on; legacy slots without the field merge
+  // to the default at read time (see useWidgetSettings).
+  showUrlBadge: boolean;
 }
 
 export const SERVICE_HEALTH_DEFAULT_SETTINGS: ServiceHealthSettingsValue = {
   hiddenKinds: [],
   instances: {},
+  showUrlBadge: true,
 };
 
 export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -167,6 +172,14 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
 
   return (
     <View className="px-4 py-2 gap-5">
+      <View className="bg-surface-light rounded-2xl border border-border px-4">
+        <Toggle
+          label="Local/remote badge"
+          description="Mark each service with an L or R for the URL it's currently using"
+          value={settings.showUrlBadge}
+          onValueChange={(v) => update({ showUrlBadge: v })}
+        />
+      </View>
       {configuredKinds.length > 1 && (
         <Text className="text-zinc-500 text-xs">
           Long-press a row to drag it. Order is shared with the Services tab.

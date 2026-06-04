@@ -57,3 +57,25 @@ export function normalizeServiceUrl(raw: string): string {
   if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed;
   return `http://${trimmed}`;
 }
+
+/**
+ * Which URL bucket a service instance is actively using right now: "local",
+ * "remote", or null when neither URL is configured. This MIRRORS the decision
+ * tree in `getActiveUrl` (store/config-store.ts) — keep the two in sync — but
+ * reports the chosen bucket instead of the URL string, so UI can surface an
+ * L/R indicator. The away branch is "remote" with no local fallback (the
+ * security invariant: never the private local URL off a confirmed home WiFi).
+ */
+export function resolveActiveUrlKind(
+  inst: { localUrl: string; remoteUrl: string; useRemote: boolean },
+  autoSwitchNetwork: boolean,
+  networkAwayFromHome: boolean,
+): "local" | "remote" | null {
+  const local = normalizeServiceUrl(inst.localUrl);
+  const remote = normalizeServiceUrl(inst.remoteUrl);
+  if (!local && !remote) return null;
+  if (inst.useRemote) return remote ? "remote" : "local";
+  if (!autoSwitchNetwork) return local ? "local" : "remote";
+  if (networkAwayFromHome) return "remote";
+  return local ? "local" : "remote";
+}
