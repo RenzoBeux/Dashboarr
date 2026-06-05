@@ -22,6 +22,7 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
@@ -45,21 +46,27 @@ interface MonitorSource {
 // Tracearr + JellyStat) and the media servers with live sessions (Jellyfin +
 // Emby) into a flat source list. The per-kind hook calls keep a stable order.
 function useMonitorSources(): MonitorSource[] {
+  const attached = useAttachedInstances();
   const tautulli = useEnabledInstances("tautulli");
   const tracearr = useEnabledInstances("tracearr");
   const jellystat = useEnabledInstances("jellystat");
   const jellyfin = useEnabledInstances("jellyfin");
   const emby = useEnabledInstances("emby");
-  return useMemo<MonitorSource[]>(
-    () => [
-      ...tautulli.map((i) => ({ kind: "tautulli" as MonitorKind, instanceId: i.id })),
-      ...tracearr.map((i) => ({ kind: "tracearr" as MonitorKind, instanceId: i.id })),
-      ...jellystat.map((i) => ({ kind: "jellystat" as MonitorKind, instanceId: i.id })),
-      ...jellyfin.map((i) => ({ kind: "jellyfin" as MonitorKind, instanceId: i.id })),
-      ...emby.map((i) => ({ kind: "emby" as MonitorKind, instanceId: i.id })),
-    ],
-    [tautulli, tracearr, jellystat, jellyfin, emby],
-  );
+  return useMemo<MonitorSource[]>(() => {
+    // Only monitors attached to the active workspace — otherwise a curated
+    // dashboard's Activity tab would surface (and poll every 5s) another
+    // workspace's live sessions and history (#148 review Rec #2). This is a
+    // full-screen tab with no per-widget binding, so the filter is purely the
+    // workspace attachment set.
+    const inWs = (i: { id: string }) => attached.has(i.id);
+    return [
+      ...tautulli.filter(inWs).map((i) => ({ kind: "tautulli" as MonitorKind, instanceId: i.id })),
+      ...tracearr.filter(inWs).map((i) => ({ kind: "tracearr" as MonitorKind, instanceId: i.id })),
+      ...jellystat.filter(inWs).map((i) => ({ kind: "jellystat" as MonitorKind, instanceId: i.id })),
+      ...jellyfin.filter(inWs).map((i) => ({ kind: "jellyfin" as MonitorKind, instanceId: i.id })),
+      ...emby.filter(inWs).map((i) => ({ kind: "emby" as MonitorKind, instanceId: i.id })),
+    ];
+  }, [tautulli, tracearr, jellystat, jellyfin, emby, attached]);
 }
 
 // Stream monitors with a dedicated stats screen (charts + most active users).

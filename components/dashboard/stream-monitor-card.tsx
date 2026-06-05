@@ -4,12 +4,11 @@ import { useQueries } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { getMonitorAdapter, type MonitorKind } from "@/lib/monitor-adapter";
 import { parseHiddenUsers } from "@/lib/now-playing-stream";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -32,13 +31,13 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
   );
   const router = useRouter();
 
-  const tautulliInstances = resolveBoundInstances(
+  const tautulliInstances = useWorkspaceScopedInstances(
+    "tautulli",
     settings.tautulliInstanceIds,
-    useEnabledInstances("tautulli"),
   );
-  const tracearrInstances = resolveBoundInstances(
+  const tracearrInstances = useWorkspaceScopedInstances(
+    "tracearr",
     settings.tracearrInstanceIds,
-    useEnabledInstances("tracearr"),
   );
 
   const sources = [

@@ -6,9 +6,8 @@ import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
@@ -55,8 +54,10 @@ export function UsenetQueueCard({ slotId, adapter }: Props) {
     USENET_QUEUE_DEFAULT_SETTINGS,
   );
 
-  const allInstances = useEnabledInstances(adapter.serviceId);
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances(
+    adapter.serviceId,
+    settings.instanceIds,
+  );
 
   const queueQueries = useQueries({
     queries: instances.map((inst) => adapter.queueQueryOptions(inst.id)),

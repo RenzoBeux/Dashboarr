@@ -17,14 +17,13 @@ import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { getCpu, getMem, getFs, getGpu, getNet, getLoad, selectInterfaces, type GlancesNetRate } from "@/services/glances-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import {
   SERVER_STATS_DEFAULT_SETTINGS,
   type ServerStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/server-stats-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes, formatSpeed } from "@/lib/utils";
 import type { GlancesFsItem, GlancesGpuItem, GlancesLoad } from "@/lib/types";
@@ -137,8 +136,7 @@ export function ServerStatsCard({ slotId }: WidgetComponentProps) {
     SERVER_STATS_DEFAULT_SETTINGS,
   );
 
-  const allInstances = useEnabledInstances("glances");
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances("glances", settings.instanceIds);
 
   const allHidden =
     !settings.showCpu && !settings.showRam && !settings.showGpu && !settings.showDisks;

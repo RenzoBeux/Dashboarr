@@ -12,8 +12,8 @@ import {
   getTVDetails,
   getPosterUrl,
 } from "@/services/overseerr-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import type {
   OverseerrRequest,
@@ -26,7 +26,6 @@ import {
   type OverseerrRequestsSettingsValue,
   type OverseerrStatusFilter,
 } from "@/components/dashboard/widget-settings/overseerr-requests-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
@@ -66,8 +65,7 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
     slotId,
     OVERSEERR_REQUESTS_DEFAULT_SETTINGS,
   );
-  const allInstances = useEnabledInstances("overseerr");
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances("overseerr", settings.instanceIds);
   const router = useRouter();
 
   // Fan out requests + counts across the resolved instances. Each request is

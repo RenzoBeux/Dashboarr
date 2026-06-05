@@ -7,8 +7,8 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { getHistory as getRadarrHistory, getRadarrPoster } from "@/services/radarr-api";
 import { getHistory as getSonarrHistory, getSonarrPoster } from "@/services/sonarr-api";
 import { useConfigStore } from "@/store/config-store";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { formatEpisodeCode, relativeDate } from "@/lib/utils";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
@@ -16,7 +16,6 @@ import {
   RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
   type RecentlyDownloadedSettingsValue,
 } from "@/components/dashboard/widget-settings/recently-downloaded-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -60,15 +59,13 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
   const showSonarr = settings.includeSonarr && sonarrEnabled;
   const showRadarr = settings.includeRadarr && radarrEnabled;
 
-  const allSonarrInstances = useEnabledInstances("sonarr");
-  const allRadarrInstances = useEnabledInstances("radarr");
-  const sonarrInstances = resolveBoundInstances(
+  const sonarrInstances = useWorkspaceScopedInstances(
+    "sonarr",
     settings.sonarrInstanceIds,
-    allSonarrInstances,
   );
-  const radarrInstances = resolveBoundInstances(
+  const radarrInstances = useWorkspaceScopedInstances(
+    "radarr",
     settings.radarrInstanceIds,
-    allRadarrInstances,
   );
 
   // Fan history across each resolved instance. Query keys match the watchers

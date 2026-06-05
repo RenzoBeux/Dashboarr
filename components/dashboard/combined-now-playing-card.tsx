@@ -6,10 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getSessions as getPlexSessions } from "@/services/plex-api";
 import { getSessions as getMediaServerSessions } from "@/services/jellyfin-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -38,17 +37,17 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
   );
   const router = useRouter();
 
-  const plexInstances = resolveBoundInstances(
+  const plexInstances = useWorkspaceScopedInstances(
+    "plex",
     settings.plexInstanceIds,
-    useEnabledInstances("plex"),
   );
-  const jellyfinInstances = resolveBoundInstances(
+  const jellyfinInstances = useWorkspaceScopedInstances(
+    "jellyfin",
     settings.jellyfinInstanceIds,
-    useEnabledInstances("jellyfin"),
   );
-  const embyInstances = resolveBoundInstances(
+  const embyInstances = useWorkspaceScopedInstances(
+    "emby",
     settings.embyInstanceIds,
-    useEnabledInstances("emby"),
   );
 
   // Flat list of (kind, instance) describing each session query, in display

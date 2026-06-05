@@ -7,14 +7,13 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfigStore } from "@/store/config-store";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   CALENDAR_DEFAULT_SETTINGS,
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import {
@@ -82,15 +81,13 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const showSonarr = settings.includeSonarr && sonarrEnabled;
   const showRadarr = settings.includeRadarr && radarrEnabled;
 
-  const allSonarrInstances = useEnabledInstances("sonarr");
-  const allRadarrInstances = useEnabledInstances("radarr");
-  const sonarrInstances = resolveBoundInstances(
+  const sonarrInstances = useWorkspaceScopedInstances(
+    "sonarr",
     settings.sonarrInstanceIds,
-    allSonarrInstances,
   );
-  const radarrInstances = resolveBoundInstances(
+  const radarrInstances = useWorkspaceScopedInstances(
+    "radarr",
     settings.radarrInstanceIds,
-    allRadarrInstances,
   );
 
   // Fan out the calendar fetch across each resolved instance per kind. The
