@@ -33,6 +33,15 @@ import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sh
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 
+// Progressive mount: how many widgets render in the first paint, and how many
+// more reveal per frame after that. Opening the dashboard otherwise mounts every
+// data-fetching widget (and fires every first poll) in a single commit, which
+// froze the JS thread for ~700ms. Rendering a screenful immediately and
+// streaming the rest a couple per frame keeps the open responsive while the
+// below-the-fold widgets fill in. REVEAL_INITIAL ≈ a phone screenful of cards.
+const REVEAL_INITIAL = 3;
+const REVEAL_BATCH = 2;
+
 // Memoized so toggling editMode (which re-renders DashboardScreen) doesn't
 // re-render the heavy, data-fetching widget bodies. editMode only drives the
 // surrounding chrome (the per-slot control row + dashed border), so each
@@ -69,6 +78,7 @@ export default function DashboardScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [dashboardPickerVisible, setDashboardPickerVisible] = useState(false);
   const [settingsForSlot, setSettingsForSlot] = useState<string | null>(null);
+  const [revealCount, setRevealCount] = useState(REVEAL_INITIAL);
 
   // Entering edit mode mounts a per-widget control row (several SVG icons each)
   // for every visible widget at once — heavy enough to stall the tap. So show
@@ -83,6 +93,13 @@ export default function DashboardScreen() {
     const handle = requestAnimationFrame(() => setShowEditControls(true));
     return () => cancelAnimationFrame(handle);
   }, [editMode]);
+
+  // Restart the progressive reveal when switching dashboards — a different
+  // dashboard remounts a different widget set (keyed by slot id), so without
+  // this the new set would mount all at once after the first reveal completed.
+  useEffect(() => {
+    setRevealCount(REVEAL_INITIAL);
+  }, [activeDashboardId]);
 
   const activeDashboard =
     dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0];
@@ -107,6 +124,20 @@ export default function DashboardScreen() {
     if (!isWidgetServiceEnabled(widget, services)) return false;
     return isWidgetServiceAttached(widget, attachedKinds);
   });
+
+  // Grow the reveal one batch per frame until every visible widget is mounted.
+  // Already-mounted widgets are memoized (WidgetSlotBody), so each step only
+  // pays for the newly-revealed slots — spreading the first-mount cost across
+  // frames instead of one ~700ms block. Settles within a few frames.
+  useEffect(() => {
+    if (revealCount >= visibleSlots.length) return;
+    const handle = requestAnimationFrame(() =>
+      setRevealCount((c) => c + REVEAL_BATCH),
+    );
+    return () => cancelAnimationFrame(handle);
+  }, [revealCount, visibleSlots.length]);
+
+  const revealedSlots = visibleSlots.slice(0, revealCount);
 
   function handleMove(slotId: string, direction: "up" | "down") {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -230,7 +261,7 @@ export default function DashboardScreen() {
               </Text>
             </View>
           )}
-          {visibleSlots.map((slot, visibleIndex) => {
+          {revealedSlots.map((slot, visibleIndex) => {
             const widget = WIDGET_REGISTRY[slot.widgetId];
             if (!widget) return null;
             const { label, settingsComponent } = widget;
@@ -238,10 +269,10 @@ export default function DashboardScreen() {
             const isLast = visibleIndex === visibleSlots.length - 1;
 
             return (
-              <Animated.View
-                key={slot.id}
-                entering={FadeInDown.delay(visibleIndex * 80).springify()}
-              >
+              // No per-index delay: progressive mounting already staggers the
+              // reveal (each widget springs in as its batch mounts), so an
+              // index-based delay would make late widgets wait ~1s to appear.
+              <Animated.View key={slot.id} entering={FadeInDown.springify()}>
                 {showEditControls && (
                   <View className="flex-row items-center justify-between mb-1 px-1">
                     <View className="flex-row items-center gap-1.5 flex-1">
