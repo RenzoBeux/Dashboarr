@@ -22,6 +22,8 @@ jest.mock("expo-secure-store", () => ({
 }));
 
 import { useConfigStore } from "./config-store";
+import { setJSON } from "./storage";
+import { STORAGE_KEYS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
 
 // Smoke-test that getActiveUrl always returns a fetch-safe URL, even when the
@@ -529,5 +531,431 @@ describe("setActiveDashboard — query invalidation on forced away (#4)", () => 
     expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+// #148: a workspace that explicitly selected NO live home networks
+// (homeNetworkIds: [] or only stale ids) is "always remote" and must be honored
+// even when the GLOBAL auto-switch toggle is off — otherwise turning off
+// auto-switch silently re-exposes the private local URL for a remote-only
+// workspace. undefined (auto-attach all networks) keeps the legacy behavior.
+describe("getActiveUrl — workspace 'always remote' honored with auto-switch off (#148)", () => {
+  const LOCAL = "http://192.168.1.50:7878";
+  const REMOTE = "https://radarr.example.com";
+
+  function seedWorkspace(opts: {
+    homeNetworkIds: string[] | undefined;
+    homeNetworks: { id: string; ssid: string; bssid: string }[];
+    autoSwitchNetwork: boolean;
+    networkAwayFromHome: boolean;
+  }) {
+    useConfigStore.setState({
+      serviceInstances: {
+        ...useConfigStore.getState().serviceInstances,
+        radarr: [
+          {
+            id: INSTANCE_ID,
+            enabled: true,
+            name: "Radarr",
+            localUrl: LOCAL,
+            remoteUrl: REMOTE,
+            useRemote: false,
+          },
+        ],
+      },
+      activeInstance: {
+        ...useConfigStore.getState().activeInstance,
+        radarr: INSTANCE_ID,
+      },
+      homeNetworks: opts.homeNetworks,
+      dashboards: [
+        {
+          id: "A",
+          name: "A",
+          widgets: [],
+          ...(opts.homeNetworkIds !== undefined
+            ? { homeNetworkIds: opts.homeNetworkIds }
+            : {}),
+        },
+      ],
+      activeDashboardId: "A",
+      autoSwitchNetwork: opts.autoSwitchNetwork,
+      networkAwayFromHome: opts.networkAwayFromHome,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("returns remote for homeNetworkIds:[] even when auto-switch is off", () => {
+    seedWorkspace({
+      homeNetworkIds: [],
+      homeNetworks: [{ id: "home", ssid: "home", bssid: "" }],
+      autoSwitchNetwork: false,
+      networkAwayFromHome: false,
+    });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(REMOTE);
+  });
+
+  it("returns remote when the selection only references stale (deleted) networks", () => {
+    seedWorkspace({
+      homeNetworkIds: ["deleted-id"],
+      homeNetworks: [{ id: "home", ssid: "home", bssid: "" }],
+      autoSwitchNetwork: false,
+      networkAwayFromHome: false,
+    });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(REMOTE);
+  });
+
+  it("keeps legacy local behavior for undefined (auto-attach) with auto-switch off", () => {
+    seedWorkspace({
+      homeNetworkIds: undefined,
+      homeNetworks: [{ id: "home", ssid: "home", bssid: "" }],
+      autoSwitchNetwork: false,
+      networkAwayFromHome: false,
+    });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(LOCAL);
+  });
+
+  it("does NOT force remote when the selection has a live match (auto-switch off → local)", () => {
+    seedWorkspace({
+      homeNetworkIds: ["home"],
+      homeNetworks: [{ id: "home", ssid: "home", bssid: "" }],
+      autoSwitchNetwork: false,
+      networkAwayFromHome: false,
+    });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(LOCAL);
+  });
+});
+
+// #148: editing the ACTIVE workspace's home-network selection can shrink the
+// trusted set, so it must reset the away flag the same way a workspace SWITCH
+// does — a stale `false` would keep serving the local URL on a network the
+// workspace no longer trusts (the in-place-edit analogue of the switch-race).
+describe("setDashboardHomeNetworkIds — away-flag reset on active-workspace edit (#148)", () => {
+  const net = (id: string) => ({ id, ssid: id, bssid: "" });
+
+  function seedDashboards(opts: {
+    homeNetworks: { id: string; ssid: string; bssid: string }[];
+    dashboards: { id: string; homeNetworkIds?: string[] }[];
+    activeId: string;
+    autoSwitchNetwork: boolean;
+    networkAwayFromHome: boolean;
+  }) {
+    useConfigStore.setState({
+      homeNetworks: opts.homeNetworks,
+      dashboards: opts.dashboards.map((d) => ({
+        id: d.id,
+        name: d.id,
+        widgets: [],
+        ...(d.homeNetworkIds !== undefined
+          ? { homeNetworkIds: d.homeNetworkIds }
+          : {}),
+      })),
+      activeDashboardId: opts.activeId,
+      autoSwitchNetwork: opts.autoSwitchNetwork,
+      networkAwayFromHome: opts.networkAwayFromHome,
+      demoMode: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("forces away=true when narrowing the active workspace's networks", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [{ id: "A", homeNetworkIds: ["home", "cabin"] }],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    });
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+
+    useConfigStore.getState().setDashboardHomeNetworkIds("A", ["home"]);
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("forces away=true when switching the active workspace to 'always remote' ([])", () => {
+    seedDashboards({
+      homeNetworks: [net("home")],
+      dashboards: [{ id: "A", homeNetworkIds: ["home"] }],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    });
+
+    useConfigStore.getState().setDashboardHomeNetworkIds("A", []);
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+  });
+
+  it("does NOT touch the flag when editing a non-active workspace", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", homeNetworkIds: ["home"] },
+        { id: "B", homeNetworkIds: ["home", "cabin"] },
+      ],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    });
+
+    useConfigStore.getState().setDashboardHomeNetworkIds("B", ["cabin"]);
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+
+  it("leaves the flag alone when the effective set is unchanged (all → select-all)", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [{ id: "A", homeNetworkIds: undefined }], // all = {home, cabin}
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    });
+
+    useConfigStore
+      .getState()
+      .setDashboardHomeNetworkIds("A", ["home", "cabin"]);
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+});
+
+// #148: the per-dashboard homeNetworkIds is persisted into STORAGE_KEYS.dashboards
+// by its setter, so hydrate MUST read it back — dropping it on cold start would
+// silently revert a "remote-only"/subset workspace to "all home networks" and
+// re-expose the local URL. This test seeds the persisted shape and rehydrates.
+describe("hydrate — preserves per-dashboard homeNetworkIds (#148)", () => {
+  it("round-trips [] (always remote), a subset, and undefined (all) through hydrate", async () => {
+    setJSON(STORAGE_KEYS.dashboards, [
+      { id: "A", name: "Remote-only", widgets: [], homeNetworkIds: [] },
+      { id: "B", name: "Subset", widgets: [], homeNetworkIds: ["n1"] },
+      { id: "C", name: "All", widgets: [] },
+    ]);
+
+    await useConfigStore.getState().hydrate();
+
+    const dashboards = useConfigStore.getState().dashboards;
+    const a = dashboards.find((d) => d.id === "A");
+    const b = dashboards.find((d) => d.id === "B");
+    const c = dashboards.find((d) => d.id === "C");
+    // Explicit empty selection ("always remote") survives — NOT dropped to undefined.
+    expect(a?.homeNetworkIds).toEqual([]);
+    // Subset selection survives verbatim.
+    expect(b?.homeNetworkIds).toEqual(["n1"]);
+    // Absent stays absent (auto-attach all networks).
+    expect(c?.homeNetworkIds).toBeUndefined();
+  });
+
+  // v30: per-workspace Services-tab order is persisted onto the dashboard, so
+  // hydrate must read it back like homeNetworkIds.
+  it("round-trips per-dashboard servicesOrder through hydrate (#12)", async () => {
+    setJSON(STORAGE_KEYS.dashboards, [
+      { id: "A", name: "A", widgets: [], servicesOrder: ["sonarr", "radarr"] },
+      { id: "B", name: "B", widgets: [] },
+    ]);
+    await useConfigStore.getState().hydrate();
+    const dashboards = useConfigStore.getState().dashboards;
+    expect(dashboards.find((d) => d.id === "A")?.servicesOrder).toEqual([
+      "sonarr",
+      "radarr",
+    ]);
+    expect(dashboards.find((d) => d.id === "B")?.servicesOrder).toBeUndefined();
+  });
+});
+
+// #6: duplicateDashboard clones a workspace with a fresh id + fresh slot ids and
+// deep-copied fields, so the two dashboards never share mutable references and
+// the global slot-id uniqueness invariant holds.
+describe("duplicateDashboard (#6)", () => {
+  const src = {
+    id: "src",
+    name: "Home",
+    widgets: [
+      { id: "slot-1", widgetId: "service-health" },
+      { id: "slot-2", widgetId: "speed-stats", settings: { foo: 1 } },
+    ],
+    attachedInstances: ["a", "b"],
+    pinnedTabs: ["services"],
+    activeInstance: { radarr: "a" },
+    homeNetworkIds: [] as string[],
+    servicesOrder: ["radarr", "sonarr"],
+    icon: "Film",
+    color: "#3b82f6",
+  };
+
+  it("clones with fresh ids, a ' copy' name, and deep-copied fields", () => {
+    useConfigStore.setState({
+      dashboards: [src],
+      activeDashboardId: "src",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+
+    const clone = useConfigStore.getState().duplicateDashboard("src")!;
+    expect(clone).not.toBeNull();
+    expect(clone.id).not.toBe("src");
+    expect(clone.name).toBe("Home copy");
+    // Fresh slot ids (uniqueness invariant), settings deep-copied.
+    expect(clone.widgets.map((w) => w.id)).not.toContain("slot-1");
+    expect(clone.widgets.map((w) => w.id)).not.toContain("slot-2");
+    expect(clone.widgets[1].settings).toEqual({ foo: 1 });
+    expect(clone.widgets[1].settings).not.toBe(src.widgets[1].settings);
+    // Explicit empty homeNetworkIds ("always remote") preserved, by value.
+    expect(clone.homeNetworkIds).toEqual([]);
+    expect(clone.servicesOrder).toEqual(["radarr", "sonarr"]);
+    expect(clone.attachedInstances).toEqual(["a", "b"]);
+    expect(clone.attachedInstances).not.toBe(src.attachedInstances);
+    expect(useConfigStore.getState().dashboards).toHaveLength(2);
+  });
+
+  it("dedupes the copy name", () => {
+    useConfigStore.setState({
+      dashboards: [
+        { id: "x", name: "Home", widgets: [] },
+        { id: "y", name: "Home copy", widgets: [] },
+      ],
+      activeDashboardId: "x",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    const clone = useConfigStore.getState().duplicateDashboard("x")!;
+    expect(clone.name).toBe("Home copy 2");
+  });
+
+  it("returns null for an unknown id", () => {
+    useConfigStore.setState({
+      dashboards: [{ id: "only", name: "Only", widgets: [] }],
+      activeDashboardId: "only",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    expect(useConfigStore.getState().duplicateDashboard("nope")).toBeNull();
+  });
+});
+
+// #6: copySlotToDashboard places a copy of a widget (with its settings) on
+// another dashboard, with a fresh slot id.
+describe("copySlotToDashboard (#6)", () => {
+  it("copies a slot with its settings onto the target, with a new id", () => {
+    useConfigStore.setState({
+      dashboards: [
+        {
+          id: "A",
+          name: "A",
+          widgets: [{ id: "s1", widgetId: "speed-stats", settings: { n: 5 } }],
+        },
+        { id: "B", name: "B", widgets: [] },
+      ],
+      activeDashboardId: "A",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+
+    useConfigStore.getState().copySlotToDashboard("s1", "B");
+    const b = useConfigStore.getState().dashboards.find((d) => d.id === "B")!;
+    expect(b.widgets).toHaveLength(1);
+    expect(b.widgets[0].id).not.toBe("s1");
+    expect(b.widgets[0].widgetId).toBe("speed-stats");
+    expect(b.widgets[0].settings).toEqual({ n: 5 });
+    // Source untouched.
+    const a = useConfigStore.getState().dashboards.find((d) => d.id === "A")!;
+    expect(a.widgets).toHaveLength(1);
+  });
+});
+
+// #7: notifications are global; tapping one switches to the first workspace that
+// has the instance attached so the destination screen is populated.
+describe("activateDashboardForInstance (#7)", () => {
+  function seed(active: string) {
+    useConfigStore.setState({
+      dashboards: [
+        { id: "A", name: "A", widgets: [], attachedInstances: ["x"] },
+        { id: "B", name: "B", widgets: [], attachedInstances: ["y"] },
+        { id: "C", name: "C", widgets: [] }, // auto-attach (undefined)
+      ],
+      activeDashboardId: active,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("switches to the first dashboard attaching the instance", () => {
+    seed("B");
+    useConfigStore.getState().activateDashboardForInstance("x");
+    expect(useConfigStore.getState().activeDashboardId).toBe("A");
+  });
+
+  it("is a no-op when the active dashboard already attaches it", () => {
+    seed("A");
+    useConfigStore.getState().activateDashboardForInstance("x");
+    expect(useConfigStore.getState().activeDashboardId).toBe("A");
+  });
+
+  it("treats an auto-attach dashboard as attaching every instance", () => {
+    useConfigStore.setState({
+      dashboards: [{ id: "C", name: "C", widgets: [] }],
+      activeDashboardId: "C",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    useConfigStore.getState().activateDashboardForInstance("anything");
+    expect(useConfigStore.getState().activeDashboardId).toBe("C"); // no-op
+  });
+});
+
+// #10: setDashboardActiveInstance must reject a pin the resolver would ignore
+// (disabled or not attached), so the persisted pin always matches resolution.
+describe("setDashboardActiveInstance — rejects un-resolvable pins (#10)", () => {
+  const inst = (id: string, enabled: boolean) => ({
+    id,
+    enabled,
+    name: id,
+    localUrl: "",
+    remoteUrl: "",
+    useRemote: false,
+  });
+
+  beforeEach(() => {
+    useConfigStore.setState({
+      serviceInstances: {
+        ...useConfigStore.getState().serviceInstances,
+        radarr: [inst("A", true), inst("B", true), inst("D", false)],
+      },
+      dashboards: [
+        { id: "dash", name: "dash", widgets: [], attachedInstances: ["A", "D"] },
+      ],
+      activeDashboardId: "dash",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  });
+
+  const pinOf = () =>
+    useConfigStore.getState().dashboards.find((d) => d.id === "dash")
+      ?.activeInstance?.radarr;
+
+  it("accepts an enabled + attached instance", () => {
+    useConfigStore.getState().setDashboardActiveInstance("dash", "radarr", "A");
+    expect(pinOf()).toBe("A");
+  });
+
+  it("rejects an enabled but NOT attached instance", () => {
+    useConfigStore.getState().setDashboardActiveInstance("dash", "radarr", "B");
+    expect(pinOf()).toBeUndefined();
+  });
+
+  it("rejects an attached but DISABLED instance", () => {
+    useConfigStore.getState().setDashboardActiveInstance("dash", "radarr", "D");
+    expect(pinOf()).toBeUndefined();
+  });
+});
+
+// #14: broadening the active workspace's home-network set (a superset) must NOT
+// flash remote — the network we're home on is still trusted.
+describe("setActiveDashboard — superset switch stays home (#14)", () => {
+  const net = (id: string) => ({ id, ssid: id, bssid: "" });
+  it("does not force away when the new set is a superset of the old", () => {
+    useConfigStore.setState({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", name: "A", widgets: [], homeNetworkIds: ["home"] },
+        { id: "B", name: "B", widgets: [], homeNetworkIds: ["home", "cabin"] },
+      ],
+      activeDashboardId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false, // home on "home"
+      demoMode: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    useConfigStore.getState().setActiveDashboard("B");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
   });
 });

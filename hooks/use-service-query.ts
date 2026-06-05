@@ -13,13 +13,17 @@ export function useServiceQuery<T>(
   fetcher: (instanceId: string | undefined) => Promise<T>,
   refetchInterval: number,
   instanceId?: string,
+  // Extra gate ANDed onto the internal enabled. Defaults to true so screens are
+  // unaffected; background watchers pass their `active` flag so they stop
+  // polling entirely when notifications are off / the backend is pushing.
+  active = true,
 ) {
   const { instanceId: id, enabled } = useInstanceTarget(serviceId, instanceId);
   return useQuery({
     queryKey: [serviceId, id, ...keyParts] as const,
     queryFn: () => fetcher(id ?? undefined),
     refetchInterval,
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
   });
 }
 

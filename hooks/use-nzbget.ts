@@ -27,13 +27,14 @@ export function useNzbgetGroups(instanceId?: string) {
   );
 }
 
-export function useNzbgetHistory(limit = 50, instanceId?: string) {
+export function useNzbgetHistory(limit = 50, instanceId?: string, active = true) {
   return useServiceQuery(
     "nzbget",
     ["history", limit],
     (id) => getNzbgetHistory(limit, id),
     POLLING_INTERVALS.queue,
     instanceId,
+    active,
   );
 }
 

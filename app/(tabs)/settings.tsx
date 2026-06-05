@@ -698,6 +698,12 @@ function InstanceList({
   const moveInstance = useConfigStore((s) => s.moveInstance);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const dashboards = useConfigStore((s) => s.dashboards);
+  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
+  // The "active instance" pin is per-workspace and written onto whichever
+  // dashboard is currently active. Name it so the user knows which workspace
+  // this chip row is editing — Settings is otherwise workspace-agnostic (#11).
+  const activeDashboardName =
+    dashboards.find((d) => d.id === activeDashboardId)?.name ?? "this workspace";
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
   // Per-instance tri-state health for the row dot. The shared hook is already
   // polling, so this is a pure index by instance UUID.
@@ -867,7 +873,10 @@ function InstanceList({
         {instances.length > 1 ? (
           <View className="px-4 py-3 border-t border-surface-light">
             <Text className="text-zinc-500 text-xs mb-2">
-              Active in this workspace
+              Active in{" "}
+              <Text className="text-zinc-300 font-medium">
+                {activeDashboardName}
+              </Text>
             </Text>
             <View className="flex-row flex-wrap gap-2">
               {instances

@@ -8,7 +8,7 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { useAttachedKinds } from "@/hooks/use-active-dashboard";
+import { useAttachedKinds, useActiveDashboard } from "@/hooks/use-active-dashboard";
 import { lightHaptic } from "@/lib/haptics";
 import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
@@ -32,13 +32,23 @@ export default function ServicesScreen() {
   const router = useRouter();
   const services = useConfigStore((s) => s.services);
   const wolDevices = useConfigStore((s) => s.wolDevices);
-  const servicesOrder = useConfigStore((s) => s.servicesOrder);
-  const setServicesOrder = useConfigStore((s) => s.setServicesOrder);
+  const globalServicesOrder = useConfigStore((s) => s.servicesOrder);
+  const setDashboardServicesOrder = useConfigStore(
+    (s) => s.setDashboardServicesOrder,
+  );
+  const activeDashboard = useActiveDashboard();
   const attachedKinds = useAttachedKinds();
   const { data: health } = useServiceHealth();
   const [editing, setEditing] = useState(false);
 
-  const fullOrder = useMemo(() => applyServicesOrder(servicesOrder), [servicesOrder]);
+  // v30: tile order is per-workspace — each dashboard can arrange its Services
+  // grid independently. Falls back to the global order when this dashboard has
+  // no custom one, so existing setups are unchanged until the user reorders.
+  const effectiveOrder = activeDashboard?.servicesOrder ?? globalServicesOrder;
+  const fullOrder = useMemo(
+    () => applyServicesOrder(effectiveOrder),
+    [effectiveOrder],
+  );
   // Workspace filter: only show enabled services with at least one attached
   // instance on the active dashboard. The full canonical order still drives
   // reorder neighbor lookups (so swapping with a hidden tile doesn't
@@ -71,7 +81,9 @@ export default function ServicesScreen() {
     const next = [...fullOrder];
     [next[a], next[b]] = [next[b], next[a]];
     lightHaptic();
-    setServicesOrder(next);
+    // Persist onto the active dashboard so the rearrangement stays scoped to
+    // this workspace and doesn't reshuffle the others.
+    if (activeDashboard) setDashboardServicesOrder(activeDashboard.id, next);
   };
 
   if (!enabledServices.length) {

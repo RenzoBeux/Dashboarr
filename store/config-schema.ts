@@ -229,6 +229,22 @@ function coerceDashboard(v: unknown): Dashboard | null {
     }
     out.homeNetworkIds = ids;
   }
+  // v30: optional per-workspace Services-tab order. Present-but-not-array is
+  // rejected; otherwise dedupe + drop unknown service ids (forward-compat, like
+  // the global servicesOrder). Absence means "use the global order".
+  if (v.servicesOrder !== undefined && v.servicesOrder !== null) {
+    if (!Array.isArray(v.servicesOrder)) return null;
+    const seen = new Set<string>();
+    const order: ServiceId[] = [];
+    for (const sid of v.servicesOrder) {
+      if (typeof sid !== "string") continue;
+      if (!SERVICE_ID_SET.has(sid)) continue; // forward-compat: drop unknowns
+      if (seen.has(sid)) continue;
+      seen.add(sid);
+      order.push(sid as ServiceId);
+    }
+    out.servicesOrder = order;
+  }
   return out;
 }
 

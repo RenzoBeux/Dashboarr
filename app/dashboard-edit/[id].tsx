@@ -236,9 +236,25 @@ export default function DashboardEditScreen() {
     return out;
   }, [attachedSet, serviceInstances]);
 
+  // Tabs that may be pinned. For an auto-attach dashboard the user hasn't
+  // curated yet, the draft `attached` is intentionally empty — but the live
+  // workspace includes every instance, so deriving pickability from the empty
+  // draft would offer only "Services" while the real bottom bar is full (#9).
+  // Use all enabled kinds in that case; once the user touches attachment, the
+  // draft becomes the source of truth.
+  const pickableKinds = useMemo(() => {
+    if (!wasAutoAttach || touchedAttached) return attachedKinds;
+    const out = new Set<ServiceId>();
+    for (const kind of SERVICE_IDS) {
+      const list = serviceInstances[kind] ?? [];
+      if (list.some((inst) => inst.enabled)) out.add(kind);
+    }
+    return out;
+  }, [wasAutoAttach, touchedAttached, attachedKinds, serviceInstances]);
+
   const pickable = useMemo(
-    () => pickableTabIdsFor(attachedKinds),
-    [attachedKinds],
+    () => pickableTabIdsFor(pickableKinds),
+    [pickableKinds],
   );
 
   // Recompute the still-pickable tab set from a hypothetical attachment list

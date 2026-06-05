@@ -83,6 +83,17 @@ function NotificationRouter() {
     function handleNotificationData(data: Record<string, unknown> | undefined) {
       if (!data?.type) return;
 
+      // Notifications are global (you're alerted about every instance, on any
+      // workspace). So before routing, switch to the first workspace that has
+      // this alert's instance attached — otherwise the destination screen would
+      // resolve to "not attached here" and look empty. No-op when the active
+      // workspace already includes it (or none does).
+      const instanceId =
+        typeof data.instanceId === "string" ? data.instanceId : null;
+      if (instanceId) {
+        useConfigStore.getState().activateDashboardForInstance(instanceId);
+      }
+
       switch (data.type) {
         case "radarr": {
           const id = asPositiveIntId(data.movieId);

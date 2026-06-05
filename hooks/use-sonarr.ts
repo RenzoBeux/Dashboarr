@@ -91,13 +91,13 @@ export function useSonarrQueue(instanceId?: string) {
   });
 }
 
-export function useSonarrHistory(instanceId?: string) {
+export function useSonarrHistory(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "history"],
     queryFn: () => getHistory(1, 50, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
   });
 }
 

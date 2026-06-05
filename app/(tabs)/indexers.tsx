@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { ServiceHeader } from "@/components/common/service-header";
+import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -30,6 +31,14 @@ import type { ProwlarrIndexer, ProwlarrSearchResult } from "@/lib/types";
 type Tab = "indexers" | "search" | "stats";
 
 export default function IndexersScreen() {
+  return (
+    <WorkspaceServiceGuard kinds={["prowlarr"]}>
+      <IndexersScreenInner />
+    </WorkspaceServiceGuard>
+  );
+}
+
+function IndexersScreenInner() {
   const [tab, setTab] = useState<Tab>("indexers");
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["prowlarr"]]);

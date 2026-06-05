@@ -70,13 +70,13 @@ export function useRadarrQueue(instanceId?: string) {
   });
 }
 
-export function useRadarrHistory(instanceId?: string) {
+export function useRadarrHistory(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
     queryKey: ["radarr", id, "history"],
     queryFn: () => getHistory(1, 50, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
   });
 }
 

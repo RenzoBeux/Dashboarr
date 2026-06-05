@@ -5,6 +5,7 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
+  Copy,
   Pencil,
   Check,
   Settings,
@@ -32,6 +33,9 @@ import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-shee
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
+import { resolveDashboardIcon } from "@/lib/dashboard-icons";
+import { ActionSheet } from "@/components/ui/action-sheet";
+import { toast } from "@/components/ui/toast";
 
 // Progressive mount: how many widgets render in the first paint, and how many
 // more reveal per frame after that. Opening the dashboard otherwise mounts every
@@ -68,16 +72,21 @@ const WidgetSlotBody = memo(function WidgetSlotBody({
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
   const services = useConfigStore((s) => s.services);
+  const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const dashboards = useConfigStore((s) => s.dashboards);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const removeSlot = useConfigStore((s) => s.removeSlot);
   const moveSlot = useConfigStore((s) => s.moveSlot);
+  const copySlotToDashboard = useConfigStore((s) => s.copySlotToDashboard);
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
   const [showEditControls, setShowEditControls] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [dashboardPickerVisible, setDashboardPickerVisible] = useState(false);
   const [settingsForSlot, setSettingsForSlot] = useState<string | null>(null);
+  // Slot the user is copying to another dashboard (#6). Drives the destination
+  // ActionSheet below; null when closed.
+  const [copySlotId, setCopySlotId] = useState<string | null>(null);
   const [revealCount, setRevealCount] = useState(REVEAL_INITIAL);
 
   // Entering edit mode mounts a per-widget control row (several SVG icons each)
@@ -111,7 +120,16 @@ export default function DashboardScreen() {
   const dashboardColor = resolveDashboardColor(activeDashboard?.color);
 
   const attachedKinds = useAttachedKinds();
-  const hasAnyEnabled = Object.values(services).some((s) => s.enabled);
+  // Whether ANY instance is enabled anywhere (not just resolved on this
+  // workspace). The misleading "No services configured" copy must only show when
+  // the user truly has nothing set up: a curated workspace with zero attached
+  // instances still has services globally — it just needs them attached, which
+  // is what the empty-state CTA below offers (#5). The active-dashboard-derived
+  // `services` view would read all-disabled for such a workspace and wrongly
+  // send the user to Settings.
+  const hasAnyEnabledGlobally = Object.values(serviceInstances).some((list) =>
+    list.some((i) => i.enabled),
+  );
 
   // Slots whose required service is disabled OR has no attached instance on
   // this dashboard get filtered out so users don't see broken/irrelevant
@@ -196,7 +214,7 @@ export default function DashboardScreen() {
               <Icon icon={SlidersHorizontal} size={ICON.MD} color="#71717a" />
             </TouchableOpacity>
           )}
-          {hasAnyEnabled && (
+          {hasAnyEnabledGlobally && (
             <TouchableOpacity
               onPress={() => setEditMode((e) => !e)}
               className="p-2"
@@ -213,7 +231,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {isAutoAttach && hasAnyEnabled && activeDashboard && (
+      {isAutoAttach && hasAnyEnabledGlobally && activeDashboard && (
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
@@ -243,7 +261,7 @@ export default function DashboardScreen() {
         </Pressable>
       )}
 
-      {!hasAnyEnabled ? (
+      {!hasAnyEnabledGlobally ? (
         <View className="flex-1 items-center justify-center py-20">
           <Text className="text-zinc-400 text-base text-center">
             No services configured yet.
@@ -251,6 +269,68 @@ export default function DashboardScreen() {
           <Text className="text-zinc-500 text-sm text-center mt-1">
             Go to Settings to add your first service.
           </Text>
+        </View>
+      ) : visibleSlots.length === 0 && !editMode && activeDashboard ? (
+        // A fresh/curated workspace with nothing to show yet. Without this, the
+        // screen was blank or fell through to the misleading "No services
+        // configured" copy even though services exist globally — the user just
+        // hasn't attached any here or added widgets (#5). Two cases: no attached
+        // services (send them to the editor to attach) vs attached-but-no-widgets
+        // (open the Add Widget sheet).
+        <View className="flex-1 items-center justify-center py-16 px-6">
+          <View
+            className="w-16 h-16 rounded-2xl items-center justify-center mb-4"
+            style={{ backgroundColor: `${dashboardColor}26` }}
+          >
+            <Icon
+              icon={attachedKinds.size === 0 ? SlidersHorizontal : Sparkles}
+              size={28}
+              color={dashboardColor}
+            />
+          </View>
+          {attachedKinds.size === 0 ? (
+            <>
+              <Text className="text-zinc-200 text-base font-semibold text-center">
+                No services attached
+              </Text>
+              <Text className="text-zinc-500 text-sm text-center mt-1 leading-5">
+                Attach the services that belong on this workspace to start
+                building it.
+              </Text>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.push(`/dashboard-edit/${activeDashboard.id}` as any);
+                }}
+                className="flex-row items-center gap-2 rounded-xl px-4 py-2.5 mt-5 active:opacity-80"
+                style={{ backgroundColor: `${dashboardColor}26` }}
+              >
+                <Icon icon={SlidersHorizontal} size={ICON.SM} color={dashboardColor} />
+                <Text className="text-sm font-semibold" style={{ color: dashboardColor }}>
+                  Attach services
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text className="text-zinc-200 text-base font-semibold text-center">
+                No widgets yet
+              </Text>
+              <Text className="text-zinc-500 text-sm text-center mt-1 leading-5">
+                Add widgets to see your services at a glance on this workspace.
+              </Text>
+              <Pressable
+                onPress={openPicker}
+                className="flex-row items-center gap-2 rounded-xl px-4 py-2.5 mt-5 active:opacity-80"
+                style={{ backgroundColor: `${dashboardColor}26` }}
+              >
+                <Icon icon={Plus} size={ICON.SM} color={dashboardColor} />
+                <Text className="text-sm font-semibold" style={{ color: dashboardColor }}>
+                  Add widget
+                </Text>
+              </Pressable>
+            </>
+          )}
         </View>
       ) : (
         <View className="gap-4">
@@ -298,6 +378,19 @@ export default function DashboardScreen() {
                       >
                         <Icon icon={ChevronDown} size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
+                      {dashboards.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setCopySlotId(slot.id);
+                          }}
+                          className="p-1 ml-1"
+                          hitSlop={6}
+                          accessibilityLabel="Copy widget to another dashboard"
+                        >
+                          <Icon icon={Copy} size={ICON.MD} color="#a1a1aa" />
+                        </TouchableOpacity>
+                      )}
                       {settingsComponent && (
                         <TouchableOpacity
                           onPress={() => openSettings(slot.id)}
@@ -352,6 +445,32 @@ export default function DashboardScreen() {
       <DashboardPickerSheet
         visible={dashboardPickerVisible}
         onClose={() => setDashboardPickerVisible(false)}
+      />
+      <ActionSheet
+        visible={copySlotId !== null}
+        onClose={() => setCopySlotId(null)}
+        title="Copy widget to…"
+        subtitle="Adds a copy, with its settings, to the chosen dashboard."
+        actions={dashboards
+          .filter((d) => d.id !== activeDashboardId)
+          .map((d) => ({
+            label: d.name,
+            icon: (
+              <Icon
+                icon={resolveDashboardIcon(d.icon)}
+                size={ICON.MD}
+                color={resolveDashboardColor(d.color)}
+              />
+            ),
+            onPress: () => {
+              if (copySlotId) {
+                copySlotToDashboard(copySlotId, d.id);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                toast(`Copied to ${d.name}`, "success");
+              }
+              setCopySlotId(null);
+            },
+          }))}
       />
     </ScreenWrapper>
   );

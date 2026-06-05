@@ -70,11 +70,17 @@ export function resolveActiveUrlKind(
   inst: { localUrl: string; remoteUrl: string; useRemote: boolean },
   autoSwitchNetwork: boolean,
   networkAwayFromHome: boolean,
+  // True when the active workspace explicitly selected no live home networks
+  // (homeNetworkIds: [] or only stale ids) → "always remote", honored even when
+  // global auto-switch is off. Mirrors getActiveUrl step 2 (#148). Defaults to
+  // false so callers without workspace context keep the legacy behavior.
+  workspaceForcesRemote = false,
 ): "local" | "remote" | null {
   const local = normalizeServiceUrl(inst.localUrl);
   const remote = normalizeServiceUrl(inst.remoteUrl);
   if (!local && !remote) return null;
   if (inst.useRemote) return remote ? "remote" : "local";
+  if (workspaceForcesRemote) return "remote";
   if (!autoSwitchNetwork) return local ? "local" : "remote";
   if (networkAwayFromHome) return "remote";
   return local ? "local" : "remote";

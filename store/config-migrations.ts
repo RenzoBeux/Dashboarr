@@ -112,8 +112,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         networks", so the existing list keeps governing every dashboard and
  *         older exports just need the version field bumped. coerceDashboard
  *         validates the field on import.
+ *   v30 — optional per-workspace `servicesOrder` on each Dashboard: a custom
+ *         Services-tab tile order per workspace. Pure version stamp — absent
+ *         means "use the global servicesOrder", so older exports just need the
+ *         version field bumped. coerceDashboard validates the field on import.
  */
-export const CURRENT_CONFIG_VERSION = 29;
+export const CURRENT_CONFIG_VERSION = 30;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -589,6 +593,12 @@ const migrations: Record<number, (payload: any) => any> = {
   // means "use all home networks", so older exports are already correct.
   // coerceDashboard coerces/validates the field on import.
   28: (payload) => ({ ...payload, version: 29 }),
+
+  // v29 → v30: optional per-workspace `servicesOrder` on each Dashboard. Pure
+  // version stamp — the field is optional and absent means "use the global
+  // servicesOrder", so older exports are already correct. coerceDashboard
+  // coerces/validates the field on import.
+  29: (payload) => ({ ...payload, version: 30 }),
 };
 
 /**

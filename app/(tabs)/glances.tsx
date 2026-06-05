@@ -4,6 +4,7 @@ import { HardDrive, Activity, Gpu, ChevronDown, ChevronUp, Container, Network } 
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
@@ -51,6 +52,14 @@ function pct(n: number | null | undefined): number {
 }
 
 export default function GlancesScreen() {
+  return (
+    <WorkspaceServiceGuard kinds={["glances"]}>
+      <GlancesScreenInner />
+    </WorkspaceServiceGuard>
+  );
+}
+
+function GlancesScreenInner() {
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["glances"]]);
   const glancesHealth = healthData?.find((s) => s.id === "glances");

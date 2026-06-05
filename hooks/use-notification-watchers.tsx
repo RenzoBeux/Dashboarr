@@ -6,7 +6,6 @@ import { getTorrents } from "@/services/qbittorrent-api";
 import { useRadarrHistory } from "@/hooks/use-radarr";
 import { useSonarrHistory } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNzbgetHistory } from "@/hooks/use-nzbget";
@@ -228,7 +227,7 @@ function SabnzbdHistoryWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: sabHistory } = useSabHistory(20, instanceId);
+  const { data: sabHistory } = useSabHistory(20, instanceId, active);
   const prevSabHistoryIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -266,7 +265,7 @@ function NzbgetHistoryWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: history } = useNzbgetHistory(20, instanceId);
+  const { data: history } = useNzbgetHistory(20, instanceId, active);
   const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
@@ -323,7 +322,7 @@ function RadarrImportWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: history } = useRadarrHistory(instanceId);
+  const { data: history } = useRadarrHistory(instanceId, active);
   const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
@@ -366,7 +365,7 @@ function SonarrImportWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: history } = useSonarrHistory(instanceId);
+  const { data: history } = useSonarrHistory(instanceId, active);
   const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
@@ -417,11 +416,13 @@ function ServiceHealthWatcher({
   settings: import("@/store/config-store").NotificationSettings;
 }) {
   const { data: health } = useServiceHealth();
-  // Scope offline alerts to the active workspace so a server that lives on
-  // another dashboard (e.g. a Cabin-only qBit) doesn't push "unreachable" while
-  // you're on the Home dashboard (#148 review Rec #5). Single-dashboard /
-  // auto-attach setups attach every instance, so they behave exactly as before.
-  const attached = useAttachedInstances();
+  // Offline alerts are GLOBAL: you're notified about any configured instance
+  // going down regardless of which workspace is active — matching the
+  // completion/import/request watchers above, so a drop on a server that lives
+  // on another dashboard still reaches you. Tapping the alert jumps to a
+  // workspace that has the instance attached (activateDashboardForInstance in
+  // app/_layout.tsx). The usable-URL guard below still suppresses false
+  // "offline" alerts for an instance with no reachable URL on this network.
   const prevHealth = useRef<Map<string, boolean> | null>(null);
 
   useEffect(() => {
@@ -433,7 +434,6 @@ function ServiceHealthWatcher({
     const currentMap = new Map<string, boolean>();
     for (const kind of health) {
       for (const inst of kind.instances) {
-        if (!attached.has(inst.instanceId)) continue;
         const key = `${kind.id}:${inst.instanceId}`;
         currentMap.set(key, inst.online);
         if (prev !== null) {
@@ -465,7 +465,7 @@ function ServiceHealthWatcher({
       }
     }
     prevHealth.current = currentMap;
-  }, [health, gate.backendActive, gate.hydrated, gate.enabled, settings, attached]);
+  }, [health, gate.backendActive, gate.hydrated, gate.enabled, settings]);
 
   return null;
 }
@@ -483,6 +483,7 @@ function OverseerrRequestWatcher({
     "pending",
     "added",
     instanceId,
+    active,
   );
   const prevRequestIds = useRef<Set<number> | null>(null);
   const overseerrShapeWarned = useRef(false);

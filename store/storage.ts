@@ -68,3 +68,12 @@ export function setJSON(key: string, value: unknown): void {
   cache[key] = json;
   AsyncStorage.setItem(key, json);
 }
+
+// Atomic multi-key write. Use when two keys must land together or not at all
+// (e.g. `dashboards` + `activeDashboardId`): `multiSet` batches them into one
+// AsyncStorage operation, so a crash/kill can't persist one without the other
+// and leave the pair desynced. Each value is pre-serialized by the caller.
+export function setMany(entries: [string, string][]): void {
+  for (const [key, value] of entries) cache[key] = value;
+  AsyncStorage.multiSet(entries);
+}
