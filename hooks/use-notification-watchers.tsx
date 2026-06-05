@@ -6,11 +6,13 @@ import { getTorrents } from "@/services/qbittorrent-api";
 import { useRadarrHistory } from "@/hooks/use-radarr";
 import { useSonarrHistory } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNzbgetHistory } from "@/hooks/use-nzbget";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
+import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
@@ -415,6 +417,11 @@ function ServiceHealthWatcher({
   settings: import("@/store/config-store").NotificationSettings;
 }) {
   const { data: health } = useServiceHealth();
+  // Scope offline alerts to the active workspace so a server that lives on
+  // another dashboard (e.g. a Cabin-only qBit) doesn't push "unreachable" while
+  // you're on the Home dashboard (#148 review Rec #5). Single-dashboard /
+  // auto-attach setups attach every instance, so they behave exactly as before.
+  const attached = useAttachedInstances();
   const prevHealth = useRef<Map<string, boolean> | null>(null);
 
   useEffect(() => {
@@ -422,9 +429,11 @@ function ServiceHealthWatcher({
     if (!gate.hydrated || !gate.enabled) return;
     if (!Array.isArray(health)) return;
     const prev = prevHealth.current;
+    const store = useConfigStore.getState();
     const currentMap = new Map<string, boolean>();
     for (const kind of health) {
       for (const inst of kind.instances) {
+        if (!attached.has(inst.instanceId)) continue;
         const key = `${kind.id}:${inst.instanceId}`;
         currentMap.set(key, inst.online);
         if (prev !== null) {
@@ -432,7 +441,15 @@ function ServiceHealthWatcher({
           if (
             wasOnline === true &&
             inst.online === false &&
-            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings)
+            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings) &&
+            // Don't cry "unreachable" when the instance only went offline
+            // because the current network has no URL to reach it on — e.g.
+            // leaving home resolves a local-only server to "" (see
+            // getActiveUrl). That's a network change, not a server going down;
+            // a server with a usable URL that stops responding still fires.
+            // kind.id is widened to string on ServiceHealthStatus but is always
+            // a ServiceId here (results are built from SERVICE_IDS).
+            store.getActiveUrl(kind.id as ServiceId, inst.instanceId)
           ) {
             sendLocalNotification({
               title: "Service offline",
@@ -448,7 +465,7 @@ function ServiceHealthWatcher({
       }
     }
     prevHealth.current = currentMap;
-  }, [health, gate.backendActive, gate.hydrated, gate.enabled, settings]);
+  }, [health, gate.backendActive, gate.hydrated, gate.enabled, settings, attached]);
 
   return null;
 }
