@@ -184,3 +184,122 @@ describe("setNetworkAwayFromHome", () => {
     expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
   });
 });
+
+// #148 Rec #8: switching workspaces must not leave the new dashboard running
+// against the old dashboard's home/away verdict. When the incoming workspace
+// governs a different home-network set, the flag resets to the safe away
+// default (the async re-eval in useNetworkAutoSwitch then clears it if we're
+// actually home). Same-network switches leave the flag alone.
+describe("setActiveDashboard — away-flag safe reset on workspace switch (#148)", () => {
+  const net = (id: string) => ({ id, ssid: id, bssid: "" });
+
+  function seedDashboards(opts: {
+    homeNetworks: { id: string; ssid: string; bssid: string }[];
+    dashboards: { id: string; homeNetworkIds?: string[] }[];
+    activeId: string;
+    autoSwitchNetwork: boolean;
+    networkAwayFromHome: boolean;
+    demoMode?: boolean;
+  }) {
+    useConfigStore.setState({
+      homeNetworks: opts.homeNetworks,
+      dashboards: opts.dashboards.map((d) => ({
+        id: d.id,
+        name: d.id,
+        widgets: [],
+        ...(d.homeNetworkIds !== undefined
+          ? { homeNetworkIds: d.homeNetworkIds }
+          : {}),
+      })),
+      activeDashboardId: opts.activeId,
+      autoSwitchNetwork: opts.autoSwitchNetwork,
+      networkAwayFromHome: opts.networkAwayFromHome,
+      demoMode: opts.demoMode ?? false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("forces away=true when the new workspace governs a different network set", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", homeNetworkIds: ["home"] },
+        { id: "B", homeNetworkIds: ["cabin"] },
+      ],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false, // currently "home" on dashboard A
+    });
+
+    useConfigStore.getState().setActiveDashboard("B");
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+  });
+
+  it("leaves the flag alone when both workspaces govern the same network set", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", homeNetworkIds: ["home"] },
+        { id: "B", homeNetworkIds: ["home"] },
+      ],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    });
+
+    useConfigStore.getState().setActiveDashboard("B");
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+
+  it("treats 'use all' (undefined) and 'select every network' as the same set", () => {
+    seedDashboards({
+      homeNetworks: [net("home")],
+      dashboards: [
+        { id: "A", homeNetworkIds: undefined }, // all = {home}
+        { id: "B", homeNetworkIds: ["home"] }, // {home}
+      ],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    });
+
+    useConfigStore.getState().setActiveDashboard("B");
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+
+  it("does not touch the flag when auto-switch is off (flag is ignored anyway)", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", homeNetworkIds: ["home"] },
+        { id: "B", homeNetworkIds: ["cabin"] },
+      ],
+      activeId: "A",
+      autoSwitchNetwork: false,
+      networkAwayFromHome: false,
+    });
+
+    useConfigStore.getState().setActiveDashboard("B");
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+
+  it("is a no-op when already away (already at the safe default)", () => {
+    seedDashboards({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", homeNetworkIds: ["home"] },
+        { id: "B", homeNetworkIds: ["cabin"] },
+      ],
+      activeId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: true,
+    });
+
+    useConfigStore.getState().setActiveDashboard("B");
+
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+  });
+});

@@ -549,6 +549,51 @@ function recomputeDerivedFromActive(
   return { activeInstance, services, secrets };
 }
 
+// The home-network ids that actually govern local/remote switching for a
+// dashboard: its explicit selection (filtered to still-existing networks), or
+// every global network when it has none (undefined = all). Mirrors
+// resolveEffectiveHomeNetworks in lib/network.ts but returns just the id set —
+// inlined here to avoid a config-store → lib/network import cycle.
+function effectiveHomeNetworkIdSet(
+  dashboard: Dashboard | undefined,
+  globalHomeNetworks: HomeNetwork[],
+): Set<string> {
+  const allIds = globalHomeNetworks.map((n) => n.id);
+  const ids = dashboard?.homeNetworkIds;
+  if (ids === undefined) return new Set(allIds);
+  const valid = new Set(allIds);
+  return new Set(ids.filter((id) => valid.has(id)));
+}
+
+// Whether switching the active workspace from `oldDashboard` to `newDashboard`
+// should reset networkAwayFromHome to the safe default (away → remote). The
+// cached flag was computed against the OUTGOING dashboard's home networks; if
+// the incoming dashboard governs a different set, a stale `false` would briefly
+// send the private local URL on a network the new workspace doesn't trust —
+// the switch-race exposure window (#148 review Rec #8). When the sets match the
+// flag is still valid, so same-network switches don't needlessly flap to
+// remote. Only meaningful while auto-switch is on and we're not already away;
+// useNetworkAutoSwitch re-evaluates against the real SSID a tick later and
+// clears the flag if we're actually home on the new workspace.
+function switchInvalidatesAwayFlag(
+  state: {
+    autoSwitchNetwork: boolean;
+    demoMode: boolean;
+    networkAwayFromHome: boolean;
+    homeNetworks: HomeNetwork[];
+  },
+  oldDashboard: Dashboard | undefined,
+  newDashboard: Dashboard | undefined,
+): boolean {
+  if (!state.autoSwitchNetwork || state.demoMode) return false;
+  if (state.networkAwayFromHome) return false; // already at the safe default
+  const oldSet = effectiveHomeNetworkIdSet(oldDashboard, state.homeNetworks);
+  const newSet = effectiveHomeNetworkIdSet(newDashboard, state.homeNetworks);
+  if (oldSet.size !== newSet.size) return true;
+  for (const id of oldSet) if (!newSet.has(id)) return true;
+  return false;
+}
+
 function emptyLegacySecrets(): Record<ServiceId, ServiceSecrets> {
   const secrets = {} as Record<ServiceId, ServiceSecrets>;
   for (const id of SERVICE_IDS) {
@@ -1643,7 +1688,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           state.serviceInstances,
           state.instanceSecrets,
         );
-        return { dashboards, activeDashboardId, ...derived };
+        // Same safe-default reset as setActiveDashboard: the auto-selected
+        // replacement workspace may govern a different home-network set (#148).
+        const forceAway = switchInvalidatesAwayFlag(
+          state,
+          state.dashboards.find((d) => d.id === dashboardId),
+          dashboards.find((d) => d.id === activeDashboardId),
+        );
+        return {
+          dashboards,
+          activeDashboardId,
+          ...derived,
+          ...(forceAway ? { networkAwayFromHome: true } : {}),
+        };
       }
       return { dashboards, activeDashboardId };
     });
@@ -1672,7 +1729,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         state.serviceInstances,
         state.instanceSecrets,
       );
-      return { activeDashboardId: dashboardId, ...derived };
+      // v29: if the incoming workspace governs a different home-network set,
+      // reset to the safe away default so the old dashboard's "home" flag can't
+      // briefly expose the local URL on a network the new one doesn't trust
+      // (#148 review Rec #8). useNetworkAutoSwitch re-evaluates a tick later.
+      const forceAway = switchInvalidatesAwayFlag(
+        state,
+        state.dashboards.find((d) => d.id === state.activeDashboardId),
+        state.dashboards.find((d) => d.id === dashboardId),
+      );
+      return {
+        activeDashboardId: dashboardId,
+        ...derived,
+        ...(forceAway ? { networkAwayFromHome: true } : {}),
+      };
     });
   },
 
