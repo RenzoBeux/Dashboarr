@@ -22,6 +22,7 @@ jest.mock("expo-secure-store", () => ({
 }));
 
 import { useConfigStore } from "./config-store";
+import { queryClient } from "@/lib/query-client";
 
 // Smoke-test that getActiveUrl always returns a fetch-safe URL, even when the
 // persisted value lacks a scheme. See #106 — health probes were failing on
@@ -182,6 +183,153 @@ describe("setNetworkAwayFromHome", () => {
 
     useConfigStore.getState().setNetworkAwayFromHome(true);
     expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+  });
+});
+
+// #3: the read helpers must trust only the workspace-resolved active instance
+// (attachment + enabled aware). They must NOT fall back to
+// serviceInstances[kind][0] — activeInstance[kind] is null exactly when nothing
+// is enabled+attached, so a first-instance fallback can only resolve a disabled
+// or other-workspace instance, leaking its URL + API key on the next request.
+describe("instance resolution — no raw first-instance fallback (#3)", () => {
+  const OTHER_ID = "00000000-0000-0000-0000-0000000000ff";
+
+  // An enabled instance exists, but the active workspace resolved nothing for
+  // the kind (deriveActiveInstance → null because it isn't attached here).
+  function seedUnattached() {
+    useConfigStore.setState({
+      serviceInstances: {
+        ...useConfigStore.getState().serviceInstances,
+        radarr: [
+          {
+            id: OTHER_ID,
+            enabled: true,
+            name: "Other-workspace Radarr",
+            localUrl: "http://192.168.1.50:7878",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      instanceSecrets: {
+        ...useConfigStore.getState().instanceSecrets,
+        [OTHER_ID]: { apiKey: "leak-key", customHeaders: { "X-Leak": "secret" } },
+      },
+      globalCustomHeaders: { "X-Global": "ok" },
+      activeInstance: {
+        ...useConfigStore.getState().activeInstance,
+        radarr: null,
+      },
+      autoSwitchNetwork: false,
+      networkAwayFromHome: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("getActiveInstanceId returns null instead of the first instance", () => {
+    seedUnattached();
+    expect(useConfigStore.getState().getActiveInstanceId("radarr")).toBeNull();
+  });
+
+  it("getActiveUrl returns '' instead of the unattached instance's URL", () => {
+    seedUnattached();
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe("");
+  });
+
+  it("getMergedHeaders omits the unattached instance's custom headers", () => {
+    seedUnattached();
+    const headers = useConfigStore.getState().getMergedHeaders("radarr");
+    expect(headers).toEqual({ "X-Global": "ok" });
+  });
+
+  it("still resolves an explicit instanceId (explicit binding wins)", () => {
+    seedUnattached();
+    expect(useConfigStore.getState().getActiveUrl("radarr", OTHER_ID)).toBe(
+      "http://192.168.1.50:7878",
+    );
+  });
+});
+
+// #4: getActiveUrl flips local↔remote with the away flag, but query keys don't
+// encode the URL, so staleTime:Infinity reads must be invalidated when the
+// resolved URL can change — on a home/away flip and on a settings URL edit.
+describe("setNetworkAwayFromHome — query invalidation on flip (#4)", () => {
+  it("invalidates all queries on an actual change, but not on a no-op", () => {
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    useConfigStore.setState({
+      networkAwayFromHome: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    spy.mockClear();
+
+    useConfigStore.getState().setNetworkAwayFromHome(false); // unchanged → no-op
+    expect(spy).not.toHaveBeenCalled();
+
+    useConfigStore.getState().setNetworkAwayFromHome(true); // flip → invalidate
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(); // unfiltered (every kind's URL may flip)
+
+    spy.mockRestore();
+  });
+});
+
+describe("updateInstance — invalidates cached queries on URL change (#4)", () => {
+  const ID = "00000000-0000-0000-0000-00000000aaaa";
+
+  function seedOne() {
+    useConfigStore.setState({
+      serviceInstances: {
+        ...useConfigStore.getState().serviceInstances,
+        radarr: [
+          {
+            id: ID,
+            enabled: true,
+            name: "Radarr",
+            localUrl: "http://192.168.1.10:7878",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      activeInstance: {
+        ...useConfigStore.getState().activeInstance,
+        radarr: ID,
+      },
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("invalidates [serviceId, instanceId] when a URL field changes", () => {
+    seedOne();
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    useConfigStore
+      .getState()
+      .updateInstance("radarr", ID, { localUrl: "http://10.0.0.5:7878" });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["radarr", ID] });
+    spy.mockRestore();
+  });
+
+  it("does NOT invalidate on an unrelated edit (e.g. rename)", () => {
+    seedOne();
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    useConfigStore.getState().updateInstance("radarr", ID, { name: "Renamed" });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("does NOT invalidate when the URL value is unchanged", () => {
+    seedOne();
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    useConfigStore
+      .getState()
+      .updateInstance("radarr", ID, { localUrl: "http://192.168.1.10:7878" });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
 

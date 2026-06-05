@@ -612,8 +612,11 @@ function deriveLegacyServices(
   const out = {} as Record<ServiceId, ServiceConfig>;
   for (const id of SERVICE_IDS) {
     const list = instances[id] ?? [];
-    const activeId = activeInstance[id] ?? list[0]?.id ?? null;
-    const inst = activeId ? list.find((i) => i.id === activeId) : list[0];
+    // No raw first-instance tail (#3): when the workspace has no enabled+
+    // attached instance of this kind, the legacy view falls to the default
+    // (disabled) config rather than projecting an other-workspace instance.
+    const activeId = activeInstance[id];
+    const inst = activeId ? list.find((i) => i.id === activeId) : undefined;
     if (inst) {
       const { id: _id, ...cfg } = inst;
       out[id] = cfg;
@@ -635,7 +638,9 @@ function deriveLegacySecrets(
   const out = emptyLegacySecrets();
   for (const id of SERVICE_IDS) {
     const list = instances[id] ?? [];
-    const activeId = activeInstance[id] ?? list[0]?.id ?? null;
+    // No raw first-instance tail (#3): an unattached workspace gets empty
+    // secrets for the kind, never another workspace's API key.
+    const activeId = activeInstance[id];
     if (activeId && instanceSecrets[activeId]) {
       out[id] = instanceSecrets[activeId];
     }
@@ -1401,6 +1406,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   updateInstance: (id, instanceId, patch) => {
+    // Captured before the commit so the invalidate below can tell whether a
+    // URL-affecting field actually changed.
+    const prevInst = get().serviceInstances[id]?.find((i) => i.id === instanceId);
     set((state) => {
       const list = state.serviceInstances[id] ?? [];
       const idx = list.findIndex((i) => i.id === instanceId);
@@ -1435,6 +1443,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       );
       return { serviceInstances, services, secrets };
     });
+    // A URL edit changes the resolved base URL without changing the instance id
+    // (the query key), so staleTime:Infinity reads wouldn't refetch (#4).
+    // Invalidate this instance's cached queries when a URL field actually
+    // changed — scoped so an unrelated save (e.g. rename) doesn't refetch.
+    // TanStack v5 prefix-matches [id, instanceId] against [id, instanceId, …].
+    if (prevInst) {
+      const urlChanged =
+        ("localUrl" in patch && patch.localUrl !== prevInst.localUrl) ||
+        ("remoteUrl" in patch && patch.remoteUrl !== prevInst.remoteUrl) ||
+        ("useRemote" in patch && patch.useRemote !== prevInst.useRemote);
+      if (urlChanged) {
+        void queryClient.invalidateQueries({ queryKey: [id, instanceId] });
+      }
+    }
   },
 
   toggleInstance: (id, instanceId) => {
@@ -1589,6 +1611,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // health query for an identical value. EPHEMERAL — never persisted.
     if (get().networkAwayFromHome === away) return;
     set({ networkAwayFromHome: away });
+    // The resolved base URL flips local↔remote with this flag (getActiveUrl),
+    // but query keys don't encode the URL — so staleTime:Infinity reads
+    // (profiles, root folders, tags) would keep serving data fetched against
+    // the OLD url after a home/away switch (#4). Invalidate so active queries
+    // refetch against the new URL; previous data stays visible during the
+    // refetch (invalidate, not reset → no skeleton flash).
+    void queryClient.invalidateQueries();
   },
 
   addHomeNetwork: (network) => {
@@ -2008,7 +2037,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   getActiveInstanceId: (id) => {
     const state = get();
-    return state.activeInstance[id] ?? state.serviceInstances[id]?.[0]?.id ?? null;
+    // Only the workspace-resolved instance (attachment + enabled aware, kept in
+    // sync by recomputeDerivedFromActive). NO raw serviceInstances[id][0] tail:
+    // activeInstance[id] is null exactly when nothing is enabled+attached, so a
+    // first-instance fallback could only resolve a disabled or other-workspace
+    // instance — leaking its URL + API key on the next request (#3).
+    return state.activeInstance[id] ?? null;
   },
 
   getEnabledInstances: (id) => {
@@ -2017,8 +2051,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   getMergedHeaders: (id, instanceId) => {
     const state = get();
-    const targetId =
-      instanceId ?? state.activeInstance[id] ?? state.serviceInstances[id]?.[0]?.id;
+    // Explicit instanceId wins; otherwise the workspace-resolved active
+    // instance. No raw first-instance tail — see getActiveInstanceId (#3).
+    const targetId = instanceId ?? state.activeInstance[id];
     const perInstance = targetId
       ? state.instanceSecrets[targetId]?.customHeaders
       : undefined;
@@ -2028,7 +2063,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   getActiveUrl: (id, instanceId) => {
     const state = get();
     const list = state.serviceInstances[id] ?? [];
-    const targetId = instanceId ?? state.activeInstance[id] ?? list[0]?.id;
+    // Explicit instanceId wins; otherwise the workspace-resolved active
+    // instance. No raw first-instance tail (#3) — when neither resolves,
+    // targetId is undefined, list.find misses, and we return "" below, which is
+    // the same "service offline in this workspace" result the away path gives.
+    const targetId = instanceId ?? state.activeInstance[id];
     const inst = list.find((i) => i.id === targetId);
     if (!inst) return "";
     // Normalize on read so every consumer (serviceRequest, pingService, health
