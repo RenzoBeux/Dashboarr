@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import { View, Text } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import {
@@ -58,7 +59,13 @@ interface MetricRingProps {
   icon: LucideIcon;
 }
 
-function MetricRing({ percent, label, sublabel, icon }: MetricRingProps) {
+// Memoized: each Glances section has its own query, so when (say) the `net`
+// query lands every poll, InstanceBlock re-renders — but the CPU/RAM/GPU rings'
+// props are unchanged, so memo skips re-drawing their SVGs. Only the ring whose
+// metric actually changed re-renders. This is the main fix for server-stats
+// being the dashboard's heaviest re-render (6 queries × N instances, each
+// resolution previously redrawing every ring).
+const MetricRing = memo(function MetricRing({ percent, label, sublabel, icon }: MetricRingProps) {
   // Use numeric pixel size scaled by uiScale so the ring resizes with
   // accessibility scaling — react-native-svg props are numeric, not rem.
   const scale = useUiScale();
@@ -122,7 +129,7 @@ function MetricRing({ percent, label, sublabel, icon }: MetricRingProps) {
       ) : null}
     </View>
   );
-}
+});
 
 export function ServerStatsCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<ServerStatsSettingsValue>(
@@ -221,9 +228,15 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
   const mem = settings.showRam ? memQuery.data : undefined;
   const fs = settings.showDisks ? fsQuery.data : undefined;
   const gpus = settings.showGpu ? gpuQuery.data : undefined;
-  const netRows = settings.showNetwork
-    ? selectInterfaces(netQuery.data, settings.networkInterfaces, { activeOnly: true })
-    : [];
+  // Memoized so an unchanged `net` payload keeps the same row refs across polls,
+  // letting the memoized NetRow children skip re-rendering.
+  const netRows = useMemo(
+    () =>
+      settings.showNetwork
+        ? selectInterfaces(netQuery.data, settings.networkInterfaces, { activeOnly: true })
+        : [],
+    [settings.showNetwork, netQuery.data, settings.networkInterfaces],
+  );
   const load = settings.showLoad ? loadQuery.data : undefined;
   const iowait =
     settings.showIoWait && typeof cpuQuery.data?.iowait === "number"
@@ -255,7 +268,7 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
       (settings.showNetwork && netQuery.isError) ||
       (settings.showLoad && loadQuery.isError));
 
-  const gpuRings = buildGpuRings(gpus);
+  const gpuRings = useMemo(() => buildGpuRings(gpus), [gpus]);
   const hasRings =
     (settings.showCpu && cpu) ||
     (settings.showRam && mem) ||
@@ -353,7 +366,7 @@ function loadVal(n: number | undefined): string {
   return typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "—";
 }
 
-function StatsRow({
+const StatsRow = memo(function StatsRow({
   load,
   iowait,
 }: {
@@ -380,9 +393,9 @@ function StatsRow({
       )}
     </View>
   );
-}
+});
 
-function NetRow({ iface }: { iface: GlancesNetRate }) {
+const NetRow = memo(function NetRow({ iface }: { iface: GlancesNetRate }) {
   return (
     <View className="flex-row justify-between items-center gap-2">
       <View className="flex-row items-center gap-1.5 flex-1 min-w-0">
@@ -395,7 +408,7 @@ function NetRow({ iface }: { iface: GlancesNetRate }) {
       <Text className="text-zinc-400 text-[0.7rem]">↑ {formatSpeed(iface.tx)}</Text>
     </View>
   );
-}
+});
 
 interface GpuRingEntry {
   key: string;
@@ -441,7 +454,7 @@ function shortenGpuName(name: string): string {
     .trim();
 }
 
-function DiskRow({ disk }: { disk: GlancesFsItem }) {
+const DiskRow = memo(function DiskRow({ disk }: { disk: GlancesFsItem }) {
   const mount = disk.mnt_point.replace(/^\/host/, "") || "/";
   const pct = Math.min(Math.max(disk.percent, 0), 100);
   return (
@@ -471,4 +484,4 @@ function DiskRow({ disk }: { disk: GlancesFsItem }) {
       </View>
     </View>
   );
-}
+});
