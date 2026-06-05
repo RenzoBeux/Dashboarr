@@ -333,6 +333,31 @@ describe("updateInstance — invalidates cached queries on URL change (#4)", () 
   });
 });
 
+describe("updateInstanceSecrets — invalidates on credential change (#4)", () => {
+  it("invalidates this instance's queries on a secrets save", async () => {
+    const SECRET_ID = "00000000-0000-0000-0000-00000000bbbb";
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    await useConfigStore
+      .getState()
+      .updateInstanceSecrets(SECRET_ID, { apiKey: "new-key" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const filters = spy.mock.calls[0]?.[0] as
+      | { predicate?: (q: never) => boolean }
+      | undefined;
+    expect(filters?.predicate).toBeDefined();
+    // Matches [serviceId, instanceId, …] for this instance, nothing else.
+    expect(
+      filters?.predicate?.({ queryKey: ["radarr", SECRET_ID, "tags"] } as never),
+    ).toBe(true);
+    expect(
+      filters?.predicate?.({ queryKey: ["radarr", "other", "tags"] } as never),
+    ).toBe(false);
+    spy.mockRestore();
+  });
+});
+
 // #148 Rec #8: switching workspaces must not leave the new dashboard running
 // against the old dashboard's home/away verdict. When the incoming workspace
 // governs a different home-network set, the flag resets to the safe away
@@ -449,5 +474,60 @@ describe("setActiveDashboard — away-flag safe reset on workspace switch (#148)
     useConfigStore.getState().setActiveDashboard("B");
 
     expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+  });
+});
+
+// #4: the forced away reset on a workspace switch is set inline (not via
+// setNetworkAwayFromHome), so it must invalidate queries itself — otherwise an
+// instance shared with the previous workspace keeps its Infinity-cached data
+// from the old (local) URL after switching to an away workspace.
+describe("setActiveDashboard — query invalidation on forced away (#4)", () => {
+  const net = (id: string) => ({ id, ssid: id, bssid: "" });
+
+  function seedTwo(aIds: string[] | undefined, bIds: string[] | undefined) {
+    useConfigStore.setState({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        {
+          id: "A",
+          name: "A",
+          widgets: [],
+          ...(aIds !== undefined ? { homeNetworkIds: aIds } : {}),
+        },
+        {
+          id: "B",
+          name: "B",
+          widgets: [],
+          ...(bIds !== undefined ? { homeNetworkIds: bIds } : {}),
+        },
+      ],
+      activeDashboardId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+      demoMode: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  it("invalidates when the switch forces away (different home-network set)", () => {
+    seedTwo(["home"], ["cabin"]);
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    useConfigStore.getState().setActiveDashboard("B");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith();
+    spy.mockRestore();
+  });
+
+  it("does NOT invalidate when both workspaces share the home-network set", () => {
+    seedTwo(["home"], ["home"]);
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    useConfigStore.getState().setActiveDashboard("B");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

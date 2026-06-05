@@ -1576,6 +1576,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       );
       return { instanceSecrets, secrets };
     });
+    // Credentials (API key / custom headers) feed request auth but aren't part
+    // of the query key, so staleTime:Infinity reads would keep results fetched
+    // with the OLD credentials (#4). A secrets save is inherently a credential
+    // change, so no field-level guard — invalidate this instance's queries by
+    // matching the instanceId slot of the key ([serviceId, instanceId, …]).
+    void queryClient.invalidateQueries({
+      predicate: (q) => q.queryKey[1] === instanceId,
+    });
   },
 
   // --- Legacy single-instance shims ---
@@ -1696,6 +1704,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeDashboard: (dashboardId) => {
+    let forcedAway = false;
     set((state) => {
       // Refuse to delete the last dashboard — the screen always needs one.
       if (state.dashboards.length <= 1) return state;
@@ -1724,6 +1733,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           state.dashboards.find((d) => d.id === dashboardId),
           dashboards.find((d) => d.id === activeDashboardId),
         );
+        forcedAway = forceAway;
         return {
           dashboards,
           activeDashboardId,
@@ -1733,6 +1743,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
       return { dashboards, activeDashboardId };
     });
+    // Same as setActiveDashboard: the inline away reset bypasses
+    // setNetworkAwayFromHome's invalidate, so refetch shared-instance queries
+    // against the new (remote) URL (#4).
+    if (forcedAway) void queryClient.invalidateQueries();
   },
 
   renameDashboard: (dashboardId, name) => {
@@ -1746,6 +1760,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setActiveDashboard: (dashboardId) => {
+    let forcedAway = false;
     set((state) => {
       if (!state.dashboards.some((d) => d.id === dashboardId)) return state;
       if (state.activeDashboardId === dashboardId) return state;
@@ -1767,12 +1782,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         state.dashboards.find((d) => d.id === state.activeDashboardId),
         state.dashboards.find((d) => d.id === dashboardId),
       );
+      forcedAway = forceAway;
       return {
         activeDashboardId: dashboardId,
         ...derived,
         ...(forceAway ? { networkAwayFromHome: true } : {}),
       };
     });
+    // The forced away→remote reset flips the resolved URL for any instance
+    // shared with the previous workspace (same query key); the flag is set
+    // inline above (not via setNetworkAwayFromHome) so it bypasses that
+    // invalidate (#4). Refetch so shared-instance Infinity reads don't keep the
+    // old workspace's URL data.
+    if (forcedAway) void queryClient.invalidateQueries();
   },
 
   moveDashboard: (dashboardId, direction) => {
