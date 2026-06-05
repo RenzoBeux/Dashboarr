@@ -5,7 +5,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import { Toggle } from "@/components/ui/toggle";
 import { TextInput } from "@/components/ui/text-input";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
   InstancePickerRow,
@@ -112,11 +112,14 @@ export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
     slotId,
     SPEED_STATS_DEFAULT_SETTINGS,
   );
-  const qbitInstances = useEnabledInstances("qbittorrent");
-  const sabInstances = useEnabledInstances("sabnzbd");
-  const nzbgetInstances = useEnabledInstances("nzbget");
-  const rtInstances = useEnabledInstances("rtorrent");
-  const glancesInstances = useEnabledInstances("glances");
+  // Scoped to the active workspace so every source gate (clients/network,
+  // SAB/NZBGet toggles, "only source" shortcuts) and the pickers match what the
+  // card actually renders (#148).
+  const qbitInstances = useAttachedEnabledInstances("qbittorrent");
+  const sabInstances = useAttachedEnabledInstances("sabnzbd");
+  const nzbgetInstances = useAttachedEnabledInstances("nzbget");
+  const rtInstances = useAttachedEnabledInstances("rtorrent");
+  const glancesInstances = useAttachedEnabledInstances("glances");
   const hasClients =
     qbitInstances.length +
       sabInstances.length +

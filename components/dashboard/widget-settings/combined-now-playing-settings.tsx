@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { Toggle } from "@/components/ui/toggle";
 import { TextInput } from "@/components/ui/text-input";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
   InstancePickerRow,
@@ -49,11 +49,11 @@ export function CombinedNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
     COMBINED_NOW_PLAYING_DEFAULT_SETTINGS,
   );
 
-  // Only offer an instance picker for a kind the user actually runs. Deselect
-  // all of a kind's instances to drop it from the widget.
-  const hasPlex = useEnabledInstances("plex").length > 0;
-  const hasJellyfin = useEnabledInstances("jellyfin").length > 0;
-  const hasEmby = useEnabledInstances("emby").length > 0;
+  // Only offer an instance picker for a kind attached to this workspace.
+  // Deselect all of a kind's instances to drop it from the widget.
+  const hasPlex = useAttachedEnabledInstances("plex").length > 0;
+  const hasJellyfin = useAttachedEnabledInstances("jellyfin").length > 0;
+  const hasEmby = useAttachedEnabledInstances("emby").length > 0;
 
   return (
     <View className="px-4 py-2 gap-5">

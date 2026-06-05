@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { Toggle } from "@/components/ui/toggle";
 import { TextInput } from "@/components/ui/text-input";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
   InstancePickerRow,
@@ -47,9 +47,9 @@ export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) 
     STREAM_MONITOR_DEFAULT_SETTINGS,
   );
 
-  // Only offer an instance picker for a monitor the user actually runs.
-  const hasTautulli = useEnabledInstances("tautulli").length > 0;
-  const hasTracearr = useEnabledInstances("tracearr").length > 0;
+  // Only offer an instance picker for a monitor attached to this workspace.
+  const hasTautulli = useAttachedEnabledInstances("tautulli").length > 0;
+  const hasTracearr = useAttachedEnabledInstances("tracearr").length > 0;
 
   return (
     <View className="px-4 py-2 gap-5">
