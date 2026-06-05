@@ -692,18 +692,10 @@ function InstanceList({
   const instances = useConfigStore(
     (s) => s.serviceInstances[serviceId] ?? EMPTY_INSTANCES,
   );
-  const activeId = useConfigStore((s) => s.activeInstance[serviceId]);
   const addInstance = useConfigStore((s) => s.addInstance);
   const removeInstance = useConfigStore((s) => s.removeInstance);
   const moveInstance = useConfigStore((s) => s.moveInstance);
-  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const dashboards = useConfigStore((s) => s.dashboards);
-  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
-  // The "active instance" pin is per-workspace and written onto whichever
-  // dashboard is currently active. Name it so the user knows which workspace
-  // this chip row is editing — Settings is otherwise workspace-agnostic (#11).
-  const activeDashboardName =
-    dashboards.find((d) => d.id === activeDashboardId)?.name ?? "this workspace";
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
   // Per-instance tri-state health for the row dot. The shared hook is already
   // polling, so this is a pure index by instance UUID.
@@ -781,7 +773,6 @@ function InstanceList({
               ? inst.remoteUrl || "No remote URL"
               : inst.localUrl || "No local URL"
             : "Disabled";
-          const isActive = inst.id === activeId;
           // Only enabled instances are actively probed; for disabled ones
           // we want NO dot (not red) — there's nothing wrong, the user has
           // just turned it off.
@@ -798,12 +789,7 @@ function InstanceList({
                 className="flex-1 flex-row items-center px-4 py-3 active:opacity-70"
               >
                 <View className="flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-zinc-100 text-base">{inst.name}</Text>
-                    {isActive && instances.length > 1 ? (
-                      <Text className="text-primary text-xs">• active</Text>
-                    ) : null}
-                  </View>
+                  <Text className="text-zinc-100 text-base">{inst.name}</Text>
                   <Text className="text-zinc-500 text-xs">{subtitle}</Text>
                   {totalDashboards > 1
                     ? (() => {
@@ -870,37 +856,6 @@ function InstanceList({
           }
           onPress={handleAdd}
         />
-        {instances.length > 1 ? (
-          <View className="px-4 py-3 border-t border-surface-light">
-            <Text className="text-zinc-500 text-xs mb-2">
-              Active in{" "}
-              <Text className="text-zinc-300 font-medium">
-                {activeDashboardName}
-              </Text>
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {instances
-                .filter((i) => i.enabled)
-                .map((inst) => (
-                  <Pressable
-                    key={inst.id}
-                    onPress={() => setActiveInstance(serviceId, inst.id)}
-                    className={`px-3 py-1.5 rounded-full ${
-                      inst.id === activeId ? "bg-primary" : "bg-surface-light"
-                    }`}
-                  >
-                    <Text
-                      className={`text-sm font-medium ${
-                        inst.id === activeId ? "text-white" : "text-zinc-400"
-                      }`}
-                    >
-                      {inst.name}
-                    </Text>
-                  </Pressable>
-                ))}
-            </View>
-          </View>
-        ) : null}
       </SettingsGroup>
 
       <ConfirmModal
