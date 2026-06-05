@@ -349,14 +349,6 @@ interface ConfigActions {
     secrets: Partial<ServiceSecrets>,
   ) => Promise<void>;
 
-  // Legacy single-instance helpers. These operate on the active instance for
-  // the given kind and exist so consumers that haven't been migrated to be
-  // instance-aware keep working. They'll be retired once the rest of the
-  // codebase passes instanceId explicitly.
-  updateService: (id: ServiceId, config: Partial<ServiceConfig>) => void;
-  toggleService: (id: ServiceId) => void;
-  updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
-
   setAutoSwitch: (enabled: boolean) => void;
   // Set by evaluateHomeNetwork() (lib/network.ts) on every network change.
   // EPHEMERAL — never persisted.
@@ -1584,29 +1576,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     void queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[1] === instanceId,
     });
-  },
-
-  // --- Legacy single-instance shims ---
-
-  updateService: (id, config) => {
-    const activeId =
-      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
-    if (!activeId) return;
-    get().updateInstance(id, activeId, config);
-  },
-
-  toggleService: (id) => {
-    const activeId =
-      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
-    if (!activeId) return;
-    get().toggleInstance(id, activeId);
-  },
-
-  updateSecrets: async (id, newSecrets) => {
-    const activeId =
-      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
-    if (!activeId) return;
-    await get().updateInstanceSecrets(activeId, newSecrets);
   },
 
   setAutoSwitch: (enabled) => {
