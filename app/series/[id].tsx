@@ -43,6 +43,7 @@ import {
   useToggleEpisodeMonitored,
   useDeleteEpisodeFile,
   useSearchForEpisodes,
+  useSearchForSeason,
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
@@ -642,12 +643,34 @@ function SeasonAccordion({
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const searchSeason = useSearchForSeason(instanceId);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
+
+  const seasonLabel =
+    season.seasonNumber === 0 ? "Specials" : `Season ${season.seasonNumber}`;
 
   const releasesQuery = `seasonNumber=${season.seasonNumber}${
     instanceId ? `&instanceId=${instanceId}` : ""
   }`;
+
+  // Mirrors the episode "⋯" menu: automatic vs interactive search read clearly
+  // as labeled rows instead of a bare magnifier icon.
+  const seasonActions: ActionSheetAction[] = [
+    {
+      label: "Automatic Search",
+      icon: <Icon icon={Search} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        searchSeason.mutate({ seriesId, seasonNumber: season.seasonNumber }),
+    },
+    {
+      label: "Interactive Search",
+      icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        router.push(`/series/releases/${seriesId}?${releasesQuery}`),
+    },
+  ];
 
   return (
     <Card>
@@ -663,9 +686,7 @@ function SeasonAccordion({
             <Icon icon={ChevronRight} size={16} color="#71717a" />
           )}
           <Text className="text-zinc-200 text-sm font-medium">
-            {season.seasonNumber === 0
-              ? "Specials"
-              : `Season ${season.seasonNumber}`}
+            {seasonLabel}
           </Text>
         </Pressable>
         <View className="flex-row items-center gap-3">
@@ -675,13 +696,13 @@ function SeasonAccordion({
             </Text>
           )}
           <Pressable
-            onPress={() =>
-              router.push(`/series/releases/${seriesId}?${releasesQuery}`)
-            }
+            onPress={() => setSheetOpen(true)}
             hitSlop={8}
             className="p-1 active:opacity-70"
+            accessibilityRole="button"
+            accessibilityLabel={`${seasonLabel} actions`}
           >
-            <Icon icon={Search} size={14} color="#a1a1aa" />
+            <Icon icon={MoreHorizontal} size={16} color="#a1a1aa" />
           </Pressable>
         </View>
       </View>
@@ -708,6 +729,13 @@ function SeasonAccordion({
             ))}
         </View>
       )}
+
+      <ActionSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={seasonLabel}
+        actions={seasonActions}
+      />
     </Card>
   );
 }

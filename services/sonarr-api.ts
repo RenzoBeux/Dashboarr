@@ -322,6 +322,18 @@ export function searchForEpisodes(
   });
 }
 
+export function searchForSeason(
+  seriesId: number,
+  seasonNumber: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "SeasonSearch", seriesId, seasonNumber }),
+    instanceId,
+  });
+}
+
 // Searches every monitored missing episode in the library. With no params the
 // MissingEpisodeSearch command defaults to Monitored across all series — the
 // equivalent of Sonarr's Wanted › Missing › "Search All" button.

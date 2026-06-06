@@ -17,6 +17,7 @@ import {
   changeSeriesRootFolder,
   searchForSeries,
   searchForEpisodes,
+  searchForSeason,
   searchAllMissingEpisodes,
   getQualityProfiles,
   getRootFolders,
@@ -190,6 +191,21 @@ export function useSearchForEpisodes(instanceId?: string) {
   return useMutation({
     mutationFn: (episodeIds: number[]) =>
       searchForEpisodes(episodeIds, id ?? undefined),
+    onSuccess: () => toast("Search started"),
+    onError: (err) => toastError("Search failed", err),
+  });
+}
+
+export function useSearchForSeason(instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      seasonNumber,
+    }: {
+      seriesId: number;
+      seasonNumber: number;
+    }) => searchForSeason(seriesId, seasonNumber, id ?? undefined),
     onSuccess: () => toast("Search started"),
     onError: (err) => toastError("Search failed", err),
   });
