@@ -3,10 +3,32 @@ import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
+import { isPrivateUrl } from "@/lib/url-validation";
 
 export { buildUrl };
 
 const DEFAULT_TIMEOUT = 15000;
+
+/**
+ * A private/LAN host (192.168.x, 10.x, mDNS, …) is unreachable once we leave
+ * the local network. Issuing the fetch anyway doesn't fail fast — it sits in
+ * TCP connect until the abort timeout, and because the health grid awaits the
+ * whole probe batch, one such hang freezes every dot red (the Glances/#106
+ * report). Short-circuit when we KNOW we're off WiFi.
+ *
+ * Gated on `isOnWifi === false` (confirmed), so `null` (cold start, not yet
+ * determined) never short-circuits a URL that might be fine. On non-home WiFi
+ * we still attempt it — the bounded probe timeout handles that case, and the
+ * existing away→remote URL resolution already keeps the LAN URL out of those
+ * requests when auto-switch is on.
+ */
+function lanUnreachableOffWifi(url: string): boolean {
+  const store = useConfigStore.getState();
+  // Demo mode never hits the network (probes return canned data), so don't let
+  // the guard short-circuit demo services to offline when testing on cellular.
+  if (store.demoMode) return false;
+  return store.isOnWifi === false && isPrivateUrl(url);
+}
 
 interface RequestOptions extends Omit<RequestInit, "signal"> {
   timeout?: number;
@@ -140,6 +162,10 @@ export async function serviceRequest<T>(
   if (!baseUrl) {
     throw new Error(`No URL configured for ${serviceId}`);
   }
+  // Fail fast instead of hanging on an unreachable LAN address off WiFi.
+  if (lanUnreachableOffWifi(baseUrl)) {
+    throw new Error(`${serviceId}: local URL not reachable off Wi-Fi`);
+  }
 
   // SABnzbd auth lives in the query string (?apikey=…&output=json), not
   // headers. Merge defaults into the caller-supplied params so service
@@ -266,6 +292,10 @@ export async function pingService(
 
   const baseUrl = urlOverride ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) return null;
+  // Don't hang pinging a LAN address off WiFi. Skipped only for the stored URL;
+  // an explicit urlOverride (form "Test" value) is always attempted so the user
+  // can validate a local URL even while away.
+  if (!urlOverride && lanUnreachableOffWifi(baseUrl)) return null;
 
   // SAB has no /system endpoint to GET — it advertises version through the
   // single /api?mode=version handler, so we synthesize the ping URL from the
@@ -459,6 +489,12 @@ export async function checkInstanceHealth(
   const url = store.getActiveUrl(serviceId, instanceId);
   if (!url) {
     return { kind: "unreachable", message: "No URL configured" };
+  }
+  // A LAN URL can't be reached off WiFi — short-circuit instead of probing it.
+  // This is the core of the Glances/#106 fix: without it the doomed connect
+  // hangs and stalls every other probe in the batch.
+  if (lanUnreachableOffWifi(url)) {
+    return { kind: "unreachable", message: "Local URL not reachable off Wi-Fi" };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};
   return testServiceConnection(serviceId, {

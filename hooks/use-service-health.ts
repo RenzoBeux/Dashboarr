@@ -22,7 +22,34 @@ export interface HealthProbeInputs {
   globalCustomHeaders: Record<string, string>;
   autoSwitchNetwork: boolean;
   networkAwayFromHome: boolean;
+  // WiFi-vs-not (null = unknown). Flips the off-WiFi LAN guard in
+  // checkInstanceHealth, so re-key the query when it changes (coming back onto
+  // WiFi must re-probe the LAN services that were short-circuited offline).
+  isOnWifi: boolean | null;
   resolveUrl: (id: ServiceId, instanceId: string) => string;
+}
+
+// Hard backstop so a single probe can never stall the whole batch. The internal
+// fetch timeouts (8s connection test, 15s qBittorrent) normally bound each
+// probe — but only if AbortController actually cancels a stalled TCP connect,
+// which it doesn't reliably do on a dead LAN address on Android. This guarantees
+// the batch settles even then; the off-WiFi LAN guard makes it rarely matter.
+const PROBE_DEADLINE_MS = 18000;
+
+// Resolve to `fallback` if `p` hasn't settled within `ms`. Never rejects, so it
+// is safe inside Promise.all without a sibling probe taking the batch down.
+function settleWithin<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (v: T) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(fallback), ms);
+    p.then(finish, () => finish(fallback));
+  });
 }
 
 /**
@@ -46,8 +73,9 @@ export interface HealthProbeInputs {
  */
 export function buildHealthProbeSignature(inputs: HealthProbeInputs): string {
   const globalHeaderKeys = Object.keys(inputs.globalCustomHeaders);
+  const wifi = inputs.isOnWifi === null ? "u" : inputs.isOnWifi ? 1 : 0;
   const parts: string[] = [
-    `net:${inputs.autoSwitchNetwork ? 1 : 0}:${inputs.networkAwayFromHome ? 1 : 0}`,
+    `net:${inputs.autoSwitchNetwork ? 1 : 0}:${inputs.networkAwayFromHome ? 1 : 0}:${wifi}`,
   ];
   for (const id of SERVICE_IDS) {
     for (const inst of inputs.serviceInstances[id] ?? []) {
@@ -84,6 +112,7 @@ export function useServiceHealth() {
   const instanceSecrets = useConfigStore((s) => s.instanceSecrets);
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
+  const isOnWifi = useConfigStore((s) => s.isOnWifi);
   const globalCustomHeaders = useConfigStore((s) => s.globalCustomHeaders);
 
   const probeSignature = useMemo(
@@ -94,6 +123,7 @@ export function useServiceHealth() {
         globalCustomHeaders,
         autoSwitchNetwork,
         networkAwayFromHome,
+        isOnWifi,
         resolveUrl: (id, instanceId) =>
           useConfigStore.getState().getActiveUrl(id, instanceId),
       }),
@@ -103,6 +133,7 @@ export function useServiceHealth() {
       globalCustomHeaders,
       autoSwitchNetwork,
       networkAwayFromHome,
+      isOnWifi,
     ],
   );
 
@@ -117,7 +148,7 @@ export function useServiceHealth() {
       // instances configured (rare; only after a user removes the last one)
       // appear as offline with an empty instances list so the kind keeps a
       // slot in the dashboard health card.
-      const results = await Promise.all(
+      const settled = await Promise.allSettled(
         SERVICE_IDS.map(async (id): Promise<ServiceHealthStatus> => {
           const list = serviceInstances[id] ?? [];
           if (list.length === 0) {
@@ -130,49 +161,60 @@ export function useServiceHealth() {
             };
           }
           const instanceHealths: ServiceInstanceHealthStatus[] = await Promise.all(
-            list.map(async (inst) => {
-              if (!inst.enabled) {
+            list.map((inst) => {
+              // Each probe is bounded by settleWithin and never rejects, so one
+              // hung/slow instance can't stall (or take down) the batch.
+              const probe = (async (): Promise<ServiceInstanceHealthStatus> => {
+                if (!inst.enabled) {
+                  return {
+                    instanceId: inst.id,
+                    instanceName: inst.name,
+                    online: false,
+                    status: "offline",
+                  };
+                }
+                // qBittorrent routes through its own session-aware probe so the
+                // poll doesn't POST /auth/login every cycle — that was racing
+                // with the app's qbLogin cookie cache and tripping qBT's
+                // brute-force lockout on transient hiccups (see #105, #106).
+                if (id === "qbittorrent") {
+                  const start = Date.now();
+                  const status = await qbHealthCheck(inst.id);
+                  return {
+                    instanceId: inst.id,
+                    instanceName: inst.name,
+                    online: status !== "offline",
+                    status,
+                    responseTime: status === "ok" ? Date.now() - start : undefined,
+                  };
+                }
+                const result = await checkInstanceHealth(id, inst.id);
+                const status: HealthStatusKind =
+                  result.kind === "ok"
+                    ? "ok"
+                    : result.kind === "auth_failed"
+                      ? "auth_failed"
+                      : "offline";
                 return {
                   instanceId: inst.id,
                   instanceName: inst.name,
-                  online: false,
-                  status: "offline",
-                };
-              }
-              // qBittorrent routes through its own session-aware probe so the
-              // poll doesn't POST /auth/login every cycle — that was racing
-              // with the app's qbLogin cookie cache and tripping qBT's
-              // brute-force lockout on transient hiccups (see #105, #106).
-              if (id === "qbittorrent") {
-                const start = Date.now();
-                const status = await qbHealthCheck(inst.id);
-                return {
-                  instanceId: inst.id,
-                  instanceName: inst.name,
+                  // Both ok and auth_failed servers respond to requests, so
+                  // they count as "online" for the binary back-compat field.
+                  // The tri-state dot consumers branch on `status` instead.
                   online: status !== "offline",
                   status,
-                  responseTime: status === "ok" ? Date.now() - start : undefined,
+                  responseTime:
+                    result.kind === "ok" ? result.responseTime : undefined,
+                  message: result.kind === "ok" ? undefined : result.message,
                 };
-              }
-              const result = await checkInstanceHealth(id, inst.id);
-              const status: HealthStatusKind =
-                result.kind === "ok"
-                  ? "ok"
-                  : result.kind === "auth_failed"
-                    ? "auth_failed"
-                    : "offline";
-              return {
+              })();
+              return settleWithin(probe, PROBE_DEADLINE_MS, {
                 instanceId: inst.id,
                 instanceName: inst.name,
-                // Both ok and auth_failed servers respond to requests, so
-                // they count as "online" for the binary back-compat field.
-                // The tri-state dot consumers branch on `status` instead.
-                online: status !== "offline",
-                status,
-                responseTime:
-                  result.kind === "ok" ? result.responseTime : undefined,
-                message: result.kind === "ok" ? undefined : result.message,
-              };
+                online: false,
+                status: "offline" as HealthStatusKind,
+                message: "Health check timed out",
+              });
             }),
           );
           // Aggregate per kind: prefer the best status across instances so a
@@ -210,7 +252,21 @@ export function useServiceHealth() {
           };
         }),
       );
-      return results;
+      // allSettled (not all): a kind whose body threw unexpectedly becomes a
+      // lone offline entry instead of rejecting the query and freezing the
+      // entire grid red. Order matches SERVICE_IDS.
+      return settled.map((r, i): ServiceHealthStatus => {
+        if (r.status === "fulfilled") return r.value;
+        const id = SERVICE_IDS[i];
+        const list = serviceInstances[id] ?? [];
+        return {
+          id,
+          name: list.length === 1 ? list[0].name : SERVICE_DEFAULTS[id].name,
+          online: false,
+          status: "offline",
+          instances: [],
+        };
+      });
     },
     refetchInterval: POLLING_INTERVALS.serviceHealth,
   });

@@ -155,6 +155,13 @@ export default function ServicesScreen() {
           const status = health?.find((h) => h.id === id);
           const healthStatus: HealthStatusKind = status?.status ?? "offline";
           const online = healthStatus !== "offline";
+          // Surface WHY a tile isn't green (timeout, wrong key, off-WiFi LAN,
+          // …) so a failing probe is never a silent red dot. First matching
+          // instance's message; only shown when not reordering.
+          const detail =
+            healthStatus !== "ok"
+              ? status?.instances?.find((i) => i.status === healthStatus)?.message
+              : undefined;
           const isFirst = idx === 0;
           const isLast = idx === enabledServices.length - 1;
 
@@ -190,6 +197,14 @@ export default function ServicesScreen() {
                 />
               </View>
               <Text className="text-zinc-100 text-sm font-medium">{service.name}</Text>
+              {!editing && detail && (
+                <Text
+                  className="text-zinc-500 text-[0.7rem] text-center"
+                  numberOfLines={2}
+                >
+                  {detail}
+                </Text>
+              )}
               {editing && (
                 <View className="flex-row items-center justify-between w-full mt-1">
                   <Pressable

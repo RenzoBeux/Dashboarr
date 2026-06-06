@@ -264,6 +264,14 @@ interface ConfigState {
   // live network observation across launches caused the stale-cold-start half of
   // #106.
   networkAwayFromHome: boolean;
+  // EPHEMERAL (never persisted). Whether the device is currently on a WiFi
+  // network — tracked independently of auto-switch by useNetworkAutoSwitch so it
+  // is correct even when switching is off. `null` = not yet determined (cold
+  // start, before NetInfo reports). The off-WiFi LAN guard in lib/http-client
+  // reads this synchronously: a private/LAN URL can never be reached on
+  // cellular, so probing it there just hangs and (because the health grid awaits
+  // the whole probe batch) freezes every dot red — the Glances/#106 report.
+  isOnWifi: boolean | null;
   homeNetworks: HomeNetwork[];
   // v17: per-user display order for the Services tab. Unknown ids are skipped
   // at render time; any SERVICE_IDS missing from the list fall in at the end
@@ -361,6 +369,9 @@ interface ConfigActions {
   // Set by evaluateHomeNetwork() (lib/network.ts) on every network change.
   // EPHEMERAL — never persisted.
   setNetworkAwayFromHome: (away: boolean) => void;
+  // Set by useNetworkAutoSwitch on every NetInfo change (and eagerly at start).
+  // EPHEMERAL — never persisted.
+  setIsOnWifi: (onWifi: boolean | null) => void;
   addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
   removeHomeNetwork: (id: string) => void;
@@ -824,6 +835,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
   networkAwayFromHome: true,
+  isOnWifi: null,
   homeNetworks: [],
   servicesOrder: [],
   dashboards: initialDashboards,
@@ -1676,6 +1688,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // the OLD url after a home/away switch (#4). Invalidate so active queries
     // refetch against the new URL; previous data stays visible during the
     // refetch (invalidate, not reset → no skeleton flash).
+    void queryClient.invalidateQueries();
+  },
+
+  setIsOnWifi: (onWifi) => {
+    // No-op when unchanged (NetInfo emits repeatedly). Coming back onto WiFi
+    // re-enables LAN URLs; leaving it disables them — invalidate so any query
+    // that was short-circuited offline by the LAN guard (or was serving
+    // LAN-fetched data) re-resolves against the new reality. The health query
+    // also re-keys via its probe signature.
+    if (get().isOnWifi === onWifi) return;
+    set({ isOnWifi: onWifi });
     void queryClient.invalidateQueries();
   },
 

@@ -7,6 +7,7 @@ import {
 } from "@/services/jellyfin-api";
 import type { MediaServerId } from "@/lib/media-server-config";
 import type { ServiceId } from "@/lib/constants";
+import { isPrivateHost } from "@/lib/url-validation";
 
 // The media servers whose live sessions the combined "Now Playing" widget
 // aggregates. Tautulli is deliberately excluded — it reports Plex's own
@@ -104,13 +105,10 @@ export function isLocalEndpoint(remote: string | undefined): boolean {
   }
 
   if (!host) return false;
-  if (host === "127.0.0.1" || host === "::1" || host === "localhost") return true;
-  if (host.startsWith("10.")) return true;
-  if (host.startsWith("192.168.")) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
-  if (host.startsWith("fe80:") || host.startsWith("fe80::")) return true;
-  if (host.startsWith("fc") || host.startsWith("fd")) return true;
-  return false;
+  // Shared RFC1918/loopback/link-local/ULA predicate (lib/url-validation) so the
+  // "is this host LAN-only" rule has one definition across the session sniffer
+  // and the off-WiFi fetch guard.
+  return isPrivateHost(host);
 }
 
 function plexIsTranscoding(session: PlexSession): boolean {

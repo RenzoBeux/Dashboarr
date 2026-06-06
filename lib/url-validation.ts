@@ -59,6 +59,49 @@ export function normalizeServiceUrl(raw: string): string {
 }
 
 /**
+ * True for hosts only reachable on a local network: RFC1918 IPv4 ranges,
+ * loopback, IPv4/IPv6 link-local, IPv6 unique-local (fc00::/7), and mDNS
+ * `.local` names. These can NEVER be reached off the home LAN, so issuing a
+ * fetch to one while on cellular just hangs until it times out.
+ *
+ * Public domains and Tailscale's CGNAT range (100.64.0.0/10) deliberately
+ * return false: Tailscale routes 100.x from anywhere, so those ARE reachable
+ * off-LAN and must not be blocked. Keep this conservative — a false positive
+ * would wrongly mark a working service offline.
+ */
+export function isPrivateHost(host: string): boolean {
+  // Strip IPv6 brackets (URL.hostname keeps them: "[fd00::1]") and a trailing
+  // root dot before matching.
+  const h = host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/\.$/, "");
+  if (!h) return false;
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1") return true;
+  if (h.endsWith(".local")) return true; // mDNS — LAN only
+  if (h.startsWith("10.")) return true;
+  if (h.startsWith("192.168.")) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (/^169\.254\./.test(h)) return true; // IPv4 link-local
+  if (h.startsWith("fe80:")) return true; // IPv6 link-local
+  if (h.startsWith("fc") || h.startsWith("fd")) return true; // IPv6 ULA
+  return false;
+}
+
+/** `isPrivateHost` for a full URL string. Normalizes (adds http:// if missing)
+ *  then inspects the hostname; returns false for anything unparseable so we
+ *  never block on a parse failure. */
+export function isPrivateUrl(url: string): boolean {
+  try {
+    return isPrivateHost(new URL(normalizeServiceUrl(url)).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Which URL bucket a service instance is actively using right now: "local",
  * "remote", or null when neither URL is configured. This MIRRORS the decision
  * tree in `getActiveUrl` (store/config-store.ts) — keep the two in sync — but

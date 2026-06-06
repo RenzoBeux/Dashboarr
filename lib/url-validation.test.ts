@@ -2,6 +2,8 @@ import {
   validateServiceUrl,
   normalizeServiceUrl,
   resolveActiveUrlKind,
+  isPrivateHost,
+  isPrivateUrl,
 } from "./url-validation";
 
 describe("validateServiceUrl", () => {
@@ -101,6 +103,51 @@ describe("normalizeServiceUrl", () => {
 
   it("trims input", () => {
     expect(normalizeServiceUrl("  localhost:8989  ")).toBe("http://localhost:8989");
+  });
+});
+
+describe("isPrivateHost / isPrivateUrl — off-WiFi LAN guard (#106)", () => {
+  it("flags RFC1918, loopback, link-local and ULA hosts", () => {
+    for (const h of [
+      "192.168.1.50",
+      "10.0.0.5",
+      "172.16.0.1",
+      "172.31.255.254",
+      "127.0.0.1",
+      "localhost",
+      "169.254.1.1",
+      "fe80::1",
+      "fd12:3456::1",
+      "nas.local",
+      "NAS.LOCAL",
+    ]) {
+      expect(isPrivateHost(h)).toBe(true);
+    }
+  });
+
+  it("does NOT flag public hosts or Tailscale CGNAT (must stay reachable off-LAN)", () => {
+    for (const h of [
+      "remote.example.com",
+      "radarr.mydomain.net",
+      "100.64.0.1", // Tailscale CGNAT — routed everywhere
+      "100.115.92.3",
+      "172.15.0.1", // just below the private 172.16 range
+      "172.32.0.1", // just above it
+      "8.8.8.8",
+      "1.1.1.1",
+    ]) {
+      expect(isPrivateHost(h)).toBe(false);
+    }
+  });
+
+  it("isPrivateUrl parses host out of full URLs (scheme, port, IPv6 brackets)", () => {
+    expect(isPrivateUrl("http://192.168.1.10:7878")).toBe(true);
+    expect(isPrivateUrl("192.168.1.10:7878")).toBe(true); // no scheme
+    expect(isPrivateUrl("https://[fd00::1]:8989")).toBe(true);
+    expect(isPrivateUrl("https://remote.example.com:443/api")).toBe(false);
+    expect(isPrivateUrl("https://100.64.0.1:7878")).toBe(false);
+    expect(isPrivateUrl("")).toBe(false);
+    expect(isPrivateUrl("not a url")).toBe(false);
   });
 });
 

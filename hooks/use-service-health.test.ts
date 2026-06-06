@@ -56,6 +56,7 @@ interface Opts {
   globalCustomHeaders?: Record<string, string>;
   autoSwitchNetwork?: boolean;
   networkAwayFromHome?: boolean;
+  isOnWifi?: boolean | null;
 }
 
 // Compute the signature with a resolveUrl that mirrors getActiveUrl's
@@ -70,6 +71,7 @@ function sig(opts: Opts): string {
     globalCustomHeaders: opts.globalCustomHeaders ?? {},
     autoSwitchNetwork,
     networkAwayFromHome,
+    isOnWifi: opts.isOnWifi ?? null,
     resolveUrl: (id, instanceId) => {
       const inst = (opts.instances[id] ?? []).find((x) => x.id === instanceId);
       if (!inst) return "";

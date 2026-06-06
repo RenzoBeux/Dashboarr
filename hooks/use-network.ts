@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import NetInfo from "@react-native-community/netinfo";
+import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
 import {
   evaluateHomeNetwork,
@@ -34,6 +34,18 @@ export function useNetworkAutoSwitch() {
   const overrideIds = useConfigStore(
     (s) => s.dashboards.find((d) => d.id === s.activeDashboardId)?.homeNetworkIds,
   );
+
+  // Always-on WiFi-vs-not tracker, independent of auto-switch. The off-WiFi LAN
+  // guard in lib/http-client needs to know whether we're on WiFi even when
+  // auto-switch is off (a LAN URL is then used regardless of network, and on
+  // cellular it hangs — freezing the whole health grid red, the Glances/#106
+  // report). Eager fetch + listener so it's accurate by the first probe.
+  useEffect(() => {
+    const apply = (state: NetInfoState) =>
+      useConfigStore.getState().setIsOnWifi(state.type === "wifi");
+    void NetInfo.fetch().then(apply).catch(() => {});
+    return NetInfo.addEventListener(apply);
+  }, []);
 
   useEffect(() => {
     // Auto-switch off → the flag is ignored by getActiveUrl; nothing to do.
