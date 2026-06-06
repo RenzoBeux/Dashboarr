@@ -5,15 +5,14 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getSessions } from "@/services/jellyfin-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import type { MediaServerId } from "@/lib/media-server-config";
 import {
   STREAMING_NOW_PLAYING_DEFAULT_SETTINGS,
   type StreamingNowPlayingSettingsValue,
 } from "@/components/dashboard/widget-settings/streaming-now-playing-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -33,8 +32,7 @@ export function MediaServerNowPlayingCard({
     slotId,
     STREAMING_NOW_PLAYING_DEFAULT_SETTINGS,
   );
-  const allInstances = useEnabledInstances(serviceId);
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances(serviceId, settings.instanceIds);
   const router = useRouter();
 
   const queries = useQueries({

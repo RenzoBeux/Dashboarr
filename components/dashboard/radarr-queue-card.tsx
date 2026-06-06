@@ -9,14 +9,13 @@ import {
   getWantedMissing,
   getRadarrPoster,
 } from "@/services/radarr-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   RADARR_QUEUE_DEFAULT_SETTINGS,
   type RadarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/radarr-queue-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
@@ -33,8 +32,7 @@ export function RadarrQueueCard({ slotId }: WidgetComponentProps) {
   );
   // Aggregate queue + wanted counts across every enabled Radarr instance, or
   // narrow to the bound subset based on the slot's instance binding.
-  const allInstances = useEnabledInstances("radarr");
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances("radarr", settings.instanceIds);
 
   const queueQueries = useQueries({
     queries: instances.map((inst) => ({

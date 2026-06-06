@@ -7,6 +7,7 @@ import {
   initStorage,
   getJSON,
   setJSON,
+  setMany,
   getBoolean,
   setBoolean,
   getString,
@@ -27,6 +28,7 @@ import {
   DASHBOARD_WIDGET_IDS,
   UI_SCALES,
   DEFAULT_UI_SCALE,
+  MAX_HOME_NETWORKS,
 } from "@/lib/constants";
 import type { UiScale } from "@/lib/constants";
 import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-icons";
@@ -160,6 +162,23 @@ export interface Dashboard {
   // ignored by the resolver — they don't need to be cleaned eagerly, except
   // on instance delete (we prune to keep storage tidy).
   activeInstance?: Partial<Record<ServiceId, string>>;
+  // v29: optional per-workspace home-network selection (#148). Missing/undefined
+  // means "use ALL home networks" (the default), mirroring how
+  // `attachedInstances === undefined` means auto-attach. An explicit array
+  // selects a subset of the GLOBAL homeNetworks by id — ids that no longer match
+  // a live network are ignored at resolve time, and an empty array means "no
+  // home network for this workspace → always remote". Home networks themselves
+  // are created/edited/deleted only on the Home Networks screen; this is purely
+  // which of them attach to this workspace. Only the *active* dashboard's
+  // selection is evaluated (see resolveEffectiveHomeNetworks /
+  // evaluateHomeNetwork in lib/network.ts).
+  homeNetworkIds?: string[];
+  // v30: optional per-workspace Services-tab tile order. Missing/undefined means
+  // "use the global servicesOrder" so existing dashboards keep the shared order.
+  // Unknown ids are skipped at render time; kinds missing from the list fall in
+  // at the end in canonical order (same forgiving semantics as the global
+  // servicesOrder), so adding a new service kind never hides it.
+  servicesOrder?: ServiceId[];
 }
 
 // Legacy widget-settings shape carried by v13 exports. v13→v14 migration folds
@@ -235,12 +254,15 @@ interface ConfigState {
   secrets: Record<ServiceId, ServiceSecrets>;
 
   autoSwitchNetwork: boolean;
-  // Runtime-cached network state: true when the phone is not on a configured
-  // home network. Driven by the NetInfo listener in `useNetworkAutoSwitch`.
-  // The URL resolver combines this with the per-instance `useRemote` config
-  // (which is a user override — "force remote even at home") so the toggle
-  // never gets clobbered by the auto-switch. Persisted between launches so
-  // requests fired before NetInfo's first event use last-known state.
+  // EPHEMERAL (never persisted). True when we are NOT on a confirmed home
+  // network, so the URL resolver prefers remote. Recomputed fresh each launch +
+  // on every network change + on app resume by evaluateHomeNetwork() in
+  // lib/network.ts. Defaults to TRUE (away → remote): we must never send the
+  // private local URL to an untrusted network before confirming we're home, or a
+  // stranger's device at the same private address harvests the API key. Local is
+  // therefore used ONLY on a confirmed home network. Was persisted; persisting a
+  // live network observation across launches caused the stale-cold-start half of
+  // #106.
   networkAwayFromHome: boolean;
   homeNetworks: HomeNetwork[];
   // v17: per-user display order for the Services tab. Unknown ids are skipped
@@ -335,15 +357,9 @@ interface ConfigActions {
     secrets: Partial<ServiceSecrets>,
   ) => Promise<void>;
 
-  // Legacy single-instance helpers. These operate on the active instance for
-  // the given kind and exist so consumers that haven't been migrated to be
-  // instance-aware keep working. They'll be retired once the rest of the
-  // codebase passes instanceId explicitly.
-  updateService: (id: ServiceId, config: Partial<ServiceConfig>) => void;
-  toggleService: (id: ServiceId) => void;
-  updateSecrets: (id: ServiceId, secrets: Partial<ServiceSecrets>) => Promise<void>;
-
   setAutoSwitch: (enabled: boolean) => void;
+  // Set by evaluateHomeNetwork() (lib/network.ts) on every network change.
+  // EPHEMERAL — never persisted.
   setNetworkAwayFromHome: (away: boolean) => void;
   addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
@@ -354,9 +370,19 @@ interface ConfigActions {
   // dashboard is rejected by the action — every install always has at least
   // one dashboard so the screen never has nothing to render.
   addDashboard: (name: string) => Dashboard;
+  // Deep-clone an existing dashboard: fresh dashboard id + fresh slot ids for
+  // every widget (so the global slot-id uniqueness invariant holds), name
+  // suffixed " copy" (deduped), all workspace fields preserved. Returns the new
+  // dashboard, or null if the source id doesn't exist.
+  duplicateDashboard: (dashboardId: string) => Dashboard | null;
   removeDashboard: (dashboardId: string) => void;
   renameDashboard: (dashboardId: string, name: string) => void;
   setActiveDashboard: (dashboardId: string) => void;
+  // Switch the active workspace to the first dashboard that has `instanceId`
+  // attached (auto-attach dashboards count). No-op when the active dashboard
+  // already includes it or none does. Used by the notification tap handler so a
+  // tapped alert lands on a workspace where its instance is actually present.
+  activateDashboardForInstance: (instanceId: string) => void;
   moveDashboard: (dashboardId: string, direction: "up" | "down") => void;
   // v20: dashboard identity + workspace filter + bottom-tab pinning. All four
   // setters persist via setJSON(STORAGE_KEYS.dashboards, ...).
@@ -364,12 +390,28 @@ interface ConfigActions {
   setDashboardColor: (dashboardId: string, color: string) => void;
   setDashboardAttachedInstances: (dashboardId: string, instanceIds: string[]) => void;
   setDashboardPinnedTabs: (dashboardId: string, tabIds: string[]) => void;
+  // v29: per-workspace home-network selection (#148). Pass an array of global
+  // home-network ids to attach a custom subset, or `undefined` to use all.
+  setDashboardHomeNetworkIds: (
+    dashboardId: string,
+    ids: string[] | undefined,
+  ) => void;
+  // v30: per-workspace Services-tab tile order. Pass an array to set a custom
+  // order for this dashboard, or `undefined` to fall back to the global
+  // `servicesOrder`. Mirrors the optional-field pattern of homeNetworkIds.
+  setDashboardServicesOrder: (
+    dashboardId: string,
+    order: ServiceId[] | undefined,
+  ) => void;
 
   // Slots (v14+). Operate on the active dashboard's widget list. addWidget
   // returns the new slot so callers can reference it (e.g. open settings sheet).
   addWidget: (widgetId: WidgetId) => WidgetSlot | null;
   removeSlot: (slotId: string) => void;
   moveSlot: (slotId: string, direction: "up" | "down") => void;
+  // Deep-copy a widget slot (with its settings) onto another dashboard, giving
+  // it a fresh slot id. Used by the edit-mode "copy to dashboard" affordance.
+  copySlotToDashboard: (slotId: string, targetDashboardId: string) => void;
   setSlotSettings: (slotId: string, settings: WidgetSlotSettings) => void;
   resetSlotSettings: (slotId: string) => void;
 
@@ -527,6 +569,57 @@ function recomputeDerivedFromActive(
   return { activeInstance, services, secrets };
 }
 
+// The home-network ids that actually govern local/remote switching for a
+// dashboard: its explicit selection (filtered to still-existing networks), or
+// every global network when it has none (undefined = all). Mirrors
+// resolveEffectiveHomeNetworks in lib/network.ts but returns just the id set —
+// inlined here to avoid a config-store → lib/network import cycle.
+function effectiveHomeNetworkIdSet(
+  dashboard: Dashboard | undefined,
+  globalHomeNetworks: HomeNetwork[],
+): Set<string> {
+  const allIds = globalHomeNetworks.map((n) => n.id);
+  const ids = dashboard?.homeNetworkIds;
+  if (ids === undefined) return new Set(allIds);
+  const valid = new Set(allIds);
+  return new Set(ids.filter((id) => valid.has(id)));
+}
+
+// Whether switching the active workspace from `oldDashboard` to `newDashboard`
+// should reset networkAwayFromHome to the safe default (away → remote). The
+// cached flag was computed against the OUTGOING dashboard's home networks; if
+// the incoming dashboard might not trust the network we're currently home on, a
+// stale `false` would briefly send the private local URL on a network the new
+// workspace doesn't trust — the switch-race exposure window (#148 review Rec #8).
+//
+// Reached only while auto-switch is on and we're currently HOME (flag false), so
+// the network we're on is in `oldSet`. The incoming set keeps us home iff it
+// still contains every old id (a SUPERSET) — then the current network is
+// guaranteed to be trusted and we must NOT flash remote (#14). Otherwise the
+// network we're home on might be one the new workspace dropped, so we can't be
+// sure → force away; useNetworkAutoSwitch re-confirms against the real SSID a
+// tick later and clears the flag if we're actually still home.
+function switchInvalidatesAwayFlag(
+  state: {
+    autoSwitchNetwork: boolean;
+    demoMode: boolean;
+    networkAwayFromHome: boolean;
+    homeNetworks: HomeNetwork[];
+  },
+  oldDashboard: Dashboard | undefined,
+  newDashboard: Dashboard | undefined,
+): boolean {
+  if (!state.autoSwitchNetwork || state.demoMode) return false;
+  if (state.networkAwayFromHome) return false; // already at the safe default
+  const oldSet = effectiveHomeNetworkIdSet(oldDashboard, state.homeNetworks);
+  const newSet = effectiveHomeNetworkIdSet(newDashboard, state.homeNetworks);
+  // Force away only when the new set is NOT a superset of the old one. If every
+  // network the old workspace trusted is still trusted, the one we're home on is
+  // among them, so we stay home — no needless remote flash on broaden/equal.
+  for (const id of oldSet) if (!newSet.has(id)) return true;
+  return false;
+}
+
 function emptyLegacySecrets(): Record<ServiceId, ServiceSecrets> {
   const secrets = {} as Record<ServiceId, ServiceSecrets>;
   for (const id of SERVICE_IDS) {
@@ -545,8 +638,11 @@ function deriveLegacyServices(
   const out = {} as Record<ServiceId, ServiceConfig>;
   for (const id of SERVICE_IDS) {
     const list = instances[id] ?? [];
-    const activeId = activeInstance[id] ?? list[0]?.id ?? null;
-    const inst = activeId ? list.find((i) => i.id === activeId) : list[0];
+    // No raw first-instance tail (#3): when the workspace has no enabled+
+    // attached instance of this kind, the legacy view falls to the default
+    // (disabled) config rather than projecting an other-workspace instance.
+    const activeId = activeInstance[id];
+    const inst = activeId ? list.find((i) => i.id === activeId) : undefined;
     if (inst) {
       const { id: _id, ...cfg } = inst;
       out[id] = cfg;
@@ -568,7 +664,9 @@ function deriveLegacySecrets(
   const out = emptyLegacySecrets();
   for (const id of SERVICE_IDS) {
     const list = instances[id] ?? [];
-    const activeId = activeInstance[id] ?? list[0]?.id ?? null;
+    // No raw first-instance tail (#3): an unattached workspace gets empty
+    // secrets for the kind, never another workspace's API key.
+    const activeId = activeInstance[id];
     if (activeId && instanceSecrets[activeId]) {
       out[id] = instanceSecrets[activeId];
     }
@@ -725,7 +823,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   services: deriveLegacyServices(initialInstances, initialActiveInstance),
   secrets: emptyLegacySecrets(),
   autoSwitchNetwork: false,
-  networkAwayFromHome: false,
+  networkAwayFromHome: true,
   homeNetworks: [],
   servicesOrder: [],
   dashboards: initialDashboards,
@@ -909,7 +1007,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Stash the legacy value and apply after the dashboards array exists.
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
-    const networkAwayFromHome = getBoolean(STORAGE_KEYS.networkAwayFromHome);
+    // Purge the orphaned persisted flag from older builds. networkAwayFromHome is
+    // now ephemeral runtime state, recomputed fresh each launch by
+    // evaluateHomeNetwork() (lib/network.ts) — persisting a live network
+    // observation caused #106's stale-cold-start false-red.
+    deleteKey("app.networkAwayFromHome");
 
     // Read the new array; if absent, migrate from legacy single-SSID keys so
     // upgraders who never re-import keep their auto-switch configuration.
@@ -1041,6 +1143,40 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
               dashboard.activeInstance = cleaned;
             }
           }
+          // v29: per-workspace home-network selection (#148). MUST be rehydrated
+          // here too — the setter persists it into STORAGE_KEYS.dashboards, so
+          // dropping it on cold start would silently revert a "remote-only" (or
+          // subset) workspace to "all home networks", re-exposing the private
+          // local URL + API key on networks it was configured not to trust.
+          // Mirror coerceDashboard: dedupe, drop empties, cap; preserve an
+          // explicit empty array ("no home network here → always remote").
+          if (Array.isArray(d.homeNetworkIds)) {
+            const seen = new Set<string>();
+            const ids: string[] = [];
+            for (const id of d.homeNetworkIds) {
+              if (typeof id !== "string" || id.length === 0) continue;
+              if (seen.has(id)) continue;
+              seen.add(id);
+              ids.push(id);
+              if (ids.length >= MAX_HOME_NETWORKS) break;
+            }
+            dashboard.homeNetworkIds = ids;
+          }
+          // v30: per-workspace Services-tab order. Same forgiving coercion as
+          // the global servicesOrder — dedupe + drop unknown ids; absence means
+          // "use the global order".
+          if (Array.isArray(d.servicesOrder)) {
+            const seen = new Set<string>();
+            const order: ServiceId[] = [];
+            for (const sid of d.servicesOrder) {
+              if (typeof sid !== "string") continue;
+              if (!(SERVICE_IDS as readonly string[]).includes(sid)) continue;
+              if (seen.has(sid)) continue;
+              seen.add(sid);
+              order.push(sid as ServiceId);
+            }
+            dashboard.servicesOrder = order;
+          }
           // Backfill v20 fields one-time for users upgrading from a v14-v19
           // local install (the AsyncStorage payload is the legacy shape, even
           // though the export migration handles them at import time).
@@ -1105,8 +1241,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     if (dashboardsNeedPersist) {
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
-      setString(STORAGE_KEYS.activeDashboardId, activeDashboardId);
+      // Atomic pair-write so a crash can't persist the dashboards list without
+      // its matching activeDashboardId (or vice versa) and leave them desynced.
+      setMany([
+        [STORAGE_KEYS.dashboards, JSON.stringify(dashboards)],
+        [STORAGE_KEYS.activeDashboardId, activeDashboardId],
+      ]);
     }
 
     const servicesOrder = sanitizeServicesOrder(
@@ -1214,7 +1354,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
-      networkAwayFromHome,
       homeNetworks,
       servicesOrder,
       dashboards,
@@ -1331,6 +1470,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   updateInstance: (id, instanceId, patch) => {
+    // Captured before the commit so the invalidate below can tell whether a
+    // URL-affecting field actually changed.
+    const prevInst = get().serviceInstances[id]?.find((i) => i.id === instanceId);
     set((state) => {
       const list = state.serviceInstances[id] ?? [];
       const idx = list.findIndex((i) => i.id === instanceId);
@@ -1365,6 +1507,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       );
       return { serviceInstances, services, secrets };
     });
+    // A URL edit changes the resolved base URL without changing the instance id
+    // (the query key), so staleTime:Infinity reads wouldn't refetch (#4).
+    // Invalidate this instance's cached queries when a URL field actually
+    // changed — scoped so an unrelated save (e.g. rename) doesn't refetch.
+    // TanStack v5 prefix-matches [id, instanceId] against [id, instanceId, …].
+    if (prevInst) {
+      const urlChanged =
+        ("localUrl" in patch && patch.localUrl !== prevInst.localUrl) ||
+        ("remoteUrl" in patch && patch.remoteUrl !== prevInst.remoteUrl) ||
+        ("useRemote" in patch && patch.useRemote !== prevInst.useRemote);
+      if (urlChanged) {
+        void queryClient.invalidateQueries({ queryKey: [id, instanceId] });
+      }
+    }
   },
 
   toggleInstance: (id, instanceId) => {
@@ -1399,13 +1555,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   setDashboardActiveInstance: (dashboardId, id, instanceId) => {
     set((state) => {
       const list = state.serviceInstances[id] ?? [];
-      // Reject ids that don't refer to an existing instance — keeps state
-      // consistent if a stale UUID slips through (e.g. from a prop).
-      if (instanceId !== null && !list.some((i) => i.id === instanceId)) {
-        return state;
-      }
       const dashboard = state.dashboards.find((d) => d.id === dashboardId);
       if (!dashboard) return state;
+      // Reject a pin the resolver would silently ignore. deriveActiveInstance
+      // only honors a pin that's enabled AND attached to this dashboard (or any
+      // instance when the dashboard is auto-attach), so validating those same
+      // conditions at write time keeps the persisted pin in lockstep with what
+      // resolution returns — no dead cruft that survives export/import or
+      // diverges from the rendered selection.
+      if (instanceId !== null) {
+        const inst = list.find((i) => i.id === instanceId);
+        const isAttached =
+          dashboard.attachedInstances === undefined ||
+          dashboard.attachedInstances.includes(instanceId);
+        if (!inst || !inst.enabled || !isAttached) {
+          return state;
+        }
+      }
 
       const prevMap = dashboard.activeInstance ?? {};
       const nextMap: Partial<Record<ServiceId, string>> = { ...prevMap };
@@ -1484,29 +1650,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       );
       return { instanceSecrets, secrets };
     });
-  },
-
-  // --- Legacy single-instance shims ---
-
-  updateService: (id, config) => {
-    const activeId =
-      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
-    if (!activeId) return;
-    get().updateInstance(id, activeId, config);
-  },
-
-  toggleService: (id) => {
-    const activeId =
-      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
-    if (!activeId) return;
-    get().toggleInstance(id, activeId);
-  },
-
-  updateSecrets: async (id, newSecrets) => {
-    const activeId =
-      get().activeInstance[id] ?? get().serviceInstances[id]?.[0]?.id ?? null;
-    if (!activeId) return;
-    await get().updateInstanceSecrets(activeId, newSecrets);
+    // Credentials (API key / custom headers) feed request auth but aren't part
+    // of the query key, so staleTime:Infinity reads would keep results fetched
+    // with the OLD credentials (#4). A secrets save is inherently a credential
+    // change, so no field-level guard — invalidate this instance's queries by
+    // matching the instanceId slot of the key ([serviceId, instanceId, …]).
+    void queryClient.invalidateQueries({
+      predicate: (q) => q.queryKey[1] === instanceId,
+    });
   },
 
   setAutoSwitch: (enabled) => {
@@ -1515,9 +1666,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setNetworkAwayFromHome: (away) => {
+    // No-op when unchanged so NetInfo's chatty event stream doesn't re-key the
+    // health query for an identical value. EPHEMERAL — never persisted.
     if (get().networkAwayFromHome === away) return;
-    setBoolean(STORAGE_KEYS.networkAwayFromHome, away);
     set({ networkAwayFromHome: away });
+    // The resolved base URL flips local↔remote with this flag (getActiveUrl),
+    // but query keys don't encode the URL — so staleTime:Infinity reads
+    // (profiles, root folders, tags) would keep serving data fetched against
+    // the OLD url after a home/away switch (#4). Invalidate so active queries
+    // refetch against the new URL; previous data stays visible during the
+    // refetch (invalidate, not reset → no skeleton flash).
+    void queryClient.invalidateQueries();
   },
 
   addHomeNetwork: (network) => {
@@ -1595,7 +1754,61 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     return dashboard;
   },
 
+  duplicateDashboard: (dashboardId) => {
+    const src = get().dashboards.find((d) => d.id === dashboardId);
+    if (!src) return null;
+    // Unique " copy" name: "X copy", then "X copy 2", "X copy 3", … Names aren't
+    // a key (ids are) so this is a soft nicety to keep the picker readable.
+    const existing = new Set(get().dashboards.map((d) => d.name));
+    let name = `${src.name} copy`;
+    for (let n = 2; existing.has(name); n++) name = `${src.name} copy ${n}`;
+    const clone: Dashboard = {
+      ...src,
+      id: generateInstanceId(),
+      name,
+      // Fresh slot id per widget: slot ids must be globally unique (the
+      // slot-keyed settings store + query cache collide otherwise). Deep-copy
+      // each slot's settings so tweaking one dashboard's widget can't mutate the
+      // other through a shared object reference.
+      widgets: src.widgets.map((w) => ({
+        id: generateInstanceId(),
+        widgetId: w.widgetId,
+        ...(w.settings ? { settings: { ...w.settings } } : {}),
+      })),
+      // Clone the optional arrays/maps by value (truthy `[]` is preserved, e.g.
+      // an "always remote" homeNetworkIds or an empty attachment set); undefined
+      // stays undefined so an auto-attach source clones to auto-attach.
+      ...(src.attachedInstances
+        ? { attachedInstances: [...src.attachedInstances] }
+        : {}),
+      ...(src.pinnedTabs ? { pinnedTabs: [...src.pinnedTabs] } : {}),
+      ...(src.activeInstance ? { activeInstance: { ...src.activeInstance } } : {}),
+      ...(src.homeNetworkIds ? { homeNetworkIds: [...src.homeNetworkIds] } : {}),
+      ...(src.servicesOrder ? { servicesOrder: [...src.servicesOrder] } : {}),
+    };
+    set((state) => {
+      const dashboards = [...state.dashboards, clone];
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+    return clone;
+  },
+
+  activateDashboardForInstance: (instanceId) => {
+    const state = get();
+    // Auto-attach dashboards (attachedInstances === undefined) include every
+    // instance; explicit lists must contain the id.
+    const attaches = (d: Dashboard) =>
+      d.attachedInstances === undefined ||
+      d.attachedInstances.includes(instanceId);
+    const active = state.dashboards.find((d) => d.id === state.activeDashboardId);
+    if (active && attaches(active)) return; // already visible on the active one
+    const target = state.dashboards.find(attaches);
+    if (target) get().setActiveDashboard(target.id);
+  },
+
   removeDashboard: (dashboardId) => {
+    let forcedAway = false;
     set((state) => {
       // Refuse to delete the last dashboard — the screen always needs one.
       if (state.dashboards.length <= 1) return state;
@@ -1605,9 +1818,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const activeChanged = activeDashboardId === dashboardId;
       if (activeChanged) {
         activeDashboardId = dashboards[0].id;
-        setString(STORAGE_KEYS.activeDashboardId, activeDashboardId);
+        // Atomic pair-write so the trimmed list and its new active id can't
+        // land desynced if the app is killed mid-delete.
+        setMany([
+          [STORAGE_KEYS.dashboards, JSON.stringify(dashboards)],
+          [STORAGE_KEYS.activeDashboardId, activeDashboardId],
+        ]);
+      } else {
+        setJSON(STORAGE_KEYS.dashboards, dashboards);
       }
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
       // v22: deleting the active workspace re-resolves the active instance
       // per kind against the new active workspace.
       if (activeChanged) {
@@ -1617,10 +1836,27 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           state.serviceInstances,
           state.instanceSecrets,
         );
-        return { dashboards, activeDashboardId, ...derived };
+        // Same safe-default reset as setActiveDashboard: the auto-selected
+        // replacement workspace may govern a different home-network set (#148).
+        const forceAway = switchInvalidatesAwayFlag(
+          state,
+          state.dashboards.find((d) => d.id === dashboardId),
+          dashboards.find((d) => d.id === activeDashboardId),
+        );
+        forcedAway = forceAway;
+        return {
+          dashboards,
+          activeDashboardId,
+          ...derived,
+          ...(forceAway ? { networkAwayFromHome: true } : {}),
+        };
       }
       return { dashboards, activeDashboardId };
     });
+    // Same as setActiveDashboard: the inline away reset bypasses
+    // setNetworkAwayFromHome's invalidate, so refetch shared-instance queries
+    // against the new (remote) URL (#4).
+    if (forcedAway) void queryClient.invalidateQueries();
   },
 
   renameDashboard: (dashboardId, name) => {
@@ -1634,6 +1870,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setActiveDashboard: (dashboardId) => {
+    let forcedAway = false;
     set((state) => {
       if (!state.dashboards.some((d) => d.id === dashboardId)) return state;
       if (state.activeDashboardId === dashboardId) return state;
@@ -1646,8 +1883,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         state.serviceInstances,
         state.instanceSecrets,
       );
-      return { activeDashboardId: dashboardId, ...derived };
+      // v29: if the incoming workspace governs a different home-network set,
+      // reset to the safe away default so the old dashboard's "home" flag can't
+      // briefly expose the local URL on a network the new one doesn't trust
+      // (#148 review Rec #8). useNetworkAutoSwitch re-evaluates a tick later.
+      const forceAway = switchInvalidatesAwayFlag(
+        state,
+        state.dashboards.find((d) => d.id === state.activeDashboardId),
+        state.dashboards.find((d) => d.id === dashboardId),
+      );
+      forcedAway = forceAway;
+      return {
+        activeDashboardId: dashboardId,
+        ...derived,
+        ...(forceAway ? { networkAwayFromHome: true } : {}),
+      };
     });
+    // The forced away→remote reset flips the resolved URL for any instance
+    // shared with the previous workspace (same query key); the flag is set
+    // inline above (not via setNetworkAwayFromHome) so it bypasses that
+    // invalidate (#4). Refetch so shared-instance Infinity reads don't keep the
+    // old workspace's URL data.
+    if (forcedAway) void queryClient.invalidateQueries();
   },
 
   moveDashboard: (dashboardId, direction) => {
@@ -1741,6 +1998,86 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
   },
 
+  setDashboardHomeNetworkIds: (dashboardId, ids) => {
+    let forcedAway = false;
+    set((state) => {
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== dashboardId) return d;
+        // `undefined` → drop the key so the workspace uses ALL home networks
+        // again (and picks up future ones), exactly like attachedInstances.
+        if (ids === undefined) {
+          const { homeNetworkIds: _omit, ...rest } = d;
+          return rest;
+        }
+        // Dedupe + drop empties. We don't validate ids against the live
+        // network list — cross-device imports may reference ids not present
+        // yet; the resolver ignores stale ids at read time. An empty result is
+        // a valid selection ("no home network here → always remote").
+        const seen = new Set<string>();
+        const sanitized: string[] = [];
+        for (const id of ids) {
+          if (typeof id !== "string" || id.length === 0) continue;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          sanitized.push(id);
+        }
+        return { ...d, homeNetworkIds: sanitized };
+      });
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      // v29: editing the ACTIVE workspace's home-network set can shrink the
+      // trusted set (e.g. narrow to a subset that excludes the current SSID, or
+      // switch to "always remote"). The cached `networkAwayFromHome` flag was
+      // computed against the OLD selection, so a stale `false` would keep
+      // serving the private local URL on a network this workspace no longer
+      // trusts — the in-place-edit analogue of the setActiveDashboard
+      // switch-race (#148 Rec #8). Reset to the safe away default; the
+      // useNetworkAutoSwitch effect re-confirms a tick later and clears it if
+      // we're genuinely still home under the new selection.
+      if (dashboardId === state.activeDashboardId) {
+        const forceAway = switchInvalidatesAwayFlag(
+          state,
+          state.dashboards.find((d) => d.id === dashboardId),
+          dashboards.find((d) => d.id === dashboardId),
+        );
+        if (forceAway) {
+          forcedAway = true;
+          return { dashboards, networkAwayFromHome: true };
+        }
+      }
+      return { dashboards };
+    });
+    // The inline away reset bypasses setNetworkAwayFromHome's invalidate, so
+    // refetch any local-resolved instance against the new (remote) URL (#4).
+    if (forcedAway) void queryClient.invalidateQueries();
+  },
+
+  setDashboardServicesOrder: (dashboardId, order) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== dashboardId) return d;
+        // `undefined` → drop the key so the workspace reuses the GLOBAL
+        // servicesOrder (and any future default), like homeNetworkIds.
+        if (order === undefined) {
+          const { servicesOrder: _omit, ...rest } = d;
+          return rest;
+        }
+        // Dedupe + drop unknown ids (forward-compat). Missing kinds fall in at
+        // the end in canonical order at render time, so we don't pad here.
+        const seen = new Set<string>();
+        const sanitized: ServiceId[] = [];
+        for (const id of order) {
+          if (!(SERVICE_IDS as readonly string[]).includes(id)) continue;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          sanitized.push(id);
+        }
+        return { ...d, servicesOrder: sanitized };
+      });
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
   // --- Slots (v14+) ---
 
   addWidget: (widgetId) => {
@@ -1785,6 +2122,37 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         return { ...d, widgets };
       });
       if (!mutated) return state;
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  copySlotToDashboard: (slotId, targetDashboardId) => {
+    set((state) => {
+      // Slot ids are globally unique, so the first match across all dashboards
+      // is the source slot.
+      let source: WidgetSlot | undefined;
+      for (const d of state.dashboards) {
+        const hit = d.widgets.find((w) => w.id === slotId);
+        if (hit) {
+          source = hit;
+          break;
+        }
+      }
+      if (!source) return state;
+      if (!state.dashboards.some((d) => d.id === targetDashboardId)) return state;
+      // Fresh slot id keeps the uniqueness invariant; deep-copy settings so the
+      // two placements stay independent.
+      const copy: WidgetSlot = {
+        id: generateInstanceId(),
+        widgetId: source.widgetId,
+        ...(source.settings ? { settings: { ...source.settings } } : {}),
+      };
+      const dashboards = state.dashboards.map((d) =>
+        d.id === targetDashboardId
+          ? { ...d, widgets: [...d.widgets, copy] }
+          : d,
+      );
       setJSON(STORAGE_KEYS.dashboards, dashboards);
       return { dashboards };
     });
@@ -1883,7 +2251,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   getActiveInstanceId: (id) => {
     const state = get();
-    return state.activeInstance[id] ?? state.serviceInstances[id]?.[0]?.id ?? null;
+    // Only the workspace-resolved instance (attachment + enabled aware, kept in
+    // sync by recomputeDerivedFromActive). NO raw serviceInstances[id][0] tail:
+    // activeInstance[id] is null exactly when nothing is enabled+attached, so a
+    // first-instance fallback could only resolve a disabled or other-workspace
+    // instance — leaking its URL + API key on the next request (#3).
+    return state.activeInstance[id] ?? null;
   },
 
   getEnabledInstances: (id) => {
@@ -1892,8 +2265,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   getMergedHeaders: (id, instanceId) => {
     const state = get();
-    const targetId =
-      instanceId ?? state.activeInstance[id] ?? state.serviceInstances[id]?.[0]?.id;
+    // Explicit instanceId wins; otherwise the workspace-resolved active
+    // instance. No raw first-instance tail — see getActiveInstanceId (#3).
+    const targetId = instanceId ?? state.activeInstance[id];
     const perInstance = targetId
       ? state.instanceSecrets[targetId]?.customHeaders
       : undefined;
@@ -1903,21 +2277,53 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   getActiveUrl: (id, instanceId) => {
     const state = get();
     const list = state.serviceInstances[id] ?? [];
-    const targetId = instanceId ?? state.activeInstance[id] ?? list[0]?.id;
+    // Explicit instanceId wins; otherwise the workspace-resolved active
+    // instance. No raw first-instance tail (#3) — when neither resolves,
+    // targetId is undefined, list.find misses, and we return "" below, which is
+    // the same "service offline in this workspace" result the away path gives.
+    const targetId = instanceId ?? state.activeInstance[id];
     const inst = list.find((i) => i.id === targetId);
     if (!inst) return "";
-    // useRemote is the user's force-remote override. autoSwitchNetwork +
-    // networkAwayFromHome handle the situational case (we're off the home
-    // network, so prefer remote). Either path picks remoteUrl.
-    const useRemote =
-      inst.useRemote ||
-      (state.autoSwitchNetwork && state.networkAwayFromHome);
     // Normalize on read so every consumer (serviceRequest, pingService, health
     // probes, widgets) sees a scheme-prefixed URL even when the stored value
-    // was saved without one. The editor's onBlur normalizes on edit, but
-    // historical/migrated values can lack http://, which causes fetch to
-    // throw "Invalid URL" — see #106.
-    return normalizeServiceUrl(useRemote ? inst.remoteUrl : inst.localUrl);
+    // was saved without one. Historical/migrated values can lack http://, which
+    // causes fetch to throw "Invalid URL" — see #106.
+    // NOTE: resolveActiveUrlKind (lib/url-validation.ts) mirrors this exact
+    // decision tree to report local-vs-remote for the L/R health-grid badge —
+    // keep the two in sync.
+    const local = normalizeServiceUrl(inst.localUrl);
+    const remote = normalizeServiceUrl(inst.remoteUrl);
+
+    // 1. The per-instance "always use remote" user override always wins.
+    if (inst.useRemote) return remote || local;
+    // 2. A workspace that explicitly selected NO (live) home networks
+    //    (homeNetworkIds: [] — or only stale ids) is "always remote". Honor that
+    //    even when global auto-switch is off, so the per-workspace remote-only
+    //    choice can't be silently overridden by the global toggle and re-expose
+    //    the local URL (#148). `undefined` (auto-attach all networks) is NOT
+    //    remote-only, so it falls through to the auto-switch/away logic below.
+    const activeDash = state.dashboards.find(
+      (d) => d.id === state.activeDashboardId,
+    );
+    if (
+      Array.isArray(activeDash?.homeNetworkIds) &&
+      effectiveHomeNetworkIdSet(activeDash, state.homeNetworks).size === 0
+    ) {
+      return remote;
+    }
+    // 3. Auto-switch off → user opted out of switching; use local (or remote if
+    //    no local is configured).
+    if (!state.autoSwitchNetwork) return local || remote;
+    // 4. AWAY from a confirmed home network → REMOTE ONLY. We deliberately do
+    //    NOT fall back to the private local URL on an untrusted network: a
+    //    stranger's device at the same private address (e.g. 192.168.1.x on
+    //    airport WiFi) would receive our API key. No remote configured → "" → the
+    //    service is simply offline while away, which is the honest, safe result.
+    //    `networkAwayFromHome` defaults to true, so this also holds during the
+    //    brief cold-start window before evaluateHomeNetwork() confirms we're home.
+    if (state.networkAwayFromHome) return remote;
+    // 5. On a confirmed home network → local (or remote if no local configured).
+    return local || remote;
   },
 
   getActiveDashboard: () => {
@@ -2231,6 +2637,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       servicesOrder: importedServicesOrder,
       dashboards: importedDashboards,
       activeDashboardId: importedActiveDashboardId,
+      // Reset the ephemeral away flag to its safe default. Import can change the
+      // active dashboard, its homeNetworkIds, the global home-network list, and
+      // flip autoSwitchNetwork on — all while a pre-import in-memory `false`
+      // (confirmed-home) flag would otherwise survive and let getActiveUrl serve
+      // the freshly-imported local URLs against the current, un-re-evaluated
+      // network (#148). useNetworkAutoSwitch re-confirms and clears it if home.
+      networkAwayFromHome: true,
       wolDevices: payload.wolDevices ?? [],
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,

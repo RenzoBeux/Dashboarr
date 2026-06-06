@@ -14,6 +14,7 @@ import {
   Check,
   ChevronUp,
   ChevronDown,
+  Copy,
   Plus,
   Settings as SettingsIcon,
   Trash2,
@@ -56,6 +57,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   const dashboards = useConfigStore((s) => s.dashboards);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const addDashboard = useConfigStore((s) => s.addDashboard);
+  const duplicateDashboard = useConfigStore((s) => s.duplicateDashboard);
   const removeDashboard = useConfigStore((s) => s.removeDashboard);
   const setActiveDashboard = useConfigStore((s) => s.setActiveDashboard);
   const moveDashboard = useConfigStore((s) => s.moveDashboard);
@@ -64,6 +66,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
 
   const [mounted, setMounted] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Dashboard | null>(null);
+  const [pendingDuplicate, setPendingDuplicate] = useState<Dashboard | null>(null);
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState("");
   // Submit-only commit (via the keyboard return key or the inline check
@@ -154,6 +157,25 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
     setMounted(false);
     onClose();
     router.push(`/dashboard-edit/${d.id}` as any);
+  }
+
+  function handleDuplicate(d: Dashboard) {
+    const clone = duplicateDashboard(d.id);
+    if (!clone) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Switch to the clone and open its editor so the user can tweak the copy
+    // (point it at a different instance, recolor, etc.) right away — same snap-
+    // close-then-push flow as create, which avoids the picker's slide-out
+    // animation sitting on top of the route transition.
+    setActiveDashboard(clone.id);
+    setCreating(false);
+    setCreateDraft("");
+    creatingCommittedRef.current = false;
+    translateY.value = OFFSCREEN;
+    backdrop.value = 0;
+    setMounted(false);
+    onClose();
+    router.push(`/dashboard-edit/${clone.id}` as any);
   }
 
   function commitCreate() {
@@ -337,6 +359,17 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                             />
                           </Pressable>
                           <Pressable
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              setPendingDuplicate(d);
+                            }}
+                            hitSlop={6}
+                            className="p-1 ml-1"
+                            accessibilityLabel="Duplicate dashboard"
+                          >
+                            <Icon icon={Copy} size={ICON.MD} color="#a1a1aa" />
+                          </Pressable>
+                          <Pressable
                             onPress={() => handleOpenEditor(d)}
                             hitSlop={6}
                             className="p-1 ml-1"
@@ -459,6 +492,56 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                   >
                     <Text className="text-white text-sm font-semibold">
                       Delete
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Duplicate confirm — same in-sheet overlay pattern as delete (a
+              nested ConfirmModal would hit the iOS Fabric modal-stacking hang). */}
+          {pendingDuplicate && (
+            <View
+              style={StyleSheet.absoluteFill}
+              className="items-center justify-center px-8"
+            >
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                className="bg-black/70"
+                onPress={() => setPendingDuplicate(null)}
+              />
+              <View className="w-full max-w-md rounded-2xl bg-surface border border-border p-5 gap-4">
+                <View className="flex-row items-center gap-3">
+                  <View className="bg-primary/15 rounded-xl p-2.5">
+                    <Icon icon={Copy} size={20} color="#60a5fa" />
+                  </View>
+                  <Text className="text-zinc-100 text-lg font-semibold flex-1">
+                    Duplicate dashboard?
+                  </Text>
+                </View>
+                <Text className="text-zinc-400 text-sm leading-5">
+                  {`A copy of "${pendingDuplicate.name}" will be created with its widgets and settings. You'll be taken to the new dashboard to customize it.`}
+                </Text>
+                <View className="flex-row gap-3 mt-1">
+                  <Pressable
+                    onPress={() => setPendingDuplicate(null)}
+                    className="flex-1 rounded-xl border border-border py-2.5 items-center active:opacity-70"
+                  >
+                    <Text className="text-zinc-300 text-sm font-semibold">
+                      Cancel
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      const target = pendingDuplicate;
+                      setPendingDuplicate(null);
+                      handleDuplicate(target);
+                    }}
+                    className="flex-1 rounded-xl bg-primary py-2.5 items-center active:opacity-70"
+                  >
+                    <Text className="text-white text-sm font-semibold">
+                      Duplicate
                     </Text>
                   </Pressable>
                 </View>

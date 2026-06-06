@@ -1,4 +1,9 @@
-import { SERVICE_IDS, DASHBOARD_WIDGET_IDS, UI_SCALES } from "@/lib/constants";
+import {
+  SERVICE_IDS,
+  DASHBOARD_WIDGET_IDS,
+  UI_SCALES,
+  MAX_HOME_NETWORKS,
+} from "@/lib/constants";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import type {
   Dashboard,
@@ -42,7 +47,6 @@ function isHttpUrlOrEmpty(v: unknown): v is string {
 // CR/LF in values closes off header-injection if someone hand-edits an export.
 const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
 const MAX_HEADERS_PER_SCOPE = 32;
-const MAX_HOME_NETWORKS = 20;
 
 function coerceHeaderMap(v: unknown): Record<string, string> | null {
   if (!isPlainObject(v)) return null;
@@ -206,6 +210,40 @@ function coerceDashboard(v: unknown): Dashboard | null {
     if (Object.keys(cleaned).length > 0) {
       out.activeInstance = cleaned;
     }
+  }
+  // v29: optional per-workspace home-network selection (#148). Present-but-not-
+  // array is rejected; otherwise dedupe + drop empties (import-tolerant, like
+  // attachedInstances), and cap at MAX_HOME_NETWORKS. Ids aren't validated
+  // against the live list — the resolver ignores stale ids. An explicit empty
+  // array is preserved — it's a valid selection ("no home network here").
+  if (v.homeNetworkIds !== undefined && v.homeNetworkIds !== null) {
+    if (!Array.isArray(v.homeNetworkIds)) return null;
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const id of v.homeNetworkIds) {
+      if (typeof id !== "string" || id.length === 0 || id.length > 128) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+      if (ids.length >= MAX_HOME_NETWORKS) break;
+    }
+    out.homeNetworkIds = ids;
+  }
+  // v30: optional per-workspace Services-tab order. Present-but-not-array is
+  // rejected; otherwise dedupe + drop unknown service ids (forward-compat, like
+  // the global servicesOrder). Absence means "use the global order".
+  if (v.servicesOrder !== undefined && v.servicesOrder !== null) {
+    if (!Array.isArray(v.servicesOrder)) return null;
+    const seen = new Set<string>();
+    const order: ServiceId[] = [];
+    for (const sid of v.servicesOrder) {
+      if (typeof sid !== "string") continue;
+      if (!SERVICE_ID_SET.has(sid)) continue; // forward-compat: drop unknowns
+      if (seen.has(sid)) continue;
+      seen.add(sid);
+      order.push(sid as ServiceId);
+    }
+    out.servicesOrder = order;
   }
   return out;
 }

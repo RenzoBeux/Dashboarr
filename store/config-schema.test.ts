@@ -420,6 +420,105 @@ describe("validateExportPayload — dashboard.activeInstance (v22)", () => {
   });
 });
 
+describe("validateExportPayload — dashboard.homeNetworkIds (v29)", () => {
+  it("omits dashboard.homeNetworkIds when not provided (uses all networks)", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.dashboards[0].homeNetworkIds).toBeUndefined();
+  });
+
+  it("preserves a valid per-dashboard homeNetworkIds selection", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Cabin",
+          widgets: [],
+          homeNetworkIds: ["net-cabin", "net-home"],
+        },
+      ],
+    });
+    expect(result.dashboards[0].homeNetworkIds).toEqual([
+      "net-cabin",
+      "net-home",
+    ]);
+  });
+
+  it("preserves an explicit empty selection (no home network → always remote)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        { id: TEST_DASHBOARD_ID, name: "Cabin", widgets: [], homeNetworkIds: [] },
+      ],
+    });
+    expect(result.dashboards[0].homeNetworkIds).toEqual([]);
+  });
+
+  it("dedupes and drops empty/non-string ids (import-tolerant)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Cabin",
+          widgets: [],
+          homeNetworkIds: ["net-a", "net-a", "", 42, "net-b"] as any,
+        },
+      ],
+    });
+    expect(result.dashboards[0].homeNetworkIds).toEqual(["net-a", "net-b"]);
+  });
+
+  it("keeps a stale id — the resolver ignores it at read time", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Cabin",
+          widgets: [],
+          homeNetworkIds: ["id-from-another-device"],
+        },
+      ],
+    });
+    expect(result.dashboards[0].homeNetworkIds).toEqual([
+      "id-from-another-device",
+    ]);
+  });
+
+  it("truncates to MAX_HOME_NETWORKS (20)", () => {
+    const many = Array.from({ length: 25 }, (_, i) => `net-${i}`);
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Cabin",
+          widgets: [],
+          homeNetworkIds: many,
+        },
+      ],
+    });
+    expect(result.dashboards[0].homeNetworkIds).toHaveLength(20);
+  });
+
+  it("rejects a dashboard with a non-array homeNetworkIds", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Cabin",
+            widgets: [],
+            homeNetworkIds: "nope" as any,
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry is invalid/);
+  });
+});
+
 describe("validateExportPayload — WOL devices", () => {
   const baseWol = () => ({ id: "d1", name: "Server", mac: "aa:bb:cc:dd:ee:ff" });
 

@@ -1,6 +1,7 @@
 import { View, Text, ScrollView } from "react-native";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
 
 // Special sentinel used in widget settings to mean "aggregate across every
@@ -85,12 +86,23 @@ export function InstancePickerRow({
   onChange,
   label,
 }: InstancePickerRowProps) {
-  const instances = useEnabledInstances(serviceId);
+  const allEnabled = useEnabledInstances(serviceId);
+  const attached = useAttachedInstances();
   const heading =
     label ?? `${SERVICE_DEFAULTS[serviceId].name} instance`;
 
   const isAll = value === INSTANCE_BINDING_ALL;
   const selectedSet = new Set<string>(isAll ? [] : value);
+
+  // Only offer instances attached to the active workspace — a curated dashboard
+  // shouldn't list instances it didn't attach (#148 review Rec #7). Any id
+  // already in the binding stays visible so an existing pick (e.g. whose
+  // instance was later un-attached) can still be seen and removed rather than
+  // silently orphaned. "All instances" then means "all attached", matching the
+  // card's aggregate.
+  const instances = allEnabled.filter(
+    (i) => attached.has(i.id) || selectedSet.has(i.id),
+  );
 
   const toggleInstance = (id: string) => {
     if (isAll) {

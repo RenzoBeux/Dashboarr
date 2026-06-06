@@ -132,6 +132,11 @@ export const DEFAULT_DASHBOARD_WIDGETS: WidgetId[] = [
 // dashboard picker on fresh installs and after legacy migration.
 export const DEFAULT_DASHBOARD_NAME = "Default";
 
+// Cap on home-WiFi entries — applies both to the global list and to each
+// dashboard's optional per-workspace override (v29). Enforced by the editors,
+// the store, and the import schema so the three agree on one bound.
+export const MAX_HOME_NETWORKS = 20;
+
 // Old widget ids that have been renamed. Hydrate + import use this to remap
 // stored values so users keep their dashboard layout across upgrades.
 export const WIDGET_ID_RENAMES: Record<string, WidgetId> = {
@@ -168,11 +173,11 @@ export const STORAGE_KEYS = {
   // any SERVICE_IDS missing from the list are appended in their canonical
   // order — so adding a new service kind ships with a sensible default.
   servicesOrder: "app.servicesOrder",
-  // v18: cached network-state ("am I off my home network right now?"). The
-  // auto-switch hook updates this on every home↔away transition. Persisted
-  // so cold launches use last-known state for the brief moment before
-  // NetInfo fires; NetInfo overwrites it on first event.
-  networkAwayFromHome: "app.networkAwayFromHome",
+  // (removed) persisted app.networkAwayFromHome — it is now EPHEMERAL runtime
+  // state (config-store.networkAwayFromHome), recomputed each launch by
+  // evaluateHomeNetwork() in lib/network.ts. Persisting a live network
+  // observation caused the stale-cold-start half of #106; the orphaned key is
+  // purged in hydrate.
   // v18 one-shot marker: pre-v18 builds clobbered useRemote with derived
   // network state. On first v18 launch the hydrate path resets useRemote
   // (only for installs that had auto-switch on) so the user starts from a

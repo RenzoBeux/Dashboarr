@@ -59,7 +59,8 @@ interface Opts {
 }
 
 // Compute the signature with a resolveUrl that mirrors getActiveUrl's
-// local/remote choice (useRemote OR away-while-auto-switching → remote).
+// local/remote choice: useRemote override → remote; auto-switch off → local;
+// away → remote only; home → local.
 function sig(opts: Opts): string {
   const autoSwitchNetwork = opts.autoSwitchNetwork ?? false;
   const networkAwayFromHome = opts.networkAwayFromHome ?? false;
@@ -72,9 +73,10 @@ function sig(opts: Opts): string {
     resolveUrl: (id, instanceId) => {
       const inst = (opts.instances[id] ?? []).find((x) => x.id === instanceId);
       if (!inst) return "";
-      const useRemote =
-        inst.useRemote || (autoSwitchNetwork && networkAwayFromHome);
-      return useRemote ? inst.remoteUrl : inst.localUrl;
+      if (inst.useRemote) return inst.remoteUrl || inst.localUrl;
+      if (!autoSwitchNetwork) return inst.localUrl || inst.remoteUrl;
+      if (networkAwayFromHome) return inst.remoteUrl;
+      return inst.localUrl || inst.remoteUrl;
     },
   };
   return buildHealthProbeSignature(inputs);

@@ -4,6 +4,7 @@ import { Captions, Search as SearchIcon, Film, Tv } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -26,6 +27,14 @@ import { truncateText } from "@/lib/utils";
 type Tab = "movies" | "episodes" | "history";
 
 export default function BazarrScreen() {
+  return (
+    <WorkspaceServiceGuard kinds={["bazarr"]}>
+      <BazarrScreenInner />
+    </WorkspaceServiceGuard>
+  );
+}
+
+function BazarrScreenInner() {
   const [tab, setTab] = useState<Tab>("movies");
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["bazarr"]]);

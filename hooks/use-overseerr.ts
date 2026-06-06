@@ -42,13 +42,14 @@ export function useOverseerrRequests(
   filter?: "all" | "approved" | "pending" | "processing" | "available",
   sort: "added" | "modified" = "added",
   instanceId?: string,
+  active = true,
 ) {
   const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
   return useQuery({
     queryKey: ["overseerr", id, "requests", page, filter, sort],
     queryFn: () => getRequests(page, 20, filter, sort, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
   });
 }
 

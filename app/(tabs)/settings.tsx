@@ -402,7 +402,7 @@ export default function SettingsScreen() {
           label="Home Networks"
           subtitle={
             autoSwitchNetwork && homeNetworksCount === 0
-              ? "Add at least one to enable auto-switching"
+              ? "Add at least one — without it the app stays on remote URLs"
               : homeNetworksCount > 0
                 ? `${homeNetworksCount} network${homeNetworksCount > 1 ? "s" : ""} configured`
                 : "Configure your home WiFi networks"
@@ -692,11 +692,9 @@ function InstanceList({
   const instances = useConfigStore(
     (s) => s.serviceInstances[serviceId] ?? EMPTY_INSTANCES,
   );
-  const activeId = useConfigStore((s) => s.activeInstance[serviceId]);
   const addInstance = useConfigStore((s) => s.addInstance);
   const removeInstance = useConfigStore((s) => s.removeInstance);
   const moveInstance = useConfigStore((s) => s.moveInstance);
-  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const dashboards = useConfigStore((s) => s.dashboards);
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
   // Per-instance tri-state health for the row dot. The shared hook is already
@@ -775,7 +773,6 @@ function InstanceList({
               ? inst.remoteUrl || "No remote URL"
               : inst.localUrl || "No local URL"
             : "Disabled";
-          const isActive = inst.id === activeId;
           // Only enabled instances are actively probed; for disabled ones
           // we want NO dot (not red) — there's nothing wrong, the user has
           // just turned it off.
@@ -792,12 +789,7 @@ function InstanceList({
                 className="flex-1 flex-row items-center px-4 py-3 active:opacity-70"
               >
                 <View className="flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-zinc-100 text-base">{inst.name}</Text>
-                    {isActive && instances.length > 1 ? (
-                      <Text className="text-primary text-xs">• active</Text>
-                    ) : null}
-                  </View>
+                  <Text className="text-zinc-100 text-base">{inst.name}</Text>
                   <Text className="text-zinc-500 text-xs">{subtitle}</Text>
                   {totalDashboards > 1
                     ? (() => {
@@ -864,34 +856,6 @@ function InstanceList({
           }
           onPress={handleAdd}
         />
-        {instances.length > 1 ? (
-          <View className="px-4 py-3 border-t border-surface-light">
-            <Text className="text-zinc-500 text-xs mb-2">
-              Active in this workspace
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {instances
-                .filter((i) => i.enabled)
-                .map((inst) => (
-                  <Pressable
-                    key={inst.id}
-                    onPress={() => setActiveInstance(serviceId, inst.id)}
-                    className={`px-3 py-1.5 rounded-full ${
-                      inst.id === activeId ? "bg-primary" : "bg-surface-light"
-                    }`}
-                  >
-                    <Text
-                      className={`text-sm font-medium ${
-                        inst.id === activeId ? "text-white" : "text-zinc-400"
-                      }`}
-                    >
-                      {inst.name}
-                    </Text>
-                  </Pressable>
-                ))}
-            </View>
-          </View>
-        ) : null}
       </SettingsGroup>
 
       <ConfirmModal
@@ -1132,13 +1096,11 @@ function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    // Resolve which URL the app will actually use, mirroring getActiveUrl:
-    // the per-instance "always remote" override OR auto-switch deciding we're
-    // currently away from home. Testing only `useRemote ? remote : local`
-    // (ignoring auto-switch) was misleading — it could report a green local
-    // probe while the dashboard silently resolved the empty remote URL and
-    // every service failed. We still test the in-progress form values, not the
-    // saved ones, so Test validates what the user typed before they Save.
+    // Resolve which URL the app will actually use right now, mirroring
+    // getActiveUrl: the per-instance "always remote" override OR auto-switch
+    // deciding we're away from home (in which case the app uses remote only and
+    // never the local URL). We test the in-progress form values, not the saved
+    // ones, so Test validates what the user typed before they Save.
     const { autoSwitchNetwork, networkAwayFromHome } = useConfigStore.getState();
     const useRemote =
       config.useRemote || (autoSwitchNetwork && networkAwayFromHome);

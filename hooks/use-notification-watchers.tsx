@@ -11,6 +11,7 @@ import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNzbgetHistory } from "@/hooks/use-nzbget";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
+import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
@@ -226,7 +227,7 @@ function SabnzbdHistoryWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: sabHistory } = useSabHistory(20, instanceId);
+  const { data: sabHistory } = useSabHistory(20, instanceId, active);
   const prevSabHistoryIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -264,7 +265,7 @@ function NzbgetHistoryWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: history } = useNzbgetHistory(20, instanceId);
+  const { data: history } = useNzbgetHistory(20, instanceId, active);
   const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
@@ -321,7 +322,7 @@ function RadarrImportWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: history } = useRadarrHistory(instanceId);
+  const { data: history } = useRadarrHistory(instanceId, active);
   const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
@@ -364,7 +365,7 @@ function SonarrImportWatcher({
   instanceId: string;
   active: boolean;
 }) {
-  const { data: history } = useSonarrHistory(instanceId);
+  const { data: history } = useSonarrHistory(instanceId, active);
   const prevIds = useRef<Set<number> | null>(null);
 
   useEffect(() => {
@@ -415,6 +416,13 @@ function ServiceHealthWatcher({
   settings: import("@/store/config-store").NotificationSettings;
 }) {
   const { data: health } = useServiceHealth();
+  // Offline alerts are GLOBAL: you're notified about any configured instance
+  // going down regardless of which workspace is active — matching the
+  // completion/import/request watchers above, so a drop on a server that lives
+  // on another dashboard still reaches you. Tapping the alert jumps to a
+  // workspace that has the instance attached (activateDashboardForInstance in
+  // app/_layout.tsx). The usable-URL guard below still suppresses false
+  // "offline" alerts for an instance with no reachable URL on this network.
   const prevHealth = useRef<Map<string, boolean> | null>(null);
 
   useEffect(() => {
@@ -422,6 +430,7 @@ function ServiceHealthWatcher({
     if (!gate.hydrated || !gate.enabled) return;
     if (!Array.isArray(health)) return;
     const prev = prevHealth.current;
+    const store = useConfigStore.getState();
     const currentMap = new Map<string, boolean>();
     for (const kind of health) {
       for (const inst of kind.instances) {
@@ -432,7 +441,15 @@ function ServiceHealthWatcher({
           if (
             wasOnline === true &&
             inst.online === false &&
-            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings)
+            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings) &&
+            // Don't cry "unreachable" when the instance only went offline
+            // because the current network has no URL to reach it on — e.g.
+            // leaving home resolves a local-only server to "" (see
+            // getActiveUrl). That's a network change, not a server going down;
+            // a server with a usable URL that stops responding still fires.
+            // kind.id is widened to string on ServiceHealthStatus but is always
+            // a ServiceId here (results are built from SERVICE_IDS).
+            store.getActiveUrl(kind.id as ServiceId, inst.instanceId)
           ) {
             sendLocalNotification({
               title: "Service offline",
@@ -466,6 +483,7 @@ function OverseerrRequestWatcher({
     "pending",
     "added",
     instanceId,
+    active,
   );
   const prevRequestIds = useRef<Set<number> | null>(null);
   const overseerrShapeWarned = useRef(false);

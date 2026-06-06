@@ -41,3 +41,55 @@ export async function detectSSID(): Promise<string | null> {
 export function normalizeBssid(value: string): string {
   return value.trim().toLowerCase();
 }
+
+// Permissive MAC charset — accepts colon/dash/dot separators and hex. We only
+// guard against obviously-wrong input; NetInfo's BSSID format varies by OS.
+const HOME_NETWORK_MAC_RE = /^[0-9a-f:.\-]+$/i;
+
+/** Minimal shape a home-network entry needs for validation — kept structural so
+ *  this module doesn't import the store (avoids a needless dependency). */
+interface HomeNetworkLike {
+  id: string;
+  ssid: string;
+  bssid: string;
+}
+
+export type HomeNetworkValidation =
+  | { ok: true; ssid: string; bssid: string }
+  | { ok: false; error: string };
+
+/**
+ * Validate + normalize a home-network form entry. Shared by the global Home
+ * Networks screen and the per-dashboard override editor (#148) so both apply
+ * identical rules: SSID required (≤64 chars), optional MAC-shaped BSSID (≤64),
+ * and no exact (ssid, bssid) duplicate within `existing` (the entry being
+ * edited, identified by `editingId`, is excluded). Returns the normalized
+ * values on success so callers persist exactly what was validated.
+ */
+export function validateHomeNetworkInput(
+  rawSsid: string,
+  rawBssid: string,
+  existing: readonly HomeNetworkLike[],
+  editingId?: string | null,
+): HomeNetworkValidation {
+  const ssid = rawSsid.trim();
+  if (!ssid) return { ok: false, error: "WiFi name (SSID) is required" };
+  if (ssid.length > 64) return { ok: false, error: "WiFi name is too long" };
+
+  const trimmedBssid = rawBssid.trim();
+  if (trimmedBssid && !HOME_NETWORK_MAC_RE.test(trimmedBssid)) {
+    return {
+      ok: false,
+      error: "BSSID looks invalid — use a MAC like aa:bb:cc:dd:ee:ff",
+    };
+  }
+  if (trimmedBssid.length > 64) return { ok: false, error: "BSSID is too long" };
+
+  const bssid = normalizeBssid(trimmedBssid);
+  const duplicate = existing.some(
+    (n) => n.id !== editingId && n.ssid === ssid && n.bssid === bssid,
+  );
+  if (duplicate) return { ok: false, error: "This network is already saved" };
+
+  return { ok: true, ssid, bssid };
+}

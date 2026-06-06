@@ -13,6 +13,7 @@ import {
   ChevronRight,
   ChevronUp,
   Plus,
+  Wifi,
   X,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
@@ -82,6 +83,10 @@ export default function DashboardEditScreen() {
   const setDashboardPinnedTabs = useConfigStore(
     (s) => s.setDashboardPinnedTabs,
   );
+  const globalHomeNetworks = useConfigStore((s) => s.homeNetworks);
+  const setDashboardHomeNetworkIds = useConfigStore(
+    (s) => s.setDashboardHomeNetworkIds,
+  );
 
   // Snapshot the dashboard into editable draft state when the screen mounts.
   // If the dashboard is later removed (e.g. via another device through a
@@ -102,6 +107,18 @@ export default function DashboardEditScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id]);
 
+  // Home-network selection draft (#148). undefined = use ALL home networks
+  // (and future ones); an array selects a subset of the global list by id.
+  // Snapshot on mount, same lifecycle as initialAttached above.
+  const initialHomeNetworkIds = useMemo<string[] | undefined>(
+    () =>
+      dashboard?.homeNetworkIds === undefined
+        ? undefined
+        : [...dashboard.homeNetworkIds],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dashboard?.id],
+  );
+
   const [name, setName] = useState(dashboard?.name ?? "");
   const [icon, setIcon] = useState<string>(() =>
     resolveIconName(dashboard?.icon),
@@ -116,6 +133,15 @@ export default function DashboardEditScreen() {
   );
   const [iconSheetOpen, setIconSheetOpen] = useState(false);
 
+  // Home-network selection editing state. `homeNetworkIdsDraft === undefined`
+  // means "All" (use every home network); an array is a custom subset of the
+  // global list. Switching to Custom seeds from all current ids so it starts
+  // equivalent to All and the user unticks from there.
+  const [homeNetworkIdsDraft, setHomeNetworkIdsDraft] = useState<
+    string[] | undefined
+  >(initialHomeNetworkIds);
+  const customHomeNetworks = homeNetworkIdsDraft !== undefined;
+
   // Track whether the draft diverges from the persisted dashboard so we can
   // (1) skip silent writes on save and (2) prompt before discarding on back.
   const initialName = dashboard?.name ?? "";
@@ -128,12 +154,17 @@ export default function DashboardEditScreen() {
     [dashboard?.id],
   );
   const trimmedName = name.trim();
+  const homeNetworksDirty = !idSelectionsEqual(
+    homeNetworkIdsDraft,
+    initialHomeNetworkIds,
+  );
   const dirty =
     (trimmedName.length > 0 && trimmedName !== initialName) ||
     icon !== initialIcon ||
     color !== initialColor ||
     touchedAttached ||
-    !arraysEqual(pinned, initialPinned);
+    !arraysEqual(pinned, initialPinned) ||
+    homeNetworksDirty;
 
   // Intercept back/swipe-dismiss while the draft is dirty so the user gets a
   // chance to keep editing or explicitly discard. Bypass is held in a ref —
@@ -205,9 +236,25 @@ export default function DashboardEditScreen() {
     return out;
   }, [attachedSet, serviceInstances]);
 
+  // Tabs that may be pinned. For an auto-attach dashboard the user hasn't
+  // curated yet, the draft `attached` is intentionally empty — but the live
+  // workspace includes every instance, so deriving pickability from the empty
+  // draft would offer only "Services" while the real bottom bar is full (#9).
+  // Use all enabled kinds in that case; once the user touches attachment, the
+  // draft becomes the source of truth.
+  const pickableKinds = useMemo(() => {
+    if (!wasAutoAttach || touchedAttached) return attachedKinds;
+    const out = new Set<ServiceId>();
+    for (const kind of SERVICE_IDS) {
+      const list = serviceInstances[kind] ?? [];
+      if (list.some((inst) => inst.enabled)) out.add(kind);
+    }
+    return out;
+  }, [wasAutoAttach, touchedAttached, attachedKinds, serviceInstances]);
+
   const pickable = useMemo(
-    () => pickableTabIdsFor(attachedKinds),
-    [attachedKinds],
+    () => pickableTabIdsFor(pickableKinds),
+    [pickableKinds],
   );
 
   // Recompute the still-pickable tab set from a hypothetical attachment list
@@ -309,6 +356,34 @@ export default function DashboardEditScreen() {
     });
   }
 
+  function setHomeNetworksMode(custom: boolean) {
+    Haptics.selectionAsync();
+    // Custom seeds from all current ids so it starts equivalent to All; the
+    // user then unticks. All clears the selection so future networks are
+    // included automatically again.
+    setHomeNetworkIdsDraft(
+      custom ? globalHomeNetworks.map((n) => n.id) : undefined,
+    );
+  }
+
+  function toggleHomeNetwork(id: string) {
+    Haptics.selectionAsync();
+    setHomeNetworkIdsDraft((prev) => {
+      const cur = prev ?? globalHomeNetworks.map((n) => n.id);
+      return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    });
+  }
+
+  function selectAllHomeNetworks() {
+    Haptics.selectionAsync();
+    setHomeNetworkIdsDraft(globalHomeNetworks.map((n) => n.id));
+  }
+
+  function selectNoHomeNetworks() {
+    Haptics.selectionAsync();
+    setHomeNetworkIdsDraft([]);
+  }
+
   function handleSave() {
     if (!dashboard) {
       router.back();
@@ -330,6 +405,10 @@ export default function DashboardEditScreen() {
     }
     if (!arraysEqual(pinned, initialPinned)) {
       setDashboardPinnedTabs(dashboard.id, pinned);
+    }
+    if (homeNetworksDirty) {
+      // undefined → use all home networks; an array → custom subset by id.
+      setDashboardHomeNetworkIds(dashboard.id, homeNetworkIdsDraft);
     }
     toast("Dashboard updated", "success");
     allowRemoveRef.current = true;
@@ -612,6 +691,106 @@ export default function DashboardEditScreen() {
         )}
       </Section>
 
+      <Section
+        label="Home networks"
+        hint="Local URLs are used only on a confirmed home WiFi. This workspace uses all your home networks by default — switch to Custom to use only some. Add or edit networks in Settings → Home Networks."
+      >
+        {globalHomeNetworks.length === 0 ? (
+          <Text className="text-zinc-500 text-xs leading-4">
+            No home networks yet. Add them in Settings → Home Networks, then
+            choose which apply to this workspace here.
+          </Text>
+        ) : (
+          <>
+            <View className="flex-row gap-2 mb-3">
+              <SegmentButton
+                label="All"
+                active={!customHomeNetworks}
+                color={color}
+                onPress={() => setHomeNetworksMode(false)}
+              />
+              <SegmentButton
+                label="Custom"
+                active={customHomeNetworks}
+                color={color}
+                onPress={() => setHomeNetworksMode(true)}
+              />
+            </View>
+
+            {!customHomeNetworks ? (
+              <View className="rounded-2xl bg-surface-light border border-border/70 px-3 py-3 gap-2">
+                <Text className="text-zinc-500 text-xs">
+                  Using all {globalHomeNetworks.length} home network
+                  {globalHomeNetworks.length === 1 ? "" : "s"} (including any you
+                  add later).
+                </Text>
+                {globalHomeNetworks.map((n) => (
+                  <View key={n.id} className="flex-row items-center gap-2">
+                    <Icon icon={Wifi} size={14} color="#71717a" />
+                    <Text
+                      className="text-zinc-300 text-sm flex-1"
+                      numberOfLines={1}
+                    >
+                      {n.ssid}
+                    </Text>
+                    <Text className="text-zinc-600 text-xs">
+                      {n.bssid ? "pinned" : "SSID"}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View className="gap-2">
+                <View className="flex-row items-center gap-1 mb-0.5">
+                  <MiniButton
+                    label="All"
+                    disabled={
+                      (homeNetworkIdsDraft ?? []).length ===
+                      globalHomeNetworks.length
+                    }
+                    onPress={selectAllHomeNetworks}
+                  />
+                  <MiniButton
+                    label="None"
+                    disabled={(homeNetworkIdsDraft ?? []).length === 0}
+                    onPress={selectNoHomeNetworks}
+                  />
+                </View>
+                {globalHomeNetworks.map((n) => {
+                  const on = (homeNetworkIdsDraft ?? []).includes(n.id);
+                  return (
+                    <Pressable
+                      key={n.id}
+                      onPress={() => toggleHomeNetwork(n.id)}
+                      className="flex-row items-center gap-3 rounded-2xl bg-surface-light border border-border/70 px-3 py-3 active:bg-surface"
+                    >
+                      <Checkbox on={on} color={color} />
+                      <View className="flex-1">
+                        <Text
+                          className={`text-sm ${on ? "text-zinc-100 font-medium" : "text-zinc-400"}`}
+                          numberOfLines={1}
+                        >
+                          {n.ssid}
+                        </Text>
+                        <Text className="text-zinc-500 text-xs">
+                          {n.bssid ? `Pinned to ${n.bssid}` : "SSID-only match"}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+                {(homeNetworkIdsDraft ?? []).length === 0 && (
+                  <Text className="text-amber-500/80 text-xs leading-4">
+                    No networks selected — this workspace will use remote URLs
+                    everywhere.
+                  </Text>
+                )}
+              </View>
+            )}
+          </>
+        )}
+      </Section>
+
       <ConfirmModal
         visible={discardOpen}
         title="Discard changes?"
@@ -679,6 +858,38 @@ const MiniButton = memo(function MiniButton({ label, disabled, onPress }: MiniBu
       style={{ opacity: disabled ? 0.4 : 1 }}
     >
       <Text className="text-zinc-300 text-[0.7rem] font-medium">{label}</Text>
+    </Pressable>
+  );
+});
+
+interface SegmentButtonProps {
+  label: string;
+  active: boolean;
+  color: string;
+  onPress: () => void;
+}
+
+const SegmentButton = memo(function SegmentButton({
+  label,
+  active,
+  color,
+  onPress,
+}: SegmentButtonProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className="flex-1 rounded-xl py-2.5 items-center border active:opacity-80"
+      style={{
+        backgroundColor: active ? `${color}1A` : "transparent",
+        borderColor: active ? color : "#3f3f46",
+      }}
+    >
+      <Text
+        className="text-sm font-semibold"
+        style={{ color: active ? color : "#a1a1aa" }}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 });
@@ -909,6 +1120,21 @@ function arraysEqual<T>(a: readonly T[], b: readonly T[]): boolean {
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false;
   }
+  return true;
+}
+
+// Compare two home-network selections. `undefined` (All) is distinct from `[]`
+// (Custom with nothing selected) — toggling between them is a real change — so a
+// strict undefined check comes before the order-independent set compare.
+function idSelectionsEqual(
+  a: string[] | undefined,
+  b: string[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  for (const id of a) if (!setB.has(id)) return false;
   return true;
 }
 

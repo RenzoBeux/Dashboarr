@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Wifi, Plus, Pencil, Trash2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -10,11 +10,10 @@ import { TextInput } from "@/components/ui/text-input";
 import { toast } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useConfigStore } from "@/store/config-store";
-import { detectWifi, normalizeBssid } from "@/lib/wifi";
+import { detectWifi, validateHomeNetworkInput } from "@/lib/wifi";
 import type { HomeNetwork } from "@/store/config-store";
-
-const MAX_HOME_NETWORKS = 20;
-const MAC_RE = /^[0-9a-f:.\-]+$/i;
+import { MAX_HOME_NETWORKS } from "@/lib/constants";
+import { resolveDashboardColor } from "@/lib/dashboard-colors";
 
 type Mode = "list" | "add" | "edit";
 
@@ -23,6 +22,26 @@ export default function HomeNetworksScreen() {
   const addHomeNetwork = useConfigStore((s) => s.addHomeNetwork);
   const updateHomeNetwork = useConfigStore((s) => s.updateHomeNetwork);
   const removeHomeNetwork = useConfigStore((s) => s.removeHomeNetwork);
+  const dashboards = useConfigStore((s) => s.dashboards);
+
+  // Read-only cross-reference: which workspaces use each network (#148). A
+  // dashboard with `homeNetworkIds === undefined` uses ALL networks; one with a
+  // selection uses only the ids it lists. Surfaced as color pills so the user
+  // can see a network's reach without leaving this screen.
+  const usageByNetworkId = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; color: string }[]>();
+    for (const net of homeNetworks) map.set(net.id, []);
+    for (const d of dashboards) {
+      const usesAll = d.homeNetworkIds === undefined;
+      const selected = usesAll ? null : new Set(d.homeNetworkIds);
+      const info = { id: d.id, name: d.name, color: resolveDashboardColor(d.color) };
+      for (const net of homeNetworks) {
+        if (usesAll || selected!.has(net.id)) map.get(net.id)!.push(info);
+      }
+    }
+    return map;
+  }, [dashboards, homeNetworks]);
+  const dashboardCount = dashboards.length;
 
   const [mode, setMode] = useState<Mode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,38 +99,11 @@ export default function HomeNetworksScreen() {
   };
 
   const handleSave = () => {
-    const trimmedSsid = ssid.trim();
-    if (!trimmedSsid) {
-      toast("WiFi name (SSID) is required", "error");
-      return;
-    }
-    if (trimmedSsid.length > 64) {
-      toast("WiFi name is too long", "error");
-      return;
-    }
-
-    const trimmedBssid = bssid.trim();
-    if (trimmedBssid && !MAC_RE.test(trimmedBssid)) {
-      toast("BSSID looks invalid — use a MAC like aa:bb:cc:dd:ee:ff", "error");
-      return;
-    }
-    if (trimmedBssid.length > 64) {
-      toast("BSSID is too long", "error");
-      return;
-    }
-
-    const normalizedBssid = normalizeBssid(trimmedBssid);
-
-    // Block exact (ssid, bssid) duplicates so a single AP can't appear twice.
-    // In edit mode the entry being edited is excluded from the check.
-    const duplicate = homeNetworks.some(
-      (n) =>
-        n.id !== editingId &&
-        n.ssid === trimmedSsid &&
-        n.bssid === normalizedBssid,
-    );
-    if (duplicate) {
-      toast("This network is already saved", "error");
+    // Shared with the per-dashboard override editor so both apply identical
+    // SSID/BSSID/duplicate rules (#148).
+    const result = validateHomeNetworkInput(ssid, bssid, homeNetworks, editingId);
+    if (!result.ok) {
+      toast(result.error, "error");
       return;
     }
 
@@ -120,11 +112,11 @@ export default function HomeNetworksScreen() {
         toast(`Maximum of ${MAX_HOME_NETWORKS} networks reached`, "error");
         return;
       }
-      addHomeNetwork({ ssid: trimmedSsid, bssid: normalizedBssid });
-      toast(`${trimmedSsid} added`, "success");
+      addHomeNetwork({ ssid: result.ssid, bssid: result.bssid });
+      toast(`${result.ssid} added`, "success");
     } else if (editingId) {
-      updateHomeNetwork(editingId, { ssid: trimmedSsid, bssid: normalizedBssid });
-      toast(`${trimmedSsid} updated`, "success");
+      updateHomeNetwork(editingId, { ssid: result.ssid, bssid: result.bssid });
+      toast(`${result.ssid} updated`, "success");
     }
 
     resetForm();
@@ -188,6 +180,22 @@ export default function HomeNetworksScreen() {
           </View>
         </Card>
 
+        {mode === "edit" && editingId && (
+          <View className="mb-4 gap-2">
+            <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+              Used by
+            </Text>
+            <UsedByPills
+              users={usageByNetworkId.get(editingId) ?? []}
+              dashboardCount={dashboardCount}
+            />
+            <Text className="text-zinc-600 text-xs leading-4">
+              Choose which workspaces use this network from each dashboard's
+              settings. Workspaces using all networks are included automatically.
+            </Text>
+          </View>
+        )}
+
         <View className="flex-row gap-3">
           <Button
             label="Cancel"
@@ -222,8 +230,9 @@ export default function HomeNetworksScreen() {
             No home networks configured
           </Text>
           <Text className="text-zinc-500 text-sm text-center px-6">
-            Add at least one network to enable automatic local/remote URL
-            switching.
+            Add the WiFi networks you trust as "home". Local URLs are used only
+            on these networks; everywhere else the app uses your remote URLs, so
+            your API keys are never sent to an untrusted LAN.
           </Text>
           <View className="flex-row gap-2 mt-2">
             <Button
@@ -244,7 +253,13 @@ export default function HomeNetworksScreen() {
         </View>
       ) : (
         <View className="gap-3">
-          {homeNetworks.map((network) => (
+          <Text className="text-zinc-500 text-xs px-1 -mt-1">
+            Every workspace uses all of these by default. Open a dashboard's
+            settings to use only some — the pills show which workspaces use each.
+          </Text>
+          {homeNetworks.map((network) => {
+            const users = usageByNetworkId.get(network.id) ?? [];
+            return (
             <Card key={network.id} className="gap-2">
               <View className="flex-row items-center">
                 <View className="bg-surface-light rounded-xl p-2.5 mr-3">
@@ -273,8 +288,10 @@ export default function HomeNetworksScreen() {
                   </Pressable>
                 </View>
               </View>
+              <UsedByPills users={users} dashboardCount={dashboardCount} />
             </Card>
-          ))}
+            );
+          })}
           <View className="flex-row gap-2 mt-1">
             <Button
               label="Add current WiFi"
@@ -312,5 +329,61 @@ export default function HomeNetworksScreen() {
         onCancel={() => setPendingDelete(null)}
       />
     </ScreenWrapper>
+  );
+}
+
+interface UsedByPillsProps {
+  users: { id: string; name: string; color: string }[];
+  dashboardCount: number;
+}
+
+// Read-only summary of which workspaces use a network (#148). Collapses to a
+// single "all dashboards" chip when every workspace includes it, and warns when
+// no workspace does (it would never switch to local anywhere).
+function UsedByPills({ users, dashboardCount }: UsedByPillsProps) {
+  if (dashboardCount > 0 && users.length === dashboardCount) {
+    return (
+      <View className="flex-row flex-wrap gap-1.5">
+        <View className="rounded-full px-2 py-0.5 border border-border/70 bg-surface-light">
+          <Text className="text-[0.65rem] font-medium text-zinc-400">
+            Used by all dashboards
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  if (users.length === 0) {
+    return (
+      <View className="flex-row flex-wrap gap-1.5">
+        <View className="rounded-full px-2 py-0.5 border border-amber-500/40 bg-amber-500/10">
+          <Text className="text-[0.65rem] font-medium text-amber-500/90">
+            Not used by any dashboard
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View className="flex-row flex-wrap gap-1.5">
+      {users.map((d) => (
+        <View
+          key={d.id}
+          className="flex-row items-center gap-1 rounded-full px-2 py-0.5 border"
+          style={{ borderColor: `${d.color}55`, backgroundColor: `${d.color}1A` }}
+        >
+          <View
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: d.color }}
+          />
+          <Text
+            className="text-[0.65rem] font-medium"
+            style={{ color: d.color }}
+            numberOfLines={1}
+          >
+            {d.name}
+          </Text>
+        </View>
+      ))}
+    </View>
   );
 }

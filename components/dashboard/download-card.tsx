@@ -13,7 +13,7 @@ import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTorrentPosterMap } from "@/hooks/use-torrent-poster-map";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { lightHaptic } from "@/lib/haptics";
 import { formatSpeed, formatEta } from "@/lib/utils";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
@@ -23,7 +23,6 @@ import {
   type DownloadsSettingsValue,
   type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
@@ -214,12 +213,14 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   // Aggregate across all enabled qBittorrent instances when bound to "all";
   // narrow to the bound subset otherwise. Each instance keeps its own cache
   // slot via the [serviceId, instanceId, …] queryKey shape.
-  const allQbInstances = useEnabledInstances("qbittorrent");
-  const qbInstances = resolveBoundInstances(settings.instanceIds, allQbInstances);
+  const qbInstances = useWorkspaceScopedInstances(
+    "qbittorrent",
+    settings.instanceIds,
+  );
   // rtorrent has no per-widget instance binding yet (phase 2) — include every
-  // enabled rtorrent instance, fetched in full (rtorrent returns the whole
-  // library in one call) and classified/sorted/capped client-side below.
-  const rtInstances = useEnabledInstances("rtorrent");
+  // attached enabled rtorrent instance, fetched in full (rtorrent returns the
+  // whole library in one call) and classified/sorted/capped client-side below.
+  const rtInstances = useWorkspaceScopedInstances("rtorrent", undefined);
 
   const qbQueries = useQueries({
     queries: qbInstances.map((inst) => ({

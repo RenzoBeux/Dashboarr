@@ -27,13 +27,14 @@ export function useSabQueue(instanceId?: string) {
   );
 }
 
-export function useSabHistory(limit = 50, instanceId?: string) {
+export function useSabHistory(limit = 50, instanceId?: string, active = true) {
   return useServiceQuery(
     "sabnzbd",
     ["history", limit],
     (id) => getSabHistory(limit, id),
     POLLING_INTERVALS.queue,
     instanceId,
+    active,
   );
 }
 

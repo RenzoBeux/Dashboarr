@@ -4,6 +4,7 @@ import { Icon } from "@/components/ui/icon";
 import { Toggle } from "@/components/ui/toggle";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useConfigStore } from "@/store/config-store";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { lightHaptic } from "@/lib/haptics";
@@ -26,11 +27,16 @@ export interface ServiceHealthSettingsValue extends Record<string, unknown> {
   // second qBittorrent later auto-shows it on this widget instead of being
   // silently ignored. Each rendered instance gets its own indicator chip.
   instances: Partial<Record<ServiceId, InstanceBindingValue>>;
+  // Whether to show the L/R corner badge (#148) marking each instance as using
+  // its local or remote URL. Defaults on; legacy slots without the field merge
+  // to the default at read time (see useWidgetSettings).
+  showUrlBadge: boolean;
 }
 
 export const SERVICE_HEALTH_DEFAULT_SETTINGS: ServiceHealthSettingsValue = {
   hiddenKinds: [],
   instances: {},
+  showUrlBadge: true,
 };
 
 export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -41,15 +47,16 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const servicesOrder = useConfigStore((s) => s.servicesOrder);
   const setServicesOrder = useConfigStore((s) => s.setServicesOrder);
+  const attached = useAttachedInstances();
 
-  // Only surface kinds the user has actually configured + enabled, in the
-  // user-defined order. Hiding a kind in app settings already removes it from
-  // the dashboard, so there's no point listing it here — the widget can't
-  // show what isn't reachable. The order is the shared servicesOrder so the
-  // Status widget and the Services tab agree.
+  // Only surface kinds with an instance attached to the active workspace, in
+  // the user-defined order. The Services card itself only renders attached
+  // instances (#148), so listing an unattached kind here would let the user
+  // configure something the card never shows. The order is the shared
+  // servicesOrder so the Status widget and the Services tab agree.
   const fullOrder = applyServicesOrder(servicesOrder);
-  const configuredKinds = fullOrder.filter(
-    (id) => (serviceInstances[id] ?? []).some((i) => i.enabled),
+  const configuredKinds = fullOrder.filter((id) =>
+    (serviceInstances[id] ?? []).some((i) => i.enabled && attached.has(i.id)),
   );
 
   // Project a reordered list of *configured* kinds back onto the full order,
@@ -109,7 +116,11 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
   const renderRow = (id: ServiceId) => {
     const isShown = !hiddenSet.has(id);
     const instances = serviceInstances[id] ?? [];
-    const enabledInstances = instances.filter((i) => i.enabled);
+    // Scoped to the workspace so the "N instances enabled" subtitle and the
+    // (> 1) picker gate below match what the card actually shows (#148).
+    const enabledInstances = instances.filter(
+      (i) => i.enabled && attached.has(i.id),
+    );
     const binding = settings.instances[id] ?? INSTANCE_BINDING_ALL;
     const idx = configuredKinds.indexOf(id);
     const isFirst = idx === 0;
@@ -167,6 +178,14 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
 
   return (
     <View className="px-4 py-2 gap-5">
+      <View className="bg-surface-light rounded-2xl border border-border px-4">
+        <Toggle
+          label="Local/remote badge"
+          description="Mark each service with an L or R for the URL it's currently using"
+          value={settings.showUrlBadge}
+          onValueChange={(v) => update({ showUrlBadge: v })}
+        />
+      </View>
       {configuredKinds.length > 1 && (
         <Text className="text-zinc-500 text-xs">
           Long-press a row to drag it. Order is shared with the Services tab.

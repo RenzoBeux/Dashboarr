@@ -12,8 +12,10 @@ import { getSessions as getPlexSessions } from "@/services/plex-api";
 import { getSessions as getJellyfinSessions } from "@/services/jellyfin-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { scopeInstancesToWorkspace } from "@/hooks/use-workspace-instances";
 import {
   STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
   type StreamingBandwidthSettingsValue,
@@ -97,6 +99,7 @@ export function StreamingBandwidthCard({ slotId }: WidgetComponentProps) {
     STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
   );
 
+  const attached = useAttachedInstances();
   const tautulli = useEnabledInstances("tautulli");
   const plex = useEnabledInstances("plex");
   const jellyfin = useEnabledInstances("jellyfin");
@@ -107,13 +110,21 @@ export function StreamingBandwidthCard({ slotId }: WidgetComponentProps) {
     jellyfin,
     emby,
   };
+  // Only services with an instance ATTACHED to the active workspace count as
+  // "configured here" (#148 review Rec #1).
   const configured = STREAMING_SERVICES.filter(
-    (s) => instancesByService[s].length > 0,
+    (s) =>
+      scopeInstancesToWorkspace(instancesByService[s], undefined, attached)
+        .length > 0,
   );
   const service = resolveStreamingService(settings.service, configured);
 
   const instances = service
-    ? resolveBoundInstances(settings.instanceIds, instancesByService[service])
+    ? scopeInstancesToWorkspace(
+        resolveBoundInstances(settings.instanceIds, instancesByService[service]),
+        settings.instanceIds,
+        attached,
+      )
     : [];
 
   const queries = useQueries({

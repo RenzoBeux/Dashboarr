@@ -8,8 +8,9 @@ import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
+import { resolveActiveUrlKind } from "@/lib/url-validation";
 import { useConfigStore } from "@/store/config-store";
-import { useAttachedInstances } from "@/hooks/use-active-dashboard";
+import { useAttachedInstances, useActiveDashboard } from "@/hooks/use-active-dashboard";
 import {
   resolveBoundInstances,
   isExplicitInstanceBinding,
@@ -36,6 +37,9 @@ interface RenderEntry {
   instanceId: string;
   label: string;
   status: HealthStatusKind;
+  // Which URL this instance is actively using ("local"/"remote"), or null when
+  // neither is configured. Drives the L/R corner badge (#148).
+  urlKind: "local" | "remote" | null;
 }
 
 // Tailwind class + iOS shadow color for the small corner dot, by tri-state.
@@ -52,6 +56,13 @@ const DOT_SHADOW: Record<HealthStatusKind, string> = {
   offline: "#ef4444",
 };
 
+// L/R corner badge palette — deliberately hues NOT used by the status dot
+// (green/amber/red) so the two corners read as different signals at a glance.
+const URL_KIND_BG: Record<"local" | "remote", string> = {
+  local: "bg-sky-500",
+  remote: "bg-violet-500",
+};
+
 export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<ServiceHealthSettingsValue>(
     slotId,
@@ -61,8 +72,23 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const servicesOrder = useConfigStore((s) => s.servicesOrder);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  // Subscribed so the L/R badge flips live when the user walks home/away or
+  // toggles auto-switch — both feed resolveActiveUrlKind below.
+  const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
+  const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
+  const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const attachedInstances = useAttachedInstances();
+  const activeDashboard = useActiveDashboard();
   const router = useRouter();
+
+  // A workspace that explicitly selected no live home networks (homeNetworkIds:
+  // [] or only stale ids) is "always remote" — mirror getActiveUrl step 2 so the
+  // L/R badge reads "remote" even when global auto-switch is off (#148).
+  const workspaceForcesRemote = (() => {
+    const ids = activeDashboard?.homeNetworkIds;
+    if (!Array.isArray(ids)) return false;
+    return !ids.some((id) => homeNetworks.some((n) => n.id === id));
+  })();
 
   const hiddenSet = new Set(settings.hiddenKinds);
   // Index health by (kind, instanceId) so we can pair each bound instance with
@@ -115,6 +141,12 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         // glance instead of seeing two identical "qBittorrent" tiles.
         label: inst.name,
         status: health?.status ?? "offline",
+        urlKind: resolveActiveUrlKind(
+          inst,
+          autoSwitchNetwork,
+          networkAwayFromHome,
+          workspaceForcesRemote,
+        ),
       });
     }
   }
@@ -155,6 +187,15 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                     online={entry.status !== "offline"}
                   />
                 </View>
+                {settings.showUrlBadge && entry.urlKind && (
+                  <View
+                    className={`absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full border-2 border-surface items-center justify-center ${URL_KIND_BG[entry.urlKind]}`}
+                  >
+                    <Text className="text-white text-[0.6rem] font-bold leading-none">
+                      {entry.urlKind === "local" ? "L" : "R"}
+                    </Text>
+                  </View>
+                )}
                 <View
                   className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${DOT_BG[entry.status]}`}
                   style={Platform.OS === "ios" ? {

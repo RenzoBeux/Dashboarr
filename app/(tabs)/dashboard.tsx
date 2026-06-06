@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import {
   GripVertical,
   ChevronUp,
   ChevronDown,
+  Copy,
   Pencil,
   Check,
   Settings,
@@ -16,12 +17,12 @@ import {
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useConfigStore } from "@/store/config-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
-import { ICON } from "@/lib/constants";
+import { ICON, type WidgetId } from "@/lib/constants";
 import {
   WIDGET_REGISTRY,
   isWidgetServiceAttached,
@@ -32,19 +33,82 @@ import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-shee
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
+import { resolveDashboardIcon } from "@/lib/dashboard-icons";
+import { ActionSheet } from "@/components/ui/action-sheet";
+import { toast } from "@/components/ui/toast";
+
+// Progressive mount: how many widgets render in the first paint, and how many
+// more reveal per frame after that. Opening the dashboard otherwise mounts every
+// data-fetching widget (and fires every first poll) in a single commit, which
+// froze the JS thread for ~700ms. Rendering a screenful immediately and
+// streaming the rest a couple per frame keeps the open responsive while the
+// below-the-fold widgets fill in. REVEAL_INITIAL ≈ a phone screenful of cards.
+const REVEAL_INITIAL = 3;
+const REVEAL_BATCH = 2;
+
+// Memoized so toggling editMode (which re-renders DashboardScreen) doesn't
+// re-render the heavy, data-fetching widget bodies. editMode only drives the
+// surrounding chrome (the per-slot control row + dashed border), so each
+// widget's props (widgetId/slotId) stay stable and React.memo skips the
+// expensive subtree — that's what makes entering edit mode feel instant on a
+// full dashboard instead of stalling while every widget re-runs its hooks.
+const WidgetSlotBody = memo(function WidgetSlotBody({
+  widgetId,
+  slotId,
+}: {
+  widgetId: WidgetId;
+  slotId: string;
+}) {
+  const widget = WIDGET_REGISTRY[widgetId];
+  if (!widget) return null;
+  const WidgetComponent = widget.component;
+  return (
+    <CardErrorBoundary>
+      <WidgetComponent slotId={slotId} />
+    </CardErrorBoundary>
+  );
+});
 
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
   const services = useConfigStore((s) => s.services);
+  const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const dashboards = useConfigStore((s) => s.dashboards);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const removeSlot = useConfigStore((s) => s.removeSlot);
   const moveSlot = useConfigStore((s) => s.moveSlot);
+  const copySlotToDashboard = useConfigStore((s) => s.copySlotToDashboard);
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
+  const [showEditControls, setShowEditControls] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [dashboardPickerVisible, setDashboardPickerVisible] = useState(false);
   const [settingsForSlot, setSettingsForSlot] = useState<string | null>(null);
+  // Slot the user is copying to another dashboard (#6). Drives the destination
+  // ActionSheet below; null when closed.
+  const [copySlotId, setCopySlotId] = useState<string | null>(null);
+  const [revealCount, setRevealCount] = useState(REVEAL_INITIAL);
+
+  // Entering edit mode mounts a per-widget control row (several SVG icons each)
+  // for every visible widget at once — heavy enough to stall the tap. So show
+  // the cheap edit affordance (dashed border + banner) immediately on toggle,
+  // then mount the control rows on the next frame. The pencil tap feels instant
+  // and the controls pop in a frame later instead of freezing on the tap.
+  useEffect(() => {
+    if (!editMode) {
+      setShowEditControls(false);
+      return;
+    }
+    const handle = requestAnimationFrame(() => setShowEditControls(true));
+    return () => cancelAnimationFrame(handle);
+  }, [editMode]);
+
+  // Restart the progressive reveal when switching dashboards — a different
+  // dashboard remounts a different widget set (keyed by slot id), so without
+  // this the new set would mount all at once after the first reveal completed.
+  useEffect(() => {
+    setRevealCount(REVEAL_INITIAL);
+  }, [activeDashboardId]);
 
   const activeDashboard =
     dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0];
@@ -56,7 +120,16 @@ export default function DashboardScreen() {
   const dashboardColor = resolveDashboardColor(activeDashboard?.color);
 
   const attachedKinds = useAttachedKinds();
-  const hasAnyEnabled = Object.values(services).some((s) => s.enabled);
+  // Whether ANY instance is enabled anywhere (not just resolved on this
+  // workspace). The misleading "No services configured" copy must only show when
+  // the user truly has nothing set up: a curated workspace with zero attached
+  // instances still has services globally — it just needs them attached, which
+  // is what the empty-state CTA below offers (#5). The active-dashboard-derived
+  // `services` view would read all-disabled for such a workspace and wrongly
+  // send the user to Settings.
+  const hasAnyEnabledGlobally = Object.values(serviceInstances).some((list) =>
+    list.some((i) => i.enabled),
+  );
 
   // Slots whose required service is disabled OR has no attached instance on
   // this dashboard get filtered out so users don't see broken/irrelevant
@@ -69,6 +142,20 @@ export default function DashboardScreen() {
     if (!isWidgetServiceEnabled(widget, services)) return false;
     return isWidgetServiceAttached(widget, attachedKinds);
   });
+
+  // Grow the reveal one batch per frame until every visible widget is mounted.
+  // Already-mounted widgets are memoized (WidgetSlotBody), so each step only
+  // pays for the newly-revealed slots — spreading the first-mount cost across
+  // frames instead of one ~700ms block. Settles within a few frames.
+  useEffect(() => {
+    if (revealCount >= visibleSlots.length) return;
+    const handle = requestAnimationFrame(() =>
+      setRevealCount((c) => c + REVEAL_BATCH),
+    );
+    return () => cancelAnimationFrame(handle);
+  }, [revealCount, visibleSlots.length]);
+
+  const revealedSlots = visibleSlots.slice(0, revealCount);
 
   function handleMove(slotId: string, direction: "up" | "down") {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -127,7 +214,7 @@ export default function DashboardScreen() {
               <Icon icon={SlidersHorizontal} size={ICON.MD} color="#71717a" />
             </TouchableOpacity>
           )}
-          {hasAnyEnabled && (
+          {hasAnyEnabledGlobally && (
             <TouchableOpacity
               onPress={() => setEditMode((e) => !e)}
               className="p-2"
@@ -144,7 +231,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {isAutoAttach && hasAnyEnabled && activeDashboard && (
+      {isAutoAttach && hasAnyEnabledGlobally && activeDashboard && (
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
@@ -174,7 +261,7 @@ export default function DashboardScreen() {
         </Pressable>
       )}
 
-      {!hasAnyEnabled ? (
+      {!hasAnyEnabledGlobally ? (
         <View className="flex-1 items-center justify-center py-20">
           <Text className="text-zinc-400 text-base text-center">
             No services configured yet.
@@ -183,37 +270,91 @@ export default function DashboardScreen() {
             Go to Settings to add your first service.
           </Text>
         </View>
+      ) : visibleSlots.length === 0 && !editMode && activeDashboard ? (
+        // A fresh/curated workspace with nothing to show yet. Without this, the
+        // screen was blank or fell through to the misleading "No services
+        // configured" copy even though services exist globally — the user just
+        // hasn't attached any here or added widgets (#5). Two cases: no attached
+        // services (send them to the editor to attach) vs attached-but-no-widgets
+        // (open the Add Widget sheet).
+        <View className="flex-1 items-center justify-center py-16 px-6">
+          <View
+            className="w-16 h-16 rounded-2xl items-center justify-center mb-4"
+            style={{ backgroundColor: `${dashboardColor}26` }}
+          >
+            <Icon
+              icon={attachedKinds.size === 0 ? SlidersHorizontal : Sparkles}
+              size={28}
+              color={dashboardColor}
+            />
+          </View>
+          {attachedKinds.size === 0 ? (
+            <>
+              <Text className="text-zinc-200 text-base font-semibold text-center">
+                No services attached
+              </Text>
+              <Text className="text-zinc-500 text-sm text-center mt-1 leading-5">
+                Attach the services that belong on this workspace to start
+                building it.
+              </Text>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.push(`/dashboard-edit/${activeDashboard.id}` as any);
+                }}
+                className="flex-row items-center gap-2 rounded-xl px-4 py-2.5 mt-5 active:opacity-80"
+                style={{ backgroundColor: `${dashboardColor}26` }}
+              >
+                <Icon icon={SlidersHorizontal} size={ICON.SM} color={dashboardColor} />
+                <Text className="text-sm font-semibold" style={{ color: dashboardColor }}>
+                  Attach services
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text className="text-zinc-200 text-base font-semibold text-center">
+                No widgets yet
+              </Text>
+              <Text className="text-zinc-500 text-sm text-center mt-1 leading-5">
+                Add widgets to see your services at a glance on this workspace.
+              </Text>
+              <Pressable
+                onPress={openPicker}
+                className="flex-row items-center gap-2 rounded-xl px-4 py-2.5 mt-5 active:opacity-80"
+                style={{ backgroundColor: `${dashboardColor}26` }}
+              >
+                <Icon icon={Plus} size={ICON.SM} color={dashboardColor} />
+                <Text className="text-sm font-semibold" style={{ color: dashboardColor }}>
+                  Add widget
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </View>
       ) : (
         <View className="gap-4">
           {editMode && (
-            <Animated.View
-              entering={FadeIn}
-              exiting={FadeOut}
-              className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2"
-            >
+            <View className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2">
               <Text className="text-primary text-sm font-medium text-center">
                 Reorder, remove, or add widgets
               </Text>
-            </Animated.View>
+            </View>
           )}
-          {visibleSlots.map((slot, visibleIndex) => {
+          {revealedSlots.map((slot, visibleIndex) => {
             const widget = WIDGET_REGISTRY[slot.widgetId];
             if (!widget) return null;
-            const { component: WidgetComponent, label, settingsComponent } = widget;
+            const { label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleSlots.length - 1;
 
             return (
-              <Animated.View
-                key={slot.id}
-                entering={FadeInDown.delay(visibleIndex * 80).springify()}
-              >
-                {editMode && (
-                  <Animated.View
-                    entering={FadeIn}
-                    exiting={FadeOut}
-                    className="flex-row items-center justify-between mb-1 px-1"
-                  >
+              // No per-index delay: progressive mounting already staggers the
+              // reveal (each widget springs in as its batch mounts), so an
+              // index-based delay would make late widgets wait ~1s to appear.
+              <Animated.View key={slot.id} entering={FadeInDown.springify()}>
+                {showEditControls && (
+                  <View className="flex-row items-center justify-between mb-1 px-1">
                     <View className="flex-row items-center gap-1.5 flex-1">
                       <Icon icon={GripVertical} size={ICON.SM} color="#52525b" />
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
@@ -237,6 +378,19 @@ export default function DashboardScreen() {
                       >
                         <Icon icon={ChevronDown} size={ICON.MD} color={isLast ? "#3f3f46" : "#a1a1aa"} />
                       </TouchableOpacity>
+                      {dashboards.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setCopySlotId(slot.id);
+                          }}
+                          className="p-1 ml-1"
+                          hitSlop={6}
+                          accessibilityLabel="Copy widget to another dashboard"
+                        >
+                          <Icon icon={Copy} size={ICON.MD} color="#a1a1aa" />
+                        </TouchableOpacity>
+                      )}
                       {settingsComponent && (
                         <TouchableOpacity
                           onPress={() => openSettings(slot.id)}
@@ -254,7 +408,7 @@ export default function DashboardScreen() {
                         <Icon icon={X} size={ICON.MD} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
-                  </Animated.View>
+                  </View>
                 )}
                 <View
                   style={editMode ? {
@@ -265,24 +419,20 @@ export default function DashboardScreen() {
                     opacity: 0.85,
                   } : undefined}
                 >
-                  <CardErrorBoundary>
-                    <WidgetComponent slotId={slot.id} />
-                  </CardErrorBoundary>
+                  <WidgetSlotBody widgetId={slot.widgetId} slotId={slot.id} />
                 </View>
               </Animated.View>
             );
           })}
 
           {editMode && (
-            <Animated.View entering={FadeIn} exiting={FadeOut}>
-              <TouchableOpacity
-                onPress={openPicker}
-                className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
-              >
-                <Icon icon={Plus} size={ICON.MD} color="#a1a1aa" />
-                <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
-              </TouchableOpacity>
-            </Animated.View>
+            <TouchableOpacity
+              onPress={openPicker}
+              className="flex-row items-center justify-center gap-2 border border-dashed border-zinc-700 rounded-2xl py-4"
+            >
+              <Icon icon={Plus} size={ICON.MD} color="#a1a1aa" />
+              <Text className="text-zinc-300 text-sm font-medium">Add widget</Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
@@ -295,6 +445,32 @@ export default function DashboardScreen() {
       <DashboardPickerSheet
         visible={dashboardPickerVisible}
         onClose={() => setDashboardPickerVisible(false)}
+      />
+      <ActionSheet
+        visible={copySlotId !== null}
+        onClose={() => setCopySlotId(null)}
+        title="Copy widget to…"
+        subtitle="Adds a copy, with its settings, to the chosen dashboard."
+        actions={dashboards
+          .filter((d) => d.id !== activeDashboardId)
+          .map((d) => ({
+            label: d.name,
+            icon: (
+              <Icon
+                icon={resolveDashboardIcon(d.icon)}
+                size={ICON.MD}
+                color={resolveDashboardColor(d.color)}
+              />
+            ),
+            onPress: () => {
+              if (copySlotId) {
+                copySlotToDashboard(copySlotId, d.id);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                toast(`Copied to ${d.name}`, "success");
+              }
+              setCopySlotId(null);
+            },
+          }))}
       />
     </ScreenWrapper>
   );

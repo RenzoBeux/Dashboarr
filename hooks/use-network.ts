@@ -1,52 +1,73 @@
 import { useEffect } from "react";
 import NetInfo from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
+import {
+  evaluateHomeNetwork,
+  resolveEffectiveHomeNetworks,
+} from "@/lib/network";
 
 /**
- * Tracks whether the phone is on a configured home network and writes the
- * result to `networkAwayFromHome` in the config store. The URL resolver
- * combines that runtime flag with the per-instance `useRemote` *user
- * override* — so the user's "always use remote" toggle never gets clobbered
- * by network events, and the situational auto-switch still flips URLs
- * transparently as the user moves between networks.
+ * Keeps the store's ephemeral `networkAwayFromHome` flag in sync with the actual
+ * network, which drives local/remote URL selection (see lib/network.ts). Local
+ * URLs are used only on a confirmed home network; everywhere else the app uses
+ * remote (never the private local URL, which would leak the API key to a
+ * stranger's device on an untrusted LAN).
  *
- * Home-network matching:
- *   - SSID must match exactly.
- *   - If the entry has an empty `bssid`, SSID alone is enough.
- *   - If the entry has a `bssid` set, it must match the live BSSID. If the OS
- *     doesn't surface a BSSID on this build, the pinned entry fails closed —
- *     don't trust local URLs without the AP fingerprint we asked for.
+ * Triggers:
+ *   - eager evaluation on mount — fixes the stale cold-start state behind #106
+ *     (the old code only attached a listener and waited for NetInfo's first
+ *     event, so the first requests ran against last session's flag).
+ *   - debounced evaluation on every NetInfo change — collapses the burst of
+ *     events a single network transition emits.
+ *   - app-resume evaluation is wired in app/_layout.tsx's onAppStateChange, since
+ *     a VPN can be toggled while the JS runtime is suspended (no event delivered).
  */
 export function useNetworkAutoSwitch() {
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
-  const homeNetworks = useConfigStore((s) => s.homeNetworks);
-  const setNetworkAwayFromHome = useConfigStore((s) => s.setNetworkAwayFromHome);
+  // Re-evaluate whenever the global list changes OR the active dashboard's
+  // selection changes (#148). Both are raw store refs, so they stay stable
+  // until actually mutated; switching workspaces changes activeDashboardId —
+  // and so the selected `overrideIds` ref — which re-runs the effect. We depend
+  // on these inputs rather than the resolved list, since resolving a custom
+  // subset allocates a new array every render and would loop the effect.
+  const globalHomeNetworks = useConfigStore((s) => s.homeNetworks);
+  const overrideIds = useConfigStore(
+    (s) => s.dashboards.find((d) => d.id === s.activeDashboardId)?.homeNetworkIds,
+  );
 
   useEffect(() => {
-    if (!autoSwitchNetwork || homeNetworks.length === 0) return;
+    // Auto-switch off → the flag is ignored by getActiveUrl; nothing to do.
+    if (!autoSwitchNetwork) return;
 
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      let isHome: boolean;
-      if (state.type !== "wifi" || !state.details) {
-        isHome = false;
-      } else {
-        const currentSsid = state.details.ssid ?? "";
-        const currentBssid =
-          typeof state.details.bssid === "string"
-            ? state.details.bssid.toLowerCase()
-            : "";
-        isHome = homeNetworks.some((n) => {
-          if (n.ssid !== currentSsid) return false;
-          if (!n.bssid) return true;
-          if (!currentBssid) return false;
-          return n.bssid === currentBssid;
-        });
-      }
-      // Setter is a no-op when the value hasn't changed, so NetInfo's chatty
-      // event stream doesn't cause spurious store updates / re-renders.
-      setNetworkAwayFromHome(!isHome);
-    });
+    // No effective home networks (none configured, or an empty custom
+    // selection) → we can never confirm "home", so force the safe default
+    // (away → remote) rather than leaving a stale "home" flag that would use
+    // the private local URL off-network. The Home Networks screen warns the user.
+    const { dashboards, activeDashboardId, homeNetworks } =
+      useConfigStore.getState();
+    const effective = resolveEffectiveHomeNetworks(
+      dashboards,
+      activeDashboardId,
+      homeNetworks,
+    );
+    if (effective.length === 0) {
+      useConfigStore.getState().setNetworkAwayFromHome(true);
+      return;
+    }
 
-    return unsubscribe;
-  }, [autoSwitchNetwork, homeNetworks, setNetworkAwayFromHome]);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const evaluate = () => void evaluateHomeNetwork();
+    const scheduleEvaluate = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(evaluate, 800);
+    };
+
+    evaluate(); // eager startup / workspace-switch evaluation
+    const unsubscribe = NetInfo.addEventListener(scheduleEvaluate);
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
+  }, [autoSwitchNetwork, globalHomeNetworks, overrideIds]);
 }

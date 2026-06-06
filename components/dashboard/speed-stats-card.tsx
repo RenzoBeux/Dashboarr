@@ -22,6 +22,8 @@ import {
   type SpeedStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/speed-stats-settings";
 import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { scopeInstancesToWorkspace } from "@/hooks/use-workspace-instances";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 
@@ -30,53 +32,76 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     slotId,
     SPEED_STATS_DEFAULT_SETTINGS,
   );
+  const attached = useAttachedInstances();
   const allQbitInstances = useEnabledInstances("qbittorrent");
   const allSabInstances = useEnabledInstances("sabnzbd");
   const allNzbgetInstances = useEnabledInstances("nzbget");
   const allRtInstances = useEnabledInstances("rtorrent");
   const allGlancesInstances = useEnabledInstances("glances");
 
+  // Scope each kind to the active workspace up front so the source / "is
+  // configured here?" decisions below — and the rendered lists — only ever
+  // consider instances attached to this dashboard (#148 review Rec #1).
+  const wsQbit = scopeInstancesToWorkspace(allQbitInstances, undefined, attached);
+  const wsSab = scopeInstancesToWorkspace(allSabInstances, undefined, attached);
+  const wsNzbget = scopeInstancesToWorkspace(allNzbgetInstances, undefined, attached);
+  const wsRt = scopeInstancesToWorkspace(allRtInstances, undefined, attached);
+  const wsGlances = scopeInstancesToWorkspace(allGlancesInstances, undefined, attached);
+
   // A widget shows exactly one source — download clients OR server network —
   // so the pills never double-count traffic a client pushes through the same
   // NIC Glances reports. The selection is forced when only one kind is
   // configured (see resolveSpeedStatsSource).
   const hasClients =
-    allQbitInstances.length +
-      allSabInstances.length +
-      allNzbgetInstances.length +
-      allRtInstances.length >
-    0;
+    wsQbit.length + wsSab.length + wsNzbget.length + wsRt.length > 0;
   const source = resolveSpeedStatsSource(
     settings.source,
     hasClients,
-    allGlancesInstances.length > 0,
+    wsGlances.length > 0,
   );
   const useClients = source === "clients";
   const useNetwork = source === "network";
 
-  // qBittorrent binds per-widget; rtorrent folds in every enabled instance (no
-  // per-widget binding yet, phase 2).
+  // qBittorrent binds per-widget; rtorrent folds in every attached enabled
+  // instance (no per-widget binding yet, phase 2). An explicit per-widget pick
+  // still wins over the workspace filter (see scopeInstancesToWorkspace).
   const qbitInstances = useClients
-    ? resolveBoundInstances(settings.instanceIds, allQbitInstances)
+    ? scopeInstancesToWorkspace(
+        resolveBoundInstances(settings.instanceIds, allQbitInstances),
+        settings.instanceIds,
+        attached,
+      )
     : [];
-  // When the user has no qBit configured at all, the toggle is moot — fold any
-  // enabled SAB/NZBGet instances in automatically so a usenet-only user sees
-  // real numbers instead of a perpetual skeleton. Once they enable qBit, the
-  // explicit toggles take over again.
+  // When the user has no qBit attached here, the toggle is moot — fold any
+  // attached SAB/NZBGet instances in automatically so a usenet-only workspace
+  // sees real numbers instead of a perpetual skeleton. Once they attach qBit,
+  // the explicit toggles take over again.
   const effectiveIncludeSab =
-    useClients && (settings.includeSab || allQbitInstances.length === 0);
+    useClients && (settings.includeSab || wsQbit.length === 0);
   const sabInstances = effectiveIncludeSab
-    ? resolveBoundInstances(settings.sabInstanceIds, allSabInstances)
+    ? scopeInstancesToWorkspace(
+        resolveBoundInstances(settings.sabInstanceIds, allSabInstances),
+        settings.sabInstanceIds,
+        attached,
+      )
     : [];
   const effectiveIncludeNzbget =
-    useClients && (settings.includeNzbget || allQbitInstances.length === 0);
+    useClients && (settings.includeNzbget || wsQbit.length === 0);
   const nzbgetInstances = effectiveIncludeNzbget
-    ? resolveBoundInstances(settings.nzbgetInstanceIds, allNzbgetInstances)
+    ? scopeInstancesToWorkspace(
+        resolveBoundInstances(settings.nzbgetInstanceIds, allNzbgetInstances),
+        settings.nzbgetInstanceIds,
+        attached,
+      )
     : [];
-  const rtInstances = useClients ? allRtInstances : [];
+  const rtInstances = useClients ? wsRt : [];
   // Glances interfaces: received bytes → down pill, sent bytes → up pill.
   const glancesInstances = useNetwork
-    ? resolveBoundInstances(settings.glancesInstanceIds, allGlancesInstances)
+    ? scopeInstancesToWorkspace(
+        resolveBoundInstances(settings.glancesInstanceIds, allGlancesInstances),
+        settings.glancesInstanceIds,
+        attached,
+      )
     : [];
 
   // Fan out across the resolved instances and sum their counters so a single

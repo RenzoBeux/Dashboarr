@@ -6,14 +6,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getQueue, getWantedMissing, getLidarrAlbumCover } from "@/services/lidarr-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   LIDARR_QUEUE_DEFAULT_SETTINGS,
   type LidarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/lidarr-queue-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
@@ -30,8 +29,7 @@ export function LidarrQueueCard({ slotId }: WidgetComponentProps) {
   );
   // Aggregate queue + wanted counts across every enabled Lidarr instance, or
   // narrow to the bound subset based on the slot's instance binding.
-  const allInstances = useEnabledInstances("lidarr");
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances("lidarr", settings.instanceIds);
 
   const queueQueries = useQueries({
     queries: instances.map((inst) => ({

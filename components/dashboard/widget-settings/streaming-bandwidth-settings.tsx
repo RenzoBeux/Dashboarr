@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { TextInput } from "@/components/ui/text-input";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
@@ -47,11 +47,12 @@ export function StreamingBandwidthSettings({ slotId }: WidgetSettingsComponentPr
     STREAMING_BANDWIDTH_DEFAULT_SETTINGS,
   );
 
-  // Called unconditionally (stable hook order); cheap selectors.
-  const tautulli = useEnabledInstances("tautulli");
-  const plex = useEnabledInstances("plex");
-  const jellyfin = useEnabledInstances("jellyfin");
-  const emby = useEnabledInstances("emby");
+  // Called unconditionally (stable hook order); cheap selectors. Scoped to the
+  // active workspace so the Source dropdown only lists attached servers (#148).
+  const tautulli = useAttachedEnabledInstances("tautulli");
+  const plex = useAttachedEnabledInstances("plex");
+  const jellyfin = useAttachedEnabledInstances("jellyfin");
+  const emby = useAttachedEnabledInstances("emby");
   const countByService: Record<StreamingServiceId, number> = {
     tautulli: tautulli.length,
     plex: plex.length,

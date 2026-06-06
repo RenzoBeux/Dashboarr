@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
-import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useBazarrPosters } from "@/hooks/use-bazarr-posters";
 import { POLLING_INTERVALS } from "@/lib/constants";
@@ -14,7 +14,6 @@ import {
   BAZARR_WANTED_DEFAULT_SETTINGS,
   type BazarrWantedSettingsValue,
 } from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
-import { resolveBoundInstances } from "@/components/dashboard/widget-settings/instance-picker-row";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
@@ -37,8 +36,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     slotId,
     BAZARR_WANTED_DEFAULT_SETTINGS,
   );
-  const allInstances = useEnabledInstances("bazarr");
-  const instances = resolveBoundInstances(settings.instanceIds, allInstances);
+  const instances = useWorkspaceScopedInstances("bazarr", settings.instanceIds);
   const router = useRouter();
 
   const movieQueries = useQueries({

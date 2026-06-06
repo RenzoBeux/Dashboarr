@@ -35,9 +35,12 @@ export function useInstanceTarget(
   serviceId: ServiceId,
   instanceId?: string,
 ): { instanceId: string | null; enabled: boolean } {
-  const activeId = useConfigStore(
-    (s) => s.activeInstance[serviceId] ?? s.serviceInstances[serviceId]?.[0]?.id ?? null,
-  );
+  // Only the workspace-resolved active instance (attachment + enabled aware).
+  // No raw serviceInstances[serviceId][0] tail: when nothing is enabled+attached
+  // in the active workspace this is null, which gates dependent queries off via
+  // `enabled` below — instead of silently following another workspace's
+  // instance and rendering its data (#3).
+  const activeId = useConfigStore((s) => s.activeInstance[serviceId] ?? null);
   const targetId = instanceId ?? activeId;
   const enabled = useConfigStore((s) => {
     if (!targetId) return false;

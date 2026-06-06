@@ -24,6 +24,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -86,6 +87,14 @@ function compareRecent(
 }
 
 export default function PlexScreen() {
+  return (
+    <WorkspaceServiceGuard kinds={["plex"]}>
+      <PlexScreenInner />
+    </WorkspaceServiceGuard>
+  );
+}
+
+function PlexScreenInner() {
   const [tab, setTab] = useState<Tab>("playing");
   const recentSort = useSortStore((s) => s.plexRecent);
   const setRecentSort = useSortStore((s) => s.setPlexRecent);

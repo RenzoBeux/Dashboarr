@@ -14,8 +14,8 @@ import type {
 
 // The exact inputs each per-instance probe depends on. `resolveUrl` is
 // store.getActiveUrl, which already folds in useRemote + autoSwitchNetwork +
-// networkAwayFromHome, so the network flags are passed only to keep them in
-// the signature (and as honest deps).
+// networkAwayFromHome, so the network flags are passed only to keep them in the
+// signature (and as honest deps).
 export interface HealthProbeInputs {
   serviceInstances: Record<ServiceId, ServiceInstance[]>;
   instanceSecrets: Record<string, ServiceSecrets>;
@@ -38,7 +38,8 @@ export interface HealthProbeInputs {
  * start while the persisted away flag was still stale-true — stayed frozen
  * until a reconnect event (toggling a VPN) or an app relaunch forced a
  * refetch. That is the #106 report: services work on the LAN but the dot is
- * stuck red, and only Tailscale on/off changes it.
+ * stuck red, and only Tailscale on/off changes it. Now `networkAwayFromHome` is
+ * ephemeral and re-evaluated on launch/resume, so the key tracks reality.
  *
  * Credential *values* are intentionally reduced to presence so secrets never
  * land in a query key; a same-presence key edit is picked up by the interval.
