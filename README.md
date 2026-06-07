@@ -153,6 +153,22 @@ All service configuration is done in the **Settings** tab within the app:
 3. Optionally set your **home WiFi SSID** for automatic local/remote URL switching
 4. Reorder dashboard cards by entering edit mode on the dashboard
 
+### Using Dashboarr with Tailscale (or any VPN)
+
+Tailscale works great with Dashboarr. The trick is to address each service by its **Tailscale name or IP** (the `100.x.x.x` address, or a MagicDNS name like `radarr.your-tailnet.ts.net`) instead of its plain LAN IP. Tailscale addresses are reachable from anywhere, so Dashboarr never treats them as offline when you leave your home WiFi.
+
+Pick whichever fits you:
+
+- **Simplest (works everywhere):** turn on **Always use Remote URL**, then put your Tailscale address in the **Remote URL** field (leave Local URL empty). One address that works on WiFi and on cellular, with no home-network setup needed.
+- **Fast at home, Tailscale away:**
+  1. Set **Local URL** to the plain LAN address (e.g. `http://192.168.1.50:7878`)
+  2. Set **Remote URL** to the Tailscale address (e.g. `http://100.x.x.x:7878`)
+  3. Add your home WiFi under **Settings → Home Networks**, turn on auto-switch, and leave **Always use Remote URL** off
+
+  At home Dashboarr uses the direct LAN URL; away it uses Tailscale.
+
+> **Avoid** putting a `192.168.x` or `10.x` address in the **Remote URL** slot. Private LAN addresses can't be reached over mobile data, so Dashboarr marks them offline when you're off WiFi. If you only reach your server through a Tailscale **subnet router** (so it has no `100.x` address of its own), install Tailscale directly on that server so it gets its own Tailscale address, then use that.
+
 ## Project Structure
 
 ```
