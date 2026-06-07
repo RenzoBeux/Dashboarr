@@ -660,6 +660,16 @@ function TorrentListItem({
         <Badge label={torrent.statusLabel} variant={badgeVariant} />
       </View>
 
+      {/* Category (qBittorrent) / label (rtorrent) pill — only when set. */}
+      {torrent.label ? (
+        <View className="flex-row items-center gap-1 self-start max-w-full bg-surface-light rounded-full px-2 py-0.5 mb-1">
+          <Icon icon={Tag} size={12} color="#a1a1aa" />
+          <Text className="text-zinc-400 text-xs shrink" numberOfLines={1}>
+            {torrent.label}
+          </Text>
+        </View>
+      ) : null}
+
       <ProgressBar progress={torrent.progress} showLabel className="my-2" />
 
       <View className="flex-row items-center justify-between">
