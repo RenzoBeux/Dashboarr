@@ -330,8 +330,8 @@ export default function SettingsScreen() {
         : list.length === 1
           ? list[0].enabled
             ? list[0].useRemote
-              ? list[0].remoteUrl || "No remote URL"
-              : list[0].localUrl || "No local URL"
+              ? list[0].remoteUrl || "No remote URL set"
+              : list[0].localUrl || list[0].remoteUrl || "No URL set"
             : "Tap to configure"
           : `${list.length} instances · ${enabledCount} enabled`;
     // Only show the dot when the kind has at least one enabled instance —
@@ -770,8 +770,8 @@ function InstanceList({
         {instances.map((inst, idx) => {
           const subtitle = inst.enabled
             ? inst.useRemote
-              ? inst.remoteUrl || "No remote URL"
-              : inst.localUrl || "No local URL"
+              ? inst.remoteUrl || "No remote URL set"
+              : inst.localUrl || inst.remoteUrl || "No URL set"
             : "Disabled";
           // Only enabled instances are actively probed; for disabled ones
           // we want NO dot (not red) — there's nothing wrong, the user has
