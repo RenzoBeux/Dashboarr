@@ -561,6 +561,32 @@ export function setShareLimits(
   );
 }
 
+// --- Category (per-torrent) ---
+
+// /torrents/setCategory assigns `category` to the given hashes. An empty string
+// clears the category (uncategorized). qBittorrent returns 409 only when the
+// category name doesn't exist — we only ever pass a name returned by
+// getCategories() or "", so that path is never hit.
+export function setTorrentCategory(
+  hashes: string[],
+  category: string,
+  instanceId?: string,
+): Promise<void> {
+  const body = new URLSearchParams({
+    hashes: hashes.join("|"),
+    category,
+  }).toString();
+  return qbRequest(
+    "/torrents/setCategory",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    },
+    instanceId,
+  );
+}
+
 // --- Alternative Speed Mode ---
 
 // /transfer/speedLimitsMode returns "0" (off) or "1" (on) as plain text.

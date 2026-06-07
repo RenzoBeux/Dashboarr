@@ -9,6 +9,7 @@ import {
   ArrowUp,
   Gauge,
   Megaphone,
+  Tag,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -21,15 +22,18 @@ import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { toast, toastError } from "@/components/ui/toast";
 import { ShareLimitsSheet } from "@/components/qbittorrent/share-limits-sheet";
+import { CategorySheet } from "@/components/qbittorrent/category-sheet";
 import { useDeferredBack } from "@/hooks/use-deferred-back";
 import {
   useTorrent,
   useTorrentFiles,
   useTorrentTrackers,
+  useTorrentCategories,
   usePauseTorrent,
   useResumeTorrent,
   useReannounceTorrent,
   useDeleteTorrent,
+  useSetTorrentCategory,
 } from "@/hooks/use-qbittorrent";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
 import { isTorrentPaused } from "@/lib/types";
@@ -39,11 +43,14 @@ export default function TorrentDetailScreen() {
   const { data: torrent, isLoading, error } = useTorrent(hash);
   const { data: files } = useTorrentFiles(hash);
   const { data: trackers } = useTorrentTrackers(hash);
+  const { data: categories } = useTorrentCategories();
   const pauseMutation = usePauseTorrent();
   const resumeMutation = useResumeTorrent();
   const reannounceMutation = useReannounceTorrent();
   const deleteMutation = useDeleteTorrent();
+  const setCategoryMutation = useSetTorrentCategory();
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
   const deferredBack = useDeferredBack();
 
@@ -77,6 +84,19 @@ export default function TorrentDetailScreen() {
       onSuccess: () => toast("Reannounce requested"),
       onError: (err) => toastError("Failed to reannounce", err),
     });
+  };
+
+  const handleSetCategory = (category: string) => {
+    setCategoryMutation.mutate(
+      { hashes: [hash], category },
+      {
+        onSuccess: () => {
+          toast("Category updated", "success");
+          setCategoryOpen(false);
+        },
+        onError: (err) => toastError("Failed to set category", err),
+      },
+    );
   };
 
   const runDelete = (deleteFiles: boolean) => {
@@ -130,6 +150,7 @@ export default function TorrentDetailScreen() {
           <InfoRow label="Size" value={formatBytes(torrent.size)} />
           <InfoRow label="Downloaded" value={formatBytes(torrent.downloaded)} />
           <InfoRow label="Uploaded" value={formatBytes(torrent.uploaded)} />
+          <InfoRow label="Category" value={torrent.category || "None"} />
           <InfoRow label="Ratio" value={torrent.ratio.toFixed(2)} />
           <InfoRow
             label="Ratio Limit"
@@ -218,6 +239,15 @@ export default function TorrentDetailScreen() {
             className="flex-1"
           />
         </View>
+
+        <View className="mt-3">
+          <Button
+            label="Category"
+            variant="outline"
+            onPress={() => setCategoryOpen(true)}
+            icon={<Icon icon={Tag} size={16} color="#a1a1aa" />}
+          />
+        </View>
       </ScreenWrapper>
 
       <ShareLimitsSheet
@@ -226,6 +256,15 @@ export default function TorrentDetailScreen() {
         hash={hash}
         ratioLimit={torrent.ratio_limit ?? -2}
         seedingTimeLimit={torrent.seeding_time_limit ?? -2}
+      />
+
+      <CategorySheet
+        visible={categoryOpen}
+        onClose={() => setCategoryOpen(false)}
+        categories={categories ?? []}
+        current={torrent.category}
+        saving={setCategoryMutation.isPending}
+        onSave={handleSetCategory}
       />
 
       <ActionSheet

@@ -10,6 +10,7 @@ import {
   usePauseTorrent as useQbPauseTorrent,
   useResumeTorrent as useQbResumeTorrent,
   useDeleteTorrent as useQbDeleteTorrent,
+  useSetTorrentCategory,
 } from "@/hooks/use-qbittorrent";
 import {
   getServerState,
@@ -207,6 +208,7 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
   usePauseTorrent: (instanceId?: string) => useQbPauseTorrent(instanceId),
   useResumeTorrent: (instanceId?: string) => useQbResumeTorrent(instanceId),
   useDeleteTorrent: (instanceId?: string) => useQbDeleteTorrent(instanceId),
+  useSetCategory: (instanceId?: string) => useSetTorrentCategory(instanceId),
 
   useAddTorrent: (instanceId?: string) => {
     const queryClient = useQueryClient();

@@ -170,6 +170,14 @@ export interface TorrentAdapter {
     instanceId?: string,
   ) => UseMutationResult<unknown, Error, { uri: string; label?: string; savePath?: string }>;
 
+  // Assign/clear a torrent's category (qBittorrent only — gated by
+  // capabilities.categories). category "" clears it. Always called by the
+  // shared view (like useCategories), so clients without categories return a
+  // stub mutation that's never invoked.
+  useSetCategory: (
+    instanceId?: string,
+  ) => UseMutationResult<unknown, Error, { hashes: string[]; category: string }>;
+
   // Optional self-contained speed-limits header control (button + sheet + its
   // own hooks). Rendered in the speed-summary row when present. Owning all the
   // client-specific speed-limit hooks here keeps the shared view free of any
