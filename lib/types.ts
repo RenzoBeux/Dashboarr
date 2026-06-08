@@ -838,6 +838,10 @@ export interface OverseerrMediaResult {
   voteAverage: number;
   mediaInfo?: {
     status: OverseerrMediaStatus;
+    // 4K availability is tracked separately from the regular status. Present in
+    // real responses (Media entity has both columns) even though the published
+    // OpenAPI spec omits it.
+    status4k?: OverseerrMediaStatus;
   };
 }
 
@@ -856,14 +860,34 @@ export interface OverseerrGenreSliderItem {
   backdrops: string[];
 }
 
+// A YouTube (or other site) video attached to a TMDB title — trailers, teasers,
+// clips, etc. Shape per Overseerr's RelatedVideo schema.
+export interface OverseerrRelatedVideo {
+  url: string;
+  key: string;
+  name: string;
+  size?: number;
+  type:
+    | "Clip"
+    | "Teaser"
+    | "Trailer"
+    | "Featurette"
+    | "Opening Credits"
+    | "Behind the Scenes"
+    | "Bloopers";
+  site: string; // "YouTube"
+}
+
 export interface OverseerrMovieDetails {
   id: number;
   title: string;
   posterPath?: string;
   releaseDate?: string;
+  relatedVideos?: OverseerrRelatedVideo[];
   mediaInfo?: {
     id: number;
     status: OverseerrMediaStatus;
+    status4k?: OverseerrMediaStatus;
   };
 }
 
@@ -881,6 +905,12 @@ export interface OverseerrTVDetails {
   posterPath?: string;
   firstAirDate?: string;
   seasons?: OverseerrSeasonInfo[];
+  relatedVideos?: OverseerrRelatedVideo[];
+  mediaInfo?: {
+    id: number;
+    status: OverseerrMediaStatus;
+    status4k?: OverseerrMediaStatus;
+  };
 }
 
 // --- Overseerr Service Discovery (Radarr/Sonarr instances configured in Seerr) ---
