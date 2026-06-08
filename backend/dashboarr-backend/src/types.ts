@@ -92,6 +92,16 @@ export const notifCategoryEnum = z.enum([
   "sonarrDownloaded",
   "serviceOffline",
   "overseerrNewRequest",
+  // Tracearr webhook events. Surfaced per-instance only (no global toggle),
+  // so a Tracearr push only respects these when the webhook URL carries
+  // ?instance=<uuid>; otherwise the global defaults below apply.
+  "tracearrViolation",
+  "tracearrNewDevice",
+  "tracearrTrustScore",
+  "tracearrServerDown",
+  "tracearrServerUp",
+  "tracearrStreamStarted",
+  "tracearrStreamStopped",
 ]);
 
 export type NotifCategory = z.infer<typeof notifCategoryEnum>;
@@ -111,6 +121,14 @@ export const notificationSettingsSchema = z.object({
   sonarrDownloaded: z.boolean().default(true),
   serviceOffline: z.boolean().default(true),
   overseerrNewRequest: z.boolean().default(true),
+  // Tracearr — defaults mirror Tracearr's own webhook-channel routing.
+  tracearrViolation: z.boolean().default(true),
+  tracearrNewDevice: z.boolean().default(true),
+  tracearrTrustScore: z.boolean().default(false),
+  tracearrServerDown: z.boolean().default(true),
+  tracearrServerUp: z.boolean().default(true),
+  tracearrStreamStarted: z.boolean().default(false),
+  tracearrStreamStopped: z.boolean().default(false),
   perInstance: perInstanceOverridesSchema,
 });
 
@@ -125,6 +143,13 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   sonarrDownloaded: true,
   serviceOffline: true,
   overseerrNewRequest: true,
+  tracearrViolation: true,
+  tracearrNewDevice: true,
+  tracearrTrustScore: false,
+  tracearrServerDown: true,
+  tracearrServerUp: true,
+  tracearrStreamStarted: false,
+  tracearrStreamStopped: false,
 };
 
 /**
@@ -205,7 +230,14 @@ export type NotificationCategory =
   | "radarrDownloaded"
   | "sonarrDownloaded"
   | "serviceOffline"
-  | "overseerrNewRequest";
+  | "overseerrNewRequest"
+  | "tracearrViolation"
+  | "tracearrNewDevice"
+  | "tracearrTrustScore"
+  | "tracearrServerDown"
+  | "tracearrServerUp"
+  | "tracearrStreamStarted"
+  | "tracearrStreamStopped";
 
 export interface PushEvent {
   category: NotificationCategory;

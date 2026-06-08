@@ -21,6 +21,7 @@ import { sonarrWebhook } from "./routes/webhooks/sonarr.js";
 import { overseerrWebhook } from "./routes/webhooks/overseerr.js";
 import { bazarrWebhook } from "./routes/webhooks/bazarr.js";
 import { tautulliWebhook } from "./routes/webhooks/tautulli.js";
+import { tracearrWebhook } from "./routes/webhooks/tracearr.js";
 
 const BANNER = `
 ===============================================================================
@@ -48,7 +49,7 @@ async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise
     "# Back-compat — secret in the URL path (works with services that can't send custom headers):",
   ];
   for (const id of SERVICE_IDS) {
-    if (id === "qbittorrent" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "emby" || id === "glances" || id === "tracearr") continue;
+    if (id === "qbittorrent" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "emby" || id === "glances") continue;
     lines.push(`${id.padEnd(10)} ${webhookBase}/${id}/${webhookSecret}`);
   }
   const content = lines.join("\n") + "\n";
@@ -177,6 +178,7 @@ async function main(): Promise<void> {
     await overseerrWebhook(scope);
     await bazarrWebhook(scope);
     await tautulliWebhook(scope);
+    await tracearrWebhook(scope);
   });
 
   // Everything else (bearer-authed app traffic): a reasonable ceiling that

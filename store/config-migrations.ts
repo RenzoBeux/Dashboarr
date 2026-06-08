@@ -116,8 +116,15 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         Services-tab tile order per workspace. Pure version stamp — absent
  *         means "use the global servicesOrder", so older exports just need the
  *         version field bumped. coerceDashboard validates the field on import.
+ *   v31 — added seven per-event Tracearr notification categories
+ *         (tracearrViolation / tracearrNewDevice / tracearrTrustScore /
+ *         tracearrServerDown / tracearrServerUp / tracearrStreamStarted /
+ *         tracearrStreamStopped) for the backend Tracearr webhook. Pure version
+ *         stamp — coerceNotificationSettings treats them as optional keys, so
+ *         older exports without them validate and the missing entries fall back
+ *         to DEFAULT_NOTIFICATION_SETTINGS at hydrate time.
  */
-export const CURRENT_CONFIG_VERSION = 30;
+export const CURRENT_CONFIG_VERSION = 31;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -599,6 +606,12 @@ const migrations: Record<number, (payload: any) => any> = {
   // servicesOrder", so older exports are already correct. coerceDashboard
   // coerces/validates the field on import.
   29: (payload) => ({ ...payload, version: 30 }),
+
+  // v30 → v31: seven per-event Tracearr notification categories added for the
+  // backend Tracearr webhook. Pure version stamp — coerceNotificationSettings
+  // treats them as optional keys, so older exports without them validate and the
+  // missing entries fall back to DEFAULT_NOTIFICATION_SETTINGS at hydrate time.
+  30: (payload) => ({ ...payload, version: 31 }),
 };
 
 /**

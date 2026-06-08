@@ -123,6 +123,10 @@ function NotificationRouter() {
         case "overseerr":
           router.push("/(tabs)/requests");
           break;
+        case "tracearr":
+          // All Tracearr webhook events (streams + alerts) surface in Activity.
+          router.push("/(tabs)/activity");
+          break;
         case "health":
           router.push("/(tabs)/services");
           break;
