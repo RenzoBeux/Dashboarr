@@ -11,6 +11,7 @@ import type {
   OverseerrTVDetails,
   OverseerrServerInfo,
   OverseerrServerDetails,
+  OverseerrRelatedVideo,
 } from "@/lib/types";
 
 export interface OverseerrRequestOptions {
@@ -18,6 +19,9 @@ export interface OverseerrRequestOptions {
   profileId?: number;
   rootFolder?: string;
   tags?: number[];
+  // When true, the request targets the 4K Radarr/Sonarr server. Seerr resolves
+  // the default 4K server when serverId is omitted.
+  is4k?: boolean;
 }
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -308,4 +312,28 @@ export function getPosterUrl(posterPath: string | undefined | null, size: "w185"
 export function getBackdropUrl(backdropPath: string | undefined | null): string | null {
   if (!backdropPath) return null;
   return `${TMDB_IMAGE_BASE}/w780${backdropPath}`;
+}
+
+// Pick the best playable trailer from a title's related videos. We can only
+// embed YouTube, and prefer an official trailer, then teaser, then any clip.
+const TRAILER_TYPE_PRIORITY: OverseerrRelatedVideo["type"][] = [
+  "Trailer",
+  "Teaser",
+  "Clip",
+  "Featurette",
+  "Behind the Scenes",
+];
+
+export function pickTrailer(
+  videos: OverseerrRelatedVideo[] | undefined | null,
+): OverseerrRelatedVideo | null {
+  const youtube = (videos ?? []).filter(
+    (v) => v.site === "YouTube" && !!v.key,
+  );
+  if (youtube.length === 0) return null;
+  for (const type of TRAILER_TYPE_PRIORITY) {
+    const match = youtube.find((v) => v.type === type);
+    if (match) return match;
+  }
+  return youtube[0];
 }

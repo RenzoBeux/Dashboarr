@@ -76,6 +76,7 @@ export function useOverseerrMediaDetails(
   tmdbId: number,
   mediaType: OverseerrMediaType,
   instanceId?: string,
+  active = true,
 ) {
   const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
   return useQuery<OverseerrMovieDetails | OverseerrTVDetails>({
@@ -85,7 +86,7 @@ export function useOverseerrMediaDetails(
         ? getMovieDetails(tmdbId, id ?? undefined)
         : getTVDetails(tmdbId, id ?? undefined),
     staleTime: 600000, // 10 min — titles don't change
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && tmdbId > 0 && active,
   });
 }
 

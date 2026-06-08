@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, View, Text, ScrollView, Pressable } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Modal, View, Text, ScrollView } from "react-native";
 import { Image } from "expo-image";
-import { Plus, Film, Tv, AlertCircle, Copy, Check } from "lucide-react-native";
-import * as Clipboard from "expo-clipboard";
+import { Plus, Film, Tv } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { Toggle } from "@/components/ui/toggle";
 import { SheetHeader } from "@/components/ui/sheet-header";
 import { toast } from "@/components/ui/toast";
+import {
+  RequestErrorBanner,
+  type RequestError,
+} from "@/components/overseerr/request-error-banner";
 import { getHttpErrorMessage, formatErrorForCopy } from "@/lib/http-client";
-import { brrrHaptic } from "@/lib/haptics";
 import { getPosterUrl } from "@/services/overseerr-api";
 import {
   useOverseerrRadarrServers,
@@ -29,6 +32,8 @@ interface RequestOptionsSheetProps {
   visible: boolean;
   onClose: () => void;
   onRequested?: () => void;
+  // Preselect the 4K quality tier (e.g. when opened from a "Request 4K" action).
+  initialIs4k?: boolean;
 }
 
 export function RequestOptionsSheet({
@@ -36,6 +41,7 @@ export function RequestOptionsSheet({
   visible,
   onClose,
   onRequested,
+  initialIs4k = false,
 }: RequestOptionsSheetProps) {
   const isTv = item?.mediaType === "tv";
 
@@ -44,17 +50,42 @@ export function RequestOptionsSheet({
   const serversQuery = isTv ? sonarrServersQuery : radarrServersQuery;
   const servers = serversQuery.data ?? [];
 
+  // Seerr models 4K as separate Radarr/Sonarr servers (each flagged is4k). The
+  // active quality tier picks which bucket the server/profile/root come from.
+  const [is4k, setIs4k] = useState(initialIs4k);
+  const servers4k = useMemo(() => servers.filter((s) => s.is4k), [servers]);
+  const serversHd = useMemo(() => servers.filter((s) => !s.is4k), [servers]);
+  const has4kServer = servers4k.length > 0;
+  const activeServers = useMemo(
+    () => (is4k ? servers4k : serversHd),
+    [is4k, servers4k, serversHd],
+  );
+
   const [serverId, setServerId] = useState<number | undefined>();
 
+  // Reset the tier whenever a new title opens.
   useEffect(() => {
-    if (servers.length === 0) {
+    if (visible) setIs4k(initialIs4k);
+  }, [visible, item?.id, initialIs4k]);
+
+  // Clamp the tier to what's actually configured: fall back to 4K if only 4K
+  // servers exist, and off if no 4K server exists.
+  useEffect(() => {
+    if (is4k && !has4kServer) setIs4k(false);
+    else if (!is4k && serversHd.length === 0 && servers4k.length > 0)
+      setIs4k(true);
+  }, [is4k, has4kServer, serversHd.length, servers4k.length]);
+
+  useEffect(() => {
+    if (activeServers.length === 0) {
       setServerId(undefined);
       return;
     }
-    if (serverId !== undefined && servers.some((s) => s.id === serverId)) return;
-    const def = servers.find((s) => s.isDefault) ?? servers[0];
+    if (serverId !== undefined && activeServers.some((s) => s.id === serverId))
+      return;
+    const def = activeServers.find((s) => s.isDefault) ?? activeServers[0];
     setServerId(def?.id);
-  }, [servers, serverId]);
+  }, [activeServers, serverId]);
 
   const radarrDetailsQuery = useOverseerrRadarrServerDetails(
     !isTv ? serverId : undefined,
@@ -81,37 +112,11 @@ export function RequestOptionsSheet({
     if (visible) setSeasonSelection("all");
   }, [visible, item?.id]);
 
-  // The visible banner text is the friendly message; the clipboard payload is
-  // the verbose error (HTTP body / stack) so users can share/search the real
-  // failure. Mirrors the Copy behavior in error toasts.
-  const [submitError, setSubmitError] = useState<{
-    message: string;
-    copyText: string;
-  } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [submitError, setSubmitError] = useState<RequestError | null>(null);
 
   useEffect(() => {
-    if (visible) {
-      setSubmitError(null);
-      setCopied(false);
-    }
+    if (visible) setSubmitError(null);
   }, [visible, item?.id]);
-
-  useEffect(() => {
-    return () => {
-      if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
-    };
-  }, []);
-
-  const handleCopyError = async () => {
-    if (!submitError) return;
-    await Clipboard.setStringAsync(submitError.copyText);
-    brrrHaptic();
-    setCopied(true);
-    if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
-    copiedTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
-  };
 
   const tvDetailsQuery = useOverseerrMediaDetails(
     item?.id ?? 0,
@@ -162,10 +167,11 @@ export function RequestOptionsSheet({
   const handleSubmit = async () => {
     if (!item) return;
     setSubmitError(null);
-    const options =
-      servers.length > 0
-        ? { serverId, profileId, rootFolder, tags }
-        : undefined;
+    const baseOptions =
+      servers.length > 0 ? { serverId, profileId, rootFolder, tags } : undefined;
+    const options = is4k
+      ? { ...(baseOptions ?? {}), is4k: true }
+      : baseOptions;
 
     try {
       if (isTv) {
@@ -178,7 +184,7 @@ export function RequestOptionsSheet({
         await requestMovie.mutateAsync({ tmdbId: item.id, options });
       }
       const title = item.title || item.name || "Title";
-      toast(`${title} has been requested`);
+      toast(`${title} has been requested${is4k ? " in 4K" : ""}`);
       onRequested?.();
       onClose();
     } catch (err) {
@@ -251,6 +257,17 @@ export function RequestOptionsSheet({
             </View>
           </View>
 
+          {has4kServer ? (
+            <View className="rounded-xl border border-border bg-surface-light px-4 mb-4">
+              <Toggle
+                label="Request in 4K"
+                description="Send this to your 4K Radarr/Sonarr server"
+                value={is4k}
+                onValueChange={setIs4k}
+              />
+            </View>
+          ) : null}
+
           {servers.length === 0 ? (
             <View className="rounded-xl border border-border bg-surface-light px-4 py-3 mb-4">
               <Text className="text-zinc-300 text-sm">
@@ -260,11 +277,11 @@ export function RequestOptionsSheet({
             </View>
           ) : null}
 
-          {servers.length > 1 ? (
+          {activeServers.length > 1 ? (
             <Select
               label={isTv ? "Sonarr Server" : "Radarr Server"}
               value={serverId}
-              options={servers.map((s) => ({
+              options={activeServers.map((s) => ({
                 value: s.id,
                 label: s.name,
                 description: s.isDefault ? "Default" : undefined,
@@ -363,34 +380,9 @@ export function RequestOptionsSheet({
         </ScrollView>
 
         <View className="px-4 pb-6 pt-3 border-t border-border bg-background">
-          {submitError ? (
-            <View className="mb-3 flex-row items-start gap-2 rounded-xl border border-red-600/40 bg-red-600/10 px-3 py-2.5">
-              <View className="pt-0.5">
-                <Icon icon={AlertCircle} size={16} color="#f87171" />
-              </View>
-              <Text className="text-red-300 text-sm flex-1">{submitError.message}</Text>
-              <Pressable
-                onPress={handleCopyError}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={copied ? "Error copied" : "Copy error"}
-                className="flex-row items-center gap-1 pl-2 py-0.5 active:opacity-60"
-              >
-                <Icon
-                  icon={copied ? Check : Copy}
-                  size={14}
-                  color={copied ? "#4ade80" : "#fca5a5"}
-                />
-                <Text
-                  className={`text-xs ${copied ? "text-green-400" : "text-red-300"}`}
-                >
-                  {copied ? "Copied" : "Copy"}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
+          <RequestErrorBanner error={submitError} className="mb-3" />
           <Button
-            label="Send Request"
+            label={is4k ? "Send 4K Request" : "Send Request"}
             onPress={handleSubmit}
             disabled={!canSubmit}
             loading={isPending}
