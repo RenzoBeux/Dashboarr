@@ -185,5 +185,15 @@ export const rtorrentTorrentAdapter: TorrentAdapter = {
     });
   },
 
+  // rtorrent has freeform single labels (custom1), not qBittorrent-style
+  // categories, so capabilities.categories is false and this is never surfaced.
+  // It exists only to satisfy the shared adapter contract (always called).
+  useSetCategory: () =>
+    useMutation({
+      mutationFn: async (_vars: { hashes: string[]; category: string }) => {
+        throw new Error("Categories are not supported on rtorrent");
+      },
+    }),
+
   SpeedLimitsControl: RtorrentSpeedLimitsControl,
 };

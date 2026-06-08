@@ -13,6 +13,7 @@ import {
   setDownloadLimit,
   setUploadLimit,
   setShareLimits,
+  setTorrentCategory,
   getSpeedLimitsMode,
   toggleSpeedLimitsMode,
   getSpeedPreferences,
@@ -252,6 +253,26 @@ export function useSetShareLimits(instanceId?: string) {
       ratioLimit: number;
       seedingTimeLimit: number;
     }) => setShareLimits(hashes, ratioLimit, seedingTimeLimit, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
+    },
+  });
+}
+
+// --- Category ---
+
+export function useSetTorrentCategory(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
+  return useMutation({
+    // category "" clears the torrent's category (uncategorized).
+    mutationFn: ({
+      hashes,
+      category,
+    }: {
+      hashes: string[];
+      category: string;
+    }) => setTorrentCategory(hashes, category, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
     },

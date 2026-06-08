@@ -7,16 +7,18 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
-import { toastError } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import {
   Pause,
   Play,
   Trash2,
   Plus,
+  Tag,
   CheckCircle2,
   Circle,
   AlertCircle,
@@ -35,6 +37,7 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { ActionSheet } from "@/components/ui/action-sheet";
+import { CategorySheet } from "@/components/qbittorrent/category-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 import {
@@ -98,6 +101,7 @@ export function TorrentDownloadsView({
   const setSort = useSortStore((s) => s.setDownloads);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
+  const [categoryBulkOpen, setCategoryBulkOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
 
@@ -122,6 +126,7 @@ export function TorrentDownloadsView({
   const pauseMutation = adapter.usePauseTorrent();
   const resumeMutation = adapter.useResumeTorrent();
   const deleteMutation = adapter.useDeleteTorrent();
+  const setCategoryMutation = adapter.useSetCategory();
   const router = useRouter();
 
   const caveat = adapter.capabilities.deleteWithDataCaveat ?? false;
@@ -220,6 +225,27 @@ export function TorrentDownloadsView({
     multiSelect.clear();
   };
 
+  const handleBulkCategory = () => {
+    if (selectedHashes().length === 0) return;
+    setCategoryBulkOpen(true);
+  };
+
+  const runBulkCategory = (category: string) => {
+    const hashes = selectedHashes();
+    if (hashes.length === 0) return;
+    setCategoryMutation.mutate(
+      { hashes, category },
+      {
+        onSuccess: () => {
+          toast("Category updated", "success");
+          multiSelect.clear();
+          setCategoryBulkOpen(false);
+        },
+        onError: (err) => toastError("Failed to set category", err),
+      },
+    );
+  };
+
   const handleTorrentPress = (torrent: UnifiedTorrent) => {
     if (multiSelect.isActive) {
       multiSelect.toggle(torrent);
@@ -235,7 +261,10 @@ export function TorrentDownloadsView({
   };
 
   const bulkBusy =
-    pauseMutation.isPending || resumeMutation.isPending || deleteMutation.isPending;
+    pauseMutation.isPending ||
+    resumeMutation.isPending ||
+    deleteMutation.isPending ||
+    setCategoryMutation.isPending;
 
   // Category filter is qBittorrent-only and only worth showing once the server
   // actually has categories defined.
@@ -276,6 +305,7 @@ export function TorrentDownloadsView({
       onPause={handleBulkPause}
       onResume={handleBulkResume}
       onDelete={handleBulkDelete}
+      onCategory={showCategoryFilter ? handleBulkCategory : undefined}
       busy={bulkBusy}
     />
   ) : (
@@ -488,6 +518,16 @@ export function TorrentDownloadsView({
           },
         ]}
       />
+
+      <CategorySheet
+        visible={categoryBulkOpen}
+        onClose={() => setCategoryBulkOpen(false)}
+        categories={categories}
+        current=""
+        saving={setCategoryMutation.isPending}
+        subtitle={`${multiSelect.count} selected`}
+        onSave={runBulkCategory}
+      />
     </SafeAreaView>
   );
 }
@@ -498,6 +538,7 @@ function SelectionBar({
   onPause,
   onResume,
   onDelete,
+  onCategory,
   busy,
 }: {
   count: number;
@@ -505,6 +546,9 @@ function SelectionBar({
   onPause: () => void;
   onResume: () => void;
   onDelete: () => void;
+  // Bulk set-category — only provided when the client supports categories
+  // (qBittorrent). Undefined hides the button.
+  onCategory?: () => void;
   busy: boolean;
 }) {
   return (
@@ -518,7 +562,13 @@ function SelectionBar({
         </Text>
         <View className="w-16" />
       </View>
-      <View className="flex-row gap-2">
+      {/* Horizontal scroll so the action buttons don't clip when categories add
+          a 4th button or at higher uiScale (see CLAUDE.md chip-row rule). */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="gap-2"
+      >
         <Button
           label="Pause"
           variant="outline"
@@ -526,7 +576,7 @@ function SelectionBar({
           onPress={onPause}
           disabled={busy || count === 0}
           icon={<Icon icon={Pause} size={14} color="#f59e0b" />}
-          className="flex-1"
+          className="min-w-[6rem]"
         />
         <Button
           label="Resume"
@@ -535,8 +585,19 @@ function SelectionBar({
           onPress={onResume}
           disabled={busy || count === 0}
           icon={<Icon icon={Play} size={14} color="#3b82f6" />}
-          className="flex-1"
+          className="min-w-[6rem]"
         />
+        {onCategory ? (
+          <Button
+            label="Category"
+            variant="outline"
+            size="sm"
+            onPress={onCategory}
+            disabled={busy || count === 0}
+            icon={<Icon icon={Tag} size={14} color="#a1a1aa" />}
+            className="min-w-[6rem]"
+          />
+        ) : null}
         <Button
           label="Delete"
           variant="danger"
@@ -544,9 +605,9 @@ function SelectionBar({
           onPress={onDelete}
           disabled={busy || count === 0}
           icon={<Icon icon={Trash2} size={14} color="white" />}
-          className="flex-1"
+          className="min-w-[6rem]"
         />
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -598,6 +659,16 @@ function TorrentListItem({
         </Text>
         <Badge label={torrent.statusLabel} variant={badgeVariant} />
       </View>
+
+      {/* Category (qBittorrent) / label (rtorrent) pill — only when set. */}
+      {torrent.label ? (
+        <View className="flex-row items-center gap-1 self-start max-w-full bg-surface-light rounded-full px-2 py-0.5 mb-1">
+          <Icon icon={Tag} size={12} color="#a1a1aa" />
+          <Text className="text-zinc-400 text-xs shrink" numberOfLines={1}>
+            {torrent.label}
+          </Text>
+        </View>
+      ) : null}
 
       <ProgressBar progress={torrent.progress} showLabel className="my-2" />
 
