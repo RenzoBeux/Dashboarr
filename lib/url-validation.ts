@@ -128,3 +128,33 @@ export function resolveActiveUrlKind(
   if (networkAwayFromHome) return "remote";
   return local ? "local" : "remote";
 }
+
+/**
+ * True when an instance is effectively offline *because* the app is in
+ * remote-only mode — away from a confirmed home network, or a workspace pinned
+ * to "always remote" — while it has a local URL but NO remote URL to fall back
+ * to. This is the #168 failure mode: a local-only service tests/loads as
+ * "invalid URL" (right after an import, before the home network is re-confirmed,
+ * or simply when the device is genuinely away) even though its local URL is
+ * fine. Callers surface a dedicated indicator so the bare red dot isn't mistaken
+ * for the service being down. Mirrors the remote-only branches of `getActiveUrl`
+ * (store/config-store.ts) — keep in sync.
+ */
+export function isRemoteOnlyOffline(
+  inst: { localUrl: string; remoteUrl: string; useRemote: boolean },
+  autoSwitchNetwork: boolean,
+  networkAwayFromHome: boolean,
+  workspaceForcesRemote = false,
+): boolean {
+  const local = normalizeServiceUrl(inst.localUrl);
+  const remote = normalizeServiceUrl(inst.remoteUrl);
+  // Only meaningful when a local URL exists but there's no remote fallback. With
+  // no local URL the service is simply unconfigured; with a remote URL it stays
+  // reachable while away, so neither case is the #168 "offline because remote-
+  // only" state.
+  if (!local || remote) return false;
+  if (inst.useRemote) return false; // override falls back to local (getActiveUrl step 1)
+  if (workspaceForcesRemote) return true; // forced remote, no remote URL → offline
+  if (!autoSwitchNetwork) return false; // auto-switch off → uses local
+  return networkAwayFromHome; // away → remote-only, no remote URL → offline
+}

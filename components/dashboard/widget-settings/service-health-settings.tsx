@@ -31,12 +31,17 @@ export interface ServiceHealthSettingsValue extends Record<string, unknown> {
   // its local or remote URL. Defaults on; legacy slots without the field merge
   // to the default at read time (see useWidgetSettings).
   showUrlBadge: boolean;
+  // Whether to flag a service that's offline *because* the app is remote-only
+  // (away from home, or a workspace pinned to always-remote) while it has only a
+  // local URL — the #168 case. Defaults on; merged for legacy slots like above.
+  showAwayBadge: boolean;
 }
 
 export const SERVICE_HEALTH_DEFAULT_SETTINGS: ServiceHealthSettingsValue = {
   hiddenKinds: [],
   instances: {},
   showUrlBadge: true,
+  showAwayBadge: true,
 };
 
 export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -184,6 +189,14 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
           description="Mark each service with an L or R for the URL it's currently using"
           value={settings.showUrlBadge}
           onValueChange={(v) => update({ showUrlBadge: v })}
+        />
+      </View>
+      <View className="bg-surface-light rounded-2xl border border-border px-4">
+        <Toggle
+          label="Away indicator"
+          description="Flag services that are offline because you're away from home and have no remote URL set"
+          value={settings.showAwayBadge}
+          onValueChange={(v) => update({ showAwayBadge: v })}
         />
       </View>
       {configuredKinds.length > 1 && (

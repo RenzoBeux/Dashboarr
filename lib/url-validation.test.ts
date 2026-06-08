@@ -2,6 +2,7 @@ import {
   validateServiceUrl,
   normalizeServiceUrl,
   resolveActiveUrlKind,
+  isRemoteOnlyOffline,
   isPrivateHost,
   isPrivateUrl,
 } from "./url-validation";
@@ -189,5 +190,42 @@ describe("resolveActiveUrlKind", () => {
 
   it("falls back to remote at home when no local is configured", () => {
     expect(resolveActiveUrlKind(inst({ localUrl: "" }), true, false)).toBe("remote");
+  });
+});
+
+describe("isRemoteOnlyOffline (#168)", () => {
+  const inst = (over: Partial<{ localUrl: string; remoteUrl: string; useRemote: boolean }> = {}) => ({
+    localUrl: "192.168.1.10:7878",
+    remoteUrl: "",
+    useRemote: false,
+    ...over,
+  });
+
+  it("is true when away from home with a local URL but no remote", () => {
+    expect(isRemoteOnlyOffline(inst(), true, true)).toBe(true);
+  });
+
+  it("is false at home (local URL is usable)", () => {
+    expect(isRemoteOnlyOffline(inst(), true, false)).toBe(false);
+  });
+
+  it("is false when a remote URL exists (reachable while away)", () => {
+    expect(isRemoteOnlyOffline(inst({ remoteUrl: "https://remote.example.com" }), true, true)).toBe(false);
+  });
+
+  it("is false when no local URL is configured (just unconfigured, not blocked)", () => {
+    expect(isRemoteOnlyOffline(inst({ localUrl: "" }), true, true)).toBe(false);
+  });
+
+  it("is false when auto-switch is off (uses local regardless of network)", () => {
+    expect(isRemoteOnlyOffline(inst(), false, true)).toBe(false);
+  });
+
+  it("is false when the useRemote override is set (falls back to local)", () => {
+    expect(isRemoteOnlyOffline(inst({ useRemote: true }), true, true)).toBe(false);
+  });
+
+  it("is true when the workspace is pinned to remote-only and no remote URL exists", () => {
+    expect(isRemoteOnlyOffline(inst(), false, false, true)).toBe(true);
   });
 });
