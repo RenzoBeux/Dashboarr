@@ -93,6 +93,7 @@ const WEBHOOK_KINDS = new Set<ServiceId>([
   "tautulli",
   "overseerr",
   "bazarr",
+  "tracearr",
 ]);
 
 // Display name for the service kind (used in the main settings list, before

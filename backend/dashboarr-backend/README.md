@@ -192,6 +192,7 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/webhooks/bazarr/:secret` | path | Bazarr back-compat |
 | `POST` | `/webhooks/tautulli` | header | Tautulli webhook (logged only) |
 | `POST` | `/webhooks/tautulli/:secret` | path | Tautulli back-compat |
+| `POST` | `/webhooks/tracearr/:secret` | path secret | Tracearr "JSON Webhook". Tracearr can't send a custom header, so use the path-secret form. Optional `?instance=<uuid>` — **required** for the per-instance Tracearr toggles to apply |
 
 Copy-paste-ready webhook URLs (and the `X-Dashboarr-Secret` value) are written
 at startup to `${DATA_DIR}/webhook-urls.txt` with mode 0600 — i.e. readable
@@ -235,7 +236,7 @@ Where to find the instance UUID: in the Dashboarr app, open **Settings →
 &lt;service&gt; → &lt;instance&gt;**. The "Webhook Attribution" card shows the
 instance UUID with a tap-to-copy button. The card only appears when a backend
 is paired and the service has a webhook integration (Radarr, Sonarr, Seerr,
-Tautulli, Bazarr).
+Tautulli, Bazarr, Tracearr).
 
 The single shared `X-Dashboarr-Secret` (or `:secret` path segment) keeps
 working unchanged — the query param is a pure additive opt-in.
@@ -258,6 +259,13 @@ because of a stale URL would be worse than emitting a generic push.
 Tautulli and Bazarr webhooks accept the param too but only record events (no
 push), so attribution there is a no-op until those categories are added.
 
+Tracearr is the one case where `?instance=<uuid>` is more than cosmetic. Its
+notification toggles live **per-instance** (in each Tracearr instance's editor;
+there are no global Tracearr toggles), and a per-instance override only applies
+when the push carries `data.instanceId`. So without the `?instance=` param a
+Tracearr webhook falls back to the built-in defaults (alerts + server status on,
+trust-score + stream events off) and the per-instance toggles have no effect.
+
 ---
 
 ## Notification event sources
@@ -272,6 +280,7 @@ push), so attribution there is a no-op until those categories are added.
 | **Seerr** | ✅ (preferred) | ✅ 60s | Webhook for `MEDIA_PENDING`; poll diffs pending requests |
 | **Bazarr** | ✅ (logged) | — | Payload is unstructured; no default category yet |
 | **Tautulli** | ✅ (logged) | — | User-scripted payloads; no default category yet |
+| **Tracearr** | ✅ | — | "JSON Webhook" agent → per-event categories: violation / new device / trust score / server down / server up (on by default) and stream started / stopped (off by default). Toggles are per-instance only — use `?instance=<uuid>`. Path-secret URL only (Tracearr can't send a custom header) |
 | **Prowlarr** | ❌ | ✅ 5m | Currently advisory — no user-facing category yet |
 | **Glances** | ❌ | ✅ 30s | Health-only; threshold alerts TBD |
 | **Plex** | ❌ | — | Nothing polled; reserved |

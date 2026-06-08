@@ -23,7 +23,20 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   overseerr:   ["overseerrNewRequest", "serviceOffline"],
   prowlarr:    ["serviceOffline"],
   tautulli:    ["serviceOffline"],
-  tracearr:    ["serviceOffline"],
+  // Tracearr webhook events. These have no global toggle rows in Settings →
+  // Notifications; they're controlled per-instance here (each Tracearr instance
+  // editor), so point its webhook at /webhooks/tracearr/<secret>?instance=<id>
+  // for these overrides to apply.
+  tracearr: [
+    "tracearrViolation",
+    "tracearrNewDevice",
+    "tracearrTrustScore",
+    "tracearrServerDown",
+    "tracearrServerUp",
+    "tracearrStreamStarted",
+    "tracearrStreamStopped",
+    "serviceOffline",
+  ],
   jellystat:   ["serviceOffline"],
   plex:        ["serviceOffline"],
   bazarr:      ["serviceOffline"],
@@ -40,6 +53,13 @@ export const CATEGORY_LABELS: Record<NotifCategory, string> = {
   sonarrDownloaded: "Episode downloaded",
   serviceOffline: "Service offline",
   overseerrNewRequest: "New Seerr request",
+  tracearrViolation: "Rule violation",
+  tracearrNewDevice: "New device",
+  tracearrTrustScore: "Trust score change",
+  tracearrServerDown: "Server offline",
+  tracearrServerUp: "Server back online",
+  tracearrStreamStarted: "Stream started",
+  tracearrStreamStopped: "Stream stopped",
 };
 
 export const NOTIF_CATEGORIES = Object.keys(CATEGORY_LABELS) as NotifCategory[];

@@ -200,7 +200,17 @@ export type NotifCategory =
   | "radarrDownloaded"
   | "sonarrDownloaded"
   | "serviceOffline"
-  | "overseerrNewRequest";
+  | "overseerrNewRequest"
+  // Tracearr webhook events. Exposed per-instance only (in each Tracearr
+  // instance's editor) — no global toggle rows — so the per-instance override
+  // is the primary control; these globals are the inherit/fallback defaults.
+  | "tracearrViolation"
+  | "tracearrNewDevice"
+  | "tracearrTrustScore"
+  | "tracearrServerDown"
+  | "tracearrServerUp"
+  | "tracearrStreamStarted"
+  | "tracearrStreamStopped";
 
 export interface NotificationSettings {
   enabled: boolean;
@@ -211,6 +221,13 @@ export interface NotificationSettings {
   sonarrDownloaded: boolean;
   serviceOffline: boolean;
   overseerrNewRequest: boolean;
+  tracearrViolation: boolean;
+  tracearrNewDevice: boolean;
+  tracearrTrustScore: boolean;
+  tracearrServerDown: boolean;
+  tracearrServerUp: boolean;
+  tracearrStreamStarted: boolean;
+  tracearrStreamStopped: boolean;
   // v21: per-instance overrides keyed by instance UUID. A category absent from
   // an instance's override map falls through to the global toggle. Allows
   // "notify me from the primary Radarr but stay silent from the testing one"
@@ -227,6 +244,15 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   sonarrDownloaded: true,
   serviceOffline: true,
   overseerrNewRequest: true,
+  // Tracearr defaults mirror Tracearr's own webhook-channel routing: alerts and
+  // server status on, trust-score and stream chatter off (opt-in per instance).
+  tracearrViolation: true,
+  tracearrNewDevice: true,
+  tracearrTrustScore: false,
+  tracearrServerDown: true,
+  tracearrServerUp: true,
+  tracearrStreamStarted: false,
+  tracearrStreamStopped: false,
 };
 
 interface ConfigState {
