@@ -48,6 +48,7 @@ import {
   BAR_KIND_COLOR,
   cornerColorFor,
   lidarrArtistBarKind,
+  lidarrArtistBarProgress,
   lidarrAlbumBarKind,
 } from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum, LidarrQueueItem } from "@/lib/types";
@@ -464,6 +465,7 @@ function ArtistLibrary({
       posterStatus={(a) => ({
         barColor: BAR_KIND_COLOR[lidarrArtistBarKind(a, downloading.has(a.id))],
         cornerColor: cornerColorFor(a.status),
+        progress: lidarrArtistBarProgress(a),
       })}
       onItemPress={(a) => router.push(`/artist/${a.id}`)}
       onItemLongPress={onLongPress}

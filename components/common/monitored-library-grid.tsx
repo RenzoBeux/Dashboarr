@@ -17,11 +17,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { BAR_TRACK_COLOR } from "@/lib/arr-poster-status";
 
 /** Sonarr/Radarr-style poster overlay: bottom status bar + top-right corner triangle. */
 export interface PosterStatus {
   barColor: string | null;
   cornerColor: string | null;
+  /**
+   * Fill percentage (0–100) for the bottom bar. Omitted ⇒ 100 (a solid bar in
+   * `barColor`, matching Radarr's hardcoded full poster bar). Sonarr series and
+   * Lidarr artists pass a real progress so the bar is a gray track with a
+   * `barColor` fill sized to the percentage, like the *arr index posters.
+   */
+  progress?: number;
 }
 
 export type MonitorFilter = "monitored" | "unmonitored" | "all";
@@ -239,10 +247,20 @@ function LibraryPoster<T extends MonitoredItem>({
         )}
         {status?.cornerColor ? <PosterCornerTriangle color={status.cornerColor} /> : null}
         {status?.barColor ? (
+          // Gray track + a `barColor` fill sized to progress%, mirroring the *arr
+          // index posters. progress omitted ⇒ 100% (a solid bar, like Radarr).
           <View
             className="absolute bottom-0 left-0 right-0 h-1.5"
-            style={{ backgroundColor: status.barColor }}
-          />
+            style={{ backgroundColor: BAR_TRACK_COLOR }}
+          >
+            <View
+              className="absolute left-0 top-0 bottom-0"
+              style={{
+                backgroundColor: status.barColor,
+                width: `${Math.max(0, Math.min(100, status.progress ?? 100))}%`,
+              }}
+            />
+          </View>
         ) : null}
       </View>
       <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>

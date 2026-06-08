@@ -31,8 +31,29 @@ export const BAR_KIND_COLOR: Record<PosterBarKind, string> = {
   inverse: "#52525b",
 };
 
+/**
+ * Neutral track behind the poster bar's proportional fill, matching the *arr
+ * ProgressBar (a gray track + a kind-colored fill sized to the progress %). A
+ * 0%-progress item therefore reads as this gray track, not a solid color block.
+ */
+export const BAR_TRACK_COLOR = "#3f3f46"; // zinc-700
+
 const CORNER_ENDED = "#ef4444"; // danger
 const CORNER_DELETED = "#71717a"; // gray
+
+/**
+ * Series poster bar fill percentage (0–100), matching Sonarr's
+ * SeriesIndexProgressBar: episodeFileCount / episodeCount, with an empty series
+ * (no countable episodes) treated as 100% via Sonarr's own `: 100` fallback.
+ * The bar is a track + proportional fill, so a 0%-progress series shows the gray
+ * track even though its color (kind) is danger/warning (issue #171).
+ */
+export function sonarrBarProgress(series: SonarrSeries): number {
+  const episodeCount = series.statistics?.episodeCount ?? series.episodeCount ?? 0;
+  const episodeFileCount =
+    series.statistics?.episodeFileCount ?? series.episodeFileCount ?? 0;
+  return episodeCount ? (episodeFileCount / episodeCount) * 100 : 100;
+}
 
 /**
  * Port of Sonarr's getProgressBarKind(status, monitored, progress, isDownloading).
@@ -41,10 +62,7 @@ const CORNER_DELETED = "#71717a"; // gray
 export function sonarrBarKind(series: SonarrSeries, isDownloading: boolean): PosterBarKind {
   if (isDownloading) return "purple";
 
-  const episodeCount = series.statistics?.episodeCount ?? series.episodeCount ?? 0;
-  const episodeFileCount =
-    series.statistics?.episodeFileCount ?? series.episodeFileCount ?? 0;
-  const progress = episodeCount ? (episodeFileCount / episodeCount) * 100 : 100;
+  const progress = sonarrBarProgress(series);
 
   if (progress === 100) {
     return series.status === "ended" ? "success" : "primary";
@@ -73,14 +91,20 @@ export function radarrBarKind(movie: RadarrMovie, isDownloading: boolean): Poste
  * artist that's fully downloaded reads green; an in-progress monitored artist
  * reads red (missing), unmonitored reads amber.
  */
+/** Artist poster bar fill percentage (0–100) — trackFileCount / trackCount, the
+ * Sonarr-style proportional fill Lidarr's ArtistIndexProgressBar uses. */
+export function lidarrArtistBarProgress(artist: LidarrArtist): number {
+  const trackCount = artist.statistics?.trackCount ?? 0;
+  const fileCount = artist.statistics?.trackFileCount ?? 0;
+  return trackCount ? (fileCount / trackCount) * 100 : 100;
+}
+
 export function lidarrArtistBarKind(
   artist: LidarrArtist,
   isDownloading: boolean,
 ): PosterBarKind {
   if (isDownloading) return "purple";
-  const trackCount = artist.statistics?.trackCount ?? 0;
-  const fileCount = artist.statistics?.trackFileCount ?? 0;
-  const progress = trackCount ? (fileCount / trackCount) * 100 : 100;
+  const progress = lidarrArtistBarProgress(artist);
   if (progress >= 100) {
     return artist.status === "ended" ? "success" : "primary";
   }

@@ -59,6 +59,7 @@ import {
   BAR_KIND_COLOR,
   cornerColorFor,
   sonarrBarKind,
+  sonarrBarProgress,
 } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
@@ -496,6 +497,7 @@ function SeriesLibrary({
       posterStatus={(s) => ({
         barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
         cornerColor: cornerColorFor(s.status),
+        progress: sonarrBarProgress(s),
       })}
       onItemPress={(s) => router.push(`/series/${s.id}`)}
       onItemLongPress={onLongPress}

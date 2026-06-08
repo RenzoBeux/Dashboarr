@@ -1,4 +1,9 @@
-import { radarrBarKind, sonarrBarKind, cornerColorFor } from "@/lib/arr-poster-status";
+import {
+  radarrBarKind,
+  sonarrBarKind,
+  sonarrBarProgress,
+  cornerColorFor,
+} from "@/lib/arr-poster-status";
 import type { RadarrMovie, SonarrSeries } from "@/lib/types";
 
 function series(over: Partial<SonarrSeries>): SonarrSeries {
@@ -86,6 +91,36 @@ describe("sonarrBarKind", () => {
       },
     });
     expect(sonarrBarKind(s, false)).toBe("danger");
+  });
+});
+
+describe("sonarrBarProgress", () => {
+  it("empty series (no countable episodes) is treated as 100%", () => {
+    expect(sonarrBarProgress(series({ episodeCount: 0, episodeFileCount: 0 }))).toBe(100);
+  });
+
+  it("aired-but-undownloaded reads 0% — gray track, not a solid bar (issue #171)", () => {
+    expect(sonarrBarProgress(series({ episodeCount: 10, episodeFileCount: 0 }))).toBe(0);
+  });
+
+  it("partially downloaded reads the percentage", () => {
+    expect(sonarrBarProgress(series({ episodeCount: 10, episodeFileCount: 5 }))).toBe(50);
+  });
+
+  it("prefers statistics over top-level counts", () => {
+    const s = series({
+      episodeCount: 0,
+      episodeFileCount: 0,
+      statistics: {
+        seasonCount: 1,
+        episodeCount: 8,
+        episodeFileCount: 2,
+        totalEpisodeCount: 8,
+        sizeOnDisk: 0,
+        percentOfEpisodes: 25,
+      },
+    });
+    expect(sonarrBarProgress(s)).toBe(25);
   });
 });
 
