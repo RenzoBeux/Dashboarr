@@ -44,6 +44,7 @@ import {
   useDeleteEpisodeFile,
   useSearchForEpisodes,
   useSearchForSeason,
+  useSearchForSeries,
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
@@ -74,7 +75,6 @@ export default function SeriesDetailScreen() {
     id: string;
     instanceId?: string;
   }>();
-  const router = useRouter();
   const deferredBack = useDeferredBack();
   const {
     data: series,
@@ -84,6 +84,7 @@ export default function SeriesDetailScreen() {
   const { data: episodes } = useSonarrEpisodes(Number(id), instanceId);
   const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id), instanceId);
   const toggleSeries = useToggleSeriesMonitored(instanceId);
+  const searchSeries = useSearchForSeries(instanceId);
   const deleteSeries = useDeleteSeries(instanceId);
   const { data: qualityProfiles } = useSonarrQualityProfiles(instanceId);
   const updateProfile = useUpdateSeriesQualityProfile(instanceId);
@@ -92,6 +93,7 @@ export default function SeriesDetailScreen() {
   const { data: tags } = useSonarrTags(instanceId);
 
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [pendingSeriesSearch, setPendingSeriesSearch] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
   const [rootFolderVisible, setRootFolderVisible] = useState(false);
   const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
@@ -206,12 +208,8 @@ export default function SeriesDetailScreen() {
       key: "search",
       icon: Search,
       label: "Search",
-      onPress: () =>
-        router.push(
-          instanceId
-            ? `/series/releases/${series.id}?instanceId=${instanceId}`
-            : `/series/releases/${series.id}`,
-        ),
+      loading: searchSeries.isPending,
+      onPress: () => setPendingSeriesSearch(true),
     },
     {
       key: "more",
@@ -459,6 +457,19 @@ export default function SeriesDetailScreen() {
         onConfirm={confirmDelete}
         onCancel={() => setPendingDelete(null)}
         onClosed={deferredBack.onClosed}
+      />
+
+      <ConfirmModal
+        visible={pendingSeriesSearch}
+        title="Search for releases?"
+        message={`Sonarr will search your indexers for all monitored episodes of "${series.title}" and automatically download the best matches.`}
+        icon={Search}
+        confirmLabel="Search"
+        onConfirm={() => {
+          searchSeries.mutate(series.id);
+          setPendingSeriesSearch(false);
+        }}
+        onCancel={() => setPendingSeriesSearch(false)}
       />
     </>
   );
