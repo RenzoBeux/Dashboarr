@@ -1,6 +1,7 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
 import type { Dashboard, HomeNetwork } from "@/store/config-store";
+import { detectWifi } from "@/lib/wifi";
 
 /**
  * Home-network detection — the single signal behind local/remote URL switching.
@@ -95,4 +96,33 @@ export async function evaluateHomeNetwork(): Promise<void> {
   } finally {
     evalInFlight = false;
   }
+}
+
+/**
+ * Re-resolve home/away right after a config import (#168). Import resets
+ * `networkAwayFromHome` to its safe `true` default, so a freshly set-up device
+ * starts "away" → remote-only. The normal startup/NetInfo evaluation can't clear
+ * it on its own: reading the SSID/BSSID needs Location permission, which the new
+ * device almost certainly hasn't granted yet — so local-only services stay stuck
+ * "invalid URL" until the user stumbles onto the permission.
+ *
+ * This requests the permission (via detectWifi, which also ensures NetInfo is
+ * configured to surface the SSID on iOS) *while the user is actively setting the
+ * device up*, then evaluates. No-op when auto-switch is off or no home networks
+ * are configured — in those cases the SSID is never needed, so we don't prompt.
+ */
+export async function reevaluateHomeNetworkAfterImport(): Promise<void> {
+  const store = useConfigStore.getState();
+  if (store.demoMode || !store.autoSwitchNetwork) return;
+  const effective = resolveEffectiveHomeNetworks(
+    store.dashboards,
+    store.activeDashboardId,
+    store.homeNetworks,
+  );
+  if (effective.length === 0) return;
+  // Prompt for Location now; if granted, the subsequent evaluate reads the real
+  // SSID and clears the away flag when we're home. If denied, we stay safely
+  // "away" (remote-only) — the honest result.
+  await detectWifi();
+  await evaluateHomeNetwork();
 }

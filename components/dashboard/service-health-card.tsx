@@ -1,6 +1,8 @@
 import { View, Text, Pressable, Platform } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import { useRouter } from "expo-router";
+import { WifiOff } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { ServiceLogo, hasServiceLogo } from "@/components/ui/service-logo";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -8,7 +10,7 @@ import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
-import { resolveActiveUrlKind } from "@/lib/url-validation";
+import { resolveActiveUrlKind, isRemoteOnlyOffline } from "@/lib/url-validation";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedInstances, useActiveDashboard } from "@/hooks/use-active-dashboard";
 import {
@@ -40,6 +42,10 @@ interface RenderEntry {
   // Which URL this instance is actively using ("local"/"remote"), or null when
   // neither is configured. Drives the L/R corner badge (#148).
   urlKind: "local" | "remote" | null;
+  // True when this instance is offline purely because the app is remote-only
+  // (away from home / workspace pinned remote) but has no remote URL set — the
+  // #168 case. Drives the away badge, which takes the L/R badge's corner.
+  awayBlocked: boolean;
 }
 
 // Tailwind class + iOS shadow color for the small corner dot, by tri-state.
@@ -147,6 +153,12 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           networkAwayFromHome,
           workspaceForcesRemote,
         ),
+        awayBlocked: isRemoteOnlyOffline(
+          inst,
+          autoSwitchNetwork,
+          networkAwayFromHome,
+          workspaceForcesRemote,
+        ),
       });
     }
   }
@@ -187,7 +199,16 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                     online={entry.status !== "offline"}
                   />
                 </View>
-                {settings.showUrlBadge && entry.urlKind && (
+                {settings.showAwayBadge && entry.awayBlocked ? (
+                  // Offline because we're remote-only with no remote URL (#168).
+                  // Takes the L/R corner and supersedes it — resolveActiveUrlKind
+                  // would otherwise read "R" here, which is misleading since no
+                  // remote URL exists. Amber signals "network state", distinct
+                  // from the red offline dot in the opposite corner.
+                  <View className="absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full border-2 border-surface items-center justify-center bg-amber-500">
+                    <Icon icon={WifiOff} size={9} color="#fff" />
+                  </View>
+                ) : settings.showUrlBadge && entry.urlKind ? (
                   <View
                     className={`absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full border-2 border-surface items-center justify-center ${URL_KIND_BG[entry.urlKind]}`}
                   >
@@ -195,7 +216,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                       {entry.urlKind === "local" ? "L" : "R"}
                     </Text>
                   </View>
-                )}
+                ) : null}
                 <View
                   className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${DOT_BG[entry.status]}`}
                   style={Platform.OS === "ios" ? {

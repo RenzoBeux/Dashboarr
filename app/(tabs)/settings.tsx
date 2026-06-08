@@ -60,6 +60,7 @@ import {
   type NotifCategory,
 } from "@/lib/notification-categories";
 import { validateServiceUrl, normalizeServiceUrl } from "@/lib/url-validation";
+import { reevaluateHomeNetworkAfterImport } from "@/lib/network";
 import { brrrHaptic } from "@/lib/haptics";
 import { AppVersionCard } from "@/components/common/app-version-card";
 import {
@@ -279,6 +280,12 @@ export default function SettingsScreen() {
       if (success) {
         if (capturedResult) await syncRememberedState(capturedResult);
         toast("Configuration imported successfully", "success");
+        // Import resets the away flag to its safe default, so local-only
+        // services start "remote-only" until home is re-confirmed. Prompt for
+        // Location + re-evaluate now so they come back online on the home WiFi
+        // without the user hunting for a permission (#168). Fire-and-forget —
+        // the import already succeeded; this just resolves home/away.
+        void reevaluateHomeNetworkAfterImport();
       }
     } catch (e) {
       toastError("Invalid config file", e);
@@ -1111,6 +1118,22 @@ function ServiceEditor({
     if (testUrl !== rawTestUrl) {
       if (useRemote) setRemoteUrl(testUrl);
       else setLocalUrl(testUrl);
+    }
+    // The URL the app would actually use is empty — explain *why* instead of
+    // letting the fetch layer surface a bare "invalid URL" (#168). The common
+    // case: auto-switch decided we're away from home, so it's remote-only, but
+    // no remote URL is set for this service.
+    if (!testUrl) {
+      setTesting(false);
+      if (useRemote && !config.useRemote && autoSwitchNetwork && networkAwayFromHome) {
+        toast(
+          "Away from home: Dashboarr is using remote URLs only, but none is set here. Add a remote URL, or turn off Auto-switch network if this device stays on your home WiFi.",
+          "error",
+        );
+      } else {
+        toast(`No ${which} URL set for this service`, "error");
+      }
+      return;
     }
     const result = await testServiceConnection(serviceId, {
       url: testUrl,
