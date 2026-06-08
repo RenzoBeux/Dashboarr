@@ -440,7 +440,11 @@ export interface ArrRelease {
   releaseGroup?: string;
 }
 
-export type RadarrRelease = ArrRelease;
+export interface RadarrRelease extends ArrRelease {
+  // Radarr returns this on `/release`; it's only typed so a saved custom filter
+  // keyed on `movieRequested` can be evaluated (see lib/arr-custom-filters.ts).
+  movieRequested?: boolean;
+}
 
 export interface SonarrRelease extends ArrRelease {
   mappedSeasonNumber?: number;
@@ -449,6 +453,26 @@ export interface SonarrRelease extends ArrRelease {
   isAbsoluteNumbering?: boolean;
   isDaily?: boolean;
   episodeRequested?: boolean;
+}
+
+// --- *arr saved custom filters (interactive search) ---
+
+// `GET /api/v3/customfilter` returns these. They are stored server-side but
+// evaluated entirely client-side by the *arr web app — Dashboarr re-implements
+// that engine in lib/arr-custom-filters.ts. `type` is the "section"; for
+// interactive search it is "releases". Each clause's `type` is the operator
+// (defaults to "equal"); `value` is a scalar or an array.
+export interface ArrFilterClause {
+  key: string;
+  value: unknown;
+  type?: string;
+}
+
+export interface ArrCustomFilter {
+  id: number;
+  type: string;
+  label: string;
+  filters: ArrFilterClause[];
 }
 
 // --- Sonarr Types ---

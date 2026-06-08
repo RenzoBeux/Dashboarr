@@ -4,22 +4,20 @@ import {
   Text,
   FlatList,
   RefreshControl,
-  ScrollView,
   ActivityIndicator,
   Pressable,
 } from "react-native";
-import { Search, AlertTriangle, X, Check } from "lucide-react-native";
+import { Search, AlertTriangle, X } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { ArrRelease, SonarrRelease } from "@/lib/types";
+import type { ArrRelease, SonarrRelease, ArrCustomFilter } from "@/lib/types";
 import { ReleaseListItem } from "@/components/common/release-list-item";
 import { ReleaseDetailSheet } from "@/components/common/release-detail-sheet";
-import { FilterChip } from "@/components/ui/filter-chip";
-import { SortButton } from "@/components/ui/sort-button";
+import { FilterSortButton } from "@/components/common/filter-sort-button";
 import {
-  ActionSheet,
-  type ActionSheetAction,
-} from "@/components/ui/action-sheet";
+  FilterSortSheet,
+  type SheetSection,
+} from "@/components/common/filter-sort-sheet";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,6 +25,8 @@ import { lightHaptic } from "@/lib/haptics";
 import { getHttpErrorMessage } from "@/lib/http-client";
 import { useDeferredBack } from "@/hooks/use-deferred-back";
 import { useSortStore, type ReleasesSortKey } from "@/store/sort-store";
+import { useArrCustomFilters } from "@/hooks/use-arr-custom-filters";
+import { applyArrCustomFilter } from "@/lib/arr-custom-filters";
 
 type Release = ArrRelease | SonarrRelease;
 
@@ -53,6 +53,17 @@ const SORT_OPTIONS: ReleasesSortKey[] = [
   "score-desc",
   "title-asc",
 ];
+
+// Compact labels for the filter+sort pill summary; the sheet uses the full
+// SORT_LABELS.
+const SORT_SUMMARY: Record<ReleasesSortKey, string> = {
+  "seeders-desc": "Seeders",
+  "size-desc": "Largest",
+  "size-asc": "Smallest",
+  "age-asc": "Newest",
+  "score-desc": "Score",
+  "title-asc": "Title",
+};
 
 type ProtocolFilter = "all" | "torrent" | "usenet";
 
@@ -174,8 +185,23 @@ export function ReleasesPicker({
   const [autoFlippedRejected, setAutoFlippedRejected] = useState(false);
   const [protocolFilter, setProtocolFilter] = useState<ProtocolFilter>("all");
   const [qualityFilter, setQualityFilter] = useState<string | null>(null);
-  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [filterSortOpen, setFilterSortOpen] = useState(false);
+  const [selectedFilterId, setSelectedFilterId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Release | null>(null);
+
+  // Saved interactive-search filters configured in the *arr web UI. Only the
+  // "releases" section is relevant here; the control is hidden when there are
+  // none. Selection is resolved by id at render so a refetch/deletion in *arr
+  // can't leave a stale pointer to a filter that no longer exists.
+  const customFiltersQuery = useArrCustomFilters(service, instanceId);
+  const releaseFilters = useMemo(
+    () => (customFiltersQuery.data ?? []).filter((f) => f.type === "releases"),
+    [customFiltersQuery.data],
+  );
+  const selectedFilter = useMemo<ArrCustomFilter | null>(
+    () => releaseFilters.find((f) => f.id === selectedFilterId) ?? null,
+    [releaseFilters, selectedFilterId],
+  );
 
   const { data, isLoading, isError, error, isFetching, refetch, dataUpdatedAt } =
     query;
@@ -232,8 +258,11 @@ export function ReleasesPicker({
       out = out.filter((r) => r.protocol === protocolFilter);
     if (qualityFilter)
       out = out.filter((r) => r.quality?.quality?.name === qualityFilter);
+    // Apply the saved *arr filter last (and before sorting) so it AND-combines
+    // with the quick chips, matching how the *arr web UI stacks them.
+    if (selectedFilter) out = applyArrCustomFilter(out, selectedFilter);
     return sortReleases(out, sortKey);
-  }, [data, hideRejected, protocolFilter, qualityFilter, sortKey]);
+  }, [data, hideRejected, protocolFilter, qualityFilter, selectedFilter, sortKey]);
 
   // If every result was rejected and the user has hideRejected on, auto-flip
   // it once so they aren't staring at an empty list. Track that we did this
@@ -264,18 +293,64 @@ export function ReleasesPicker({
     setHideRejected(false);
     setProtocolFilter("all");
     setQualityFilter(null);
+    setSelectedFilterId(null);
   }
 
-  const sortActions: ActionSheetAction[] = SORT_OPTIONS.map((key) => ({
-    label: SORT_LABELS[key],
-    icon:
-      sortKey === key ? (
-        <Icon icon={Check} size={16} color="#3b82f6" />
-      ) : (
-        <View className="w-[1.15rem] h-[1.15rem]" />
-      ),
-    onPress: () => setSortKey(key),
-  }));
+  // Pill summary + highlight. Leads with the saved filter (the headline) when
+  // one is active, otherwise the rejection state; the dot/highlight signals any
+  // additional protocol/quality filtering.
+  const filterSortActive =
+    !hideRejected ||
+    protocolFilter !== "all" ||
+    qualityFilter !== null ||
+    selectedFilter !== null ||
+    sortKey !== "seeders-desc";
+  const filterSummary = selectedFilter
+    ? selectedFilter.label
+    : hideRejected
+      ? "Accepted only"
+      : "All releases";
+  const summary = `${filterSummary} · ${SORT_SUMMARY[sortKey]}`;
+
+  // Extra single-select sections shown beneath Show/Sort in the sheet, each
+  // conditional on the result set (protocol only when both appear, quality only
+  // when there's more than one, saved filters only when the server has any). The
+  // sheet auto-adds a search box to long sections (e.g. many qualities/filters).
+  const extraSections: SheetSection[] = [];
+  if (releaseFilters.length > 0) {
+    extraSections.push({
+      label: "Saved filters",
+      options: [
+        { key: "none", label: "All releases" },
+        ...releaseFilters.map((f) => ({ key: String(f.id), label: f.label })),
+      ],
+      value: selectedFilterId === null ? "none" : String(selectedFilterId),
+      onChange: (k) => setSelectedFilterId(k === "none" ? null : Number(k)),
+    });
+  }
+  if (protocols.size > 1) {
+    extraSections.push({
+      label: "Protocol",
+      options: [
+        { key: "all", label: "All" },
+        { key: "torrent", label: "Torrent" },
+        { key: "usenet", label: "Usenet" },
+      ],
+      value: protocolFilter,
+      onChange: (k) => setProtocolFilter(k as ProtocolFilter),
+    });
+  }
+  if (qualityNames.length > 1) {
+    extraSections.push({
+      label: "Quality",
+      options: [
+        { key: "all", label: "All qualities" },
+        ...qualityNames.map((n) => ({ key: n, label: n })),
+      ],
+      value: qualityFilter ?? "all",
+      onChange: (k) => setQualityFilter(k === "all" ? null : k),
+    });
+  }
 
   const showSkeleton = (isLoading || isFetching) && !data;
   const showSearchingMessage = showSkeleton && elapsed >= 8;
@@ -310,67 +385,16 @@ export function ReleasesPicker({
         </View>
       </View>
 
-      {/* Filter + sort row */}
+      {/* Filter + sort */}
       {data && data.length > 0 && (
-        <View className="flex-row items-center mb-3 gap-2">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2 pr-2"
-            className="flex-1"
-          >
-            <FilterChip
-              label={hideRejected ? "Hide rejected" : "All releases"}
-              selected={hideRejected}
-              onPress={() => {
-                lightHaptic();
-                setHideRejected((v) => !v);
-                setAutoFlippedRejected(false);
-              }}
-            />
-            {protocols.size > 1 && (
-              <>
-                <FilterChip
-                  label="Torrent"
-                  selected={protocolFilter === "torrent"}
-                  onPress={() => {
-                    lightHaptic();
-                    setProtocolFilter((v) =>
-                      v === "torrent" ? "all" : "torrent",
-                    );
-                  }}
-                />
-                <FilterChip
-                  label="Usenet"
-                  selected={protocolFilter === "usenet"}
-                  onPress={() => {
-                    lightHaptic();
-                    setProtocolFilter((v) =>
-                      v === "usenet" ? "all" : "usenet",
-                    );
-                  }}
-                />
-              </>
-            )}
-            {qualityNames.length > 1 &&
-              qualityNames.slice(0, 6).map((name) => (
-                <FilterChip
-                  key={name}
-                  label={name}
-                  selected={qualityFilter === name}
-                  onPress={() => {
-                    lightHaptic();
-                    setQualityFilter((v) => (v === name ? null : name));
-                  }}
-                />
-              ))}
-          </ScrollView>
-          <SortButton
+        <View className="mb-3">
+          <FilterSortButton
+            summary={summary}
+            active={filterSortActive}
             onPress={() => {
               lightHaptic();
-              setSortSheetOpen(true);
+              setFilterSortOpen(true);
             }}
-            active={sortKey !== "seeders-desc"}
           />
         </View>
       )}
@@ -435,11 +459,27 @@ export function ReleasesPicker({
         />
       )}
 
-      <ActionSheet
-        visible={sortSheetOpen}
-        onClose={() => setSortSheetOpen(false)}
-        title="Sort releases"
-        actions={sortActions}
+      <FilterSortSheet
+        visible={filterSortOpen}
+        onClose={() => setFilterSortOpen(false)}
+        title="Filter & sort releases"
+        filterLabel="Show"
+        filterOptions={[
+          { key: "hide", label: "Accepted only" },
+          { key: "all", label: "All releases" },
+        ]}
+        filterValue={hideRejected ? "hide" : "all"}
+        onFilterChange={(v) => {
+          setHideRejected(v === "hide");
+          setAutoFlippedRejected(false);
+        }}
+        extraSections={extraSections}
+        sortOptions={SORT_OPTIONS.map((key) => ({
+          key,
+          label: SORT_LABELS[key],
+        }))}
+        sortValue={sortKey}
+        onSortChange={setSortKey}
       />
 
       <ReleaseDetailSheet

@@ -1367,6 +1367,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/movies", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/tag")) return [];
+      if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/movie/lookup")) return [];
       return undefined;
@@ -1379,6 +1380,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/tag")) return [];
+      if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/series/lookup")) return [];
       if (normalized.startsWith("/episode")) return [];
