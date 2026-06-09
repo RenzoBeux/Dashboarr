@@ -486,7 +486,15 @@ interface ConfigActions {
 
   enableDemoMode: () => void;
   disableDemoMode: () => Promise<void>;
-  exportConfig: (passphrase: string, onStage?: (stage: ExportStage) => void) => Promise<void>;
+  exportConfig: (
+    passphrase: string,
+    onStage?: (stage: ExportStage) => void,
+    // Runs after the file is written and just before the share/app-switch,
+    // while the app is still fully foregrounded. Use it for side effects that
+    // must not race the foreground-resume transition (e.g. a biometric-gated
+    // Keychain write — see #180). Keep it from blocking/aborting the share.
+    onBeforeShare?: () => Promise<void>,
+  ) => Promise<void>;
   importConfig: (
     requestPassphrase: () => Promise<string | null>,
     onStage?: (stage: ImportStage) => void,
@@ -2437,7 +2445,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     await get().hydrate();
   },
 
-  exportConfig: async (passphrase: string, onStage) => {
+  exportConfig: async (passphrase: string, onStage, onBeforeShare) => {
     onStage?.("preparing");
     await yieldToPaint();
     // Require device auth so a bystander with a momentarily-unlocked phone
@@ -2507,6 +2515,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     if (!(await Sharing.isAvailableAsync())) {
       throw new Error("Sharing is not available on this device");
     }
+
+    // Persist the user's "remember passphrase" choice now, while the app is
+    // still fully foregrounded and we know the share is about to happen. The
+    // Keychain write uses requireAuthentication, which fails during the
+    // foreground-resume transition when it runs AFTER the share hands off to a
+    // separate app like FileBrowser (#180). The file is already on disk, so the
+    // export has materially succeeded. Best-effort — the caller handles errors
+    // so a failed/declined remember-write cannot abort the share.
+    await onBeforeShare?.();
+
     await Sharing.shareAsync(file.uri, {
       mimeType: "application/json",
       dialogTitle: "Export Dashboarr Config",
