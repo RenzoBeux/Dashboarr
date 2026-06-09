@@ -19,6 +19,8 @@ import {
   Radar,
   type LucideIcon,
 } from "lucide-react-native";
+import type Animated from "react-native-reanimated";
+import type { AnimatedRef } from "react-native-reanimated";
 import { ServerStatsCard } from "@/components/dashboard/server-stats-card";
 import { SpeedStatsCard } from "@/components/dashboard/speed-stats-card";
 import { ServiceHealthCard } from "@/components/dashboard/service-health-card";
@@ -147,6 +149,11 @@ export interface WidgetComponentProps {
 export interface WidgetSettingsComponentProps {
   slotId: string;
   onClose: () => void;
+  // Animated ref to the settings sheet's scroll view. Settings components that
+  // host a drag-to-reorder list (e.g. service health) forward it to
+  // Sortable.Grid as `scrollableRef` so dragging a row to the top/bottom edge
+  // auto-scrolls the sheet. Optional — most settings components ignore it.
+  scrollRef?: AnimatedRef<Animated.ScrollView>;
 }
 
 export interface WidgetDefinition {
