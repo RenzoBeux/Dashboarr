@@ -83,6 +83,8 @@ const SORT_OPTIONS: { key: SeriesSortKey; label: string }[] = [
   { key: "title-desc", label: "Title: Z → A" },
   { key: "year-desc", label: "Year: Newest First" },
   { key: "year-asc", label: "Year: Oldest First" },
+  { key: "release-desc", label: "Release Date: Newest First" },
+  { key: "release-asc", label: "Release Date: Oldest First" },
   { key: "size-desc", label: "Size: Largest First" },
 ];
 
@@ -102,6 +104,17 @@ function compareSeries(
       return b.year - a.year;
     case "year-asc":
       return a.year - b.year;
+    case "release-desc":
+    case "release-asc": {
+      // Series premiere date is the natural "release date" for TV.
+      const aT = a.firstAired ? new Date(a.firstAired).getTime() : null;
+      const bT = b.firstAired ? new Date(b.firstAired).getTime() : null;
+      if (aT === null && bT === null)
+        return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+      if (aT === null) return 1;
+      if (bT === null) return -1;
+      return sort === "release-desc" ? bT - aT : aT - bT;
+    }
     case "size-desc": {
       const aSize = a.statistics?.sizeOnDisk ?? a.sizeOnDisk ?? 0;
       const bSize = b.statistics?.sizeOnDisk ?? b.sizeOnDisk ?? 0;
