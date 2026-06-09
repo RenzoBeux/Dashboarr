@@ -4,7 +4,30 @@
 // /discover/movies/studio/:id. Logos are TMDB images rendered through the same
 // duotone filter Overseerr uses so they read on a dark background.
 
+import { DiscoverSliderType, type DiscoverSliderTypeValue } from "@/lib/types";
+
 export type DiscoverCollectionKind = "network" | "studio" | "genre";
+
+// Display labels for the built-in discover sliders. Seerr uses i18n keys for
+// these server-side; we map to plain English to match the rest of the app.
+// Shared by the Discover tab renderer and the customize editor so the names
+// never drift apart.
+export const BUILTIN_SLIDER_LABELS: Partial<
+  Record<DiscoverSliderTypeValue, string>
+> = {
+  [DiscoverSliderType.RECENTLY_ADDED]: "Recently Added",
+  [DiscoverSliderType.RECENT_REQUESTS]: "Recent Requests",
+  [DiscoverSliderType.PLEX_WATCHLIST]: "Plex Watchlist",
+  [DiscoverSliderType.TRENDING]: "Trending",
+  [DiscoverSliderType.POPULAR_MOVIES]: "Popular Movies",
+  [DiscoverSliderType.MOVIE_GENRES]: "Movie Genres",
+  [DiscoverSliderType.UPCOMING_MOVIES]: "Upcoming Movies",
+  [DiscoverSliderType.STUDIOS]: "Studios",
+  [DiscoverSliderType.POPULAR_TV]: "Popular TV Shows",
+  [DiscoverSliderType.TV_GENRES]: "TV Genres",
+  [DiscoverSliderType.UPCOMING_TV]: "Upcoming TV",
+  [DiscoverSliderType.NETWORKS]: "Networks",
+};
 
 export interface DiscoverCollection {
   id: number;

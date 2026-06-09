@@ -12,10 +12,19 @@ import {
   getPopularMovies,
   getPopularTV,
   getUpcomingMovies,
+  getUpcomingTv,
+  getRecentlyAdded,
   getNetworkContent,
   getStudioContent,
   getGenreContent,
   getGenreSlider,
+  getDiscover,
+  getDiscoverSliders,
+  saveDiscoverSliders,
+  addDiscoverSlider,
+  updateDiscoverSlider,
+  deleteDiscoverSlider,
+  resetDiscoverSliders,
   requestMovie,
   requestTV,
   approveRequest,
@@ -28,10 +37,15 @@ import {
   getOverseerrSonarrServerDetails,
   type OverseerrRequestOptions,
 } from "@/services/overseerr-api";
-import type {
-  OverseerrMediaType,
-  OverseerrMovieDetails,
-  OverseerrTVDetails,
+import {
+  DiscoverSliderType,
+  type OverseerrMediaType,
+  type OverseerrMovieDetails,
+  type OverseerrTVDetails,
+  type OverseerrSearchResponse,
+  type DiscoverSlider,
+  type DiscoverSliderInput,
+  type DiscoverSliderCreate,
 } from "@/lib/types";
 import type { DiscoverCollectionKind } from "@/lib/overseerr-discover";
 import { POLLING_INTERVALS } from "@/lib/constants";
@@ -277,5 +291,164 @@ export function useDeclineRequest(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["overseerr", id, "requests"] });
       queryClient.invalidateQueries({ queryKey: ["overseerr", id, "requestCount"] });
     },
+  });
+}
+
+// --- Discover customization (settings/discover sliders) ---
+
+export function useOverseerrDiscoverSliders(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useQuery({
+    queryKey: ["overseerr", id, "discoverSliders"],
+    queryFn: () => getDiscoverSliders(id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: 300000, // 5 min — config rarely changes
+    // A non-admin key 403s here; fail fast so the Discover tab falls back to its
+    // built-in layout instead of retrying a request that can't succeed.
+    retry: 1,
+  });
+}
+
+export function useSaveDiscoverSliders(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: (sliders: DiscoverSliderInput[]) =>
+      saveDiscoverSliders(sliders, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "discoverSliders"] });
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "customSlider"] });
+    },
+  });
+}
+
+export function useAddDiscoverSlider(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: (body: DiscoverSliderCreate) => addDiscoverSlider(body, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "discoverSliders"] });
+    },
+  });
+}
+
+export function useUpdateDiscoverSlider(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: ({ sliderId, body }: { sliderId: number; body: DiscoverSliderCreate }) =>
+      updateDiscoverSlider(sliderId, body, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "discoverSliders"] });
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "customSlider"] });
+    },
+  });
+}
+
+export function useDeleteDiscoverSlider(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: (sliderId: number) => deleteDiscoverSlider(sliderId, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "discoverSliders"] });
+    },
+  });
+}
+
+export function useResetDiscoverSliders(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: () => resetDiscoverSliders(id ?? undefined),
+    onSuccess: () => {
+      // Reset re-adds the built-ins, so invalidate the whole instance subtree.
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id] });
+    },
+  });
+}
+
+// --- Built-in slider renderers the legacy layout didn't expose ---
+
+export function useOverseerrRecentlyAdded(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useQuery({
+    queryKey: ["overseerr", id, "recentlyAdded"],
+    queryFn: () => getRecentlyAdded(id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: 300000,
+  });
+}
+
+export function useOverseerrUpcomingTV(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useQuery({
+    queryKey: ["overseerr", id, "upcomingTv"],
+    queryFn: () => getUpcomingTv(1, id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: 300000,
+  });
+}
+
+// --- Custom slider media ---
+
+// watchProviders results are region-scoped; we default to US. (A proper region
+// picker is a follow-up — see customize-discover.tsx.)
+const STREAMING_WATCH_REGION = "US";
+
+// Maps a custom slider (type + data payload) to the right discover fetch.
+// Genre/studio/network reuse the proven path-param endpoints; keyword and
+// streaming-services use the generic /discover query; search reuses /search.
+function fetchCustomSlider(
+  type: DiscoverSlider["type"],
+  data: string,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  switch (type) {
+    case DiscoverSliderType.TMDB_MOVIE_GENRE:
+      return getGenreContent("movie", Number(data), 1, instanceId);
+    case DiscoverSliderType.TMDB_TV_GENRE:
+      return getGenreContent("tv", Number(data), 1, instanceId);
+    case DiscoverSliderType.TMDB_STUDIO:
+      return getStudioContent(Number(data), 1, instanceId);
+    case DiscoverSliderType.TMDB_NETWORK:
+      return getNetworkContent(Number(data), 1, instanceId);
+    case DiscoverSliderType.TMDB_MOVIE_KEYWORD:
+      return getDiscover("movie", { keywords: data }, instanceId);
+    case DiscoverSliderType.TMDB_TV_KEYWORD:
+      return getDiscover("tv", { keywords: data }, instanceId);
+    case DiscoverSliderType.TMDB_MOVIE_STREAMING_SERVICES:
+      return getDiscover(
+        "movie",
+        { watchProviders: data, watchRegion: STREAMING_WATCH_REGION },
+        instanceId,
+      );
+    case DiscoverSliderType.TMDB_TV_STREAMING_SERVICES:
+      return getDiscover(
+        "tv",
+        { watchProviders: data, watchRegion: STREAMING_WATCH_REGION },
+        instanceId,
+      );
+    case DiscoverSliderType.TMDB_SEARCH:
+      return searchMedia(data, 1, instanceId);
+    default:
+      return Promise.resolve({ page: 1, totalPages: 0, totalResults: 0, results: [] });
+  }
+}
+
+// Fetches the media for a single custom slider. Keyed by the slider id + type +
+// data so two custom rows never collide in the query cache.
+export function useOverseerrCustomSlider(
+  slider: Pick<DiscoverSlider, "id" | "type" | "data">,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  const data = slider.data ?? "";
+  return useQuery({
+    queryKey: ["overseerr", id, "customSlider", slider.id, slider.type, data],
+    queryFn: () => fetchCustomSlider(slider.type, data, id ?? undefined),
+    enabled: enabled && !!id && data.length > 0,
+    staleTime: 300000,
   });
 }
