@@ -224,8 +224,20 @@ export default function SettingsScreen() {
     const result = await requestPassphrase("export");
     if (!result) return;
     try {
-      await exportConfig(result.passphrase, setExportStage);
-      await syncRememberedState(result);
+      await exportConfig(result.passphrase, setExportStage, async () => {
+        // Reflect the "Remember on this device" choice while the app is still
+        // foregrounded, before the share app-switch (see exportConfig / #180).
+        // Best-effort: the export file is already written, so failing to
+        // remember the passphrase must not abort the share or read as an export
+        // failure. Mirror loadRememberedPassphrase, which degrades silently — a
+        // user who cancels the biometric prompt knows it, and a genuine failure
+        // just means they re-enter the passphrase next time.
+        try {
+          await syncRememberedState(result);
+        } catch (err) {
+          console.warn("Failed to persist remembered passphrase", err);
+        }
+      });
     } catch (e) {
       toastError("Failed to export config", e);
     } finally {
