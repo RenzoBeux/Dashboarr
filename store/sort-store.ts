@@ -9,6 +9,8 @@ export type MoviesSortKey =
   | "title-desc"
   | "year-desc"
   | "year-asc"
+  | "release-desc"
+  | "release-asc"
   | "size-desc"
   | "next-airing-asc";
 

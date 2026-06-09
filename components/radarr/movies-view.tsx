@@ -60,8 +60,21 @@ const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "title-desc", label: "Title: Z → A" },
   { key: "year-desc", label: "Year: Newest First" },
   { key: "year-asc", label: "Year: Oldest First" },
+  { key: "release-desc", label: "Release Date: Newest First" },
+  { key: "release-asc", label: "Release Date: Oldest First" },
   { key: "size-desc", label: "Size: Largest First" },
 ];
+
+// Original release of the film: earliest of the cinema/digital/physical dates
+// (theatrical typically comes first; min() picks it, but stays robust for
+// straight-to-streaming titles that only carry a digital date).
+function releaseTime(m: RadarrMovie): number | null {
+  const times = [m.inCinemas, m.digitalRelease, m.physicalRelease]
+    .filter((d): d is string => Boolean(d))
+    .map((d) => new Date(d).getTime())
+    .filter((t) => Number.isFinite(t));
+  return times.length ? Math.min(...times) : null;
+}
 
 function nextReleaseTime(m: RadarrMovie): number | null {
   const times = [m.inCinemas, m.digitalRelease, m.physicalRelease]
@@ -87,6 +100,16 @@ function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): num
       return b.year - a.year;
     case "year-asc":
       return a.year - b.year;
+    case "release-desc":
+    case "release-asc": {
+      const aT = releaseTime(a);
+      const bT = releaseTime(b);
+      if (aT === null && bT === null)
+        return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+      if (aT === null) return 1;
+      if (bT === null) return -1;
+      return sort === "release-desc" ? bT - aT : aT - bT;
+    }
     case "size-desc":
       return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
     case "next-airing-asc": {
