@@ -7,14 +7,16 @@ import { useConfigStore } from "@/store/config-store";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
-import { lightHaptic } from "@/lib/haptics";
+import { lightHaptic, mediumHaptic } from "@/lib/haptics";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 import {
   InstancePickerRow,
   INSTANCE_BINDING_ALL,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
-import { DraggableKindList } from "@/components/dashboard/widget-settings/draggable-kind-list";
+import Sortable, {
+  type SortableGridDragEndParams,
+} from "react-native-sortables";
 
 export interface ServiceHealthSettingsValue extends Record<string, unknown> {
   // Kinds the user has explicitly hidden on this widget. Kinds NOT in this
@@ -44,7 +46,10 @@ export const SERVICE_HEALTH_DEFAULT_SETTINGS: ServiceHealthSettingsValue = {
   showAwayBadge: true,
 };
 
-export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) {
+export function ServiceHealthSettings({
+  slotId,
+  scrollRef,
+}: WidgetSettingsComponentProps) {
   const { settings, update } = useWidgetSettings<ServiceHealthSettingsValue>(
     slotId,
     SERVICE_HEALTH_DEFAULT_SETTINGS,
@@ -205,10 +210,18 @@ export function ServiceHealthSettings({ slotId }: WidgetSettingsComponentProps) 
         </Text>
       )}
       {configuredKinds.length > 1 ? (
-        <DraggableKindList
-          items={configuredKinds}
-          onReorder={commitVisibleOrder}
-          renderItem={renderRow}
+        <Sortable.Grid
+          columns={1}
+          data={configuredKinds}
+          keyExtractor={(id) => id}
+          renderItem={({ item }) => renderRow(item)}
+          rowGap={20}
+          scrollableRef={scrollRef}
+          onDragStart={() => mediumHaptic()}
+          onOrderChange={() => lightHaptic()}
+          onDragEnd={({ data }: SortableGridDragEndParams<ServiceId>) =>
+            commitVisibleOrder(data)
+          }
         />
       ) : (
         renderRow(configuredKinds[0])

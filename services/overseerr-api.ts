@@ -12,6 +12,9 @@ import type {
   OverseerrServerInfo,
   OverseerrServerDetails,
   OverseerrRelatedVideo,
+  DiscoverSlider,
+  DiscoverSliderInput,
+  DiscoverSliderCreate,
 } from "@/lib/types";
 
 export interface OverseerrRequestOptions {
@@ -173,6 +176,110 @@ export function getGenreSlider(
   instanceId?: string,
 ): Promise<OverseerrGenreSliderItem[]> {
   return serviceRequest<OverseerrGenreSliderItem[]>("overseerr", `/discover/genreslider/${mediaType}`, {
+    instanceId,
+  });
+}
+
+export function getUpcomingTv(
+  page = 1,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/tv/upcoming", {
+    params: { page },
+    instanceId,
+  });
+}
+
+// Generic /discover/{movies,tv} query, used to render custom keyword/streaming
+// sliders. Genre/studio/network customs reuse the dedicated path-param helpers
+// above. CAUTION: Overseerr's express-openapi-validator 500s on undeclared
+// query params, so we strip undefined and only send declared ones (verified
+// against the spec: genre, keywords, studio, network, watchProviders,
+// watchRegion, page).
+export interface DiscoverQueryParams {
+  page?: number;
+  keywords?: number | string;
+  watchProviders?: string;
+  watchRegion?: string;
+}
+
+export function getDiscover(
+  mediaType: OverseerrMediaType,
+  params: DiscoverQueryParams,
+  instanceId?: string,
+): Promise<OverseerrSearchResponse> {
+  const path = mediaType === "movie" ? "/discover/movies" : "/discover/tv";
+  const clean: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") clean[key] = value;
+  }
+  return serviceRequest<OverseerrSearchResponse>("overseerr", path, {
+    params: clean,
+    instanceId,
+  });
+}
+
+// --- Discover customization (settings/discover sliders) ---
+// These hit Seerr's discover-settings API and require an admin API key. The
+// app's configured Seerr key is normally an admin key; a non-admin key 403s on
+// GET, which the Discover tab handles by falling back to its built-in layout.
+
+export function getDiscoverSliders(instanceId?: string): Promise<DiscoverSlider[]> {
+  return serviceRequest<DiscoverSlider[]>("overseerr", "/settings/discover", {
+    instanceId,
+  });
+}
+
+// Bulk reorder/enable/rename. The server sets each slider's `order` from its
+// array index, so send the array already in the desired display order.
+export function saveDiscoverSliders(
+  sliders: DiscoverSliderInput[],
+  instanceId?: string,
+): Promise<DiscoverSlider[]> {
+  return serviceRequest<DiscoverSlider[]>("overseerr", "/settings/discover", {
+    method: "POST",
+    body: JSON.stringify(sliders),
+    instanceId,
+  });
+}
+
+export function addDiscoverSlider(
+  body: DiscoverSliderCreate,
+  instanceId?: string,
+): Promise<DiscoverSlider> {
+  return serviceRequest<DiscoverSlider>("overseerr", "/settings/discover/add", {
+    method: "POST",
+    body: JSON.stringify(body),
+    instanceId,
+  });
+}
+
+export function updateDiscoverSlider(
+  sliderId: number,
+  body: DiscoverSliderCreate,
+  instanceId?: string,
+): Promise<DiscoverSlider> {
+  return serviceRequest<DiscoverSlider>("overseerr", `/settings/discover/${sliderId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+    instanceId,
+  });
+}
+
+export function deleteDiscoverSlider(
+  sliderId: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("overseerr", `/settings/discover/${sliderId}`, {
+    method: "DELETE",
+    instanceId,
+  });
+}
+
+// Resets all sliders to the built-in defaults. GET per Overseerr's route
+// definition; returns 204 (empty body).
+export function resetDiscoverSliders(instanceId?: string): Promise<void> {
+  return serviceRequest<void>("overseerr", "/settings/discover/reset", {
     instanceId,
   });
 }

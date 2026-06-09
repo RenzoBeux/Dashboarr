@@ -962,6 +962,69 @@ export interface OverseerrRequestCount {
   available: number;
 }
 
+// --- Overseerr Discover Customization (settings/discover sliders) ---
+
+// Seerr's DiscoverSliderType enum (1-indexed). Kept as a const map + union
+// rather than a TS enum so values stay plain numbers and we can reverse-map for
+// labels. Mirrors server/constants/discover.ts in Overseerr/Jellyseerr.
+export const DiscoverSliderType = {
+  RECENTLY_ADDED: 1,
+  RECENT_REQUESTS: 2,
+  PLEX_WATCHLIST: 3,
+  TRENDING: 4,
+  POPULAR_MOVIES: 5,
+  MOVIE_GENRES: 6,
+  UPCOMING_MOVIES: 7,
+  STUDIOS: 8,
+  POPULAR_TV: 9,
+  TV_GENRES: 10,
+  UPCOMING_TV: 11,
+  NETWORKS: 12,
+  TMDB_MOVIE_KEYWORD: 13,
+  TMDB_MOVIE_GENRE: 14,
+  TMDB_TV_KEYWORD: 15,
+  TMDB_TV_GENRE: 16,
+  TMDB_SEARCH: 17,
+  TMDB_STUDIO: 18,
+  TMDB_NETWORK: 19,
+  TMDB_MOVIE_STREAMING_SERVICES: 20,
+  TMDB_TV_STREAMING_SERVICES: 21,
+} as const;
+
+export type DiscoverSliderTypeValue =
+  (typeof DiscoverSliderType)[keyof typeof DiscoverSliderType];
+
+// One entry from GET /settings/discover. Built-in sliders have isBuiltIn:true
+// and null title/data (rendered by their type). Custom sliders have
+// isBuiltIn:false, a user title, and a `data` payload — a TMDB id (keyword /
+// genre / company / network / watch-provider) or a free-text query for
+// TMDB_SEARCH.
+export interface DiscoverSlider {
+  id: number;
+  type: DiscoverSliderTypeValue;
+  order: number;
+  isBuiltIn: boolean;
+  enabled: boolean;
+  title: string | null;
+  data: string | null;
+}
+
+// One entry in the POST /settings/discover body. The full array is sent in the
+// desired display order; the server derives each slider's `order` from its array
+// index (any `order` field in the body is ignored), so we omit it. `id` matches
+// an existing slider (update) or, when absent/0, creates a new custom slider.
+export type DiscoverSliderInput = Pick<
+  DiscoverSlider,
+  "id" | "type" | "enabled" | "title" | "data"
+>;
+
+// POST /settings/discover/add and PUT /settings/discover/{id} body.
+export interface DiscoverSliderCreate {
+  title: string;
+  type: DiscoverSliderTypeValue;
+  data: string;
+}
+
 // --- Tautulli Types ---
 
 export interface TautulliActivity {

@@ -10,6 +10,7 @@ import {
   Tv,
   Compass,
   ListFilter,
+  SlidersHorizontal,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -20,7 +21,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { Skeleton, SkeletonCardContent } from "@/components/ui/skeleton";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import {
@@ -47,7 +48,11 @@ import {
   useOverseerrPopularMovies,
   useOverseerrPopularTV,
   useOverseerrUpcomingMovies,
+  useOverseerrUpcomingTV,
+  useOverseerrRecentlyAdded,
   useOverseerrGenreSlider,
+  useOverseerrDiscoverSliders,
+  useOverseerrCustomSlider,
   useApproveRequest,
   useDeclineRequest,
 } from "@/hooks/use-overseerr";
@@ -56,14 +61,17 @@ import {
   NETWORKS,
   STUDIOS,
   getDiscoverLogoUrl,
+  BUILTIN_SLIDER_LABELS,
   type DiscoverCollectionKind,
 } from "@/lib/overseerr-discover";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import type {
-  OverseerrRequest,
-  OverseerrMediaResult,
-  OverseerrMediaType,
+import {
+  DiscoverSliderType,
+  type OverseerrRequest,
+  type OverseerrMediaResult,
+  type OverseerrMediaType,
+  type DiscoverSlider,
 } from "@/lib/types";
 
 type Tab = "discover" | "search" | "requests";
@@ -208,31 +216,35 @@ export default function RequestsScreen() {
 
 // ─── Discover Tab ──────────────────────────────────────────────
 
+type OpenCollection = (
+  kind: DiscoverCollectionKind,
+  item: DiscoverSliderItem,
+  mediaType?: OverseerrMediaType,
+) => void;
+
+// The Discover layout is driven by Seerr's own discover-settings (the same
+// sliders the Seerr/Jellyseerr web UI shows). We fetch the slider config and
+// render each enabled slider in order, mapping its type to a renderer. When the
+// config is unavailable (non-admin key, older Seerr, or still loading) we fall
+// back to the built-in layout so the tab is never blank.
 function DiscoverTab({
   onItemPress,
 }: {
   onItemPress: (item: OverseerrMediaResult) => void;
 }) {
   const router = useRouter();
-  const trending = useOverseerrTrending();
-  const popularMovies = useOverseerrPopularMovies();
-  const popularTV = useOverseerrPopularTV();
-  const upcoming = useOverseerrUpcomingMovies();
-  const movieGenres = useOverseerrGenreSlider("movie");
-  const tvGenres = useOverseerrGenreSlider("tv");
+  const { data: sliders, isLoading } = useOverseerrDiscoverSliders();
 
-  const movieGenreItems = useMemo(
-    () => toGenreItems(movieGenres.data),
-    [movieGenres.data],
+  const enabledSliders = useMemo(
+    () =>
+      (sliders ?? [])
+        .filter((s) => s.enabled)
+        .sort((a, b) => a.order - b.order),
+    [sliders],
   );
-  const tvGenreItems = useMemo(() => toGenreItems(tvGenres.data), [tvGenres.data]);
 
-  const openCollection = useCallback(
-    (
-      kind: DiscoverCollectionKind,
-      item: DiscoverSliderItem,
-      mediaType?: OverseerrMediaType,
-    ) => {
+  const openCollection = useCallback<OpenCollection>(
+    (kind, item, mediaType) => {
       const params = new URLSearchParams({
         kind,
         id: String(item.id),
@@ -244,26 +256,102 @@ function DiscoverTab({
     [router],
   );
 
+  // While the config is loading for the first time, show skeleton rows. This
+  // avoids painting the legacy layout and then swapping to the config layout a
+  // moment later (the Customize button + extra sliders popping in mid-render).
+  if (isLoading) {
+    return <DiscoverSkeleton />;
+  }
+
+  // Query settled without usable config — the instance is disabled, the key
+  // isn't an admin key (403), or the server returned nothing. Render the
+  // built-in layout (with its own skeletons) so the tab is never blank.
+  if (!sliders || sliders.length === 0) {
+    return (
+      <LegacyDiscoverLayout
+        onItemPress={onItemPress}
+        openCollection={openCollection}
+      />
+    );
+  }
+
   return (
     <View>
-      <MediaRow
-        title="Trending"
-        items={trending.data?.results}
-        isLoading={trending.isLoading}
-        onItemPress={onItemPress}
-      />
-      <MediaRow
-        title="Popular Movies"
-        items={popularMovies.data?.results}
-        isLoading={popularMovies.isLoading}
-        onItemPress={onItemPress}
-      />
-      <MediaRow
-        title="Popular TV Shows"
-        items={popularTV.data?.results}
-        isLoading={popularTV.isLoading}
-        onItemPress={onItemPress}
-      />
+      <View className="flex-row justify-end mb-2">
+        <Pressable
+          onPress={() => router.push("/overseerr/customize-discover")}
+          hitSlop={8}
+          className="flex-row items-center gap-1.5 active:opacity-70"
+        >
+          <Icon icon={SlidersHorizontal} size={16} color="#a1a1aa" />
+          <Text className="text-zinc-400 text-sm">Customize</Text>
+        </Pressable>
+      </View>
+
+      {enabledSliders.length === 0 ? (
+        <EmptyState
+          icon={<Icon icon={Compass} size={32} color="#71717a" />}
+          title="No sections shown"
+          message="Every Discover section is hidden. Tap Customize to turn some back on."
+        />
+      ) : (
+        enabledSliders.map((slider) => (
+          <DiscoverSliderRow
+            key={slider.id}
+            slider={slider}
+            onItemPress={onItemPress}
+            openCollection={openCollection}
+          />
+        ))
+      )}
+    </View>
+  );
+}
+
+// Placeholder shown while the discover-settings config is loading, so the tab
+// fades from skeletons straight into the final layout instead of flashing the
+// legacy layout first. Mirrors MediaRow's skeleton (7.85rem poster, h-165) so
+// the rows don't jump when real content arrives.
+function DiscoverSkeleton() {
+  return (
+    <View>
+      {Array.from({ length: 4 }).map((_, row) => (
+        <View key={row} className="mb-6">
+          <View className="mb-3 px-1">
+            <Skeleton width="40%" height={16} borderRadius={4} />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View className="flex-row gap-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <View key={i} className="w-[7.85rem]">
+                  <Skeleton width="100%" height={165} borderRadius={12} />
+                  <View className="mt-2">
+                    <Skeleton width="80%" height={12} borderRadius={4} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// Renders the built-in sliders in Seerr's default order. Used as a fallback
+// when the discover-settings config can't be loaded.
+function LegacyDiscoverLayout({
+  onItemPress,
+  openCollection,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+  openCollection: OpenCollection;
+}) {
+  return (
+    <View>
+      <TrendingRow onItemPress={onItemPress} />
+      <PopularMoviesRow onItemPress={onItemPress} />
+      <PopularTVRow onItemPress={onItemPress} />
       <DiscoverCollectionSlider
         title="Networks"
         variant="logo"
@@ -276,27 +364,212 @@ function DiscoverTab({
         items={STUDIO_ITEMS}
         onItemPress={(item) => openCollection("studio", item)}
       />
-      <DiscoverCollectionSlider
-        title="Movie Genres"
-        variant="genre"
-        items={movieGenreItems}
-        isLoading={movieGenres.isLoading}
-        onItemPress={(item) => openCollection("genre", item, "movie")}
-      />
-      <DiscoverCollectionSlider
-        title="TV Genres"
-        variant="genre"
-        items={tvGenreItems}
-        isLoading={tvGenres.isLoading}
-        onItemPress={(item) => openCollection("genre", item, "tv")}
-      />
-      <MediaRow
-        title="Upcoming Movies"
-        items={upcoming.data?.results}
-        isLoading={upcoming.isLoading}
-        onItemPress={onItemPress}
-      />
+      <GenreSliderRow mediaType="movie" openCollection={openCollection} />
+      <GenreSliderRow mediaType="tv" openCollection={openCollection} />
+      <UpcomingMoviesRow onItemPress={onItemPress} />
     </View>
+  );
+}
+
+// Maps one slider to its renderer. Each renderer family is its own component so
+// every component calls exactly its own hooks unconditionally (Rules of Hooks).
+// Types without a Discover renderer (RECENT_REQUESTS, PLEX_WATCHLIST, and any
+// future/Jellyseerr-only type) fall through to null and are simply skipped.
+function DiscoverSliderRow({
+  slider,
+  onItemPress,
+  openCollection,
+}: {
+  slider: DiscoverSlider;
+  onItemPress: (item: OverseerrMediaResult) => void;
+  openCollection: OpenCollection;
+}) {
+  switch (slider.type) {
+    case DiscoverSliderType.TRENDING:
+      return <TrendingRow onItemPress={onItemPress} />;
+    case DiscoverSliderType.POPULAR_MOVIES:
+      return <PopularMoviesRow onItemPress={onItemPress} />;
+    case DiscoverSliderType.POPULAR_TV:
+      return <PopularTVRow onItemPress={onItemPress} />;
+    case DiscoverSliderType.UPCOMING_MOVIES:
+      return <UpcomingMoviesRow onItemPress={onItemPress} />;
+    case DiscoverSliderType.UPCOMING_TV:
+      return <UpcomingTVRow onItemPress={onItemPress} />;
+    case DiscoverSliderType.RECENTLY_ADDED:
+      return <RecentlyAddedRow onItemPress={onItemPress} />;
+    case DiscoverSliderType.MOVIE_GENRES:
+      return <GenreSliderRow mediaType="movie" openCollection={openCollection} />;
+    case DiscoverSliderType.TV_GENRES:
+      return <GenreSliderRow mediaType="tv" openCollection={openCollection} />;
+    case DiscoverSliderType.NETWORKS:
+      return (
+        <DiscoverCollectionSlider
+          title={BUILTIN_SLIDER_LABELS[DiscoverSliderType.NETWORKS] ?? "Networks"}
+          variant="logo"
+          items={NETWORK_ITEMS}
+          onItemPress={(item) => openCollection("network", item)}
+        />
+      );
+    case DiscoverSliderType.STUDIOS:
+      return (
+        <DiscoverCollectionSlider
+          title={BUILTIN_SLIDER_LABELS[DiscoverSliderType.STUDIOS] ?? "Studios"}
+          variant="logo"
+          items={STUDIO_ITEMS}
+          onItemPress={(item) => openCollection("studio", item)}
+        />
+      );
+    case DiscoverSliderType.TMDB_MOVIE_GENRE:
+    case DiscoverSliderType.TMDB_TV_GENRE:
+    case DiscoverSliderType.TMDB_STUDIO:
+    case DiscoverSliderType.TMDB_NETWORK:
+    case DiscoverSliderType.TMDB_MOVIE_KEYWORD:
+    case DiscoverSliderType.TMDB_TV_KEYWORD:
+    case DiscoverSliderType.TMDB_MOVIE_STREAMING_SERVICES:
+    case DiscoverSliderType.TMDB_TV_STREAMING_SERVICES:
+    case DiscoverSliderType.TMDB_SEARCH:
+      return <CustomRow slider={slider} onItemPress={onItemPress} />;
+    default:
+      return null;
+  }
+}
+
+// ─── Discover slider renderers ─────────────────────────────────
+
+function TrendingRow({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrTrending();
+  return (
+    <MediaRow
+      title="Trending"
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
+  );
+}
+
+function PopularMoviesRow({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrPopularMovies();
+  return (
+    <MediaRow
+      title="Popular Movies"
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
+  );
+}
+
+function PopularTVRow({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrPopularTV();
+  return (
+    <MediaRow
+      title="Popular TV Shows"
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
+  );
+}
+
+function UpcomingMoviesRow({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrUpcomingMovies();
+  return (
+    <MediaRow
+      title="Upcoming Movies"
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
+  );
+}
+
+function UpcomingTVRow({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrUpcomingTV();
+  return (
+    <MediaRow
+      title="Upcoming TV"
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
+  );
+}
+
+function RecentlyAddedRow({
+  onItemPress,
+}: {
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrRecentlyAdded();
+  return (
+    <MediaRow
+      title="Recently Added"
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
+  );
+}
+
+function GenreSliderRow({
+  mediaType,
+  openCollection,
+}: {
+  mediaType: OverseerrMediaType;
+  openCollection: OpenCollection;
+}) {
+  const q = useOverseerrGenreSlider(mediaType);
+  const items = useMemo(() => toGenreItems(q.data), [q.data]);
+  return (
+    <DiscoverCollectionSlider
+      title={mediaType === "movie" ? "Movie Genres" : "TV Genres"}
+      variant="genre"
+      items={items}
+      isLoading={q.isLoading}
+      onItemPress={(item) => openCollection("genre", item, mediaType)}
+    />
+  );
+}
+
+// Custom (user-created) sliders carry a title and a data payload; the hook maps
+// the type+data to the right discover query. A failed query yields an empty
+// MediaRow (renders nothing) rather than breaking the whole tab.
+function CustomRow({
+  slider,
+  onItemPress,
+}: {
+  slider: DiscoverSlider;
+  onItemPress: (item: OverseerrMediaResult) => void;
+}) {
+  const q = useOverseerrCustomSlider(slider);
+  return (
+    <MediaRow
+      title={slider.title ?? "Discover"}
+      items={q.data?.results}
+      isLoading={q.isLoading}
+      onItemPress={onItemPress}
+    />
   );
 }
 

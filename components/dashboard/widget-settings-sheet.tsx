@@ -3,21 +3,30 @@ import {
   Modal,
   View,
   Text,
-  ScrollView,
   Pressable,
   Dimensions,
   StyleSheet,
 } from "react-native";
+import { cssInterop } from "nativewind";
 import { RotateCcw, X } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import Animated, {
   Easing,
   runOnJS,
+  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+
+// Lets the sheet's Animated.ScrollView accept Tailwind classes (NativeWind maps
+// className → style, contentContainerClassName → contentContainerStyle). The
+// animated ref is forwarded to drag lists inside so they can auto-scroll it.
+cssInterop(Animated.ScrollView, {
+  className: "style",
+  contentContainerClassName: "contentContainerStyle",
+});
 import {
   Gesture,
   GestureDetector,
@@ -78,6 +87,9 @@ export function WidgetSettingsSheet({
   } | null>(null);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
+  // Forwarded to settings components that host a drag-reorder list so
+  // react-native-sortables can auto-scroll this sheet at the edges.
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
   // `keyboard.height.value` is 0 when hidden and -keyboardHeight when shown.
   // Adding it to translateY lifts the sheet above the keyboard so the "Hide
   // users" TextInputs inside widget settings stay visible on iOS.
@@ -197,12 +209,17 @@ export function WidgetSettingsSheet({
               </View>
             </GestureDetector>
 
-            <ScrollView
+            <Animated.ScrollView
+              ref={scrollRef}
               contentContainerClassName="pt-1 pb-4"
               showsVerticalScrollIndicator={false}
             >
               {SettingsComponent ? (
-                <SettingsComponent slotId={activeSlot.slot.id} onClose={onClose} />
+                <SettingsComponent
+                  slotId={activeSlot.slot.id}
+                  onClose={onClose}
+                  scrollRef={scrollRef}
+                />
               ) : (
                 <View className="px-4 py-6 items-center">
                   <Text className="text-zinc-400 text-sm text-center">
@@ -224,7 +241,7 @@ export function WidgetSettingsSheet({
                   </Pressable>
                 </View>
               )}
-            </ScrollView>
+            </Animated.ScrollView>
           </Animated.View>
         </View>
       </GestureHandlerRootView>
