@@ -123,8 +123,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         stamp — coerceNotificationSettings treats them as optional keys, so
  *         older exports without them validate and the missing entries fall back
  *         to DEFAULT_NOTIFICATION_SETTINGS at hydrate time.
+ *   v32 — optional top-level `treatVpnAsHome` boolean: opt-in "VPN connected
+ *         counts as home" (#185). Pure version stamp — absent means false on
+ *         import.
  */
-export const CURRENT_CONFIG_VERSION = 31;
+export const CURRENT_CONFIG_VERSION = 32;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -612,6 +615,7 @@ const migrations: Record<number, (payload: any) => any> = {
   // treats them as optional keys, so older exports without them validate and the
   // missing entries fall back to DEFAULT_NOTIFICATION_SETTINGS at hydrate time.
   30: (payload) => ({ ...payload, version: 31 }),
+  31: (payload) => ({ ...payload, version: 32 }),
 };
 
 /**

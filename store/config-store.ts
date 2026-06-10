@@ -298,6 +298,19 @@ interface ConfigState {
   // cellular, so probing it there just hangs and (because the health grid awaits
   // the whole probe batch) freezes every dot red — the Glances/#106 report.
   isOnWifi: boolean | null;
+  // EPHEMERAL (never persisted). Whether a VPN tunnel is currently active
+  // (native check — see lib/vpn.ts; NetInfo can't report this). Tracked
+  // alongside isOnWifi and refreshed by evaluateHomeNetwork() on resume. A VPN
+  // can route private ranges to the home LAN, so the off-WiFi LAN guard stands
+  // down while one is up, and the opt-in `treatVpnAsHome` setting counts it as
+  // a confirmed home network (#185).
+  isVpnActive: boolean;
+  // While a VPN is connected, behave as if on a confirmed home network: local
+  // URLs are used and the away→remote-only rule is suspended. Off by default —
+  // the device can only detect that *some* VPN is up, not which one, so the
+  // user must opt in (same caveat as Home Assistant Companion's "VPN connected"
+  // home-network option). Only consulted when autoSwitchNetwork is on (#185).
+  treatVpnAsHome: boolean;
   homeNetworks: HomeNetwork[];
   // v17: per-user display order for the Services tab. Unknown ids are skipped
   // at render time; any SERVICE_IDS missing from the list fall in at the end
@@ -351,6 +364,8 @@ export interface ExportPayload {
   uiScale?: UiScale;
   // v17 — user-defined Services tab tile order.
   servicesOrder?: ServiceId[];
+  // v32 — opt-in "VPN connected counts as home" (#185).
+  treatVpnAsHome?: boolean;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -398,6 +413,10 @@ interface ConfigActions {
   // Set by useNetworkAutoSwitch on every NetInfo change (and eagerly at start).
   // EPHEMERAL — never persisted.
   setIsOnWifi: (onWifi: boolean | null) => void;
+  // Set by useNetworkAutoSwitch / evaluateHomeNetwork from lib/vpn.ts.
+  // EPHEMERAL — never persisted.
+  setIsVpnActive: (active: boolean) => void;
+  setTreatVpnAsHome: (enabled: boolean) => void;
   addHomeNetwork: (network: Omit<HomeNetwork, "id">) => HomeNetwork;
   updateHomeNetwork: (id: string, patch: Partial<Omit<HomeNetwork, "id">>) => void;
   removeHomeNetwork: (id: string) => void;
@@ -870,6 +889,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   autoSwitchNetwork: false,
   networkAwayFromHome: true,
   isOnWifi: null,
+  isVpnActive: false,
+  treatVpnAsHome: false,
   homeNetworks: [],
   servicesOrder: [],
   dashboards: initialDashboards,
@@ -1053,6 +1074,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Stash the legacy value and apply after the dashboards array exists.
 
     const autoSwitchNetwork = getBoolean(STORAGE_KEYS.autoSwitchNetwork);
+    const treatVpnAsHome = getBoolean(STORAGE_KEYS.treatVpnAsHome);
     // Purge the orphaned persisted flag from older builds. networkAwayFromHome is
     // now ephemeral runtime state, recomputed fresh each launch by
     // evaluateHomeNetwork() (lib/network.ts) — persisting a live network
@@ -1400,6 +1422,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services,
       secrets,
       autoSwitchNetwork,
+      treatVpnAsHome,
       homeNetworks,
       servicesOrder,
       dashboards,
@@ -1734,6 +1757,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     if (get().isOnWifi === onWifi) return;
     set({ isOnWifi: onWifi });
     void queryClient.invalidateQueries();
+  },
+
+  setIsVpnActive: (active) => {
+    // Same shape as setIsOnWifi: a VPN coming up makes LAN URLs reachable
+    // (the off-WiFi guard stands down); it dropping takes them away again.
+    if (get().isVpnActive === active) return;
+    set({ isVpnActive: active });
+    void queryClient.invalidateQueries();
+  },
+
+  setTreatVpnAsHome: (enabled) => {
+    setBoolean(STORAGE_KEYS.treatVpnAsHome, enabled);
+    set({ treatVpnAsHome: enabled });
+    // useNetworkAutoSwitch subscribes to this and re-evaluates home/away.
   },
 
   addHomeNetwork: (network) => {
@@ -2470,6 +2507,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       serviceInstances,
       instanceSecrets,
       autoSwitchNetwork,
+      treatVpnAsHome,
       homeNetworks,
       servicesOrder,
       dashboards,
@@ -2490,6 +2528,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       // v22: activeInstance is now per-dashboard, serialized inside the
       // `dashboards` array — no top-level field.
       autoSwitchNetwork,
+      treatVpnAsHome,
       homeNetworks,
       servicesOrder,
       dashboards,
@@ -2629,6 +2668,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     // Restore app settings
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
+    const importedTreatVpnAsHome = payload.treatVpnAsHome ?? false;
+    setBoolean(STORAGE_KEYS.treatVpnAsHome, importedTreatVpnAsHome);
     const importedHomeNetworks = payload.homeNetworks ?? [];
     setJSON(STORAGE_KEYS.homeNetworks, importedHomeNetworks);
 
@@ -2700,6 +2741,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       services: derivedServices,
       secrets: derivedSecrets,
       autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
+      treatVpnAsHome: importedTreatVpnAsHome,
       homeNetworks: importedHomeNetworks,
       servicesOrder: importedServicesOrder,
       dashboards: importedDashboards,

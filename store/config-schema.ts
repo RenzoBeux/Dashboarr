@@ -468,6 +468,11 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     payload.hapticsEnabled = raw.hapticsEnabled;
   }
 
+  if (raw.treatVpnAsHome !== undefined) {
+    if (typeof raw.treatVpnAsHome !== "boolean") throw new Error("Config treatVpnAsHome is invalid");
+    payload.treatVpnAsHome = raw.treatVpnAsHome;
+  }
+
   if (raw.globalCustomHeaders !== undefined && raw.globalCustomHeaders !== null) {
     const headers = coerceHeaderMap(raw.globalCustomHeaders);
     if (!headers) throw new Error("Config globalCustomHeaders is invalid");

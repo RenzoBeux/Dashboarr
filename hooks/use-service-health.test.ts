@@ -57,6 +57,7 @@ interface Opts {
   autoSwitchNetwork?: boolean;
   networkAwayFromHome?: boolean;
   isOnWifi?: boolean | null;
+  isVpnActive?: boolean;
 }
 
 // Compute the signature with a resolveUrl that mirrors getActiveUrl's
@@ -72,6 +73,7 @@ function sig(opts: Opts): string {
     autoSwitchNetwork,
     networkAwayFromHome,
     isOnWifi: opts.isOnWifi ?? null,
+    isVpnActive: opts.isVpnActive ?? false,
     resolveUrl: (id, instanceId) => {
       const inst = (opts.instances[id] ?? []).find((x) => x.id === instanceId);
       if (!inst) return "";
@@ -141,6 +143,12 @@ describe("buildHealthProbeSignature — health query re-keys on its inputs (#106
       globalCustomHeaders: { "CF-Access-Client-Id": "x" },
     });
     expect(withHeader).not.toBe(before);
+  });
+
+  it("changes when a VPN comes up (the LAN guard stands down, #185)", () => {
+    const noVpn = sig({ instances: oneRadarr(), isOnWifi: false });
+    const vpn = sig({ instances: oneRadarr(), isOnWifi: false, isVpnActive: true });
+    expect(vpn).not.toBe(noVpn);
   });
 
   it("ignores disabled instances", () => {

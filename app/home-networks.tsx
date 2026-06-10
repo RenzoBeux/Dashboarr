@@ -19,6 +19,7 @@ type Mode = "list" | "add" | "edit";
 
 export default function HomeNetworksScreen() {
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
+  const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
   const addHomeNetwork = useConfigStore((s) => s.addHomeNetwork);
   const updateHomeNetwork = useConfigStore((s) => s.updateHomeNetwork);
   const removeHomeNetwork = useConfigStore((s) => s.removeHomeNetwork);
@@ -231,8 +232,12 @@ export default function HomeNetworksScreen() {
           </Text>
           <Text className="text-zinc-500 text-sm text-center px-6">
             Add the WiFi networks you trust as "home". Local URLs are used only
-            on these networks; everywhere else the app uses your remote URLs, so
-            your API keys are never sent to an untrusted LAN.
+            on these networks
+            {treatVpnAsHome
+              ? ' or while your VPN is connected ("Treat VPN as home" is on)'
+              : ""}
+            ; everywhere else the app uses your remote URLs, so your API keys
+            are never sent to an untrusted LAN.
           </Text>
           <View className="flex-row gap-2 mt-2">
             <Button

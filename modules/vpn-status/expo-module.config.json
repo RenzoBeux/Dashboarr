@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["VpnStatusModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.vpnstatus.VpnStatusModule"]
+  }
+}

@@ -38,7 +38,8 @@ function onAppStateChange(status: AppStateStatus) {
     // door, or toggled a VPN like Tailscale (whose interface changes don't
     // deliver NetInfo events to a suspended JS runtime). Re-evaluate the home
     // network so URLs and health dots reflect reality on resume (#161). Shares
-    // the evaluator's in-flight gate and no-ops when auto-switch is off.
+    // the evaluator's in-flight gate; with auto-switch off it still refreshes
+    // the isVpnActive flag the LAN guard reads (#185), then no-ops.
     void evaluateHomeNetwork();
   }
 }

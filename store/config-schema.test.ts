@@ -1076,6 +1076,27 @@ describe("validateExportPayload — hapticsEnabled", () => {
   });
 });
 
+describe("validateExportPayload — treatVpnAsHome (v32, #185)", () => {
+  it("accepts a boolean", () => {
+    expect(
+      validateExportPayload({ ...baseValid(), treatVpnAsHome: true }).treatVpnAsHome,
+    ).toBe(true);
+    expect(
+      validateExportPayload({ ...baseValid(), treatVpnAsHome: false }).treatVpnAsHome,
+    ).toBe(false);
+  });
+
+  it("rejects a non-boolean treatVpnAsHome", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), treatVpnAsHome: "yes" as any }),
+    ).toThrow(/treatVpnAsHome/);
+  });
+
+  it("omits treatVpnAsHome from the result when absent (pre-v32 exports)", () => {
+    expect(validateExportPayload(baseValid()).treatVpnAsHome).toBeUndefined();
+  });
+});
+
 describe("validateExportPayload — service customHeaders", () => {
   // Each test pairs a single-instance services entry with secrets keyed by
   // that instance's UUID, mirroring the v13 storage shape.

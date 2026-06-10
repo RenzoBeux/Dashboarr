@@ -166,8 +166,9 @@ Pick whichever fits you:
   3. Add your home WiFi under **Settings → Home Networks**, turn on auto-switch, and leave **Always use Remote URL** off
 
   At home Dashboarr uses the direct LAN URL; away it uses Tailscale.
+- **VPN that routes your LAN (WireGuard, OpenVPN, Tailscale subnet router):** if your tunnel makes the plain `192.168.x` addresses reachable from anywhere, you have two options. With **Auto-switch network** off, nothing to configure: Dashboarr always uses the Local URL and, while a VPN is connected, no longer marks private addresses offline. With auto-switch on, also enable **Settings → Treat VPN as home** (the toggle appears once auto-switch is on): while any VPN is connected, Dashboarr behaves as if you were on your home WiFi and uses the local URLs directly. The app can only detect that *a* VPN is up, not which one, so enable this only if your VPN reaches your home network.
 
-> **Avoid** putting a `192.168.x` or `10.x` address in the **Remote URL** slot. Private LAN addresses can't be reached over mobile data, so Dashboarr marks them offline when you're off WiFi. If you only reach your server through a Tailscale **subnet router** (so it has no `100.x` address of its own), install Tailscale directly on that server so it gets its own Tailscale address, then use that.
+> Without a VPN connected, avoid putting a `192.168.x` or `10.x` address in the **Remote URL** slot. Private LAN addresses can't be reached over mobile data, so Dashboarr marks them offline when you're off WiFi (when a VPN is connected it will still try them). If you only reach your server through a Tailscale **subnet router** (so it has no `100.x` address of its own), this VPN handling covers you; alternatively, install Tailscale directly on that server so it gets its own Tailscale address.
 
 ## Project Structure
 
