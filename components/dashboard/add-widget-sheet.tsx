@@ -239,39 +239,42 @@ function EnabledRow({ widget, index, onAdd }: EnabledRowProps) {
     transform: [{ scale: scale.value }],
   }));
 
+  // The entering layout animation and the press-scale transform live on
+  // separate views — FadeInDown writes `transform` too, so sharing one view
+  // lets the layout animation clobber the scale (Reanimated warns about it).
+  // Same split as ActionSheet's rows.
   return (
-    <Animated.View
-      entering={FadeInDown.delay(index * 35).duration(260)}
-      style={style}
-    >
-      <Pressable
-        onPressIn={() => {
-          scale.value = withSpring(0.97, { damping: 18, stiffness: 320 });
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, { damping: 18, stiffness: 320 });
-        }}
-        onPress={onAdd}
-        className="flex-row items-center gap-3 bg-surface-light rounded-2xl px-3 py-3 border border-border/70"
-      >
-        <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center">
-          <Icon icon={WidgetIcon} size={ICON.MD} color="#60a5fa" />
-        </View>
-        <View className="flex-1">
-          <Text className="text-zinc-100 text-sm font-semibold">
-            {widget.label}
-          </Text>
-          <Text
-            className="text-zinc-500 text-xs mt-0.5"
-            numberOfLines={1}
-          >
-            {widget.description}
-          </Text>
-        </View>
-        <View className="w-7 h-7 rounded-full bg-primary/20 items-center justify-center">
-          <Icon icon={Plus} size={ICON.SM} color="#60a5fa" />
-        </View>
-      </Pressable>
+    <Animated.View entering={FadeInDown.delay(index * 35).duration(260)}>
+      <Animated.View style={style}>
+        <Pressable
+          onPressIn={() => {
+            scale.value = withSpring(0.97, { damping: 18, stiffness: 320 });
+          }}
+          onPressOut={() => {
+            scale.value = withSpring(1, { damping: 18, stiffness: 320 });
+          }}
+          onPress={onAdd}
+          className="flex-row items-center gap-3 bg-surface-light rounded-2xl px-3 py-3 border border-border/70"
+        >
+          <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center">
+            <Icon icon={WidgetIcon} size={ICON.MD} color="#60a5fa" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-sm font-semibold">
+              {widget.label}
+            </Text>
+            <Text
+              className="text-zinc-500 text-xs mt-0.5"
+              numberOfLines={1}
+            >
+              {widget.description}
+            </Text>
+          </View>
+          <View className="w-7 h-7 rounded-full bg-primary/20 items-center justify-center">
+            <Icon icon={Plus} size={ICON.SM} color="#60a5fa" />
+          </View>
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

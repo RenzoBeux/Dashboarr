@@ -5,7 +5,6 @@ import {
   Cpu as CpuIcon,
   MemoryStick,
   Gpu as GpuIconSvg,
-  HardDrive,
   Network,
   Gauge,
   Activity,
@@ -16,6 +15,7 @@ import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { DiskUsageRow } from "@/components/dashboard/disk-usage-row";
 import { getCpu, getMem, getFs, getGpu, getNet, getLoad, selectInterfaces, type GlancesNetRate } from "@/services/glances-api";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
@@ -26,7 +26,7 @@ import {
 } from "@/components/dashboard/widget-settings/server-stats-settings";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { formatBytes, formatSpeed } from "@/lib/utils";
-import type { GlancesFsItem, GlancesGpuItem, GlancesLoad } from "@/lib/types";
+import type { GlancesGpuItem, GlancesLoad } from "@/lib/types";
 import type { ServiceInstance } from "@/store/config-store";
 
 const RING_BASE = 60;
@@ -37,18 +37,6 @@ function ringColor(percent: number): string {
   if (percent >= 85) return "#ef4444";
   if (percent >= 70) return "#f59e0b";
   return "#22c55e";
-}
-
-function diskBarColor(percent: number): string {
-  if (percent >= 85) return "bg-red-500";
-  if (percent >= 70) return "bg-amber-500";
-  return "bg-success";
-}
-
-function diskTextColor(percent: number): string {
-  if (percent >= 85) return "text-red-400";
-  if (percent >= 70) return "text-amber-400";
-  return "text-success";
 }
 
 interface MetricRingProps {
@@ -337,7 +325,15 @@ function InstanceBlock({ instance, settings, showName }: InstanceBlockProps) {
           {hasDisks && (
             <View className="gap-2">
               {fs.map((disk) => (
-                <DiskRow key={disk.mnt_point} disk={disk} />
+                <DiskUsageRow
+                  key={disk.mnt_point}
+                  // Strip the Glances-in-Docker /host prefix at the call site —
+                  // it's Glances-specific, not part of the shared row.
+                  label={disk.mnt_point.replace(/^\/host/, "") || "/"}
+                  percent={disk.percent}
+                  used={disk.used}
+                  total={disk.size}
+                />
               ))}
             </View>
           )}
@@ -452,34 +448,3 @@ function shortenGpuName(name: string): string {
     .trim();
 }
 
-const DiskRow = memo(function DiskRow({ disk }: { disk: GlancesFsItem }) {
-  const mount = disk.mnt_point.replace(/^\/host/, "") || "/";
-  const pct = Math.min(Math.max(disk.percent, 0), 100);
-  return (
-    <View className="gap-1">
-      <View className="flex-row justify-between items-center gap-2">
-        <View className="flex-row items-center gap-1.5 flex-1 min-w-0">
-          <Icon icon={HardDrive} size={11} color="#a1a1aa" />
-          <Text
-            className="text-zinc-300 text-xs font-medium"
-            numberOfLines={1}
-          >
-            {mount}
-          </Text>
-        </View>
-        <Text className="text-zinc-500 text-[0.7rem]">
-          {formatBytes(disk.used)} / {formatBytes(disk.size)}
-        </Text>
-        <Text className={`text-xs font-semibold w-10 text-right ${diskTextColor(pct)}`}>
-          {pct.toFixed(0)}%
-        </Text>
-      </View>
-      <View className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-        <View
-          className={`h-full rounded-full ${diskBarColor(pct)}`}
-          style={{ width: `${pct}%` }}
-        />
-      </View>
-    </View>
-  );
-});

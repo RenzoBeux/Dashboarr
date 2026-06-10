@@ -93,6 +93,7 @@ export const POLLING_INTERVALS = {
   serviceHealth: 30000,
   queue: 30000,
   calendar: 60000,
+  diskSpace: 60000,
 } as const;
 
 export const DASHBOARD_WIDGET_IDS = [
@@ -116,6 +117,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "prowlarr-stats",
   "bazarr-wanted",
   "wol-devices",
+  "disk-space",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
