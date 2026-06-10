@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable } from "react-native";
-import { Check, ChevronDown, ChevronUp } from "lucide-react-native";
+import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -16,6 +16,7 @@ import {
   resolveBoundInstances,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
+import { SelectRow } from "@/components/dashboard/widget-settings/widget-settings-blocks";
 import { formatSpeed } from "@/lib/utils";
 
 // Re-exported so settings panels can keep importing the value contract from the
@@ -165,43 +166,4 @@ export function NetworkInterfacePickerRow({
 function rateCaption(iface: GlancesNetRate): string {
   if (iface.rx + iface.tx <= 0) return "idle";
   return `↓ ${formatSpeed(iface.rx)}   ↑ ${formatSpeed(iface.tx)}`;
-}
-
-function SelectRow({
-  label,
-  caption,
-  selected,
-  onPress,
-}: {
-  label: string;
-  caption?: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={`flex-row items-center gap-3 px-3 py-2.5 active:opacity-70 ${
-        selected ? "bg-primary/10" : ""
-      }`}
-    >
-      <View
-        className={`w-5 h-5 rounded-md items-center justify-center border ${
-          selected ? "bg-primary border-primary" : "border-zinc-600"
-        }`}
-      >
-        {selected ? <Icon icon={Check} size={14} color="#fff" /> : null}
-      </View>
-      <View className="flex-1 min-w-0">
-        <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
-          {label}
-        </Text>
-        {caption ? (
-          <Text className="text-zinc-500 text-[0.7rem]" numberOfLines={1}>
-            {caption}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
 }

@@ -475,6 +475,17 @@ export interface ArrCustomFilter {
   filters: ArrFilterClause[];
 }
 
+// --- *arr disk space (identical payload on Radarr v3, Sonarr v3, Lidarr v1) ---
+
+// `GET /diskspace` returns one entry per mount the *arr process can see — the
+// System → Status disk table. Powers the Disk Space dashboard widget.
+export interface ArrDiskSpace {
+  path: string; // mount path, e.g. "/data"
+  label: string; // display label; often equals path, may be "" on some platforms
+  freeSpace: number; // bytes
+  totalSpace: number; // bytes
+}
+
 // --- Sonarr Types ---
 
 export interface SonarrSeries {

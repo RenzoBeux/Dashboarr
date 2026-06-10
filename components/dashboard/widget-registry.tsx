@@ -8,6 +8,7 @@ import {
   Download,
   Film,
   Gauge,
+  HardDrive,
   HeartPulse,
   Inbox,
   Disc3,
@@ -41,6 +42,7 @@ import { CombinedNowPlayingCard } from "@/components/dashboard/combined-now-play
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
+import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -136,6 +138,11 @@ import {
   BAZARR_WANTED_DEFAULT_SETTINGS,
   type BazarrWantedSettingsValue,
 } from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
+import {
+  DiskSpaceSettings,
+  DISK_SPACE_DEFAULT_SETTINGS,
+  type DiskSpaceSettingsValue,
+} from "@/components/dashboard/widget-settings/disk-space-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -410,6 +417,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     service: null,
     component: WolDevicesCard,
   },
+  "disk-space": {
+    id: "disk-space",
+    label: "Disk Space",
+    description: "Mount usage from Radarr, Sonarr or Lidarr — no Glances needed",
+    icon: HardDrive,
+    service: ["radarr", "sonarr", "lidarr"],
+    component: DiskSpaceCard,
+    settingsComponent: DiskSpaceSettings,
+    defaultSettings: DISK_SPACE_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -440,4 +457,5 @@ export type {
   RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
   BazarrWantedSettingsValue,
+  DiskSpaceSettingsValue,
 };

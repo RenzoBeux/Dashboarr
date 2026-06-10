@@ -1348,6 +1348,14 @@ const DEMO_RTORRENT_OK_XML = rtResponse(
 // Single-value response for load.start (add torrent).
 const DEMO_RTORRENT_SCALAR_OK_XML = rtResponse(`<value><i4>0</i4></value>`);
 
+// Shared across radarr/sonarr/lidarr — the /diskspace payload is identical on
+// all three. Percentages chosen to exercise the amber (≥70%) and red (≥85%)
+// bar thresholds in demo screenshots.
+const DEMO_ARR_DISKSPACE = [
+  { path: "/", label: "/", freeSpace: 48_000_000_000, totalSpace: 250_000_000_000 }, // ~81% used → amber
+  { path: "/data", label: "/data", freeSpace: 2_400_000_000_000, totalSpace: 16_000_000_000_000 }, // ~85% used → red
+];
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -1366,6 +1374,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/calendar")) return DEMO_RADARR_CALENDAR;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/movies", freeSpace: 2199023255552 }];
+      if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
       if (normalized.startsWith("/tag")) return [];
       if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
@@ -1379,6 +1388,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/queue")) return DEMO_SONARR_QUEUE;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
+      if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
       if (normalized.startsWith("/tag")) return [];
       if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
@@ -1414,6 +1424,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Lossless" }, { id: 2, name: "Standard" }];
       if (normalized.startsWith("/metadataprofile")) return [{ id: 1, name: "Standard" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/music", freeSpace: 2199023255552 }];
+      if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
       if (normalized.startsWith("/tag")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       return undefined;
