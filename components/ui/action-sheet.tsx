@@ -38,8 +38,6 @@ export type ActionSheetVariant = "default" | "danger";
 
 export interface ActionSheetAction {
   label: string;
-  /** Optional helper text rendered under the label. */
-  description?: string;
   icon?: React.ReactNode;
   variant?: ActionSheetVariant;
   disabled?: boolean;
@@ -250,23 +248,16 @@ function ActionRow({ action, onPress }: ActionRowProps) {
             {action.icon}
           </View>
         )}
-        <View className="flex-1">
-          <Text
-            className={`text-base ${
-              isDanger
-                ? "text-danger font-semibold"
-                : "text-zinc-100 font-medium"
-            }`}
-            numberOfLines={1}
-          >
-            {action.label}
-          </Text>
-          {action.description ? (
-            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={2}>
-              {action.description}
-            </Text>
-          ) : null}
-        </View>
+        <Text
+          className={`flex-1 text-base ${
+            isDanger
+              ? "text-danger font-semibold"
+              : "text-zinc-100 font-medium"
+          }`}
+          numberOfLines={1}
+        >
+          {action.label}
+        </Text>
       </Pressable>
     </Animated.View>
   );

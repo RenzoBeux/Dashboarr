@@ -14,6 +14,7 @@ import {
   Tv,
   Circle,
   FolderTree,
+  Pencil,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -54,6 +55,7 @@ import {
   useSonarrTags,
 } from "@/hooks/use-sonarr";
 import { SERIES_TYPE_OPTIONS } from "@/components/sonarr/add-series-sheet";
+import { SeriesOptionsSheet } from "@/components/sonarr/series-options-sheet";
 import {
   formatEpisodeCode,
   formatBytes,
@@ -89,7 +91,6 @@ export default function SeriesDetailScreen() {
   const deleteSeries = useDeleteSeries(instanceId);
   const { data: qualityProfiles } = useSonarrQualityProfiles(instanceId);
   const updateProfile = useUpdateSeriesFields(instanceId);
-  const updateOptions = useUpdateSeriesFields(instanceId);
   const { data: rootFolders } = useSonarrRootFolders(instanceId);
   const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
   const { data: tags } = useSonarrTags(instanceId);
@@ -97,9 +98,7 @@ export default function SeriesDetailScreen() {
   const [actionsVisible, setActionsVisible] = useState(false);
   const [pendingSeriesSearch, setPendingSeriesSearch] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
-  const [optionSheet, setOptionSheet] = useState<
-    "type" | "seasonFolder" | "newSeasons" | null
-  >(null);
+  const [optionsVisible, setOptionsVisible] = useState(false);
   const [rootFolderVisible, setRootFolderVisible] = useState(false);
   const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
     null,
@@ -172,9 +171,6 @@ export default function SeriesDetailScreen() {
   const handleToggleMonitor = () => {
     toggleSeries.mutate({ seriesId: series.id, monitored: !series.monitored });
   };
-
-  const setSeriesField = (fields: Partial<SonarrSeries>, errorLabel: string) =>
-    updateOptions.mutate({ seriesId: series.id, fields, errorLabel });
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
@@ -270,7 +266,10 @@ export default function SeriesDetailScreen() {
             }
           />
 
-          <OptionsBlock series={series} onPress={setOptionSheet} />
+          <OptionsBlock
+            series={series}
+            onPress={() => setOptionsVisible(true)}
+          />
 
           {series.overview ? (
             <View className="mb-5">
@@ -386,103 +385,11 @@ export default function SeriesDetailScreen() {
         }))}
       />
 
-      <ActionSheet
-        visible={optionSheet === "type"}
-        onClose={() => setOptionSheet(null)}
-        title="Series Type"
-        subtitle={series.title}
-        actions={SERIES_TYPE_OPTIONS.map((opt) => ({
-          label: opt.label,
-          description: opt.description,
-          icon: (
-            <Icon
-              icon={opt.value === series.seriesType ? Check : Circle}
-              size={18}
-              color={opt.value === series.seriesType ? "#60a5fa" : "#71717a"}
-            />
-          ),
-          onPress: () => {
-            if (opt.value === series.seriesType) return;
-            setSeriesField(
-              { seriesType: opt.value },
-              "Failed to update series type",
-            );
-          },
-        }))}
-      />
-
-      <ActionSheet
-        visible={optionSheet === "seasonFolder"}
-        onClose={() => setOptionSheet(null)}
-        title="Season Folders"
-        subtitle={series.title}
-        actions={[
-          {
-            value: true,
-            label: "Use Season Folders",
-            description: "Sort episodes into season folders",
-          },
-          {
-            value: false,
-            label: "No Season Folders",
-            description: "Keep episodes directly in the series folder",
-          },
-        ].map((opt) => ({
-          label: opt.label,
-          description: opt.description,
-          icon: (
-            <Icon
-              icon={opt.value === series.seasonFolder ? Check : Circle}
-              size={18}
-              color={opt.value === series.seasonFolder ? "#60a5fa" : "#71717a"}
-            />
-          ),
-          onPress: () => {
-            if (opt.value === series.seasonFolder) return;
-            setSeriesField(
-              { seasonFolder: opt.value },
-              "Failed to update season folders",
-            );
-          },
-        }))}
-      />
-
-      <ActionSheet
-        visible={optionSheet === "newSeasons"}
-        onClose={() => setOptionSheet(null)}
-        title="Monitor New Seasons"
-        subtitle={series.title}
-        actions={[
-          {
-            value: "all" as const,
-            label: "All Seasons",
-            description: "Monitor new seasons automatically",
-          },
-          {
-            value: "none" as const,
-            label: "None",
-            description: "Don't monitor new seasons",
-          },
-        ].map((opt) => ({
-          label: opt.label,
-          description: opt.description,
-          icon: (
-            <Icon
-              icon={opt.value === series.monitorNewItems ? Check : Circle}
-              size={18}
-              color={
-                opt.value === series.monitorNewItems ? "#60a5fa" : "#71717a"
-              }
-            />
-          ),
-          onPress: () => {
-            if (opt.value === series.monitorNewItems) return;
-            setSeriesField(
-              { monitorNewItems: opt.value },
-              "Failed to update new season monitoring",
-            );
-          },
-        }))}
+      <SeriesOptionsSheet
+        visible={optionsVisible}
+        onClose={() => setOptionsVisible(false)}
+        series={series}
+        instanceId={instanceId}
       />
 
       <ActionSheet
@@ -749,14 +656,15 @@ function AboutRow({
   return <View className="flex-row items-center">{content}</View>;
 }
 
-// Editable Sonarr series options (issue #184): series type, season folders,
-// monitor-new-seasons. Each row opens an ActionSheet picker.
+// Sonarr series options (issue #184): series type, season folders,
+// monitor-new-seasons. The whole card is one tap target — small per-row
+// targets are fiddly on phones — and opens the SeriesOptionsSheet editor.
 function OptionsBlock({
   series,
   onPress,
 }: {
   series: SonarrSeries;
-  onPress: (sheet: "type" | "seasonFolder" | "newSeasons") => void;
+  onPress: () => void;
 }) {
   const typeLabel =
     SERIES_TYPE_OPTIONS.find((o) => o.value === series.seriesType)?.label ??
@@ -764,51 +672,42 @@ function OptionsBlock({
   return (
     <View className="mb-5">
       <SectionLabel>Options</SectionLabel>
-      <View className="rounded-2xl bg-surface border border-border p-4 gap-2.5">
-        <OptionRow
-          label="Series Type"
-          value={typeLabel}
-          onPress={() => onPress("type")}
-        />
-        <OptionRow
-          label="Season Folders"
-          value={series.seasonFolder ? "Yes" : "No"}
-          onPress={() => onPress("seasonFolder")}
-        />
-        {/* "Monitor New Seasons" only exists on Sonarr v4+ — hide otherwise. */}
-        {series.monitorNewItems != null ? (
+      <Pressable
+        onPress={onPress}
+        className="rounded-2xl bg-surface border border-border p-4 flex-row items-center active:opacity-70"
+        accessibilityRole="button"
+        accessibilityLabel="Edit series options"
+      >
+        <View className="flex-1 gap-2.5">
+          <OptionRow label="Series Type" value={typeLabel} />
           <OptionRow
-            label="Monitor New Seasons"
-            value={series.monitorNewItems === "all" ? "All Seasons" : "None"}
-            onPress={() => onPress("newSeasons")}
+            label="Season Folders"
+            value={series.seasonFolder ? "Yes" : "No"}
           />
-        ) : null}
-      </View>
+          {/* "Monitor New Seasons" only exists on Sonarr v4+ — hide otherwise. */}
+          {series.monitorNewItems != null ? (
+            <OptionRow
+              label="Monitor New Seasons"
+              value={series.monitorNewItems === "all" ? "All Seasons" : "None"}
+            />
+          ) : null}
+        </View>
+        <View className="ml-3 w-9 h-9 rounded-full bg-surface-light items-center justify-center">
+          <Icon icon={Pencil} size={16} color="#a1a1aa" />
+        </View>
+      </Pressable>
     </View>
   );
 }
 
-function OptionRow({
-  label,
-  value,
-  onPress,
-}: {
-  label: string;
-  value: string;
-  onPress: () => void;
-}) {
+function OptionRow({ label, value }: { label: string; value: string }) {
   return (
-    <Pressable
-      onPress={onPress}
-      className="flex-row items-center active:opacity-60"
-      hitSlop={6}
-    >
+    <View className="flex-row items-center">
       <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider flex-1">
         {label}
       </Text>
-      <Text className="text-zinc-300 text-xs ml-2 mr-1">{value}</Text>
-      <Icon icon={ChevronRight} size={14} color="#71717a" />
-    </Pressable>
+      <Text className="text-zinc-300 text-xs ml-2">{value}</Text>
+    </View>
   );
 }
 
