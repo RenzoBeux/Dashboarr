@@ -73,7 +73,14 @@ export function resolveEffectiveHomeNetworks(
 }
 
 // Shared in-flight gate so startup / NetInfo-change / resume callers don't race.
+// `evalQueued` makes the gate RE-RUNNABLE: a call that arrives while one is in
+// flight isn't dropped — it sets the flag, and the running pass loops once more
+// when it finishes. Without this, toggling `treatVpnAsHome` (or a VPN drop)
+// while a slow `NetInfo.fetch()` is pending would be silently lost, leaving the
+// away flag stale — the flaky "the toggle did nothing" report (#185). The
+// re-run re-reads `getState()`, so it always sees the latest settings.
 let evalInFlight = false;
+let evalQueued = false;
 
 /**
  * Recompute whether we're on a home network and store the away flag. Safe to
@@ -88,37 +95,49 @@ let evalInFlight = false;
  * noticed (#185).
  */
 export async function evaluateHomeNetwork(): Promise<void> {
-  if (evalInFlight) return;
+  if (evalInFlight) {
+    evalQueued = true;
+    return;
+  }
   evalInFlight = true;
   try {
-    const store = useConfigStore.getState();
-    const vpnActive = detectVpnActive();
-    store.setIsVpnActive(vpnActive);
-    if (store.demoMode || !store.autoSwitchNetwork) return;
-    // Opt-in "VPN connected counts as home" (#185): the tunnel routes the
-    // private ranges to the user's own LAN, so local URLs are safe. Checked
-    // before the SSID match — under a VPN the SSID is often masked anyway.
-    if (store.treatVpnAsHome && vpnActive) {
-      store.setNetworkAwayFromHome(false);
-      return;
-    }
-    const effective = resolveEffectiveHomeNetworks(
-      store.dashboards,
-      store.activeDashboardId,
-      store.homeNetworks,
-    );
-    if (effective.length === 0) {
-      // No SSIDs to match. With treatVpnAsHome on, a VPN drop must actively
-      // flip us back to away; otherwise keep the historical no-op (the flag
-      // already sits at its safe default and use-network forces it).
-      if (store.treatVpnAsHome) store.setNetworkAwayFromHome(true);
-      return;
-    }
-    const state = await NetInfo.fetch();
-    store.setNetworkAwayFromHome(!isHomeNetwork(state, effective));
+    do {
+      evalQueued = false;
+      await evaluateHomeNetworkOnce();
+    } while (evalQueued);
   } finally {
     evalInFlight = false;
   }
+}
+
+// One evaluation pass. Reads a fresh store snapshot each call so a re-run
+// triggered by `evalQueued` picks up settings changed mid-flight.
+async function evaluateHomeNetworkOnce(): Promise<void> {
+  const store = useConfigStore.getState();
+  const vpnActive = detectVpnActive();
+  store.setIsVpnActive(vpnActive);
+  if (store.demoMode || !store.autoSwitchNetwork) return;
+  // Opt-in "VPN connected counts as home" (#185): the tunnel routes the
+  // private ranges to the user's own LAN, so local URLs are safe. Checked
+  // before the SSID match — under a VPN the SSID is often masked anyway.
+  if (store.treatVpnAsHome && vpnActive) {
+    store.setNetworkAwayFromHome(false);
+    return;
+  }
+  const effective = resolveEffectiveHomeNetworks(
+    store.dashboards,
+    store.activeDashboardId,
+    store.homeNetworks,
+  );
+  if (effective.length === 0) {
+    // No SSIDs to match. With treatVpnAsHome on, a VPN drop must actively
+    // flip us back to away; otherwise keep the historical no-op (the flag
+    // already sits at its safe default and use-network forces it).
+    if (store.treatVpnAsHome) store.setNetworkAwayFromHome(true);
+    return;
+  }
+  const state = await NetInfo.fetch();
+  store.setNetworkAwayFromHome(!isHomeNetwork(state, effective));
 }
 
 /**

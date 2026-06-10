@@ -29,6 +29,10 @@ export interface HealthProbeInputs {
   // VPN up/down also flips that guard (a VPN makes LAN URLs reachable off
   // WiFi, #185) — re-key so toggling the tunnel re-probes immediately.
   isVpnActive: boolean;
+  // The opt-in gates BOTH the LAN guard's VPN stand-down (checkInstanceHealth)
+  // and what `resolveUrl` returns under a VPN, so toggling it changes verdicts
+  // even when isVpnActive/networkAwayFromHome haven't settled yet — re-key on it.
+  treatVpnAsHome: boolean;
   resolveUrl: (id: ServiceId, instanceId: string) => string;
 }
 
@@ -78,7 +82,7 @@ export function buildHealthProbeSignature(inputs: HealthProbeInputs): string {
   const globalHeaderKeys = Object.keys(inputs.globalCustomHeaders);
   const wifi = inputs.isOnWifi === null ? "u" : inputs.isOnWifi ? 1 : 0;
   const parts: string[] = [
-    `net:${inputs.autoSwitchNetwork ? 1 : 0}:${inputs.networkAwayFromHome ? 1 : 0}:${wifi}:${inputs.isVpnActive ? 1 : 0}`,
+    `net:${inputs.autoSwitchNetwork ? 1 : 0}:${inputs.networkAwayFromHome ? 1 : 0}:${wifi}:${inputs.isVpnActive ? 1 : 0}:${inputs.treatVpnAsHome ? 1 : 0}`,
   ];
   for (const id of SERVICE_IDS) {
     for (const inst of inputs.serviceInstances[id] ?? []) {
@@ -117,6 +121,7 @@ export function useServiceHealth() {
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
   const isVpnActive = useConfigStore((s) => s.isVpnActive);
+  const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
   const globalCustomHeaders = useConfigStore((s) => s.globalCustomHeaders);
 
   const probeSignature = useMemo(
@@ -129,6 +134,7 @@ export function useServiceHealth() {
         networkAwayFromHome,
         isOnWifi,
         isVpnActive,
+        treatVpnAsHome,
         resolveUrl: (id, instanceId) =>
           useConfigStore.getState().getActiveUrl(id, instanceId),
       }),
@@ -140,6 +146,7 @@ export function useServiceHealth() {
       networkAwayFromHome,
       isOnWifi,
       isVpnActive,
+      treatVpnAsHome,
     ],
   );
 

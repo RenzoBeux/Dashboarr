@@ -274,6 +274,37 @@ describe("evaluateHomeNetwork", () => {
 
     expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
   });
+
+  // --- re-runnable in-flight gate (#185 flakiness) ---
+
+  it("re-runs with a fresh store snapshot when called again while in-flight", async () => {
+    // First pass: opt-in off, so it reaches the awaited NetInfo.fetch and parks
+    // there (held open by a deferred promise) — the gate is now in-flight.
+    const before = fakeStore();
+    mockGetState.mockReturnValue(before);
+    let resolveFetch!: (v: any) => void;
+    mockFetch.mockReturnValue(
+      new Promise((r) => {
+        resolveFetch = r;
+      }),
+    );
+
+    const inFlight = evaluateHomeNetwork();
+
+    // Mid-flight, the user enables "treat VPN as home" and a VPN is up. A naive
+    // gate would DROP this call; the re-runnable gate must queue it.
+    const after = fakeStore({ treatVpnAsHome: true });
+    mockGetState.mockReturnValue(after);
+    mockDetectVpnActive.mockReturnValue(true);
+    await evaluateHomeNetwork(); // queued, returns immediately
+
+    resolveFetch(wifi("Cafe")); // first pass settles: not home → away=true
+    await inFlight;
+
+    // The queued re-run read the FRESH snapshot (opt-in on + VPN) → away=false.
+    expect(before.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+    expect(after.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
 });
 
 describe("resolveEffectiveHomeNetworks", () => {

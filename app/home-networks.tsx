@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator } from "react-native";
-import { Wifi, Plus, Pencil, Trash2 } from "lucide-react-native";
+import { View, Text, Pressable, ActivityIndicator, Platform } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { Wifi, Plus, Pencil, Trash2, Activity, ChevronDown, ChevronUp } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { lightHaptic } from "@/lib/haptics";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { Card } from "@/components/ui/card";
@@ -11,11 +13,35 @@ import { toast } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useConfigStore } from "@/store/config-store";
 import { detectWifi, validateHomeNetworkInput } from "@/lib/wifi";
+import { detectVpnActive, isVpnModuleAvailable } from "@/lib/vpn";
 import type { HomeNetwork } from "@/store/config-store";
 import { MAX_HOME_NETWORKS } from "@/lib/constants";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 
 type Mode = "list" | "add" | "edit";
+
+// One label/value line in the Network diagnostics panel. Kept compact so the
+// whole panel is screenshot-friendly for bug reports.
+function DiagRow({
+  label,
+  value,
+  bad,
+}: {
+  label: string;
+  value: string;
+  bad?: boolean;
+}) {
+  return (
+    <View className="flex-row justify-between items-center">
+      <Text className="text-zinc-500 text-xs">{label}</Text>
+      <Text
+        className={`text-xs font-medium ${bad ? "text-amber-400" : "text-zinc-200"}`}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
 
 export default function HomeNetworksScreen() {
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
@@ -24,6 +50,19 @@ export default function HomeNetworksScreen() {
   const updateHomeNetwork = useConfigStore((s) => s.updateHomeNetwork);
   const removeHomeNetwork = useConfigStore((s) => s.removeHomeNetwork);
   const dashboards = useConfigStore((s) => s.dashboards);
+
+  // Network diagnostics (#185): the home/away machine is otherwise invisible.
+  // Surfaced as a collapsed panel so it's out of the way day-to-day but easy to
+  // expand and screenshot when triaging a "wrong URL / can't reach service" report.
+  const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
+  const isOnWifi = useConfigStore((s) => s.isOnWifi);
+  const isVpnActive = useConfigStore((s) => s.isVpnActive);
+  const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
+  // A live native read, independent of the cached store flag — if these two
+  // disagree, the store just hasn't re-evaluated yet.
+  const liveVpn = detectVpnActive();
+  const vpnModule = isVpnModuleAvailable();
+  const [diagOpen, setDiagOpen] = useState(false);
 
   // Read-only cross-reference: which workspaces use each network (#148). A
   // dashboard with `homeNetworkIds === undefined` uses ALL networks; one with a
@@ -223,6 +262,61 @@ export default function HomeNetworksScreen() {
           </Pressable>
         }
       />
+
+      {/* Collapsed by default — a screenshot aid for bug reports (#185). */}
+      <Card className="mb-4">
+        <Pressable
+          onPress={() => {
+            lightHaptic();
+            setDiagOpen((v) => !v);
+          }}
+          className="flex-row items-center justify-between active:opacity-70"
+        >
+          <View className="flex-row items-center gap-2">
+            <Icon icon={Activity} size={16} color="#a1a1aa" />
+            <Text className="text-zinc-300 text-sm font-semibold">
+              Network diagnostics
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-2">
+            {!diagOpen ? (
+              <Text className="text-zinc-600 text-xs">For bug reports</Text>
+            ) : null}
+            <Icon icon={diagOpen ? ChevronUp : ChevronDown} size={18} color="#71717a" />
+          </View>
+        </Pressable>
+
+        {diagOpen ? (
+          <Animated.View entering={FadeIn.duration(150)} className="gap-1 mt-3">
+            <DiagRow label="Platform" value={Platform.OS} />
+            <DiagRow
+              label="VPN native module"
+              value={vpnModule ? "present" : "MISSING (needs native rebuild)"}
+              bad={!vpnModule}
+            />
+            <DiagRow
+              label="VPN detected (live)"
+              value={liveVpn ? "yes" : "no"}
+              bad={!liveVpn}
+            />
+            <DiagRow label="VPN flag (store)" value={isVpnActive ? "yes" : "no"} />
+            <DiagRow
+              label="On WiFi"
+              value={isOnWifi === null ? "unknown" : isOnWifi ? "yes" : "no"}
+            />
+            <DiagRow label="Auto-switch" value={autoSwitchNetwork ? "on" : "off"} />
+            <DiagRow
+              label="Treat VPN as home"
+              value={treatVpnAsHome ? "on" : "off"}
+            />
+            <DiagRow
+              label="Away from home"
+              value={networkAwayFromHome ? "yes (remote-only)" : "no (local OK)"}
+              bad={networkAwayFromHome}
+            />
+          </Animated.View>
+        ) : null}
+      </Card>
 
       {!homeNetworks.length ? (
         <View className="items-center justify-center py-20 gap-3">

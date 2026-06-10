@@ -22,17 +22,22 @@ const DEFAULT_TIMEOUT = 15000;
  * existing away→remote URL resolution already keeps the LAN URL out of those
  * requests when auto-switch is on.
  *
- * An active VPN voids the premise entirely: WireGuard/OpenVPN/Tailscale
- * subnet routes carry the private ranges into the tunnel, so the LAN URL may
- * be reachable from anywhere (#185). Stand down and let the bounded timeout
- * handle the genuinely-unreachable case.
+ * An active VPN the user opted to trust as home (`treatVpnAsHome`) voids the
+ * premise: WireGuard/OpenVPN/Tailscale subnet routes carry the private ranges
+ * into the tunnel, so the LAN URL may be reachable from anywhere (#185). Stand
+ * down for that case and let the bounded timeout handle a genuinely-unreachable
+ * server. A VPN WITHOUT the opt-in is NOT trusted to reach home, so the guard
+ * stays up — otherwise any tunnel (even to a hostile network) would silently
+ * make the private URL "work" off Wi-Fi, contradicting the opt-in. This keeps
+ * the guard aligned with `getActiveUrl`/`evaluateHomeNetwork`, which only treat
+ * a VPN as home when `treatVpnAsHome` is on.
  */
 function lanUnreachableOffWifi(url: string): boolean {
   const store = useConfigStore.getState();
   // Demo mode never hits the network (probes return canned data), so don't let
   // the guard short-circuit demo services to offline when testing on cellular.
   if (store.demoMode) return false;
-  if (store.isVpnActive) return false;
+  if (store.isVpnActive && store.treatVpnAsHome) return false;
   return store.isOnWifi === false && isPrivateUrl(url);
 }
 

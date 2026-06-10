@@ -22,3 +22,14 @@ export function detectVpnActive(): boolean {
     return false;
   }
 }
+
+/**
+ * Whether the native VpnStatus module is present in the running binary. False
+ * when the JS bundle was hot-reloaded onto an app built before the module
+ * existed (an OTA update, or `expo start` on a stale dev client) — in that case
+ * `detectVpnActive` can only ever return false, so "Treat VPN as home" silently
+ * does nothing until a fresh native build. Used by the Home Networks diagnostics.
+ */
+export function isVpnModuleAvailable(): boolean {
+  return VpnStatus != null;
+}
