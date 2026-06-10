@@ -14,6 +14,7 @@ import {
   Tv,
   Circle,
   FolderTree,
+  Pencil,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -48,11 +49,13 @@ import {
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
-  useUpdateSeriesQualityProfile,
+  useUpdateSeriesFields,
   useSonarrRootFolders,
   useUpdateSeriesRootFolder,
   useSonarrTags,
 } from "@/hooks/use-sonarr";
+import { SERIES_TYPE_OPTIONS } from "@/components/sonarr/add-series-sheet";
+import { SeriesOptionsSheet } from "@/components/sonarr/series-options-sheet";
 import {
   formatEpisodeCode,
   formatBytes,
@@ -87,7 +90,7 @@ export default function SeriesDetailScreen() {
   const searchSeries = useSearchForSeries(instanceId);
   const deleteSeries = useDeleteSeries(instanceId);
   const { data: qualityProfiles } = useSonarrQualityProfiles(instanceId);
-  const updateProfile = useUpdateSeriesQualityProfile(instanceId);
+  const updateProfile = useUpdateSeriesFields(instanceId);
   const { data: rootFolders } = useSonarrRootFolders(instanceId);
   const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
   const { data: tags } = useSonarrTags(instanceId);
@@ -95,6 +98,7 @@ export default function SeriesDetailScreen() {
   const [actionsVisible, setActionsVisible] = useState(false);
   const [pendingSeriesSearch, setPendingSeriesSearch] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
+  const [optionsVisible, setOptionsVisible] = useState(false);
   const [rootFolderVisible, setRootFolderVisible] = useState(false);
   const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
     null,
@@ -262,6 +266,11 @@ export default function SeriesDetailScreen() {
             }
           />
 
+          <OptionsBlock
+            series={series}
+            onPress={() => setOptionsVisible(true)}
+          />
+
           {series.overview ? (
             <View className="mb-5">
               <SectionLabel>Overview</SectionLabel>
@@ -369,10 +378,18 @@ export default function SeriesDetailScreen() {
             if (p.id === series.qualityProfileId) return;
             updateProfile.mutate({
               seriesId: series.id,
-              qualityProfileId: p.id,
+              fields: { qualityProfileId: p.id },
+              errorLabel: "Failed to update quality profile",
             });
           },
         }))}
+      />
+
+      <SeriesOptionsSheet
+        visible={optionsVisible}
+        onClose={() => setOptionsVisible(false)}
+        series={series}
+        instanceId={instanceId}
       />
 
       <ActionSheet
@@ -637,6 +654,61 @@ function AboutRow({
   }
 
   return <View className="flex-row items-center">{content}</View>;
+}
+
+// Sonarr series options (issue #184): series type, season folders,
+// monitor-new-seasons. The whole card is one tap target — small per-row
+// targets are fiddly on phones — and opens the SeriesOptionsSheet editor.
+function OptionsBlock({
+  series,
+  onPress,
+}: {
+  series: SonarrSeries;
+  onPress: () => void;
+}) {
+  const typeLabel =
+    SERIES_TYPE_OPTIONS.find((o) => o.value === series.seriesType)?.label ??
+    capitalize(series.seriesType);
+  return (
+    <View className="mb-5">
+      <SectionLabel>Options</SectionLabel>
+      <Pressable
+        onPress={onPress}
+        className="rounded-2xl bg-surface border border-border p-4 flex-row items-center active:opacity-70"
+        accessibilityRole="button"
+        accessibilityLabel="Edit series options"
+      >
+        <View className="flex-1 gap-2.5">
+          <OptionRow label="Series Type" value={typeLabel} />
+          <OptionRow
+            label="Season Folders"
+            value={series.seasonFolder ? "Yes" : "No"}
+          />
+          {/* "Monitor New Seasons" only exists on Sonarr v4+ — hide otherwise. */}
+          {series.monitorNewItems != null ? (
+            <OptionRow
+              label="Monitor New Seasons"
+              value={series.monitorNewItems === "all" ? "All Seasons" : "None"}
+            />
+          ) : null}
+        </View>
+        <View className="ml-3 w-9 h-9 rounded-full bg-surface-light items-center justify-center">
+          <Icon icon={Pencil} size={16} color="#a1a1aa" />
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+function OptionRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center">
+      <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider flex-1">
+        {label}
+      </Text>
+      <Text className="text-zinc-300 text-xs ml-2">{value}</Text>
+    </View>
+  );
 }
 
 function SeasonAccordion({

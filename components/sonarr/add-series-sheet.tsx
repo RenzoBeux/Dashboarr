@@ -10,11 +10,8 @@ import {
   useSonarrRootFolders,
   useSonarrTags,
 } from "@/hooks/use-sonarr";
-import type {
-  SonarrMonitorOption,
-  SonarrSeriesType,
-} from "@/services/sonarr-api";
-import type { SonarrSearchResult } from "@/lib/types";
+import type { SonarrMonitorOption } from "@/services/sonarr-api";
+import type { SonarrSearchResult, SonarrSeriesType } from "@/lib/types";
 
 interface AddSeriesSheetProps {
   result: SonarrSearchResult | null;
@@ -38,7 +35,8 @@ const MONITOR_OPTIONS: {
   { value: "none", label: "None", description: "Don't monitor any episodes" },
 ];
 
-const SERIES_TYPE_OPTIONS: {
+// Shared with the series detail screen's Series Type picker.
+export const SERIES_TYPE_OPTIONS: {
   value: SonarrSeriesType;
   label: string;
   description: string;

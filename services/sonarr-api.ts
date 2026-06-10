@@ -7,6 +7,7 @@ import type {
   SonarrQueue,
   SonarrHistory,
   SonarrSearchResult,
+  SonarrSeriesType,
   SonarrImage,
   SonarrRelease,
 } from "@/lib/types";
@@ -163,8 +164,6 @@ export function searchSeries(
 }
 
 // --- Add Series ---
-
-export type SonarrSeriesType = "standard" | "daily" | "anime";
 
 export type SonarrMonitorOption =
   | "all"

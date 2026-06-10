@@ -22,6 +22,12 @@
 
 ---
 
+## Supporters
+
+A huge thank you to everyone who has supported Dashboarr's development on Ko-fi. Your generosity helps keep the project alive!
+
+<a href="https://ko-fi.com/renzobeux"><img src="https://img.shields.io/badge/Ko--fi-Support%20on%20Ko--fi-FF5E5B?logo=ko-fi&logoColor=white&style=for-the-badge" alt="Support on Ko-fi" height="40" /></a>
+
 ## Contributors
 
 Thanks to everyone who has contributed to Dashboarr!
