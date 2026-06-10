@@ -57,6 +57,8 @@ interface Opts {
   autoSwitchNetwork?: boolean;
   networkAwayFromHome?: boolean;
   isOnWifi?: boolean | null;
+  isVpnActive?: boolean;
+  treatVpnAsHome?: boolean;
 }
 
 // Compute the signature with a resolveUrl that mirrors getActiveUrl's
@@ -72,6 +74,8 @@ function sig(opts: Opts): string {
     autoSwitchNetwork,
     networkAwayFromHome,
     isOnWifi: opts.isOnWifi ?? null,
+    isVpnActive: opts.isVpnActive ?? false,
+    treatVpnAsHome: opts.treatVpnAsHome ?? false,
     resolveUrl: (id, instanceId) => {
       const inst = (opts.instances[id] ?? []).find((x) => x.id === instanceId);
       if (!inst) return "";
@@ -141,6 +145,25 @@ describe("buildHealthProbeSignature — health query re-keys on its inputs (#106
       globalCustomHeaders: { "CF-Access-Client-Id": "x" },
     });
     expect(withHeader).not.toBe(before);
+  });
+
+  it("changes when a VPN comes up (the LAN guard stands down, #185)", () => {
+    const noVpn = sig({ instances: oneRadarr(), isOnWifi: false });
+    const vpn = sig({ instances: oneRadarr(), isOnWifi: false, isVpnActive: true });
+    expect(vpn).not.toBe(noVpn);
+  });
+
+  it("changes when 'treat VPN as home' is toggled (it gates the guard, #185)", () => {
+    // The opt-in flips both the LAN guard's VPN stand-down and the URL choice,
+    // so the verdict can change even with isVpnActive/away unchanged — re-key.
+    const off = sig({ instances: oneRadarr(), isOnWifi: false, isVpnActive: true });
+    const on = sig({
+      instances: oneRadarr(),
+      isOnWifi: false,
+      isVpnActive: true,
+      treatVpnAsHome: true,
+    });
+    expect(on).not.toBe(off);
   });
 
   it("ignores disabled instances", () => {

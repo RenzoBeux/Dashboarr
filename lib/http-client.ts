@@ -21,12 +21,23 @@ const DEFAULT_TIMEOUT = 15000;
  * we still attempt it — the bounded probe timeout handles that case, and the
  * existing away→remote URL resolution already keeps the LAN URL out of those
  * requests when auto-switch is on.
+ *
+ * An active VPN the user opted to trust as home (`treatVpnAsHome`) voids the
+ * premise: WireGuard/OpenVPN/Tailscale subnet routes carry the private ranges
+ * into the tunnel, so the LAN URL may be reachable from anywhere (#185). Stand
+ * down for that case and let the bounded timeout handle a genuinely-unreachable
+ * server. A VPN WITHOUT the opt-in is NOT trusted to reach home, so the guard
+ * stays up — otherwise any tunnel (even to a hostile network) would silently
+ * make the private URL "work" off Wi-Fi, contradicting the opt-in. This keeps
+ * the guard aligned with `getActiveUrl`/`evaluateHomeNetwork`, which only treat
+ * a VPN as home when `treatVpnAsHome` is on.
  */
 function lanUnreachableOffWifi(url: string): boolean {
   const store = useConfigStore.getState();
   // Demo mode never hits the network (probes return canned data), so don't let
   // the guard short-circuit demo services to offline when testing on cellular.
   if (store.demoMode) return false;
+  if (store.isVpnActive && store.treatVpnAsHome) return false;
   return store.isOnWifi === false && isPrivateUrl(url);
 }
 
@@ -163,8 +174,12 @@ export async function serviceRequest<T>(
     throw new Error(`No URL configured for ${serviceId}`);
   }
   // Fail fast instead of hanging on an unreachable LAN address off WiFi.
+  // Slot-neutral wording: the guard keys on the URL's host, so a private
+  // address in the Remote URL slot trips it too (#185).
   if (lanUnreachableOffWifi(baseUrl)) {
-    throw new Error(`${serviceId}: local URL not reachable off Wi-Fi`);
+    throw new Error(
+      `${serviceId}: private LAN address not reachable off Wi-Fi (no VPN detected)`,
+    );
   }
 
   // SABnzbd auth lives in the query string (?apikey=…&output=json), not
@@ -494,7 +509,10 @@ export async function checkInstanceHealth(
   // This is the core of the Glances/#106 fix: without it the doomed connect
   // hangs and stalls every other probe in the batch.
   if (lanUnreachableOffWifi(url)) {
-    return { kind: "unreachable", message: "Local URL not reachable off Wi-Fi" };
+    return {
+      kind: "unreachable",
+      message: "Private LAN address not reachable off Wi-Fi (no VPN detected)",
+    };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};
   return testServiceConnection(serviceId, {

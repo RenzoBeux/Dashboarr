@@ -19,6 +19,8 @@ ios/
 !modules/*/android/**
 !modules/*/ios/
 !modules/*/ios/**
+# ...but never the Gradle build output the un-ignore above would otherwise sweep in.
+modules/*/android/build/
 .env
 .env.local
 .claude/

@@ -15,6 +15,12 @@ jest.mock("@/store/config-store", () => ({
   useConfigStore: { getState: () => mockGetState() },
 }));
 
+// Native VPN detection (lib/vpn.ts requires an Expo native module).
+const mockDetectVpnActive = jest.fn();
+jest.mock("@/lib/vpn", () => ({
+  detectVpnActive: () => mockDetectVpnActive(),
+}));
+
 import {
   isHomeNetwork,
   evaluateHomeNetwork,
@@ -28,6 +34,7 @@ const cellular = () => ({ type: "cellular", isConnected: true, details: {} }) as
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockDetectVpnActive.mockReturnValue(false);
 });
 
 describe("isHomeNetwork", () => {
@@ -69,12 +76,14 @@ describe("evaluateHomeNetwork", () => {
     return {
       demoMode: false,
       autoSwitchNetwork: true,
+      treatVpnAsHome: false,
       homeNetworks: [{ id: "1", ssid: "Home", bssid: "" }],
       // No dashboards by default → resolveEffectiveHomeNetworks falls back to
       // the global list, so the pre-v29 cases below keep exercising it.
       dashboards: [],
       activeDashboardId: "",
       setNetworkAwayFromHome: jest.fn(),
+      setIsVpnActive: jest.fn(),
       ...over,
     };
   }
@@ -197,6 +206,104 @@ describe("evaluateHomeNetwork", () => {
     await evaluateHomeNetwork();
 
     expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  // --- v32: opt-in "treat VPN as home" (#185) ---
+
+  it("always refreshes the isVpnActive flag, even when auto-switch is off", async () => {
+    const store = fakeStore({ autoSwitchNetwork: false });
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(true);
+
+    await evaluateHomeNetwork();
+
+    expect(store.setIsVpnActive).toHaveBeenCalledWith(true);
+    expect(store.setNetworkAwayFromHome).not.toHaveBeenCalled();
+  });
+
+  it("sets away=false when treatVpnAsHome is on and a VPN is up (no SSID needed)", async () => {
+    const store = fakeStore({ treatVpnAsHome: true });
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(true);
+
+    await evaluateHomeNetwork();
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  it("falls back to the SSID match when treatVpnAsHome is on but no VPN is up", async () => {
+    const store = fakeStore({ treatVpnAsHome: true });
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(false);
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  it("counts a VPN as home even with zero configured home networks", async () => {
+    const store = fakeStore({ treatVpnAsHome: true, homeNetworks: [] });
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(true);
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  it("actively flips back to away when the VPN drops with zero configured home networks", async () => {
+    const store = fakeStore({ treatVpnAsHome: true, homeNetworks: [] });
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(false);
+
+    await evaluateHomeNetwork();
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  it("does not treat a VPN as home without the opt-in (the pinned safe default)", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(true);
+    mockFetch.mockResolvedValue(vpn());
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  // --- re-runnable in-flight gate (#185 flakiness) ---
+
+  it("re-runs with a fresh store snapshot when called again while in-flight", async () => {
+    // First pass: opt-in off, so it reaches the awaited NetInfo.fetch and parks
+    // there (held open by a deferred promise) — the gate is now in-flight.
+    const before = fakeStore();
+    mockGetState.mockReturnValue(before);
+    let resolveFetch!: (v: any) => void;
+    mockFetch.mockReturnValue(
+      new Promise((r) => {
+        resolveFetch = r;
+      }),
+    );
+
+    const inFlight = evaluateHomeNetwork();
+
+    // Mid-flight, the user enables "treat VPN as home" and a VPN is up. A naive
+    // gate would DROP this call; the re-runnable gate must queue it.
+    const after = fakeStore({ treatVpnAsHome: true });
+    mockGetState.mockReturnValue(after);
+    mockDetectVpnActive.mockReturnValue(true);
+    await evaluateHomeNetwork(); // queued, returns immediately
+
+    resolveFetch(wifi("Cafe")); // first pass settles: not home → away=true
+    await inFlight;
+
+    // The queued re-run read the FRESH snapshot (opt-in on + VPN) → away=false.
+    expect(before.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+    expect(after.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
   });
 });
 

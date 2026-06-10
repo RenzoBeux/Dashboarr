@@ -186,6 +186,8 @@ export default function SettingsScreen() {
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
   const setAutoSwitch = useConfigStore((s) => s.setAutoSwitch);
+  const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
+  const setTreatVpnAsHome = useConfigStore((s) => s.setTreatVpnAsHome);
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
   const wolDevices = useConfigStore((s) => s.wolDevices);
@@ -421,17 +423,27 @@ export default function SettingsScreen() {
           icon={Wifi}
           label="Home Networks"
           subtitle={
-            autoSwitchNetwork && homeNetworksCount === 0
+            autoSwitchNetwork && homeNetworksCount === 0 && !treatVpnAsHome
               ? "Add at least one — without it the app stays on remote URLs"
               : homeNetworksCount > 0
                 ? `${homeNetworksCount} network${homeNetworksCount > 1 ? "s" : ""} configured`
                 : "Configure your home WiFi networks"
           }
           subtitleTone={
-            autoSwitchNetwork && homeNetworksCount === 0 ? "warn" : "default"
+            autoSwitchNetwork && homeNetworksCount === 0 && !treatVpnAsHome
+              ? "warn"
+              : "default"
           }
           onPress={() => router.push("/home-networks")}
         />
+        {autoSwitchNetwork ? (
+          <SettingsToggleRow
+            label="Treat VPN as home"
+            description="While a VPN is connected, use local URLs as if on home WiFi. The app can only detect that some VPN is up — enable this only if your VPN reaches your home network."
+            value={treatVpnAsHome}
+            onValueChange={setTreatVpnAsHome}
+          />
+        ) : null}
         <SettingsRow
           icon={Zap}
           label="Wake-on-LAN"

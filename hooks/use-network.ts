@@ -5,6 +5,7 @@ import {
   evaluateHomeNetwork,
   resolveEffectiveHomeNetworks,
 } from "@/lib/network";
+import { detectVpnActive } from "@/lib/vpn";
 
 /**
  * Keeps the store's ephemeral `networkAwayFromHome` flag in sync with the actual
@@ -34,17 +35,46 @@ export function useNetworkAutoSwitch() {
   const overrideIds = useConfigStore(
     (s) => s.dashboards.find((d) => d.id === s.activeDashboardId)?.homeNetworkIds,
   );
+  // VPN-as-home (#185) changes what "home" means — re-evaluate on toggle, and
+  // keep listening even with zero configured SSIDs (the VPN check alone can
+  // confirm home then).
+  const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
 
-  // Always-on WiFi-vs-not tracker, independent of auto-switch. The off-WiFi LAN
-  // guard in lib/http-client needs to know whether we're on WiFi even when
-  // auto-switch is off (a LAN URL is then used regardless of network, and on
-  // cellular it hangs — freezing the whole health grid red, the Glances/#106
-  // report). Eager fetch + listener so it's accurate by the first probe.
+  // Always-on WiFi-vs-not + VPN tracker, independent of auto-switch. The
+  // off-WiFi LAN guard in lib/http-client needs to know whether we're on WiFi
+  // even when auto-switch is off (a LAN URL is then used regardless of network,
+  // and on cellular it hangs — freezing the whole health grid red, the
+  // Glances/#106 report) — and whether a VPN is up, which makes that same LAN
+  // URL reachable after all (#185). NetInfo can't see the VPN itself, but
+  // toggling one changes the default network, so its events are the right
+  // moments to re-run the native check. Eager fetch + listener so both are
+  // accurate by the first probe.
   useEffect(() => {
-    const apply = (state: NetInfoState) =>
-      useConfigStore.getState().setIsOnWifi(state.type === "wifi");
+    const apply = (state: NetInfoState) => {
+      const store = useConfigStore.getState();
+      store.setIsOnWifi(state.type === "wifi");
+      store.setIsVpnActive(detectVpnActive());
+    };
     void NetInfo.fetch().then(apply).catch(() => {});
-    return NetInfo.addEventListener(apply);
+    const unsubscribe = NetInfo.addEventListener(apply);
+    // Liveness re-check: on iOS a tunnel dying over WiFi emits NO NetInfo
+    // event (its SCNetworkReachability backend maps VPN-up and VPN-down to the
+    // same "wifi" state), so without this a silent VPN drop would leave the
+    // guard down — and with treatVpnAsHome, keep serving local URLs on
+    // whatever network the device is actually on. The native check is a cheap
+    // sync call; setIsVpnActive no-ops when unchanged.
+    const vpnLiveness = setInterval(() => {
+      const store = useConfigStore.getState();
+      const live = detectVpnActive();
+      if (live !== store.isVpnActive) {
+        store.setIsVpnActive(live);
+        void evaluateHomeNetwork();
+      }
+    }, 15000);
+    return () => {
+      clearInterval(vpnLiveness);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -52,9 +82,11 @@ export function useNetworkAutoSwitch() {
     if (!autoSwitchNetwork) return;
 
     // No effective home networks (none configured, or an empty custom
-    // selection) → we can never confirm "home", so force the safe default
-    // (away → remote) rather than leaving a stale "home" flag that would use
-    // the private local URL off-network. The Home Networks screen warns the user.
+    // selection) → we can never confirm "home" by SSID, so force the safe
+    // default (away → remote) rather than leaving a stale "home" flag that
+    // would use the private local URL off-network. The Home Networks screen
+    // warns the user. With treatVpnAsHome on, fall through instead: the VPN
+    // check can still confirm home, so we must evaluate and keep listening.
     const { dashboards, activeDashboardId, homeNetworks } =
       useConfigStore.getState();
     const effective = resolveEffectiveHomeNetworks(
@@ -62,7 +94,7 @@ export function useNetworkAutoSwitch() {
       activeDashboardId,
       homeNetworks,
     );
-    if (effective.length === 0) {
+    if (effective.length === 0 && !treatVpnAsHome) {
       useConfigStore.getState().setNetworkAwayFromHome(true);
       return;
     }
@@ -81,5 +113,5 @@ export function useNetworkAutoSwitch() {
       if (debounceTimer) clearTimeout(debounceTimer);
       unsubscribe();
     };
-  }, [autoSwitchNetwork, globalHomeNetworks, overrideIds]);
+  }, [autoSwitchNetwork, globalHomeNetworks, overrideIds, treatVpnAsHome]);
 }

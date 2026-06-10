@@ -33,6 +33,13 @@ interface FakeSecrets {
 // without having to know the synthetic UUID.
 interface FakeState {
   demoMode: boolean;
+  // Off-WiFi LAN guard inputs (#106/#185). Absent in most tests → undefined →
+  // the guard never trips, same as the cold-start `null` in the real store.
+  isOnWifi?: boolean | null;
+  isVpnActive?: boolean;
+  // Opt-in that lets a VPN stand the guard down (#185). Falsy by default, so an
+  // untrusted VPN does NOT make a private URL reachable off Wi-Fi.
+  treatVpnAsHome?: boolean;
   serviceInstances: Record<string, FakeInstance[]>;
   instanceSecrets: Record<string, FakeSecrets>;
   activeInstance: Record<string, string | null>;
@@ -250,5 +257,80 @@ describe("pingService — custom header injection", () => {
     expect(init.headers.get("X-Override")).toBe("svc");
     // Service auth still wins on the ping path too.
     expect(init.headers.get("X-Api-Key")).toBe("radarr-key");
+  });
+});
+
+// The fixtures use .local (mDNS) URLs, which isPrivateUrl flags — exactly the
+// shape the guard exists for.
+describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("short-circuits a private URL off WiFi with no VPN (the #106 behavior)", async () => {
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "private LAN address not reachable off Wi-Fi",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await pingService("radarr")).toBeNull();
+  });
+
+  it("attempts a private URL off WiFi while a trusted VPN is up (the tunnel can route it)", async () => {
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = true;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("still blocks a private URL off WiFi when a VPN is up but not opted-in (#185)", async () => {
+    // Bug: without this, ANY VPN — even one to a hostile network the user never
+    // chose to trust — would silently make the LAN URL "work" off Wi-Fi.
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "private LAN address not reachable off Wi-Fi",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await pingService("radarr")).toBeNull();
+  });
+
+  it("blocks a private URL even in the remote slot with useRemote forced (no VPN)", async () => {
+    // The reporter's workaround attempt in #185: LAN address in the Remote URL
+    // field + "Always use Remote URL". The guard keys on the URL's host, not
+    // the slot, so without a VPN it still trips.
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.remoteUrl = "http://192.168.1.50:7878";
+    inst.useRemote = true;
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "private LAN address not reachable off Wi-Fi",
+    );
+
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = true;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("never short-circuits while WiFi state is still unknown (cold start)", async () => {
+    mockStateRef.current.isOnWifi = null;
+    mockStateRef.current.isVpnActive = false;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

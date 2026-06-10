@@ -150,6 +150,9 @@ export const WIDGET_ID_RENAMES: Record<string, WidgetId> = {
 export const STORAGE_KEYS = {
   services: "services",
   autoSwitchNetwork: "app.autoSwitchNetwork",
+  // v32: opt-in "VPN connected counts as home" — while a VPN is up the app
+  // behaves as on a confirmed home network (#185).
+  treatVpnAsHome: "app.treatVpnAsHome",
   homeNetworks: "app.homeNetworks",
   // v14: per-user named dashboards, each with their own widget slots and
   // per-slot settings (so the same widget can appear with different instance

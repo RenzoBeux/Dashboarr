@@ -4,6 +4,7 @@ import { HardDrive, Activity, Gpu, ChevronDown, ChevronUp, Container, Network } 
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { CachedDataBanner } from "@/components/common/cached-data-banner";
 import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -67,6 +68,7 @@ function GlancesScreenInner() {
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Server" online={glancesHealth?.online} serviceId="glances" />
+      <CachedDataBanner serviceId="glances" label="Server" />
       <View className="gap-4">
         <CpuCard />
         <MemoryCard />
