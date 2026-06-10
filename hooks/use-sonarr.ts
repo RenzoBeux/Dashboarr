@@ -285,16 +285,20 @@ export function useToggleSeriesMonitored(instanceId?: string) {
   });
 }
 
-export function useUpdateSeriesQualityProfile(instanceId?: string) {
+// Generic series field update (quality profile, series type, season folder,
+// monitor-new-seasons, …): forwards the cached series with `fields` overridden
+// via full PUT and mirrors the change optimistically into both caches.
+export function useUpdateSeriesFields(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
   return useMutation({
     mutationFn: ({
       seriesId,
-      qualityProfileId,
+      fields,
     }: {
       seriesId: number;
-      qualityProfileId: number;
+      fields: Partial<SonarrSeries>;
+      errorLabel?: string;
     }) => {
       const cached = queryClient.getQueryData<SonarrSeries>([
         "sonarr",
@@ -303,9 +307,9 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
         seriesId,
       ]);
       if (!cached) throw new Error("Series not loaded");
-      return updateSeries({ ...cached, qualityProfileId }, id ?? undefined);
+      return updateSeries({ ...cached, ...fields }, id ?? undefined);
     },
-    onMutate: async ({ seriesId, qualityProfileId }) => {
+    onMutate: async ({ seriesId, fields }) => {
       await queryClient.cancelQueries({
         queryKey: ["sonarr", id, "series", seriesId],
       });
@@ -326,21 +330,19 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
       if (prevDetail) {
         queryClient.setQueryData<SonarrSeries>(
           ["sonarr", id, "series", seriesId],
-          { ...prevDetail, qualityProfileId },
+          { ...prevDetail, ...fields },
         );
       }
       if (prevList) {
         queryClient.setQueryData<SonarrSeries[]>(
           ["sonarr", id, "series"],
-          prevList.map((s) =>
-            s.id === seriesId ? { ...s, qualityProfileId } : s,
-          ),
+          prevList.map((s) => (s.id === seriesId ? { ...s, ...fields } : s)),
         );
       }
 
       return { prevDetail, prevList };
     },
-    onError: (err, { seriesId }, context) => {
+    onError: (err, { seriesId, errorLabel }, context) => {
       if (context?.prevDetail) {
         queryClient.setQueryData(
           ["sonarr", id, "series", seriesId],
@@ -350,7 +352,7 @@ export function useUpdateSeriesQualityProfile(instanceId?: string) {
       if (context?.prevList) {
         queryClient.setQueryData(["sonarr", id, "series"], context.prevList);
       }
-      toastError("Failed to update quality profile", err);
+      toastError(errorLabel ?? "Failed to update series", err);
     },
     onSettled: (_data, _err, { seriesId }) => {
       queryClient.invalidateQueries({

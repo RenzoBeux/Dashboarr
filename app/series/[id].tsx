@@ -48,11 +48,12 @@ import {
   useToggleSeriesMonitored,
   useDeleteSeries,
   useSonarrQualityProfiles,
-  useUpdateSeriesQualityProfile,
+  useUpdateSeriesFields,
   useSonarrRootFolders,
   useUpdateSeriesRootFolder,
   useSonarrTags,
 } from "@/hooks/use-sonarr";
+import { SERIES_TYPE_OPTIONS } from "@/components/sonarr/add-series-sheet";
 import {
   formatEpisodeCode,
   formatBytes,
@@ -87,7 +88,8 @@ export default function SeriesDetailScreen() {
   const searchSeries = useSearchForSeries(instanceId);
   const deleteSeries = useDeleteSeries(instanceId);
   const { data: qualityProfiles } = useSonarrQualityProfiles(instanceId);
-  const updateProfile = useUpdateSeriesQualityProfile(instanceId);
+  const updateProfile = useUpdateSeriesFields(instanceId);
+  const updateOptions = useUpdateSeriesFields(instanceId);
   const { data: rootFolders } = useSonarrRootFolders(instanceId);
   const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
   const { data: tags } = useSonarrTags(instanceId);
@@ -95,6 +97,9 @@ export default function SeriesDetailScreen() {
   const [actionsVisible, setActionsVisible] = useState(false);
   const [pendingSeriesSearch, setPendingSeriesSearch] = useState(false);
   const [qualityVisible, setQualityVisible] = useState(false);
+  const [optionSheet, setOptionSheet] = useState<
+    "type" | "seasonFolder" | "newSeasons" | null
+  >(null);
   const [rootFolderVisible, setRootFolderVisible] = useState(false);
   const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
     null,
@@ -167,6 +172,9 @@ export default function SeriesDetailScreen() {
   const handleToggleMonitor = () => {
     toggleSeries.mutate({ seriesId: series.id, monitored: !series.monitored });
   };
+
+  const setSeriesField = (fields: Partial<SonarrSeries>, errorLabel: string) =>
+    updateOptions.mutate({ seriesId: series.id, fields, errorLabel });
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
@@ -261,6 +269,8 @@ export default function SeriesDetailScreen() {
                 : undefined
             }
           />
+
+          <OptionsBlock series={series} onPress={setOptionSheet} />
 
           {series.overview ? (
             <View className="mb-5">
@@ -369,8 +379,108 @@ export default function SeriesDetailScreen() {
             if (p.id === series.qualityProfileId) return;
             updateProfile.mutate({
               seriesId: series.id,
-              qualityProfileId: p.id,
+              fields: { qualityProfileId: p.id },
+              errorLabel: "Failed to update quality profile",
             });
+          },
+        }))}
+      />
+
+      <ActionSheet
+        visible={optionSheet === "type"}
+        onClose={() => setOptionSheet(null)}
+        title="Series Type"
+        subtitle={series.title}
+        actions={SERIES_TYPE_OPTIONS.map((opt) => ({
+          label: opt.label,
+          description: opt.description,
+          icon: (
+            <Icon
+              icon={opt.value === series.seriesType ? Check : Circle}
+              size={18}
+              color={opt.value === series.seriesType ? "#60a5fa" : "#71717a"}
+            />
+          ),
+          onPress: () => {
+            if (opt.value === series.seriesType) return;
+            setSeriesField(
+              { seriesType: opt.value },
+              "Failed to update series type",
+            );
+          },
+        }))}
+      />
+
+      <ActionSheet
+        visible={optionSheet === "seasonFolder"}
+        onClose={() => setOptionSheet(null)}
+        title="Season Folders"
+        subtitle={series.title}
+        actions={[
+          {
+            value: true,
+            label: "Use Season Folders",
+            description: "Sort episodes into season folders",
+          },
+          {
+            value: false,
+            label: "No Season Folders",
+            description: "Keep episodes directly in the series folder",
+          },
+        ].map((opt) => ({
+          label: opt.label,
+          description: opt.description,
+          icon: (
+            <Icon
+              icon={opt.value === series.seasonFolder ? Check : Circle}
+              size={18}
+              color={opt.value === series.seasonFolder ? "#60a5fa" : "#71717a"}
+            />
+          ),
+          onPress: () => {
+            if (opt.value === series.seasonFolder) return;
+            setSeriesField(
+              { seasonFolder: opt.value },
+              "Failed to update season folders",
+            );
+          },
+        }))}
+      />
+
+      <ActionSheet
+        visible={optionSheet === "newSeasons"}
+        onClose={() => setOptionSheet(null)}
+        title="Monitor New Seasons"
+        subtitle={series.title}
+        actions={[
+          {
+            value: "all" as const,
+            label: "All Seasons",
+            description: "Monitor new seasons automatically",
+          },
+          {
+            value: "none" as const,
+            label: "None",
+            description: "Don't monitor new seasons",
+          },
+        ].map((opt) => ({
+          label: opt.label,
+          description: opt.description,
+          icon: (
+            <Icon
+              icon={opt.value === series.monitorNewItems ? Check : Circle}
+              size={18}
+              color={
+                opt.value === series.monitorNewItems ? "#60a5fa" : "#71717a"
+              }
+            />
+          ),
+          onPress: () => {
+            if (opt.value === series.monitorNewItems) return;
+            setSeriesField(
+              { monitorNewItems: opt.value },
+              "Failed to update new season monitoring",
+            );
           },
         }))}
       />
@@ -637,6 +747,69 @@ function AboutRow({
   }
 
   return <View className="flex-row items-center">{content}</View>;
+}
+
+// Editable Sonarr series options (issue #184): series type, season folders,
+// monitor-new-seasons. Each row opens an ActionSheet picker.
+function OptionsBlock({
+  series,
+  onPress,
+}: {
+  series: SonarrSeries;
+  onPress: (sheet: "type" | "seasonFolder" | "newSeasons") => void;
+}) {
+  const typeLabel =
+    SERIES_TYPE_OPTIONS.find((o) => o.value === series.seriesType)?.label ??
+    capitalize(series.seriesType);
+  return (
+    <View className="mb-5">
+      <SectionLabel>Options</SectionLabel>
+      <View className="rounded-2xl bg-surface border border-border p-4 gap-2.5">
+        <OptionRow
+          label="Series Type"
+          value={typeLabel}
+          onPress={() => onPress("type")}
+        />
+        <OptionRow
+          label="Season Folders"
+          value={series.seasonFolder ? "Yes" : "No"}
+          onPress={() => onPress("seasonFolder")}
+        />
+        {/* "Monitor New Seasons" only exists on Sonarr v4+ — hide otherwise. */}
+        {series.monitorNewItems != null ? (
+          <OptionRow
+            label="Monitor New Seasons"
+            value={series.monitorNewItems === "all" ? "All Seasons" : "None"}
+            onPress={() => onPress("newSeasons")}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function OptionRow({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className="flex-row items-center active:opacity-60"
+      hitSlop={6}
+    >
+      <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider flex-1">
+        {label}
+      </Text>
+      <Text className="text-zinc-300 text-xs ml-2 mr-1">{value}</Text>
+      <Icon icon={ChevronRight} size={14} color="#71717a" />
+    </Pressable>
+  );
 }
 
 function SeasonAccordion({

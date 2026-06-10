@@ -488,6 +488,8 @@ export interface ArrDiskSpace {
 
 // --- Sonarr Types ---
 
+export type SonarrSeriesType = "standard" | "daily" | "anime";
+
 export interface SonarrSeries {
   id: number;
   title: string;
@@ -509,6 +511,10 @@ export interface SonarrSeries {
   seasons: SonarrSeason[];
   qualityProfileId: number;
   rootFolderPath: string;
+  seriesType: SonarrSeriesType;
+  seasonFolder: boolean;
+  // "Monitor New Seasons" — Sonarr v4+; absent on older v3 servers.
+  monitorNewItems?: "all" | "none";
   ratings?: RatingsBundle;
   genres?: string[];
   tags?: number[];
