@@ -1,9 +1,10 @@
 import type { ServiceId } from "@/lib/constants";
+import { getDateOffset } from "@/lib/utils";
 
+// Local day, not toISOString()'s UTC day — date-only demo dates flow through
+// releaseDateKey verbatim and must land on the viewer's calendar day.
 function daysFromNow(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0]!;
+  return getDateOffset(days);
 }
 
 function daysFromNowFull(days: number): string {

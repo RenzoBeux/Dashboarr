@@ -65,7 +65,13 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { useUiScale } from "@/hooks/use-ui-scale";
-import { formatEpisodeCode, relativeDate, localDateKey } from "@/lib/utils";
+import {
+  airDateKey,
+  formatEpisodeCode,
+  getDateOffset,
+  relativeDate,
+  localDateKey,
+} from "@/lib/utils";
 import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 
@@ -533,15 +539,23 @@ function CalendarView({
   if (error) {
     return <ErrorBanner error={error} title="Failed to load calendar" />;
   }
-  if (!episodes?.length) {
-    return <EmptyState title="Nothing airing this week" />;
+
+  // Group by the local day of airDateUtc (parity with the Calendar tab and
+  // Sonarr's web UI), bounded back to the visible week — the hook fetches a
+  // day extra on each side for timezone boundary airings.
+  const todayKey = getDateOffset(0);
+  const horizonKey = getDateOffset(7);
+  const grouped = new Map<string, SonarrCalendarEntry[]>();
+  for (const ep of episodes ?? []) {
+    const key = airDateKey(ep);
+    if (!key || key < todayKey || key > horizonKey) continue;
+    const list = grouped.get(key) ?? [];
+    list.push(ep);
+    grouped.set(key, list);
   }
 
-  const grouped = new Map<string, SonarrCalendarEntry[]>();
-  for (const ep of episodes) {
-    const list = grouped.get(ep.airDate) ?? [];
-    list.push(ep);
-    grouped.set(ep.airDate, list);
+  if (grouped.size === 0) {
+    return <EmptyState title="Nothing airing this week" />;
   }
 
   const sortedDates = Array.from(grouped.keys()).sort();

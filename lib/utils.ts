@@ -128,6 +128,38 @@ export function getDateOffset(days: number): string {
 }
 
 /**
+ * Calendar-day key for a Sonarr episode, matching Sonarr's web UI: the
+ * device-local day of the UTC airing instant (airDateUtc), NOT the network's
+ * airDate. A Tuesday-evening US airing is Wednesday for viewers east of the
+ * US; Sonarr web shows Wednesday, so we must too (issue #86). Falls back to
+ * airDate when airDateUtc is missing/unparsable (TBA entries); null if neither.
+ */
+export function airDateKey(ep: {
+  airDate?: string;
+  airDateUtc?: string;
+}): string | null {
+  if (ep.airDateUtc) {
+    const d = new Date(ep.airDateUtc);
+    if (!Number.isNaN(d.getTime())) return localDateKey(d);
+  }
+  return ep.airDate ?? null;
+}
+
+/**
+ * Calendar-day key for a Radarr release datetime (inCinemas/digitalRelease/
+ * physicalRelease), matching Radarr's web UI: the device-local day of the UTC
+ * instant — never `.split("T")[0]` (the UTC day). Date-only strings are
+ * returned verbatim (new Date("YYYY-MM-DD") parses as UTC midnight and would
+ * shift the day west of UTC). Null for missing/unparsable input.
+ */
+export function releaseDateKey(value?: string | null): string | null {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : localDateKey(d);
+}
+
+/**
  * Format audio channels number to label (e.g. 7.1, 5.1, 2.0)
  */
 export function formatAudioChannels(channels: number): string {
