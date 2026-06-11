@@ -619,6 +619,15 @@ export interface SonarrQueue {
   records: SonarrQueueItem[];
 }
 
+// Paged /wanted/missing response — aired, monitored episodes without a file.
+// Fetched with includeSeries=true so each record carries its series.
+export interface SonarrWantedMissing {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: SonarrEpisode[];
+}
+
 export interface SonarrHistoryRecord {
   id: number;
   eventType: string;

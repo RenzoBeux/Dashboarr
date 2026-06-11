@@ -10,6 +10,7 @@ import {
   Gauge,
   HardDrive,
   HeartPulse,
+  Hourglass,
   Inbox,
   Disc3,
   MonitorPlay,
@@ -32,6 +33,7 @@ import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { LidarrQueueCard } from "@/components/dashboard/lidarr-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
+import { StillPendingCard } from "@/components/dashboard/still-pending-card";
 import { StreamMonitorCard } from "@/components/dashboard/stream-monitor-card";
 import { StreamingBandwidthCard } from "@/components/dashboard/streaming-bandwidth-card";
 import { OverseerrRequestsCard } from "@/components/dashboard/overseerr-requests-card";
@@ -58,6 +60,11 @@ import {
   CALENDAR_DEFAULT_SETTINGS,
   type CalendarSettingsValue,
 } from "@/components/dashboard/widget-settings/calendar-settings";
+import {
+  StillPendingSettings,
+  STILL_PENDING_DEFAULT_SETTINGS,
+  type StillPendingSettingsValue,
+} from "@/components/dashboard/widget-settings/still-pending-settings";
 import {
   DownloadsSettings,
   DOWNLOADS_DEFAULT_SETTINGS,
@@ -319,6 +326,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: CalendarSettings,
     defaultSettings: CALENDAR_DEFAULT_SETTINGS,
   },
+  "still-pending": {
+    id: "still-pending",
+    label: "Still Pending",
+    description: "Overdue movies and episodes that haven't downloaded yet",
+    icon: Hourglass,
+    service: ["sonarr", "radarr"],
+    component: StillPendingCard,
+    settingsComponent: StillPendingSettings,
+    defaultSettings: STILL_PENDING_DEFAULT_SETTINGS,
+  },
   "stream-monitor": {
     id: "stream-monitor",
     label: "Stream Activity",
@@ -441,6 +458,7 @@ export type {
   ServerStatsSettingsValue,
   ServiceHealthSettingsValue,
   CalendarSettingsValue,
+  StillPendingSettingsValue,
   DownloadsSettingsValue,
   SabnzbdQueueSettingsValue,
   NzbgetQueueSettingsValue,
