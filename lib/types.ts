@@ -312,6 +312,10 @@ export interface RadarrMovie {
   inCinemas?: string;
   physicalRelease?: string;
   digitalRelease?: string;
+  // Computed by the server from minimumAvailability (Radarr >= 5.10, Aug 2024)
+  releaseDate?: string;
+  // "tba" | "announced" | "inCinemas" | "released"
+  minimumAvailability?: string;
   sizeOnDisk: number;
   images: RadarrImage[];
   ratings: RatingsBundle;
