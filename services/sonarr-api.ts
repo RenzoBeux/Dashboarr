@@ -131,7 +131,7 @@ export function getWantedMissing(
     params: {
       page,
       pageSize,
-      sortKey: "airDateUtc",
+      sortKey: "episodes.airDateUtc",
       sortDirection: "descending",
       includeSeries: true,
       monitored: true,
