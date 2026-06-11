@@ -65,15 +65,33 @@ const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "size-desc", label: "Size: Largest First" },
 ];
 
-// Original release of the film: earliest of the cinema/digital/physical dates
-// (theatrical typically comes first; min() picks it, but stays robust for
-// straight-to-streaming titles that only carry a digital date).
+function parseTime(d?: string): number | null {
+  if (!d) return null;
+  const t = new Date(d).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+// Must sort identically to Radarr's own "Release Date" option, which uses the
+// server-computed `releaseDate` (Movie.GetReleaseDate(), keyed off
+// minimumAvailability). The local computation below replicates it for Radarr
+// servers older than 5.10 that don't send `releaseDate`.
 function releaseTime(m: RadarrMovie): number | null {
-  const times = [m.inCinemas, m.digitalRelease, m.physicalRelease]
-    .filter((d): d is string => Boolean(d))
-    .map((d) => new Date(d).getTime())
-    .filter((t) => Number.isFinite(t));
-  return times.length ? Math.min(...times) : null;
+  const fromServer = parseTime(m.releaseDate);
+  if (fromServer !== null) return fromServer;
+
+  const cinema = parseTime(m.inCinemas);
+  if (m.minimumAvailability === "tba" || m.minimumAvailability === "announced") {
+    const all = [cinema, parseTime(m.digitalRelease), parseTime(m.physicalRelease)].filter(
+      (t): t is number => t !== null,
+    );
+    return all.length ? Math.min(...all) : null;
+  }
+  if (m.minimumAvailability === "inCinemas" && cinema !== null) return cinema;
+  const home = [parseTime(m.digitalRelease), parseTime(m.physicalRelease)].filter(
+    (t): t is number => t !== null,
+  );
+  if (home.length) return Math.min(...home);
+  return cinema !== null ? cinema + 90 * 24 * 60 * 60 * 1000 : null;
 }
 
 function nextReleaseTime(m: RadarrMovie): number | null {
