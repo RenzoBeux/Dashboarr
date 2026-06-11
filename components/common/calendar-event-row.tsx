@@ -1,4 +1,4 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Tv, Film, Check, Download, type LucideIcon } from "lucide-react-native";
@@ -38,6 +38,12 @@ export interface CalendarEventRowProps {
   onPress: () => void;
   /** Optional long-press (e.g. the TV calendar opens an episode action sheet). */
   onLongPress?: () => void;
+  /**
+   * Optional trailing action button. When set it replaces the static status
+   * badge (e.g. the Still Pending widget puts a per-row search trigger there —
+   * every row is missing, so the badge would be redundant).
+   */
+  action?: { icon: LucideIcon; onPress: () => void; loading?: boolean };
 }
 
 /**
@@ -56,6 +62,7 @@ export function CalendarEventRow({
   hasFile,
   onPress,
   onLongPress,
+  action,
 }: CalendarEventRowProps) {
   const scale = useUiScale();
   const rowHeight = Math.round(ROW_HEIGHT * scale);
@@ -138,21 +145,36 @@ export function CalendarEventRow({
           </Text>
         </View>
 
-        {/* Status badge — explicit downloaded / not-yet state. */}
-        <View
-          className="w-7 h-7 rounded-full items-center justify-center"
-          style={{
-            backgroundColor: hasFile
-              ? "rgba(34, 197, 94, 0.2)"
-              : "rgba(255, 255, 255, 0.12)",
-          }}
-        >
-          <Icon
-            icon={hasFile ? Check : Download}
-            size={14}
-            color={hasFile ? DOWNLOADED : "#d4d4d8"}
-          />
-        </View>
+        {action ? (
+          <Pressable
+            onPress={action.loading ? undefined : action.onPress}
+            hitSlop={8}
+            className="w-7 h-7 rounded-full items-center justify-center active:opacity-70"
+            style={{ backgroundColor: "rgba(255, 255, 255, 0.12)" }}
+          >
+            {action.loading ? (
+              <ActivityIndicator size="small" color="#d4d4d8" />
+            ) : (
+              <Icon icon={action.icon} size={14} color="#d4d4d8" />
+            )}
+          </Pressable>
+        ) : (
+          /* Status badge — explicit downloaded / not-yet state. */
+          <View
+            className="w-7 h-7 rounded-full items-center justify-center"
+            style={{
+              backgroundColor: hasFile
+                ? "rgba(34, 197, 94, 0.2)"
+                : "rgba(255, 255, 255, 0.12)",
+            }}
+          >
+            <Icon
+              icon={hasFile ? Check : Download}
+              size={14}
+              color={hasFile ? DOWNLOADED : "#d4d4d8"}
+            />
+          </View>
+        )}
       </View>
     </Pressable>
   );

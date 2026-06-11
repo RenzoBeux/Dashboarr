@@ -107,6 +107,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "lidarr-queue",
   "recently-downloaded",
   "calendar",
+  "still-pending",
   "stream-monitor",
   "streaming-bandwidth",
   "overseerr-requests",

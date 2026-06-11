@@ -10,6 +10,7 @@ import type {
   SonarrSeriesType,
   SonarrImage,
   SonarrRelease,
+  SonarrWantedMissing,
 } from "@/lib/types";
 
 const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
@@ -111,6 +112,29 @@ export function getCalendar(
       end: endDate,
       includeSeries: true,
       unmonitored: options.unmonitored ?? false,
+    },
+    instanceId,
+  });
+}
+
+// --- Wanted / Missing ---
+
+// Aired, monitored episodes without a file, newest first. One page of 100
+// covers any dashboard lookback window unless more than 100 episodes went
+// missing inside it — an acceptable cap for a widget surface.
+export function getWantedMissing(
+  page = 1,
+  pageSize = 100,
+  instanceId?: string,
+): Promise<SonarrWantedMissing> {
+  return serviceRequest<SonarrWantedMissing>("sonarr", "/wanted/missing", {
+    params: {
+      page,
+      pageSize,
+      sortKey: "episodes.airDateUtc",
+      sortDirection: "descending",
+      includeSeries: true,
+      monitored: true,
     },
     instanceId,
   });

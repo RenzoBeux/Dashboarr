@@ -80,8 +80,10 @@ export function useRadarrHistory(instanceId?: string, active = true) {
   });
 }
 
-// Fetches the complete wanted/missing list (all pages). Only mounted by the
-// Movies "Wanted" tab, so the full walk doesn't run while the user is elsewhere.
+// Fetches the complete wanted/missing list (all pages). Mounted by the Movies
+// "Wanted" tab; the Still Pending widget subscribes to the same
+// ["radarr", id, "wanted", "all"] key (via useQueries) so the two share one
+// cache entry instead of double-fetching the full walk.
 // The key is namespaced with "all" so it never aliases the count-only
 // ["radarr", id, "wanted"] entry the dashboard's RadarrQueueCard owns — sharing
 // a key would let its 1-record badge fetch clobber the full list (and vice
