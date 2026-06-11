@@ -57,6 +57,7 @@ import {
 import { SERIES_TYPE_OPTIONS } from "@/components/sonarr/add-series-sheet";
 import { SeriesOptionsSheet } from "@/components/sonarr/series-options-sheet";
 import {
+  airDateKey,
   formatEpisodeCode,
   formatBytes,
   formatAudioChannels,
@@ -844,6 +845,8 @@ function EpisodeRow({
   // present a second modal while the first is dismissing).
   const wantDeleteFile = useRef(false);
   const mediaInfo = episodeFile?.mediaInfo;
+  // Local day of airDateUtc, matching Sonarr web's episode list (issue #86).
+  const airLabel = airDateKey(episode);
 
   // Search/delete live in the "⋯" sheet so the row stays uncluttered and the
   // automatic-vs-interactive search distinction reads clearly as labeled rows.
@@ -899,8 +902,8 @@ function EpisodeRow({
                 ? ` · ${mediaInfo.videoDynamicRangeType}`
                 : ""}
             </Text>
-          ) : episode.airDate ? (
-            <Text className="text-zinc-600 text-xs">{episode.airDate}</Text>
+          ) : airLabel ? (
+            <Text className="text-zinc-600 text-xs">{airLabel}</Text>
           ) : null}
         </View>
         <View className="flex-row items-center gap-1">

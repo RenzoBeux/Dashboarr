@@ -17,10 +17,12 @@ import {
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import {
+  airDateKey,
   formatEpisodeCode,
   relativeDate,
   getDateOffset,
   localDateKey,
+  releaseDateKey,
 } from "@/lib/utils";
 import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
 import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
@@ -61,10 +63,6 @@ function pickRadarrDate(
   }
 }
 
-function isoDate(value: string): string {
-  return value.slice(0, 10);
-}
-
 function isToday(dateString: string): boolean {
   return dateString === localDateKey();
 }
@@ -93,8 +91,11 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   // Fan out the calendar fetch across each resolved instance per kind. The
   // instance id is folded into the query key so two Sonarrs don't trample
   // each other's cached calendar.
-  const start = getDateOffset(0);
-  const end = getDateOffset(settings.daysAhead);
+  // Padded ±1 day so boundary episodes whose UTC day differs from the local
+  // day survive the server-side range filter; the [todayIso, horizonIso]
+  // client filter below keeps the display window exact.
+  const start = getDateOffset(-1);
+  const end = getDateOffset(settings.daysAhead + 1);
   const sonarrQueries = useQueries({
     queries: showSonarr
       ? sonarrInstances.map((inst) => ({
@@ -135,8 +136,8 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
       const instanceId = sonarrInstances[i]?.id;
       if (!instanceId) return;
       for (const ep of q.data ?? []) {
-        const date = isoDate(ep.airDate);
-        if (date < todayIso || date > horizonIso) continue;
+        const date = airDateKey(ep);
+        if (!date || date < todayIso || date > horizonIso) continue;
         // No air-time filter: the Calendar tab shows every episode that
         // airs on a given day regardless of clock, and this widget must
         // stay in lockstep with it (otherwise "Today" disappears from the
@@ -151,10 +152,10 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
       const instanceId = radarrInstances[i]?.id;
       if (!instanceId) return;
       for (const movie of q.data ?? []) {
-        const raw = pickRadarrDate(movie, settings.radarrReleaseType);
-        if (!raw) continue;
-        const date = isoDate(raw);
-        if (date < todayIso || date > horizonIso) continue;
+        const date = releaseDateKey(
+          pickRadarrDate(movie, settings.radarrReleaseType),
+        );
+        if (!date || date < todayIso || date > horizonIso) continue;
         items.push({ kind: "movie", date, movie, instanceId });
       }
     });

@@ -17,6 +17,7 @@ import {
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import {
+  airDateKey,
   formatEpisodeCode,
   relativeDate,
   getDateOffset,
@@ -102,7 +103,7 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
         // monitored=true is requested server-side; the client check is a
         // cheap guard. Undated episodes (unaired specials) are skipped.
         if (ep.hasFile || !ep.monitored || !ep.series) continue;
-        const date = ep.airDate ?? ep.airDateUtc?.slice(0, 10);
+        const date = airDateKey(ep);
         if (!date || date < cutoffIso || date > todayIso) continue;
         if (date === todayIso) {
           if (!settings.includeToday) continue;

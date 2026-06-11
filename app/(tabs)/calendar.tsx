@@ -26,7 +26,12 @@ import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
-import { formatEpisodeCode, localDateKey } from "@/lib/utils";
+import {
+  airDateKey,
+  formatEpisodeCode,
+  localDateKey,
+  releaseDateKey,
+} from "@/lib/utils";
 import { lightHaptic } from "@/lib/haptics";
 import { getBoolean, setBoolean, getString, setString } from "@/store/storage";
 import type { ServiceId } from "@/lib/constants";
@@ -65,9 +70,16 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-function getMonthRange(year: number, month: number) {
-  const start = new Date(year, month, 1);
-  const end = new Date(year, month + 1, 0);
+// Fetch the full visible grid (incl. prev/next-month padding cells) padded
+// ±1 day, mirroring Sonarr's web UI. The padding keeps boundary episodes
+// whose UTC day differs from the local day inside the server-side range
+// filter; the extra day on `end` also matters because the *arr APIs treat a
+// date-only end as midnight (exclusive of that day's airings).
+function getFetchRange(year: number, month: number) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const start = new Date(year, month, 1 - first.getDay() - 1);
+  const end = new Date(year, month, last.getDate() + (6 - last.getDay()) + 1);
   return {
     start: localDateKey(start),
     end: localDateKey(end),
@@ -176,7 +188,7 @@ export default function CalendarScreen() {
     [radarrAll, radarrFilter],
   );
 
-  const { start, end } = getMonthRange(year, month);
+  const { start, end } = getFetchRange(year, month);
 
   // Fan out the calendar query across every selected Sonarr/Radarr instance.
   // Each instance contributes its own slice of dates; we flatten and dedupe
@@ -283,16 +295,18 @@ export default function CalendarScreen() {
     if (filter !== "movies") {
       for (const { data: ep, instanceId } of taggedEpisodes) {
         if (!instanceId) continue;
+        const key = airDateKey(ep);
+        if (!key) continue;
         const item: CalendarItem = {
           type: "episode",
-          date: ep.airDate,
+          date: key,
           data: ep,
           instanceId,
         };
         all.push(item);
-        const list = map.get(ep.airDate) ?? [];
+        const list = map.get(key) ?? [];
         list.push(item);
-        map.set(ep.airDate, list);
+        map.set(key, list);
       }
     }
 
@@ -710,9 +724,9 @@ function InstanceScopePicker({
 // --- Helpers ---
 
 function getMovieReleaseDate(movie: RadarrMovie): string | null {
-  const date =
-    movie.digitalRelease ?? movie.physicalRelease ?? movie.inCinemas;
-  return date ? date.split("T")[0] : null;
+  return releaseDateKey(
+    movie.digitalRelease ?? movie.physicalRelease ?? movie.inCinemas,
+  );
 }
 
 function getMovieReleaseType(movie: RadarrMovie): string {

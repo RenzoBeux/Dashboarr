@@ -75,8 +75,11 @@ export function useSonarrCalendar(days = 7, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "calendar", days],
+    // Padded ±1 day: episodes are placed on the local day of airDateUtc, so a
+    // boundary airing whose UTC day differs from the local day would fall
+    // outside the server-side range filter. Consumers re-bound to [0, days].
     queryFn: () =>
-      getCalendar(getDateOffset(0), getDateOffset(days), {}, id ?? undefined),
+      getCalendar(getDateOffset(-1), getDateOffset(days + 1), {}, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled: enabled && !!id,
   });
