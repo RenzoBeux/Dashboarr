@@ -23,6 +23,10 @@ export interface StillPendingSettingsValue extends Record<string, unknown> {
   includeRadarr: boolean;
   lookbackDays: number;
   maxItems: number;
+  // When on, items dated today that have already aired/released are included
+  // too (they also appear under "Today" in the Releasing Soon widget). Off by
+  // default so the two cards never list the same item.
+  includeToday: boolean;
 }
 
 export const STILL_PENDING_DEFAULT_SETTINGS: StillPendingSettingsValue = {
@@ -34,6 +38,7 @@ export const STILL_PENDING_DEFAULT_SETTINGS: StillPendingSettingsValue = {
   // Movies Wanted tab; this widget is about catching what just slipped by.
   lookbackDays: 14,
   maxItems: 5,
+  includeToday: false,
 };
 
 const LOOKBACK_OPTIONS: { value: number; label: string }[] = [
@@ -109,6 +114,17 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
       />
+
+      <SettingsSection label="Options">
+        <ToggleCard>
+          <Toggle
+            label="Include today"
+            description="Also show items already aired or released today — these are listed in Releasing Soon too"
+            value={settings.includeToday}
+            onValueChange={(includeToday) => update({ includeToday })}
+          />
+        </ToggleCard>
+      </SettingsSection>
     </View>
   );
 }

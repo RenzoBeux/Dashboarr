@@ -36,7 +36,9 @@ type PendingItem =
   | { kind: "movie"; date: string; movie: RadarrMovie; instanceId: string };
 
 // The calendar widget owns today and the future; this widget lists what's
-// strictly overdue, so an item never appears on both cards.
+// strictly overdue, so by default an item never appears on both cards. The
+// "Include today" setting opts into already-aired/released same-day items at
+// the cost of them showing on both cards.
 export function StillPendingCard({ slotId }: WidgetComponentProps) {
   const router = useRouter();
   const { settings } = useWidgetSettings<StillPendingSettingsValue>(
@@ -101,7 +103,15 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
         // cheap guard. Undated episodes (unaired specials) are skipped.
         if (ep.hasFile || !ep.monitored || !ep.series) continue;
         const date = ep.airDate ?? ep.airDateUtc?.slice(0, 10);
-        if (!date || date < cutoffIso || date >= todayIso) continue;
+        if (!date || date < cutoffIso || date > todayIso) continue;
+        if (date === todayIso) {
+          if (!settings.includeToday) continue;
+          // Today is hour-granular: only count an episode once its air time
+          // has actually passed, so a primetime slot isn't "overdue" at 9am.
+          const airedAt = ep.airDateUtc ? new Date(ep.airDateUtc).getTime() : null;
+          if (airedAt === null || !Number.isFinite(airedAt) || airedAt > Date.now())
+            continue;
+        }
         items.push({ kind: "episode", date, entry: ep, instanceId });
       }
     });
@@ -116,7 +126,10 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
         const t = radarrReleaseTime(movie);
         if (t === null) continue;
         const date = localDateKey(new Date(t));
-        if (date < cutoffIso || date >= todayIso) continue;
+        if (date < cutoffIso || date > todayIso) continue;
+        // Movie release dates are day-granular — no air time to wait for, so
+        // a today-dated movie is included outright when the toggle is on.
+        if (date === todayIso && !settings.includeToday) continue;
         items.push({ kind: "movie", date, movie, instanceId });
       }
     });
@@ -167,7 +180,11 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
         <View className="gap-4">
           {grouped.map(({ date, entries }) => (
             <View key={date} className="gap-2">
-              <Text className="text-xs font-semibold text-zinc-500">
+              <Text
+                className={`text-xs font-semibold ${
+                  date === todayIso ? "text-primary" : "text-zinc-500"
+                }`}
+              >
                 {relativeDate(date)}
               </Text>
               <View className="gap-2">
