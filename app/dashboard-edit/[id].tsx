@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { usePreventRemove } from "@react-navigation/native";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -24,6 +24,7 @@ import { BackHeader } from "@/components/common/back-header";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { TextInput } from "@/components/ui/text-input";
 import { useConfigStore, type ServiceInstance } from "@/store/config-store";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   ICON,
   SERVICE_DEFAULTS,
@@ -173,11 +174,13 @@ export default function DashboardEditScreen() {
   // tripped the guard.
   const navigation = useNavigation();
   const allowRemoveRef = useRef(false);
-  const pendingActionRef = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
-  // On iOS the actual navigation is deferred to the modal's onClosed; this marks
-  // that the user confirmed (vs cancelled) so onClosed knows to proceed.
-  const discardConfirmedRef = useRef(false);
-  const [discardOpen, setDiscardOpen] = useState(false);
+  // The discard confirm and the navigation after it go through the flow — see
+  // hooks/use-modal-flow.ts. Payload: the navigation action intercepted by
+  // usePreventRemove, or null when Cancel was tapped (falls back to
+  // router.back()).
+  const flow = useModalFlow<{
+    discard: Parameters<typeof navigation.dispatch>[0] | null;
+  }>();
 
   usePreventRemove(
     dirty,
@@ -188,31 +191,17 @@ export default function DashboardEditScreen() {
         return;
       }
       Haptics.selectionAsync();
-      pendingActionRef.current = data.action;
-      setDiscardOpen(true);
-    }, [navigation]),
+      flow.open("discard", data.action);
+    }, [navigation, flow]),
   );
 
   function performDiscard() {
-    const action = pendingActionRef.current;
-    pendingActionRef.current = null;
+    const action = flow.payload("discard");
     allowRemoveRef.current = true;
     if (action) {
       navigation.dispatch(action);
     } else {
       router.back();
-    }
-  }
-
-  function confirmDiscard() {
-    setDiscardOpen(false);
-    // iOS: navigate only after the modal has fully dismissed — popping or
-    // dispatching mid-dismiss hangs the JS thread on Fabric (see useModalClosed
-    // / useDeferredBack). Android has no such constraint, so go immediately.
-    if (Platform.OS === "ios") {
-      discardConfirmedRef.current = true;
-    } else {
-      performDiscard();
     }
   }
 
@@ -418,8 +407,7 @@ export default function DashboardEditScreen() {
   function handleCancel() {
     if (dirty) {
       Haptics.selectionAsync();
-      pendingActionRef.current = null;
-      setDiscardOpen(true);
+      flow.open("discard", null);
       return;
     }
     allowRemoveRef.current = true;
@@ -792,22 +780,15 @@ export default function DashboardEditScreen() {
       </Section>
 
       <ConfirmModal
-        visible={discardOpen}
+        {...flow.bind("discard")}
         title="Discard changes?"
         message="Your edits to this dashboard haven't been saved yet."
         tone="danger"
         confirmLabel="Discard"
         cancelLabel="Keep editing"
-        onCancel={() => {
-          setDiscardOpen(false);
-          pendingActionRef.current = null;
-        }}
-        onConfirm={confirmDiscard}
-        onClosed={() => {
-          if (discardConfirmedRef.current) {
-            discardConfirmedRef.current = false;
-            performDiscard();
-          }
+        onConfirm={() => {
+          flow.close();
+          flow.whenClear(performDiscard);
         }}
       />
 

@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef } from "react";
+import { memo, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -42,6 +42,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { mediumHaptic } from "@/lib/haptics";
 import { BAR_KIND_COLOR, cornerColorFor, radarrBarKind } from "@/lib/arr-poster-status";
 import { radarrReleaseTime } from "@/lib/radarr-release-date";
@@ -53,6 +54,13 @@ type MovieSheetTarget =
   | null;
 
 type Tab = "library" | "queue" | "wanted";
+
+type DeleteIntent = {
+  id: number;
+  title: string;
+  tmdbId?: number;
+  withFiles: boolean;
+};
 
 const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
@@ -147,24 +155,16 @@ export const MoviesView = memo(function MoviesView({
   const searchMissing = useSearchAllMissingMovies();
   const toggleMonitor = useToggleMovieMonitored();
   const deleteMutation = useDeleteMovie();
-  const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
 
   const radarrHealth = healthData?.find((s) => s.id === "radarr");
 
-  const [pendingDelete, setPendingDelete] = useState<{
-    id: number;
-    title: string;
-    tmdbId?: number;
-    withFiles: boolean;
-  } | null>(null);
-  // Set from the actions sheet, promoted to the confirm modal only after the
-  // sheet has fully closed — never stack two native modals on iOS.
-  const deleteIntent = useRef<{
-    id: number;
-    title: string;
-    tmdbId?: number;
-    withFiles: boolean;
-  } | null>(null);
+  // All modal sequencing (sheet → confirm, sheet → details push) goes through
+  // the flow — see hooks/use-modal-flow.ts.
+  const flow = useModalFlow<{
+    actions: void;
+    searchMissing: void;
+    confirmDelete: DeleteIntent;
+  }>();
 
   const sheetMovie: RadarrMovie | undefined =
     sheetTarget?.kind === "movie"
@@ -195,50 +195,61 @@ export const MoviesView = memo(function MoviesView({
       {
         label: "Open Details",
         icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
-        onPress: () => router.push(`/movie/${movie.id}`),
+        onPress: () => flow.whenClear(() => router.push(`/movie/${movie.id}`)),
       },
       {
         label: "Delete",
         icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
         variant: "danger",
-        onPress: () => {
-          deleteIntent.current = {
+        onPress: () =>
+          flow.open("confirmDelete", {
             id: movie.id,
             title: movie.title,
             tmdbId: movie.tmdbId,
             withFiles: false,
-          };
-        },
+          }),
       },
       {
         label: "Delete + Files",
         icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
         variant: "danger",
-        onPress: () => {
-          deleteIntent.current = {
+        onPress: () =>
+          flow.open("confirmDelete", {
             id: movie.id,
             title: movie.title,
             tmdbId: movie.tmdbId,
             withFiles: true,
-          };
-        },
+          }),
       },
     ];
-  }, [sheetMovie, searchMutation, toggleMonitor, deleteMutation, router]);
+  }, [sheetMovie, searchMutation, toggleMonitor, router, flow]);
 
   const openMovieSheet = (movie: RadarrMovie) => {
     mediumHaptic();
     setSheetTarget({ kind: "movie", item: movie });
+    flow.open("actions");
   };
   const openQueueSheet = (item: RadarrQueueItem) => {
     if (!item.movie) return;
     mediumHaptic();
     setSheetTarget({ kind: "queue", item });
+    flow.open("actions");
+  };
+
+  const pendingDelete = flow.payload("confirmDelete");
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    flow.close();
+    deleteMutation.mutate({
+      id: pendingDelete.id,
+      deleteFiles: pendingDelete.withFiles,
+      tmdbId: pendingDelete.tmdbId,
+    });
   };
 
   const handleSearchMissing = () => {
     mediumHaptic();
-    setMissingConfirmOpen(true);
+    flow.open("searchMissing");
   };
 
   // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
@@ -347,14 +358,7 @@ export const MoviesView = memo(function MoviesView({
       )}
 
       <ActionSheet
-        visible={sheetTarget !== null}
-        onClose={() => setSheetTarget(null)}
-        onClosed={() => {
-          if (deleteIntent.current) {
-            setPendingDelete(deleteIntent.current);
-            deleteIntent.current = null;
-          }
-        }}
+        {...flow.bind("actions")}
         title={sheetMovie?.title}
         subtitle={sheetMovie ? String(sheetMovie.year) : undefined}
         actions={actions}
@@ -376,20 +380,19 @@ export const MoviesView = memo(function MoviesView({
       />
 
       <ConfirmModal
-        visible={missingConfirmOpen}
+        {...flow.bind("searchMissing")}
         title="Search Missing Movies"
         message="Radarr will search every monitored missing movie in your library. This can queue a lot of grabs at once."
         icon={ScanSearch}
         confirmLabel="Search"
         onConfirm={() => {
-          setMissingConfirmOpen(false);
+          flow.close();
           searchMissing.mutate();
         }}
-        onCancel={() => setMissingConfirmOpen(false)}
       />
 
       <ConfirmModal
-        visible={pendingDelete !== null}
+        {...flow.bind("confirmDelete")}
         title={pendingDelete?.withFiles ? "Delete movie + files?" : "Delete movie?"}
         message={
           pendingDelete
@@ -401,17 +404,7 @@ export const MoviesView = memo(function MoviesView({
         icon={Trash2}
         tone="danger"
         confirmLabel={pendingDelete?.withFiles ? "Delete + Files" : "Delete"}
-        onConfirm={() => {
-          if (pendingDelete) {
-            deleteMutation.mutate({
-              id: pendingDelete.id,
-              deleteFiles: pendingDelete.withFiles,
-              tmdbId: pendingDelete.tmdbId,
-            });
-          }
-          setPendingDelete(null);
-        }}
-        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
       />
     </>
   );

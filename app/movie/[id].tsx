@@ -1,4 +1,3 @@
-import { useRef, useState } from "react";
 import { View, Text, ScrollView, Linking, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -40,7 +39,7 @@ import {
   useRadarrTags,
 } from "@/hooks/use-radarr";
 import { useServiceImage } from "@/hooks/use-service-image";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   formatBytes,
   formatAudioChannels,
@@ -48,7 +47,7 @@ import {
 } from "@/lib/utils";
 import type { RadarrMovie } from "@/lib/types";
 
-type DeleteMode = "keep" | "withFiles" | null;
+type DeleteMode = "keep" | "withFiles";
 
 export default function MovieDetailScreen() {
   const { id, instanceId } = useLocalSearchParams<{
@@ -56,7 +55,6 @@ export default function MovieDetailScreen() {
     instanceId?: string;
   }>();
   const router = useRouter();
-  const deferredBack = useDeferredBack();
   const { data: movie, isLoading, error } = useRadarrMovie(Number(id), instanceId);
   const deleteMutation = useDeleteMovie(instanceId);
   const toggleMonitored = useToggleMovieMonitored(instanceId);
@@ -66,17 +64,15 @@ export default function MovieDetailScreen() {
   const updateRootFolder = useUpdateMovieRootFolder(instanceId);
   const { data: tags } = useRadarrTags(instanceId);
 
-  const [actionsVisible, setActionsVisible] = useState(false);
-  const [qualityVisible, setQualityVisible] = useState(false);
-  const [rootFolderVisible, setRootFolderVisible] = useState(false);
-  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
-  // Chosen in the actions sheet, promoted to the confirm modal only once that
-  // sheet has fully closed — never stack two native modals on iOS.
-  const deleteIntent = useRef<DeleteMode>(null);
-  // Same deal: a picked root folder, opened into the "move files?" sheet only
-  // after the root-folder sheet is fully gone.
-  const rootFolderIntent = useRef<string | null>(null);
+  // All modal sequencing (sheet → confirm, sheet → sheet, confirm → pop) goes
+  // through the flow — see hooks/use-modal-flow.ts.
+  const flow = useModalFlow<{
+    actions: void;
+    quality: void;
+    rootFolder: void;
+    moveFiles: string; // payload: the picked root folder path
+    confirmDelete: DeleteMode;
+  }>();
 
   const poster = movie?.images.find((i) => i.coverType === "poster");
   const fanart = movie?.images.find((i) => i.coverType === "fanart");
@@ -130,20 +126,18 @@ export default function MovieDetailScreen() {
   };
 
   const confirmDelete = () => {
-    if (!pendingDelete) return;
-    const withFiles = pendingDelete === "withFiles";
-    // Close the confirm modal first, then pop the screen only after it has
-    // fully dismissed — popping mid-dismiss hangs the JS thread on iOS/Fabric.
-    deferredBack.arm();
-    setPendingDelete(null);
+    const mode = flow.payload("confirmDelete");
+    if (!mode) return;
+    flow.close();
     deleteMutation.mutate(
       {
         id: movie.id,
-        deleteFiles: withFiles,
+        deleteFiles: mode === "withFiles",
         tmdbId: movie.tmdbId,
       },
       {
-        onSuccess: () => deferredBack.back(),
+        // flow.back() pops only once the confirm has fully dismissed.
+        onSuccess: () => flow.back(),
         onError: (err) => toastError("Failed to delete movie", err),
       },
     );
@@ -163,7 +157,7 @@ export default function MovieDetailScreen() {
       icon: Award,
       label: qualityProfileName ?? "Quality",
       loading: updateProfile.isPending,
-      onPress: () => setQualityVisible(true),
+      onPress: () => flow.open("quality"),
       disabled: !qualityProfiles || qualityProfiles.length === 0,
     },
     {
@@ -191,7 +185,7 @@ export default function MovieDetailScreen() {
       key: "more",
       icon: MoreHorizontal,
       label: "More",
-      onPress: () => setActionsVisible(true),
+      onPress: () => flow.open("actions"),
     },
   ];
 
@@ -231,7 +225,7 @@ export default function MovieDetailScreen() {
             movie={movie}
             onPressRoot={
               rootFolders && rootFolders.length > 0
-                ? () => setRootFolderVisible(true)
+                ? () => flow.open("rootFolder")
                 : undefined
             }
           />
@@ -278,38 +272,26 @@ export default function MovieDetailScreen() {
       </ScreenWrapper>
 
       <ActionSheet
-        visible={actionsVisible}
-        onClose={() => setActionsVisible(false)}
-        onClosed={() => {
-          if (deleteIntent.current) {
-            setPendingDelete(deleteIntent.current);
-            deleteIntent.current = null;
-          }
-        }}
+        {...flow.bind("actions")}
         title={movie.title}
         actions={[
           {
             label: "Delete Movie",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              deleteIntent.current = "keep";
-            },
+            onPress: () => flow.open("confirmDelete", "keep"),
           },
           {
             label: "Delete Movie + Files",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              deleteIntent.current = "withFiles";
-            },
+            onPress: () => flow.open("confirmDelete", "withFiles"),
           },
         ]}
       />
 
       <ActionSheet
-        visible={qualityVisible}
-        onClose={() => setQualityVisible(false)}
+        {...flow.bind("quality")}
         title="Quality Profile"
         subtitle={movie.title}
         actions={(qualityProfiles ?? []).map((p) => ({
@@ -332,14 +314,7 @@ export default function MovieDetailScreen() {
       />
 
       <ActionSheet
-        visible={rootFolderVisible}
-        onClose={() => setRootFolderVisible(false)}
-        onClosed={() => {
-          if (rootFolderIntent.current) {
-            setPendingRootFolder(rootFolderIntent.current);
-            rootFolderIntent.current = null;
-          }
-        }}
+        {...flow.bind("rootFolder")}
         title="Root Folder"
         subtitle={movie.title}
         actions={(rootFolders ?? []).map((f) => ({
@@ -353,66 +328,65 @@ export default function MovieDetailScreen() {
           ),
           onPress: () => {
             if (f.path === movie.rootFolderPath) return;
-            rootFolderIntent.current = f.path;
+            flow.open("moveFiles", f.path);
           },
         }))}
       />
 
       <ActionSheet
-        visible={pendingRootFolder !== null}
-        onClose={() => setPendingRootFolder(null)}
+        {...flow.bind("moveFiles")}
         title="Move existing files?"
-        subtitle={pendingRootFolder ?? ""}
+        subtitle={flow.payload("moveFiles") ?? ""}
         actions={[
           {
             label: "Move existing files",
             icon: <Icon icon={FolderTree} size={18} color="#60a5fa" />,
             onPress: () => {
-              if (!pendingRootFolder) return;
+              const path = flow.payload("moveFiles");
+              if (!path) return;
               updateRootFolder.mutate({
                 movieId: movie.id,
-                rootFolderPath: pendingRootFolder,
+                rootFolderPath: path,
                 moveFiles: true,
               });
-              setPendingRootFolder(null);
             },
           },
           {
             label: "Keep files in place",
             icon: <Icon icon={Circle} size={18} color="#71717a" />,
             onPress: () => {
-              if (!pendingRootFolder) return;
+              const path = flow.payload("moveFiles");
+              if (!path) return;
               updateRootFolder.mutate({
                 movieId: movie.id,
-                rootFolderPath: pendingRootFolder,
+                rootFolderPath: path,
                 moveFiles: false,
               });
-              setPendingRootFolder(null);
             },
           },
         ]}
       />
 
       <ConfirmModal
-        visible={pendingDelete !== null}
+        {...flow.bind("confirmDelete")}
         title={
-          pendingDelete === "withFiles"
+          flow.payload("confirmDelete") === "withFiles"
             ? "Delete movie + files?"
             : "Delete movie?"
         }
         message={
-          pendingDelete === "withFiles"
+          flow.payload("confirmDelete") === "withFiles"
             ? `Remove "${movie.title}" from Radarr and delete files from disk. This can't be undone.`
             : `Remove "${movie.title}" from Radarr. Files on disk will be kept.`
         }
         icon={Trash2}
         tone="danger"
         confirmLabel={
-          pendingDelete === "withFiles" ? "Delete + Files" : "Delete"
+          flow.payload("confirmDelete") === "withFiles"
+            ? "Delete + Files"
+            : "Delete"
         }
         onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
-        onClosed={deferredBack.onClosed}
       />
     </>
   );

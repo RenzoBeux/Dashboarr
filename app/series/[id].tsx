@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -64,7 +64,7 @@ import {
   formatResolution,
 } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import type {
   SonarrEpisode,
   SonarrEpisodeFile,
@@ -72,14 +72,13 @@ import type {
   SonarrSeries,
 } from "@/lib/types";
 
-type DeleteMode = "keep" | "withFiles" | null;
+type DeleteMode = "keep" | "withFiles";
 
 export default function SeriesDetailScreen() {
   const { id, instanceId } = useLocalSearchParams<{
     id: string;
     instanceId?: string;
   }>();
-  const deferredBack = useDeferredBack();
   const {
     data: series,
     isLoading,
@@ -96,21 +95,18 @@ export default function SeriesDetailScreen() {
   const updateRootFolder = useUpdateSeriesRootFolder(instanceId);
   const { data: tags } = useSonarrTags(instanceId);
 
-  const [actionsVisible, setActionsVisible] = useState(false);
-  const [pendingSeriesSearch, setPendingSeriesSearch] = useState(false);
-  const [qualityVisible, setQualityVisible] = useState(false);
   const [optionsVisible, setOptionsVisible] = useState(false);
-  const [rootFolderVisible, setRootFolderVisible] = useState(false);
-  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(
-    null,
-  );
-  const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
-  // Chosen in the actions sheet, promoted to the confirm modal only once that
-  // sheet has fully closed — never stack two native modals on iOS.
-  const deleteIntent = useRef<DeleteMode>(null);
-  // Same deal: a picked root folder, opened into the "move files?" sheet only
-  // after the root-folder sheet is fully gone.
-  const rootFolderIntent = useRef<string | null>(null);
+
+  // All modal sequencing (sheet → confirm, sheet → sheet, confirm → pop) goes
+  // through the flow — see hooks/use-modal-flow.ts.
+  const flow = useModalFlow<{
+    actions: void;
+    quality: void;
+    rootFolder: void;
+    moveFiles: string; // payload: the picked root folder path
+    confirmDelete: DeleteMode;
+    seriesSearch: void;
+  }>();
 
   const episodeFileMap = useMemo(() => {
     const map = new Map<number, SonarrEpisodeFile>();
@@ -174,19 +170,17 @@ export default function SeriesDetailScreen() {
   };
 
   const confirmDelete = () => {
-    if (!pendingDelete) return;
-    const withFiles = pendingDelete === "withFiles";
-    // Close the confirm modal first, then pop the screen only after it has
-    // fully dismissed — popping mid-dismiss hangs the JS thread on iOS/Fabric.
-    deferredBack.arm();
-    setPendingDelete(null);
+    const mode = flow.payload("confirmDelete");
+    if (!mode) return;
+    flow.close();
     deleteSeries.mutate(
       {
         id: series.id,
-        deleteFiles: withFiles,
+        deleteFiles: mode === "withFiles",
       },
       {
-        onSuccess: () => deferredBack.back(),
+        // flow.back() pops only once the confirm has fully dismissed.
+        onSuccess: () => flow.back(),
         onError: (err) => toastError("Failed to delete show", err),
       },
     );
@@ -206,7 +200,7 @@ export default function SeriesDetailScreen() {
       icon: Award,
       label: qualityProfileName ?? "Quality",
       loading: updateProfile.isPending,
-      onPress: () => setQualityVisible(true),
+      onPress: () => flow.open("quality"),
       disabled: !qualityProfiles || qualityProfiles.length === 0,
     },
     {
@@ -214,13 +208,13 @@ export default function SeriesDetailScreen() {
       icon: Search,
       label: "Search",
       loading: searchSeries.isPending,
-      onPress: () => setPendingSeriesSearch(true),
+      onPress: () => flow.open("seriesSearch"),
     },
     {
       key: "more",
       icon: MoreHorizontal,
       label: "More",
-      onPress: () => setActionsVisible(true),
+      onPress: () => flow.open("actions"),
     },
   ];
 
@@ -262,7 +256,7 @@ export default function SeriesDetailScreen() {
             series={series}
             onPressRoot={
               rootFolders && rootFolders.length > 0
-                ? () => setRootFolderVisible(true)
+                ? () => flow.open("rootFolder")
                 : undefined
             }
           />
@@ -332,38 +326,26 @@ export default function SeriesDetailScreen() {
       </ScreenWrapper>
 
       <ActionSheet
-        visible={actionsVisible}
-        onClose={() => setActionsVisible(false)}
-        onClosed={() => {
-          if (deleteIntent.current) {
-            setPendingDelete(deleteIntent.current);
-            deleteIntent.current = null;
-          }
-        }}
+        {...flow.bind("actions")}
         title={series.title}
         actions={[
           {
             label: "Delete Show",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              deleteIntent.current = "keep";
-            },
+            onPress: () => flow.open("confirmDelete", "keep"),
           },
           {
             label: "Delete Show + Files",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              deleteIntent.current = "withFiles";
-            },
+            onPress: () => flow.open("confirmDelete", "withFiles"),
           },
         ]}
       />
 
       <ActionSheet
-        visible={qualityVisible}
-        onClose={() => setQualityVisible(false)}
+        {...flow.bind("quality")}
         title="Quality Profile"
         subtitle={series.title}
         actions={(qualityProfiles ?? []).map((p) => ({
@@ -394,14 +376,7 @@ export default function SeriesDetailScreen() {
       />
 
       <ActionSheet
-        visible={rootFolderVisible}
-        onClose={() => setRootFolderVisible(false)}
-        onClosed={() => {
-          if (rootFolderIntent.current) {
-            setPendingRootFolder(rootFolderIntent.current);
-            rootFolderIntent.current = null;
-          }
-        }}
+        {...flow.bind("rootFolder")}
         title="Root Folder"
         subtitle={series.title}
         actions={(rootFolders ?? []).map((f) => ({
@@ -415,79 +390,77 @@ export default function SeriesDetailScreen() {
           ),
           onPress: () => {
             if (f.path === series.rootFolderPath) return;
-            rootFolderIntent.current = f.path;
+            flow.open("moveFiles", f.path);
           },
         }))}
       />
 
       <ActionSheet
-        visible={pendingRootFolder !== null}
-        onClose={() => setPendingRootFolder(null)}
+        {...flow.bind("moveFiles")}
         title="Move existing files?"
-        subtitle={pendingRootFolder ?? ""}
+        subtitle={flow.payload("moveFiles") ?? ""}
         actions={[
           {
             label: "Move existing files",
             icon: <Icon icon={FolderTree} size={18} color="#60a5fa" />,
             onPress: () => {
-              if (!pendingRootFolder) return;
+              const path = flow.payload("moveFiles");
+              if (!path) return;
               updateRootFolder.mutate({
                 seriesId: series.id,
-                rootFolderPath: pendingRootFolder,
+                rootFolderPath: path,
                 moveFiles: true,
               });
-              setPendingRootFolder(null);
             },
           },
           {
             label: "Keep files in place",
             icon: <Icon icon={Circle} size={18} color="#71717a" />,
             onPress: () => {
-              if (!pendingRootFolder) return;
+              const path = flow.payload("moveFiles");
+              if (!path) return;
               updateRootFolder.mutate({
                 seriesId: series.id,
-                rootFolderPath: pendingRootFolder,
+                rootFolderPath: path,
                 moveFiles: false,
               });
-              setPendingRootFolder(null);
             },
           },
         ]}
       />
 
       <ConfirmModal
-        visible={pendingDelete !== null}
+        {...flow.bind("confirmDelete")}
         title={
-          pendingDelete === "withFiles"
+          flow.payload("confirmDelete") === "withFiles"
             ? "Delete show + files?"
             : "Delete show?"
         }
         message={
-          pendingDelete === "withFiles"
+          flow.payload("confirmDelete") === "withFiles"
             ? `Remove "${series.title}" from Sonarr and delete all episode files from disk. This can't be undone.`
             : `Remove "${series.title}" from Sonarr. Files on disk will be kept.`
         }
         icon={Trash2}
         tone="danger"
         confirmLabel={
-          pendingDelete === "withFiles" ? "Delete + Files" : "Delete"
+          flow.payload("confirmDelete") === "withFiles"
+            ? "Delete + Files"
+            : "Delete"
         }
         onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
-        onClosed={deferredBack.onClosed}
       />
 
       <ConfirmModal
-        visible={pendingSeriesSearch}
+        {...flow.bind("seriesSearch")}
         title="Search for releases?"
         message={`Sonarr will search your indexers for all monitored episodes of "${series.title}" and automatically download the best matches.`}
         icon={Search}
         confirmLabel="Search"
         onConfirm={() => {
           searchSeries.mutate(series.id);
-          setPendingSeriesSearch(false);
+          flow.close();
         }}
-        onCancel={() => setPendingSeriesSearch(false)}
       />
     </>
   );
@@ -727,7 +700,7 @@ function SeasonAccordion({
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const flow = useModalFlow<{ menu: void }>();
   const searchSeason = useSearchForSeason(instanceId);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
@@ -752,7 +725,9 @@ function SeasonAccordion({
       label: "Interactive Search",
       icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
       onPress: () =>
-        router.push(`/series/releases/${seriesId}?${releasesQuery}`),
+        flow.whenClear(() =>
+          router.push(`/series/releases/${seriesId}?${releasesQuery}`),
+        ),
     },
   ];
 
@@ -780,7 +755,7 @@ function SeasonAccordion({
             </Text>
           )}
           <Pressable
-            onPress={() => setSheetOpen(true)}
+            onPress={() => flow.open("menu")}
             hitSlop={8}
             className="p-1 active:opacity-70"
             accessibilityRole="button"
@@ -815,8 +790,7 @@ function SeasonAccordion({
       )}
 
       <ActionSheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+        {...flow.bind("menu")}
         title={seasonLabel}
         actions={seasonActions}
       />
@@ -839,11 +813,7 @@ function EpisodeRow({
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
   const searchEpisode = useSearchForEpisodes(instanceId);
   const deleteFile = useDeleteEpisodeFile(instanceId);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  // Open the confirm only after the actions sheet has fully closed (iOS can't
-  // present a second modal while the first is dismissing).
-  const wantDeleteFile = useRef(false);
+  const flow = useModalFlow<{ menu: void; confirmDeleteFile: void }>();
   const mediaInfo = episodeFile?.mediaInfo;
   // Local day of airDateUtc, matching Sonarr web's episode list (issue #86).
   const airLabel = airDateKey(episode);
@@ -860,10 +830,12 @@ function EpisodeRow({
       label: "Interactive Search",
       icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
       onPress: () =>
-        router.push(
-          `/series/releases/${seriesId}?episodeId=${episode.id}${
-            instanceId ? `&instanceId=${instanceId}` : ""
-          }`,
+        flow.whenClear(() =>
+          router.push(
+            `/series/releases/${seriesId}?episodeId=${episode.id}${
+              instanceId ? `&instanceId=${instanceId}` : ""
+            }`,
+          ),
         ),
     },
     ...(episodeFile
@@ -872,9 +844,7 @@ function EpisodeRow({
             label: "Delete File",
             icon: <Icon icon={Trash2} size={20} color="#ef4444" />,
             variant: "danger" as const,
-            onPress: () => {
-              wantDeleteFile.current = true;
-            },
+            onPress: () => flow.open("confirmDeleteFile"),
           },
         ]
       : []),
@@ -932,7 +902,7 @@ function EpisodeRow({
             />
           </Pressable>
           <Pressable
-            onPress={() => setSheetOpen(true)}
+            onPress={() => flow.open("menu")}
             hitSlop={8}
             className="p-2 active:opacity-70"
             accessibilityRole="button"
@@ -944,21 +914,14 @@ function EpisodeRow({
       </View>
 
       <ActionSheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onClosed={() => {
-          if (wantDeleteFile.current) {
-            wantDeleteFile.current = false;
-            setConfirmDelete(true);
-          }
-        }}
+        {...flow.bind("menu")}
         title={formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)}
         subtitle={episode.title}
         actions={episodeActions}
       />
 
       <ConfirmModal
-        visible={confirmDelete}
+        {...flow.bind("confirmDeleteFile")}
         title="Delete Episode File"
         message={`Delete the file for ${formatEpisodeCode(
           episode.seasonNumber,
@@ -968,10 +931,9 @@ function EpisodeRow({
         tone="danger"
         confirmLabel="Delete"
         onConfirm={() => {
-          setConfirmDelete(false);
+          flow.close();
           if (episodeFile) deleteFile.mutate(episodeFile.id);
         }}
-        onCancel={() => setConfirmDelete(false)}
       />
     </>
   );

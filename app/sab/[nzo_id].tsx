@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { View, Text, ActivityIndicator } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
@@ -10,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   useSabQueue,
   useSabHistory,
@@ -53,8 +52,7 @@ export default function SabSlotDetailScreen() {
   const resumeSlot = useResumeSabSlot(instanceId);
   const deleteSlot = useDeleteSabSlot(instanceId);
   const deleteHistory = useDeleteSabHistorySlot(instanceId);
-  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
-  const deferredBack = useDeferredBack();
+  const flow = useModalFlow<{ deleteSheet: void }>();
 
   const queueSlot = queue?.slots.find((s) => s.nzo_id === nzo_id);
   const historySlot = history?.slots.find((s) => s.nzo_id === nzo_id);
@@ -103,10 +101,8 @@ export default function SabSlotDetailScreen() {
     } else {
       deleteHistory.mutate({ nzoId: nzo_id, deleteFiles });
     }
-    // Pop back, but only once the sheet is fully dismissed — navigating mid-
-    // dismiss hangs the JS thread on iOS/Fabric. See useDeferredBack.
-    deferredBack.arm();
-    deferredBack.back();
+    // flow.back() pops only once the sheet has fully dismissed.
+    flow.back();
   };
 
   return (
@@ -185,7 +181,7 @@ export default function SabSlotDetailScreen() {
         <Button
           label="Delete"
           variant="danger"
-          onPress={() => setDeleteSheetOpen(true)}
+          onPress={() => flow.open("deleteSheet")}
           loading={deleteSlot.isPending || deleteHistory.isPending}
           icon={<Icon icon={Trash2} size={16} color="white" />}
           className="flex-1"
@@ -193,9 +189,7 @@ export default function SabSlotDetailScreen() {
       </View>
 
       <ActionSheet
-        visible={deleteSheetOpen}
-        onClose={() => setDeleteSheetOpen(false)}
-        onClosed={deferredBack.onClosed}
+        {...flow.bind("deleteSheet")}
         title={name}
         subtitle="Delete this download?"
         actions={[

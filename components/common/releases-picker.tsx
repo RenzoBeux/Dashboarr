@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
 import { getHttpErrorMessage } from "@/lib/http-client";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useSortStore, type ReleasesSortKey } from "@/store/sort-store";
 import { useArrCustomFilters } from "@/hooks/use-arr-custom-filters";
 import { applyArrCustomFilter } from "@/lib/arr-custom-filters";
@@ -177,7 +177,14 @@ export function ReleasesPicker({
   query,
   instanceId,
 }: ReleasesPickerProps) {
-  const deferredBack = useDeferredBack();
+  const flow = useModalFlow<{ detail: Release }>();
+  // Stable identity is load-bearing: ReleaseListItem's memo comparator checks
+  // onSelect by reference, and rows re-render at 1Hz off the elapsed ticker
+  // while fetching — an inline closure here would defeat every row bail-out.
+  const handleSelect = useCallback(
+    (r: Release) => flow.open("detail", r),
+    [flow],
+  );
   const sortKey = useSortStore((s) => s.releases);
   const setSortKey = useSortStore((s) => s.setReleases);
 
@@ -187,7 +194,6 @@ export function ReleasesPicker({
   const [qualityFilter, setQualityFilter] = useState<string | null>(null);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [selectedFilterId, setSelectedFilterId] = useState<number | null>(null);
-  const [selected, setSelected] = useState<Release | null>(null);
 
   // Saved interactive-search filters configured in the *arr web UI. Only the
   // "releases" section is relevant here; the control is hidden when there are
@@ -452,7 +458,7 @@ export function ReleasesPicker({
       ) : (
         <ReleaseFlatList
           data={filtered}
-          onSelect={setSelected}
+          onSelect={handleSelect}
           isFetching={isFetching && !!data}
           onRefresh={handleRefresh}
           onClearFilters={handleClearFilters}
@@ -483,19 +489,18 @@ export function ReleasesPicker({
       />
 
       <ReleaseDetailSheet
-        release={selected}
+        release={flow.isOpen("detail") ? (flow.payload("detail") ?? null) : null}
         service={service}
         instanceId={instanceId}
-        onClose={() => setSelected(null)}
+        onClose={flow.close}
         onGrabbed={() => {
           // After a grab succeeds, pop back to the detail screen so the user
-          // sees their queue update in context — but only once the sheet has
-          // fully dismissed (navigating mid-dismiss hangs iOS/Fabric). Replaces
-          // a fixed setTimeout guess with the sheet's real onClosed signal.
-          deferredBack.arm();
-          deferredBack.back();
+          // sees their queue update in context — flow.back() pops only once
+          // the sheet has fully dismissed (navigating mid-dismiss hangs
+          // iOS/Fabric). Never reintroduce a fixed setTimeout here.
+          flow.back();
         }}
-        onClosed={deferredBack.onClosed}
+        onClosed={flow.onClosed}
       />
     </View>
   );

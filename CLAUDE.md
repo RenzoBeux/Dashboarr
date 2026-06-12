@@ -83,18 +83,16 @@ Notes:
 
 ### Modal sequencing on iOS — MUST follow (causes a frozen-app, force-quit hang)
 
-`ConfirmModal` and `ActionSheet` are React Native `<Modal>`s — on iOS each is a separate `UIViewController` presented over the screen. iOS will **not** present (or unmount the screen behind) a second view controller while another is mid-dismiss. On the New Architecture (Fabric, which this app uses) doing so **hangs the JS thread**: a transparent layer keeps eating touches, there is no crash log, and the user must force-quit. It is **intermittent and iOS-only** — it's a race between how fast your async work resolves and the ~300ms dismiss animation, so a fast LAN service triggers it while a slower one hides it, and Android (plain-view modals) never reproduces it. This was issue #83 (deleting a Radarr movie). Two forbidden shapes:
+`ConfirmModal` and `ActionSheet` are React Native `<Modal>`s — on iOS each is a separate `UIViewController` presented over the screen. iOS will **not** present (or unmount the screen behind) a second view controller while another is mid-dismiss. On the New Architecture (Fabric, which this app uses) doing so **hangs the JS thread**: a transparent layer keeps eating touches, there is no crash log, and the user must force-quit. It is **intermittent and iOS-only** — a race between how fast your async work resolves and the ~300ms dismiss animation — so a fast LAN service triggers it while a slower one hides it, and Android never reproduces it. This was issue #83 (deleting a Radarr movie).
 
-1. **Opening a second modal from inside the first.** Never call `setPendingX(true)` / open a `ConfirmModal`/`ActionSheet` from an `ActionSheet` action's `onPress` — that presents while the sheet is still dismissing.
-2. **Navigating while a modal dismisses.** Never call `router.back()` / `router.push()` / `navigation.dispatch()` in a mutation's `onSuccess` (or a confirm's `onConfirm`) that also closed a modal in the same flow — the screen unmounts mid-dismiss.
+**Every modal chain goes through `useModalFlow` (`hooks/use-modal-flow.ts`).** Any flow where a modal leads to another modal (sheet → confirm, sheet → sheet) or to navigation (confirm → pop, sheet action → push) declares its modals as named flow steps; the flow owns visibility, the payload handoff between steps, and deferred navigation. Never hand-wire the sequencing (intent `useRef`s, `Platform.OS` branches, manual `onClosed` promotion) and never paper over it with `setTimeout(() => router.back(), 250)`-style fixed delays — that's the guess that keeps failing.
 
-**The fix — sequence on the dismiss, never on the tap:**
-- Both `ConfirmModal` and `ActionSheet` expose an **`onClosed`** prop that fires once the modal is *fully* gone (backed by `hooks/use-modal-closed.ts`: iOS `onDismiss` fast-path + a timer backstop, since `onDismiss` is historically flaky on Fabric and absent on Android — so it is robust even if `onDismiss` never fires).
-- To **open another modal**, stash the choice in a `useRef` from the action's `onPress` and promote it to the next modal in the first sheet's `onClosed`.
-- To **navigate after a confirm**, use **`hooks/use-deferred-back.ts`** (`useDeferredBack`): call `arm()` before closing, `back()` in the mutation's `onSuccess`, and wire `onClosed={deferredBack.onClosed}` — it pops only after the modal is fully dismissed on iOS (immediate on Android).
-- Never paper over this with `setTimeout(() => router.back(), 250)` or similar fixed delays — that's the guess that keeps failing. Use the `onClosed` signal.
+- Open/close steps only through the flow: `flow.open(step, payload?)` (safe even from inside a sheet action's `onPress` — the flow waits for the dismissal), `flow.close()`, `{...flow.bind(step)}` spread onto the `ConfirmModal`/`ActionSheet`.
+- Navigation after a modal goes through `flow.back()` (or `flow.whenClear(fn)` for `router.push` / `navigation.dispatch` / OS pickers) — from a mutation's `onSuccess` for confirm-then-pop, or right after `mutate()` for optimistic pops.
+- Only `onClosed`-capable modals (`ConfirmModal`, `ActionSheet`, `ReleaseDetailSheet`) can be flow steps. Custom sheets without that plumbing (pageSheet `Modal`s, pickers) keep plain `useState` and must never chain into another modal or navigation.
+- The sequencing rules live in `lib/modal-flow.ts` (pure, tested in `lib/modal-flow.test.ts`); `onClosed` delivery is `hooks/use-modal-closed.ts` (iOS `onDismiss` fast-path + timer backstop).
 
-Canonical reference: the delete flow in `app/movie/[id].tsx` and `app/series/[id].tsx` (actions sheet → confirm → pop). When adding any flow that chains a sheet into a dialog, or navigates right after a confirm, copy that wiring.
+Canonical reference: `app/movie/[id].tsx` (actions sheet → delete confirm → pop; root-folder sheet → move-files sheet). When adding any chained modal flow, copy that wiring.
 
 ## UI Scale (Accessibility) — MUST follow when writing any new UI
 
