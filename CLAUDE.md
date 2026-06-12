@@ -89,7 +89,7 @@ Notes:
 
 - Open/close steps only through the flow: `flow.open(step, payload?)` (safe even from inside a sheet action's `onPress` — the flow waits for the dismissal), `flow.close()`, `{...flow.bind(step)}` spread onto the `ConfirmModal`/`ActionSheet`.
 - Navigation after a modal goes through `flow.back()` (or `flow.whenClear(fn)` for `router.push` / `navigation.dispatch` / OS pickers) — from a mutation's `onSuccess` for confirm-then-pop, or right after `mutate()` for optimistic pops.
-- Only `onClosed`-capable modals (`ConfirmModal`, `ActionSheet`, `ReleaseDetailSheet`) can be flow steps. Custom sheets without that plumbing (pageSheet `Modal`s, pickers) keep plain `useState` and must never chain into another modal or navigation.
+- Only `onClosed`-capable modals (`ConfirmModal`, `ActionSheet`, `ReleaseDetailSheet`, `PassphrasePrompt`, `AddToDashboardsSheet` — anything wiring `useModalClosed` to an `onClosed` prop) can be flow steps. Custom sheets without that plumbing (pageSheet `Modal`s, pickers) keep plain `useState` and must never chain into another modal or navigation. A promise-based prompt (passphrase, HTTP warning) resolves its promise inside `flow.whenClear(...)` so the caller resumes only after full dismissal.
 - The sequencing rules live in `lib/modal-flow.ts` (pure, tested in `lib/modal-flow.test.ts`); `onClosed` delivery is `hooks/use-modal-closed.ts` (iOS `onDismiss` fast-path + timer backstop).
 
 Canonical reference: `app/movie/[id].tsx` (actions sheet → delete confirm → pop; root-folder sheet → move-files sheet). When adding any chained modal flow, copy that wiring.

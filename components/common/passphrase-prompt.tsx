@@ -8,6 +8,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Toggle } from "@/components/ui/toggle";
+import { useModalClosed } from "@/hooks/use-modal-closed";
 
 cssInterop(KeyboardAwareScrollView, {
   className: "style",
@@ -32,6 +33,12 @@ interface PassphrasePromptProps {
    *  biometric prompt and return the stored passphrase (or null on cancel). */
   onUseRemembered: () => Promise<string | null>;
   onCancel: () => void;
+  /**
+   * Fired once the modal is fully dismissed (see `useModalClosed`). Lets the
+   * caller sequence whatever follows the prompt (ProgressModal, share sheet)
+   * behind the dismissal — wired by `useModalFlow`.
+   */
+  onClosed?: () => void;
 }
 
 export function PassphrasePrompt({
@@ -41,12 +48,16 @@ export function PassphrasePrompt({
   onSubmit,
   onUseRemembered,
   onCancel,
+  onClosed,
 }: PassphrasePromptProps) {
   const [passphrase, setPassphrase] = useState("");
   const [confirm, setConfirm] = useState("");
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  // Fire onClosed once the modal is fully dismissed — the safe point to
+  // present whatever follows on iOS. See useModalClosed.
+  const handleDismiss = useModalClosed(visible, onClosed);
 
   useEffect(() => {
     if (visible) {
@@ -91,7 +102,13 @@ export function PassphrasePrompt({
       : "Enter the passphrase used when this backup was created.";
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+      onDismiss={handleDismiss}
+    >
       <KeyboardAwareScrollView
         className="flex-1 bg-black/70"
         contentContainerClassName="flex-grow items-center justify-center px-6 py-6"

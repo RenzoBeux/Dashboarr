@@ -38,10 +38,11 @@ import { createModalFlow, type ModalFlowCore } from "@/lib/modal-flow";
  *
  * Rules:
  * - Only onClosed-capable modals (ConfirmModal, ActionSheet,
- *   ReleaseDetailSheet) can be flow steps — `bind` relies on `onClosed` to
- *   know when the modal is fully gone. Sheets without that plumbing (raw
- *   pageSheet Modals, custom pickers) keep plain useState and must never
- *   chain into another modal or navigation.
+ *   ReleaseDetailSheet, PassphrasePrompt, AddToDashboardsSheet — anything
+ *   wiring useModalClosed to an onClosed prop) can be flow steps — the flow
+ *   relies on `onClosed` to know when the modal is fully gone. Sheets without
+ *   that plumbing (raw pageSheet Modals, custom pickers) keep plain useState
+ *   and must never chain into another modal or navigation.
  * - Open and close steps only through the flow (`open`/`close`/`bind`),
  *   never with your own setState — a bypassed close leaves the flow blind to
  *   the dismissal.

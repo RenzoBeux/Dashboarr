@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Modal,
   View,
@@ -8,6 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Linking,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import {
@@ -107,6 +108,12 @@ export function MediaDetailModal({
   const [optionsIs4k, setOptionsIs4k] = useState(false);
   const [quickKind, setQuickKind] = useState<null | "hd" | "4k">(null);
   const [quickError, setQuickError] = useState<RequestError | null>(null);
+  // Set when a request succeeded in the options sheet: this modal dismisses
+  // itself only once the sheet reports fully gone (its onClosed) — dismissing
+  // both stacked pageSheets in the same tick races the child's teardown on
+  // iOS (issue #83 class). Android has no such constraint and keeps the
+  // original same-tick close.
+  const closeAfterOptions = useRef(false);
 
   const backdropOpacity = useSharedValue(0);
   const posterModalOpacity = useSharedValue(0);
@@ -430,7 +437,16 @@ export function MediaDetailModal({
           visible={optionsVisible}
           initialIs4k={optionsIs4k}
           onClose={() => setOptionsVisible(false)}
-          onRequested={onClose}
+          onRequested={() => {
+            if (Platform.OS === "ios") closeAfterOptions.current = true;
+            else onClose();
+          }}
+          onClosed={() => {
+            if (closeAfterOptions.current) {
+              closeAfterOptions.current = false;
+              onClose();
+            }
+          }}
         />
       </View>
     </Modal>
