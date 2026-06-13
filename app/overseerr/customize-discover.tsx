@@ -39,6 +39,7 @@ import {
   useDeleteDiscoverSlider,
   useResetDiscoverSliders,
 } from "@/hooks/use-overseerr";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { BUILTIN_SLIDER_LABELS } from "@/lib/overseerr-discover";
 import {
   DiscoverSliderType,
@@ -149,11 +150,11 @@ export default function CustomizeDiscoverScreen() {
 
   // --- Discard / navigation guard (mirrors app/dashboard-edit/[id].tsx) ---
   const allowRemoveRef = useRef(false);
-  const pendingActionRef = useRef<
-    Parameters<typeof navigation.dispatch>[0] | null
-  >(null);
-  const discardConfirmedRef = useRef(false);
-  const [discardOpen, setDiscardOpen] = useState(false);
+  // The prevented navigation action rides as the step payload; null means the
+  // header back (plain router.back()).
+  const flow = useModalFlow<{
+    discard: Parameters<typeof navigation.dispatch>[0] | null;
+  }>();
 
   usePreventRemove(
     dirty,
@@ -165,32 +166,28 @@ export default function CustomizeDiscoverScreen() {
           return;
         }
         Haptics.selectionAsync();
-        pendingActionRef.current = data.action;
-        setDiscardOpen(true);
+        flow.open("discard", data.action);
       },
-      [navigation],
+      [navigation, flow],
     ),
   );
 
   function performDiscard() {
-    const action = pendingActionRef.current;
-    pendingActionRef.current = null;
+    const action = flow.payload("discard");
     allowRemoveRef.current = true;
     if (action) navigation.dispatch(action);
     else router.back();
   }
 
   function confirmDiscard() {
-    setDiscardOpen(false);
-    if (Platform.OS === "ios") discardConfirmedRef.current = true;
-    else performDiscard();
+    flow.close();
+    flow.whenClear(performDiscard);
   }
 
   function handleCancel() {
     if (dirty) {
       Haptics.selectionAsync();
-      pendingActionRef.current = null;
-      setDiscardOpen(true);
+      flow.open("discard", null);
       return;
     }
     allowRemoveRef.current = true;
@@ -487,23 +484,13 @@ export default function CustomizeDiscoverScreen() {
       />
 
       <ConfirmModal
-        visible={discardOpen}
+        {...flow.bind("discard")}
         title="Discard changes?"
         message="Your Discover edits haven't been saved yet."
         tone="danger"
         confirmLabel="Discard"
         cancelLabel="Keep editing"
-        onCancel={() => {
-          setDiscardOpen(false);
-          pendingActionRef.current = null;
-        }}
         onConfirm={confirmDiscard}
-        onClosed={() => {
-          if (discardConfirmedRef.current) {
-            discardConfirmedRef.current = false;
-            performDiscard();
-          }
-        }}
       />
     </ScreenWrapper>
   );

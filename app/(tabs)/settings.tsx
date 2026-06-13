@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, BackHandler, Pressable, Linking, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect } from "expo-router";
@@ -72,6 +72,7 @@ import {
 import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
 import type { PassphraseMode, PassphraseResult } from "@/components/common/passphrase-prompt";
 import { ConfirmModal } from "@/components/common/confirm-modal";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
@@ -156,18 +157,25 @@ export default function SettingsScreen() {
   } | null>(null);
   const [exportStage, setExportStage] = useState<ExportStage | null>(null);
   const [importStage, setImportStage] = useState<ImportStage | null>(null);
-  const [passphraseRequest, setPassphraseRequest] = useState<{
-    mode: PassphraseMode;
-    resolve: (value: PassphraseResult | null) => void;
-  } | null>(null);
   const [hasRemembered, setHasRemembered] = useState(() => hasRememberedPassphrase());
-  const [confirmClearCache, setConfirmClearCache] = useState(false);
-  const [confirmImport, setConfirmImport] = useState(false);
   const replayWorkspaceIntro = useIntroStore((s) => s.replayWorkspaceIntro);
+
+  // Modal sequencing (confirm → document picker, passphrase prompt →
+  // ProgressModal/share sheet) goes through the flow — see
+  // hooks/use-modal-flow.ts. The passphrase promise resolves only once the
+  // prompt is fully dismissed, so whatever follows never presents mid-dismiss.
+  const flow = useModalFlow<{
+    confirmClearCache: void;
+    confirmImport: void;
+    passphrase: {
+      mode: PassphraseMode;
+      resolve: (value: PassphraseResult | null) => void;
+    };
+  }>();
 
   const requestPassphrase = (mode: PassphraseMode) =>
     new Promise<PassphraseResult | null>((resolve) => {
-      setPassphraseRequest({ mode, resolve });
+      flow.open("passphrase", { mode, resolve });
     });
 
   // After a successful op, reflect the user's "Remember" choice to the
@@ -265,7 +273,7 @@ export default function SettingsScreen() {
   };
 
   const performClearImageCache = async () => {
-    setConfirmClearCache(false);
+    flow.close();
     try {
       await Promise.all([Image.clearMemoryCache(), Image.clearDiskCache()]);
       toast("Image cache cleared", "success");
@@ -274,14 +282,9 @@ export default function SettingsScreen() {
     }
   };
 
+  // Runs via flow.whenClear from the import confirm, so the document picker
+  // never presents while the ConfirmModal is still animating away.
   const performImport = async () => {
-    setConfirmImport(false);
-    // iOS won't present a new modal (the document picker) while another
-    // is still animating away — it silently fails and the picker never
-    // opens. Wait for the ConfirmModal fade-out before continuing.
-    if (Platform.OS === "ios") {
-      await new Promise<void>((resolve) => setTimeout(resolve, 350));
-    }
     // Captured from the requestPassphrase callback below — only set
     // if the picked file was encrypted and the user supplied a
     // passphrase. Plain-JSON legacy backups leave this null.
@@ -573,14 +576,14 @@ export default function SettingsScreen() {
           icon={FolderDown}
           label="Import settings"
           subtitle="Restore from a backup file"
-          onPress={() => setConfirmImport(true)}
+          onPress={() => flow.open("confirmImport")}
           disabled={importStage !== null}
         />
         <SettingsRow
           icon={ImageOff}
           label="Clear image cache"
           subtitle="Free up disk space used by cached posters and backdrops"
-          onPress={() => setConfirmClearCache(true)}
+          onPress={() => flow.open("confirmClearCache")}
         />
       </SettingsGroup>
 
@@ -666,30 +669,31 @@ export default function SettingsScreen() {
       />
 
       <ConfirmModal
-        visible={confirmClearCache}
+        {...flow.bind("confirmClearCache")}
         title="Clear image cache"
         message="Posters and backdrops will be re-downloaded the next time you view them."
         icon={ImageOff}
         tone="danger"
         confirmLabel="Clear"
         onConfirm={() => void performClearImageCache()}
-        onCancel={() => setConfirmClearCache(false)}
       />
 
       <ConfirmModal
-        visible={confirmImport}
+        {...flow.bind("confirmImport")}
         title="Import settings"
         message="This will overwrite all current settings with the imported configuration. Continue?"
         icon={FolderDown}
         tone="danger"
         confirmLabel="Import"
-        onConfirm={() => void performImport()}
-        onCancel={() => setConfirmImport(false)}
+        onConfirm={() => {
+          flow.close();
+          flow.whenClear(() => void performImport());
+        }}
       />
 
       <PassphrasePrompt
-        visible={!!passphraseRequest}
-        mode={passphraseRequest?.mode ?? "import"}
+        visible={flow.isOpen("passphrase")}
+        mode={flow.payload("passphrase")?.mode ?? "import"}
         hasRemembered={hasRemembered}
         onUseRemembered={async () => {
           const saved = await loadRememberedPassphrase();
@@ -697,13 +701,16 @@ export default function SettingsScreen() {
           return saved;
         }}
         onSubmit={(result) => {
-          passphraseRequest?.resolve(result);
-          setPassphraseRequest(null);
+          const request = flow.payload("passphrase");
+          flow.close();
+          flow.whenClear(() => request?.resolve(result));
         }}
         onCancel={() => {
-          passphraseRequest?.resolve(null);
-          setPassphraseRequest(null);
+          const request = flow.payload("passphrase");
+          flow.close();
+          flow.whenClear(() => request?.resolve(null));
         }}
+        onClosed={flow.onClosed}
       />
     </ScreenWrapper>
   );
@@ -945,7 +952,6 @@ function ServiceEditor({
   // (no URL, no credentials). `promptShown` keeps us from re-asking on
   // subsequent saves in the same session if the user already engaged with
   // (or skipped) the sheet.
-  const [showAddToDashboards, setShowAddToDashboards] = useState(false);
   const [promptShown, setPromptShown] = useState(false);
 
   const config = inst ?? {
@@ -967,15 +973,18 @@ function ServiceEditor({
     secrets.customHeaders ?? {},
   );
   const [testing, setTesting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [unsavedOpen, setUnsavedOpen] = useState(false);
-  // Chosen in the unsaved-changes sheet, run only after it has fully closed —
-  // "Save" can open the HTTP-warning modal, and stacking modals hangs iOS.
-  const unsavedIntent = useRef<"save" | "discard" | null>(null);
-  const [httpWarning, setHttpWarning] = useState<{
-    message: string;
-    resolve: (ok: boolean) => void;
-  } | null>(null);
+
+  // Modal sequencing (unsaved sheet → save/discard, HTTP warning → save
+  // continuation, delete/close → editor unmount) goes through the flow — see
+  // hooks/use-modal-flow.ts. The HTTP-warning promise resolves only once the
+  // confirm is fully dismissed, so handleSave's continuation (AddToDashboards
+  // sheet or onBack's unmount) never runs mid-dismiss.
+  const flow = useModalFlow<{
+    unsaved: void;
+    confirmDelete: void;
+    addToDashboards: void;
+    httpWarning: { message: string; resolve: (ok: boolean) => void };
+  }>();
 
   const usesBasicAuth =
     serviceId === "qbittorrent" ||
@@ -1020,7 +1029,7 @@ function ServiceEditor({
       onBack();
       return;
     }
-    setUnsavedOpen(true);
+    flow.open("unsaved");
   };
 
   // Intercept Android hardware back / swipe-back so it closes the editor
@@ -1037,7 +1046,7 @@ function ServiceEditor({
 
   const confirmHttpWarning = (message: string) =>
     new Promise<boolean>((resolve) => {
-      setHttpWarning({ message, resolve });
+      flow.open("httpWarning", { message, resolve });
     });
 
   const handleSave = async () => {
@@ -1118,7 +1127,7 @@ function ServiceEditor({
         : apiKey.length > 0;
       if (hasUrl && hasCreds) {
         setPromptShown(true);
-        setShowAddToDashboards(true);
+        flow.open("addToDashboards");
         return;
       }
     }
@@ -1177,13 +1186,19 @@ function ServiceEditor({
     }
   };
 
-  const performDelete = async () => {
-    setConfirmDelete(false);
-    if (serviceId === "qbittorrent") {
-      await qbClearSession(instanceId);
-    }
-    await removeInstance(serviceId, instanceId);
-    onDeleted();
+  const performDelete = () => {
+    flow.close();
+    // The store write swaps this editor for the "not found" branch and
+    // onDeleted unmounts it — both only after the confirm is fully gone.
+    flow.whenClear(() => {
+      void (async () => {
+        if (serviceId === "qbittorrent") {
+          await qbClearSession(instanceId);
+        }
+        await removeInstance(serviceId, instanceId);
+        onDeleted();
+      })();
+    });
   };
 
   if (!inst) {
@@ -1323,74 +1338,71 @@ function ServiceEditor({
       {instancesForKind.length > 1 ? (
         <Button
           label="Delete instance"
-          onPress={() => setConfirmDelete(true)}
+          onPress={() => flow.open("confirmDelete")}
           variant="outline"
         />
       ) : null}
 
       <ConfirmModal
-        visible={confirmDelete}
+        {...flow.bind("confirmDelete")}
         title="Delete instance"
         message={`This will remove "${config.name}" and its credentials. This cannot be undone.`}
         icon={Trash2}
         tone="danger"
         confirmLabel="Delete"
-        onConfirm={() => void performDelete()}
-        onCancel={() => setConfirmDelete(false)}
+        onConfirm={performDelete}
       />
 
       <AddToDashboardsSheet
-        visible={showAddToDashboards}
+        visible={flow.isOpen("addToDashboards")}
         instanceId={instanceId}
         instanceName={config.name}
         onClose={() => {
-          setShowAddToDashboards(false);
-          onBack();
+          flow.close();
+          // Unmounting the editor while the sheet is still tearing down is
+          // the issue-#83 race — leave only once it reports fully gone.
+          flow.whenClear(() => onBack());
         }}
+        onClosed={flow.onClosed}
       />
 
       <ActionSheet
-        visible={unsavedOpen}
-        onClose={() => setUnsavedOpen(false)}
-        onClosed={() => {
-          const intent = unsavedIntent.current;
-          unsavedIntent.current = null;
-          if (intent === "discard") onBack();
-          else if (intent === "save") void handleSave();
-        }}
+        {...flow.bind("unsaved")}
         title="Unsaved changes"
         subtitle="Your URL or credentials haven't been saved."
         actions={[
           {
             label: "Save",
-            onPress: () => {
-              unsavedIntent.current = "save";
-            },
+            // "Save" can open the HTTP-warning modal — run it only once the
+            // sheet has fully closed.
+            onPress: () => flow.whenClear(() => void handleSave()),
           },
           {
             label: "Discard",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              unsavedIntent.current = "discard";
-            },
+            onPress: () => flow.whenClear(() => onBack()),
           },
         ]}
       />
 
       <ConfirmModal
-        visible={httpWarning !== null}
+        {...flow.bind("httpWarning")}
         title="Remote URL uses HTTP"
-        message={httpWarning?.message ?? ""}
+        message={flow.payload("httpWarning")?.message ?? ""}
         tone="danger"
         confirmLabel="Save anyway"
         onConfirm={() => {
-          httpWarning?.resolve(true);
-          setHttpWarning(null);
+          const request = flow.payload("httpWarning");
+          flow.close();
+          // Resolving resumes handleSave, which may present the
+          // AddToDashboards sheet or unmount the editor — wait until clear.
+          flow.whenClear(() => request?.resolve(true));
         }}
         onCancel={() => {
-          httpWarning?.resolve(false);
-          setHttpWarning(null);
+          const request = flow.payload("httpWarning");
+          flow.close();
+          flow.whenClear(() => request?.resolve(false));
         }}
       />
     </ScreenWrapper>

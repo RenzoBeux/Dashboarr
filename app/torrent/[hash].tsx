@@ -23,7 +23,7 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { toast, toastError } from "@/components/ui/toast";
 import { ShareLimitsSheet } from "@/components/qbittorrent/share-limits-sheet";
 import { CategorySheet } from "@/components/qbittorrent/category-sheet";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   useTorrent,
   useTorrentFiles,
@@ -51,8 +51,7 @@ export default function TorrentDetailScreen() {
   const setCategoryMutation = useSetTorrentCategory();
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
-  const deferredBack = useDeferredBack();
+  const flow = useModalFlow<{ deleteSheet: void }>();
 
   if (!torrent) {
     return (
@@ -101,10 +100,8 @@ export default function TorrentDetailScreen() {
 
   const runDelete = (deleteFiles: boolean) => {
     deleteMutation.mutate({ hashes: [hash], deleteFiles });
-    // Pop back, but only once the sheet is fully dismissed — navigating mid-
-    // dismiss hangs the JS thread on iOS/Fabric. See useDeferredBack.
-    deferredBack.arm();
-    deferredBack.back();
+    // Optimistic pop — leave without waiting for the delete to resolve.
+    flow.back();
   };
 
   return (
@@ -215,7 +212,7 @@ export default function TorrentDetailScreen() {
           <Button
             label="Delete"
             variant="danger"
-            onPress={() => setDeleteSheetOpen(true)}
+            onPress={() => flow.open("deleteSheet")}
             loading={deleteMutation.isPending}
             icon={<Icon icon={Trash2} size={16} color="white" />}
             className="flex-1"
@@ -268,9 +265,7 @@ export default function TorrentDetailScreen() {
       />
 
       <ActionSheet
-        visible={deleteSheetOpen}
-        onClose={() => setDeleteSheetOpen(false)}
-        onClosed={deferredBack.onClosed}
+        {...flow.bind("deleteSheet")}
         title={torrent.name}
         subtitle="Remove this torrent from qBittorrent?"
         actions={[

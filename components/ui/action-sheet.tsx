@@ -93,6 +93,13 @@ export function ActionSheet({
           if (finished) runOnJS(setMounted)(false);
         },
       );
+      // If the exit timing is cancelled (a gesture wrote translateY mid-close,
+      // so `finished` never comes), force the unmount anyway — a stuck
+      // `mounted` leaves an invisible Modal eating touches and never delivers
+      // onClosed (which would also wedge a useModalFlow chain waiting on it).
+      // Cleared when the sheet reopens before it fires.
+      const force = setTimeout(() => setMounted(false), 350);
+      return () => clearTimeout(force);
     }
   }, [visible]);
 
@@ -110,6 +117,11 @@ export function ActionSheet({
   }
 
   const handlePan = Gesture.Pan()
+    // Disabled while closing: a pan landing mid-close would cancel the exit
+    // withTiming, its callback would fire with finished=false, and `mounted`
+    // would stick true — sheet frozen on screen and onClosed never delivered
+    // (which would also wedge any useModalFlow chain waiting on it).
+    .enabled(visible)
     .onUpdate((e) => {
       translateY.value = Math.max(0, e.translationY);
     })

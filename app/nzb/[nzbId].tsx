@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { View, Text, ActivityIndicator } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
@@ -10,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   useDeleteNzbgetGroup,
   useDeleteNzbgetHistorySlot,
@@ -80,8 +79,7 @@ export default function NzbgetSlotDetailScreen() {
   const resumeSlot = useResumeNzbgetGroup(instanceId);
   const deleteSlot = useDeleteNzbgetGroup(instanceId);
   const deleteHistory = useDeleteNzbgetHistorySlot(instanceId);
-  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
-  const deferredBack = useDeferredBack();
+  const flow = useModalFlow<{ deleteSheet: void }>();
 
   const queueGroup = groups?.find((g) => g.NZBID === numericId);
   const historyItem = historyItems?.find((h) => h.NZBID === numericId);
@@ -143,10 +141,8 @@ export default function NzbgetSlotDetailScreen() {
     } else {
       deleteHistory.mutate({ nzbId: numericId, deleteFiles });
     }
-    // Pop back, but only once the sheet is fully dismissed — navigating mid-
-    // dismiss hangs the JS thread on iOS/Fabric. See useDeferredBack.
-    deferredBack.arm();
-    deferredBack.back();
+    // Optimistic pop — flow.back() waits until the sheet is fully dismissed.
+    flow.back();
   };
 
   return (
@@ -223,7 +219,7 @@ export default function NzbgetSlotDetailScreen() {
         <Button
           label="Delete"
           variant="danger"
-          onPress={() => setDeleteSheetOpen(true)}
+          onPress={() => flow.open("deleteSheet")}
           loading={deleteSlot.isPending || deleteHistory.isPending}
           icon={<Icon icon={Trash2} size={16} color="white" />}
           className="flex-1"
@@ -231,9 +227,7 @@ export default function NzbgetSlotDetailScreen() {
       </View>
 
       <ActionSheet
-        visible={deleteSheetOpen}
-        onClose={() => setDeleteSheetOpen(false)}
-        onClosed={deferredBack.onClosed}
+        {...flow.bind("deleteSheet")}
         title={name}
         subtitle="Delete this download?"
         actions={[

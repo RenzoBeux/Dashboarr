@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef } from "react";
+import { memo, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -65,6 +65,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   airDateKey,
   formatEpisodeCode,
@@ -157,19 +158,13 @@ export const TvView = memo(function TvView({
   const setSort = useSortStore((s) => s.setSeries);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
-  const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<{
-    id: number;
-    title: string;
-    withFiles: boolean;
-  } | null>(null);
-  // Set from the actions sheet, promoted to the confirm modal only after the
-  // sheet has fully closed — never stack two native modals on iOS.
-  const deleteIntent = useRef<{
-    id: number;
-    title: string;
-    withFiles: boolean;
-  } | null>(null);
+  // All modal sequencing (sheet → confirm, sheet → push) goes through the
+  // flow — see hooks/use-modal-flow.ts.
+  const flow = useModalFlow<{
+    actions: void;
+    searchMissing: void;
+    confirmDelete: { id: number; title: string; withFiles: boolean };
+  }>();
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["sonarr"]]);
@@ -211,31 +206,30 @@ export const TvView = memo(function TvView({
         {
           label: "Open Details",
           icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
-          onPress: () => router.push(`/series/${series.id}`),
+          onPress: () =>
+            flow.whenClear(() => router.push(`/series/${series.id}`)),
         },
         {
           label: "Delete",
           icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
           variant: "danger",
-          onPress: () => {
-            deleteIntent.current = {
+          onPress: () =>
+            flow.open("confirmDelete", {
               id: series.id,
               title: series.title,
               withFiles: false,
-            };
-          },
+            }),
         },
         {
           label: "Delete + Files",
           icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
           variant: "danger",
-          onPress: () => {
-            deleteIntent.current = {
+          onPress: () =>
+            flow.open("confirmDelete", {
               id: series.id,
               title: series.title,
               withFiles: true,
-            };
-          },
+            }),
         },
       ];
     }
@@ -251,17 +245,11 @@ export const TvView = memo(function TvView({
       {
         label: "Open Series Details",
         icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
-        onPress: () => router.push(`/series/${ep.seriesId}`),
+        onPress: () =>
+          flow.whenClear(() => router.push(`/series/${ep.seriesId}`)),
       },
     ];
-  }, [
-    sheetTarget,
-    searchSeries,
-    searchEpisodes,
-    toggleMonitor,
-    deleteMutation,
-    router,
-  ]);
+  }, [sheetTarget, searchSeries, searchEpisodes, toggleMonitor, flow, router]);
 
   const sheetTitle =
     sheetTarget?.kind === "series"
@@ -278,19 +266,25 @@ export const TvView = memo(function TvView({
         )} — ${sheetTarget.item.title}`
       : undefined;
 
+  // sheetTarget is left in place on close so the sheet's content stays
+  // correct during the dismiss animation.
   const openSeriesSheet = (series: SonarrSeries) => {
     mediumHaptic();
     setSheetTarget({ kind: "series", item: series });
+    flow.open("actions");
   };
   const openCalendarSheet = (ep: SonarrCalendarEntry) => {
     mediumHaptic();
     setSheetTarget({ kind: "calendar", item: ep });
+    flow.open("actions");
   };
 
   const handleSearchMissing = () => {
     mediumHaptic();
-    setMissingConfirmOpen(true);
+    flow.open("searchMissing");
   };
+
+  const deleteTarget = flow.payload("confirmDelete");
 
   // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
   // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
@@ -392,14 +386,7 @@ export const TvView = memo(function TvView({
       )}
 
       <ActionSheet
-        visible={sheetTarget !== null}
-        onClose={() => setSheetTarget(null)}
-        onClosed={() => {
-          if (deleteIntent.current) {
-            setPendingDelete(deleteIntent.current);
-            deleteIntent.current = null;
-          }
-        }}
+        {...flow.bind("actions")}
         title={sheetTitle}
         subtitle={sheetSubtitle}
         actions={actions}
@@ -421,41 +408,38 @@ export const TvView = memo(function TvView({
       />
 
       <ConfirmModal
-        visible={missingConfirmOpen}
+        {...flow.bind("searchMissing")}
         title="Search Missing Episodes"
         message="Sonarr will search every monitored missing episode in your library. This can queue a lot of grabs at once."
         icon={ScanSearch}
         confirmLabel="Search"
         onConfirm={() => {
-          setMissingConfirmOpen(false);
+          flow.close();
           searchMissing.mutate();
         }}
-        onCancel={() => setMissingConfirmOpen(false)}
       />
 
       <ConfirmModal
-        visible={pendingDelete !== null}
-        title={pendingDelete?.withFiles ? "Delete show + files?" : "Delete show?"}
+        {...flow.bind("confirmDelete")}
+        title={deleteTarget?.withFiles ? "Delete show + files?" : "Delete show?"}
         message={
-          pendingDelete
-            ? pendingDelete.withFiles
-              ? `Remove "${pendingDelete.title}" from Sonarr and delete all episode files from disk. This can't be undone.`
-              : `Remove "${pendingDelete.title}" from Sonarr. Files on disk will be kept.`
+          deleteTarget
+            ? deleteTarget.withFiles
+              ? `Remove "${deleteTarget.title}" from Sonarr and delete all episode files from disk. This can't be undone.`
+              : `Remove "${deleteTarget.title}" from Sonarr. Files on disk will be kept.`
             : ""
         }
         icon={Trash2}
         tone="danger"
-        confirmLabel={pendingDelete?.withFiles ? "Delete + Files" : "Delete"}
+        confirmLabel={deleteTarget?.withFiles ? "Delete + Files" : "Delete"}
         onConfirm={() => {
-          if (pendingDelete) {
-            deleteMutation.mutate({
-              id: pendingDelete.id,
-              deleteFiles: pendingDelete.withFiles,
-            });
-          }
-          setPendingDelete(null);
+          if (!deleteTarget) return;
+          flow.close();
+          deleteMutation.mutate({
+            id: deleteTarget.id,
+            deleteFiles: deleteTarget.withFiles,
+          });
         }}
-        onCancel={() => setPendingDelete(null)}
       />
     </>
   );

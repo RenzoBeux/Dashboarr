@@ -1,4 +1,3 @@
-import { useRef, useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -47,20 +46,18 @@ import {
   useUpdateArtistRootFolder,
 } from "@/hooks/use-lidarr";
 import { useServiceImage } from "@/hooks/use-service-image";
-import { useDeferredBack } from "@/hooks/use-deferred-back";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { getLidarrAlbumCover } from "@/services/lidarr-api";
 import { formatBytes } from "@/lib/utils";
 import type { LidarrArtist, LidarrAlbum } from "@/lib/types";
 
-type DeleteMode = "keep" | "withFiles" | null;
+type DeleteMode = "keep" | "withFiles";
 
 export default function ArtistDetailScreen() {
   const { id, instanceId } = useLocalSearchParams<{
     id: string;
     instanceId?: string;
   }>();
-  const router = useRouter();
-  const deferredBack = useDeferredBack();
   const { data: artist, isLoading, error } = useLidarrArtist(Number(id), instanceId);
   const { data: albums } = useLidarrAlbums(Number(id), instanceId);
   const toggleArtist = useToggleArtistMonitored(instanceId);
@@ -71,15 +68,15 @@ export default function ArtistDetailScreen() {
   const { data: rootFolders } = useLidarrRootFolders(instanceId);
   const updateRootFolder = useUpdateArtistRootFolder(instanceId);
 
-  const [actionsVisible, setActionsVisible] = useState(false);
-  const [qualityVisible, setQualityVisible] = useState(false);
-  const [rootFolderVisible, setRootFolderVisible] = useState(false);
-  const [pendingRootFolder, setPendingRootFolder] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<DeleteMode>(null);
-  // Chosen in the actions sheet, promoted to the confirm modal only once that
-  // sheet has fully closed — never stack two native modals on iOS.
-  const deleteIntent = useRef<DeleteMode>(null);
-  const rootFolderIntent = useRef<string | null>(null);
+  // All modal sequencing (sheet → confirm, sheet → sheet, confirm → pop) goes
+  // through the flow — see hooks/use-modal-flow.ts.
+  const flow = useModalFlow<{
+    actions: void;
+    quality: void;
+    rootFolder: void;
+    moveFiles: string; // payload: the picked root folder path
+    confirmDelete: DeleteMode;
+  }>();
 
   const poster = artist?.images.find((i) => i.coverType === "poster");
   const fanart = artist?.images.find((i) => i.coverType === "fanart");
@@ -115,14 +112,14 @@ export default function ArtistDetailScreen() {
   };
 
   const confirmDelete = () => {
-    if (!pendingDelete) return;
-    const withFiles = pendingDelete === "withFiles";
-    deferredBack.arm();
-    setPendingDelete(null);
+    const mode = flow.payload("confirmDelete");
+    if (!mode) return;
+    flow.close();
     deleteArtist.mutate(
-      { id: artist.id, deleteFiles: withFiles },
+      { id: artist.id, deleteFiles: mode === "withFiles" },
       {
-        onSuccess: () => deferredBack.back(),
+        // flow.back() pops only once the confirm has fully dismissed.
+        onSuccess: () => flow.back(),
         onError: (err) => toastError("Failed to delete artist", err),
       },
     );
@@ -142,7 +139,7 @@ export default function ArtistDetailScreen() {
       icon: Award,
       label: qualityProfileName ?? "Quality",
       loading: updateProfile.isPending,
-      onPress: () => setQualityVisible(true),
+      onPress: () => flow.open("quality"),
       disabled: !qualityProfiles || qualityProfiles.length === 0,
     },
     {
@@ -156,7 +153,7 @@ export default function ArtistDetailScreen() {
       key: "more",
       icon: MoreHorizontal,
       label: "More",
-      onPress: () => setActionsVisible(true),
+      onPress: () => flow.open("actions"),
     },
   ];
 
@@ -192,7 +189,7 @@ export default function ArtistDetailScreen() {
             artist={artist}
             onPressRoot={
               rootFolders && rootFolders.length > 0
-                ? () => setRootFolderVisible(true)
+                ? () => flow.open("rootFolder")
                 : undefined
             }
           />
@@ -238,38 +235,26 @@ export default function ArtistDetailScreen() {
       </ScreenWrapper>
 
       <ActionSheet
-        visible={actionsVisible}
-        onClose={() => setActionsVisible(false)}
-        onClosed={() => {
-          if (deleteIntent.current) {
-            setPendingDelete(deleteIntent.current);
-            deleteIntent.current = null;
-          }
-        }}
+        {...flow.bind("actions")}
         title={artist.artistName}
         actions={[
           {
             label: "Delete Artist",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              deleteIntent.current = "keep";
-            },
+            onPress: () => flow.open("confirmDelete", "keep"),
           },
           {
             label: "Delete Artist + Files",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => {
-              deleteIntent.current = "withFiles";
-            },
+            onPress: () => flow.open("confirmDelete", "withFiles"),
           },
         ]}
       />
 
       <ActionSheet
-        visible={qualityVisible}
-        onClose={() => setQualityVisible(false)}
+        {...flow.bind("quality")}
         title="Quality Profile"
         subtitle={artist.artistName}
         actions={(qualityProfiles ?? []).map((p) => ({
@@ -289,14 +274,7 @@ export default function ArtistDetailScreen() {
       />
 
       <ActionSheet
-        visible={rootFolderVisible}
-        onClose={() => setRootFolderVisible(false)}
-        onClosed={() => {
-          if (rootFolderIntent.current) {
-            setPendingRootFolder(rootFolderIntent.current);
-            rootFolderIntent.current = null;
-          }
-        }}
+        {...flow.bind("rootFolder")}
         title="Root Folder"
         subtitle={artist.artistName}
         actions={(rootFolders ?? []).map((f) => ({
@@ -310,60 +288,65 @@ export default function ArtistDetailScreen() {
           ),
           onPress: () => {
             if (f.path === artist.rootFolderPath) return;
-            rootFolderIntent.current = f.path;
+            flow.open("moveFiles", f.path);
           },
         }))}
       />
 
       <ActionSheet
-        visible={pendingRootFolder !== null}
-        onClose={() => setPendingRootFolder(null)}
+        {...flow.bind("moveFiles")}
         title="Move existing files?"
-        subtitle={pendingRootFolder ?? ""}
+        subtitle={flow.payload("moveFiles") ?? ""}
         actions={[
           {
             label: "Move existing files",
             icon: <Icon icon={FolderTree} size={18} color="#60a5fa" />,
             onPress: () => {
-              if (!pendingRootFolder) return;
+              const path = flow.payload("moveFiles");
+              if (!path) return;
               updateRootFolder.mutate({
                 artistId: artist.id,
-                rootFolderPath: pendingRootFolder,
+                rootFolderPath: path,
                 moveFiles: true,
               });
-              setPendingRootFolder(null);
             },
           },
           {
             label: "Keep files in place",
             icon: <Icon icon={Circle} size={18} color="#71717a" />,
             onPress: () => {
-              if (!pendingRootFolder) return;
+              const path = flow.payload("moveFiles");
+              if (!path) return;
               updateRootFolder.mutate({
                 artistId: artist.id,
-                rootFolderPath: pendingRootFolder,
+                rootFolderPath: path,
                 moveFiles: false,
               });
-              setPendingRootFolder(null);
             },
           },
         ]}
       />
 
       <ConfirmModal
-        visible={pendingDelete !== null}
-        title={pendingDelete === "withFiles" ? "Delete artist + files?" : "Delete artist?"}
+        {...flow.bind("confirmDelete")}
+        title={
+          flow.payload("confirmDelete") === "withFiles"
+            ? "Delete artist + files?"
+            : "Delete artist?"
+        }
         message={
-          pendingDelete === "withFiles"
+          flow.payload("confirmDelete") === "withFiles"
             ? `Remove "${artist.artistName}" from Lidarr and delete all files from disk. This can't be undone.`
             : `Remove "${artist.artistName}" from Lidarr. Files on disk will be kept.`
         }
         icon={Trash2}
         tone="danger"
-        confirmLabel={pendingDelete === "withFiles" ? "Delete + Files" : "Delete"}
+        confirmLabel={
+          flow.payload("confirmDelete") === "withFiles"
+            ? "Delete + Files"
+            : "Delete"
+        }
         onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
-        onClosed={deferredBack.onClosed}
       />
     </>
   );

@@ -26,12 +26,20 @@ import {
 } from "@/hooks/use-overseerr";
 import type { OverseerrMediaResult, OverseerrTVDetails } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
+import { useModalClosed } from "@/hooks/use-modal-closed";
 
 interface RequestOptionsSheetProps {
   item: OverseerrMediaResult | null;
   visible: boolean;
   onClose: () => void;
   onRequested?: () => void;
+  /**
+   * Fired once this sheet's Modal is fully dismissed (see `useModalClosed`).
+   * The parent MediaDetailModal uses it to dismiss itself only after this
+   * nested pageSheet is gone — dismissing both in the same tick races the
+   * child's teardown on iOS (issue #83 class).
+   */
+  onClosed?: () => void;
   // Preselect the 4K quality tier (e.g. when opened from a "Request 4K" action).
   initialIs4k?: boolean;
 }
@@ -41,9 +49,13 @@ export function RequestOptionsSheet({
   visible,
   onClose,
   onRequested,
+  onClosed,
   initialIs4k = false,
 }: RequestOptionsSheetProps) {
   const isTv = item?.mediaType === "tv";
+  // Fire onClosed once the Modal is fully gone — the safe point for the
+  // parent to start its own dismissal on iOS.
+  const handleDismiss = useModalClosed(visible, onClosed);
 
   const radarrServersQuery = useOverseerrRadarrServers();
   const sonarrServersQuery = useOverseerrSonarrServers();
@@ -213,6 +225,7 @@ export function RequestOptionsSheet({
       presentationStyle="pageSheet"
       statusBarTranslucent
       onRequestClose={onClose}
+      onDismiss={handleDismiss}
     >
       <View className="flex-1 bg-background">
         <SheetHeader title="Request Options" onClose={onClose} />

@@ -21,7 +21,7 @@ interface ConfirmModalProps {
    * Fired once the modal is fully dismissed (see `useModalClosed`). Use this to
    * sequence anything that must not run while the modal is still tearing down —
    * e.g. `router.back()`, which hangs the JS thread on iOS/Fabric if it races
-   * the dismiss. See `useDeferredBack`.
+   * the dismiss. Wired automatically by `useModalFlow`'s `bind`.
    */
   onClosed?: () => void;
 }

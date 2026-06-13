@@ -32,6 +32,7 @@ import { toast } from "@/components/ui/toast";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
+import { useModalClosed } from "@/hooks/use-modal-closed";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
@@ -42,6 +43,12 @@ interface AddToDashboardsSheetProps {
   instanceId: string;
   instanceName: string;
   onClose: () => void;
+  /**
+   * Fired once the sheet's native Modal is fully gone (see `useModalClosed`).
+   * Lets the caller sequence what follows the dismissal (e.g. unmounting the
+   * editor screen behind it) — wired by `useModalFlow`.
+   */
+  onClosed?: () => void;
 }
 
 type RowState =
@@ -54,6 +61,7 @@ export function AddToDashboardsSheet({
   instanceId,
   instanceName,
   onClose,
+  onClosed,
 }: AddToDashboardsSheetProps) {
   const dashboards = useConfigStore((s) => s.dashboards);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
@@ -65,6 +73,9 @@ export function AddToDashboardsSheet({
 
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Fire onClosed once the native Modal is fully gone — the safe point to
+  // unmount the screen behind / present another modal on iOS.
+  const handleDismiss = useModalClosed(mounted, onClosed);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
@@ -119,6 +130,12 @@ export function AddToDashboardsSheet({
           if (finished) runOnJS(setMounted)(false);
         },
       );
+      // If the exit timing is cancelled (a gesture wrote translateY mid-close,
+      // so `finished` never comes), force the unmount anyway — a stuck
+      // `mounted` leaves an invisible Modal eating touches and never delivers
+      // onClosed. Cleared when the sheet reopens before it fires.
+      const force = setTimeout(() => setMounted(false), 350);
+      return () => clearTimeout(force);
     }
   }, [visible]);
 
@@ -128,6 +145,10 @@ export function AddToDashboardsSheet({
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
 
   const handlePan = Gesture.Pan()
+    // Disabled while closing: a pan landing mid-close would cancel the exit
+    // withTiming and strand `mounted` true (see the matching guard in
+    // components/ui/action-sheet.tsx).
+    .enabled(visible)
     .onUpdate((e) => {
       translateY.value = Math.max(0, e.translationY);
     })
@@ -186,6 +207,7 @@ export function AddToDashboardsSheet({
       animationType="none"
       statusBarTranslucent
       onRequestClose={onClose}
+      onDismiss={handleDismiss}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View className="flex-1 justify-end">

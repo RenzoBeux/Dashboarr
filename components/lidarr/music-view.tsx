@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef } from "react";
+import { memo, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -43,6 +43,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { mediumHaptic } from "@/lib/haptics";
 import {
   BAR_KIND_COLOR,
@@ -58,6 +59,8 @@ import type { LidarrArtist, LidarrAlbum, LidarrQueueItem } from "@/lib/types";
 type ArtistItem = LidarrArtist & { title: string };
 
 type Tab = "library" | "queue" | "wanted";
+
+type PendingDelete = { id: number; title: string; withFiles: boolean };
 
 const SORT_OPTIONS: { key: ArtistsSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
@@ -108,6 +111,8 @@ export const MusicView = memo(function MusicView({
   const sort = useSortStore((s) => s.music);
   const setSort = useSortStore((s) => s.setMusic);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
+  // Sheet data only — visibility lives in the flow. Deliberately never cleared
+  // so sheet content stays correct during the dismiss animation.
   const [sheetArtist, setSheetArtist] = useState<ArtistItem | null>(null);
   const [sheetAlbum, setSheetAlbum] = useState<LidarrAlbum | null>(null);
   const router = useRouter();
@@ -122,22 +127,17 @@ export const MusicView = memo(function MusicView({
   const toggleArtist = useToggleArtistMonitored();
   const toggleAlbum = useToggleAlbumMonitored();
   const deleteMutation = useDeleteArtist();
-  const [missingConfirmOpen, setMissingConfirmOpen] = useState(false);
+
+  // All modal sequencing (sheet → confirm, sheet → navigation) goes through
+  // the flow — see hooks/use-modal-flow.ts.
+  const flow = useModalFlow<{
+    artistActions: void;
+    albumActions: void;
+    confirmMissing: void;
+    confirmDelete: PendingDelete;
+  }>();
 
   const lidarrHealth = healthData?.find((s) => s.id === "lidarr");
-
-  const [pendingDelete, setPendingDelete] = useState<{
-    id: number;
-    title: string;
-    withFiles: boolean;
-  } | null>(null);
-  // Set from the actions sheet, promoted to the confirm modal only after the
-  // sheet has fully closed — never stack two native modals on iOS.
-  const deleteIntent = useRef<{
-    id: number;
-    title: string;
-    withFiles: boolean;
-  } | null>(null);
 
   const artistActions: ActionSheetAction[] = useMemo(() => {
     if (!sheetArtist) return [];
@@ -161,26 +161,24 @@ export const MusicView = memo(function MusicView({
       {
         label: "Open Details",
         icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
-        onPress: () => router.push(`/artist/${artist.id}`),
+        onPress: () => flow.whenClear(() => router.push(`/artist/${artist.id}`)),
       },
       {
         label: "Delete",
         icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
         variant: "danger",
-        onPress: () => {
-          deleteIntent.current = { id: artist.id, title: artist.title, withFiles: false };
-        },
+        onPress: () =>
+          flow.open("confirmDelete", { id: artist.id, title: artist.title, withFiles: false }),
       },
       {
         label: "Delete + Files",
         icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
         variant: "danger",
-        onPress: () => {
-          deleteIntent.current = { id: artist.id, title: artist.title, withFiles: true };
-        },
+        onPress: () =>
+          flow.open("confirmDelete", { id: artist.id, title: artist.title, withFiles: true }),
       },
     ];
-  }, [sheetArtist, searchArtistMutation, toggleArtist, router]);
+  }, [sheetArtist, searchArtistMutation, toggleArtist, flow, router]);
 
   const albumActions: ActionSheetAction[] = useMemo(() => {
     if (!sheetAlbum) return [];
@@ -208,24 +206,28 @@ export const MusicView = memo(function MusicView({
       {
         label: "Open Details",
         icon: <Icon icon={Info} size={18} color="#a1a1aa" />,
-        onPress: () => router.push(`/album/${album.id}`),
+        onPress: () => flow.whenClear(() => router.push(`/album/${album.id}`)),
       },
     ];
-  }, [sheetAlbum, searchAlbumsMutation, toggleAlbum, router]);
+  }, [sheetAlbum, searchAlbumsMutation, toggleAlbum, flow, router]);
 
   const openArtistSheet = (artist: ArtistItem) => {
     mediumHaptic();
     setSheetArtist(artist);
+    flow.open("artistActions");
   };
   const openAlbumSheet = (album: LidarrAlbum) => {
     mediumHaptic();
     setSheetAlbum(album);
+    flow.open("albumActions");
   };
 
   const handleSearchMissing = () => {
     mediumHaptic();
-    setMissingConfirmOpen(true);
+    flow.open("confirmMissing");
   };
+
+  const pendingDelete = flow.payload("confirmDelete");
 
   // Horizontal padding comes from ScreenWrapper's px-4; only vertical padding
   // here. pt = 0.5rem, matched at runtime so accessibility scale applies.
@@ -331,21 +333,13 @@ export const MusicView = memo(function MusicView({
       )}
 
       <ActionSheet
-        visible={sheetArtist !== null}
-        onClose={() => setSheetArtist(null)}
-        onClosed={() => {
-          if (deleteIntent.current) {
-            setPendingDelete(deleteIntent.current);
-            deleteIntent.current = null;
-          }
-        }}
+        {...flow.bind("artistActions")}
         title={sheetArtist?.title}
         actions={artistActions}
       />
 
       <ActionSheet
-        visible={sheetAlbum !== null}
-        onClose={() => setSheetAlbum(null)}
+        {...flow.bind("albumActions")}
         title={sheetAlbum?.title}
         subtitle={sheetAlbum?.artist?.artistName}
         actions={albumActions}
@@ -367,20 +361,19 @@ export const MusicView = memo(function MusicView({
       />
 
       <ConfirmModal
-        visible={missingConfirmOpen}
+        {...flow.bind("confirmMissing")}
         title="Search Missing Albums"
         message="Lidarr will search every monitored missing album in your library. This can queue a lot of grabs at once."
         icon={ScanSearch}
         confirmLabel="Search"
         onConfirm={() => {
-          setMissingConfirmOpen(false);
+          flow.close();
           searchMissing.mutate();
         }}
-        onCancel={() => setMissingConfirmOpen(false)}
       />
 
       <ConfirmModal
-        visible={pendingDelete !== null}
+        {...flow.bind("confirmDelete")}
         title={pendingDelete?.withFiles ? "Delete artist + files?" : "Delete artist?"}
         message={
           pendingDelete
@@ -399,9 +392,8 @@ export const MusicView = memo(function MusicView({
               deleteFiles: pendingDelete.withFiles,
             });
           }
-          setPendingDelete(null);
+          flow.close();
         }}
-        onCancel={() => setPendingDelete(null)}
       />
     </>
   );
