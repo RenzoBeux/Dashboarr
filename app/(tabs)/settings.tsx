@@ -300,9 +300,20 @@ export default function SettingsScreen() {
         // Import resets the away flag to its safe default, so local-only
         // services start "remote-only" until home is re-confirmed. Prompt for
         // Location + re-evaluate now so they come back online on the home WiFi
-        // without the user hunting for a permission (#168). Fire-and-forget —
-        // the import already succeeded; this just resolves home/away.
-        void reevaluateHomeNetworkAfterImport();
+        // without the user hunting for a permission (#168). The import already
+        // succeeded, so this runs detached — but if we're STILL away once it
+        // settles (permission denied, no home network configured, or genuinely
+        // away), tell the user why their services are on remote URLs and where
+        // to fix it, instead of leaving every service silently stuck on remote.
+        void reevaluateHomeNetworkAfterImport().then(() => {
+          const st = useConfigStore.getState();
+          if (st.autoSwitchNetwork && st.networkAwayFromHome) {
+            toast(
+              "Services are using remote URLs until your home WiFi is confirmed. Open Settings → Home Networks to finish setup.",
+              "info",
+            );
+          }
+        });
       }
     } catch (e) {
       toastError("Invalid config file", e);

@@ -21,7 +21,11 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(async () => {}),
 }));
 
-import { useConfigStore } from "./config-store";
+import {
+  useConfigStore,
+  stripImportedBssids,
+  repairOrphanedHomeNetworkSelection,
+} from "./config-store";
 import { setJSON } from "./storage";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
@@ -957,5 +961,66 @@ describe("setActiveDashboard — superset switch stays home (#14)", () => {
     } as Partial<ReturnType<typeof useConfigStore.getState>>);
     useConfigStore.getState().setActiveDashboard("B");
     expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+});
+
+// #168: a BSSID pinned on the source device won't match on the importing
+// device (different AP/band, or iOS hides it) → isHomeNetwork fails closed →
+// stuck "away" → remote-only on the real home WiFi. Strip pins on import so
+// matching is SSID-only; the SSID still has to match, so the invariant holds.
+describe("stripImportedBssids (#168)", () => {
+  it("clears pinned BSSIDs so imported networks match by SSID on a new device", () => {
+    expect(
+      stripImportedBssids([
+        { id: "1", ssid: "Home", bssid: "aa:bb:cc:dd:ee:ff" },
+        { id: "2", ssid: "Cabin", bssid: "" },
+      ]),
+    ).toEqual([
+      { id: "1", ssid: "Home", bssid: "" },
+      { id: "2", ssid: "Cabin", bssid: "" },
+    ]);
+  });
+
+  it("returns the same object reference for an unpinned entry (no needless copy)", () => {
+    const net = { id: "2", ssid: "Cabin", bssid: "" };
+    expect(stripImportedBssids([net])[0]).toBe(net);
+  });
+
+  it("handles an empty list", () => {
+    expect(stripImportedBssids([])).toEqual([]);
+  });
+});
+
+// #168: a non-empty home-network selection whose ids are ALL stale resolves to
+// an empty effective set, which getActiveUrl treats as "always remote" — local
+// URLs silently break with no recovery. Revert that to "use all networks".
+describe("repairOrphanedHomeNetworkSelection (#168)", () => {
+  const nets = [{ id: "home", ssid: "Home", bssid: "" }];
+  const dash = (homeNetworkIds?: any) =>
+    ({
+      id: "d1",
+      name: "D",
+      widgets: [],
+      ...(homeNetworkIds !== undefined ? { homeNetworkIds } : {}),
+    }) as any;
+
+  it("reverts a fully-orphaned selection to 'use all networks' (undefined)", () => {
+    const [d] = repairOrphanedHomeNetworkSelection([dash(["gone1", "gone2"])], nets);
+    expect("homeNetworkIds" in d).toBe(false);
+  });
+
+  it("keeps an explicit empty selection ([] = deliberate always-remote)", () => {
+    const [d] = repairOrphanedHomeNetworkSelection([dash([])], nets);
+    expect(d.homeNetworkIds).toEqual([]);
+  });
+
+  it("keeps a selection that still has at least one live id", () => {
+    const [d] = repairOrphanedHomeNetworkSelection([dash(["home", "gone"])], nets);
+    expect(d.homeNetworkIds).toEqual(["home", "gone"]);
+  });
+
+  it("leaves 'use all' (undefined) untouched", () => {
+    const [d] = repairOrphanedHomeNetworkSelection([dash(undefined)], nets);
+    expect("homeNetworkIds" in d).toBe(false);
   });
 });

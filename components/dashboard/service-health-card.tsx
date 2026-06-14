@@ -181,6 +181,14 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
             >
             <Pressable
               onPress={() => {
+                // Offline purely because we're remote-only with no remote URL
+                // (#168) — send the user to Home Networks, where they can
+                // confirm home / grant Location, instead of a service screen
+                // that can't load while away.
+                if (entry.awayBlocked) {
+                  router.push("/home-networks");
+                  return;
+                }
                 if (!route) return;
                 // Switch the active instance to the one tapped so the
                 // destination tab opens against this server, not whichever
