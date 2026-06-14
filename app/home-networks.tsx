@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { View, Text, Pressable, ActivityIndicator, Platform } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { View, Text, Pressable, ActivityIndicator, Platform, Linking, AppState } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { Wifi, Plus, Pencil, Trash2, Activity, ChevronDown, ChevronUp } from "lucide-react-native";
+import { Wifi, WifiOff, MapPin, Plus, Pencil, Trash2, Activity, ChevronDown, ChevronUp } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { lightHaptic } from "@/lib/haptics";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -12,7 +12,14 @@ import { TextInput } from "@/components/ui/text-input";
 import { toast } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useConfigStore } from "@/store/config-store";
-import { detectWifi, validateHomeNetworkInput } from "@/lib/wifi";
+import {
+  detectWifi,
+  validateHomeNetworkInput,
+  ensureWifiPermission,
+  getWifiPermissionStatus,
+  type WifiPermissionState,
+} from "@/lib/wifi";
+import { evaluateHomeNetwork } from "@/lib/network";
 import { detectVpnActive, isVpnModuleAvailable } from "@/lib/vpn";
 import type { HomeNetwork } from "@/store/config-store";
 import { MAX_HOME_NETWORKS } from "@/lib/constants";
@@ -89,6 +96,55 @@ export default function HomeNetworksScreen() {
   const [bssid, setBssid] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<HomeNetwork | null>(null);
+
+  // Location-permission state for the "away" recovery card (#168). Read without
+  // prompting on mount AND on every app-resume: tapping "Open Settings" sends the
+  // user to the system Settings app (Linking.openSettings backgrounds us rather
+  // than changing navigation focus), so a permission they grant there must be
+  // picked up when we foreground again — otherwise the card stays stale on "Open
+  // Settings". The Grant button also refreshes it directly.
+  const [wifiPerm, setWifiPerm] = useState<WifiPermissionState | null>(null);
+  const [grantingLocation, setGrantingLocation] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const read = () => {
+      void getWifiPermissionStatus().then((p) => {
+        if (alive) setWifiPerm(p);
+      });
+    };
+    read();
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") read();
+    });
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
+
+  const handleGrantLocation = async () => {
+    setGrantingLocation(true);
+    try {
+      const result = await ensureWifiPermission();
+      setWifiPerm(result);
+      if (result.granted) {
+        // Re-confirm home now that we can read the SSID; the away flag (and so
+        // this card) updates through the store if we're actually home.
+        await evaluateHomeNetwork();
+      } else if (!result.canAskAgain) {
+        // iOS won't show the prompt again — the only way back is system Settings.
+        toast(
+          "Enable Location for Dashboarr in Settings to use your home WiFi.",
+          "info",
+        );
+        await Linking.openSettings();
+      }
+    } catch {
+      toast("Couldn't request Location permission", "error");
+    } finally {
+      setGrantingLocation(false);
+    }
+  };
 
   const resetForm = () => {
     setSsid("");
@@ -317,6 +373,66 @@ export default function HomeNetworksScreen() {
           </Animated.View>
         ) : null}
       </Card>
+
+      {/* Recovery card (#168): we have home networks but are stuck "away" while
+          on WiFi — almost always missing Location permission on a freshly set-up
+          device, or this WiFi isn't a saved network. Hidden on cellular, where
+          remote-only is the correct, expected state. */}
+      {autoSwitchNetwork &&
+      networkAwayFromHome &&
+      homeNetworks.length > 0 &&
+      isOnWifi !== false ? (
+        <Card className="mb-4 gap-3 border border-amber-500/30 bg-amber-500/5">
+          <View className="flex-row items-center gap-2">
+            <Icon icon={WifiOff} size={18} color="#f59e0b" />
+            <Text className="text-amber-300 text-sm font-semibold">
+              Using remote URLs
+            </Text>
+          </View>
+          {/* Three-way: while the permission read is still in flight (null) we
+              show only the explanation, never a wrong action button that would
+              flip once it resolves. */}
+          {wifiPerm === null ? (
+            <Text className="text-zinc-400 text-xs leading-5">
+              The app is using your remote URLs because it hasn't confirmed
+              you're on a home network yet.
+            </Text>
+          ) : !wifiPerm.granted ? (
+            <>
+              <Text className="text-zinc-400 text-xs leading-5">
+                The app needs Location permission to read your WiFi name and
+                confirm you're home — until then it uses your remote URLs
+                everywhere. It's only used on-device to match your home networks.
+              </Text>
+              <Button
+                label={
+                  wifiPerm.canAskAgain
+                    ? "Grant Location permission"
+                    : "Open Settings"
+                }
+                onPress={handleGrantLocation}
+                loading={grantingLocation}
+                icon={<Icon icon={MapPin} size={14} color="#fff" />}
+                size="sm"
+              />
+            </>
+          ) : (
+            <>
+              <Text className="text-zinc-400 text-xs leading-5">
+                This WiFi isn't one of your saved home networks, so the app is
+                using your remote URLs. Add it to use local URLs here.
+              </Text>
+              <Button
+                label="Add current WiFi"
+                onPress={handleDetect}
+                loading={detecting}
+                icon={<Icon icon={Wifi} size={14} color="#fff" />}
+                size="sm"
+              />
+            </>
+          )}
+        </Card>
+      ) : null}
 
       {!homeNetworks.length ? (
         <View className="items-center justify-center py-20 gap-3">

@@ -684,6 +684,47 @@ function switchInvalidatesAwayFlag(
   return false;
 }
 
+/**
+ * Drop BSSID pins from imported home networks (#168). A pinned BSSID is the
+ * access-point radio MAC the source device recorded; on the importing device it
+ * often won't match — with mesh/multiple APs or 2.4-vs-5GHz the device can
+ * associate with a different radio (different BSSID), and iOS frequently doesn't
+ * surface a BSSID at all — and `isHomeNetwork` fails closed in those cases, so
+ * the device is stuck "away" → remote-only even on the real home WiFi (the two
+ * reports on #168). Stripping to SSID-only matching makes the transfer robust
+ * cross-device; the user can re-pin locally if they want the rogue-AP guard.
+ * The security invariant is intact — the SSID must still match before any local
+ * URL is used.
+ */
+export function stripImportedBssids(networks: HomeNetwork[]): HomeNetwork[] {
+  return networks.map((n) => (n.bssid ? { ...n, bssid: "" } : n));
+}
+
+/**
+ * Repair dashboards' home-network selections after import (#168). A selection
+ * that is a NON-EMPTY array but whose ids are ALL absent from the imported
+ * global list is corruption — a clean export/import keeps the two consistent —
+ * and it resolves to an empty effective set, which `getActiveUrl` treats as
+ * "always remote", silently breaking local URLs with no way for the user to
+ * recover. Revert those to `undefined` ("use all networks"). An explicit empty
+ * `[]` is left untouched (that's the user's deliberate "always remote" choice,
+ * not corruption), as are selections with at least one live id
+ * (`resolveEffectiveHomeNetworks` already ignores the stale ones).
+ */
+export function repairOrphanedHomeNetworkSelection(
+  dashboards: Dashboard[],
+  homeNetworks: HomeNetwork[],
+): Dashboard[] {
+  const validIds = new Set(homeNetworks.map((n) => n.id));
+  return dashboards.map((d) => {
+    const ids = d.homeNetworkIds;
+    if (!Array.isArray(ids) || ids.length === 0) return d;
+    if (ids.some((id) => validIds.has(id))) return d;
+    const { homeNetworkIds: _orphaned, ...rest } = d;
+    return rest as Dashboard;
+  });
+}
+
 function emptyLegacySecrets(): Record<ServiceId, ServiceSecrets> {
   const secrets = {} as Record<ServiceId, ServiceSecrets>;
   for (const id of SERVICE_IDS) {
@@ -2670,17 +2711,24 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
     const importedTreatVpnAsHome = payload.treatVpnAsHome ?? false;
     setBoolean(STORAGE_KEYS.treatVpnAsHome, importedTreatVpnAsHome);
-    const importedHomeNetworks = payload.homeNetworks ?? [];
+    // Strip BSSID pins so imported networks match by SSID on this device (#168
+    // — a source-device AP MAC won't match here and would wedge us "away").
+    const importedHomeNetworks = stripImportedBssids(payload.homeNetworks ?? []);
     setJSON(STORAGE_KEYS.homeNetworks, importedHomeNetworks);
 
     // Dashboards (v14): trust the migrated payload — the migration chain has
     // already folded any legacy widgetSettings/dashboardWidgets into a single
     // Default dashboard. If the post-migration payload is somehow empty we
     // seed a fresh Default so the dashboard screen always has something.
-    const importedDashboards: Dashboard[] =
+    // Repair any fully-orphaned home-network selection (#168) so a dashboard
+    // whose ids all went stale reverts to "use all networks" instead of being
+    // silently pinned to "always remote".
+    const importedDashboards: Dashboard[] = repairOrphanedHomeNetworkSelection(
       Array.isArray(payload.dashboards) && payload.dashboards.length > 0
         ? payload.dashboards
-        : defaultDashboards();
+        : defaultDashboards(),
+      importedHomeNetworks,
+    );
     const importedActiveDashboardId =
       typeof payload.activeDashboardId === "string" &&
       importedDashboards.some((d) => d.id === payload.activeDashboardId)

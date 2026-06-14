@@ -38,6 +38,46 @@ export async function detectSSID(): Promise<string | null> {
   return wifi?.ssid ?? null;
 }
 
+export interface WifiPermissionState {
+  /** Location permission is granted, so SSID/BSSID reads will work. */
+  granted: boolean;
+  /** False once the OS will no longer surface the permission prompt (on iOS,
+   *  after the user denies it the first time). The UI uses this to offer "Open
+   *  Settings" instead of a re-request that would silently resolve to denied. */
+  canAskAgain: boolean;
+}
+
+/** Current Location-permission state, read WITHOUT prompting. */
+export async function getWifiPermissionStatus(): Promise<WifiPermissionState> {
+  if (Platform.OS !== "android" && Platform.OS !== "ios") {
+    return { granted: true, canAskAgain: false };
+  }
+  const { status, canAskAgain } =
+    await Location.getForegroundPermissionsAsync();
+  return { granted: status === "granted", canAskAgain };
+}
+
+/**
+ * Ensure Location permission (needed to read the WiFi SSID for home-network
+ * detection). Prompts once if the OS still allows it; never loops. Returns the
+ * resulting state so callers can fall back to opening system Settings when the
+ * OS has hard-denied — the #168 recovery path: a freshly set-up device that
+ * dismissed the one-shot post-import prompt otherwise has no way to confirm home
+ * (and thus no way back to local URLs) short of reinstalling.
+ */
+export async function ensureWifiPermission(): Promise<WifiPermissionState> {
+  if (Platform.OS !== "android" && Platform.OS !== "ios") {
+    return { granted: true, canAskAgain: false };
+  }
+  const current = await Location.getForegroundPermissionsAsync();
+  if (current.status === "granted") {
+    return { granted: true, canAskAgain: false };
+  }
+  if (!current.canAskAgain) return { granted: false, canAskAgain: false };
+  const next = await Location.requestForegroundPermissionsAsync();
+  return { granted: next.status === "granted", canAskAgain: next.canAskAgain };
+}
+
 export function normalizeBssid(value: string): string {
   return value.trim().toLowerCase();
 }
