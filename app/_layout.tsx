@@ -13,6 +13,7 @@ import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
+import { useReleaseFilterStore } from "@/store/releases-filter-store";
 import { useIntroStore } from "@/store/intro-store";
 import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
@@ -249,6 +250,7 @@ export default function RootLayout() {
   const hydrateBackend = useBackendStore((s) => s.hydrate);
   const hydrateSort = useSortStore((s) => s.hydrate);
   const hydrateGlancesUi = useGlancesUiStore((s) => s.hydrate);
+  const hydrateReleaseFilters = useReleaseFilterStore((s) => s.hydrate);
   const hydrateIntro = useIntroStore((s) => s.hydrate);
   const introHydrated = useIntroStore((s) => s.hydrated);
   const introSeen = useIntroStore((s) => s.workspaceIntroSeen);
@@ -267,9 +269,16 @@ export default function RootLayout() {
     if (hydrated) {
       hydrateSort();
       hydrateGlancesUi();
+      hydrateReleaseFilters();
       hydrateIntro();
     }
-  }, [hydrated, hydrateSort, hydrateGlancesUi, hydrateIntro]);
+  }, [
+    hydrated,
+    hydrateSort,
+    hydrateGlancesUi,
+    hydrateReleaseFilters,
+    hydrateIntro,
+  ]);
 
   // Intro overlay visibility: never auto-open during Demo Mode (user is
   // exploring fake data; an overlay on top would be noise). Re-mounts when
