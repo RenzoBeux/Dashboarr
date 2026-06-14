@@ -25,6 +25,11 @@ import { lightHaptic } from "@/lib/haptics";
 import { getHttpErrorMessage } from "@/lib/http-client";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useSortStore, type ReleasesSortKey } from "@/store/sort-store";
+import {
+  useReleaseFilterStore,
+  RELEASE_FILTER_DEFAULTS,
+  type ProtocolFilter,
+} from "@/store/releases-filter-store";
 import { useArrCustomFilters } from "@/hooks/use-arr-custom-filters";
 import { applyArrCustomFilter } from "@/lib/arr-custom-filters";
 
@@ -64,8 +69,6 @@ const SORT_SUMMARY: Record<ReleasesSortKey, string> = {
   "score-desc": "Score",
   "title-asc": "Title",
 };
-
-type ProtocolFilter = "all" | "torrent" | "usenet";
 
 function sortReleases(list: Release[], key: ReleasesSortKey): Release[] {
   const copy = [...list];
@@ -188,12 +191,27 @@ export function ReleasesPicker({
   const sortKey = useSortStore((s) => s.releases);
   const setSortKey = useSortStore((s) => s.setReleases);
 
-  const [hideRejected, setHideRejected] = useState(true);
+  // Filters persist across searches (#198) so they don't reset every time the
+  // picker remounts. Quality persists by NAME (stable cross-search), protocol
+  // and the rejected toggle are stable preferences too. The saved *arr filter
+  // (selectedFilterId) stays local — its id is per-instance, so persisting it
+  // could apply the wrong server-side filter across services/instances.
+  const prefHideRejected = useReleaseFilterStore((s) => s.hideRejected);
+  const setPrefHideRejected = useReleaseFilterStore((s) => s.setHideRejected);
+  const protocolFilter = useReleaseFilterStore((s) => s.protocol);
+  const setProtocolFilter = useReleaseFilterStore((s) => s.setProtocol);
+  const qualityFilter = useReleaseFilterStore((s) => s.quality);
+  const setQualityFilter = useReleaseFilterStore((s) => s.setQuality);
+  const resetFilters = useReleaseFilterStore((s) => s.reset);
+
   const [autoFlippedRejected, setAutoFlippedRejected] = useState(false);
-  const [protocolFilter, setProtocolFilter] = useState<ProtocolFilter>("all");
-  const [qualityFilter, setQualityFilter] = useState<string | null>(null);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const [selectedFilterId, setSelectedFilterId] = useState<number | null>(null);
+
+  // Effective rejected state: the saved preference, transiently overridden by a
+  // one-shot auto-flip when every result was rejected (below). The auto-flip is
+  // never written back to the store, so it can't corrupt the saved preference.
+  const hideRejected = prefHideRejected && !autoFlippedRejected;
 
   // Saved interactive-search filters configured in the *arr web UI. Only the
   // "releases" section is relevant here; the control is hidden when there are
@@ -277,16 +295,17 @@ export function ReleasesPicker({
   useEffect(() => {
     if (
       !flippedOnceRef.current &&
-      hideRejected &&
+      prefHideRejected &&
       data &&
       data.length > 0 &&
       data.every((r) => r.rejected)
     ) {
       flippedOnceRef.current = true;
-      setHideRejected(false);
+      // Transient override only — never written back to the store, so the
+      // saved "Accepted only" preference survives for the next search.
       setAutoFlippedRejected(true);
     }
-  }, [data, hideRejected]);
+  }, [data, prefHideRejected]);
 
   function handleRefresh() {
     if (isFetching) return;
@@ -296,9 +315,11 @@ export function ReleasesPicker({
 
   function handleClearFilters() {
     lightHaptic();
-    setHideRejected(false);
-    setProtocolFilter("all");
-    setQualityFilter(null);
+    // Reset the persisted filters to their defaults (not "show everything"),
+    // so clearing doesn't permanently flip the saved Show pref or leave the
+    // filter pill stuck highlighted. selectedFilterId is local/ephemeral.
+    resetFilters();
+    setAutoFlippedRejected(false);
     setSelectedFilterId(null);
   }
 
@@ -306,9 +327,9 @@ export function ReleasesPicker({
   // one is active, otherwise the rejection state; the dot/highlight signals any
   // additional protocol/quality filtering.
   const filterSortActive =
-    !hideRejected ||
-    protocolFilter !== "all" ||
-    qualityFilter !== null ||
+    hideRejected !== RELEASE_FILTER_DEFAULTS.hideRejected ||
+    protocolFilter !== RELEASE_FILTER_DEFAULTS.protocol ||
+    qualityFilter !== RELEASE_FILTER_DEFAULTS.quality ||
     selectedFilter !== null ||
     sortKey !== "seeders-desc";
   const filterSummary = selectedFilter
@@ -476,7 +497,7 @@ export function ReleasesPicker({
         ]}
         filterValue={hideRejected ? "hide" : "all"}
         onFilterChange={(v) => {
-          setHideRejected(v === "hide");
+          setPrefHideRejected(v === "hide");
           setAutoFlippedRejected(false);
         }}
         extraSections={extraSections}
