@@ -25,6 +25,7 @@ import GithubLogo from "@/assets/services/github.svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo } from "@/components/ui/service-logo";
+import { StatusDot } from "@/components/ui/status-dot";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -42,15 +43,6 @@ import { BackHeader } from "@/components/common/back-header";
 import { testServiceConnection } from "@/lib/http-client";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import type { HealthStatusKind } from "@/lib/types";
-
-// Same green/orange/red palette as the dashboard service-health card and the
-// Services tab — kept in sync so the indicator means the same thing across
-// every surface that shows a per-instance status dot.
-const DOT_BG: Record<HealthStatusKind, string> = {
-  ok: "bg-success",
-  auth_failed: "bg-warning",
-  offline: "bg-danger",
-};
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
@@ -385,9 +377,7 @@ export default function SettingsScreen() {
         subtitle={subtitle}
         onPress={() => setViewingService(id)}
         right={
-          kindHealth ? (
-            <View className={`w-2 h-2 rounded-full ${DOT_BG[kindHealth]}`} />
-          ) : null
+          kindHealth ? <StatusDot state={kindHealth} size="sm" /> : null
         }
       />
     );
@@ -859,9 +849,7 @@ function InstanceList({
                     : null}
                 </View>
                 {instanceStatus ? (
-                  <View
-                    className={`w-2 h-2 rounded-full mr-2 ${DOT_BG[instanceStatus]}`}
-                  />
+                  <StatusDot state={instanceStatus} size="sm" className="mr-2" />
                 ) : null}
               </Pressable>
               {instances.length > 1 ? (

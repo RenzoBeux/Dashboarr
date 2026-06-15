@@ -8,6 +8,8 @@ import Sortable, {
 import { useRouter } from "expo-router";
 import { Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { Spinner } from "@/components/ui/spinner";
+import { StatusDot } from "@/components/ui/status-dot";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
@@ -19,14 +21,6 @@ import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
 import type { HealthStatusKind } from "@/lib/types";
-
-// Same dot palette as the dashboard service-health card — kept in sync so the
-// user sees green/orange/red mean the same thing across surfaces.
-const DOT_BG: Record<HealthStatusKind, string> = {
-  ok: "bg-success",
-  auth_failed: "bg-warning",
-  offline: "bg-danger",
-};
 
 // Bottom breathing room below the last grid row. The tab-bar clearance itself
 // is handled by ScreenWrapper (safe-area inset / floating glass tab-bar
@@ -43,7 +37,11 @@ export default function ServicesScreen() {
   );
   const activeDashboard = useActiveDashboard();
   const attachedKinds = useAttachedKinds();
-  const { data: health } = useServiceHealth();
+  const { data: health, isPending, isPlaceholderData } = useServiceHealth();
+  // "Determining": first probe batch (no data yet) or a re-keyed refetch in
+  // flight after a network/dashboard change (stale verdict kept visible). A
+  // routine 30s background poll is neither — see service-health-card.tsx.
+  const determining = isPending || isPlaceholderData;
   const uiScale = useUiScale();
   // Grid gap scales with the UI scale setting so spacing tracks the tiles.
   const tileGap = 12 * uiScale;
@@ -122,6 +120,7 @@ export default function ServicesScreen() {
   const renderTile = ({ item: id }: SortableGridRenderItemInfo<ServiceId>) => {
     const service = services[id];
     const status = health?.find((h) => h.id === id);
+    const checking = determining && !status;
     const healthStatus: HealthStatusKind = status?.status ?? "offline";
     const online = healthStatus !== "offline";
     // Surface WHY a tile isn't green (timeout, wrong key, off-WiFi LAN, …) so a
@@ -143,9 +142,7 @@ export default function ServicesScreen() {
           <View className="bg-surface-light rounded-xl p-3">
             <ServiceLogo id={id} size={28} online={online} />
           </View>
-          <View
-            className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${DOT_BG[healthStatus]}`}
-          />
+          <StatusDot state={checking ? "checking" : healthStatus} overlay />
         </View>
         <Text className="text-zinc-100 text-sm font-medium">{service.name}</Text>
         {detail && (
@@ -164,7 +161,10 @@ export default function ServicesScreen() {
     <ScreenWrapper scrollable={false}>
       <View className="flex-row items-center justify-between mb-4 pt-2">
         <View className="flex-1 pr-3">
-          <Text className="text-zinc-100 text-2xl font-bold">Services</Text>
+          <View className="flex-row items-center gap-2">
+            <Text className="text-zinc-100 text-2xl font-bold">Services</Text>
+            {determining ? <Spinner size={18} color="#71717a" /> : null}
+          </View>
           {canReorder && (
             <Text className="text-zinc-500 text-xs mt-0.5">
               Long-press a tile to reorder

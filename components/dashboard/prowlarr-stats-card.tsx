@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
+import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -95,11 +96,9 @@ export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
                   isFailed ? "bg-red-600/10" : "bg-surface-light"
                 }`}
               >
-                <View
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isFailed ? "bg-danger" : "bg-success"
-                  }`}
-                />
+                {/* Indexer up/down maps onto the shared dot's ok/offline
+                    colors (green/red) — same visual, one source of truth. */}
+                <StatusDot state={isFailed ? "offline" : "ok"} size="xs" />
                 <Text className="text-zinc-400 text-xs">{indexer.name}</Text>
                 {isFailed && <Icon icon={AlertTriangle} size={10} color="#ef4444" />}
               </View>

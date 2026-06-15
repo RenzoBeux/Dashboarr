@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { View, Text, Platform, Pressable } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { ChevronDown, Server, Check } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { StatusDot } from "@/components/ui/status-dot";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { useActiveInstance } from "@/hooks/use-active-instance";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -39,23 +40,9 @@ export function ServiceHeader({
         // or unreachable active instances show red even when a sibling is up.
         <ActiveInstanceStatusDot serviceId={serviceId} fallback={online} />
       ) : online !== undefined ? (
-        <StatusDot online={online} />
+        <StatusDot state={online ? "ok" : "offline"} size="md" shadow />
       ) : null}
     </View>
-  );
-}
-
-function StatusDot({ online }: { online: boolean }) {
-  return (
-    <View
-      className={`w-2.5 h-2.5 rounded-full ${online ? "bg-success" : "bg-danger"}`}
-      style={Platform.OS === "ios" ? {
-        shadowColor: online ? "#22c55e" : "#ef4444",
-        shadowRadius: 6,
-        shadowOpacity: 0.6,
-        shadowOffset: { width: 0, height: 0 },
-      } : undefined}
-    />
   );
 }
 
@@ -76,7 +63,7 @@ function ActiveInstanceStatusDot({
   // doesn't flicker red on first paint.
   const online = instance?.online ?? fallback;
   if (online === undefined) return null;
-  return <StatusDot online={online} />;
+  return <StatusDot state={online ? "ok" : "offline"} size="md" shadow />;
 }
 
 // Inline instance picker: renders nothing for kinds with 0–1 enabled instances,
