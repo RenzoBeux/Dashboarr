@@ -514,13 +514,6 @@ export function ReleasesPicker({
         service={service}
         instanceId={instanceId}
         onClose={flow.close}
-        onGrabbed={() => {
-          // After a grab succeeds, pop back to the detail screen so the user
-          // sees their queue update in context — flow.back() pops only once
-          // the sheet has fully dismissed (navigating mid-dismiss hangs
-          // iOS/Fabric). Never reintroduce a fixed setTimeout here.
-          flow.back();
-        }}
         onClosed={flow.onClosed}
       />
     </View>
