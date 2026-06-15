@@ -4,6 +4,7 @@ import { getWebhookSecret } from "../../db/repos/settings.js";
 import {
   countEnabledInstancesByKind,
   getServiceInstance,
+  getSoleEnabledInstanceByKind,
   type StoredServiceInstance,
 } from "../../db/repos/service-instance.js";
 import type { ServiceId } from "../../types.js";
@@ -49,16 +50,23 @@ export async function checkWebhookSecret(
 }
 
 /**
- * Resolve the optional `?instance=<uuid>` query param to the matching
- * service_instance row, scoped to a service kind. Used by per-service webhook
- * handlers to attribute the inbound event to a specific instance ("Radarr
- * Seedbox: Movie X downloaded" instead of "Radarr: Movie X downloaded").
+ * Resolve the inbound webhook to a specific service_instance, scoped to a kind.
+ * Used by per-service webhook handlers to attribute the event ("Radarr Seedbox:
+ * Movie X downloaded" instead of "Radarr: Movie X downloaded") AND to make the
+ * dispatcher apply that instance's per-instance notification overrides.
  *
- * Returns null in two cases — both treated as "kind-only attribution":
- *  - The query param is absent (legacy webhook URL).
- *  - The param is present but doesn't match any enabled instance of `kind`
- *    (stale URL after the user deleted the instance, or kind mismatch from a
- *    misconfigured webhook URL pasted into the wrong service).
+ * Resolution order:
+ *  1. `?instance=<uuid>` — when present and it matches an enabled instance of
+ *     `kind`, use it. A stale/mismatched id falls through to step 2.
+ *  2. Sole-instance fallback — when there's exactly one enabled instance of
+ *     `kind`, attribute to it. With a single instance there's no ambiguity about
+ *     which one sent the event, and it lets per-instance notification overrides
+ *     apply without the user appending `?instance=` to the webhook URL. This is
+ *     essential for Tracearr, whose categories are per-instance-only and several
+ *     of which default off — without it a user's "Always notify" never takes
+ *     effect on the common single-instance, no-`?instance=` setup (issue #200).
+ *  3. Otherwise null ("kind-only attribution") — 0 or >1 enabled instances and
+ *     no usable `?instance=`.
  *
  * We deliberately don't 4xx on a missing/unknown instance — the secret has
  * already been verified, the upstream service won't retry on a 4xx anyway,
@@ -69,12 +77,12 @@ export function resolveWebhookInstance(
   kind: ServiceId,
 ): StoredServiceInstance | null {
   const id = request.query.instance;
-  if (!id) return null;
-  const inst = getServiceInstance(id);
-  if (!inst) return null;
-  if (inst.serviceId !== kind) return null;
-  if (!inst.enabled) return null;
-  return inst;
+  if (id) {
+    const inst = getServiceInstance(id);
+    if (inst && inst.serviceId === kind && inst.enabled) return inst;
+    // Stale / kind-mismatched id — fall through to the sole-instance fallback.
+  }
+  return getSoleEnabledInstanceByKind(kind);
 }
 
 /**

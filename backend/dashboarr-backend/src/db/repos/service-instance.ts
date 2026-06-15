@@ -127,6 +127,22 @@ export function getServiceInstance(id: string): StoredServiceInstance | null {
 }
 
 /**
+ * Returns the sole enabled instance of a kind, or null when there are 0 or >1.
+ * Used by the webhook resolver to attribute (and apply per-instance notification
+ * overrides for) an inbound event when the URL carries no `?instance=` — with a
+ * single instance there's no ambiguity about which one sent it.
+ */
+export function getSoleEnabledInstanceByKind(kind: ServiceId): StoredServiceInstance | null {
+  const rows = getDb()
+    .prepare<[string], ServiceInstanceRow>(
+      "SELECT * FROM service_instance WHERE enabled = 1 AND service_id = ?",
+    )
+    .all(kind);
+  const [first] = rows;
+  return rows.length === 1 && first ? mapRow(first) : null;
+}
+
+/**
  * Used by the offline-push attribution path: we only want to disambiguate the
  * push body when a kind has more than one enabled instance.
  */
