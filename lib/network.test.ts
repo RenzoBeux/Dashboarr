@@ -1,13 +1,24 @@
 // Mock NetInfo (native) and the config store so importing network.ts pulls in
 // no native modules and the store is fully controllable.
 const mockFetch = jest.fn();
+const mockRefresh = jest.fn();
 jest.mock("@react-native-community/netinfo", () => ({
   __esModule: true,
   default: {
     configure: jest.fn(),
     fetch: (...args: any[]) => mockFetch(...args),
+    refresh: (...args: any[]) => mockRefresh(...args),
     addEventListener: jest.fn(() => jest.fn()),
   },
+}));
+
+// network.ts pulls in lib/wifi.ts (via detectWifiWithRefresh), which imports
+// expo-location — mock it so the import is native-free and the permission
+// prompt is controllable.
+const mockReqPerm = jest.fn();
+jest.mock("expo-location", () => ({
+  getForegroundPermissionsAsync: jest.fn(),
+  requestForegroundPermissionsAsync: (...a: any[]) => mockReqPerm(...a),
 }));
 
 const mockGetState = jest.fn();
@@ -21,10 +32,12 @@ jest.mock("@/lib/vpn", () => ({
   detectVpnActive: () => mockDetectVpnActive(),
 }));
 
+import { Platform } from "react-native";
 import {
   isHomeNetwork,
   evaluateHomeNetwork,
   resolveEffectiveHomeNetworks,
+  reevaluateHomeNetworkAfterImport,
 } from "./network";
 
 const wifi = (ssid: string | null, bssid: string | null = null) =>
@@ -304,6 +317,89 @@ describe("evaluateHomeNetwork", () => {
     // The queued re-run read the FRESH snapshot (opt-in on + VPN) → away=false.
     expect(before.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
     expect(after.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("reevaluateHomeNetworkAfterImport", () => {
+  function fakeStore(over: Record<string, any> = {}) {
+    return {
+      demoMode: false,
+      autoSwitchNetwork: true,
+      treatVpnAsHome: false,
+      homeNetworks: [{ id: "1", ssid: "Home", bssid: "" }],
+      dashboards: [],
+      activeDashboardId: "",
+      setNetworkAwayFromHome: jest.fn(),
+      setIsVpnActive: jest.fn(),
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    // detectWifiWithRefresh only prompts/refreshes on a native platform.
+    (Platform as any).OS = "ios";
+  });
+
+  it("prompts for Location, warms the SSID, then clears away on the home WiFi", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockReqPerm.mockResolvedValue({ status: "granted" });
+    mockRefresh.mockResolvedValue(wifi("Home")); // surfaces on first refresh
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await reevaluateHomeNetworkAfterImport();
+
+    expect(mockReqPerm).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenLastCalledWith(false);
+  });
+
+  it("stays away when the confirmed WiFi isn't a home network", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockReqPerm.mockResolvedValue({ status: "granted" });
+    mockRefresh.mockResolvedValue(wifi("Cafe"));
+    mockFetch.mockResolvedValue(wifi("Cafe"));
+
+    await reevaluateHomeNetworkAfterImport();
+
+    expect(store.setNetworkAwayFromHome).toHaveBeenLastCalledWith(true);
+  });
+
+  it("stays away (honest result) when Location is denied — never refreshes", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockReqPerm.mockResolvedValue({ status: "denied" });
+    mockFetch.mockResolvedValue(wifi(null));
+
+    await reevaluateHomeNetworkAfterImport();
+
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenLastCalledWith(true);
+  });
+
+  it("is a full no-op with no home networks and no treatVpnAsHome (no prompt)", async () => {
+    const store = fakeStore({ homeNetworks: [] });
+    mockGetState.mockReturnValue(store);
+
+    await reevaluateHomeNetworkAfterImport();
+
+    expect(mockReqPerm).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).not.toHaveBeenCalled();
+  });
+
+  it("clears away via the VPN check with zero networks — without a permission prompt", async () => {
+    const store = fakeStore({ homeNetworks: [], treatVpnAsHome: true });
+    mockGetState.mockReturnValue(store);
+    mockDetectVpnActive.mockReturnValue(true);
+
+    await reevaluateHomeNetworkAfterImport();
+
+    expect(mockReqPerm).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
   });
 });
 

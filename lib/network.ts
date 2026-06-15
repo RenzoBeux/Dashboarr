@@ -1,7 +1,7 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
 import type { Dashboard, HomeNetwork } from "@/store/config-store";
-import { detectWifi } from "@/lib/wifi";
+import { detectWifiWithRefresh } from "@/lib/wifi";
 import { detectVpnActive } from "@/lib/vpn";
 
 /**
@@ -148,10 +148,11 @@ async function evaluateHomeNetworkOnce(): Promise<void> {
  * device almost certainly hasn't granted yet — so local-only services stay stuck
  * "invalid URL" until the user stumbles onto the permission.
  *
- * This requests the permission (via detectWifi, which also ensures NetInfo is
- * configured to surface the SSID on iOS) *while the user is actively setting the
- * device up*, then evaluates. No-op when auto-switch is off or no home networks
- * are configured — in those cases the SSID is never needed, so we don't prompt.
+ * This requests the permission (via detectWifiWithRefresh, which also force-
+ * refreshes NetInfo so the just-authorized SSID surfaces on iOS) *while the user
+ * is actively setting the device up*, then evaluates. No-op when auto-switch is
+ * off or no home networks are configured — in those cases the SSID is never
+ * needed, so we don't prompt.
  */
 export async function reevaluateHomeNetworkAfterImport(): Promise<void> {
   const store = useConfigStore.getState();
@@ -167,9 +168,11 @@ export async function reevaluateHomeNetworkAfterImport(): Promise<void> {
     if (store.treatVpnAsHome) await evaluateHomeNetwork();
     return;
   }
-  // Prompt for Location now; if granted, the subsequent evaluate reads the real
-  // SSID and clears the away flag when we're home. If denied, we stay safely
-  // "away" (remote-only) — the honest result.
-  await detectWifi();
+  // Prompt for Location now; refresh+retry so the SSID is readable on a device
+  // granting permission for the FIRST time (netinfo iOS null-SSID bug, #168) —
+  // this also warms NetInfo's singleton, so the evaluateHomeNetwork() fetch below
+  // reads the surfaced SSID and clears the away flag when we're home. If denied,
+  // we stay safely "away" (remote-only) — the honest result.
+  await detectWifiWithRefresh();
   await evaluateHomeNetwork();
 }
