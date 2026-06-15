@@ -15,6 +15,19 @@ export interface WifiIdentity {
   bssid: string;
 }
 
+// Warm-up tuning for the iOS netinfo SSID-null-after-grant bug (#168): right
+// after Location permission is FIRST granted, the next NetInfo.fetch() returns a
+// null SSID until the WiFi re-associates or the app restarts. NetInfo.refresh()
+// force-refreshes the singleton; a few retries outlast the brief window where
+// the OS hasn't surfaced the SSID yet. User-initiated/one-shot, so ~1.2s worst
+// case is fine — the steady-state poll never runs this.
+const WIFI_REFRESH_ATTEMPTS = 4;
+const WIFI_REFRESH_DELAY_MS = 400;
+
+/** Injectable so tests pass a no-op instead of waiting real time. */
+type Sleep = (ms: number) => Promise<void>;
+const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 export async function detectWifi(): Promise<WifiIdentity | null> {
   // Both Android and iOS require Location permission to read WiFi SSID/BSSID.
   // On iOS this also needs the `com.apple.developer.networking.wifi-info`
@@ -36,6 +49,59 @@ export async function detectWifi(): Promise<WifiIdentity | null> {
 export async function detectSSID(): Promise<string | null> {
   const wifi = await detectWifi();
   return wifi?.ssid ?? null;
+}
+
+/**
+ * Force-refresh NetInfo's global singleton and poll until the WiFi SSID is
+ * readable, working around the netinfo iOS bug where the SSID stays null on the
+ * first read right after Location permission is first granted, until the WiFi
+ * re-associates or the app restarts (#168). Returns the identity once the SSID
+ * surfaces, or null if it never does within the budget (caller stays "away" →
+ * remote, the honest result). Assumes Location permission is already granted —
+ * does NOT prompt (callers prompt first via detectWifi / ensureWifiPermission).
+ *
+ * Side effect: leaves the singleton warm, so a subsequent NetInfo.fetch()
+ * elsewhere (evaluateHomeNetwork's own fetch) reads the surfaced SSID too.
+ */
+export async function refreshWifiIdentity(
+  sleep: Sleep = realSleep,
+): Promise<WifiIdentity | null> {
+  if (Platform.OS !== "android" && Platform.OS !== "ios") return null;
+  for (let attempt = 0; attempt < WIFI_REFRESH_ATTEMPTS; attempt++) {
+    // refresh() resolves with the same state the next fetch() would return, so
+    // read it directly and skip a redundant native round-trip per attempt.
+    const state = await NetInfo.refresh();
+    if (state.type === "wifi" && state.details?.ssid) {
+      return {
+        ssid: state.details.ssid,
+        bssid:
+          typeof state.details.bssid === "string"
+            ? state.details.bssid.toLowerCase()
+            : "",
+      };
+    }
+    // Not on WiFi at all → no amount of retrying surfaces an SSID; bail fast so
+    // cellular/away callers don't wait out the whole budget.
+    if (state.type !== "wifi") return null;
+    if (attempt < WIFI_REFRESH_ATTEMPTS - 1) await sleep(WIFI_REFRESH_DELAY_MS);
+  }
+  return null;
+}
+
+/**
+ * Like `detectWifi`, but works around the post-grant null-SSID bug (#168):
+ * prompts for Location, then refresh+retries until the SSID surfaces. Use on
+ * user-initiated recovery paths (config import, manual "detect", grant). The
+ * cheap single-fetch `detectWifi` stays for the steady-state poll.
+ */
+export async function detectWifiWithRefresh(
+  sleep?: Sleep,
+): Promise<WifiIdentity | null> {
+  if (Platform.OS === "android" || Platform.OS === "ios") {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") return null;
+  }
+  return refreshWifiIdentity(sleep);
 }
 
 export interface WifiPermissionState {

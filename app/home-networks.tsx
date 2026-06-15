@@ -13,7 +13,8 @@ import { toast } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useConfigStore } from "@/store/config-store";
 import {
-  detectWifi,
+  detectWifiWithRefresh,
+  refreshWifiIdentity,
   validateHomeNetworkInput,
   ensureWifiPermission,
   getWifiPermissionStatus,
@@ -105,6 +106,11 @@ export default function HomeNetworksScreen() {
   // Settings". The Grant button also refreshes it directly.
   const [wifiPerm, setWifiPerm] = useState<WifiPermissionState | null>(null);
   const [grantingLocation, setGrantingLocation] = useState(false);
+  // Permission granted + on WiFi, but the SSID still won't surface after a
+  // refresh+retry (#168) — e.g. Precise Location off, or the WiFi hasn't
+  // re-associated. Distinct from "this WiFi isn't saved" so the card can offer
+  // a real next step (retry / toggle WiFi) instead of the wrong "add it" copy.
+  const [ssidUnreadable, setSsidUnreadable] = useState(false);
   useEffect(() => {
     let alive = true;
     const read = () => {
@@ -128,6 +134,13 @@ export default function HomeNetworksScreen() {
       const result = await ensureWifiPermission();
       setWifiPerm(result);
       if (result.granted) {
+        // Warm NetInfo's singleton (refresh+retry) so the just-authorized SSID
+        // surfaces before we evaluate (#168). If it never does while we're on
+        // WiFi, flag it so the card offers a retry instead of "add this WiFi".
+        const id = await refreshWifiIdentity();
+        setSsidUnreadable(
+          id === null && useConfigStore.getState().isOnWifi === true,
+        );
         // Re-confirm home now that we can read the SSID; the away flag (and so
         // this card) updates through the store if we're actually home.
         await evaluateHomeNetwork();
@@ -141,6 +154,28 @@ export default function HomeNetworksScreen() {
       }
     } catch {
       toast("Couldn't request Location permission", "error");
+    } finally {
+      setGrantingLocation(false);
+    }
+  };
+
+  // "Retry detection" for the SSID-unreadable card state (#168): re-runs the
+  // refresh+retry warm-up and re-evaluates. Permission is already granted here
+  // (this state only shows then), so refreshWifiIdentity won't prompt.
+  const handleRetryDetection = async () => {
+    setGrantingLocation(true);
+    try {
+      const id = await refreshWifiIdentity();
+      setSsidUnreadable(id === null);
+      await evaluateHomeNetwork();
+      if (id === null) {
+        toast(
+          "Still can't read your WiFi name. Toggle WiFi off/on, and make sure Precise Location is enabled for Dashboarr.",
+          "info",
+        );
+      }
+    } catch {
+      toast("Failed to detect WiFi name", "error");
     } finally {
       setGrantingLocation(false);
     }
@@ -171,7 +206,9 @@ export default function HomeNetworksScreen() {
   const handleDetect = async () => {
     setDetecting(true);
     try {
-      const wifi = await detectWifi();
+      // Refresh+retry so a freshly-granted device surfaces the SSID (#168);
+      // user-initiated and one-shot, so the brief retry budget is fine here.
+      const wifi = await detectWifiWithRefresh();
       if (!wifi) {
         toast(
           "Could not detect WiFi name. Check that you're on WiFi and location is allowed.",
@@ -413,6 +450,22 @@ export default function HomeNetworksScreen() {
                 onPress={handleGrantLocation}
                 loading={grantingLocation}
                 icon={<Icon icon={MapPin} size={14} color="#fff" />}
+                size="sm"
+              />
+            </>
+          ) : ssidUnreadable ? (
+            <>
+              <Text className="text-zinc-400 text-xs leading-5">
+                Location is allowed and you're on WiFi, but the app still can't
+                read the network name, so it's using your remote URLs. This
+                usually clears by toggling WiFi off and on, or enabling Precise
+                Location for Dashboarr in iOS Settings.
+              </Text>
+              <Button
+                label="Retry detection"
+                onPress={handleRetryDetection}
+                loading={grantingLocation}
+                icon={<Icon icon={Wifi} size={14} color="#fff" />}
                 size="sm"
               />
             </>
