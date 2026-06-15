@@ -43,7 +43,6 @@ interface ReleaseDetailSheetProps {
   service: "radarr" | "sonarr";
   instanceId?: string;
   onClose: () => void;
-  onGrabbed?: () => void;
   /**
    * Fired once the sheet's native `<Modal>` is fully gone — the safe point to
    * navigate on iOS (see `useModalClosed`).
@@ -56,7 +55,6 @@ export function ReleaseDetailSheet({
   service,
   instanceId,
   onClose,
-  onGrabbed,
   onClosed,
 }: ReleaseDetailSheetProps) {
   const insets = useSafeAreaInsets();
@@ -118,7 +116,6 @@ export function ReleaseDetailSheet({
       {
         onSuccess: () => {
           onClose();
-          onGrabbed?.();
         },
       },
     );
