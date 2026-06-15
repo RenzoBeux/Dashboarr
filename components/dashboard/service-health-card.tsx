@@ -1,9 +1,11 @@
-import { View, Text, Pressable, Platform } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { WifiOff } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo, hasServiceLogo } from "@/components/ui/service-logo";
+import { Spinner } from "@/components/ui/spinner";
+import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
@@ -46,21 +48,10 @@ interface RenderEntry {
   // (away from home / workspace pinned remote) but has no remote URL set — the
   // #168 case. Drives the away badge, which takes the L/R badge's corner.
   awayBlocked: boolean;
+  // True while the health batch is still settling and we have no verdict yet
+  // for this instance — render the dot as "checking" instead of red (#196).
+  checking: boolean;
 }
-
-// Tailwind class + iOS shadow color for the small corner dot, by tri-state.
-// Centralized so the Services tab and the Settings instance list use the
-// same palette — keeps "green/orange/red" consistent across the app.
-const DOT_BG: Record<HealthStatusKind, string> = {
-  ok: "bg-success",
-  auth_failed: "bg-warning",
-  offline: "bg-danger",
-};
-const DOT_SHADOW: Record<HealthStatusKind, string> = {
-  ok: "#22c55e",
-  auth_failed: "#f59e0b",
-  offline: "#ef4444",
-};
 
 // L/R corner badge palette — deliberately hues NOT used by the status dot
 // (green/amber/red) so the two corners read as different signals at a glance.
@@ -74,7 +65,12 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     slotId,
     SERVICE_HEALTH_DEFAULT_SETTINGS,
   );
-  const { data: services } = useServiceHealth();
+  const { data: services, isPending, isPlaceholderData } = useServiceHealth();
+  // "Determining": either the first-ever probe batch (no data yet) or a re-keyed
+  // refetch in flight after a network/dashboard change (keepPreviousData keeps
+  // the stale verdict visible, flagged by isPlaceholderData). A routine 30s
+  // background poll is neither, so the spinner doesn't blink every interval.
+  const determining = isPending || isPlaceholderData;
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const servicesOrder = useConfigStore((s) => s.servicesOrder);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
@@ -139,6 +135,12 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     if (bound.length === 0) continue;
     for (const inst of bound) {
       const health = healthByInstance.get(`${kindId}:${inst.id}`);
+      const awayBlocked = isRemoteOnlyOffline(
+        inst,
+        autoSwitchNetwork,
+        networkAwayFromHome,
+        workspaceForcesRemote,
+      );
       entries.push({
         kindId,
         instanceId: inst.id,
@@ -153,12 +155,11 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           networkAwayFromHome,
           workspaceForcesRemote,
         ),
-        awayBlocked: isRemoteOnlyOffline(
-          inst,
-          autoSwitchNetwork,
-          networkAwayFromHome,
-          workspaceForcesRemote,
-        ),
+        awayBlocked,
+        // Away-blocked instances are deterministically offline-by-config (no
+        // remote URL while remote-only), so they keep their red dot + away
+        // badge rather than a misleading "checking" pulse.
+        checking: determining && !health && !awayBlocked,
       });
     }
   }
@@ -168,7 +169,10 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Services</CardTitle>
+        <View className="flex-row items-center gap-2">
+          <CardTitle>Services</CardTitle>
+          {determining ? <Spinner size={14} color="#71717a" /> : null}
+        </View>
       </CardHeader>
       <View className="flex-row flex-wrap gap-4">
         {entries.map((entry) => {
@@ -225,14 +229,10 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                     </Text>
                   </View>
                 ) : null}
-                <View
-                  className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-surface ${DOT_BG[entry.status]}`}
-                  style={Platform.OS === "ios" ? {
-                    shadowColor: DOT_SHADOW[entry.status],
-                    shadowRadius: 6,
-                    shadowOpacity: 0.6,
-                    shadowOffset: { width: 0, height: 0 },
-                  } : undefined}
+                <StatusDot
+                  state={entry.checking ? "checking" : entry.status}
+                  overlay
+                  shadow
                 />
               </View>
               <Text className="text-zinc-500 text-xs" numberOfLines={1}>
