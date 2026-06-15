@@ -1516,9 +1516,10 @@ function WebhookInstanceIdCard({
       </Text>
       <Text className="text-zinc-400 text-xs leading-5">
         Append <Text className="text-zinc-200">?instance=&lt;id&gt;</Text> to your
-        backend webhook URL in this service's notification settings so push
-        notifications can be tagged with this instance's name. Optional —
-        without it, pushes still arrive but aren't attributed.
+        backend webhook URL in this service's notification settings to tag pushes
+        with this instance's name and apply its per-instance notification
+        settings. Only needed when you run more than one instance of this service
+        — with a single instance, both apply automatically.
       </Text>
       <Pressable
         onPress={() => void handleCopy()}
