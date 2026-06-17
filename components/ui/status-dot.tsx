@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   Easing,
   cancelAnimation,
+  ReduceMotion,
 } from "react-native-reanimated";
 import type { HealthStatusKind } from "@/lib/types";
 
@@ -73,13 +74,27 @@ export function StatusDot({
 
   useEffect(() => {
     if (state === "checking") {
+      // ReduceMotion.Never: the pulse is the "still determining" signal, so it
+      // must animate even with the OS "Reduce Motion" setting on — otherwise the
+      // dot sits frozen at full opacity and reads as a settled state (#196). The
+      // 5th withRepeat arg governs whether the infinite repeat starts.
       pulse.value = withRepeat(
         withSequence(
-          withTiming(0.35, { duration: 650, easing: Easing.inOut(Easing.quad) }),
-          withTiming(1, { duration: 650, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.35, {
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            reduceMotion: ReduceMotion.Never,
+          }),
+          withTiming(1, {
+            duration: 650,
+            easing: Easing.inOut(Easing.quad),
+            reduceMotion: ReduceMotion.Never,
+          }),
         ),
         -1,
         false,
+        undefined,
+        ReduceMotion.Never,
       );
     } else {
       cancelAnimation(pulse);

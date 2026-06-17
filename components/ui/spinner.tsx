@@ -6,6 +6,7 @@ import Animated, {
   withTiming,
   Easing,
   cancelAnimation,
+  ReduceMotion,
 } from "react-native-reanimated";
 import { Loader2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -28,10 +29,22 @@ export function Spinner({
   const rotation = useSharedValue(0);
 
   useEffect(() => {
+    // ReduceMotion.Never: this is a functional "loading" indicator, not
+    // decoration, so it must keep spinning even when the OS "Reduce Motion"
+    // accessibility setting is on. Under the default ReduceMotion.System an
+    // infinite withRepeat doesn't start at all, leaving the glyph frozen (#196).
+    // The 5th withRepeat arg is the one that governs whether the repeat runs;
+    // setting it on the inner withTiming too is belt-and-suspenders.
     rotation.value = withRepeat(
-      withTiming(360, { duration: 1100, easing: Easing.linear }),
+      withTiming(360, {
+        duration: 1100,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.Never,
+      }),
       -1,
       false,
+      undefined,
+      ReduceMotion.Never,
     );
     return () => cancelAnimation(rotation);
   }, [rotation]);

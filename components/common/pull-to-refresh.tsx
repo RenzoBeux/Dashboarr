@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFocusEffect } from "expo-router";
 import { lightHaptic } from "@/lib/haptics";
+import { useManualRefresh } from "@/store/manual-refresh-store";
 
 // The iOS UIRefreshControl (New Architecture / Fabric) retracts only when the
 // native side observes a clean `refreshing: true -> false` transition — see
@@ -37,6 +38,17 @@ export function useRefreshSpinner(doRefresh: () => Promise<unknown>) {
   const mounted = useRef(true);
   const running = useRef(false);
   const endTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether THIS hook instance currently holds a manual-refresh count, so
+  // stop() decrements exactly once per pull. stop() also fires on blur/unmount
+  // with no pull in flight, and a balanced begin/end keeps the global counter
+  // honest no matter which teardown path runs first.
+  const heldManualRefresh = useRef(false);
+
+  const releaseManualRefresh = useCallback(() => {
+    if (!heldManualRefresh.current) return;
+    heldManualRefresh.current = false;
+    useManualRefresh.getState().end();
+  }, []);
 
   const stop = useCallback(() => {
     if (endTimer.current) {
@@ -44,16 +56,19 @@ export function useRefreshSpinner(doRefresh: () => Promise<unknown>) {
       endTimer.current = null;
     }
     running.current = false;
+    releaseManualRefresh();
     if (mounted.current) setRefreshing(false);
-  }, []);
+  }, [releaseManualRefresh]);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       if (endTimer.current) clearTimeout(endTimer.current);
+      // Backstop: if the screen unmounts before stop() runs, don't leak a count.
+      releaseManualRefresh();
     };
-  }, []);
+  }, [releaseManualRefresh]);
 
   // iOS: react-native-screens detaches a blurred tab screen. Clearing the
   // spinner (and any pending end-timer) on blur dismisses the native control
@@ -67,6 +82,13 @@ export function useRefreshSpinner(doRefresh: () => Promise<unknown>) {
   const onRefresh = useCallback(async () => {
     if (running.current) return; // ignore re-pulls while one is already in flight
     running.current = true;
+    // Mark a user-initiated refresh in flight so widgets (the dashboard Services
+    // tile) can show their own spinner during the pull but stay quiet on the 30s
+    // background poll. Released in stop() / on teardown via releaseManualRefresh.
+    if (!heldManualRefresh.current) {
+      heldManualRefresh.current = true;
+      useManualRefresh.getState().begin();
+    }
     lightHaptic();
     setRefreshing(true);
     const startedAt = Date.now();

@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useManualRefresh } from "@/store/manual-refresh-store";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
@@ -65,12 +66,25 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     slotId,
     SERVICE_HEALTH_DEFAULT_SETTINGS,
   );
-  const { data: services, isPending, isPlaceholderData } = useServiceHealth();
-  // "Determining": either the first-ever probe batch (no data yet) or a re-keyed
-  // refetch in flight after a network/dashboard change (keepPreviousData keeps
-  // the stale verdict visible, flagged by isPlaceholderData). A routine 30s
-  // background poll is neither, so the spinner doesn't blink every interval.
-  const determining = isPending || isPlaceholderData;
+  const {
+    data: services,
+    isPending,
+    isPlaceholderData,
+    isFetching,
+  } = useServiceHealth();
+  // True while the user is actively pulling-to-refresh somewhere (set by
+  // useRefreshSpinner). A same-key invalidate refetch flips only isFetching —
+  // not isPending/isPlaceholderData — so without this the title spinner never
+  // appeared on a Home pull-to-refresh (#196 follow-up). Gating on the manual
+  // flag keeps the 30s background poll (which also sets isFetching) silent.
+  const manualRefreshing = useManualRefresh((s) => s.count > 0);
+  // "Determining": the first-ever probe batch (no data yet), a re-keyed refetch
+  // in flight after a network/dashboard change (keepPreviousData keeps the stale
+  // verdict visible, flagged by isPlaceholderData), or an in-flight user pull.
+  // A routine 30s background poll is none of these, so the spinner doesn't blink
+  // every interval.
+  const determining =
+    isPending || isPlaceholderData || (manualRefreshing && isFetching);
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const servicesOrder = useConfigStore((s) => s.servicesOrder);
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
