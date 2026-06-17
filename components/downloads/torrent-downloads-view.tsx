@@ -40,6 +40,7 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { CategorySheet } from "@/components/qbittorrent/category-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
+import { useScreenSafeAreaEdges } from "@/components/common/screen-wrapper";
 import {
   useSortStore,
   SORT_DEFAULTS,
@@ -132,13 +133,13 @@ export function TorrentDownloadsView({
   const caveat = adapter.capabilities.deleteWithDataCaveat ?? false;
   const SpeedLimitsControl = adapter.SpeedLimitsControl;
 
-  // Tab-bar offset so the last list item clears the floating glass tab bar
-  // (iOS 26+). On other platforms the safe-area inset already handles it.
+  // Extra list padding so the last item clears the floating glass tab bar
+  // (iOS 26+), which content scrolls behind. Otherwise the bar sits below the
+  // scene, so only breathing room (24) is needed and the bottom safe-area edge
+  // is dropped via useScreenSafeAreaEdges (the bar owns that inset — #212).
   const tabBarHeight = useContext(BottomTabBarHeightContext);
   const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
-  const safeAreaEdges = usesFloatingTabBar
-    ? (["top", "left", "right"] as const)
-    : (["top", "left", "right", "bottom"] as const);
+  const safeAreaEdges = useScreenSafeAreaEdges();
   const listBottomPadding = 24 + (usesFloatingTabBar ? tabBarHeight : 0);
 
   // Hand-rolled refresh (custom qBittorrent refetch instead of a query-key
