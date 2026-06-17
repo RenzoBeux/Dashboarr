@@ -99,6 +99,9 @@ function sortReleases(list: Release[], key: ReleasesSortKey): Release[] {
 
 interface ReleaseFlatListProps {
   data: Release[];
+  // Unfiltered result count, so the empty state can tell "indexers returned 0"
+  // apart from "filters hid everything" (only the latter offers Clear filters).
+  totalCount: number;
   onSelect: (r: Release) => void;
   isFetching: boolean;
   onRefresh: () => void;
@@ -107,6 +110,7 @@ interface ReleaseFlatListProps {
 
 function ReleaseFlatList({
   data,
+  totalCount,
   onSelect,
   isFetching,
   onRefresh,
@@ -147,18 +151,33 @@ function ReleaseFlatList({
         />
       }
       ListEmptyComponent={
+        // Rendered inside the FlatList (not as a bare View) so its
+        // RefreshControl + iOS bounce stay attached — that's what makes the
+        // "Pull to retry" affordance below actually work when 0 results come
+        // back (#209).
         <View className="mt-4">
-          <EmptyState
-            icon={<Icon icon={Search} size={24} color="#71717a" />}
-            title="No releases match filters"
-            action={
-              <Button
-                label="Clear filters"
-                variant="outline"
-                onPress={onClearFilters}
-              />
-            }
-          />
+          {totalCount === 0 ? (
+            // size 28 keeps this consistent with the "Searching…"/"Search
+            // failed" states it transitions between; the filters-hid variant
+            // below stays at 24.
+            <EmptyState
+              icon={<Icon icon={Search} size={28} color="#71717a" />}
+              title="No releases found"
+              message="Indexers returned 0 results. Pull to retry or check Prowlarr."
+            />
+          ) : (
+            <EmptyState
+              icon={<Icon icon={Search} size={24} color="#71717a" />}
+              title="No releases match filters"
+              action={
+                <Button
+                  label="Clear filters"
+                  variant="outline"
+                  onPress={onClearFilters}
+                />
+              }
+            />
+          )}
         </View>
       }
     />
@@ -470,15 +489,14 @@ export function ReleasesPicker({
           message={getHttpErrorMessage(error) ?? error?.message ?? "Unknown error"}
           action={<Button label="Retry" onPress={handleRefresh} />}
         />
-      ) : data && data.length === 0 ? (
-        <EmptyState
-          icon={<Icon icon={Search} size={28} color="#71717a" />}
-          title="No releases found"
-          message="Indexers returned 0 results. Pull to retry or check Prowlarr."
-        />
       ) : (
+        // The 0-results case routes through the FlatList too (via
+        // ListEmptyComponent) so the RefreshControl is present and pull-to-retry
+        // works — a bare EmptyState isn't scrollable, so there was nothing to
+        // pull (#209).
         <ReleaseFlatList
           data={filtered}
+          totalCount={data?.length ?? 0}
           onSelect={handleSelect}
           isFetching={isFetching && !!data}
           onRefresh={handleRefresh}
