@@ -9,6 +9,7 @@ import Animated, {
   Easing,
   cancelAnimation,
   FadeIn,
+  ReduceMotion,
 } from "react-native-reanimated";
 import { Loader2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -25,19 +26,39 @@ export function ProgressModal({ visible, title, subtitle }: ProgressModalProps) 
 
   useEffect(() => {
     if (visible) {
+      // ReduceMotion.Never on both loops: a progress spinner/halo must keep
+      // moving even with the OS "Reduce Motion" setting on, or it freezes and
+      // looks like the operation hung. The 5th withRepeat arg governs whether
+      // the infinite repeat starts (same root cause as #196).
       rotation.value = 0;
       rotation.value = withRepeat(
-        withTiming(360, { duration: 1100, easing: Easing.linear }),
+        withTiming(360, {
+          duration: 1100,
+          easing: Easing.linear,
+          reduceMotion: ReduceMotion.Never,
+        }),
         -1,
         false,
+        undefined,
+        ReduceMotion.Never,
       );
       pulse.value = withRepeat(
         withSequence(
-          withTiming(1.15, { duration: 900, easing: Easing.inOut(Easing.quad) }),
-          withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1.15, {
+            duration: 900,
+            easing: Easing.inOut(Easing.quad),
+            reduceMotion: ReduceMotion.Never,
+          }),
+          withTiming(1, {
+            duration: 900,
+            easing: Easing.inOut(Easing.quad),
+            reduceMotion: ReduceMotion.Never,
+          }),
         ),
         -1,
         false,
+        undefined,
+        ReduceMotion.Never,
       );
     } else {
       cancelAnimation(rotation);

@@ -6,6 +6,7 @@ import Animated, {
   withRepeat,
   withTiming,
   Easing,
+  ReduceMotion,
 } from "react-native-reanimated";
 
 interface SkeletonProps {
@@ -24,9 +25,20 @@ export function Skeleton({
   const translateX = useSharedValue(-1);
 
   useEffect(() => {
+    // ReduceMotion.Never: the shimmer is a loading affordance, so keep it moving
+    // even with the OS "Reduce Motion" setting on (otherwise it sits as a static
+    // bar). The 5th withRepeat arg governs whether the infinite repeat starts, so
+    // the explicit reverse/callback slots are required to position it (#196).
     translateX.value = withRepeat(
-      withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, {
+        duration: 1200,
+        easing: Easing.inOut(Easing.ease),
+        reduceMotion: ReduceMotion.Never,
+      }),
       -1,
+      false,
+      undefined,
+      ReduceMotion.Never,
     );
   }, [translateX]);
 
