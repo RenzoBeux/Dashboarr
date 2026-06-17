@@ -15,6 +15,8 @@ cssInterop(KeyboardAwareScrollView, {
 
 const SCROLL_BOTTOM_PADDING = 24;
 
+type Edge = "top" | "left" | "right" | "bottom";
+
 /**
  * Bottom padding (in dp) that a screen-level scroll container needs so its
  * content clears the tab bar. Matches the value ScreenWrapper uses
@@ -26,6 +28,23 @@ export function useScreenBottomPadding(): number {
   const tabBarHeight = useContext(BottomTabBarHeightContext);
   const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
   return SCROLL_BOTTOM_PADDING + (usesFloatingTabBar ? tabBarHeight : 0);
+}
+
+/**
+ * Safe-area edges for a screen-level SafeAreaView. The bottom edge is dropped
+ * whenever the screen is inside a tab navigator — the tab bar (non-absolute on
+ * Android / absolute glass on iOS 26) already consumes the bottom inset, so
+ * re-applying it here leaves a dead gap above the bar (#212). Pushed/non-tab
+ * screens (no BottomTabBarHeightContext) keep the bottom edge. Use this from
+ * any custom scene-level SafeAreaView so the behavior stays in one place.
+ */
+export function useScreenSafeAreaEdges(edgeToEdge = false): readonly Edge[] {
+  const tabBarHeight = useContext(BottomTabBarHeightContext);
+  const insideTabNavigator = tabBarHeight !== undefined;
+  if (edgeToEdge) return ["left", "right"];
+  return insideTabNavigator
+    ? ["top", "left", "right"]
+    : ["top", "left", "right", "bottom"];
 }
 
 interface ScreenWrapperProps extends ViewProps {
@@ -52,13 +71,11 @@ export function ScreenWrapper({
   // Compensate by extending content past the bottom inset (handled by the
   // tab bar itself) and padding the scroll view by the full tab bar height.
   const tabBarHeight = useContext(BottomTabBarHeightContext);
+  // Padding keys on the floating glass bar (content scrolls *behind* it, so it
+  // needs +tabBarHeight); the bottom *edge* keys on being inside a tab
+  // navigator at all (the bar already owns that inset — see hook).
   const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
-  const baseEdges: ReadonlyArray<"top" | "left" | "right" | "bottom"> = edgeToEdge
-    ? ["left", "right"]
-    : usesFloatingTabBar
-      ? ["top", "left", "right"]
-      : ["top", "left", "right", "bottom"];
-  const safeAreaEdges = baseEdges as readonly ("top" | "left" | "right" | "bottom")[];
+  const safeAreaEdges = useScreenSafeAreaEdges(edgeToEdge);
   const scrollPaddingBottom = useScreenBottomPadding();
 
   if (scrollable) {

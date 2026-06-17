@@ -15,7 +15,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { useLocalSearchParams } from "expo-router";
-import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { ScreenWrapper, useScreenSafeAreaEdges } from "@/components/common/screen-wrapper";
 import { DemoBanner } from "@/components/common/demo-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LibrarySwipeHint } from "@/components/onboarding/library-swipe-hint";
@@ -107,6 +107,7 @@ function LibraryPager({
   onChange: (next: LibrarySection) => void;
 }) {
   const { width } = useWindowDimensions();
+  const safeAreaEdges = useScreenSafeAreaEdges();
   const activeIndex = sections.indexOf(activeSection);
   const scrollRef = useRef<React.ComponentRef<typeof Animated.ScrollView>>(null);
   // Live horizontal scroll position (0..(n-1)*width), used to drive the
@@ -182,7 +183,7 @@ function LibraryPager({
   };
 
   return (
-    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-background">
+    <SafeAreaView edges={safeAreaEdges} className="flex-1 bg-background">
       <DemoBanner />
       <View className="px-4">
         <LibrarySegmentedControl
