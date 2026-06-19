@@ -333,6 +333,14 @@ This backend does **not** terminate TLS. Options:
 - **Caddy / Traefik / Nginx Proxy Manager:** put a reverse proxy in front of it
   and terminate TLS there. Set `PUBLIC_URL` to the HTTPS URL so the pairing
   QR encodes the full connection info for single-scan setup.
+- **Cloudflare Tunnel:** set `PUBLIC_URL` to your `https://` tunnel hostname so
+  the QR pairs in a single scan. If you enter the URL by hand in the app instead,
+  type the full `https://` URL. A bare hostname or an `http://` URL gets a
+  301/302 redirect to `https://` at the Cloudflare edge, and following that
+  redirect rewrites the pairing `POST /pair/claim` into a `GET` (request method
+  is downgraded on 301/302), so the backend logs `GET /pair/claim` → 404 and
+  pairing fails. The app upgrades a public `http://` host to `https://`
+  automatically, but setting `PUBLIC_URL` is the clean fix.
 
 ### Caddy snippet
 
