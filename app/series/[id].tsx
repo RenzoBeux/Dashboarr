@@ -41,6 +41,7 @@ import {
   useSonarrSeriesById,
   useSonarrEpisodes,
   useSonarrEpisodeFiles,
+  useSonarrQueue,
   useToggleEpisodeMonitored,
   useDeleteEpisodeFile,
   useSearchForEpisodes,
@@ -65,6 +66,11 @@ import {
 } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import {
+  downloadIndicator,
+  DOWNLOAD_INDICATOR_COLOR,
+  BAR_KIND_COLOR,
+} from "@/lib/arr-poster-status";
 import type {
   SonarrEpisode,
   SonarrEpisodeFile,
@@ -86,6 +92,7 @@ export default function SeriesDetailScreen() {
   } = useSonarrSeriesById(Number(id), instanceId);
   const { data: episodes } = useSonarrEpisodes(Number(id), instanceId);
   const { data: episodeFiles } = useSonarrEpisodeFiles(Number(id), instanceId);
+  const { data: queue } = useSonarrQueue(instanceId);
   const toggleSeries = useToggleSeriesMonitored(instanceId);
   const searchSeries = useSearchForSeries(instanceId);
   const deleteSeries = useDeleteSeries(instanceId);
@@ -113,6 +120,20 @@ export default function SeriesDetailScreen() {
     episodeFiles?.forEach((f) => map.set(f.id, f));
     return map;
   }, [episodeFiles]);
+
+  // Episodes currently grabbing/downloading, so the per-episode spine, the
+  // season bars and the series Progress block can read purple — mirroring the
+  // poster grid (issue #207). The queue is the shared global query (≤20 records,
+  // same cache the TV list uses); episode ids are unique so the per-episode
+  // lookup is exact, and the series-level flag filters by seriesId.
+  const downloadingEpisodeIds = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.episodeId)),
+    [queue],
+  );
+  const seriesDownloading = useMemo(
+    () => (queue?.records ?? []).some((r) => r.seriesId === Number(id)),
+    [queue, id],
+  );
 
   const poster = series?.images.find((i) => i.coverType === "poster");
   const fanart = series?.images.find((i) => i.coverType === "fanart");
@@ -250,7 +271,10 @@ export default function SeriesDetailScreen() {
 
           <MediaStatsStrip stats={stats} className="mb-5" />
 
-          <EpisodeProgressBlock series={series} />
+          <EpisodeProgressBlock
+            series={series}
+            downloading={seriesDownloading}
+          />
 
           <AboutBlock
             series={series}
@@ -318,6 +342,7 @@ export default function SeriesDetailScreen() {
                       (ep) => ep.seasonNumber === season.seasonNumber,
                     )}
                     episodeFileMap={episodeFileMap}
+                    downloadingEpisodeIds={downloadingEpisodeIds}
                   />
                 ))}
             </View>
@@ -512,20 +537,33 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EpisodeProgressBlock({ series }: { series: SonarrSeries }) {
+function EpisodeProgressBlock({
+  series,
+  downloading,
+}: {
+  series: SonarrSeries;
+  downloading: boolean;
+}) {
   const have = series.episodeFileCount;
   const total = series.totalEpisodeCount;
   if (!total) return null;
   const ratio = total > 0 ? have / total : 0;
   const missing = total - have;
   const allDownloaded = missing === 0;
+  // Purple wins while a grab is in flight, exactly like the poster bar; the
+  // proportional fill still tracks downloaded/total so progress stays readable.
+  // Inline hex (not Tailwind classes) so the status color can't be dropped by
+  // the build and stays in lockstep with every other indicator (issue #207).
+  const accent = downloading
+    ? BAR_KIND_COLOR.purple
+    : allDownloaded
+      ? BAR_KIND_COLOR.success
+      : BAR_KIND_COLOR.primary;
   return (
     <View className="mb-5">
       <SectionLabel>Progress</SectionLabel>
       <View className="rounded-2xl bg-surface border border-border overflow-hidden flex-row">
-        <View
-          className={`w-1 ${allDownloaded ? "bg-success" : "bg-primary"}`}
-        />
+        <View className="w-1" style={{ backgroundColor: accent }} />
         <View className="flex-1 p-4">
           <View className="flex-row items-end justify-between mb-2.5">
             <Text className="text-zinc-100 text-2xl font-bold">
@@ -536,25 +574,24 @@ function EpisodeProgressBlock({ series }: { series: SonarrSeries }) {
               </Text>
             </Text>
             <Text
-              className={`text-sm font-semibold ${
-                allDownloaded ? "text-success" : "text-primary"
-              }`}
+              className="text-sm font-semibold"
+              style={{ color: accent }}
             >
               {Math.round(ratio * 100)}%
             </Text>
           </View>
-          <ProgressBar
-            progress={ratio}
-            color={allDownloaded ? "bg-success" : "bg-primary"}
-          />
+          <ProgressBar progress={ratio} fillColor={accent} />
           <Text
-            className={`text-xs mt-2.5 ${
-              allDownloaded ? "text-success" : "text-zinc-500"
-            }`}
+            className="text-xs mt-2.5"
+            style={{
+              color: downloading || allDownloaded ? accent : "#71717a",
+            }}
           >
-            {allDownloaded
-              ? "All episodes downloaded"
-              : `${missing} episode${missing !== 1 ? "s" : ""} missing`}
+            {downloading
+              ? "Downloading…"
+              : allDownloaded
+                ? "All episodes downloaded"
+                : `${missing} episode${missing !== 1 ? "s" : ""} missing`}
           </Text>
         </View>
       </View>
@@ -691,12 +728,14 @@ function SeasonAccordion({
   season,
   episodes,
   episodeFileMap,
+  downloadingEpisodeIds,
 }: {
   seriesId: number;
   instanceId?: string;
   season: SonarrSeason;
   episodes?: SonarrEpisode[];
   episodeFileMap: Map<number, SonarrEpisodeFile>;
+  downloadingEpisodeIds: Set<number>;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -704,6 +743,10 @@ function SeasonAccordion({
   const searchSeason = useSearchForSeason(instanceId);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
+  // Any episode of this season currently grabbing turns the season bar purple.
+  const seasonDownloading = (episodes ?? []).some((ep) =>
+    downloadingEpisodeIds.has(ep.id),
+  );
 
   const seasonLabel =
     season.seasonNumber === 0 ? "Specials" : `Season ${season.seasonNumber}`;
@@ -766,7 +809,13 @@ function SeasonAccordion({
         </View>
       </View>
 
-      {stats && <ProgressBar progress={progress} className="mt-2" />}
+      {stats && (
+        <ProgressBar
+          progress={progress}
+          fillColor={seasonDownloading ? BAR_KIND_COLOR.purple : undefined}
+          className="mt-2"
+        />
+      )}
 
       {expanded && episodes && (
         <View className="mt-3 gap-1">
@@ -784,6 +833,7 @@ function SeasonAccordion({
                     ? episodeFileMap.get(ep.episodeFileId)
                     : undefined
                 }
+                isDownloading={downloadingEpisodeIds.has(ep.id)}
               />
             ))}
         </View>
@@ -803,11 +853,13 @@ function EpisodeRow({
   instanceId,
   episode,
   episodeFile,
+  isDownloading,
 }: {
   seriesId: number;
   instanceId?: string;
   episode: SonarrEpisode;
   episodeFile?: SonarrEpisodeFile;
+  isDownloading: boolean;
 }) {
   const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
@@ -854,9 +906,13 @@ function EpisodeRow({
     <>
       <View className="flex-row items-center py-1.5 border-b border-border/30">
         <View
-          className={`w-1.5 h-6 rounded-full mr-2 ${
-            episode.hasFile ? "bg-success" : "bg-zinc-600"
-          }`}
+          className="w-1.5 h-6 rounded-full mr-2"
+          style={{
+            backgroundColor:
+              DOWNLOAD_INDICATOR_COLOR[
+                downloadIndicator(episode.hasFile, isDownloading)
+              ],
+          }}
         />
         <View className="flex-1">
           <Text className="text-zinc-300 text-xs" numberOfLines={1}>

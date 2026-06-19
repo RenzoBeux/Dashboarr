@@ -1,10 +1,14 @@
 import { View, Text } from "react-native";
 
-type BadgeVariant = "default" | "downloading" | "seeding" | "paused" | "missing" | "wanted" | "warning" | "error" | "success" | "info";
+type BadgeVariant = "default" | "downloading" | "grabbing" | "seeding" | "paused" | "missing" | "wanted" | "warning" | "error" | "success" | "info";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   default: "bg-zinc-700",
   downloading: "bg-blue-600",
+  // `grabbing` = an *arr item currently in the download queue. Purple mirrors
+  // Sonarr/Radarr (and the poster grid's purple bar); distinct from the
+  // blue `downloading` used for qBittorrent/indexer protocol chips.
+  grabbing: "bg-purple-600",
   seeding: "bg-green-600",
   paused: "bg-yellow-600",
   warning: "bg-yellow-600",

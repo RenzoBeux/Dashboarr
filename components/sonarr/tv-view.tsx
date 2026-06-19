@@ -517,7 +517,13 @@ function CalendarView({
   onLongPress: (ep: SonarrCalendarEntry) => void;
 }) {
   const { data: episodes, isLoading, error } = useSonarrCalendar();
+  const { data: queue } = useSonarrQueue();
   const router = useRouter();
+
+  const downloadingEpisodeIds = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.episodeId)),
+    [queue],
+  );
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
   if (error) {
@@ -568,6 +574,7 @@ function CalendarView({
                   title={ep.series.title}
                   subtitle={`${formatEpisodeCode(ep.seasonNumber, ep.episodeNumber)} — ${ep.title}`}
                   hasFile={ep.hasFile}
+                  downloading={downloadingEpisodeIds.has(ep.id)}
                   onPress={() => router.push(`/series/${ep.seriesId}`)}
                   onLongPress={() => onLongPress(ep)}
                 />

@@ -23,8 +23,14 @@ import {
   getDateOffset,
   localDateKey,
 } from "@/lib/utils";
-import { getWantedMissing as getSonarrWantedMissing } from "@/services/sonarr-api";
-import { getAllWantedMissing as getRadarrWantedMissing } from "@/services/radarr-api";
+import {
+  getWantedMissing as getSonarrWantedMissing,
+  getQueue as getSonarrQueue,
+} from "@/services/sonarr-api";
+import {
+  getAllWantedMissing as getRadarrWantedMissing,
+  getQueue as getRadarrQueue,
+} from "@/services/radarr-api";
 import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import { useSearchForMovie } from "@/hooks/use-radarr";
 import { useSearchForEpisodes } from "@/hooks/use-sonarr";
@@ -80,6 +86,44 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
           refetchInterval: POLLING_INTERVALS.calendar,
         }))
       : [],
+  });
+
+  // Download queues per instance: an overdue item that's already grabbing reads
+  // purple instead of the neutral "pending" spine — same indicator as the rest
+  // of the app (issue #207). Shares the ["sonarr"/"radarr", id, "queue"] cache.
+  const sonarrQueueQueries = useQueries({
+    queries: showSonarr
+      ? sonarrInstances.map((inst) => ({
+          queryKey: ["sonarr", inst.id, "queue"] as const,
+          queryFn: () => getSonarrQueue(1, 20, true, true, inst.id),
+          refetchInterval: POLLING_INTERVALS.queue,
+        }))
+      : [],
+  });
+  const radarrQueueQueries = useQueries({
+    queries: showRadarr
+      ? radarrInstances.map((inst) => ({
+          queryKey: ["radarr", inst.id, "queue"] as const,
+          queryFn: () => getRadarrQueue(1, 20, true, inst.id),
+          refetchInterval: POLLING_INTERVALS.queue,
+        }))
+      : [],
+  });
+
+  // Keyed by `instanceId:episodeId` / `instanceId:movieId` (ids aren't unique
+  // across instances).
+  const downloadingKeys = new Set<string>();
+  sonarrQueueQueries.forEach((q, i) => {
+    const instanceId = sonarrInstances[i]?.id;
+    if (!instanceId) return;
+    for (const r of q.data?.records ?? [])
+      downloadingKeys.add(`${instanceId}:${r.episodeId}`);
+  });
+  radarrQueueQueries.forEach((q, i) => {
+    const instanceId = radarrInstances[i]?.id;
+    if (!instanceId) return;
+    for (const r of q.data?.records ?? [])
+      downloadingKeys.add(`${instanceId}:${r.movieId}`);
   });
 
   // Initial-load gate per kind — see lib/multi-instance-query.ts. The skeleton
@@ -195,6 +239,9 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
                       key={`ep-${item.instanceId}-${item.entry.id}`}
                       entry={item.entry}
                       instanceId={item.instanceId}
+                      downloading={downloadingKeys.has(
+                        `${item.instanceId}:${item.entry.id}`,
+                      )}
                       onPress={() =>
                         router.push(
                           `/series/${item.entry.seriesId}?instanceId=${item.instanceId}`,
@@ -206,6 +253,9 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
                       key={`mv-${item.instanceId}-${item.movie.id}`}
                       movie={item.movie}
                       instanceId={item.instanceId}
+                      downloading={downloadingKeys.has(
+                        `${item.instanceId}:${item.movie.id}`,
+                      )}
                       onPress={() =>
                         router.push(
                           `/movie/${item.movie.id}?instanceId=${item.instanceId}`,
@@ -268,10 +318,12 @@ function titleOf(item: PendingItem): string {
 function PendingEpisodeRow({
   entry,
   instanceId,
+  downloading,
   onPress,
 }: {
   entry: SonarrEpisode;
   instanceId: string;
+  downloading: boolean;
   onPress: () => void;
 }) {
   const search = useSearchForEpisodes(instanceId);
@@ -282,6 +334,7 @@ function PendingEpisodeRow({
       title={entry.series?.title ?? "Unknown series"}
       subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
       hasFile={false}
+      downloading={downloading}
       onPress={onPress}
       action={{
         icon: Search,
@@ -295,10 +348,12 @@ function PendingEpisodeRow({
 function PendingMovieRow({
   movie,
   instanceId,
+  downloading,
   onPress,
 }: {
   movie: RadarrMovie;
   instanceId: string;
+  downloading: boolean;
   onPress: () => void;
 }) {
   const search = useSearchForMovie(instanceId);
@@ -309,6 +364,7 @@ function PendingMovieRow({
       title={movie.title}
       subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
       hasFile={false}
+      downloading={downloading}
       onPress={onPress}
       action={{
         icon: Search,
