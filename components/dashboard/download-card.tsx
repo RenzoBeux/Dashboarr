@@ -40,6 +40,7 @@ import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import { ViewAllTile } from "@/components/dashboard/view-all-tile";
+import { downloadStatusColor } from "@/lib/download-status";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
@@ -387,7 +388,12 @@ function TorrentTile({
           : "rgba(245, 158, 11, 0.9)",
         onPress: handleToggle,
       }}
-      bottomOverlay={<PosterProgressStrip progress={row.progress} />}
+      bottomOverlay={
+        <PosterProgressStrip
+          progress={row.progress}
+          color={downloadStatusColor(row.group)}
+        />
+      }
       mediaType={posterEntry?.mediaType}
       fallbackIcon={!posterEntry ? Download : undefined}
       onPress={row.canDrillIn ? () => router.push(`/torrent/${row.hash}`) : undefined}
