@@ -38,6 +38,42 @@ export const BAR_KIND_COLOR: Record<PosterBarKind, string> = {
  */
 export const BAR_TRACK_COLOR = "#3f3f46"; // zinc-700
 
+/**
+ * Per-item download indicator (issue #207). A single episode / movie / track /
+ * calendar row reads the SAME color everywhere it appears — the poster grid, the
+ * detail-screen spine bar, and the calendar row — so the app's status cues stay
+ * consistent and mirror Sonarr/Radarr:
+ *   - downloading (in the *arr queue) → purple  (same purple as the poster bar)
+ *   - downloaded  (hasFile)           → green
+ *   - pending     (neither)           → neutral gray
+ *
+ * Before #207 the detail/calendar indicators only knew green/gray and never
+ * turned purple while a grab was in progress, unlike the poster grid which has
+ * always shown purple via the bar-kind logic above.
+ */
+export type DownloadIndicator = "downloading" | "downloaded" | "pending";
+
+export function downloadIndicator(
+  hasFile: boolean,
+  isDownloading: boolean,
+): DownloadIndicator {
+  if (isDownloading) return "downloading";
+  if (hasFile) return "downloaded";
+  return "pending";
+}
+
+/**
+ * Indicator → hex, for the inline-styled spine bars. `downloading` reuses the
+ * exact poster-bar purple so the grid poster and the detail spine match; the
+ * `bg-purple-500` / `bg-purple-600` Tailwind tokens used for className-based
+ * consumers (ProgressBar fill, Badge) resolve to the same #a855f7 family.
+ */
+export const DOWNLOAD_INDICATOR_COLOR: Record<DownloadIndicator, string> = {
+  downloading: BAR_KIND_COLOR.purple, // #a855f7
+  downloaded: BAR_KIND_COLOR.success, // #22c55e
+  pending: "#52525b", // zinc-600 — the long-standing "no file yet" neutral
+};
+
 const CORNER_ENDED = "#ef4444"; // danger
 const CORNER_DELETED = "#71717a"; // gray
 

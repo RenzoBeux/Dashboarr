@@ -35,6 +35,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   useLidarrArtist,
   useLidarrAlbums,
+  useLidarrQueue,
   useToggleArtistMonitored,
   useToggleAlbumMonitored,
   useSearchArtist,
@@ -49,6 +50,7 @@ import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { getLidarrAlbumCover } from "@/services/lidarr-api";
 import { formatBytes } from "@/lib/utils";
+import { BAR_KIND_COLOR } from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum } from "@/lib/types";
 
 type DeleteMode = "keep" | "withFiles";
@@ -60,6 +62,7 @@ export default function ArtistDetailScreen() {
   }>();
   const { data: artist, isLoading, error } = useLidarrArtist(Number(id), instanceId);
   const { data: albums } = useLidarrAlbums(Number(id), instanceId);
+  const { data: queue } = useLidarrQueue(instanceId);
   const toggleArtist = useToggleArtistMonitored(instanceId);
   const searchArtist = useSearchArtist(instanceId);
   const deleteArtist = useDeleteArtist(instanceId);
@@ -159,6 +162,19 @@ export default function ArtistDetailScreen() {
 
   const stats = buildArtistStats(artist);
 
+  // Albums of this artist currently grabbing → purple, mirroring the series
+  // screen and the poster grid (issue #207). Lidarr queues per album/release;
+  // the queue is global, so the per-album set (ids are unique) drives the album
+  // rows while the artist-level flag filters by artistId.
+  const downloadingAlbumIds = new Set(
+    (queue?.records ?? [])
+      .map((r) => r.albumId)
+      .filter((aId): aId is number => aId != null),
+  );
+  const artistDownloading = (queue?.records ?? []).some(
+    (r) => r.artistId === artist.id,
+  );
+
   return (
     <>
       <ScreenWrapper edgeToEdge>
@@ -183,7 +199,10 @@ export default function ArtistDetailScreen() {
 
           <MediaStatsStrip stats={stats} className="mb-5" />
 
-          <TrackProgressBlock artist={artist} />
+          <TrackProgressBlock
+            artist={artist}
+            downloading={artistDownloading}
+          />
 
           <AboutBlock
             artist={artist}
@@ -227,6 +246,7 @@ export default function ArtistDetailScreen() {
                     key={album.id}
                     album={album}
                     instanceId={instanceId}
+                    downloading={downloadingAlbumIds.has(album.id)}
                   />
                 ))}
             </View>
@@ -399,18 +419,31 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TrackProgressBlock({ artist }: { artist: LidarrArtist }) {
+function TrackProgressBlock({
+  artist,
+  downloading,
+}: {
+  artist: LidarrArtist;
+  downloading: boolean;
+}) {
   const have = artist.statistics?.trackFileCount ?? 0;
   const total = artist.statistics?.totalTrackCount ?? artist.statistics?.trackCount ?? 0;
   if (!total) return null;
   const ratio = total > 0 ? have / total : 0;
   const missing = total - have;
   const allDownloaded = missing === 0;
+  // Purple while grabbing, mirroring the series Progress block and poster bar.
+  // Inline hex keeps the status color out of the Tailwind build (issue #207).
+  const accent = downloading
+    ? BAR_KIND_COLOR.purple
+    : allDownloaded
+      ? BAR_KIND_COLOR.success
+      : BAR_KIND_COLOR.primary;
   return (
     <View className="mb-5">
       <SectionLabel>Progress</SectionLabel>
       <View className="rounded-2xl bg-surface border border-border overflow-hidden flex-row">
-        <View className={`w-1 ${allDownloaded ? "bg-success" : "bg-primary"}`} />
+        <View className="w-1" style={{ backgroundColor: accent }} />
         <View className="flex-1 p-4">
           <View className="flex-row items-end justify-between mb-2.5">
             <Text className="text-zinc-100 text-2xl font-bold">
@@ -418,23 +451,24 @@ function TrackProgressBlock({ artist }: { artist: LidarrArtist }) {
               <Text className="text-zinc-500 text-base font-medium"> / {total}</Text>
             </Text>
             <Text
-              className={`text-sm font-semibold ${
-                allDownloaded ? "text-success" : "text-primary"
-              }`}
+              className="text-sm font-semibold"
+              style={{ color: accent }}
             >
               {Math.round(ratio * 100)}%
             </Text>
           </View>
-          <ProgressBar
-            progress={ratio}
-            color={allDownloaded ? "bg-success" : "bg-primary"}
-          />
+          <ProgressBar progress={ratio} fillColor={accent} />
           <Text
-            className={`text-xs mt-2.5 ${allDownloaded ? "text-success" : "text-zinc-500"}`}
+            className="text-xs mt-2.5"
+            style={{
+              color: downloading || allDownloaded ? accent : "#71717a",
+            }}
           >
-            {allDownloaded
-              ? "All tracks downloaded"
-              : `${missing} track${missing !== 1 ? "s" : ""} missing`}
+            {downloading
+              ? "Downloading…"
+              : allDownloaded
+                ? "All tracks downloaded"
+                : `${missing} track${missing !== 1 ? "s" : ""} missing`}
           </Text>
         </View>
       </View>
@@ -505,9 +539,11 @@ function AboutRow({
 function AlbumRow({
   album,
   instanceId,
+  downloading,
 }: {
   album: LidarrAlbum;
   instanceId?: string;
+  downloading: boolean;
 }) {
   const router = useRouter();
   const toggleAlbum = useToggleAlbumMonitored(instanceId);
@@ -552,7 +588,13 @@ function AlbumRow({
           <Text className="text-zinc-500 text-xs">
             {[album.albumType, year ? String(year) : null].filter(Boolean).join(" · ")}
           </Text>
-          {total > 0 ? <ProgressBar progress={ratio} className="mt-1.5" /> : null}
+          {total > 0 ? (
+            <ProgressBar
+              progress={ratio}
+              fillColor={downloading ? BAR_KIND_COLOR.purple : undefined}
+              className="mt-1.5"
+            />
+          ) : null}
         </View>
         <View className="flex-row items-center gap-1">
           <Pressable

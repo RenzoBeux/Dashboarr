@@ -20,8 +20,14 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { ICON, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
-import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
-import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
+import {
+  getCalendar as getSonarrCalendar,
+  getQueue as getSonarrQueue,
+} from "@/services/sonarr-api";
+import {
+  getCalendar as getRadarrCalendar,
+  getQueue as getRadarrQueue,
+} from "@/services/radarr-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
@@ -225,6 +231,46 @@ export default function CalendarScreen() {
       refetchInterval: POLLING_INTERVALS.calendar,
     })),
   });
+
+  // Per-instance download queues, so an episode/movie currently grabbing reads
+  // purple in the day list — same indicator as the poster grid and the detail
+  // screens (issue #207). Reuses the shared ["sonarr"/"radarr", id, "queue"]
+  // cache key, so this rides whatever the rest of the app already polls.
+  const sonarrQueueQueries = useQueries({
+    queries: sonarrInstances.map((inst) => ({
+      queryKey: ["sonarr", inst.id, "queue"] as const,
+      queryFn: () => getSonarrQueue(1, 20, true, true, inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+  const radarrQueueQueries = useQueries({
+    queries: radarrInstances.map((inst) => ({
+      queryKey: ["radarr", inst.id, "queue"] as const,
+      queryFn: () => getRadarrQueue(1, 20, true, inst.id),
+      refetchInterval: POLLING_INTERVALS.queue,
+    })),
+  });
+
+  // Keyed by `instanceId:episodeId` / `instanceId:movieId` because ids aren't
+  // globally unique across instances.
+  const downloadingKeys = useMemo(() => {
+    const keys = new Set<string>();
+    sonarrQueueQueries.forEach((q, i) => {
+      const instanceId = sonarrInstances[i]?.id;
+      if (!instanceId) return;
+      (q.data?.records ?? []).forEach((r) =>
+        keys.add(`${instanceId}:${r.episodeId}`),
+      );
+    });
+    radarrQueueQueries.forEach((q, i) => {
+      const instanceId = radarrInstances[i]?.id;
+      if (!instanceId) return;
+      (q.data?.records ?? []).forEach((r) =>
+        keys.add(`${instanceId}:${r.movieId}`),
+      );
+    });
+    return keys;
+  }, [sonarrQueueQueries, radarrQueueQueries, sonarrInstances, radarrInstances]);
 
   // Tag each calendar entry with the source instance so navigation can route
   // detail-screen queries to the correct Sonarr/Radarr (ids aren't globally
@@ -578,14 +624,23 @@ export default function CalendarScreen() {
         ) : selectedItems.length === 0 ? (
           <EmptyState title="Nothing on this day" />
         ) : (
-          <SelectedDayList items={selectedItems} />
+          <SelectedDayList
+            items={selectedItems}
+            downloadingKeys={downloadingKeys}
+          />
         )}
       </View>
     </ScreenWrapper>
   );
 }
 
-function SelectedDayList({ items }: { items: CalendarItem[] }) {
+function SelectedDayList({
+  items,
+  downloadingKeys,
+}: {
+  items: CalendarItem[];
+  downloadingKeys: Set<string>;
+}) {
   const router = useRouter();
 
   return (
@@ -595,6 +650,7 @@ function SelectedDayList({ items }: { items: CalendarItem[] }) {
           <EpisodeRow
             key={`ep-${item.instanceId}-${item.data.id}`}
             episode={item.data}
+            downloading={downloadingKeys.has(`${item.instanceId}:${item.data.id}`)}
             onPress={() =>
               router.push(
                 `/series/${item.data.seriesId}?instanceId=${item.instanceId}`,
@@ -605,6 +661,7 @@ function SelectedDayList({ items }: { items: CalendarItem[] }) {
           <MovieRow
             key={`mov-${item.instanceId}-${item.data.id}`}
             movie={item.data}
+            downloading={downloadingKeys.has(`${item.instanceId}:${item.data.id}`)}
             onPress={() =>
               router.push(`/movie/${item.data.id}?instanceId=${item.instanceId}`)
             }
@@ -617,9 +674,11 @@ function SelectedDayList({ items }: { items: CalendarItem[] }) {
 
 function EpisodeRow({
   episode,
+  downloading,
   onPress,
 }: {
   episode: SonarrCalendarEntry;
+  downloading: boolean;
   onPress: () => void;
 }) {
   return (
@@ -629,6 +688,7 @@ function EpisodeRow({
       title={episode.series.title}
       subtitle={`${formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} — ${episode.title}`}
       hasFile={episode.hasFile}
+      downloading={downloading}
       onPress={onPress}
     />
   );
@@ -636,9 +696,11 @@ function EpisodeRow({
 
 function MovieRow({
   movie,
+  downloading,
   onPress,
 }: {
   movie: RadarrMovie;
+  downloading: boolean;
   onPress: () => void;
 }) {
   return (
@@ -648,6 +710,7 @@ function MovieRow({
       title={movie.title}
       subtitle={`${movie.year} — ${getMovieReleaseType(movie)}`}
       hasFile={movie.hasFile}
+      downloading={downloading}
       onPress={onPress}
     />
   );

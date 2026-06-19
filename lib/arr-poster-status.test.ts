@@ -3,6 +3,9 @@ import {
   sonarrBarKind,
   sonarrBarProgress,
   cornerColorFor,
+  downloadIndicator,
+  DOWNLOAD_INDICATOR_COLOR,
+  BAR_KIND_COLOR,
 } from "@/lib/arr-poster-status";
 import type { RadarrMovie, SonarrSeries } from "@/lib/types";
 
@@ -25,6 +28,28 @@ function movie(over: Partial<RadarrMovie>): RadarrMovie {
     ...over,
   } as RadarrMovie;
 }
+
+describe("downloadIndicator", () => {
+  it("downloading wins over hasFile (issue #207)", () => {
+    expect(downloadIndicator(false, true)).toBe("downloading");
+    expect(downloadIndicator(true, true)).toBe("downloading");
+  });
+
+  it("hasFile and not downloading → downloaded", () => {
+    expect(downloadIndicator(true, false)).toBe("downloaded");
+  });
+
+  it("neither → pending", () => {
+    expect(downloadIndicator(false, false)).toBe("pending");
+  });
+
+  it("downloading reuses the exact poster-bar purple", () => {
+    // Guards the promise that a single item reads the same color in the grid
+    // and on the detail/calendar row.
+    expect(DOWNLOAD_INDICATOR_COLOR.downloading).toBe(BAR_KIND_COLOR.purple);
+    expect(DOWNLOAD_INDICATOR_COLOR.downloaded).toBe(BAR_KIND_COLOR.success);
+  });
+});
 
 describe("sonarrBarKind", () => {
   it("downloading wins over everything", () => {

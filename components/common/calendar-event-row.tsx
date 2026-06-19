@@ -5,6 +5,10 @@ import { Tv, Film, Check, Download, type LucideIcon } from "lucide-react-native"
 import { Icon } from "@/components/ui/icon";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import {
+  downloadIndicator,
+  DOWNLOAD_INDICATOR_COLOR,
+} from "@/lib/arr-poster-status";
 
 interface PosterImage {
   coverType: string;
@@ -18,10 +22,19 @@ const ROW_HEIGHT = 64;
 const POSTER_W = 44;
 const POSTER_H = 56;
 
-// Downloaded vs not-yet-downloaded. The calendar lists *upcoming* releases, so
-// "not downloaded" is expected (not an error) — keep it neutral, not alarming.
-const DOWNLOADED = "#22c55e";
-const PENDING = "#52525b";
+// Downloaded vs downloading vs not-yet-downloaded. The calendar lists *upcoming*
+// releases, so "not downloaded" is expected (not an error) — keep it neutral,
+// not alarming. A grab in flight reads purple, mirroring the *arr poster grid
+// and the detail screens (issue #207).
+const DOWNLOADED = DOWNLOAD_INDICATOR_COLOR.downloaded; // green
+const DOWNLOADING = DOWNLOAD_INDICATOR_COLOR.downloading; // purple
+
+// Trailing status pill tint per indicator (icon + translucent background).
+const BADGE_STYLE = {
+  downloading: { bg: "rgba(168, 85, 247, 0.2)", icon: Download, color: DOWNLOADING },
+  downloaded: { bg: "rgba(34, 197, 94, 0.2)", icon: Check, color: DOWNLOADED },
+  pending: { bg: "rgba(255, 255, 255, 0.12)", icon: Download, color: "#d4d4d8" },
+} as const;
 
 const SERVICE_FALLBACK: Record<"sonarr" | "radarr", LucideIcon> = {
   sonarr: Tv,
@@ -35,6 +48,11 @@ export interface CalendarEventRowProps {
   subtitle: string;
   /** Drives the status indicators: green when downloaded, gray when missing. */
   hasFile: boolean;
+  /**
+   * Whether the episode/movie is currently in the *arr download queue. Takes
+   * priority over `hasFile` and turns the spine + badge purple (issue #207).
+   */
+  downloading?: boolean;
   onPress: () => void;
   /** Optional long-press (e.g. the TV calendar opens an episode action sheet). */
   onLongPress?: () => void;
@@ -60,6 +78,7 @@ export function CalendarEventRow({
   title,
   subtitle,
   hasFile,
+  downloading = false,
   onPress,
   onLongPress,
   action,
@@ -75,7 +94,9 @@ export function CalendarEventRow({
   const { src: backdropSrc, onError: onBackdropError } = useServiceImage(fanart, service);
 
   const FallbackIcon = SERVICE_FALLBACK[service];
-  const statusColor = hasFile ? DOWNLOADED : PENDING;
+  const indicator = downloadIndicator(hasFile, downloading);
+  const statusColor = DOWNLOAD_INDICATOR_COLOR[indicator];
+  const badge = BADGE_STYLE[indicator];
 
   return (
     <Pressable
@@ -159,20 +180,12 @@ export function CalendarEventRow({
             )}
           </Pressable>
         ) : (
-          /* Status badge — explicit downloaded / not-yet state. */
+          /* Status badge — explicit downloading / downloaded / not-yet state. */
           <View
             className="w-7 h-7 rounded-full items-center justify-center"
-            style={{
-              backgroundColor: hasFile
-                ? "rgba(34, 197, 94, 0.2)"
-                : "rgba(255, 255, 255, 0.12)",
-            }}
+            style={{ backgroundColor: badge.bg }}
           >
-            <Icon
-              icon={hasFile ? Check : Download}
-              size={14}
-              color={hasFile ? DOWNLOADED : "#d4d4d8"}
-            />
+            <Icon icon={badge.icon} size={14} color={badge.color} />
           </View>
         )}
       </View>

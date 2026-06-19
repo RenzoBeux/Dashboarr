@@ -24,8 +24,14 @@ import {
   localDateKey,
   releaseDateKey,
 } from "@/lib/utils";
-import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
-import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
+import {
+  getCalendar as getSonarrCalendar,
+  getQueue as getSonarrQueue,
+} from "@/services/sonarr-api";
+import {
+  getCalendar as getRadarrCalendar,
+  getQueue as getRadarrQueue,
+} from "@/services/radarr-api";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
@@ -113,6 +119,44 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
           refetchInterval: POLLING_INTERVALS.calendar,
         }))
       : [],
+  });
+
+  // Download queues per instance, so a release already grabbing reads purple —
+  // same indicator as the poster grid, detail screens and Calendar tab (#207).
+  // Shares the ["sonarr"/"radarr", id, "queue"] cache the rest of the app polls.
+  const sonarrQueueQueries = useQueries({
+    queries: showSonarr
+      ? sonarrInstances.map((inst) => ({
+          queryKey: ["sonarr", inst.id, "queue"] as const,
+          queryFn: () => getSonarrQueue(1, 20, true, true, inst.id),
+          refetchInterval: POLLING_INTERVALS.queue,
+        }))
+      : [],
+  });
+  const radarrQueueQueries = useQueries({
+    queries: showRadarr
+      ? radarrInstances.map((inst) => ({
+          queryKey: ["radarr", inst.id, "queue"] as const,
+          queryFn: () => getRadarrQueue(1, 20, true, inst.id),
+          refetchInterval: POLLING_INTERVALS.queue,
+        }))
+      : [],
+  });
+
+  // Keyed by `instanceId:episodeId` / `instanceId:movieId` (ids aren't unique
+  // across instances).
+  const downloadingKeys = new Set<string>();
+  sonarrQueueQueries.forEach((q, i) => {
+    const instanceId = sonarrInstances[i]?.id;
+    if (!instanceId) return;
+    for (const r of q.data?.records ?? [])
+      downloadingKeys.add(`${instanceId}:${r.episodeId}`);
+  });
+  radarrQueueQueries.forEach((q, i) => {
+    const instanceId = radarrInstances[i]?.id;
+    if (!instanceId) return;
+    for (const r of q.data?.records ?? [])
+      downloadingKeys.add(`${instanceId}:${r.movieId}`);
   });
 
   // Initial-load gate per kind — see lib/multi-instance-query.ts. The skeleton
@@ -217,6 +261,9 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
                     <EpisodeRow
                       key={`ep-${item.instanceId}-${item.entry.id}`}
                       entry={item.entry}
+                      downloading={downloadingKeys.has(
+                        `${item.instanceId}:${item.entry.id}`,
+                      )}
                       onPress={() =>
                         router.push(
                           `/series/${item.entry.seriesId}?instanceId=${item.instanceId}`,
@@ -227,6 +274,9 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
                     <MovieRow
                       key={`mv-${item.instanceId}-${item.movie.id}`}
                       movie={item.movie}
+                      downloading={downloadingKeys.has(
+                        `${item.instanceId}:${item.movie.id}`,
+                      )}
                       onPress={() =>
                         router.push(
                           `/movie/${item.movie.id}?instanceId=${item.instanceId}`,
@@ -285,9 +335,11 @@ function titleOf(item: CalendarItem): string {
 
 function EpisodeRow({
   entry,
+  downloading,
   onPress,
 }: {
   entry: SonarrCalendarEntry;
+  downloading: boolean;
   onPress: () => void;
 }) {
   return (
@@ -297,6 +349,7 @@ function EpisodeRow({
       title={entry.series.title}
       subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
       hasFile={entry.hasFile}
+      downloading={downloading}
       onPress={onPress}
     />
   );
@@ -304,9 +357,11 @@ function EpisodeRow({
 
 function MovieRow({
   movie,
+  downloading,
   onPress,
 }: {
   movie: RadarrMovie;
+  downloading: boolean;
   onPress: () => void;
 }) {
   return (
@@ -316,6 +371,7 @@ function MovieRow({
       title={movie.title}
       subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
       hasFile={movie.hasFile}
+      downloading={downloading}
       onPress={onPress}
     />
   );

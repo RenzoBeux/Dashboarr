@@ -30,6 +30,7 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   useRadarrMovie,
+  useRadarrQueue,
   useDeleteMovie,
   useToggleMovieMonitored,
   useRadarrQualityProfiles,
@@ -56,6 +57,7 @@ export default function MovieDetailScreen() {
   }>();
   const router = useRouter();
   const { data: movie, isLoading, error } = useRadarrMovie(Number(id), instanceId);
+  const { data: queue } = useRadarrQueue(instanceId);
   const deleteMutation = useDeleteMovie(instanceId);
   const toggleMonitored = useToggleMovieMonitored(instanceId);
   const { data: qualityProfiles } = useRadarrQualityProfiles(instanceId);
@@ -106,6 +108,12 @@ export default function MovieDetailScreen() {
       </ScreenWrapper>
     );
   }
+
+  // A grab in flight wins over the downloaded/missing badge — mirrors the
+  // poster grid's purple bar and Radarr's "downloading" state (issue #207).
+  const isDownloading = (queue?.records ?? []).some(
+    (r) => r.movieId === movie.id,
+  );
 
   const qualityProfileName = qualityProfiles?.find(
     (p) => p.id === movie.qualityProfileId,
@@ -206,8 +214,20 @@ export default function MovieDetailScreen() {
           badges={
             <>
               <Badge
-                label={movie.hasFile ? "Downloaded" : "Missing"}
-                variant={movie.hasFile ? "success" : "missing"}
+                label={
+                  isDownloading
+                    ? "Downloading"
+                    : movie.hasFile
+                      ? "Downloaded"
+                      : "Missing"
+                }
+                variant={
+                  isDownloading
+                    ? "grabbing"
+                    : movie.hasFile
+                      ? "success"
+                      : "missing"
+                }
               />
               {movie.certification ? (
                 <Badge label={movie.certification} variant="default" />
