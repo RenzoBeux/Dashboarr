@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { downloadStatusColor } from "@/lib/download-status";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
@@ -178,7 +179,12 @@ function SlotRow({
           <Text className="text-zinc-200 text-sm" numberOfLines={1}>
             {truncateText(item.name, 40)}
           </Text>
-          <ProgressBar progress={item.progress} showLabel className="mt-1.5" />
+          <ProgressBar
+            progress={item.progress}
+            fillColor={downloadStatusColor(item.status)}
+            showLabel
+            className="mt-1.5"
+          />
           <View className="flex-row gap-3 mt-1">
             <Text className="text-zinc-500 text-xs">{item.sizeLabel}</Text>
             {item.timeleft && item.timeleft !== "0:00:00" && (
