@@ -44,7 +44,13 @@ import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { mediumHaptic } from "@/lib/haptics";
-import { BAR_KIND_COLOR, cornerColorFor, radarrBarKind } from "@/lib/arr-poster-status";
+import {
+  BAR_KIND_COLOR,
+  cornerColorFor,
+  radarrBarKind,
+  DOWNLOAD_INDICATOR_COLOR,
+} from "@/lib/arr-poster-status";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 
@@ -479,23 +485,39 @@ function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => v
 
   return (
     <View className="gap-2">
-      {queue.records.map((item) => (
-        <Card
-          key={item.id}
-          onPress={() => item.movie && router.push(`/movie/${item.movie.id}`)}
-          onLongPress={item.movie ? () => onLongPress(item) : undefined}
-        >
-          <View className="flex-row items-center justify-between">
-            <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
-              {item.title}
-            </Text>
-            <Badge label={item.quality.quality.name} />
-          </View>
-          {item.timeleft && (
-            <Text className="text-zinc-500 text-xs mt-1">ETA {item.timeleft}</Text>
-          )}
-        </Card>
-      ))}
+      {queue.records.map((item) => {
+        // Downloaded fraction; queue items carry size + sizeleft.
+        const progress =
+          item.size > 0 ? (item.size - item.sizeleft) / item.size : 0;
+        // Colour the bar by tracked status, mirroring Sonarr/Radarr: a stalled
+        // grab warns amber, a failed one reads red, everything else is the
+        // app's purple "downloading" (issue #207 consistency).
+        const tracked = (item.trackedDownloadStatus ?? "").toLowerCase();
+        const barColor =
+          tracked === "error"
+            ? BAR_KIND_COLOR.danger
+            : tracked === "warning"
+              ? BAR_KIND_COLOR.warning
+              : DOWNLOAD_INDICATOR_COLOR.downloading;
+        return (
+          <Card
+            key={item.id}
+            onPress={() => item.movie && router.push(`/movie/${item.movie.id}`)}
+            onLongPress={item.movie ? () => onLongPress(item) : undefined}
+          >
+            <View className="flex-row items-center justify-between">
+              <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
+                {item.title}
+              </Text>
+              <Badge label={item.quality.quality.name} />
+            </View>
+            <ProgressBar progress={progress} fillColor={barColor} className="mt-2" />
+            {item.timeleft && (
+              <Text className="text-zinc-500 text-xs mt-1">ETA {item.timeleft}</Text>
+            )}
+          </Card>
+        );
+      })}
     </View>
   );
 }

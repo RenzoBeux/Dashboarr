@@ -22,20 +22,6 @@ const ROW_HEIGHT = 64;
 const POSTER_W = 44;
 const POSTER_H = 56;
 
-// Downloaded vs downloading vs not-yet-downloaded. The calendar lists *upcoming*
-// releases, so "not downloaded" is expected (not an error) — keep it neutral,
-// not alarming. A grab in flight reads purple, mirroring the *arr poster grid
-// and the detail screens (issue #207).
-const DOWNLOADED = DOWNLOAD_INDICATOR_COLOR.downloaded; // green
-const DOWNLOADING = DOWNLOAD_INDICATOR_COLOR.downloading; // purple
-
-// Trailing status pill tint per indicator (icon + translucent background).
-const BADGE_STYLE = {
-  downloading: { bg: "rgba(168, 85, 247, 0.2)", icon: Download, color: DOWNLOADING },
-  downloaded: { bg: "rgba(34, 197, 94, 0.2)", icon: Check, color: DOWNLOADED },
-  pending: { bg: "rgba(255, 255, 255, 0.12)", icon: Download, color: "#d4d4d8" },
-} as const;
-
 const SERVICE_FALLBACK: Record<"sonarr" | "radarr", LucideIcon> = {
   sonarr: Tv,
   radarr: Film,
@@ -106,7 +92,10 @@ export function CalendarEventRow({
   // Spine mirrors the poster grid's bar (issue #217) when the caller passes a
   // kind color; otherwise it falls back to the 3-state download indicator.
   const statusColor = barColor ?? DOWNLOAD_INDICATOR_COLOR[indicator];
-  const badge = BADGE_STYLE[indicator];
+  // Trailing badge tracks the SAME color as the spine (a missing item now reads
+  // red on both, not red spine + gray badge). Check when downloaded, download
+  // glyph otherwise. `+ "33"` = ~20% alpha (8-digit hex) for the tinted pill.
+  const BadgeIcon = hasFile ? Check : Download;
 
   return (
     <Pressable
@@ -190,12 +179,12 @@ export function CalendarEventRow({
             )}
           </Pressable>
         ) : (
-          /* Status badge — explicit downloading / downloaded / not-yet state. */
+          /* Status badge — same color as the spine; check when downloaded. */
           <View
             className="w-7 h-7 rounded-full items-center justify-center"
-            style={{ backgroundColor: badge.bg }}
+            style={{ backgroundColor: statusColor + "33" }}
           >
-            <Icon icon={badge.icon} size={14} color={badge.color} />
+            <Icon icon={BadgeIcon} size={14} color={statusColor} />
           </View>
         )}
       </View>
