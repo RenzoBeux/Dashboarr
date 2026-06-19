@@ -50,9 +50,16 @@ export interface CalendarEventRowProps {
   hasFile: boolean;
   /**
    * Whether the episode/movie is currently in the *arr download queue. Takes
-   * priority over `hasFile` and turns the spine + badge purple (issue #207).
+   * priority over `hasFile` and turns the badge purple (issue #207).
    */
   downloading?: boolean;
+  /**
+   * Explicit left-spine color, so the row matches the poster grid's bar for the
+   * same item (red = missing, blue = upcoming, etc. via radarr/sonarr bar kinds
+   * — issue #217). When omitted the spine falls back to the green/purple/gray
+   * download indicator.
+   */
+  barColor?: string;
   onPress: () => void;
   /** Optional long-press (e.g. the TV calendar opens an episode action sheet). */
   onLongPress?: () => void;
@@ -79,6 +86,7 @@ export function CalendarEventRow({
   subtitle,
   hasFile,
   downloading = false,
+  barColor,
   onPress,
   onLongPress,
   action,
@@ -95,7 +103,9 @@ export function CalendarEventRow({
 
   const FallbackIcon = SERVICE_FALLBACK[service];
   const indicator = downloadIndicator(hasFile, downloading);
-  const statusColor = DOWNLOAD_INDICATOR_COLOR[indicator];
+  // Spine mirrors the poster grid's bar (issue #217) when the caller passes a
+  // kind color; otherwise it falls back to the 3-state download indicator.
+  const statusColor = barColor ?? DOWNLOAD_INDICATOR_COLOR[indicator];
   const badge = BADGE_STYLE[indicator];
 
   return (

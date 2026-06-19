@@ -60,6 +60,7 @@ import {
   cornerColorFor,
   sonarrBarKind,
   sonarrBarProgress,
+  sonarrEpisodeBarKind,
 } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
@@ -575,6 +576,11 @@ function CalendarView({
                   subtitle={`${formatEpisodeCode(ep.seasonNumber, ep.episodeNumber)} — ${ep.title}`}
                   hasFile={ep.hasFile}
                   downloading={downloadingEpisodeIds.has(ep.id)}
+                  barColor={
+                    BAR_KIND_COLOR[
+                      sonarrEpisodeBarKind(ep, downloadingEpisodeIds.has(ep.id))
+                    ]
+                  }
                   onPress={() => router.push(`/series/${ep.seriesId}`)}
                   onLongPress={() => onLongPress(ep)}
                 />

@@ -1,6 +1,7 @@
 import {
   radarrBarKind,
   sonarrBarKind,
+  sonarrEpisodeBarKind,
   sonarrBarProgress,
   cornerColorFor,
   downloadIndicator,
@@ -48,6 +49,48 @@ describe("downloadIndicator", () => {
     // and on the detail/calendar row.
     expect(DOWNLOAD_INDICATOR_COLOR.downloading).toBe(BAR_KIND_COLOR.purple);
     expect(DOWNLOAD_INDICATOR_COLOR.downloaded).toBe(BAR_KIND_COLOR.success);
+  });
+});
+
+describe("sonarrEpisodeBarKind", () => {
+  const NOW = Date.parse("2026-06-19T00:00:00Z");
+  const PAST = "2026-06-01T00:00:00Z";
+  const FUTURE = "2026-07-01T00:00:00Z";
+
+  it("downloading wins over everything (issue #207/#217)", () => {
+    expect(
+      sonarrEpisodeBarKind({ hasFile: false, monitored: true, airDateUtc: PAST }, true, NOW),
+    ).toBe("purple");
+  });
+
+  it("has file → green", () => {
+    expect(
+      sonarrEpisodeBarKind({ hasFile: true, monitored: true, airDateUtc: PAST }, false, NOW),
+    ).toBe("success");
+  });
+
+  it("monitored + aired + missing → red (matches the grid; fixes #217)", () => {
+    expect(
+      sonarrEpisodeBarKind({ hasFile: false, monitored: true, airDateUtc: PAST }, false, NOW),
+    ).toBe("danger");
+  });
+
+  it("monitored + not yet aired → blue (upcoming, not alarming)", () => {
+    expect(
+      sonarrEpisodeBarKind({ hasFile: false, monitored: true, airDateUtc: FUTURE }, false, NOW),
+    ).toBe("primary");
+  });
+
+  it("unmonitored + missing → gray", () => {
+    expect(
+      sonarrEpisodeBarKind({ hasFile: false, monitored: false, airDateUtc: PAST }, false, NOW),
+    ).toBe("default");
+  });
+
+  it("no air date → treated as not aired (blue)", () => {
+    expect(
+      sonarrEpisodeBarKind({ hasFile: false, monitored: true }, false, NOW),
+    ).toBe("primary");
   });
 });
 

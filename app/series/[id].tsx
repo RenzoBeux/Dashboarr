@@ -67,8 +67,7 @@ import {
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
-  downloadIndicator,
-  DOWNLOAD_INDICATOR_COLOR,
+  sonarrEpisodeBarKind,
   BAR_KIND_COLOR,
 } from "@/lib/arr-poster-status";
 import type {
@@ -909,9 +908,7 @@ function EpisodeRow({
           className="w-1.5 h-6 rounded-full mr-2"
           style={{
             backgroundColor:
-              DOWNLOAD_INDICATOR_COLOR[
-                downloadIndicator(episode.hasFile, isDownloading)
-              ],
+              BAR_KIND_COLOR[sonarrEpisodeBarKind(episode, isDownloading)],
           }}
         />
         <View className="flex-1">

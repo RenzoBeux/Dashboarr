@@ -36,6 +36,11 @@ import { useSearchForMovie } from "@/hooks/use-radarr";
 import { useSearchForEpisodes } from "@/hooks/use-sonarr";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import {
+  radarrBarKind,
+  sonarrEpisodeBarKind,
+  BAR_KIND_COLOR,
+} from "@/lib/arr-poster-status";
 import type { SonarrEpisode, RadarrMovie } from "@/lib/types";
 
 type PendingItem =
@@ -335,6 +340,7 @@ function PendingEpisodeRow({
       subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
       hasFile={false}
       downloading={downloading}
+      barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
       onPress={onPress}
       action={{
         icon: Search,
@@ -365,6 +371,7 @@ function PendingMovieRow({
       subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
       hasFile={false}
       downloading={downloading}
+      barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
       onPress={onPress}
       action={{
         icon: Search,

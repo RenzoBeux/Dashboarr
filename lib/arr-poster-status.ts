@@ -108,6 +108,30 @@ export function sonarrBarKind(series: SonarrSeries, isDownloading: boolean): Pos
 }
 
 /**
+ * Per-episode bar kind (issue #217). A single episode reads the same color
+ * wherever it appears — the calendar, the Still Pending card, the series detail
+ * list — using the same kind→color mapping the series poster uses in the grid,
+ * so the "color bars should match" complaint goes away. Mirrors the *arr
+ * episode-status semantics; structured like radarrBarKind (first match wins):
+ *   downloading → purple, has file → green, unmonitored & missing → gray,
+ *   monitored & aired & missing → red (danger), monitored & not yet aired → blue.
+ * `now` is injectable for deterministic tests (defaults to the current time).
+ */
+export function sonarrEpisodeBarKind(
+  episode: { hasFile: boolean; monitored: boolean; airDateUtc?: string },
+  isDownloading: boolean,
+  now: number = Date.now(),
+): PosterBarKind {
+  if (isDownloading) return "purple";
+  if (episode.hasFile) return "success";
+  if (!episode.monitored) return "default";
+  const aired = episode.airDateUtc
+    ? Date.parse(episode.airDateUtc) <= now
+    : false;
+  return aired ? "danger" : "primary";
+}
+
+/**
  * Port of Radarr's getProgressBarKind(status, monitored, hasFile, isAvailable,
  * isDownloading). Branches are evaluated in order; first match wins.
  */
