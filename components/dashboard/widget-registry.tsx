@@ -19,6 +19,7 @@ import {
   PlayCircle,
   Power,
   Radar,
+  Tv,
   type LucideIcon,
 } from "lucide-react-native";
 import type Animated from "react-native-reanimated";
@@ -30,6 +31,7 @@ import { DownloadCard } from "@/components/dashboard/download-card";
 import { SabnzbdQueueCard } from "@/components/dashboard/sabnzbd-queue-card";
 import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
+import { SonarrQueueCard } from "@/components/dashboard/sonarr-queue-card";
 import { LidarrQueueCard } from "@/components/dashboard/lidarr-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
@@ -125,6 +127,11 @@ import {
   RADARR_QUEUE_DEFAULT_SETTINGS,
   type RadarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/radarr-queue-settings";
+import {
+  SonarrQueueSettings,
+  SONARR_QUEUE_DEFAULT_SETTINGS,
+  type SonarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/sonarr-queue-settings";
 import {
   LidarrQueueSettings,
   LIDARR_QUEUE_DEFAULT_SETTINGS,
@@ -295,6 +302,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     component: RadarrQueueCard,
     settingsComponent: RadarrQueueSettings,
     defaultSettings: RADARR_QUEUE_DEFAULT_SETTINGS,
+  },
+  "sonarr-queue": {
+    id: "sonarr-queue",
+    label: "Sonarr Queue",
+    description: "Episodes currently downloading or grabbed",
+    icon: Tv,
+    service: "sonarr",
+    component: SonarrQueueCard,
+    settingsComponent: SonarrQueueSettings,
+    defaultSettings: SONARR_QUEUE_DEFAULT_SETTINGS,
   },
   "lidarr-queue": {
     id: "lidarr-queue",
@@ -471,6 +488,7 @@ export type {
   OverseerrRequestsSettingsValue,
   SpeedStatsSettingsValue,
   RadarrQueueSettingsValue,
+  SonarrQueueSettingsValue,
   LidarrQueueSettingsValue,
   RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
