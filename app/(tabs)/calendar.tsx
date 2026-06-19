@@ -33,6 +33,11 @@ import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import {
+  radarrBarKind,
+  sonarrEpisodeBarKind,
+  BAR_KIND_COLOR,
+} from "@/lib/arr-poster-status";
+import {
   airDateKey,
   formatEpisodeCode,
   localDateKey,
@@ -689,6 +694,7 @@ function EpisodeRow({
       subtitle={`${formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} — ${episode.title}`}
       hasFile={episode.hasFile}
       downloading={downloading}
+      barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(episode, downloading)]}
       onPress={onPress}
     />
   );
@@ -711,6 +717,7 @@ function MovieRow({
       subtitle={`${movie.year} — ${getMovieReleaseType(movie)}`}
       hasFile={movie.hasFile}
       downloading={downloading}
+      barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
       onPress={onPress}
     />
   );

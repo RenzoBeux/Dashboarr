@@ -19,6 +19,7 @@ import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import { ViewAllTile } from "@/components/dashboard/view-all-tile";
+import { DOWNLOAD_INDICATOR_COLOR } from "@/lib/arr-poster-status";
 
 interface Props extends WidgetComponentProps {
   adapter: ArrQueueAdapter;
@@ -112,7 +113,12 @@ export function ArrQueueCard({ slotId, adapter }: Props) {
                 label: item.qualityLabel,
                 color: adapter.badgeColor,
               }}
-              bottomOverlay={<PosterProgressStrip progress={item.progress} />}
+              bottomOverlay={
+                <PosterProgressStrip
+                  progress={item.progress}
+                  color={DOWNLOAD_INDICATOR_COLOR.downloading}
+                />
+              }
               onPress={() => item.detailPath && router.push(item.detailPath)}
             />
           ))}

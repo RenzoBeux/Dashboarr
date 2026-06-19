@@ -34,6 +34,11 @@ import {
 } from "@/services/radarr-api";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import {
+  radarrBarKind,
+  sonarrEpisodeBarKind,
+  BAR_KIND_COLOR,
+} from "@/lib/arr-poster-status";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
 
 type CalendarItem =
@@ -350,6 +355,7 @@ function EpisodeRow({
       subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
       hasFile={entry.hasFile}
       downloading={downloading}
+      barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
       onPress={onPress}
     />
   );
@@ -372,6 +378,7 @@ function MovieRow({
       subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
       hasFile={movie.hasFile}
       downloading={downloading}
+      barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
       onPress={onPress}
     />
   );
