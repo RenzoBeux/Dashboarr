@@ -5,10 +5,10 @@ import {
 } from "@/components/dashboard/widget-settings/arr-queue-settings";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
 
-export const RADARR_QUEUE_DEFAULT_SETTINGS: ArrQueueSettingsValue =
+export const SONARR_QUEUE_DEFAULT_SETTINGS: ArrQueueSettingsValue =
   ARR_QUEUE_DEFAULT_SETTINGS;
-export type RadarrQueueSettingsValue = ArrQueueSettingsValue;
+export type SonarrQueueSettingsValue = ArrQueueSettingsValue;
 
-export function RadarrQueueSettings(props: WidgetSettingsComponentProps) {
-  return <ArrQueueSettings {...props} serviceId="radarr" />;
+export function SonarrQueueSettings(props: WidgetSettingsComponentProps) {
+  return <ArrQueueSettings {...props} serviceId="sonarr" />;
 }
