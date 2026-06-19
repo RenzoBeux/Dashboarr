@@ -84,7 +84,10 @@ export default function BackendScreen() {
         }
         const platform: "ios" | "android" = Platform.OS === "ios" ? "ios" : "android";
         const result = await pairClaim(trimmedUrl, token, expoPushToken, platform);
-        await pair({ url: trimmedUrl, sharedSecret: result.sharedSecret, deviceId: result.deviceId });
+        // Persist the URL that actually answered. pairClaim may have upgraded a
+        // public http:// host to https:// to dodge the edge redirect that breaks
+        // pairing (#218); persisting it keeps later calls off that downgrade.
+        await pair({ url: result.baseUrl, sharedSecret: result.sharedSecret, deviceId: result.deviceId });
         // Kick a health check and an initial config sync immediately.
         try {
           await getBackendHealth();
@@ -279,6 +282,9 @@ export default function BackendScreen() {
                   keyboardType="url"
                   autoCapitalize="none"
                 />
+                <Text className="text-zinc-500 text-xs mt-2">
+                  Behind Cloudflare Tunnel or a reverse proxy? Enter the full https:// URL.
+                </Text>
               </Card>
 
               <Pressable
