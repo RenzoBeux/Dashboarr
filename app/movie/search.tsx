@@ -1,29 +1,19 @@
 import { useMemo, useState } from "react";
-import { View, Text, Pressable } from "react-native";
-import { Image } from "expo-image";
-import { useRouter } from "expo-router";
-import { toast, toastError } from "@/components/ui/toast";
-import { Film, Plus, Check, SlidersHorizontal } from "lucide-react-native";
-import { Icon } from "@/components/ui/icon";
-import { useServiceImage } from "@/hooks/use-service-image";
+import { View, Text } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { TextInput } from "@/components/ui/text-input";
-import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AddMovieSheet } from "@/components/radarr/add-movie-sheet";
-import {
-  useRadarrSearch,
-  useAddMovie,
-  useRadarrMovies,
-  useRadarrQualityProfiles,
-  useRadarrRootFolders,
-} from "@/hooks/use-radarr";
+import { RadarrSearchRow } from "@/components/search/radarr-search-row";
+import { useRadarrSearch, useRadarrMovies } from "@/hooks/use-radarr";
 import type { RadarrSearchResult } from "@/lib/types";
 
 export default function MovieSearchScreen() {
   const router = useRouter();
-  const [query, setQuery] = useState("");
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  const [query, setQuery] = useState(q ?? "");
   const { data: results, isLoading } = useRadarrSearch(query);
   const { data: existing } = useRadarrMovies();
   const [advancedTarget, setAdvancedTarget] = useState<RadarrSearchResult | null>(null);
@@ -59,14 +49,13 @@ export default function MovieSearchScreen() {
           {results.map((result) => {
             const existingId = existingByTmdbId.get(result.tmdbId);
             return (
-              <SearchResultCard
+              <RadarrSearchRow
                 key={result.tmdbId}
                 result={result}
                 existingMovieId={existingId}
                 onAdvanced={() => setAdvancedTarget(result)}
                 onOpenExisting={() =>
-                  existingId !== undefined &&
-                  router.push(`/movie/${existingId}`)
+                  existingId !== undefined && router.push(`/movie/${existingId}`)
                 }
               />
             );
@@ -80,102 +69,5 @@ export default function MovieSearchScreen() {
         onClose={() => setAdvancedTarget(null)}
       />
     </ScreenWrapper>
-  );
-}
-
-function SearchResultCard({
-  result,
-  existingMovieId,
-  onAdvanced,
-  onOpenExisting,
-}: {
-  result: RadarrSearchResult;
-  existingMovieId: number | undefined;
-  onAdvanced: () => void;
-  onOpenExisting: () => void;
-}) {
-  const alreadyAdded = existingMovieId !== undefined;
-  const addMovie = useAddMovie();
-  const { data: profiles } = useRadarrQualityProfiles();
-  const { data: folders } = useRadarrRootFolders();
-
-  const poster = result.images.find((i) => i.coverType === "poster");
-  const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "radarr");
-
-  const handleQuickAdd = () => {
-    if (!profiles?.length || !folders?.length) {
-      toast("Could not load quality profiles or root folders", "error");
-      return;
-    }
-
-    addMovie.mutate(
-      {
-        tmdbId: result.tmdbId,
-        title: result.title,
-        qualityProfileId: profiles[0].id,
-        rootFolderPath: folders[0].path,
-      },
-      {
-        onSuccess: () => toast(`${result.title} added to Radarr`),
-        onError: (err) => toastError("Failed to add movie", err),
-      },
-    );
-  };
-
-  return (
-    <Card
-      className="flex-row gap-3"
-      onPress={alreadyAdded ? onOpenExisting : undefined}
-    >
-      {posterUrl ? (
-        <Image
-          source={{ uri: posterUrl }}
-          className="w-16 h-24 rounded-lg bg-surface-light"
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={200}
-          recyclingKey={posterUrl}
-          onError={onPosterError}
-        />
-      ) : (
-        <View className="w-16 h-24 rounded-lg bg-surface-light items-center justify-center">
-          <Icon icon={Film} size={20} color="#71717a" />
-        </View>
-      )}
-      <View className="flex-1 justify-center">
-        <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
-          {result.title}
-        </Text>
-        <Text className="text-zinc-500 text-xs">{result.year}</Text>
-        {result.overview && (
-          <Text className="text-zinc-500 text-xs mt-1" numberOfLines={2}>
-            {result.overview}
-          </Text>
-        )}
-      </View>
-      {alreadyAdded ? (
-        <View className="self-center p-2">
-          <Icon icon={Check} size={20} color="#22c55e" />
-        </View>
-      ) : (
-        <View className="flex-row items-center self-center">
-          <Pressable
-            onPress={onAdvanced}
-            className="p-2 active:opacity-70"
-            hitSlop={4}
-          >
-            <Icon icon={SlidersHorizontal} size={18} color="#a1a1aa" />
-          </Pressable>
-          <Pressable
-            onPress={handleQuickAdd}
-            className="p-2 active:opacity-70"
-            disabled={addMovie.isPending}
-            hitSlop={4}
-          >
-            <Icon icon={Plus} size={20} color="#3b82f6" />
-          </Pressable>
-        </View>
-      )}
-    </Card>
   );
 }

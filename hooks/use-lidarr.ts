@@ -101,11 +101,11 @@ export function useLidarrWantedMissing(instanceId?: string) {
 }
 
 export function useLidarrSearch(term: string, instanceId?: string) {
-  const { instanceId: id } = useInstanceTarget("lidarr", instanceId);
+  const { instanceId: id, enabled } = useInstanceTarget("lidarr", instanceId);
   return useQuery({
     queryKey: ["lidarr", id, "search", term],
     queryFn: () => searchArtists(term, id ?? undefined),
-    enabled: term.length >= 2 && !!id,
+    enabled: enabled && term.length >= 2 && !!id,
   });
 }
 
