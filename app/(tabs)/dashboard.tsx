@@ -8,6 +8,7 @@ import {
   Copy,
   Pencil,
   Check,
+  Search,
   Settings,
   SlidersHorizontal,
   Sparkles,
@@ -32,6 +33,7 @@ import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
+import { hasSearchableKind } from "@/lib/global-search";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
 import { ActionSheet } from "@/components/ui/action-sheet";
@@ -201,6 +203,19 @@ export default function DashboardScreen() {
           <Icon icon={ChevronsUpDown} size={ICON.SM} color="#71717a" />
         </TouchableOpacity>
         <View className="flex-row items-center">
+          {hasSearchableKind(attachedKinds) && (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push("/search");
+              }}
+              className="p-2"
+              hitSlop={8}
+              accessibilityLabel="Global search"
+            >
+              <Icon icon={Search} size={ICON.MD} color="#71717a" />
+            </TouchableOpacity>
+          )}
           {activeDashboard && (
             <TouchableOpacity
               onPress={() => {

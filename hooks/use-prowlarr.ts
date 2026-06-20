@@ -45,11 +45,11 @@ export function useProwlarrSearch(
   indexerIds?: number[],
   instanceId?: string,
 ) {
-  const { instanceId: id } = useInstanceTarget("prowlarr", instanceId);
+  const { instanceId: id, enabled } = useInstanceTarget("prowlarr", instanceId);
   return useQuery({
     queryKey: ["prowlarr", id, "search", query, indexerIds],
     queryFn: () => searchAll(query, indexerIds, undefined, id ?? undefined),
-    enabled: query.length >= 2 && !!id,
+    enabled: enabled && query.length >= 2 && !!id,
   });
 }
 

@@ -106,11 +106,11 @@ export function useSonarrHistory(instanceId?: string, active = true) {
 }
 
 export function useSonarrSearch(term: string, instanceId?: string) {
-  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "search", term],
     queryFn: () => searchSeries(term, id ?? undefined),
-    enabled: term.length >= 2 && !!id,
+    enabled: enabled && term.length >= 2 && !!id,
   });
 }
 

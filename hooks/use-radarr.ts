@@ -99,11 +99,11 @@ export function useWantedMissing(instanceId?: string) {
 }
 
 export function useRadarrSearch(term: string, instanceId?: string) {
-  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
     queryKey: ["radarr", id, "search", term],
     queryFn: () => searchMovies(term, id ?? undefined),
-    enabled: term.length >= 2 && !!id,
+    enabled: enabled && term.length >= 2 && !!id,
   });
 }
 

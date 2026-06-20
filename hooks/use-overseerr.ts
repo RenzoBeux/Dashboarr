@@ -78,11 +78,11 @@ export function useOverseerrRequestCount(instanceId?: string) {
 }
 
 export function useOverseerrSearch(query: string, instanceId?: string) {
-  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
   return useQuery({
     queryKey: ["overseerr", id, "search", query],
     queryFn: () => searchMedia(query, 1, id ?? undefined),
-    enabled: query.length >= 2 && !!id,
+    enabled: enabled && query.length >= 2 && !!id,
   });
 }
 
