@@ -21,12 +21,12 @@ import "@/lib/wifi"; // side-effect: NetInfo.configure({ shouldFetchWiFiSSID: tr
 import "@/lib/expo-image-nativewind"; // side-effect: cssInterop on expo-image's Image
 import { NotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
-import { useAppUpdateCheck } from "@/hooks/use-app-update-check";
 import { useNetworkAutoSwitch } from "@/hooks/use-network";
 import { evaluateHomeNetwork } from "@/lib/network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
+import { AppUpdateChecker } from "@/components/common/app-update-checker";
 import { ToastContainer } from "@/components/ui/toast";
 import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
 import "../global.css";
@@ -164,11 +164,6 @@ function BackendHealthPoller() {
 
 function NetworkAutoSwitcher() {
   useNetworkAutoSwitch();
-  return null;
-}
-
-function AppUpdateChecker() {
-  useAppUpdateCheck();
   return null;
 }
 
