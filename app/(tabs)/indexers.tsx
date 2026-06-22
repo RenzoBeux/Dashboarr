@@ -14,6 +14,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
+import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import {
   useProwlarrIndexers,
@@ -48,6 +49,8 @@ function IndexersScreenInner() {
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
       <ServiceHeader name="Indexers" online={prowlarrHealth?.online} serviceId="prowlarr" />
+
+      <HealthIssuesBanner serviceId="prowlarr" className="mb-4" />
 
       <ScrollView
         horizontal
