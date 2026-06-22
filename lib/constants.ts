@@ -120,6 +120,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "bazarr-wanted",
   "wol-devices",
   "disk-space",
+  "arr-health",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

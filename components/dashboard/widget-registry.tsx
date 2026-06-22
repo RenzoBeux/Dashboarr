@@ -19,6 +19,7 @@ import {
   PlayCircle,
   Power,
   Radar,
+  ShieldAlert,
   Tv,
   type LucideIcon,
 } from "lucide-react-native";
@@ -44,6 +45,7 @@ import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-play
 import { EmbyNowPlayingCard } from "@/components/dashboard/emby-now-playing-card";
 import { CombinedNowPlayingCard } from "@/components/dashboard/combined-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
+import { ArrHealthCard } from "@/components/dashboard/arr-health-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
@@ -460,6 +462,14 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     component: DiskSpaceCard,
     settingsComponent: DiskSpaceSettings,
     defaultSettings: DISK_SPACE_DEFAULT_SETTINGS,
+  },
+  "arr-health": {
+    id: "arr-health",
+    label: "Health Alerts",
+    description: "System Health warnings and errors from Sonarr, Radarr, Prowlarr and Lidarr",
+    icon: ShieldAlert,
+    service: ["radarr", "sonarr", "prowlarr", "lidarr"],
+    component: ArrHealthCard,
   },
 };
 

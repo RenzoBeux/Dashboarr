@@ -12,6 +12,7 @@ import { Search, Disc3, Mic2, Eye, EyeOff, Trash2, Info, ScanSearch } from "luci
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -271,6 +272,8 @@ export const MusicView = memo(function MusicView({
           </Pressable>
         </View>
       </View>
+
+      <HealthIssuesBanner serviceId="lidarr" className="mb-4" />
 
       <ScrollView
         horizontal

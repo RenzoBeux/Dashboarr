@@ -23,6 +23,7 @@ import {
   useScreenBottomPadding,
 } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -331,6 +332,8 @@ export const TvView = memo(function TvView({
           </Pressable>
         </View>
       </View>
+
+      <HealthIssuesBanner serviceId="sonarr" className="mb-4" />
 
       <ScrollView
         horizontal

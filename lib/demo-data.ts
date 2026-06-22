@@ -1357,6 +1357,41 @@ const DEMO_ARR_DISKSPACE = [
   { path: "/data", label: "/data", freeSpace: 2_400_000_000_000, totalSpace: 16_000_000_000_000 }, // ~85% used → red
 ];
 
+// System > Health issues for the *arr alert badge (#210). Sonarr shows the
+// issue from the feature request (a long-down indexer) plus an update notice;
+// Radarr/Prowlarr a warning each; Lidarr is healthy (empty) to show the
+// no-badge case.
+const DEMO_SONARR_HEALTH = [
+  {
+    source: "IndexerStatusCheck",
+    type: "error",
+    message: "Indexers unavailable due to failures for more than 6 hours: NZBgeek",
+    wikiUrl: "https://wiki.servarr.com/sonarr/system#indexers-are-unavailable-due-to-failures",
+  },
+  {
+    source: "UpdateCheck",
+    type: "warning",
+    message: "New update is available",
+    wikiUrl: "https://wiki.servarr.com/sonarr/system#updates",
+  },
+];
+const DEMO_RADARR_HEALTH = [
+  {
+    source: "ImportListStatusCheck",
+    type: "warning",
+    message: "Lists unavailable due to failures: Trakt Watchlist",
+    wikiUrl: "https://wiki.servarr.com/radarr/system#lists-are-unavailable-due-to-failures",
+  },
+];
+const DEMO_PROWLARR_HEALTH = [
+  {
+    source: "IndexerStatusCheck",
+    type: "warning",
+    message: "Indexers unavailable due to failures for more than 6 hours: 1337x",
+    wikiUrl: "https://wiki.servarr.com/prowlarr/system#indexers-are-unavailable-due-to-failures",
+  },
+];
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -1379,6 +1414,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/tag")) return [];
       if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
+      if (normalized.startsWith("/health")) return DEMO_RADARR_HEALTH;
       if (normalized.startsWith("/movie/lookup")) return [];
       return undefined;
     }
@@ -1393,6 +1429,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/tag")) return [];
       if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
+      if (normalized.startsWith("/health")) return DEMO_SONARR_HEALTH;
       if (normalized.startsWith("/series/lookup")) return [];
       if (normalized.startsWith("/episode")) return [];
       return undefined;
@@ -1428,6 +1465,8 @@ export function getDemoResponse(
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
       if (normalized.startsWith("/tag")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
+      // Lidarr intentionally healthy — exercises the no-badge path.
+      if (normalized.startsWith("/health")) return [];
       return undefined;
     }
     case "overseerr": {
@@ -1446,6 +1485,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/indexerstats")) return DEMO_PROWLARR_STATS;
       if (normalized.startsWith("/search")) return DEMO_PROWLARR_SEARCH_RESULTS;
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
+      if (normalized.startsWith("/health")) return DEMO_PROWLARR_HEALTH;
       return undefined;
     }
     case "bazarr": {

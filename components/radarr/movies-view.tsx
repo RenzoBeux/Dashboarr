@@ -12,6 +12,7 @@ import { Search, Film, Eye, EyeOff, Trash2, Info, ScanSearch } from "lucide-reac
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
+import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -300,6 +301,8 @@ export const MoviesView = memo(function MoviesView({
           </Pressable>
         </View>
       </View>
+
+      <HealthIssuesBanner serviceId="radarr" className="mb-4" />
 
       <ScrollView
         horizontal
