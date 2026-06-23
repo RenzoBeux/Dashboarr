@@ -1,6 +1,6 @@
 {
   "name": "dashboarr-backend",
-  "version": "0.1.0",
+  "version": "1.2.2",
   "description": "Self-hosted companion backend for Dashboarr — polls your *arr stack and sends real Expo push notifications",
   "license": "GPL-3.0",
   "private": true,
@@ -10,6 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "test": "tsx --test src/types.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

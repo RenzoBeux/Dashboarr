@@ -1,14 +1,23 @@
 import { z } from "zod";
 
+// Keep this list in sync with the app's SERVICE_IDS (lib/constants.ts). The app
+// pushes a config entry for every kind it knows about, so any kind missing here
+// is rejected by `kind`'s enum below — and because one bad entry fails the whole
+// `PUT /config`, that silently disables ALL push notifications, not just the
+// unknown service. `configPayloadSchema` now drops unknown kinds defensively
+// (see dropUnknownKinds), but this list should still mirror the app.
 export const SERVICE_IDS = [
   "qbittorrent",
+  "rtorrent",
   "sabnzbd",
   "nzbget",
   "radarr",
   "sonarr",
+  "lidarr",
   "overseerr",
   "tautulli",
   "tracearr",
+  "jellystat",
   "prowlarr",
   "plex",
   "jellyfin",
@@ -152,15 +161,40 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   tracearrStreamStopped: false,
 };
 
+const KNOWN_SERVICE_IDS = new Set<string>(SERVICE_IDS);
+
+/**
+ * Drop array entries whose service kind this backend doesn't recognize instead
+ * of rejecting the whole config payload. The app sends a default entry for EVERY
+ * kind it knows about (enabled or not), so when a newer app adds a service this
+ * backend version predates, a strict `kind` enum would fail the entire
+ * `PUT /config` and silently disable ALL push notifications — not just the
+ * unknown service. (That is exactly how rtorrent/lidarr/jellystat bricked
+ * notifications before they were added to SERVICE_IDS.) Unknown kinds are
+ * harmless to drop: the scheduler has no poller for them anyway. The kind lives
+ * in `id` for the legacy `services` shape and in `kind` for `instances`.
+ */
+function dropUnknownKinds(keyField: "id" | "kind") {
+  return (value: unknown): unknown => {
+    if (!Array.isArray(value)) return value;
+    return value.filter((entry) => {
+      if (entry === null || typeof entry !== "object") return false;
+      const kind = (entry as Record<string, unknown>)[keyField];
+      return typeof kind === "string" && KNOWN_SERVICE_IDS.has(kind);
+    });
+  };
+}
+
 /**
  * Either shape is accepted: the new app sends `instances`, older builds send
  * `services`. The route handler normalizes both to ServiceInstancePayload[]
- * before persisting (see routes/config.ts).
+ * before persisting (see routes/config.ts). Unknown service kinds are filtered
+ * out first (see dropUnknownKinds) so a newer app never 400s the whole config.
  */
 export const configPayloadSchema = z
   .object({
-    services: z.array(serviceConfigSchema).optional(),
-    instances: z.array(serviceInstanceSchema).optional(),
+    services: z.preprocess(dropUnknownKinds("id"), z.array(serviceConfigSchema).optional()),
+    instances: z.preprocess(dropUnknownKinds("kind"), z.array(serviceInstanceSchema).optional()),
     notifications: notificationSettingsSchema,
   })
   .refine((p) => p.services !== undefined || p.instances !== undefined, {
@@ -186,13 +220,16 @@ export const deviceRegisterSchema = z.object({
 
 export const SERVICE_API_BASE: Record<ServiceId, string> = {
   qbittorrent: "/api/v2",
+  rtorrent: "/RPC2",
   sabnzbd: "/api",
   nzbget: "/jsonrpc",
   radarr: "/api/v3",
   sonarr: "/api/v3",
+  lidarr: "/api/v1",
   overseerr: "/api/v1",
   tautulli: "/api/v2",
   tracearr: "/api/v1/public",
+  jellystat: "",
   prowlarr: "/api/v1",
   plex: "",
   jellyfin: "",
@@ -203,17 +240,25 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   qbittorrent: "/app/version",
+  // rTorrent is XML-RPC over the /RPC2 mount; there is no GET ping path (the
+  // app pings it with an XML-RPC POST). No backend poller uses this today.
+  rtorrent: "",
   // SAB has no path-based ping endpoint — pingService synthesises ?mode=version.
   sabnzbd: "",
   // NZBGet uses JSON-RPC POST to /jsonrpc; ping logic POSTs the version method.
   nzbget: "",
   radarr: "/system/status",
   sonarr: "/system/status",
+  // Lidarr is an *arr sibling on the v1 API; same status ping as Radarr/Sonarr.
+  lidarr: "/system/status",
   overseerr: "/status",
   tautulli: "/home",
   // Tracearr's /health is Bearer-authed, so it doubles as a reachability +
   // auth probe (mirrors the app's runConnectionProbe).
   tracearr: "/health",
+  // JellyStat's REST API is root-mounted; a cheap authenticated GET doubles as
+  // the reachability probe (mirrors the app). No backend poller uses this today.
+  jellystat: "/stats/getLibraryOverview",
   prowlarr: "/system/status",
   plex: "/identity",
   jellyfin: "/System/Info/Public",

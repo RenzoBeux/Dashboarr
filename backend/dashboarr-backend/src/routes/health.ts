@@ -15,7 +15,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     return {
       ok: true,
       name: "dashboarr-backend",
-      version: "0.1.0",
+      version: "1.2.2",
       // Reminder surfaced on every health check. Flipping Expo "Enhanced
       // Security for Push Notifications" silently breaks every user-hosted
       // backend — this field is a canary for that misconfiguration.
