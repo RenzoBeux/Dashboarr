@@ -50,6 +50,7 @@ interface ArrHealthTarget {
 export function useArrHealthSections(): {
   sections: ArrHealthSection[];
   isLoading: boolean;
+  isFetching: boolean;
 } {
   // Scope to the active dashboard, like every other fan-out widget. No
   // per-widget instance binding (yet), so the "all attached" default is used.
@@ -74,6 +75,11 @@ export function useArrHealthSections(): {
   });
 
   const { isInitialLoading } = aggregateMultiInstanceState(queries);
+  // True whenever any instance's /health request is in flight (initial load,
+  // re-key, manual pull, or background poll). The widget gates its "Checking…"
+  // indicator on this together with the manual-refresh flag, so a routine poll
+  // stays silent while a pull-to-refresh reads clearly (#196).
+  const isFetching = queries.some((q) => q.isFetching);
 
   // Group instances-with-issues under their kind.
   const byKind = new Map<ArrHealthServiceId, ArrInstanceHealth[]>();
@@ -104,7 +110,7 @@ export function useArrHealthSections(): {
     ];
   });
 
-  return { sections, isLoading: isInitialLoading };
+  return { sections, isLoading: isInitialLoading, isFetching };
 }
 
 // Single-instance variant for a service screen's health banner: follows the

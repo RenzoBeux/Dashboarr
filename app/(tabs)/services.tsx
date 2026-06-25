@@ -8,7 +8,7 @@ import Sortable, {
 import { useRouter } from "expo-router";
 import { Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
-import { Spinner } from "@/components/ui/spinner";
+import { CheckingIndicator } from "@/components/ui/checking-indicator";
 import { StatusDot } from "@/components/ui/status-dot";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -120,7 +120,10 @@ export default function ServicesScreen() {
   const renderTile = ({ item: id }: SortableGridRenderItemInfo<ServiceId>) => {
     const service = services[id];
     const status = health?.find((h) => h.id === id);
-    const checking = determining && !status;
+    // Pulse gray whenever a probe is in flight (cold start, or a network/dashboard
+    // re-key), matching the dashboard Services widget, not only when there's no
+    // prior status yet. (#196)
+    const checking = determining;
     const healthStatus: HealthStatusKind = status?.status ?? "offline";
     const online = healthStatus !== "offline";
     // Surface WHY a tile isn't green (timeout, wrong key, off-WiFi LAN, …) so a
@@ -140,7 +143,10 @@ export default function ServicesScreen() {
       >
         <View className="relative">
           <View className="bg-surface-light rounded-xl p-3">
-            <ServiceLogo id={id} size={28} online={online} />
+            {/* Keep the logo lit while the probe is still in flight (checking)
+                so it doesn't flash the dimmed offline look before the verdict
+                lands. The pulsing "checking" dot signals the in-progress state (#196). */}
+            <ServiceLogo id={id} size={28} online={checking || online} />
           </View>
           <StatusDot state={checking ? "checking" : healthStatus} overlay />
         </View>
@@ -163,7 +169,7 @@ export default function ServicesScreen() {
         <View className="flex-1 pr-3">
           <View className="flex-row items-center gap-2">
             <Text className="text-zinc-100 text-2xl font-bold">Services</Text>
-            {determining ? <Spinner size={18} color="#71717a" /> : null}
+            {determining ? <CheckingIndicator /> : null}
           </View>
           {canReorder && (
             <Text className="text-zinc-500 text-xs mt-0.5">

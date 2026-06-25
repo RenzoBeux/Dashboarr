@@ -6,11 +6,13 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { CheckingIndicator } from "@/components/ui/checking-indicator";
 import { HealthIssuesSheet } from "@/components/services/health-issues-sheet";
 import {
   useArrHealthSections,
   type ArrInstanceHealth,
 } from "@/hooks/use-arr-health";
+import { useManualRefresh } from "@/store/manual-refresh-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { lightHaptic } from "@/lib/haptics";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
@@ -20,7 +22,12 @@ import type { WidgetComponentProps } from "@/components/dashboard/widget-registr
 // (grouped by instance when a kind has more than one). Shows a clean "all
 // healthy" state otherwise so the widget is reassuring, not just an alarm.
 export function ArrHealthCard({ slotId }: WidgetComponentProps) {
-  const { sections, isLoading } = useArrHealthSections();
+  const { sections, isLoading, isFetching } = useArrHealthSections();
+  // Mirror the Services widget: show the "Checking…" indicator on the first
+  // load and during a user pull-to-refresh, but stay silent on the routine 30s
+  // background poll (which also flips isFetching) so the header doesn't blink (#196).
+  const manualRefreshing = useManualRefresh((s) => s.count > 0);
+  const determining = isLoading || (manualRefreshing && isFetching);
   const [sheet, setSheet] = useState<{
     serviceName: string;
     instances: ArrInstanceHealth[];
@@ -32,7 +39,10 @@ export function ArrHealthCard({ slotId }: WidgetComponentProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Health Alerts</CardTitle>
+        <View className="flex-row items-center gap-2">
+          <CardTitle>Health Alerts</CardTitle>
+          {determining ? <CheckingIndicator /> : null}
+        </View>
         {totalIssues > 0 ? (
           <Badge
             label={`${totalIssues}`}

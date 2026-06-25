@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { WifiOff } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo, hasServiceLogo } from "@/components/ui/service-logo";
-import { Spinner } from "@/components/ui/spinner";
+import { CheckingIndicator } from "@/components/ui/checking-indicator";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -49,8 +49,11 @@ interface RenderEntry {
   // (away from home / workspace pinned remote) but has no remote URL set — the
   // #168 case. Drives the away badge, which takes the L/R badge's corner.
   awayBlocked: boolean;
-  // True while the health batch is still settling and we have no verdict yet
-  // for this instance — render the dot as "checking" instead of red (#196).
+  // True while a probe is in flight for this instance and we want to surface it
+  // as activity: a cold start (no verdict yet) or an explicit re-check (pull to
+  // refresh, or a network/dashboard change). Renders the dot as a gray "checking"
+  // pulse over the lit logo. The silent 30s background poll is excluded so the
+  // dots don't flicker every interval (#196).
   checking: boolean;
 }
 
@@ -172,8 +175,10 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         awayBlocked,
         // Away-blocked instances are deterministically offline-by-config (no
         // remote URL while remote-only), so they keep their red dot + away
-        // badge rather than a misleading "checking" pulse.
-        checking: determining && !health && !awayBlocked,
+        // badge rather than a misleading "checking" pulse. Otherwise mirror the
+        // title spinner: pulse gray whenever a probe is in flight (incl. pulling
+        // to refresh over a known verdict), not only when no verdict exists yet.
+        checking: determining && !awayBlocked,
       });
     }
   }
@@ -185,7 +190,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
       <CardHeader>
         <View className="flex-row items-center gap-2">
           <CardTitle>Services</CardTitle>
-          {determining ? <Spinner size={14} color="#71717a" /> : null}
+          {determining ? <CheckingIndicator /> : null}
         </View>
       </CardHeader>
       <View className="flex-row flex-wrap gap-4">
@@ -222,7 +227,12 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                   <ServiceLogo
                     id={entry.kindId}
                     size={ICON.LG}
-                    online={entry.status !== "offline"}
+                    // While the probe batch is still settling we don't yet know
+                    // this instance's verdict, so keep the logo lit (the pulsing
+                    // "checking" dot carries the in-progress signal) instead of
+                    // dimming it to the offline look, so the grid doesn't read
+                    // as "everything offline" for ~15s on cold start (#196).
+                    online={entry.checking || entry.status !== "offline"}
                   />
                 </View>
                 {settings.showAwayBadge && entry.awayBlocked ? (
