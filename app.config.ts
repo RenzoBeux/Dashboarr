@@ -93,6 +93,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-router",
     "expo-secure-store",
+    "expo-web-browser",
     "./plugins/withAndroidSigning",
     "./plugins/withCleartextTraffic",
     "./plugins/withDevVariant",
