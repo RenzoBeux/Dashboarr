@@ -276,17 +276,18 @@ export function ReleasesPicker({
 
   const protocols = useMemo(() => {
     const set = new Set<string>();
-    data?.forEach((r) => set.add(r.protocol));
+    if (Array.isArray(data)) data.forEach((r) => set.add(r.protocol));
     return set;
   }, [data]);
 
   const qualityNames = useMemo(() => {
     const map = new Map<string, number>();
-    data?.forEach((r) => {
-      const name = r.quality?.quality?.name;
-      if (!name) return;
-      map.set(name, (map.get(name) ?? 0) + 1);
-    });
+    if (Array.isArray(data))
+      data.forEach((r) => {
+        const name = r.quality?.quality?.name;
+        if (!name) return;
+        map.set(name, (map.get(name) ?? 0) + 1);
+      });
     // Show only names with at least one entry; sort by count desc.
     return Array.from(map.entries())
       .sort((a, b) => b[1] - a[1])
@@ -294,7 +295,7 @@ export function ReleasesPicker({
   }, [data]);
 
   const filtered = useMemo(() => {
-    if (!data) return [];
+    if (!Array.isArray(data)) return [];
     let out = data;
     if (hideRejected) out = out.filter((r) => !r.rejected);
     if (protocolFilter !== "all")
@@ -315,7 +316,7 @@ export function ReleasesPicker({
     if (
       !flippedOnceRef.current &&
       prefHideRejected &&
-      data &&
+      Array.isArray(data) &&
       data.length > 0 &&
       data.every((r) => r.rejected)
     ) {

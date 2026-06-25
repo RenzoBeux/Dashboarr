@@ -118,7 +118,11 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   const { width: cellWidth, columns, gap } = usePosterCellLayout();
 
   const sorted = useMemo(() => {
-    if (!data) return [];
+    // Guard against a non-array slipping through (e.g. an auth-proxy HTML page
+    // returned in place of JSON): a truthy string would reach .filter and crash
+    // with "undefined is not a function". serviceRequest now throws on that, but
+    // keep the call site itself safe against any non-array data.
+    if (!Array.isArray(data)) return [];
     const filtered = data.filter((item) => {
       if (monitorFilter === "monitored") return item.monitored;
       if (monitorFilter === "unmonitored") return !item.monitored;
