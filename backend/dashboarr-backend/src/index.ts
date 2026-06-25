@@ -10,6 +10,7 @@ import { ensureActiveToken, purgeExpiredTokens } from "./auth/pairing-tokens.js"
 import { getWebhookSecret } from "./db/repos/settings.js";
 import { isEncryptionEnabled } from "./crypto/secrets.js";
 import { SERVICE_IDS } from "./types.js";
+import { VERSION } from "./version.js";
 import { initScheduler, getScheduler } from "./workers/scheduler.js";
 import { healthRoutes } from "./routes/health.js";
 import { pairRoutes } from "./routes/pair.js";
@@ -25,7 +26,7 @@ import { tracearrWebhook } from "./routes/webhooks/tracearr.js";
 
 const BANNER = `
 ===============================================================================
-  Dashboarr Backend — self-hosted companion for the Dashboarr mobile app
+  Dashboarr Backend v${VERSION} — self-hosted companion for the Dashboarr mobile app
 -------------------------------------------------------------------------------
   🚨 OPERATOR WARNING 🚨
   This backend POSTs to https://exp.host/--/api/v2/push/send with NO auth.
@@ -99,6 +100,9 @@ async function printStartupPairing(
 async function main(): Promise<void> {
   const env = getEnv();
   console.log(BANNER);
+  // Explicit, search-friendly line so an operator can confirm the running build
+  // by searching the container log for "version".
+  console.log(`Backend version: ${VERSION}\n`);
 
   if (isEncryptionEnabled()) {
     console.log("🔒 CONFIG_ENCRYPTION_KEY set — service credentials encrypted at rest (AES-256-GCM).\n");

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireBearer } from "../auth/bearer.js";
 import { getScheduler } from "../workers/scheduler.js";
+import { VERSION } from "../version.js";
 
 /**
  * /health is intentionally behind `requireBearer`. Unauthenticated callers
@@ -15,7 +16,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     return {
       ok: true,
       name: "dashboarr-backend",
-      version: "1.2.2",
+      version: VERSION,
       // Reminder surfaced on every health check. Flipping Expo "Enhanced
       // Security for Push Notifications" silently breaks every user-hosted
       // backend — this field is a canary for that misconfiguration.
