@@ -87,6 +87,44 @@ export class HttpError extends Error {
   }
 }
 
+// An authentication proxy (Authentik, Authelia, Cloudflare Access, …) placed in
+// front of a service answers unauthenticated requests with its own HTML login
+// page instead of proxying through to the API. The app sends the service's API
+// key but holds no proxy session, so it receives that login page — often with a
+// 200, sometimes a 302/401/403. We detect it and throw this so the UI shows an
+// actionable message instead of crashing when downstream code runs array methods
+// on what it assumed was JSON (issue #239).
+export const AUTH_PROXY_MESSAGE =
+  "This service is behind an authentication proxy. The server returned an HTML " +
+  "login page instead of data, which usually means a reverse proxy like Authentik " +
+  "or Authelia is intercepting the request. Add an exception for this app's API " +
+  "path in your proxy, or send the proxy's auth headers under Custom Headers in " +
+  "the service settings.";
+
+export class AuthProxyResponseError extends HttpError {
+  constructor(status: number, statusText: string, url: string, body?: unknown) {
+    super(status, statusText, url, body);
+    this.name = "AuthProxyResponseError";
+    // Override the bare "HTTP 200 …" message HttpError builds with an actionable
+    // one. ErrorBanner/ErrorBoundary fall back to error.message (an HTML body is
+    // too long for getHttpErrorMessage to extract), so this is what users see;
+    // formatErrorForCopy still reports status + redacted URL + body for debugging.
+    this.message = AUTH_PROXY_MESSAGE;
+  }
+}
+
+// True when a response body is (or looks like) an HTML document rather than the
+// expected JSON/XML payload. Checks the content-type first, then cheaply sniffs
+// the body head so a proxy that mislabels or omits the content-type is still
+// caught. rtorrent's XML-RPC responses start with "<?xml" and never match here,
+// so the one legitimate non-JSON caller is unaffected.
+function looksLikeHtml(contentType: string | null, body: unknown): boolean {
+  if (contentType && contentType.toLowerCase().includes("text/html")) return true;
+  if (typeof body !== "string") return false;
+  const head = body.slice(0, 256).trimStart().toLowerCase();
+  return head.startsWith("<!doctype html") || head.startsWith("<html");
+}
+
 // *arr 4xx responses look like `{ message, description }` — surface that
 // message to the user when present, falling back to a string body, then to
 // the HTTP status line.
@@ -266,6 +304,8 @@ export async function serviceRequest<T>(
       signal: controller.signal,
     });
 
+    const contentType = response.headers.get("content-type");
+
     if (!response.ok) {
       // The body stream can only be read once — clone before trying JSON so
       // we can fall back to text() if the response isn't JSON.
@@ -273,15 +313,39 @@ export async function serviceRequest<T>(
       const errorBody = await response
         .json()
         .catch(() => clone.text().catch(() => undefined));
+      // A failing status whose body is an HTML login page is an auth proxy in
+      // front of the service, not the service itself — surface that.
+      if (looksLikeHtml(contentType, errorBody)) {
+        throw new AuthProxyResponseError(
+          response.status,
+          response.statusText,
+          url,
+          errorBody,
+        );
+      }
       throw new HttpError(response.status, response.statusText, url, errorBody);
     }
 
-    const contentType = response.headers.get("content-type");
     if (contentType?.includes("application/json")) {
       return (await response.json()) as T;
     }
 
-    return (await response.text()) as unknown as T;
+    // Not JSON. A 2xx HTML body is almost always an auth-proxy login page
+    // returned in place of the API response (issue #239): the request carried
+    // the service API key but no proxy session, so the proxy answered with its
+    // login page and a 200. Returning that string lets callers run array methods
+    // on it and crash with "undefined is not a function"; throw instead. Genuine
+    // non-JSON payloads (rtorrent's XML-RPC, which starts with <?xml) pass through.
+    const body = await response.text();
+    if (looksLikeHtml(contentType, body)) {
+      throw new AuthProxyResponseError(
+        response.status,
+        response.statusText,
+        url,
+        body,
+      );
+    }
+    return body as unknown as T;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -820,7 +884,19 @@ async function runConnectionProbe(
         return { kind: "auth_failed", message: "Invalid API key" };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
-      if (res.ok) return { kind: "ok" };
+      if (res.ok) {
+        // A 200 that isn't JSON is almost always an auth-proxy login page
+        // standing in for the API (issue #239). Reporting "ok" here would light
+        // the health dot green and pass Test Connection, then crash the data
+        // screen — so flag the proxy instead.
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude its API path from the proxy.",
+        };
+      }
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 

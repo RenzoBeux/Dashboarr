@@ -1,4 +1,9 @@
-import { serviceRequest, pingService } from "./http-client";
+import {
+  serviceRequest,
+  pingService,
+  testServiceConnection,
+  AuthProxyResponseError,
+} from "./http-client";
 
 // jest.mock factories run before module-scope code; the only refs allowed
 // inside are auto-imports + names prefixed with `mock`.
@@ -59,6 +64,7 @@ const FIXTURE_KINDS = [
   { id: "jellyfin", url: "http://jelly.local:8096", secrets: { apiKey: "jelly-token" } },
   { id: "emby", url: "http://emby.local:8096", secrets: { apiKey: "emby-token" } },
   { id: "glances", url: "http://glances.local:61208", secrets: { username: "u", password: "p" } },
+  { id: "rtorrent", url: "http://seedbox.local/RPC2", secrets: { username: "u", password: "p" } },
 ];
 
 function makeState(overrides: Partial<FakeState> = {}): FakeState {
@@ -332,5 +338,159 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     mockStateRef.current.isVpnActive = false;
     await serviceRequest("radarr", "/system/status");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// An auth proxy (Authentik/Authelia/…) in front of a service answers the app's
+// API-key-only requests with its own HTML login page. serviceRequest must throw
+// an actionable error instead of returning the HTML string, which would crash
+// downstream array methods with "undefined is not a function" (#239).
+describe("serviceRequest — auth-proxy HTML detection (#239)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // A mock Response with sensible defaults; pass overrides per test.
+  function respond(over: Record<string, any>) {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers(),
+      json: async () => ({}),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+      ...over,
+    };
+  }
+
+  it("throws AuthProxyResponseError on a 2xx text/html login page", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        headers: new Headers({ "content-type": "text/html" }),
+        text: async () => "<!DOCTYPE html><html><body>Sign in</body></html>",
+      }),
+    );
+    await expect(serviceRequest("radarr", "/movie")).rejects.toBeInstanceOf(
+      AuthProxyResponseError,
+    );
+  });
+
+  it("sniffs the body when the content-type is missing or wrong", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        headers: new Headers(),
+        text: async () =>
+          '  <html lang="en"><head><title>authentik</title></head></html>',
+      }),
+    );
+    await expect(serviceRequest("radarr", "/movie")).rejects.toThrow(
+      /authentication proxy/i,
+    );
+  });
+
+  it("treats an HTML body on a 401 as an auth proxy too", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers({ "content-type": "text/html" }),
+        json: async () => {
+          throw new Error("not json");
+        },
+        text: async () => "<html>login</html>",
+      }),
+    );
+    await expect(serviceRequest("sonarr", "/series")).rejects.toBeInstanceOf(
+      AuthProxyResponseError,
+    );
+  });
+
+  it("still returns rtorrent's XML-RPC string (not mistaken for HTML)", async () => {
+    const xml =
+      '<?xml version="1.0"?><methodResponse><params><param><value><array><data></data></array></value></param></params></methodResponse>';
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        headers: new Headers({ "content-type": "text/xml" }),
+        text: async () => xml,
+      }),
+    );
+    await expect(
+      serviceRequest<string>("rtorrent", "", {
+        method: "POST",
+        headers: { "Content-Type": "text/xml" },
+        body: '<?xml version="1.0"?><methodCall></methodCall>',
+      }),
+    ).resolves.toBe(xml);
+  });
+
+  it("still parses a normal JSON response", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ version: "5.0" }),
+      }),
+    );
+    await expect(serviceRequest("radarr", "/system/status")).resolves.toEqual({
+      version: "5.0",
+    });
+  });
+});
+
+// The connection test / health dots must not show green for a proxied service:
+// a 2xx that isn't JSON means we reached the proxy's login page, not the API.
+describe("testServiceConnection — auth-proxy detection (#239)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("reports unreachable when the *arr probe gets HTML instead of JSON", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "text/html" }),
+      json: async () => ({}),
+      text: async () => "<html></html>",
+      clone() {
+        return this;
+      },
+    });
+    const result = await testServiceConnection("radarr", {
+      url: "http://radarr.local:7878",
+      apiKey: "k",
+    });
+    expect(result.kind).toBe("unreachable");
+  });
+
+  it("reports ok when the *arr probe gets JSON (the default mock)", async () => {
+    const result = await testServiceConnection("radarr", {
+      url: "http://radarr.local:7878",
+      apiKey: "k",
+    });
+    expect(result.kind).toBe("ok");
   });
 });
