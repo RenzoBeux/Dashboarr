@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, BackHandler, Pressable, Linking, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import * as WebBrowser from "expo-web-browser";
 import { router, useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
 import { toast, toastError } from "@/components/ui/toast";
@@ -20,6 +21,7 @@ import {
   Bug,
   Heart,
   BookOpen,
+  LogIn,
 } from "lucide-react-native";
 import GithubLogo from "@/assets/services/github.svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -44,6 +46,14 @@ import { testServiceConnection } from "@/lib/http-client";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import type { HealthStatusKind } from "@/lib/types";
 import { qbClearSession } from "@/services/qbittorrent-api";
+import { getPlexClientId } from "@/lib/plex-client-id";
+import {
+  requestPin,
+  buildAuthUrl,
+  pollPinForToken,
+  discoverServers,
+  type PlexServer,
+} from "@/services/plex-auth";
 import { SERVICE_IDS, SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import {
@@ -972,6 +982,11 @@ function ServiceEditor({
     secrets.customHeaders ?? {},
   );
   const [testing, setTesting] = useState(false);
+  // "Connect with Plex" PIN-OAuth flow (Plex-only). The poll loop is cancelled
+  // on browser-dismiss and on editor unmount via this controller.
+  const [connecting, setConnecting] = useState(false);
+  const plexAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => plexAbortRef.current?.abort(), []);
 
   // Modal sequencing (unsaved sheet → save/discard, HTTP warning → save
   // continuation, delete/close → editor unmount) goes through the flow — see
@@ -983,6 +998,7 @@ function ServiceEditor({
     confirmDelete: void;
     addToDashboards: void;
     httpWarning: { message: string; resolve: (ok: boolean) => void };
+    serverPicker: PlexServer[];
   }>();
 
   const usesBasicAuth =
@@ -1185,6 +1201,100 @@ function ServiceEditor({
     }
   };
 
+  // Fill the in-progress form from a discovered server. The user still reviews
+  // and taps Save (consistent with manual entry), so this never writes directly.
+  const applyServer = (server: PlexServer) => {
+    setApiKey(server.accessToken);
+    setLocalUrl(server.localUrl);
+    setRemoteUrl(server.remoteUrl);
+    // Adopt the server's name only if the user hasn't given it a custom one.
+    setName((prev) =>
+      prev.trim().length === 0 || prev === SERVICE_DEFAULTS_KIND_LABEL[serviceId]
+        ? server.name
+        : prev,
+    );
+    toast(`Connected to ${server.name}`, "success");
+  };
+
+  // Discover servers from the approved token and either auto-fill (0/1 server)
+  // or present the picker (2+).
+  const finishPlexConnect = async (token: string, clientId: string) => {
+    try {
+      const servers = await discoverServers(token, clientId);
+      if (servers.length === 0) {
+        // Token is valid even without a discoverable server (custom proxy,
+        // offline server) — set it so manual URL entry still works.
+        setApiKey(token);
+        toast("Signed in, but no Plex servers found on this account", "error");
+        return;
+      }
+      if (servers.length === 1) {
+        applyServer(servers[0]);
+        return;
+      }
+      // Yield a macrotask so the in-app browser's view controller is fully gone
+      // before the ActionSheet presents (iOS two-VC hang, issue #83). The
+      // discovery network round-trip above usually covers this, but make it
+      // explicit.
+      await new Promise((resolve) => setTimeout(resolve, 16));
+      flow.open("serverPicker", servers);
+    } catch (e) {
+      toastError("Plex sign-in failed", e);
+    }
+  };
+
+  const handleConnectPlex = async () => {
+    if (connecting) return;
+    setConnecting(true);
+    const controller = new AbortController();
+    plexAbortRef.current = controller;
+    try {
+      const clientId = await getPlexClientId();
+      const pin = await requestPin(clientId);
+      const authUrl = buildAuthUrl(pin.code, clientId);
+      // Poll until the PIN is approved. We intentionally do NOT stop polling
+      // when the browser reports closed: expo-web-browser can signal "dismissed"
+      // before the user has finished approving (especially Android), which would
+      // kill the poll right before the token lands. The poll resolves the moment
+      // the approved token appears, or after the timeout.
+      const timeoutMs = pin.expiresIn
+        ? Math.min(pin.expiresIn * 1000, 300000)
+        : 300000;
+
+      // Open the approval page in the system in-app browser (SFSafariViewController
+      // / Chrome Custom Tabs). Unlike an embedded WebView, it shares the device's
+      // browser session, so "Sign in with Google/Apple" uses the account you're
+      // already signed into. This is how plezy and other mobile Plex clients do
+      // it. Fall back to the external browser if no in-app browser is available.
+      void WebBrowser.openBrowserAsync(authUrl).catch(() =>
+        Linking.openURL(authUrl).catch(() => {}),
+      );
+
+      const token = await pollPinForToken(pin.id, clientId, {
+        signal: controller.signal,
+        timeoutMs,
+      });
+
+      // Close the in-app browser if it's still up (token arrived via polling).
+      try {
+        WebBrowser.dismissBrowser();
+      } catch {
+        // no-op: nothing to dismiss
+      }
+
+      if (!token) {
+        toast("Plex sign-in timed out — please try again", "error");
+        return;
+      }
+      await finishPlexConnect(token, clientId);
+    } catch (e) {
+      toastError("Plex sign-in failed", e);
+    } finally {
+      plexAbortRef.current = null;
+      setConnecting(false);
+    }
+  };
+
   const performDelete = () => {
     flow.close();
     // The store write swaps this editor for the "not found" branch and
@@ -1277,6 +1387,20 @@ function ServiceEditor({
         <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
           Authentication
         </Text>
+        {serviceId === "plex" ? (
+          <View className="gap-2">
+            <Button
+              label="Connect with Plex"
+              onPress={() => void handleConnectPlex()}
+              loading={connecting}
+              icon={<Icon icon={LogIn} size={18} color="#fff" />}
+            />
+            <Text className="text-zinc-500 text-xs">
+              Sign in to auto-fill this server&apos;s URLs and token, or enter a
+              token manually below.
+            </Text>
+          </View>
+        ) : null}
         {usesBasicAuth ? (
           <>
             <TextInput
@@ -1403,6 +1527,18 @@ function ServiceEditor({
           flow.close();
           flow.whenClear(() => request?.resolve(false));
         }}
+      />
+
+      <ActionSheet
+        {...flow.bind("serverPicker")}
+        title="Choose your server"
+        subtitle="Pick which Plex server this connects to."
+        actions={(flow.payload("serverPicker") ?? []).map((server) => ({
+          label: server.name,
+          // Apply only once the sheet is fully dismissed — applyServer just sets
+          // form state, but staying consistent with the flow's onClosed rule.
+          onPress: () => flow.whenClear(() => applyServer(server)),
+        }))}
       />
     </ScreenWrapper>
   );

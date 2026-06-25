@@ -528,10 +528,11 @@ export async function testServiceConnection(
     }
     return result;
   } catch (err) {
-    if (
-      (err instanceof DOMException && err.name === "AbortError") ||
-      (err instanceof Error && err.name === "AbortError")
-    ) {
+    // AbortError = our 8s timeout fired. Note: don't reference `DOMException`
+    // here — it isn't a global in React Native's Hermes engine, so
+    // `err instanceof DOMException` throws "Property 'DOMException' doesn't
+    // exist". RN rejects aborted fetches with an Error named "AbortError".
+    if (err instanceof Error && err.name === "AbortError") {
       return { kind: "unreachable", message: "Request timed out" };
     }
     return {
