@@ -53,12 +53,19 @@ async function login(config: StoredServiceConfig): Promise<string> {
   });
 
   if (!res.ok) throw new Error(`qBittorrent login HTTP ${res.status}`);
-  const text = await res.text();
-  if (text !== "Ok.") throw new Error("qBittorrent login rejected");
+  const text = (await res.text()).trim();
+  // Older qBittorrent versions return HTTP 200 with "Ok."
+  // Newer versions may return HTTP 204 No Content.
+  if (res.status !== 204 && text !== "" && text !== "Ok.") {
+    throw new Error(`qBittorrent login rejected: ${text || "<empty response>"}`);
+  }
 
   const setCookie = res.headers.get("set-cookie") ?? "";
-  const match = setCookie.match(/SID=([^;]+)/);
-  if (!match || !match[1]) throw new Error("qBittorrent login missing SID cookie");
+  // Accept any session cookie name (SID, QBT_SID, QBT_SID_8080, ...)
+  const match = setCookie.match(/^([^=]+=[^;]+)/);
+  if (!match) {
+    throw new Error("qBittorrent login missing session cookie");
+  }
   return match[1];
 }
 
@@ -77,8 +84,8 @@ async function qbFetch<T>(config: StoredServiceConfig, path: string): Promise<T>
   const url = `${base}${apiBase}${path}`;
   let cookie = await ensureCookie(config);
 
-  const doFetch = (c: string) =>
-    fetch(url, { headers: { Cookie: `SID=${c}` } });
+const doFetch = (cookie: string) =>
+    fetch(url, {headers: { Cookie: cookie,},});
 
   let res = await doFetch(cookie);
   if (res.status === 403) {
