@@ -45,8 +45,11 @@ interface TracearrWebhookPayload {
     reason?: string | null;
     // server_down / server_up
     serverName?: string;
-    // stream_started / stream_stopped
-    media?: { title?: string; year?: number | null };
+    // stream_started / stream_stopped. For episodes Tracearr puts the SHOW
+    // name in `title` and the disambiguating "S01 E02 · Episode" in `subtitle`;
+    // for movies `subtitle` is the year. We need `subtitle` so episodes of the
+    // same series don't collapse onto one dedupe key (see below).
+    media?: { title?: string; subtitle?: string | null; year?: number | null };
   };
 }
 
@@ -161,33 +164,43 @@ export async function tracearrWebhook(app: FastifyInstance): Promise<void> {
 
       case "stream_started": {
         const title = data.media?.title ?? "something";
+        const sub = data.media?.subtitle;
         await dispatchPush({
           category: "tracearrStreamStarted",
           title: `${prefix}Stream started`,
-          body: `${who} started ${title}`,
+          body: sub ? `${who} started ${title} (${sub})` : `${who} started ${title}`,
           data: {
             type: "tracearr",
             event: "stream_started",
             instanceId: inst?.id,
           },
-          // No session id in the webhook payload — dedupe is best-effort.
-          dedupeKey: `tracearr:${ns}:stream:start:${who}:${title}`,
+          // A stream start is inherently repeatable (same movie re-watched, a
+          // different episode of the same show) so the key must NOT collapse to
+          // just user+title — that suppressed every replay forever (issue #200,
+          // since `event:` dedupe keys are permanent). Key on the unique event
+          // timestamp + episode subtitle so each distinct play notifies, while a
+          // genuine duplicate delivery (identical payload, same timestamp) still
+          // dedupes.
+          dedupeKey: `tracearr:${ns}:stream:start:${who}:${title}:${sub ?? ""}:${payload.timestamp ?? ""}`,
         });
         break;
       }
 
       case "stream_stopped": {
         const title = data.media?.title ?? "something";
+        const sub = data.media?.subtitle;
         await dispatchPush({
           category: "tracearrStreamStopped",
           title: `${prefix}Stream stopped`,
-          body: `${who} stopped ${title}`,
+          body: sub ? `${who} stopped ${title} (${sub})` : `${who} stopped ${title}`,
           data: {
             type: "tracearr",
             event: "stream_stopped",
             instanceId: inst?.id,
           },
-          dedupeKey: `tracearr:${ns}:stream:stop:${who}:${title}`,
+          // See stream_started: timestamp + subtitle keep replays/episodes
+          // distinct while collapsing true duplicate deliveries.
+          dedupeKey: `tracearr:${ns}:stream:stop:${who}:${title}:${sub ?? ""}:${payload.timestamp ?? ""}`,
         });
         break;
       }
