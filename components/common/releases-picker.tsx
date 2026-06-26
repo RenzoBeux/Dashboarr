@@ -213,19 +213,26 @@ export function ReleasesPicker({
   // Filters persist across searches (#198) so they don't reset every time the
   // picker remounts. Quality persists by NAME (stable cross-search), protocol
   // and the rejected toggle are stable preferences too. The saved *arr filter
-  // (selectedFilterId) stays local — its id is per-instance, so persisting it
-  // could apply the wrong server-side filter across services/instances.
+  // persists as well, but keyed per service+instance (instanceKey below) — its
+  // id is a per-instance auto-increment integer, so a global id could apply the
+  // wrong server-side filter across services/instances.
   const prefHideRejected = useReleaseFilterStore((s) => s.hideRejected);
   const setPrefHideRejected = useReleaseFilterStore((s) => s.setHideRejected);
   const protocolFilter = useReleaseFilterStore((s) => s.protocol);
   const setProtocolFilter = useReleaseFilterStore((s) => s.setProtocol);
   const qualityFilter = useReleaseFilterStore((s) => s.quality);
   const setQualityFilter = useReleaseFilterStore((s) => s.setQuality);
+  const savedFilters = useReleaseFilterStore((s) => s.savedFilters);
+  const setSavedFilter = useReleaseFilterStore((s) => s.setSavedFilter);
   const resetFilters = useReleaseFilterStore((s) => s.reset);
+
+  // Per-instance key for the saved-filter selection. `instanceId` is undefined
+  // for single-instance setups, so fall back to a stable "default" bucket.
+  const instanceKey = `${service}:${instanceId ?? "default"}`;
+  const selectedFilterId = savedFilters[instanceKey] ?? null;
 
   const [autoFlippedRejected, setAutoFlippedRejected] = useState(false);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
-  const [selectedFilterId, setSelectedFilterId] = useState<number | null>(null);
 
   // Effective rejected state: the saved preference, transiently overridden by a
   // one-shot auto-flip when every result was rejected (below). The auto-flip is
@@ -234,8 +241,9 @@ export function ReleasesPicker({
 
   // Saved interactive-search filters configured in the *arr web UI. Only the
   // "releases" section is relevant here; the control is hidden when there are
-  // none. Selection is resolved by id at render so a refetch/deletion in *arr
-  // can't leave a stale pointer to a filter that no longer exists.
+  // none. Selection is resolved by id at render (against the freshly-fetched
+  // list) so a persisted id whose filter was deleted/renamed in *arr just
+  // clears instead of pointing at the wrong one.
   const customFiltersQuery = useArrCustomFilters(service, instanceId);
   const releaseFilters = useMemo(
     () => (customFiltersQuery.data ?? []).filter((f) => f.type === "releases"),
@@ -335,12 +343,13 @@ export function ReleasesPicker({
 
   function handleClearFilters() {
     lightHaptic();
-    // Reset the persisted filters to their defaults (not "show everything"),
-    // so clearing doesn't permanently flip the saved Show pref or leave the
-    // filter pill stuck highlighted. selectedFilterId is local/ephemeral.
+    // Reset the persisted quick filters to their defaults (not "show
+    // everything"), so clearing doesn't permanently flip the saved Show pref or
+    // leave the filter pill stuck highlighted. The saved *arr filter is cleared
+    // for this instance only — other instances keep their selection.
     resetFilters();
     setAutoFlippedRejected(false);
-    setSelectedFilterId(null);
+    setSavedFilter(instanceKey, null);
   }
 
   // Pill summary + highlight. Leads with the saved filter (the headline) when
@@ -371,8 +380,11 @@ export function ReleasesPicker({
         { key: "none", label: "All releases" },
         ...releaseFilters.map((f) => ({ key: String(f.id), label: f.label })),
       ],
-      value: selectedFilterId === null ? "none" : String(selectedFilterId),
-      onChange: (k) => setSelectedFilterId(k === "none" ? null : Number(k)),
+      // Drive the radio off the resolved filter, not the raw persisted id, so a
+      // selection whose filter was deleted in *arr falls back to "All releases".
+      value: selectedFilter ? String(selectedFilter.id) : "none",
+      onChange: (k) =>
+        setSavedFilter(instanceKey, k === "none" ? null : Number(k)),
     });
   }
   if (protocols.size > 1) {
