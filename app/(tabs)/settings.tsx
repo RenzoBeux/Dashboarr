@@ -1252,41 +1252,66 @@ function ServiceEditor({
       const clientId = await getPlexClientId();
       const pin = await requestPin(clientId);
       const authUrl = buildAuthUrl(pin.code, clientId);
-      // Poll until the PIN is approved. We intentionally do NOT stop polling
-      // when the browser reports closed: expo-web-browser can signal "dismissed"
-      // before the user has finished approving (especially Android), which would
-      // kill the poll right before the token lands. The poll resolves the moment
-      // the approved token appears, or after the timeout.
+      // The 5-min cap is only a backstop — a dismissed browser is detected as a
+      // cancel well before this (see below).
       const timeoutMs = pin.expiresIn
         ? Math.min(pin.expiresIn * 1000, 300000)
         : 300000;
+
+      const tokenPromise = pollPinForToken(pin.id, clientId, {
+        signal: controller.signal,
+        timeoutMs,
+      });
+      const safeToken = tokenPromise.catch(() => null);
 
       // Open the approval page in the system in-app browser (SFSafariViewController
       // / Chrome Custom Tabs). Unlike an embedded WebView, it shares the device's
       // browser session, so "Sign in with Google/Apple" uses the account you're
       // already signed into. This is how plezy and other mobile Plex clients do
-      // it. Fall back to the external browser if no in-app browser is available.
-      void WebBrowser.openBrowserAsync(authUrl).catch(() =>
-        Linking.openURL(authUrl).catch(() => {}),
-      );
-
-      const token = await pollPinForToken(pin.id, clientId, {
-        signal: controller.signal,
-        timeoutMs,
+      // it. Its promise resolves when the user dismisses it.
+      const browserClosed = WebBrowser.openBrowserAsync(authUrl).catch(() => {
+        void Linking.openURL(authUrl).catch(() => {});
+        // External browser gives no close signal — never resolve this arm.
+        return new Promise<WebBrowser.WebBrowserResult>(() => {});
       });
 
-      // Close the in-app browser if it's still up (token arrived via polling).
+      // Finish as soon as the token is approved (poll wins). If the user instead
+      // dismisses the browser without approving, treat it as a cancel — but
+      // first give the poll a grace window to surface a just-approved token. On
+      // Android the poll is suspended while the tab is open and only resumes on
+      // return, so it needs longer than iOS (where the poll runs the whole time
+      // behind SFSafariViewController). Kept generous so a slow connection or
+      // device still lands an in-flight approval rather than false-cancelling.
+      const graceMs = Platform.OS === "ios" ? 5000 : 12000;
+      const outcome = await Promise.race([
+        tokenPromise.then((token) => ({ kind: "token" as const, token })),
+        browserClosed.then(async () => {
+          const token = await Promise.race([
+            safeToken,
+            new Promise<string | null>((resolve) =>
+              setTimeout(() => resolve(null), graceMs),
+            ),
+          ]);
+          return { kind: "closed" as const, token };
+        }),
+      ]);
+      controller.abort();
       try {
         WebBrowser.dismissBrowser();
       } catch {
         // no-op: nothing to dismiss
       }
 
-      if (!token) {
-        toast("Plex sign-in timed out — please try again", "error");
+      if (!outcome.token) {
+        toast(
+          outcome.kind === "closed"
+            ? "Plex sign-in cancelled"
+            : "Plex sign-in timed out — please try again",
+          "error",
+        );
         return;
       }
-      await finishPlexConnect(token, clientId);
+      await finishPlexConnect(outcome.token, clientId);
     } catch (e) {
       toastError("Plex sign-in failed", e);
     } finally {
