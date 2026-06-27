@@ -1004,6 +1004,7 @@ function ServiceEditor({
   const usesBasicAuth =
     serviceId === "qbittorrent" ||
     serviceId === "rtorrent" ||
+    serviceId === "transmission" ||
     serviceId === "glances" ||
     serviceId === "nzbget";
 

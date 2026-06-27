@@ -24,8 +24,8 @@ test("unknown service kind is dropped, not fatal to the whole payload", () => {
   assert.equal(result.data.instances?.[0]?.kind, "sonarr");
 });
 
-test("rtorrent, lidarr and jellystat are accepted kinds", () => {
-  for (const kind of ["rtorrent", "lidarr", "jellystat"]) {
+test("rtorrent, transmission, lidarr and jellystat are accepted kinds", () => {
+  for (const kind of ["rtorrent", "transmission", "lidarr", "jellystat"]) {
     const result = configPayloadSchema.safeParse({
       instances: [{ id: "x", kind, enabled: false, name: kind, localUrl: "" }],
       notifications: DEFAULT_NOTIFICATION_SETTINGS,

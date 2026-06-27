@@ -9,10 +9,16 @@ import { sabnzbdAdapter } from "@/lib/usenet-adapters/sabnzbd";
 import { nzbgetAdapter } from "@/lib/usenet-adapters/nzbget";
 import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
 import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
+import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useLocalSearchParams } from "expo-router";
 
-type DownloadClient = "qbittorrent" | "rtorrent" | "sabnzbd" | "nzbget";
+type DownloadClient =
+  | "qbittorrent"
+  | "rtorrent"
+  | "transmission"
+  | "sabnzbd"
+  | "nzbget";
 
 // Top-level switcher for the Downloads tab. When more than one download client
 // is enabled the user picks via a segmented control; otherwise the available
@@ -22,6 +28,7 @@ type DownloadClient = "qbittorrent" | "rtorrent" | "sabnzbd" | "nzbget";
 export default function DownloadsScreen() {
   const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
   const rtEnabled = useConfigStore((s) => s.services.rtorrent?.enabled ?? false);
+  const transEnabled = useConfigStore((s) => s.services.transmission?.enabled ?? false);
   const sabEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
   const nzbgetEnabled = useConfigStore((s) => s.services.nzbget?.enabled ?? false);
   const attachedKinds = useAttachedKinds();
@@ -35,6 +42,8 @@ export default function DownloadsScreen() {
   const enabledClients: DownloadClient[] = [];
   if (qbEnabled && attachedKinds.has("qbittorrent")) enabledClients.push("qbittorrent");
   if (rtEnabled && attachedKinds.has("rtorrent")) enabledClients.push("rtorrent");
+  if (transEnabled && attachedKinds.has("transmission"))
+    enabledClients.push("transmission");
   if (sabEnabled && attachedKinds.has("sabnzbd")) enabledClients.push("sabnzbd");
   if (nzbgetEnabled && attachedKinds.has("nzbget")) enabledClients.push("nzbget");
 
@@ -45,6 +54,7 @@ export default function DownloadsScreen() {
   const paramClient =
     clientParam === "qbittorrent" ||
     clientParam === "rtorrent" ||
+    clientParam === "transmission" ||
     clientParam === "sabnzbd" ||
     clientParam === "nzbget"
       ? clientParam
@@ -70,7 +80,7 @@ export default function DownloadsScreen() {
       <ScreenWrapper>
         <EmptyState
           title="No download client configured"
-          message="Enable qBittorrent, rTorrent, SABnzbd, or NZBGet in Settings to manage downloads."
+          message="Enable qBittorrent, rTorrent, Transmission, SABnzbd, or NZBGet in Settings to manage downloads."
         />
       </ScreenWrapper>
     );
@@ -115,11 +125,16 @@ export default function DownloadsScreen() {
     );
   }
 
-  // qBittorrent and rtorrent both render through the shared TorrentDownloadsView.
-  // Key by client so switching between the two torrent clients remounts (resets
-  // the local filter state and keeps hook usage stable across adapters).
+  // qBittorrent, rtorrent, and Transmission all render through the shared
+  // TorrentDownloadsView. Key by client so switching between torrent clients
+  // remounts (resets the local filter state and keeps hook usage stable across
+  // adapters).
   const torrentAdapter =
-    activeClient === "rtorrent" ? rtorrentTorrentAdapter : qbittorrentTorrentAdapter;
+    activeClient === "rtorrent"
+      ? rtorrentTorrentAdapter
+      : activeClient === "transmission"
+        ? transmissionTorrentAdapter
+        : qbittorrentTorrentAdapter;
   return (
     <TorrentDownloadsView
       key={activeClient}
@@ -132,6 +147,7 @@ export default function DownloadsScreen() {
 const SEGMENT_LABELS: Record<DownloadClient, string> = {
   qbittorrent: "qBittorrent",
   rtorrent: "rTorrent",
+  transmission: "Transmission",
   sabnzbd: "SABnzbd",
   nzbget: "NZBGet",
 };

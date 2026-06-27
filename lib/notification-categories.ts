@@ -12,6 +12,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // offline category is surfaced (a torrentCompleted toggle would be a dead
   // switch nothing emits). Phase 2 adds the watcher + "torrentCompleted".
   rtorrent:    ["serviceOffline"],
+  // Transmission reuses the shared "torrentCompleted" category — its completion
+  // watcher (app) + poller (backend) emit "Download complete" just like
+  // qBittorrent, so no new category is needed.
+  transmission: ["torrentCompleted", "serviceOffline"],
   sabnzbd:     ["sabnzbdCompleted", "serviceOffline"],
   nzbget:      ["nzbgetCompleted",  "serviceOffline"],
   radarr:      ["radarrDownloaded", "serviceOffline"],

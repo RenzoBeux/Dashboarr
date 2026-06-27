@@ -1,6 +1,7 @@
 export const SERVICE_IDS = [
   "qbittorrent",
   "rtorrent",
+  "transmission",
   "sabnzbd",
   "nzbget",
   "radarr",
@@ -41,6 +42,18 @@ export const SERVICE_DEFAULTS: Record<
     name: "rTorrent",
     defaultPort: 8080,
     apiBasePath: "/RPC2",
+    pingPath: "",
+  },
+  // Transmission speaks JSON-RPC over a single POST /transmission/rpc endpoint.
+  // Default web/RPC port is 9091. Auth is optional HTTP Basic; every request
+  // also needs the X-Transmission-Session-Id CSRF token, fetched from the 409
+  // response (handled in services/transmission-api.ts). No GET ping endpoint —
+  // the connection probe and pingService POST session-get instead, so pingPath
+  // is empty (mirrors nzbget/rtorrent).
+  transmission: {
+    name: "Transmission",
+    defaultPort: 9091,
+    apiBasePath: "/transmission/rpc",
     pingPath: "",
   },
   // SAB has no REST routes — every call is /api?mode=<command>. The empty

@@ -1349,6 +1349,133 @@ const DEMO_RTORRENT_OK_XML = rtResponse(
 // Single-value response for load.start (add torrent).
 const DEMO_RTORRENT_SCALAR_OK_XML = rtResponse(`<value><i4>0</i4></value>`);
 
+// --- Transmission (JSON-RPC) demo fixtures ---
+// transmissionRpc returns getDemoResponse() verbatim in demo mode, so these are
+// the `arguments` payloads as plain JS objects (camelCase torrent fields,
+// hyphenated session/stats keys) — the same shapes the service maps.
+const DEMO_TRANSMISSION_TORRENTS = [
+  {
+    hashString: "0000000000000000000000000000000000000a01",
+    name: "Ubuntu 24.04.1 LTS Desktop amd64",
+    totalSize: 5_400_000_000,
+    percentDone: 0.4,
+    rateDownload: 5_400_000,
+    rateUpload: 180_000,
+    eta: 600,
+    uploadRatio: 0.12,
+    status: 4,
+    downloadDir: "/downloads",
+    addedDate: 1_716_800_000,
+    doneDate: 0,
+    leftUntilDone: 3_240_000_000,
+    downloadedEver: 2_160_000_000,
+    uploadedEver: 259_000_000,
+    error: 0,
+    errorString: "",
+    labels: ["linux-isos"],
+    files: [
+      { name: "ubuntu-24.04.1-desktop-amd64.iso", length: 5_400_000_000, bytesCompleted: 2_160_000_000 },
+    ],
+    fileStats: [{ bytesCompleted: 2_160_000_000, wanted: true, priority: 0 }],
+    trackerStats: [
+      {
+        announce: "https://torrent.ubuntu.com/announce",
+        host: "torrent.ubuntu.com",
+        seederCount: 1240,
+        leecherCount: 86,
+        lastAnnounceResult: "Success",
+      },
+    ],
+    seedRatioLimit: 2,
+    seedRatioMode: 0,
+    seedIdleLimit: 30,
+    seedIdleMode: 0,
+  },
+  {
+    hashString: "0000000000000000000000000000000000000b02",
+    name: "Debian 12.5.0 amd64 netinst",
+    totalSize: 3_900_000_000,
+    percentDone: 1,
+    rateDownload: 0,
+    rateUpload: 920_000,
+    eta: -1,
+    uploadRatio: 1.34,
+    status: 6,
+    downloadDir: "/downloads",
+    addedDate: 1_716_600_000,
+    doneDate: 1_716_690_000,
+    leftUntilDone: 0,
+    downloadedEver: 3_900_000_000,
+    uploadedEver: 5_226_000_000,
+    error: 0,
+    errorString: "",
+    labels: ["linux-isos"],
+    files: [
+      { name: "debian-12.5.0-amd64-netinst.iso", length: 3_900_000_000, bytesCompleted: 3_900_000_000 },
+    ],
+    fileStats: [{ bytesCompleted: 3_900_000_000, wanted: true, priority: 0 }],
+    trackerStats: [
+      {
+        announce: "https://bttracker.debian.org:6969/announce",
+        host: "bttracker.debian.org",
+        seederCount: 870,
+        leecherCount: 14,
+        lastAnnounceResult: "Success",
+      },
+    ],
+    seedRatioLimit: 2,
+    seedRatioMode: 0,
+    seedIdleLimit: 30,
+    seedIdleMode: 0,
+  },
+  {
+    hashString: "0000000000000000000000000000000000000c03",
+    name: "Arch Linux 2024.05.01 x86_64",
+    totalSize: 1_050_000_000,
+    percentDone: 0.5,
+    rateDownload: 0,
+    rateUpload: 0,
+    eta: -1,
+    uploadRatio: 0.4,
+    status: 0,
+    downloadDir: "/downloads",
+    addedDate: 1_716_500_000,
+    doneDate: 0,
+    leftUntilDone: 525_000_000,
+    downloadedEver: 525_000_000,
+    uploadedEver: 210_000_000,
+    error: 0,
+    errorString: "",
+    labels: [],
+    files: [
+      { name: "archlinux-2024.05.01-x86_64.iso", length: 1_050_000_000, bytesCompleted: 525_000_000 },
+    ],
+    fileStats: [{ bytesCompleted: 525_000_000, wanted: true, priority: 0 }],
+    trackerStats: [],
+    seedRatioLimit: 0,
+    seedRatioMode: 0,
+    seedIdleLimit: 0,
+    seedIdleMode: 0,
+  },
+];
+const DEMO_TRANSMISSION_STATS = {
+  downloadSpeed: 5_400_000,
+  uploadSpeed: 1_100_000,
+  "cumulative-stats": {
+    downloadedBytes: 850_000_000_000,
+    uploadedBytes: 420_000_000_000,
+  },
+};
+const DEMO_TRANSMISSION_SESSION = {
+  "speed-limit-down": 0,
+  "speed-limit-down-enabled": false,
+  "speed-limit-up": 500,
+  "speed-limit-up-enabled": true,
+  "alt-speed-down": 100,
+  "alt-speed-up": 50,
+  "alt-speed-enabled": false,
+};
+
 // Shared across radarr/sonarr/lidarr — the /diskspace payload is identical on
 // all three. Percentages chosen to exercise the amber (≥70%) and red (≥85%)
 // bar thresholds in demo screenshots.
@@ -1581,6 +1708,38 @@ export function getDemoResponse(
       }
       // load.start / load.raw_start / scalar setters → trivial OK.
       return DEMO_RTORRENT_SCALAR_OK_XML;
+    }
+    case "transmission": {
+      // Transmission dispatches off the JSON-RPC method name in the request
+      // body; the api returns getDemoResponse() verbatim as the `arguments`
+      // payload (plain objects, not strings — unlike rtorrent's XML).
+      let method = "";
+      let ids: unknown;
+      try {
+        const parsed = body ? (JSON.parse(body) as { method?: string; arguments?: { ids?: unknown } }) : undefined;
+        method = parsed?.method ?? "";
+        ids = parsed?.arguments?.ids;
+      } catch {
+        return undefined;
+      }
+      if (method === "torrent-get") {
+        // A detail fetch passes ids:[hash]; narrow so the detail screen gets the
+        // matching torrent. No ids → the whole library.
+        if (Array.isArray(ids) && ids.length > 0) {
+          const wanted = new Set(ids.map((h) => String(h).toLowerCase()));
+          return {
+            torrents: DEMO_TRANSMISSION_TORRENTS.filter((t) =>
+              wanted.has(t.hashString.toLowerCase()),
+            ),
+          };
+        }
+        return { torrents: DEMO_TRANSMISSION_TORRENTS };
+      }
+      if (method === "session-stats") return DEMO_TRANSMISSION_STATS;
+      if (method === "session-get") return DEMO_TRANSMISSION_SESSION;
+      // session-set / torrent-start / torrent-stop / torrent-remove /
+      // torrent-add / torrent-set / torrent-reannounce → empty success ack.
+      return {};
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
     case "emby":

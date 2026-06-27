@@ -79,6 +79,16 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     headers.set("Content-Type", "application/json");
     return;
   }
+  if (id === "transmission") {
+    // Optional HTTP Basic auth in front of the JSON-RPC mount. The session-id
+    // CSRF token is handled by services/transmission.ts, not here.
+    if (config.username || config.password) {
+      const encoded = Buffer.from(`${config.username ?? ""}:${config.password ?? ""}`).toString("base64");
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+    headers.set("Content-Type", "application/json");
+    return;
+  }
   if (id === "plex") {
     if (config.apiKey) {
       headers.set("X-Plex-Token", config.apiKey);
@@ -172,13 +182,19 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
   try {
-    // NZBGet rejects GET on /jsonrpc — every method (including version) is POST.
+    // NZBGet and Transmission reject GET on their RPC mount — both POST. NZBGet
+    // posts a JSON-RPC version call; Transmission posts session-get (a 409 CSRF
+    // challenge still counts as reachable since it's < 500).
     const isNzbget = config.id === "nzbget";
+    const isTransmission = config.id === "transmission";
+    const usePost = isNzbget || isTransmission;
     const res = await fetch(url, {
-      method: isNzbget ? "POST" : "GET",
+      method: usePost ? "POST" : "GET",
       body: isNzbget
         ? JSON.stringify({ version: "1.1", method: "version", params: [] })
-        : undefined,
+        : isTransmission
+          ? JSON.stringify({ method: "session-get" })
+          : undefined,
       headers,
       signal: controller.signal,
     });

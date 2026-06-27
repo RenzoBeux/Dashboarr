@@ -119,12 +119,14 @@ export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
   const sabInstances = useAttachedEnabledInstances("sabnzbd");
   const nzbgetInstances = useAttachedEnabledInstances("nzbget");
   const rtInstances = useAttachedEnabledInstances("rtorrent");
+  const transInstances = useAttachedEnabledInstances("transmission");
   const glancesInstances = useAttachedEnabledInstances("glances");
   const hasClients =
     qbitInstances.length +
       sabInstances.length +
       nzbgetInstances.length +
-      rtInstances.length >
+      rtInstances.length +
+      transInstances.length >
     0;
   const hasGlances = glancesInstances.length > 0;
   const source = resolveSpeedStatsSource(settings.source, hasClients, hasGlances);

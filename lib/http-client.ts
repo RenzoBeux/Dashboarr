@@ -414,6 +414,14 @@ export async function pingService(
       const encoded = btoa(`${secrets.username}:${secrets.password}`);
       headers.set("Authorization", `Basic ${encoded}`);
     }
+  } else if (serviceId === "transmission") {
+    // Transmission: optional HTTP Basic auth in front of the JSON-RPC mount.
+    // The ping POSTs session-get; the CSRF 409 still counts as reachable.
+    if (secrets.username && secrets.password) {
+      const encoded = btoa(`${secrets.username}:${secrets.password}`);
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+    headers.set("Content-Type", "application/json");
   } else if (serviceId === "sabnzbd") {
     // apikey already in query params
   } else if (serviceId === "tracearr") {
@@ -436,6 +444,7 @@ export async function pingService(
     // HTML, which would read as a false "online").
     const isNzbget = serviceId === "nzbget";
     const isRtorrent = serviceId === "rtorrent";
+    const isTransmission = serviceId === "transmission";
     let method = "GET";
     let body: string | undefined;
     if (isNzbget) {
@@ -446,6 +455,12 @@ export async function pingService(
       body =
         '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>';
       headers.set("Content-Type", "text/xml");
+    } else if (isTransmission) {
+      // No GET ping — POST session-get. A 409 (CSRF challenge) is < 500, so it
+      // still reads as reachable.
+      method = "POST";
+      body = JSON.stringify({ method: "session-get" });
+      headers.set("Content-Type", "application/json");
     }
     const response = await fetch(url, {
       method,
@@ -868,6 +883,44 @@ async function runConnectionProbe(
       return {
         kind: "unreachable",
         message: "Not an XML-RPC endpoint — check the URL points at /RPC2",
+      };
+    }
+
+    case "transmission": {
+      // Transmission has no GET endpoint — POST a tiny session-get to
+      // /transmission/rpc. HTTP Basic auth (if configured) is checked BEFORE
+      // the CSRF layer, so a wrong password → 401/403. A correct (or absent)
+      // credential with no CSRF token → 409 carrying X-Transmission-Session-Id,
+      // which both proves we reached Transmission AND that auth passed. A rare
+      // 200 with result:"success" (server not enforcing CSRF) is also ok.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const extra: Record<string, string> = { "Content-Type": "application/json" };
+      if (username || password) {
+        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+      }
+      const res = await fetch(url, {
+        method: "POST",
+        headers: makeHeaders(extra),
+        body: JSON.stringify({ method: "session-get" }),
+        signal,
+      });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong username or password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.status === 409 && res.headers.get("x-transmission-session-id"))
+        return { kind: "ok" };
+      if (res.ok) {
+        try {
+          const json = (await res.json()) as { result?: string } | null;
+          if (json?.result === "success") return { kind: "ok" };
+        } catch {
+          // fall through
+        }
+      }
+      return {
+        kind: "unreachable",
+        message: "Not a Transmission RPC endpoint — check the URL points at /transmission/rpc",
       };
     }
 
