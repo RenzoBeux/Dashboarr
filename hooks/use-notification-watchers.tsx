@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import {
   useDownloadingTorrentsForWatcher,
 } from "@/hooks/use-qbittorrent";
+import { useTransmissionTorrentsForWatcher } from "@/hooks/use-transmission";
 import { getTorrents } from "@/services/qbittorrent-api";
 import { useRadarrHistory } from "@/hooks/use-radarr";
 import { useSonarrHistory } from "@/hooks/use-sonarr";
@@ -22,6 +23,7 @@ import type {
   SonarrHistoryRecord,
   RadarrHistoryRecord,
 } from "@/lib/types";
+import type { UnifiedTorrent } from "@/lib/torrent-adapter";
 
 // Categories Radarr/Sonarr set on jobs they manage. The arr-specific watchers
 // already notify on those, so the download-client watchers skip them to avoid
@@ -85,6 +87,7 @@ export function NotificationWatchers() {
   const gate: BaseGate = { hydrated, enabled, backendActive };
 
   const qbInstances = useEnabledInstances("qbittorrent");
+  const transmissionInstances = useEnabledInstances("transmission");
   const sabInstances = useEnabledInstances("sabnzbd");
   const nzbgetInstances = useEnabledInstances("nzbget");
   const radarrInstances = useEnabledInstances("radarr");
@@ -101,6 +104,13 @@ export function NotificationWatchers() {
     <>
       {qbInstances.map((inst) => (
         <QbDownloadWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={liveActive("torrentCompleted", inst.id)}
+        />
+      ))}
+      {transmissionInstances.map((inst) => (
+        <TransmissionDownloadWatcher
           key={inst.id}
           instanceId={inst.id}
           active={liveActive("torrentCompleted", inst.id)}
@@ -212,6 +222,63 @@ function QbDownloadWatcher({
       }
     })();
   }, [downloading, active, instanceId]);
+
+  return null;
+}
+
+// --- Transmission: torrent downloading → completed ---
+// torrent-get can't filter by status server-side, so we poll the full library
+// (gated by `active`, and sharing the downloads screen's query key so it
+// dedupes) and track the downloading subset client-side. When a hash leaves
+// that subset we look it up in the SAME payload: now seeding / 100% → notify;
+// paused or gone → skip. No second fetch needed (unlike qBittorrent, whose
+// watcher only sees the downloading slice).
+function isTransmissionDownloading(t: UnifiedTorrent): boolean {
+  return t.status === "downloading" || t.status === "stalled";
+}
+function isTransmissionCompleted(t: UnifiedTorrent): boolean {
+  return t.status === "seeding" || t.progress >= 1;
+}
+function TransmissionDownloadWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: torrents } = useTransmissionTorrentsForWatcher(active, instanceId);
+  const prevDownloading = useRef<Map<string, UnifiedTorrent>>(new Map());
+
+  useEffect(() => {
+    if (!active) prevDownloading.current = new Map();
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (!Array.isArray(torrents)) return;
+
+    const byHash = new Map(torrents.map((t) => [t.hash, t]));
+    const currentDownloading = new Map(
+      torrents.filter(isTransmissionDownloading).map((t) => [t.hash, t]),
+    );
+    const prev = prevDownloading.current;
+    prevDownloading.current = currentDownloading;
+
+    for (const [hash, t] of prev) {
+      if (currentDownloading.has(hash)) continue;
+      const now = byHash.get(hash);
+      if (!now) continue; // deleted, not completed
+      if (!isTransmissionCompleted(now)) continue; // paused mid-download → skip
+      // Skip torrents managed by Radarr/Sonarr — they send their own, more
+      // informative notifications (label, not category, on Transmission).
+      if (isManagedByArr(t.label)) continue;
+      sendLocalNotification({
+        title: "Download complete",
+        body: now.name,
+        data: { type: "transmission", hash, instanceId },
+      });
+    }
+  }, [torrents, active, instanceId]);
 
   return null;
 }

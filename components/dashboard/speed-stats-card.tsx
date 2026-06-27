@@ -9,6 +9,7 @@ import {
 } from "@/components/dashboard/throughput-pill";
 import { getServerState } from "@/services/qbittorrent-api";
 import { getRtorrentGlobalStats } from "@/services/rtorrent-api";
+import { getTransmissionGlobalStats } from "@/services/transmission-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
 import { getNzbgetStatus } from "@/services/nzbget-api";
 import { getNet, selectInterfaces } from "@/services/glances-api";
@@ -37,6 +38,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const allSabInstances = useEnabledInstances("sabnzbd");
   const allNzbgetInstances = useEnabledInstances("nzbget");
   const allRtInstances = useEnabledInstances("rtorrent");
+  const allTransInstances = useEnabledInstances("transmission");
   const allGlancesInstances = useEnabledInstances("glances");
 
   // Scope each kind to the active workspace up front so the source / "is
@@ -46,6 +48,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const wsSab = scopeInstancesToWorkspace(allSabInstances, undefined, attached);
   const wsNzbget = scopeInstancesToWorkspace(allNzbgetInstances, undefined, attached);
   const wsRt = scopeInstancesToWorkspace(allRtInstances, undefined, attached);
+  const wsTrans = scopeInstancesToWorkspace(allTransInstances, undefined, attached);
   const wsGlances = scopeInstancesToWorkspace(allGlancesInstances, undefined, attached);
 
   // A widget shows exactly one source — download clients OR server network —
@@ -53,7 +56,8 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // NIC Glances reports. The selection is forced when only one kind is
   // configured (see resolveSpeedStatsSource).
   const hasClients =
-    wsQbit.length + wsSab.length + wsNzbget.length + wsRt.length > 0;
+    wsQbit.length + wsSab.length + wsNzbget.length + wsRt.length + wsTrans.length >
+    0;
   const source = resolveSpeedStatsSource(
     settings.source,
     hasClients,
@@ -95,6 +99,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
       )
     : [];
   const rtInstances = useClients ? wsRt : [];
+  const transInstances = useClients ? wsTrans : [];
   // Glances interfaces: received bytes → down pill, sent bytes → up pill.
   const glancesInstances = useNetwork
     ? scopeInstancesToWorkspace(
@@ -148,6 +153,17 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
+  // Transmission mirrors rtorrent: current dl/up rate + cumulative lifetime
+  // totals via session-stats, keyed ["transmission", id, "globalStats"] so the
+  // cache is shared with the adapter and the Downloads widget.
+  const transQueries = useQueries({
+    queries: transInstances.map((inst) => ({
+      queryKey: ["transmission", inst.id, "globalStats"] as const,
+      queryFn: () => getTransmissionGlobalStats(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
   // Shares the ["glances", id, "net"] key with the Server Stats widget and the
   // Glances screen, so the cache is reused across all three.
   const glancesQueries = useQueries({
@@ -168,6 +184,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     ...sabQueries,
     ...nzbgetQueries,
     ...rtQueries,
+    ...transQueries,
     ...glancesQueries,
   ]);
 
@@ -176,6 +193,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
       sabInstances.length +
       nzbgetInstances.length +
       rtInstances.length +
+      transInstances.length +
       glancesInstances.length >
     0;
 
@@ -261,6 +279,15 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     upSpeed += q.data.upSpeed;
     // rtorrent's global totals are cumulative since the rtorrent process
     // started, so fold them into the "total" bucket alongside qBit's alltime.
+    dlAlltime += q.data.dlTotalLifetime;
+    upAlltime += q.data.upTotalLifetime;
+  }
+  for (const q of transQueries) {
+    if (!q.data) continue;
+    dlSpeed += q.data.dlSpeed;
+    upSpeed += q.data.upSpeed;
+    // Transmission's cumulative-stats totals persist across restarts, so they
+    // belong in the same "total" (alltime) bucket as qBit/rtorrent.
     dlAlltime += q.data.dlTotalLifetime;
     upAlltime += q.data.upTotalLifetime;
   }

@@ -9,6 +9,7 @@ import { z } from "zod";
 export const SERVICE_IDS = [
   "qbittorrent",
   "rtorrent",
+  "transmission",
   "sabnzbd",
   "nzbget",
   "radarr",
@@ -221,6 +222,7 @@ export const deviceRegisterSchema = z.object({
 export const SERVICE_API_BASE: Record<ServiceId, string> = {
   qbittorrent: "/api/v2",
   rtorrent: "/RPC2",
+  transmission: "/transmission/rpc",
   sabnzbd: "/api",
   nzbget: "/jsonrpc",
   radarr: "/api/v3",
@@ -243,6 +245,9 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // rTorrent is XML-RPC over the /RPC2 mount; there is no GET ping path (the
   // app pings it with an XML-RPC POST). No backend poller uses this today.
   rtorrent: "",
+  // Transmission is JSON-RPC over /transmission/rpc; the ping POSTs session-get
+  // (see pingService), so there is no GET ping path.
+  transmission: "",
   // SAB has no path-based ping endpoint — pingService synthesises ?mode=version.
   sabnzbd: "",
   // NZBGet uses JSON-RPC POST to /jsonrpc; ping logic POSTs the version method.

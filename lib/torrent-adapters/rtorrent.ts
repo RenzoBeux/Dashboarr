@@ -17,6 +17,7 @@ import {
   addRtorrentTorrent,
 } from "@/services/rtorrent-api";
 import { RtorrentSpeedLimitsControl } from "@/components/rtorrent/speed-limits-control";
+import { applyFilterSort } from "@/lib/torrent-adapters/client-filter-sort";
 import type {
   TorrentAdapter,
   TorrentGlobalStats,
@@ -26,50 +27,9 @@ import type {
 } from "@/lib/torrent-adapter";
 
 // rtorrent fetches the whole library in one d.multicall2, so filter + sort are
-// applied client-side (the qBittorrent adapter does these server-side). The
-// list query key deliberately omits the filter/sort so changing them never
-// triggers a refetch — exactly the Usenet-view model.
-function applyFilterSort(
-  list: UnifiedTorrent[],
-  opts: TorrentListFilter,
-): UnifiedTorrent[] {
-  let out = list;
-  if (opts.filter !== "all") {
-    out = out.filter((t) => {
-      switch (opts.filter) {
-        case "downloading":
-          return t.status === "downloading" || t.status === "stalled";
-        case "seeding":
-          return t.status === "seeding";
-        case "completed":
-          return t.progress >= 1;
-        case "paused":
-          return t.status === "paused";
-        default:
-          return true;
-      }
-    });
-  }
-  const sorted = [...out];
-  switch (opts.sort) {
-    case "progress-desc":
-      sorted.sort((a, b) => b.progress - a.progress);
-      break;
-    case "progress-asc":
-      sorted.sort((a, b) => a.progress - b.progress);
-      break;
-    case "name-asc":
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-      break;
-    case "size-desc":
-      sorted.sort((a, b) => b.sizeBytes - a.sizeBytes);
-      break;
-    case "added-desc":
-      sorted.sort((a, b) => b.addedOn - a.addedOn);
-      break;
-  }
-  return sorted;
-}
+// applied client-side via the shared applyFilterSort helper (the qBittorrent
+// adapter does these server-side). The list query key deliberately omits the
+// filter/sort so changing them never triggers a refetch — the Usenet-view model.
 
 export const rtorrentTorrentAdapter: TorrentAdapter = {
   serviceId: "rtorrent",

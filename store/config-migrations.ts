@@ -126,8 +126,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v32 — optional top-level `treatVpnAsHome` boolean: opt-in "VPN connected
  *         counts as home" (#185). Pure version stamp — absent means false on
  *         import.
+ *   v33 — added the transmission service entry (#132). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         transmission instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 32;
+export const CURRENT_CONFIG_VERSION = 33;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -616,6 +620,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // missing entries fall back to DEFAULT_NOTIFICATION_SETTINGS at hydrate time.
   30: (payload) => ({ ...payload, version: 31 }),
   31: (payload) => ({ ...payload, version: 32 }),
+  // v32 → v33: added the transmission service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled transmission instance at import.
+  32: (payload) => ({ ...payload, version: 33 }),
 };
 
 /**

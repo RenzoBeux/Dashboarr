@@ -32,8 +32,10 @@ import {
   type GetTorrentsOptions,
 } from "@/services/qbittorrent-api";
 import { getRtorrentTorrents } from "@/services/rtorrent-api";
+import { getTransmissionTorrents } from "@/services/transmission-api";
 import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
 import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
+import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
 import type { TorrentStatus, UnifiedTorrent } from "@/lib/torrent-adapter";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -50,7 +52,7 @@ const ETA_UNKNOWN = 8640000;
 // native classifier (so qBittorrent's exact grouping is preserved) and the rest
 // of the card operates uniformly on these rows.
 interface DownloadRow {
-  serviceId: "qbittorrent" | "rtorrent";
+  serviceId: "qbittorrent" | "rtorrent" | "transmission";
   instanceId: string;
   hash: string;
   name: string;
@@ -146,6 +148,25 @@ function rtRow(t: UnifiedTorrent, instanceId: string): DownloadRow {
   };
 }
 
+// Transmission shares rtorrent's normalized UnifiedTorrent shape and status
+// classifier; unlike rtorrent it has a detail screen, so rows drill in.
+function transRow(t: UnifiedTorrent, instanceId: string): DownloadRow {
+  return {
+    serviceId: "transmission",
+    instanceId,
+    hash: t.hash,
+    name: t.name,
+    progress: t.progress,
+    dlSpeed: t.dlSpeed,
+    upSpeed: t.upSpeed,
+    eta: t.eta,
+    addedOn: t.addedOn,
+    isPaused: t.status === "paused",
+    group: classifyRtStatus(t.status, t.progress),
+    canDrillIn: true,
+  };
+}
+
 function compareRows(a: DownloadRow, b: DownloadRow, sortBy: DownloadsSortBy): number {
   switch (sortBy) {
     case "speed":
@@ -222,6 +243,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   // attached enabled rtorrent instance, fetched in full (rtorrent returns the
   // whole library in one call) and classified/sorted/capped client-side below.
   const rtInstances = useWorkspaceScopedInstances("rtorrent", undefined);
+  // Transmission, like rtorrent, has no per-widget instance binding yet and
+  // returns the whole library in one torrent-get call.
+  const transInstances = useWorkspaceScopedInstances("transmission", undefined);
 
   const qbQueries = useQueries({
     queries: qbInstances.map((inst) => ({
@@ -235,6 +259,14 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
     queries: rtInstances.map((inst) => ({
       queryKey: ["rtorrent", inst.id, "torrents", "all"] as const,
       queryFn: () => getRtorrentTorrents(inst.id),
+      refetchInterval: POLLING_INTERVALS.activeTorrents,
+      enabled: true,
+    })),
+  });
+  const transQueries = useQueries({
+    queries: transInstances.map((inst) => ({
+      queryKey: ["transmission", inst.id, "torrents", "all"] as const,
+      queryFn: () => getTransmissionTorrents(inst.id),
       refetchInterval: POLLING_INTERVALS.activeTorrents,
       enabled: true,
     })),
@@ -254,9 +286,11 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState([
     ...qbQueries,
     ...rtQueries,
+    ...transQueries,
   ]);
 
-  const totalInstances = qbInstances.length + rtInstances.length;
+  const totalInstances =
+    qbInstances.length + rtInstances.length + transInstances.length;
 
   // Tag each torrent with its source so per-tile actions hit the right client.
   const rows: DownloadRow[] = [
@@ -265,6 +299,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
     ),
     ...rtQueries.flatMap((q, i) =>
       (q.data ?? []).map((t) => rtRow(t, rtInstances[i].id)),
+    ),
+    ...transQueries.flatMap((q, i) =>
+      (q.data ?? []).map((t) => transRow(t, transInstances[i].id)),
     ),
   ];
 
@@ -345,7 +382,11 @@ function TorrentTile({
   // serviceId is fixed per tile (the row key includes it), so the adapter ref —
   // and thus its hooks — stays stable across this tile's renders.
   const adapter =
-    row.serviceId === "rtorrent" ? rtorrentTorrentAdapter : qbittorrentTorrentAdapter;
+    row.serviceId === "rtorrent"
+      ? rtorrentTorrentAdapter
+      : row.serviceId === "transmission"
+        ? transmissionTorrentAdapter
+        : qbittorrentTorrentAdapter;
   // Mutations are scoped to the source instance so a Pause tap on a tile from
   // instance A doesn't pause a same-hash torrent on instance B.
   const pauseMutation = adapter.usePauseTorrent(row.instanceId);
@@ -396,7 +437,9 @@ function TorrentTile({
       }
       mediaType={posterEntry?.mediaType}
       fallbackIcon={!posterEntry ? Download : undefined}
-      onPress={row.canDrillIn ? () => router.push(`/torrent/${row.hash}`) : undefined}
+      onPress={
+        row.canDrillIn ? () => router.push(adapter.detailRoute(row.hash)) : undefined
+      }
     />
   );
 }

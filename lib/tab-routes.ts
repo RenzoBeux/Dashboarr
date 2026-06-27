@@ -91,7 +91,13 @@ export function serviceForTab(tab: PickableServiceTab): ServiceId | null {
   return TAB_TO_SERVICES[tab]?.[0] ?? null;
 }
 
-const DOWNLOAD_KINDS: ServiceId[] = ["qbittorrent", "rtorrent", "sabnzbd", "nzbget"];
+const DOWNLOAD_KINDS: ServiceId[] = [
+  "qbittorrent",
+  "rtorrent",
+  "transmission",
+  "sabnzbd",
+  "nzbget",
+];
 const CALENDAR_KINDS: ServiceId[] = ["sonarr", "radarr"];
 
 // Decide which tabs are even pickable for a dashboard, given its attached

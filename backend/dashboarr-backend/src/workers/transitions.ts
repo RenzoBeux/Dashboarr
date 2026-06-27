@@ -2,6 +2,7 @@ import { getState, setState } from "../db/repos/seen-state.js";
 import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
+import type { TransmissionTorrent } from "../services/transmission.js";
 import type { SabHistorySlot } from "../services/sabnzbd.js";
 import type { NzbgetHistoryItem } from "../services/nzbget.js";
 import type { NotificationCategory } from "../types.js";
@@ -110,6 +111,59 @@ export async function diffQbTorrents(
         body: t.name,
         data: { type: "torrent", hash: t.hash, instanceId },
         dedupeKey: `qbt:${instanceId}:completed:${t.hash}`,
+      });
+    }
+  }
+}
+
+// ---------------- Transmission ----------------
+
+// Transmission `status`: 3 = queued to download, 4 = downloading. percentDone is
+// the authoritative completion signal (a torrent that finishes and immediately
+// stops becomes status 0, so status alone can't tell "done" from "paused").
+function isTransmissionDownloading(t: { status: number; percentDone: number }): boolean {
+  return t.percentDone < 1 && (t.status === 3 || t.status === 4);
+}
+function isTransmissionCompleted(t: { percentDone: number }): boolean {
+  return t.percentDone >= 1;
+}
+
+interface TransmissionSnapshot {
+  [hash: string]: { name: string; status: number; percentDone: number };
+}
+
+export async function diffTransmissionTorrents(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  torrents: TransmissionTorrent[],
+): Promise<void> {
+  const key = `transmission:${instanceId}:hashes:downloading`;
+  const prev = getState<TransmissionSnapshot>(key);
+  const next: TransmissionSnapshot = {};
+  for (const t of torrents) {
+    next[t.hash] = { name: t.name, status: t.status, percentDone: t.percentDone };
+  }
+
+  // Persist first, dispatch after.
+  setState(key, next);
+  if (!prev) return;
+
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+
+  for (const t of torrents) {
+    const before = prev[t.hash];
+    if (before && isTransmissionDownloading(before) && isTransmissionCompleted(t)) {
+      // Skip torrents managed by Radarr/Sonarr — those services notify
+      // themselves. Transmission carries the *arr name as a label, not category.
+      if (isManagedByArr(t.labels[0] ?? "")) continue;
+
+      await dispatchPush({
+        category: "torrentCompleted",
+        title: `${prefix}Download complete`,
+        body: t.name,
+        data: { type: "transmission", hash: t.hash, instanceId },
+        dedupeKey: `transmission:${instanceId}:completed:${t.hash}`,
       });
     }
   }
