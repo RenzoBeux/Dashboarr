@@ -38,7 +38,7 @@ export function activeBaseUrl(config: StoredServiceConfig): string {
 // `new URL("/api/v3", base)` discards base.pathname per spec, which breaks
 // reverse-proxy bases like http://host/radarr. Concatenate explicitly so the
 // proxy prefix survives, then parse to attach searchParams.
-function buildUrl(
+export function buildUrl(
   baseUrl: string,
   apiBase: string,
   path: string,
