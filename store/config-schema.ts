@@ -14,7 +14,7 @@ import type {
   WakeOnLanDevice,
   WidgetSlot,
 } from "@/store/config-store";
-import type { NotificationSettings, NotifCategory } from "@/store/config-store";
+import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/store/config-store";
 import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { MAX_PINNED_TABS } from "@/lib/tab-routes";
 
@@ -305,6 +305,25 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     }
     if (Object.keys(perInstance).length > 0) {
       out.perInstance = perInstance;
+    }
+  }
+  // v34: optional Apprise sink. Mirror the "drop unknown categories" philosophy
+  // used for perInstance above — a malformed `apprise` is silently dropped rather
+  // than failing the ENTIRE config import (services, secrets, dashboards…) over
+  // one optional field. The live UI stores the URL without scheme validation, so
+  // a legitimate backup can carry a value this importer would otherwise reject;
+  // don't strand the whole restore on it. A missing `apprise` is fine (older
+  // export) and falls back to "unset" at hydrate time.
+  if (isPlainObject(v.apprise)) {
+    const a = v.apprise;
+    if (
+      typeof a.enabled === "boolean" &&
+      isHttpUrlOrEmpty(a.url) &&
+      typeof a.tags === "string" &&
+      a.tags.length <= 256
+    ) {
+      const apprise: AppriseConfig = { enabled: a.enabled, url: a.url, tags: a.tags };
+      out.apprise = apprise;
     }
   }
   return out as NotificationSettings;

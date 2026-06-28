@@ -12,15 +12,18 @@ import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { toast, toastError } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useBackendStore } from "@/store/backend-store";
+import { useConfigStore } from "@/store/config-store";
 import {
   getBackendHealth,
   pairClaim,
   pushConfigSnapshot,
+  testApprise,
   testPush,
   unregisterDevice,
 } from "@/services/backend-api";
 import { getExpoPushToken, hasProjectId } from "@/lib/expo-push";
 import { normalizeServiceUrl } from "@/lib/url-validation";
+import { Toggle } from "@/components/ui/toggle";
 
 type Mode = "summary" | "scanning" | "manual";
 
@@ -150,6 +153,60 @@ export default function BackendScreen() {
     }
   }, []);
 
+  // --- Apprise (issue #220) ---
+  // Local-edit the fields and commit the whole object to the store on blur /
+  // toggle, so we don't write AsyncStorage on every keystroke. The store change
+  // auto-syncs to the backend via ConfigSyncBridge (debounced).
+  const storedApprise = useConfigStore((s) => s.notificationSettings.apprise);
+  const setNotificationSetting = useConfigStore((s) => s.setNotificationSetting);
+  const [appriseEnabled, setAppriseEnabled] = useState(storedApprise?.enabled ?? false);
+  const [appriseUrl, setAppriseUrl] = useState(storedApprise?.url ?? "");
+  const [appriseTags, setAppriseTags] = useState(storedApprise?.tags ?? "");
+  const [appriseBusy, setAppriseBusy] = useState(false);
+
+  const commitApprise = useCallback(
+    (next: { enabled: boolean; url: string; tags: string }) => {
+      setNotificationSetting("apprise", next);
+    },
+    [setNotificationSetting],
+  );
+
+  const handleAppriseToggle = useCallback(
+    (value: boolean) => {
+      setAppriseEnabled(value);
+      commitApprise({ enabled: value, url: appriseUrl, tags: appriseTags });
+    },
+    [appriseUrl, appriseTags, commitApprise],
+  );
+
+  const handleAppriseUrlBlur = useCallback(() => {
+    const normalized = normalizeServiceUrl(appriseUrl);
+    setAppriseUrl(normalized);
+    commitApprise({ enabled: appriseEnabled, url: normalized, tags: appriseTags });
+  }, [appriseEnabled, appriseUrl, appriseTags, commitApprise]);
+
+  const handleAppriseTagsBlur = useCallback(() => {
+    commitApprise({ enabled: appriseEnabled, url: appriseUrl, tags: appriseTags });
+  }, [appriseEnabled, appriseUrl, appriseTags, commitApprise]);
+
+  const handleAppriseTest = useCallback(async () => {
+    // Persist + flush immediately so the backend tests against the latest URL,
+    // bypassing the ConfigSyncBridge debounce.
+    const normalized = normalizeServiceUrl(appriseUrl);
+    setAppriseUrl(normalized);
+    commitApprise({ enabled: appriseEnabled, url: normalized, tags: appriseTags });
+    setAppriseBusy(true);
+    try {
+      await pushConfigSnapshot();
+      await testApprise();
+      toast("Apprise test sent", "success");
+    } catch (err) {
+      toastError("Apprise test failed", err);
+    } finally {
+      setAppriseBusy(false);
+    }
+  }, [appriseEnabled, appriseUrl, appriseTags, commitApprise]);
+
   const handleUnpair = useCallback(() => setConfirmUnpair(true), []);
 
   const performUnpair = useCallback(async () => {
@@ -255,6 +312,48 @@ export default function BackendScreen() {
                   className="flex-1"
                 />
               </View>
+
+              <Card className="gap-3 mb-3">
+                <Toggle
+                  label="Apprise notifications"
+                  description="Also send to Discord, Telegram, ntfy, email… via an Apprise server"
+                  value={appriseEnabled}
+                  onValueChange={handleAppriseToggle}
+                />
+                {appriseEnabled ? (
+                  <>
+                    <TextInput
+                      label="Apprise notify URL"
+                      placeholder="http://192.168.1.50:8000/notify/dashboarr"
+                      value={appriseUrl}
+                      onChangeText={setAppriseUrl}
+                      onBlur={handleAppriseUrlBlur}
+                      keyboardType="url"
+                      autoCapitalize="none"
+                    />
+                    <TextInput
+                      label="Tags (optional)"
+                      placeholder="phone,important"
+                      value={appriseTags}
+                      onChangeText={setAppriseTags}
+                      onBlur={handleAppriseTagsBlur}
+                      autoCapitalize="none"
+                    />
+                    <Text className="text-zinc-500 text-xs">
+                      Add your notification services in the Apprise server's own config UI under a
+                      key, then paste its full /notify/&lt;key&gt; URL here. Tags filter which saved
+                      URLs fire (leave blank for all).
+                    </Text>
+                    <Button
+                      label="Send Apprise test"
+                      variant="outline"
+                      onPress={handleAppriseTest}
+                      loading={appriseBusy}
+                      disabled={!appriseUrl.trim()}
+                    />
+                  </>
+                ) : null}
+              </Card>
 
               <Pressable onPress={handleRotate} disabled={busy} className="active:opacity-80 mb-3">
                 <Card className="flex-row items-center justify-center gap-2">
