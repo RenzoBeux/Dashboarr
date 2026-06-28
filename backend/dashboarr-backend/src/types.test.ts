@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { configPayloadSchema, DEFAULT_NOTIFICATION_SETTINGS } from "./types.js";
+import {
+  configPayloadSchema,
+  notificationSettingsSchema,
+  DEFAULT_NOTIFICATION_SETTINGS,
+} from "./types.js";
 
 /**
  * Regression guard for the bug where the app sends a config entry for a service
@@ -53,4 +57,39 @@ test("a payload with only unknown kinds still parses to an empty instances list"
   assert.equal(result.success, true);
   if (!result.success) return;
   assert.equal(result.data.instances?.length, 0);
+});
+
+// Apprise (issue #220) — the notifications schema gained an optional `apprise`
+// config object. A pre-Apprise client omits it; a newer one sends the full shape.
+
+test("notifications without apprise still parse (back-compat)", () => {
+  const result = notificationSettingsSchema.safeParse(DEFAULT_NOTIFICATION_SETTINGS);
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.apprise, undefined);
+});
+
+test("notifications with a full apprise config parse", () => {
+  const result = notificationSettingsSchema.safeParse({
+    ...DEFAULT_NOTIFICATION_SETTINGS,
+    apprise: { enabled: true, url: "http://host:8000/notify/dashboarr", tags: "phone" },
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.data.apprise, {
+    enabled: true,
+    url: "http://host:8000/notify/dashboarr",
+    tags: "phone",
+  });
+});
+
+test("apprise sub-fields default when partially provided", () => {
+  const result = notificationSettingsSchema.safeParse({
+    ...DEFAULT_NOTIFICATION_SETTINGS,
+    apprise: { url: "http://host:8000/notify/dashboarr" },
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.apprise?.enabled, false);
+  assert.equal(result.data.apprise?.tags, "");
 });

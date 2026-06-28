@@ -167,6 +167,15 @@ export function testPush(): Promise<void> {
 }
 
 /**
+ * Fire an Apprise-only test from the backend. Unlike testPush this hits a
+ * dedicated endpoint that returns the real success/failure, so the caller can
+ * surface why it failed (unreachable server, unknown key, bad tag).
+ */
+export function testApprise(): Promise<void> {
+  return request<void>("/notifications/apprise/test", { method: "POST" });
+}
+
+/**
  * Build a config payload from the app stores and push it to the backend.
  * Called on pairing and debounced after any config/notification change.
  *
@@ -212,6 +221,7 @@ export function pushConfigSnapshot(): Promise<void> {
     serviceOffline,
     overseerrNewRequest,
     perInstance,
+    apprise,
   } = configState.notificationSettings;
 
   return request<void>("/config", {
@@ -230,6 +240,9 @@ export function pushConfigSnapshot(): Promise<void> {
         // v21: per-instance overrides. Sent as `undefined` when no overrides
         // exist so the backend treats it the same as a pre-v21 client.
         perInstance,
+        // v34: Apprise sink config. Sent as `undefined` when unset so older
+        // backends ignore it.
+        apprise,
       },
     }),
   });

@@ -212,6 +212,16 @@ export type NotifCategory =
   | "tracearrStreamStarted"
   | "tracearrStreamStopped";
 
+// v34 (issue #220): optional Apprise sink. Persistent config-key model — the
+// user configures their service URLs in the Apprise server's own UI under a key
+// and stores only the full notify endpoint (e.g. http://host:8000/notify/
+// dashboarr) plus an optional tag filter here. No service secrets live in the app.
+export interface AppriseConfig {
+  enabled: boolean;
+  url: string;
+  tags: string;
+}
+
 export interface NotificationSettings {
   enabled: boolean;
   torrentCompleted: boolean;
@@ -233,6 +243,8 @@ export interface NotificationSettings {
   // "notify me from the primary Radarr but stay silent from the testing one"
   // without splitting the global toggles per kind.
   perInstance?: Record<string, Partial<Record<NotifCategory, boolean>>>;
+  // v34: Apprise notification sink (additive to Expo push). undefined = unset.
+  apprise?: AppriseConfig;
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {

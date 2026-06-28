@@ -122,6 +122,28 @@ export const perInstanceOverridesSchema = z
   .record(z.string().min(1), z.record(notifCategoryEnum, z.boolean()))
   .optional();
 
+// Apprise (issue #220): a second notification sink alongside Expo push. We use
+// the persistent config-key model — the user saves their service URLs in the
+// caronc/apprise server's own config UI under a key, and stores only the full
+// notify endpoint here (e.g. http://host:8000/notify/dashboarr) plus an optional
+// tag filter. Secrets never touch this DB. Persisted as a JSON blob in `kv`
+// (key "notification.apprise"), like perInstance, since notification_settings is
+// strictly key→boolean.
+export const appriseConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    // Same http(s)-or-empty guard as every service URL (httpUrlOrEmpty above):
+    // this is the one stored URL the backend itself fetch()es, so a compromised
+    // or misconfigured paired device must not be able to point it at another
+    // scheme (SSRF guard). Length-capped like sharedServiceFields against a
+    // multi-MB blob being JSON-stringified into the `kv` table.
+    url: httpUrlOrEmpty.pipe(z.string().max(2048)).default(""),
+    tags: z.string().max(256).default(""),
+  })
+  .optional();
+
+export type AppriseConfig = NonNullable<z.infer<typeof appriseConfigSchema>>;
+
 export const notificationSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   torrentCompleted: z.boolean().default(true),
@@ -140,6 +162,7 @@ export const notificationSettingsSchema = z.object({
   tracearrStreamStarted: z.boolean().default(false),
   tracearrStreamStopped: z.boolean().default(false),
   perInstance: perInstanceOverridesSchema,
+  apprise: appriseConfigSchema,
 });
 
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;

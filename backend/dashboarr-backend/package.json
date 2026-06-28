@@ -10,7 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "tsx --test src/types.test.ts src/services/qbittorrent.test.ts",
+    "test": "tsx --test src/types.test.ts src/services/qbittorrent.test.ts src/push/apprise.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

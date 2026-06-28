@@ -180,8 +180,9 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/pair/claim` | one-time token in body | Exchange token + push token for shared secret |
 | `POST` | `/device/register` | bearer | Refresh push token on reinstall |
 | `POST` | `/device/unregister` | bearer | Remove this device |
-| `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers. Accepts the multi-instance shape `{ instances: [{ id, kind, … }], notifications }` and the legacy `{ services: [{ id, … }], notifications }` shape for back-compat |
-| `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices |
+| `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers. Accepts the multi-instance shape `{ instances: [{ id, kind, … }], notifications }` and the legacy `{ services: [{ id, … }], notifications }` shape for back-compat. `notifications` may include an optional `apprise: { enabled, url, tags }` block (see Apprise below) |
+| `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices (also fans out to Apprise when enabled) |
+| `POST` | `/notifications/apprise/test` | bearer | Send a test notification to Apprise only; returns the real success/failure |
 | `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred). Optional `?instance=<uuid>` for per-instance attribution |
 | `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
 | `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook. Optional `?instance=<uuid>` |
@@ -292,6 +293,35 @@ ones. The instance namespace prevents two enabled instances of the same kind
 from collapsing each other's events when they happen to share an upstream id
 (e.g. two Radarrs both grabbing the same release via the same qBittorrent
 hash).
+
+---
+
+## Apprise delivery (optional second sink)
+
+Every notification can additionally fan out to an [Apprise](https://github.com/caronc/apprise)
+API server (the `caronc/apprise` container), so events reach Discord, Telegram,
+ntfy, email, Matrix, etc. — not just Expo push. It's **additive**: Expo push
+keeps working, and Apprise honors the same global + per-category toggles. It even
+fires when no phone is paired.
+
+We use the **persistent config-key model**: configure your service URLs in the
+Apprise server's own config UI under a key (e.g. `dashboarr`), then point
+Dashboarr at the full notify endpoint. No service secrets are stored in this
+backend's DB — only the notify URL + an optional tag filter, sent in
+`notifications.apprise`:
+
+```jsonc
+"apprise": {
+  "enabled": true,
+  "url": "http://apprise:8000/notify/dashboarr", // full /notify/{KEY} endpoint
+  "tags": ""                                       // optional Apprise tag filter
+}
+```
+
+The backend POSTs `{ title, body, type: "info", format: "text", tag? }` to that
+URL. Apprise returns `200` on success, `204` if no config is saved under the key,
+and `424` if delivery failed or no saved URL matched the tag. Configure it from
+the app (Settings → Backend → Apprise) and use **Send Apprise test** to verify.
 
 ---
 

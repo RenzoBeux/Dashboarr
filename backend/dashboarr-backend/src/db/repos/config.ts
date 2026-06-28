@@ -1,5 +1,5 @@
 import { getDb } from "../client.js";
-import type { ServiceId, NotificationSettings, NotifCategory } from "../../types.js";
+import type { ServiceId, NotificationSettings, NotifCategory, AppriseConfig } from "../../types.js";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "../../types.js";
 import type { StoredServiceInstance } from "./service-instance.js";
 
@@ -11,6 +11,7 @@ import type { StoredServiceInstance } from "./service-instance.js";
  */
 
 const PER_INSTANCE_KV_KEY = "notification.perInstance";
+const APPRISE_KV_KEY = "notification.apprise";
 
 export function saveNotificationSettings(settings: NotificationSettings): void {
   const db = getDb();
@@ -19,7 +20,9 @@ export function saveNotificationSettings(settings: NotificationSettings): void {
       "INSERT OR REPLACE INTO notification_settings (key, enabled) VALUES (?, ?)",
     );
     for (const [k, v] of Object.entries(settings)) {
-      if (k === "perInstance") continue; // handled separately below
+      // Non-boolean fields are stored as JSON blobs in `kv` below, not as
+      // key→boolean rows here.
+      if (k === "perInstance" || k === "apprise") continue;
       stmt.run(k, v ? 1 : 0);
     }
 
@@ -30,6 +33,17 @@ export function saveNotificationSettings(settings: NotificationSettings): void {
       );
     } else {
       db.prepare("DELETE FROM kv WHERE key = ?").run(PER_INSTANCE_KV_KEY);
+    }
+
+    // Persist Apprise config whenever a notify URL is present (even if disabled,
+    // so toggling off doesn't drop the URL). Cleared when no URL is set.
+    if (settings.apprise && settings.apprise.url) {
+      db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)").run(
+        APPRISE_KV_KEY,
+        JSON.stringify(settings.apprise),
+      );
+    } else {
+      db.prepare("DELETE FROM kv WHERE key = ?").run(APPRISE_KV_KEY);
     }
   });
   tx();
@@ -61,6 +75,20 @@ export function loadNotificationSettings(): NotificationSettings {
     } catch {
       // Malformed JSON in kv — drop it silently rather than crash the
       // dispatcher. Next saveNotificationSettings call rewrites it.
+    }
+  }
+
+  const appriseRow = getDb()
+    .prepare<[string], { value: string }>("SELECT value FROM kv WHERE key = ?")
+    .get(APPRISE_KV_KEY);
+  if (appriseRow?.value) {
+    try {
+      const parsed = JSON.parse(appriseRow.value);
+      if (parsed && typeof parsed === "object") {
+        result.apprise = parsed as AppriseConfig;
+      }
+    } catch {
+      // Malformed JSON — drop silently, same rationale as perInstance above.
     }
   }
 

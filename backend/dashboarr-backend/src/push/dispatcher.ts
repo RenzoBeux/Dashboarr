@@ -2,6 +2,7 @@ import { listActiveDevices } from "../db/repos/devices.js";
 import { loadNotificationSettings } from "../db/repos/config.js";
 import { claimEvent } from "../db/repos/seen-state.js";
 import { sendExpoPush } from "./expo.js";
+import { sendApprise } from "./apprise.js";
 import type { ExpoPushMessage } from "./expo.js";
 import type { PushEvent } from "../types.js";
 
@@ -37,21 +38,36 @@ export async function dispatchPush(event: PushEvent): Promise<void> {
     if (!isFirst) return;
   }
 
+  // Expo push sink — fan out to every paired device, if any. Skipped (but the
+  // Apprise sink below still runs) when no device is paired.
   const devices = listActiveDevices();
-  if (devices.length === 0) return;
+  if (devices.length > 0) {
+    const messages: ExpoPushMessage[] = devices.map((device) => ({
+      to: device.expoPushToken,
+      title: event.title,
+      body: event.body,
+      data: {
+        ...(event.data ?? {}),
+        category: event.category,
+      },
+      sound: "default",
+      channelId: "dashboarr-default",
+      priority: "high",
+    }));
+    await sendExpoPush(messages);
+  }
 
-  const messages: ExpoPushMessage[] = devices.map((device) => ({
-    to: device.expoPushToken,
-    title: event.title,
-    body: event.body,
-    data: {
-      ...(event.data ?? {}),
-      category: event.category,
-    },
-    sound: "default",
-    channelId: "dashboarr-default",
-    priority: "high",
-  }));
-
-  await sendExpoPush(messages);
+  // Apprise sink (issue #220) — independent of Expo. Truly fire-and-forget: we
+  // deliberately do NOT await it, so a flaky/black-holed Apprise server (e.g. a
+  // wrong LAN IP that drops packets, hanging the full 10s timeout) never delays
+  // the dispatcher. That matters because every caller awaits dispatchPush — the
+  // webhook handlers return their HTTP reply after it, and the poller transition
+  // loop awaits it per item — so blocking here would stall those paths. Errors
+  // are swallowed + logged via .catch (never retried; see the dedupe note above).
+  const apprise = settings.apprise;
+  if (apprise?.enabled && apprise.url) {
+    void sendApprise(apprise, { title: event.title, body: event.body }).catch(
+      (err) => console.warn("[apprise] send failed:", err),
+    );
+  }
 }

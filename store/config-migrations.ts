@@ -130,8 +130,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         transmission instance at import time, so older exports just need the
  *         version field bumped.
+ *   v34 — added optional Apprise notification config (#220). Pure version stamp —
+ *         coerceNotificationSettings treats `apprise` as optional, so older
+ *         exports without it validate and fall back to "unset" at hydrate time.
  */
-export const CURRENT_CONFIG_VERSION = 33;
+export const CURRENT_CONFIG_VERSION = 34;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -623,6 +626,10 @@ const migrations: Record<number, (payload: any) => any> = {
   // v32 → v33: added the transmission service entry. Pure version stamp —
   // defaultInstances() backfills a disabled transmission instance at import.
   32: (payload) => ({ ...payload, version: 33 }),
+  // v33 → v34: added optional Apprise notification config. Pure version stamp —
+  // `apprise` is optional, so older exports without it validate and default to
+  // "unset" at hydrate time.
+  33: (payload) => ({ ...payload, version: 34 }),
 };
 
 /**
