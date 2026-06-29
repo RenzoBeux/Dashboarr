@@ -3,6 +3,16 @@ name: Release backend image
 # Publishes the dashboarr-backend Docker image to GHCR (always) and
 # Docker Hub (only if DOCKERHUB_USERNAME + DOCKERHUB_TOKEN secrets are set).
 #
+# Each architecture is built on its OWN native runner (amd64 + arm64) and the
+# per-arch results are merged into one multi-arch manifest. We deliberately do
+# NOT emulate arm64 with QEMU: an emulated `npm ci` (it compiles the native
+# better-sqlite3 addon) intermittently dies with
+#   qemu: uncaught target signal 4 (Illegal instruction) - core dumped
+# and then HANGS until the 6h job limit, so the release is silently skipped and
+# `latest` is left stuck on the previous version (issue #255 — backend-v1.2.5
+# never published this way). Native runners build the same image in ~1 min, the
+# same approach ci-backend.yml already uses for its build check.
+#
 # Triggers:
 #   - Push a tag like `backend-v0.1.0` (recommended — keeps backend releases
 #     independent of app releases).
@@ -23,19 +33,90 @@ permissions:
   contents: read
   packages: write
 
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/dashboarr-backend
+
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend/dashboarr-backend
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    # Native builds finish in ~1-2 min. The cap exists purely so a stuck build
+    # fails fast instead of burning the full 6h job limit like #255 did.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+      - name: Prepare platform pair
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: backend/dashboarr-backend
+          file: backend/dashboarr-backend/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Push the single-arch image to GHCR by digest only (no tag yet); the
+          # merge job stitches the per-arch digests into the tagged manifest.
+          outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.platform }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge manifest and push tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -68,7 +149,7 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ghcr.io/${{ github.repository_owner }}/dashboarr-backend
+            ${{ env.GHCR_IMAGE }}
             ${{ steps.dockerhub_check.outputs.enabled == 'true' && format('{0}/dashboarr-backend', secrets.DOCKERHUB_USERNAME) || '' }}
           # Strip the `backend-v` prefix so tags become clean semver.
           tags: |
@@ -78,14 +159,13 @@ jobs:
             type=raw,value=latest
             type=raw,value=${{ inputs.version != '' && inputs.version || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: backend/dashboarr-backend
-          file: backend/dashboarr-backend/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect
+        run: |
+          docker buildx imagetools inspect "${{ env.GHCR_IMAGE }}:${{ steps.meta.outputs.version }}"
