@@ -34,7 +34,11 @@ permissions:
   packages: write
 
 env:
-  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/dashboarr-backend
+  # Must be lowercase: this feeds `docker buildx` refs directly (build outputs +
+  # imagetools), which reject uppercase repo names. `github.repository_owner` is
+  # `RenzoBeux` (mixed case) and expressions have no lowercase function, so we
+  # pin the canonical name used across the repo (docker-compose.sample.yml, README).
+  GHCR_IMAGE: ghcr.io/renzobeux/dashboarr-backend
 
 jobs:
   build:
