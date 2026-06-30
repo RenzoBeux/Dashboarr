@@ -11,8 +11,14 @@ import {
   Compass,
   ListFilter,
   SlidersHorizontal,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
+import { ConfirmModal } from "@/components/common/confirm-modal";
+import { toast, toastError } from "@/components/ui/toast";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
@@ -30,7 +36,7 @@ import {
   type RequestsSortKey,
 } from "@/store/sort-store";
 import { ICON } from "@/lib/constants";
-import { successHaptic, errorHaptic } from "@/lib/haptics";
+import { successHaptic, errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
 import { PosterCard } from "@/components/overseerr/poster-card";
 import {
@@ -55,6 +61,8 @@ import {
   useOverseerrCustomSlider,
   useApproveRequest,
   useDeclineRequest,
+  useDeleteRequest,
+  useDeleteMedia,
 } from "@/hooks/use-overseerr";
 import { getPosterUrl, getBackdropUrl } from "@/services/overseerr-api";
 import {
@@ -71,6 +79,7 @@ import {
   type OverseerrRequest,
   type OverseerrMediaResult,
   type OverseerrMediaType,
+  type OverseerrMediaStatus,
   type DiscoverSlider,
 } from "@/lib/types";
 
@@ -686,6 +695,17 @@ function PosterGridItem({
 
 // ─── Requests Tab ──────────────────────────────────────────────
 
+// Identity of the row whose ActionSheet / confirm is open. Carries both ids the
+// two actions need (requestId for delete-request, mediaId for remove-media)
+// plus the media status used to decide whether "Remove media" is offered.
+type RowTarget = {
+  requestId: number;
+  mediaId: number;
+  mediaStatus: OverseerrMediaStatus;
+  title: string;
+};
+type ConfirmIntent = RowTarget & { mode: "deleteRequest" | "removeMedia" };
+
 function RequestsList() {
   const [filter, setFilter] = useState<RequestFilter>("all");
   const sort = useSortStore((s) => s.requests);
@@ -696,8 +716,71 @@ function RequestsList() {
   const { data: counts } = useOverseerrRequestCount();
   const approve = useApproveRequest();
   const decline = useDeclineRequest();
+  const del = useDeleteRequest();
+  const removeMedia = useDeleteMedia();
+
+  // The tapped row drives the ActionSheet contents; the confirm step + mutation
+  // read their target from the flow payload (sticky through the dismiss
+  // animation), so the chain survives the iOS modal teardown (issue #83).
+  const [sheetTarget, setSheetTarget] = useState<RowTarget | null>(null);
+  const flow = useModalFlow<{ actions: void; confirm: ConfirmIntent }>();
 
   const requests = data?.results ?? [];
+
+  const busy =
+    approve.isPending ||
+    decline.isPending ||
+    del.isPending ||
+    removeMedia.isPending;
+
+  const openRowSheet = (target: RowTarget) => {
+    mediumHaptic();
+    setSheetTarget(target);
+    flow.open("actions");
+  };
+
+  const actions: ActionSheetAction[] = useMemo(() => {
+    if (!sheetTarget) return [];
+    const t = sheetTarget;
+    const list: ActionSheetAction[] = [
+      {
+        label: "Delete request",
+        icon: <Icon icon={Trash2} size={ICON.MD} color="#ef4444" />,
+        variant: "danger",
+        onPress: () => flow.open("confirm", { ...t, mode: "deleteRequest" }),
+      },
+    ];
+    // "Remove media" only applies once media exists (processing / partial /
+    // available); pending or declined requests have nothing to untrack.
+    if (t.mediaStatus >= 3) {
+      list.push({
+        label: "Remove media",
+        icon: <Icon icon={Film} size={ICON.MD} color="#ef4444" />,
+        variant: "danger",
+        onPress: () => flow.open("confirm", { ...t, mode: "removeMedia" }),
+      });
+    }
+    return list;
+  }, [sheetTarget, flow]);
+
+  const pending = flow.payload("confirm");
+  const onConfirm = () => {
+    // Guard against a double-tap firing a second DELETE during the confirm's
+    // fade-out (the payload stays sticky and the button isn't disabled mid-press).
+    if (!pending || del.isPending || removeMedia.isPending) return;
+    flow.close();
+    if (pending.mode === "deleteRequest") {
+      del.mutate(pending.requestId, {
+        onSuccess: () => toast("Request deleted"),
+        onError: (err) => toastError("Failed to delete request", err),
+      });
+    } else {
+      removeMedia.mutate(pending.mediaId, {
+        onSuccess: () => toast("Media removed"),
+        onError: (err) => toastError("Failed to remove media", err),
+      });
+    }
+  };
 
   const filterOptions: { key: RequestFilter; label: string }[] = (
     ["all", "pending", "approved", "processing"] as RequestFilter[]
@@ -733,7 +816,15 @@ function RequestsList() {
               request={req}
               onApprove={() => approve.mutate(req.id)}
               onDecline={() => decline.mutate(req.id)}
-              busy={approve.isPending || decline.isPending}
+              onMore={(title) =>
+                openRowSheet({
+                  requestId: req.id,
+                  mediaId: req.media.id,
+                  mediaStatus: req.media.status,
+                  title,
+                })
+              }
+              busy={busy}
             />
           ))}
         </View>
@@ -750,6 +841,28 @@ function RequestsList() {
         sortValue={sort}
         onSortChange={setSort}
       />
+
+      <ActionSheet
+        {...flow.bind("actions")}
+        title={sheetTarget?.title}
+        actions={actions}
+      />
+
+      <ConfirmModal
+        {...flow.bind("confirm")}
+        title={pending?.mode === "removeMedia" ? "Remove media?" : "Delete request?"}
+        message={
+          pending
+            ? pending.mode === "removeMedia"
+              ? `Remove "${pending.title}" from Seerr? It can be requested again afterwards. This does not delete files from your server.`
+              : `Delete the request for "${pending.title}"? This removes it from your Seerr requests.`
+            : ""
+        }
+        icon={Trash2}
+        tone="danger"
+        confirmLabel={pending?.mode === "removeMedia" ? "Remove" : "Delete"}
+        onConfirm={onConfirm}
+      />
     </View>
   );
 }
@@ -758,11 +871,13 @@ function RequestCard({
   request,
   onApprove,
   onDecline,
+  onMore,
   busy,
 }: {
   request: OverseerrRequest;
   onApprove: () => void;
   onDecline: () => void;
+  onMore: (title: string) => void;
   busy?: boolean;
 }) {
   const isPending = request.status === 1;
@@ -821,7 +936,18 @@ function RequestCard({
             >
               {title}
             </Text>
-            <Badge label={statusLabel} variant={statusVariant} />
+            <View className="flex-row items-center gap-1">
+              <Badge label={statusLabel} variant={statusVariant} />
+              <Pressable
+                onPress={() => onMore(title)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Request actions"
+                className="p-0.5 active:opacity-70"
+              >
+                <Icon icon={MoreHorizontal} size={ICON.MD} color="#a1a1aa" />
+              </Pressable>
+            </View>
           </View>
 
           <Text className="text-zinc-500 text-xs">

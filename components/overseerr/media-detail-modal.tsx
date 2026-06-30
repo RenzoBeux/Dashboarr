@@ -22,8 +22,10 @@ import {
   Play,
   SlidersHorizontal,
   ExternalLink,
+  Trash2,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { BlurView } from "expo-blur";
 import Animated, {
   useSharedValue,
@@ -31,7 +33,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/toast";
+import { toast, toastError } from "@/components/ui/toast";
 import { getHttpErrorMessage, formatErrorForCopy } from "@/lib/http-client";
 import {
   getPosterUrl,
@@ -49,6 +51,7 @@ import {
   useOverseerrSonarrServers,
   useRequestMovie,
   useRequestTV,
+  useDeleteMedia,
 } from "@/hooks/use-overseerr";
 import type {
   OverseerrMediaResult,
@@ -108,6 +111,7 @@ export function MediaDetailModal({
   const [optionsIs4k, setOptionsIs4k] = useState(false);
   const [quickKind, setQuickKind] = useState<null | "hd" | "4k">(null);
   const [quickError, setQuickError] = useState<RequestError | null>(null);
+  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   // Set when a request succeeded in the options sheet: this modal dismisses
   // itself only once the sheet reports fully gone (its onClosed) — dismissing
   // both stacked pageSheets in the same tick races the child's teardown on
@@ -143,6 +147,7 @@ export function MediaDetailModal({
 
   const requestMovie = useRequestMovie();
   const requestTV = useRequestTV();
+  const removeMedia = useDeleteMedia();
 
   useEffect(() => {
     if (visible) {
@@ -152,7 +157,10 @@ export function MediaDetailModal({
   }, [visible, item?.id]);
 
   useEffect(() => {
-    if (!visible) setOptionsVisible(false);
+    if (!visible) {
+      setOptionsVisible(false);
+      setRemoveConfirmVisible(false);
+    }
   }, [visible]);
 
   if (!item) return null;
@@ -167,6 +175,11 @@ export function MediaDetailModal({
   const mediaInfo = detailsData?.mediaInfo ?? item.mediaInfo;
   const statusHd = mediaInfo?.status;
   const status4k = mediaInfo?.status4k;
+
+  // Internal Seerr media id — only present once full details load and the title
+  // is actually tracked. Required by deleteMedia (the list item's mediaInfo
+  // carries status but no id).
+  const mediaDbId = detailsData?.mediaInfo?.id;
 
   const isAvailableHd = statusHd === 5;
   const isPendingHd = statusHd === 2 || statusHd === 3;
@@ -215,6 +228,28 @@ export function MediaDetailModal({
     // Default the advanced sheet to the tier the user can actually request.
     setOptionsIs4k(!canRequestHd && canRequest4k);
     setOptionsVisible(true);
+  };
+
+  // Untrack the media in Seerr (resets status so it can be re-requested; does
+  // not delete files). Keep this modal open afterwards — closing it in the same
+  // tick as the confirm's dismiss would race the iOS pageSheet teardown (issue
+  // #83). The status re-renders to "Request" once the cache invalidates.
+  //
+  // Tracked = Seerr holds a media record for either tier in any requested state:
+  // pending (2) / processing (3) / partial (4) / available (5). status 1
+  // (unknown) is excluded. Checked directly off the status because the
+  // isPending*/isAvailable* flags above skip PARTIAL (4).
+  const isTracked =
+    mediaDbId !== undefined &&
+    [statusHd, status4k].some((s) => s !== undefined && s >= 2);
+
+  const handleRemoveMedia = () => {
+    if (mediaDbId === undefined || removeMedia.isPending) return;
+    setRemoveConfirmVisible(false);
+    removeMedia.mutate(mediaDbId, {
+      onSuccess: () => toast(`${title} removed from Seerr`),
+      onError: (err) => toastError("Failed to remove media", err),
+    });
   };
 
   return (
@@ -414,6 +449,29 @@ export function MediaDetailModal({
               ) : null}
 
               <RequestErrorBanner error={quickError} />
+
+              {/* Remove from Seerr — untracks the media so it can be requested
+                  again. Only shown once the title is tracked. */}
+              {isTracked ? (
+                <Pressable
+                  onPress={() => setRemoveConfirmVisible(true)}
+                  disabled={submitting || removeMedia.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove from Seerr"
+                  className={`flex-row items-center justify-center gap-2 py-3 rounded-xl border border-danger/30 bg-danger/10 ${submitting || removeMedia.isPending ? "opacity-50" : "active:opacity-70"}`}
+                >
+                  {removeMedia.isPending ? (
+                    <ActivityIndicator size="small" color="#ef4444" />
+                  ) : (
+                    <>
+                      <Icon icon={Trash2} size={16} color="#ef4444" />
+                      <Text className="text-danger font-medium text-sm">
+                        Remove from Seerr
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              ) : null}
             </View>
 
             {/* Overview */}
@@ -447,6 +505,17 @@ export function MediaDetailModal({
               onClose();
             }
           }}
+        />
+
+        <ConfirmModal
+          visible={removeConfirmVisible}
+          title="Remove media?"
+          message={`Remove "${title}" from Seerr? It can be requested again afterwards. This does not delete files from your server.`}
+          icon={Trash2}
+          tone="danger"
+          confirmLabel="Remove"
+          onConfirm={handleRemoveMedia}
+          onCancel={() => setRemoveConfirmVisible(false)}
         />
       </View>
     </Modal>

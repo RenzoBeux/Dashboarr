@@ -344,6 +344,19 @@ export function declineRequest(
   });
 }
 
+// Removes just the request record. With MANAGE_REQUESTS any request can be
+// deleted; otherwise only pending ones. Leaves the underlying media untouched —
+// use deleteMedia() to untrack the media itself.
+export function deleteRequest(
+  requestId: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("overseerr", `/request/${requestId}`, {
+    method: "DELETE",
+    instanceId,
+  });
+}
+
 // --- Media Details ---
 
 export function getMovieDetails(
