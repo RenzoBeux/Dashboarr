@@ -29,6 +29,8 @@ import {
   requestTV,
   approveRequest,
   declineRequest,
+  deleteRequest,
+  deleteMedia,
   getMovieDetails,
   getTVDetails,
   getOverseerrRadarrServers,
@@ -290,6 +292,34 @@ export function useDeclineRequest(instanceId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseerr", id, "requests"] });
       queryClient.invalidateQueries({ queryKey: ["overseerr", id, "requestCount"] });
+    },
+  });
+}
+
+// Deletes the request record only. Mirrors approve/decline invalidation since
+// the underlying media availability is unaffected.
+export function useDeleteRequest(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: (requestId: number) => deleteRequest(requestId, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "requests"] });
+      queryClient.invalidateQueries({ queryKey: ["overseerr", id, "requestCount"] });
+    },
+  });
+}
+
+// Untracks the media in Seerr (resets status so it can be re-requested; does not
+// touch files). Invalidates the whole "overseerr" subtree because this also
+// changes media-detail availability, not just the requests list.
+export function useDeleteMedia(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  return useMutation({
+    mutationFn: (mediaId: number) => deleteMedia(mediaId, id ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
   });
 }
