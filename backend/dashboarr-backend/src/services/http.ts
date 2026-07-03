@@ -182,19 +182,24 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
   try {
-    // NZBGet and Transmission reject GET on their RPC mount — both POST. NZBGet
-    // posts a JSON-RPC version call; Transmission posts session-get (a 409 CSRF
-    // challenge still counts as reachable since it's < 500).
+    // NZBGet, Transmission and unRAID reject GET on their RPC mount — all POST.
+    // NZBGet posts a JSON-RPC version call; Transmission posts session-get (a
+    // 409 CSRF challenge still counts as reachable since it's < 500); unRAID
+    // posts the cheapest valid GraphQL document to /graphql.
     const isNzbget = config.id === "nzbget";
     const isTransmission = config.id === "transmission";
-    const usePost = isNzbget || isTransmission;
+    const isUnraid = config.id === "unraid";
+    const usePost = isNzbget || isTransmission || isUnraid;
+    if (isUnraid) headers.set("Content-Type", "application/json");
     const res = await fetch(url, {
       method: usePost ? "POST" : "GET",
       body: isNzbget
         ? JSON.stringify({ version: "1.1", method: "version", params: [] })
         : isTransmission
           ? JSON.stringify({ method: "session-get" })
-          : undefined,
+          : isUnraid
+            ? JSON.stringify({ query: "{__typename}" })
+            : undefined,
       headers,
       signal: controller.signal,
     });

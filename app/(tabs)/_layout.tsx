@@ -16,6 +16,7 @@ import {
   Music,
   PlayCircle,
   Radar,
+  Server,
   Settings,
   Tv,
   type LucideIcon,
@@ -54,6 +55,7 @@ const TAB_ICONS: Record<TabRouteId, LucideIcon> = {
   emby: MonitorPlay,
   glances: Cpu,
   bazarr: Captions,
+  unraid: Server,
 };
 
 export default function TabLayout() {

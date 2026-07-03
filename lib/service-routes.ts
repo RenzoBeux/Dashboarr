@@ -30,4 +30,5 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   emby: "/(tabs)/emby",
   glances: "/(tabs)/glances",
   bazarr: "/(tabs)/bazarr",
+  unraid: "/(tabs)/unraid",
 };

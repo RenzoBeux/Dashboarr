@@ -19,6 +19,7 @@ import {
   PlayCircle,
   Power,
   Radar,
+  Server,
   ShieldAlert,
   Tv,
   type LucideIcon,
@@ -49,6 +50,7 @@ import { ArrHealthCard } from "@/components/dashboard/arr-health-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
+import { UnraidCard } from "@/components/dashboard/unraid-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -470,6 +472,14 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: ShieldAlert,
     service: ["radarr", "sonarr", "prowlarr", "lidarr"],
     component: ArrHealthCard,
+  },
+  "unraid-array": {
+    id: "unraid-array",
+    label: "unRAID Array",
+    description: "Array state, capacity and running containers",
+    icon: Server,
+    service: "unraid",
+    component: UnraidCard,
   },
 };
 

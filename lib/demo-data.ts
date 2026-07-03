@@ -1519,6 +1519,66 @@ const DEMO_PROWLARR_HEALTH = [
   },
 ];
 
+// --- unRAID (GraphQL) ---
+// unraid-api.ts unwraps the {data} envelope itself, so these payloads are
+// envelope-shaped. BigInt fields are strings on the wire — kept as strings
+// here to exercise the toNum coercion path.
+
+const DEMO_UNRAID_CONTAINERS = [
+  { id: "c1", names: ["/plex"], image: "lscr.io/linuxserver/plex:latest", state: "RUNNING", status: "Up 12 days", autoStart: true, isUpdateAvailable: false, isOrphaned: false },
+  { id: "c2", names: ["/radarr"], image: "lscr.io/linuxserver/radarr:latest", state: "RUNNING", status: "Up 12 days", autoStart: true, isUpdateAvailable: true, isOrphaned: false },
+  { id: "c3", names: ["/sonarr"], image: "lscr.io/linuxserver/sonarr:latest", state: "RUNNING", status: "Up 12 days", autoStart: true, isUpdateAvailable: false, isOrphaned: false },
+  { id: "c4", names: ["/qbittorrent"], image: "lscr.io/linuxserver/qbittorrent:latest", state: "RUNNING", status: "Up 3 days", autoStart: true, isUpdateAvailable: false, isOrphaned: false },
+  { id: "c5", names: ["/postgres"], image: "postgres:16", state: "EXITED", status: "Exited (0) 2 weeks ago", autoStart: false, isUpdateAvailable: false, isOrphaned: false },
+  { id: "c6", names: ["/homeassistant"], image: "ghcr.io/home-assistant/home-assistant:stable", state: "RUNNING", status: "Up 12 days", autoStart: true, isUpdateAvailable: false, isOrphaned: false },
+];
+
+// One ArrayDisk row per role: 2 parity, 4 data (one warm at 86% to exercise
+// the red bar), a 2-disk "cache" pool + a named "nvme" pool.
+const DEMO_UNRAID_ARRAY = {
+  state: "STARTED",
+  capacity: { disks: { free: "14200000000000", used: "25800000000000", total: "40000000000000" } },
+  parities: [
+    { idx: 0, name: "parity", device: "sdb", size: "10000831348736", status: "DISK_OK", type: "PARITY", temp: 34, rotational: true, isSpinning: true, fsSize: null, fsFree: null, fsUsed: null, fsType: null },
+    { idx: 29, name: "parity2", device: "sdc", size: "10000831348736", status: "DISK_OK", type: "PARITY", temp: 33, rotational: true, isSpinning: false, fsSize: null, fsFree: null, fsUsed: null, fsType: null },
+  ],
+  disks: [
+    { idx: 1, name: "disk1", device: "sdd", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 36, rotational: true, isSpinning: true, fsSize: "10000000000000", fsFree: "1400000000000", fsUsed: "8600000000000", fsType: "xfs" },
+    { idx: 2, name: "disk2", device: "sde", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 35, rotational: true, isSpinning: true, fsSize: "10000000000000", fsFree: "4200000000000", fsUsed: "5800000000000", fsType: "xfs" },
+    { idx: 3, name: "disk3", device: "sdf", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 31, rotational: true, isSpinning: false, fsSize: "10000000000000", fsFree: "5100000000000", fsUsed: "4900000000000", fsType: "xfs" },
+    { idx: 4, name: "disk4", device: "sdg", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 30, rotational: true, isSpinning: false, fsSize: "10000000000000", fsFree: "3500000000000", fsUsed: "6500000000000", fsType: "xfs" },
+  ],
+  caches: [
+    { idx: 30, name: "cache", device: "nvme0n1", size: "1000204886016", status: "DISK_OK", type: "CACHE", temp: 42, rotational: false, isSpinning: true, fsSize: "2000000000000", fsFree: "1240000000000", fsUsed: "760000000000", fsType: "btrfs" },
+    { idx: 31, name: "cache2", device: "nvme1n1", size: "1000204886016", status: "DISK_OK", type: "CACHE", temp: 44, rotational: false, isSpinning: true, fsSize: "2000000000000", fsFree: "1240000000000", fsUsed: "760000000000", fsType: "btrfs" },
+    { idx: 32, name: "apps", device: "nvme2n1", size: "500107862016", status: "DISK_OK", type: "CACHE", temp: 39, rotational: false, isSpinning: true, fsSize: "500000000000", fsFree: "310000000000", fsUsed: "190000000000", fsType: "btrfs" },
+  ],
+  boot: { idx: 33, name: "flash", device: "sda", size: "31029460992" },
+};
+
+// Physical disks: everything the array claims plus two unassigned devices
+// (drives the Unassigned group in demo mode).
+const DEMO_UNRAID_DISKS = [
+  ...["sdb", "sdc", "sdd", "sde", "sdf", "sdg"].map((device, i) => ({
+    id: `disk-${device}`,
+    device,
+    name: `WDC WD100EFAX-68 (${device})`,
+    vendor: "Western Digital",
+    size: 10000831348736,
+    serialNum: `WD-JEHT000${i}`,
+    temperature: 33,
+    smartStatus: "OK",
+    isSpinning: i < 3,
+    interfaceType: "SATA",
+  })),
+  { id: "disk-nvme0n1", device: "nvme0n1", name: "Samsung 970 EVO 1TB", vendor: "Samsung", size: 1000204886016, serialNum: "S467NX0M400001", temperature: 42, smartStatus: "OK", isSpinning: true, interfaceType: "PCIe" },
+  { id: "disk-nvme1n1", device: "nvme1n1", name: "Samsung 970 EVO 1TB", vendor: "Samsung", size: 1000204886016, serialNum: "S467NX0M400002", temperature: 44, smartStatus: "OK", isSpinning: true, interfaceType: "PCIe" },
+  { id: "disk-nvme2n1", device: "nvme2n1", name: "WD Black SN770 500GB", vendor: "Western Digital", size: 500107862016, serialNum: "23111J440105", temperature: 39, smartStatus: "OK", isSpinning: true, interfaceType: "PCIe" },
+  { id: "disk-sda", device: "sda", name: "SanDisk Cruzer 32GB", vendor: "SanDisk", size: 31029460992, serialNum: "4C530001180322101234", temperature: null, smartStatus: "OK", isSpinning: true, interfaceType: "USB" },
+  { id: "disk-sdh", device: "sdh", name: "Seagate IronWolf 8TB (sdh)", vendor: "Seagate", size: 8001563222016, serialNum: "ZA1B2C3D", temperature: 29, smartStatus: "OK", isSpinning: false, interfaceType: "SATA" },
+  { id: "disk-sdi", device: "sdi", name: "Kingston A400 240GB (sdi)", vendor: "Kingston", size: 240057409536, serialNum: "50026B7682D8E5F1", temperature: 27, smartStatus: "OK", isSpinning: true, interfaceType: "SATA" },
+];
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -1740,6 +1800,35 @@ export function getDemoResponse(
       // session-set / torrent-start / torrent-stop / torrent-remove /
       // torrent-add / torrent-set / torrent-reannounce → empty success ack.
       return {};
+    }
+    case "unraid": {
+      // unRAID is GraphQL — dispatch off the operation name in the POSTed
+      // body ({query, variables}); unraid-api.ts unwraps the {data} envelope.
+      const query = (() => {
+        try {
+          return body ? (JSON.parse(body) as { query?: string }).query ?? "" : "";
+        } catch {
+          return "";
+        }
+      })();
+      if (query.includes("UnraidContainers")) {
+        return { data: { docker: { containers: DEMO_UNRAID_CONTAINERS } } };
+      }
+      if (query.includes("UnraidStorage")) {
+        return { data: { array: DEMO_UNRAID_ARRAY, disks: DEMO_UNRAID_DISKS } };
+      }
+      for (const [op, field] of [
+        ["StartContainer", "start"],
+        ["StopContainer", "stop"],
+        ["RestartContainer", "restart"],
+      ] as const) {
+        if (query.includes(op)) {
+          const state = field === "stop" ? "EXITED" : "RUNNING";
+          const status = field === "stop" ? "Exited (0) 1 second ago" : "Up 1 second";
+          return { data: { docker: { [field]: { id: "c1", state, status } } } };
+        }
+      }
+      return undefined;
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
     case "emby":
