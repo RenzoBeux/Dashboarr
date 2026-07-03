@@ -17,6 +17,7 @@ export const SERVICE_IDS = [
   "emby",
   "glances",
   "bazarr",
+  "unraid",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -98,6 +99,13 @@ export const SERVICE_DEFAULTS: Record<
   emby: { name: "Emby", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
   glances: { name: "Glances", defaultPort: 61208, apiBasePath: "/api/4", pingPath: "/cpu" },
   bazarr: { name: "Bazarr", defaultPort: 6767, apiBasePath: "/api", pingPath: "/system/status" },
+  // unRAID's official GraphQL API — native in unRAID 7.2+ (Settings →
+  // Management Access), provided by the Unraid Connect plugin on older
+  // versions. Everything is POST /graphql at the webgui root with X-Api-Key
+  // auth; there is no GET ping endpoint (GET /graphql is rejected), so
+  // pingService and the connection probe POST a minimal query instead
+  // (mirrors nzbget/rtorrent/transmission). defaultPort is the webgui port.
+  unraid: { name: "unRAID", defaultPort: 80, apiBasePath: "", pingPath: "/graphql" },
 };
 
 export const POLLING_INTERVALS = {
@@ -134,6 +142,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "wol-devices",
   "disk-space",
   "arr-health",
+  "unraid-array",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

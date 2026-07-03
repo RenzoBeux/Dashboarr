@@ -13,6 +13,7 @@ import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
+import { useUnraidUiStore } from "@/store/unraid-ui-store";
 import { useReleaseFilterStore } from "@/store/releases-filter-store";
 import { useIntroStore } from "@/store/intro-store";
 import { queryClient } from "@/lib/query-client";
@@ -250,6 +251,7 @@ export default function RootLayout() {
   const hydrateBackend = useBackendStore((s) => s.hydrate);
   const hydrateSort = useSortStore((s) => s.hydrate);
   const hydrateGlancesUi = useGlancesUiStore((s) => s.hydrate);
+  const hydrateUnraidUi = useUnraidUiStore((s) => s.hydrate);
   const hydrateReleaseFilters = useReleaseFilterStore((s) => s.hydrate);
   const hydrateIntro = useIntroStore((s) => s.hydrate);
   const introHydrated = useIntroStore((s) => s.hydrated);
@@ -269,6 +271,7 @@ export default function RootLayout() {
     if (hydrated) {
       hydrateSort();
       hydrateGlancesUi();
+      hydrateUnraidUi();
       hydrateReleaseFilters();
       hydrateIntro();
     }
@@ -276,6 +279,7 @@ export default function RootLayout() {
     hydrated,
     hydrateSort,
     hydrateGlancesUi,
+    hydrateUnraidUi,
     hydrateReleaseFilters,
     hydrateIntro,
   ]);

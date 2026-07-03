@@ -66,6 +66,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   emby: "Emby",
   glances: "Glances",
   bazarr: "Bazarr",
+  unraid: "unRAID",
 };
 
 export default function DashboardEditScreen() {

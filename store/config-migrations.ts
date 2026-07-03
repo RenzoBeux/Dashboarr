@@ -133,8 +133,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v34 — added optional Apprise notification config (#220). Pure version stamp —
  *         coerceNotificationSettings treats `apprise` as optional, so older
  *         exports without it validate and fall back to "unset" at hydrate time.
+ *   v35 — added the unraid service entry (#123). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         unraid instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 34;
+export const CURRENT_CONFIG_VERSION = 35;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -630,6 +634,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // `apprise` is optional, so older exports without it validate and default to
   // "unset" at hydrate time.
   33: (payload) => ({ ...payload, version: 34 }),
+  // v34 → v35: added the unraid service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled unraid instance at import.
+  34: (payload) => ({ ...payload, version: 35 }),
 };
 
 /**

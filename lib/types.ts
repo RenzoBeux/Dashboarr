@@ -1818,6 +1818,89 @@ export interface BazarrProvider {
   retry?: string;
 }
 
+// --- unRAID Types ---
+// App-shaped views over the official GraphQL API (services/unraid-api.ts maps
+// the raw schema shapes into these). BigInt schema fields arrive as strings —
+// the mappers coerce them to numbers before they reach these types.
+
+export interface UnraidContainer {
+  id: string;
+  // First names[] entry with the leading "/" stripped.
+  name: string;
+  image: string;
+  // ContainerState enum from the schema, e.g. "RUNNING" / "EXITED" / "PAUSED".
+  state: string;
+  // Human string from Docker, e.g. "Up 3 days".
+  status: string;
+  autoStart: boolean;
+  isUpdateAvailable?: boolean;
+  isOrphaned?: boolean;
+}
+
+export interface UnraidCapacity {
+  free: number;
+  used: number;
+  total: number;
+}
+
+export interface UnraidArrayDisk {
+  idx: number;
+  // "parity", "disk1", "cache", or a named-pool member.
+  name: string;
+  device?: string;
+  size: number;
+  // ArrayDiskStatus, e.g. "DISK_OK".
+  status: string;
+  // ArrayDiskType: DATA | PARITY | CACHE | FLASH.
+  type: string;
+  temp?: number | null;
+  rotational?: boolean;
+  isSpinning?: boolean;
+  // Filesystem fields are null for parity disks (no filesystem).
+  fsSize?: number | null;
+  fsFree?: number | null;
+  fsUsed?: number | null;
+  fsType?: string | null;
+}
+
+export interface UnraidPhysicalDisk {
+  id: string;
+  device: string;
+  name: string;
+  vendor?: string;
+  size: number;
+  serialNum?: string;
+  temperature?: number | null;
+  smartStatus?: string;
+  isSpinning?: boolean;
+  interfaceType?: string;
+}
+
+export interface UnraidPool {
+  name: string;
+  disks: UnraidArrayDisk[];
+}
+
+export interface UnraidParityCheck {
+  running: boolean;
+  progress?: number | null;
+  speed?: string | null;
+  errors?: number | null;
+}
+
+// The grouped storage view the disks screen renders: unRAID's array plus the
+// Pool / Unassigned grouping computed in groupUnraidStorage().
+export interface UnraidStorage {
+  // ArrayState, e.g. "STARTED" / "STOPPED".
+  arrayState: string;
+  capacity: UnraidCapacity;
+  parityCheck: UnraidParityCheck | null;
+  parities: UnraidArrayDisk[];
+  dataDisks: UnraidArrayDisk[];
+  pools: UnraidPool[];
+  unassigned: UnraidPhysicalDisk[];
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:

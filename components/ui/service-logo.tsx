@@ -12,6 +12,7 @@ import JellyfinLogo from "@/assets/services/jellyfin.svg";
 import EmbyLogo from "@/assets/services/emby.svg";
 import OverseerrLogo from "@/assets/services/overseerr.svg";
 import PlexLogo from "@/assets/services/plex.svg";
+import UnraidLogo from "@/assets/services/unraid.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
@@ -22,6 +23,7 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   emby: EmbyLogo,
   overseerr: OverseerrLogo,
   plex: PlexLogo,
+  unraid: UnraidLogo,
 };
 
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {

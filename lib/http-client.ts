@@ -284,7 +284,9 @@ export async function serviceRequest<T>(
       headers.set("Authorization", `Bearer ${secrets.apiKey}`);
     }
   } else {
-    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr use X-Api-Key
+    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID use
+    // X-Api-Key (unRAID documents lowercase x-api-key; header names are
+    // case-insensitive so this one branch covers it).
     if (secrets.apiKey) {
       headers.set("X-Api-Key", secrets.apiKey);
     }
@@ -445,6 +447,7 @@ export async function pingService(
     const isNzbget = serviceId === "nzbget";
     const isRtorrent = serviceId === "rtorrent";
     const isTransmission = serviceId === "transmission";
+    const isUnraid = serviceId === "unraid";
     let method = "GET";
     let body: string | undefined;
     if (isNzbget) {
@@ -460,6 +463,13 @@ export async function pingService(
       // still reads as reachable.
       method = "POST";
       body = JSON.stringify({ method: "session-get" });
+      headers.set("Content-Type", "application/json");
+    } else if (isUnraid) {
+      // unRAID's /graphql rejects GET — POST the cheapest valid document.
+      // `{__typename}` needs no schema knowledge; even an errors[] response
+      // (< 500) proves the endpoint is alive.
+      method = "POST";
+      body = JSON.stringify({ query: "{__typename}" });
       headers.set("Content-Type", "application/json");
     }
     const response = await fetch(url, {
@@ -952,6 +962,63 @@ async function runConnectionProbe(
         };
       }
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "unraid": {
+      // unRAID's official API is GraphQL-only: POST /graphql with X-Api-Key.
+      // Probe with a real authenticated query (array state) so a wrong or
+      // permission-less key is distinguished from an unreachable server.
+      // GraphQL auth failures can arrive EITHER as HTTP 401/403 OR as HTTP 200
+      // with an errors[] array (extensions.code UNAUTHENTICATED / FORBIDDEN) —
+      // handle both.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const headers = makeHeaders({
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ query: "query Probe { array { state } }" }),
+        signal,
+      });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const ct = res.headers.get("content-type");
+      if (!ct?.toLowerCase().includes("application/json"))
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /graphql from the proxy.",
+        };
+      try {
+        const json = (await res.json()) as {
+          data?: { array?: { state?: string } };
+          errors?: Array<{ message?: string; extensions?: { code?: string } }>;
+        } | null;
+        if (json?.data?.array?.state) return { kind: "ok" };
+        const err = json?.errors?.[0];
+        if (json?.errors?.length) {
+          // errors-without-data has two realistic causes: a bad key
+          // (UNAUTHENTICATED) or a key missing the Array read scope
+          // (FORBIDDEN) — both are fixed in unRAID's API key settings.
+          return {
+            kind: "auth_failed",
+            message:
+              err?.extensions?.code === "FORBIDDEN"
+                ? "API key lacks permission to read the array — grant it in unRAID's API key settings"
+                : err?.message || "Invalid API key",
+          };
+        }
+        return { kind: "unreachable", message: "Unexpected GraphQL response" };
+      } catch {
+        return { kind: "unreachable", message: "Invalid JSON response" };
+      }
     }
 
     default: {
