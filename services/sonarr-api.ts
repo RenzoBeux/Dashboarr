@@ -6,6 +6,7 @@ import type {
   SonarrCalendarEntry,
   SonarrQueue,
   SonarrHistory,
+  SonarrHistoryRecord,
   SonarrSearchResult,
   SonarrSeriesType,
   SonarrImage,
@@ -173,6 +174,28 @@ export function getHistory(
     },
     instanceId,
   });
+}
+
+// Per-episode history: grabs, imports, deletions for one episode. Sonarr only
+// exposes episodeId filtering on the paged /history endpoint (the /history/series
+// endpoint filters by season, not episode), so we page one large batch and hand
+// back the records array. Sorted date-descending by the server.
+export function getEpisodeHistory(
+  episodeId: number,
+  instanceId?: string,
+): Promise<SonarrHistoryRecord[]> {
+  return serviceRequest<SonarrHistory>("sonarr", "/history", {
+    params: {
+      episodeId,
+      page: 1,
+      pageSize: 100,
+      sortKey: "date",
+      sortDirection: "descending",
+      includeSeries: false,
+      includeEpisode: false,
+    },
+    instanceId,
+  }).then((res) => res.records);
 }
 
 // --- Search ---

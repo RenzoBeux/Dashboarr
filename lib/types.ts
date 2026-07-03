@@ -378,6 +378,33 @@ export interface RadarrQueue {
   records: RadarrQueueItem[];
 }
 
+// Quality wrapper shared by releases and history records (the *arr QualityModel).
+export interface ArrQualityModel {
+  quality: { id: number; name: string; source?: string; resolution?: number };
+  revision?: { version?: number; real?: number; isRepack?: boolean };
+}
+
+// The `data` bag on a history record. The *arr API types it as
+// Dictionary<string,string>, so every value is a string (or absent). These are
+// the keys populated for grab/import/failed events; the index signature keeps
+// the type honest for the ones we don't enumerate.
+export interface ArrHistoryData {
+  indexer?: string;
+  releaseGroup?: string;
+  nzbInfoUrl?: string;
+  downloadClient?: string;
+  downloadClientName?: string;
+  size?: string;
+  age?: string;
+  ageHours?: string;
+  publishedDate?: string;
+  protocol?: string;
+  reason?: string;
+  droppedPath?: string;
+  importedPath?: string;
+  [key: string]: string | undefined;
+}
+
 export interface RadarrHistoryRecord {
   id: number;
   eventType: string;
@@ -386,6 +413,9 @@ export interface RadarrHistoryRecord {
   downloadId?: string;
   movieId?: number;
   movie?: RadarrMovie;
+  data?: ArrHistoryData;
+  quality?: ArrQualityModel;
+  languages?: { id: number; name: string }[];
 }
 
 export interface RadarrHistory {
@@ -638,6 +668,9 @@ export interface SonarrHistoryRecord {
   episodeId?: number;
   series?: SonarrSeries;
   episode?: SonarrEpisode;
+  data?: ArrHistoryData;
+  quality?: ArrQualityModel;
+  languages?: { id: number; name: string }[];
 }
 
 export interface SonarrHistory {

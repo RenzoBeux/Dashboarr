@@ -3,6 +3,7 @@ import type {
   RadarrMovie,
   RadarrQueue,
   RadarrHistory,
+  RadarrHistoryRecord,
   RadarrWantedMissing,
   RadarrSearchResult,
   RadarrImage,
@@ -76,6 +77,20 @@ export function getHistory(
       sortDirection: "descending",
       includeMovie: true,
     },
+    instanceId,
+  });
+}
+
+// Per-movie history: grabs, imports, deletions for a single movie. Unlike the
+// global /history above this endpoint returns a plain array (not paged) and is
+// sorted date-descending by the server. includeMovie:false keeps the payload
+// lean since the caller already has the movie.
+export function getMovieHistory(
+  movieId: number,
+  instanceId?: string,
+): Promise<RadarrHistoryRecord[]> {
+  return serviceRequest<RadarrHistoryRecord[]>("radarr", "/history/movie", {
+    params: { movieId, includeMovie: false },
     instanceId,
   });
 }

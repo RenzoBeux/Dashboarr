@@ -8,6 +8,7 @@ import {
   getCalendar,
   getQueue,
   getHistory,
+  getEpisodeHistory,
   searchSeries,
   addSeries,
   deleteSeries,
@@ -92,6 +93,19 @@ export function useSonarrQueue(instanceId?: string) {
     queryFn: () => getQueue(1, 20, true, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
+  });
+}
+
+// Per-episode history for the episode History screen. Scoped cache key so it
+// never collides with the global useSonarrHistory (page-1 activity feed).
+export function useSonarrEpisodeHistory(episodeId: number, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
+  return useQuery({
+    queryKey: ["sonarr", id, "history", "episode", episodeId],
+    queryFn: () => getEpisodeHistory(episodeId, id ?? undefined),
+    enabled: enabled && episodeId > 0 && !!id,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 
