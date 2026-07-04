@@ -118,5 +118,31 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         cameraPermission: "Allow Dashboarr to scan your backend pairing QR code.",
       },
     ],
+    // Android home-screen "Releasing Soon" calendar widget (issue #224). The
+    // widget UI + data live in widgets/*; this plugin injects the AppWidget
+    // <receiver> + provider metadata into the manifest. `name` MUST match
+    // WIDGET_NAME in widgets/widget-config.ts. updatePeriodMillis is Android's
+    // 30-min floor (smaller is clamped); the reliable refresh is the in-app
+    // foreground push (hooks/use-widget-refresh). The dev variant's ".dev"
+    // applicationIdSuffix doesn't rename the manifest namespace, so prod and dev
+    // install as two distinct providers with no plugin change.
+    [
+      "react-native-android-widget",
+      {
+        widgets: [
+          {
+            name: "Calendar",
+            label: "Releasing Soon",
+            description: "Upcoming TV episodes and movie releases",
+            minWidth: "250dp",
+            minHeight: "110dp",
+            targetCellWidth: 4,
+            targetCellHeight: 2,
+            updatePeriodMillis: 1800000,
+            resizeMode: "horizontal|vertical",
+          },
+        ],
+      },
+    ],
   ],
 });

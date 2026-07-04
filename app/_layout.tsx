@@ -23,6 +23,7 @@ import "@/lib/expo-image-nativewind"; // side-effect: cssInterop on expo-image's
 import { NotificationWatchers } from "@/hooks/use-notification-watchers";
 import { useBackendHealth } from "@/hooks/use-backend-health";
 import { useNetworkAutoSwitch } from "@/hooks/use-network";
+import { useWidgetRefresh } from "@/hooks/use-widget-refresh";
 import { evaluateHomeNetwork } from "@/lib/network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
@@ -165,6 +166,11 @@ function NotificationRouter() {
 
 function BackendHealthPoller() {
   useBackendHealth();
+  return null;
+}
+
+function WidgetRefreshBridge() {
+  useWidgetRefresh();
   return null;
 }
 
@@ -327,6 +333,9 @@ export default function RootLayout() {
               </SilentErrorBoundary>
               <SilentErrorBoundary label="insecure-tls">
                 <InsecureTlsBridge />
+              </SilentErrorBoundary>
+              <SilentErrorBoundary label="widget-refresh">
+                <WidgetRefreshBridge />
               </SilentErrorBoundary>
               <SilentErrorBoundary label="ui-scale">
                 <UiScaleBridge />
