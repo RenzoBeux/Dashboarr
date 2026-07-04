@@ -241,16 +241,25 @@ export function useToggleMovieMonitored(instanceId?: string) {
   });
 }
 
-export function useUpdateMovieQualityProfile(instanceId?: string) {
+// Generic movie field update (quality profile, minimum availability, path, …):
+// forwards the cached movie with `fields` overridden via full PUT and mirrors
+// the change optimistically into both caches. Mirrors Sonarr's
+// useUpdateSeriesFields. Pass moveFiles when changing `path` so Radarr moves the
+// files on disk to the new folder. Root-folder switches must NOT use this — they
+// go through useUpdateMovieRootFolder / the /movie/editor endpoint (issue #83).
+export function useUpdateMovieFields(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("radarr", instanceId);
   return useMutation({
     mutationFn: ({
       movieId,
-      qualityProfileId,
+      fields,
+      moveFiles,
     }: {
       movieId: number;
-      qualityProfileId: number;
+      fields: Partial<RadarrMovie>;
+      errorLabel?: string;
+      moveFiles?: boolean;
     }) => {
       const cached = queryClient.getQueryData<RadarrMovie>([
         "radarr",
@@ -259,12 +268,11 @@ export function useUpdateMovieQualityProfile(instanceId?: string) {
         movieId,
       ]);
       if (!cached) throw new Error("Movie not loaded");
-      return updateMovie(
-        { ...cached, qualityProfileId },
-        id ?? undefined,
-      );
+      return updateMovie({ ...cached, ...fields }, id ?? undefined, {
+        moveFiles,
+      });
     },
-    onMutate: async ({ movieId, qualityProfileId }) => {
+    onMutate: async ({ movieId, fields }) => {
       await queryClient.cancelQueries({ queryKey: ["radarr", id, "movie", movieId] });
       await queryClient.cancelQueries({ queryKey: ["radarr", id, "movies"] });
 
@@ -283,21 +291,19 @@ export function useUpdateMovieQualityProfile(instanceId?: string) {
       if (prevDetail) {
         queryClient.setQueryData<RadarrMovie>(
           ["radarr", id, "movie", movieId],
-          { ...prevDetail, qualityProfileId },
+          { ...prevDetail, ...fields },
         );
       }
       if (prevList) {
         queryClient.setQueryData<RadarrMovie[]>(
           ["radarr", id, "movies"],
-          prevList.map((m) =>
-            m.id === movieId ? { ...m, qualityProfileId } : m,
-          ),
+          prevList.map((m) => (m.id === movieId ? { ...m, ...fields } : m)),
         );
       }
 
       return { prevDetail, prevList };
     },
-    onError: (err, { movieId }, context) => {
+    onError: (err, { movieId, errorLabel }, context) => {
       if (context?.prevDetail) {
         queryClient.setQueryData(
           ["radarr", id, "movie", movieId],
@@ -307,7 +313,7 @@ export function useUpdateMovieQualityProfile(instanceId?: string) {
       if (context?.prevList) {
         queryClient.setQueryData(["radarr", id, "movies"], context.prevList);
       }
-      toastError("Failed to update quality profile", err);
+      toastError(errorLabel ?? "Failed to update movie", err);
     },
     onSettled: (_data, _err, { movieId }) => {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });

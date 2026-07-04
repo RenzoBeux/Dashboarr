@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { View, Text, ScrollView, Linking, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -12,6 +13,7 @@ import {
   ChevronRight,
   FolderTree,
   History,
+  Pencil,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -35,11 +37,13 @@ import {
   useDeleteMovie,
   useToggleMovieMonitored,
   useRadarrQualityProfiles,
-  useUpdateMovieQualityProfile,
+  useUpdateMovieFields,
   useRadarrRootFolders,
   useUpdateMovieRootFolder,
   useRadarrTags,
 } from "@/hooks/use-radarr";
+import { MovieOptionsSheet } from "@/components/radarr/movie-options-sheet";
+import { MIN_AVAILABILITY_OPTIONS } from "@/components/radarr/add-movie-sheet";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
@@ -62,10 +66,11 @@ export default function MovieDetailScreen() {
   const deleteMutation = useDeleteMovie(instanceId);
   const toggleMonitored = useToggleMovieMonitored(instanceId);
   const { data: qualityProfiles } = useRadarrQualityProfiles(instanceId);
-  const updateProfile = useUpdateMovieQualityProfile(instanceId);
+  const updateFields = useUpdateMovieFields(instanceId);
   const { data: rootFolders } = useRadarrRootFolders(instanceId);
   const updateRootFolder = useUpdateMovieRootFolder(instanceId);
   const { data: tags } = useRadarrTags(instanceId);
+  const [optionsVisible, setOptionsVisible] = useState(false);
 
   // All modal sequencing (sheet → confirm, sheet → sheet, confirm → pop) goes
   // through the flow — see hooks/use-modal-flow.ts.
@@ -165,7 +170,7 @@ export default function MovieDetailScreen() {
       key: "quality",
       icon: Award,
       label: qualityProfileName ?? "Quality",
-      loading: updateProfile.isPending,
+      loading: updateFields.isPending,
       onPress: () => flow.open("quality"),
       disabled: !qualityProfiles || qualityProfiles.length === 0,
     },
@@ -250,6 +255,8 @@ export default function MovieDetailScreen() {
                 : undefined
             }
           />
+
+          <OptionsBlock movie={movie} onPress={() => setOptionsVisible(true)} />
 
           {movie.overview ? (
             <View className="mb-5">
@@ -338,12 +345,20 @@ export default function MovieDetailScreen() {
           ),
           onPress: () => {
             if (p.id === movie.qualityProfileId) return;
-            updateProfile.mutate({
+            updateFields.mutate({
               movieId: movie.id,
-              qualityProfileId: p.id,
+              fields: { qualityProfileId: p.id },
+              errorLabel: "Failed to update quality profile",
             });
           },
         }))}
+      />
+
+      <MovieOptionsSheet
+        visible={optionsVisible}
+        onClose={() => setOptionsVisible(false)}
+        movie={movie}
+        instanceId={instanceId}
       />
 
       <ActionSheet
@@ -543,6 +558,58 @@ function MovieFileBlock({
           <AboutRow label="Added" value={formatReleaseDate(movie.added)} />
         </View>
       </View>
+    </View>
+  );
+}
+
+// Editable Radarr movie options (issue #216): minimum availability + path. The
+// whole card is one tap target and opens the MovieOptionsSheet editor — mirrors
+// Sonarr's OptionsBlock.
+function OptionsBlock({
+  movie,
+  onPress,
+}: {
+  movie: RadarrMovie;
+  onPress: () => void;
+}) {
+  const availabilityLabel =
+    MIN_AVAILABILITY_OPTIONS.find((o) => o.value === movie.minimumAvailability)
+      ?.label ??
+    (movie.minimumAvailability ? capitalize(movie.minimumAvailability) : "—");
+  return (
+    <View className="mb-5">
+      <SectionLabel>Options</SectionLabel>
+      <Pressable
+        onPress={onPress}
+        className="rounded-2xl bg-surface border border-border p-4 flex-row items-center active:opacity-70"
+        accessibilityRole="button"
+        accessibilityLabel="Edit movie options"
+      >
+        <View className="flex-1 gap-2.5">
+          <OptionRow label="Availability" value={availabilityLabel} />
+          {movie.path ? <OptionRow label="Path" value={movie.path} /> : null}
+        </View>
+        <View className="ml-3 w-9 h-9 rounded-full bg-surface-light items-center justify-center">
+          <Icon icon={Pencil} size={16} color="#a1a1aa" />
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+function OptionRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center">
+      <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider w-20">
+        {label}
+      </Text>
+      <Text
+        className="text-zinc-300 text-xs flex-1 ml-2"
+        numberOfLines={1}
+        ellipsizeMode="middle"
+      >
+        {value}
+      </Text>
     </View>
   );
 }
