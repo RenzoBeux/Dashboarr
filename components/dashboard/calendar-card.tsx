@@ -34,6 +34,7 @@ import {
 } from "@/services/radarr-api";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
+import { pickRadarrDate } from "@/lib/calendar-agenda";
 import {
   radarrBarKind,
   sonarrEpisodeBarKind,
@@ -49,30 +50,6 @@ type CalendarItem =
       instanceId: string;
     }
   | { kind: "movie"; date: string; movie: RadarrMovie; instanceId: string };
-
-function pickRadarrDate(
-  movie: RadarrMovie,
-  type: CalendarSettingsValue["radarrReleaseType"],
-): string | null {
-  const cinemas = movie.inCinemas;
-  const digital = movie.digitalRelease;
-  const physical = movie.physicalRelease;
-  switch (type) {
-    case "cinemas":
-      return cinemas ?? null;
-    case "digital":
-      return digital ?? null;
-    case "physical":
-      return physical ?? null;
-    case "any":
-    default:
-      // Match the Calendar tab's waterfall (digital → physical → cinemas)
-      // so the same movie lands on the same day in both views. Picking the
-      // earliest candidate diverged from the calendar and caused movies to
-      // appear under different dates across the two surfaces.
-      return digital ?? physical ?? cinemas ?? null;
-  }
-}
 
 function isToday(dateString: string): boolean {
   return dateString === localDateKey();

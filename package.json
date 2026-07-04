@@ -1,7 +1,7 @@
 {
   "name": "dashboarr",
   "version": "1.11.0",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "start": "expo start",
@@ -66,6 +66,7 @@
     "nativewind": "^4.1.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-android-widget": "^0.20.3",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-keyboard-controller": "^1.21.7",
     "react-native-reanimated": "~4.1.1",
