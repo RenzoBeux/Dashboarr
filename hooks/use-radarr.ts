@@ -4,6 +4,7 @@ import {
   getMovie,
   getQueue,
   getHistory,
+  getMovieHistory,
   getAllWantedMissing,
   getCalendar,
   searchMovies,
@@ -67,6 +68,19 @@ export function useRadarrQueue(instanceId?: string) {
     queryFn: () => getQueue(1, 20, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
+  });
+}
+
+// Per-movie history for the movie History screen. Scoped cache key so it never
+// collides with the global useRadarrHistory (page-1 activity feed).
+export function useRadarrMovieHistory(movieId: number, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
+  return useQuery({
+    queryKey: ["radarr", id, "history", "movie", movieId],
+    queryFn: () => getMovieHistory(movieId, id ?? undefined),
+    enabled: enabled && movieId > 0 && !!id,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 

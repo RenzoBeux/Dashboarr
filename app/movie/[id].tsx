@@ -11,6 +11,7 @@ import {
   Check,
   ChevronRight,
   FolderTree,
+  History,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -295,6 +296,18 @@ export default function MovieDetailScreen() {
         {...flow.bind("actions")}
         title={movie.title}
         actions={[
+          {
+            label: "History",
+            icon: <Icon icon={History} size={18} color="#a1a1aa" />,
+            onPress: () =>
+              flow.whenClear(() =>
+                router.push(
+                  instanceId
+                    ? `/movie/history/${movie.id}?instanceId=${instanceId}`
+                    : `/movie/history/${movie.id}`,
+                ),
+              ),
+          },
           {
             label: "Delete Movie",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,

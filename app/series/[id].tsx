@@ -15,6 +15,7 @@ import {
   Circle,
   FolderTree,
   Pencil,
+  History,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -886,6 +887,18 @@ function EpisodeRow({
             `/series/releases/${seriesId}?episodeId=${episode.id}${
               instanceId ? `&instanceId=${instanceId}` : ""
             }`,
+          ),
+        ),
+    },
+    {
+      label: "History",
+      icon: <Icon icon={History} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        flow.whenClear(() =>
+          router.push(
+            `/series/history/${episode.id}?title=${encodeURIComponent(
+              formatEpisodeCode(episode.seasonNumber, episode.episodeNumber),
+            )}${instanceId ? `&instanceId=${instanceId}` : ""}`,
           ),
         ),
     },

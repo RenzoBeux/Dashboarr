@@ -195,6 +195,30 @@ export function formatResolution(resolution: string): string {
  * Compact age label for a release. Prefers ageHours/ageMinutes when fresh so
  * "12m" / "3h" surface instead of "0d" for new uploads.
  */
+/**
+ * Compact "time ago" label for an absolute timestamp, with finer granularity
+ * than relativeDate (which is day-only). Used for history entries ("grabbed 3h
+ * ago"). Falls back to an absolute short date once past a week.
+ */
+export function formatTimeAgo(dateString?: string): string {
+  if (!dateString) return "";
+  const then = new Date(dateString).getTime();
+  if (Number.isNaN(then)) return "";
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(seconds / 3600);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(seconds / 86400);
+  if (days < 7) return `${days}d ago`;
+  return new Date(then).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export function formatReleaseAge(
   ageDays: number,
   ageHours?: number,
