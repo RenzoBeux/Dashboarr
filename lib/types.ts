@@ -322,6 +322,9 @@ export interface RadarrMovie {
   runtime: number;
   qualityProfileId: number;
   rootFolderPath: string;
+  // Full movie folder path (e.g. "/movies/Inception (2010)"). Editable in
+  // Radarr's Edit dialog; a real runtime field on the GET response.
+  path?: string;
   movieFile?: RadarrMovieFile;
   genres?: string[];
   tags?: number[];

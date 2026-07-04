@@ -21,7 +21,9 @@ interface AddMovieSheetProps {
   onClose: () => void;
 }
 
-const MIN_AVAILABILITY_OPTIONS: {
+// Shared with the movie-edit sheet (components/radarr/movie-options-sheet.tsx),
+// mirroring how Sonarr shares SERIES_TYPE_OPTIONS between add + edit sheets.
+export const MIN_AVAILABILITY_OPTIONS: {
   value: RadarrMinimumAvailability;
   label: string;
   description: string;
