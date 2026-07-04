@@ -1,7 +1,11 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useConfigStore } from "@/store/config-store";
 import type { Dashboard, HomeNetwork } from "@/store/config-store";
-import { detectWifiWithRefresh } from "@/lib/wifi";
+import {
+  detectWifiWithRefresh,
+  getWifiPermissionStatus,
+  refreshWifiIdentity,
+} from "@/lib/wifi";
 import { detectVpnActive } from "@/lib/vpn";
 
 /**
@@ -136,7 +140,40 @@ async function evaluateHomeNetworkOnce(): Promise<void> {
     if (store.treatVpnAsHome) store.setNetworkAwayFromHome(true);
     return;
   }
-  const state = await NetInfo.fetch();
+  let state = await NetInfo.fetch();
+  // iOS transient (#234): NetInfo.fetch() can report type "wifi" with a null
+  // SSID for a brief window after cold start or app resume, before the OS
+  // surfaces it. A bare fetch would conclude "away" here — and because we're
+  // already connected to home WiFi, no NetInfo change event follows, so the
+  // flag stays stuck at away (remote-only, the orange "away" indicator) until
+  // the next resume or a full app restart. That is the "says I'm not on my
+  // WiFi when I am / restart fixes it" report. Force a NetInfo.refresh()+retry
+  // (the same #168 machinery) to surface the SSID before deciding. This only
+  // runs in the failure case (on WiFi but no SSID yet); genuinely-away states
+  // (cellular / VPN-masked / non-matching SSID) resolve on the first fetch
+  // with no extra work, and once the SSID surfaces subsequent evaluations skip
+  // the refresh entirely.
+  if (state.type === "wifi" && !state.details?.ssid) {
+    try {
+      // Only worth retrying if we can actually read the SSID: without Location
+      // permission NetInfo returns a null SSID no matter how many times we
+      // refresh, so a denied device would spin the retry loop on every
+      // evaluation for nothing. Read the status WITHOUT prompting (the steady
+      // state never prompts) — denied simply stays "away", the honest result.
+      const { granted } = await getWifiPermissionStatus();
+      if (granted) {
+        // Warms NetInfo's singleton via refresh()+retry, so the re-fetch below
+        // reads the now-surfaced SSID.
+        await refreshWifiIdentity();
+        state = await NetInfo.fetch();
+      }
+    } catch {
+      // A refresh/permission hiccup must never throw out of the evaluator: fall
+      // back to the original null-SSID state, which concludes "away" exactly as
+      // it did before this retry existed. Worst case = the old behavior, never
+      // worse.
+    }
+  }
   store.setNetworkAwayFromHome(!isHomeNetwork(state, effective));
 }
 
