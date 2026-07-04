@@ -16,8 +16,9 @@ jest.mock("@react-native-community/netinfo", () => ({
 // expo-location — mock it so the import is native-free and the permission
 // prompt is controllable.
 const mockReqPerm = jest.fn();
+const mockGetPerm = jest.fn();
 jest.mock("expo-location", () => ({
-  getForegroundPermissionsAsync: jest.fn(),
+  getForegroundPermissionsAsync: (...a: any[]) => mockGetPerm(...a),
   requestForegroundPermissionsAsync: (...a: any[]) => mockReqPerm(...a),
 }));
 
@@ -48,6 +49,9 @@ const cellular = () => ({ type: "cellular", isConnected: true, details: {} }) as
 beforeEach(() => {
   jest.clearAllMocks();
   mockDetectVpnActive.mockReturnValue(false);
+  // Default: Location granted, so the #234 null-SSID refresh fallback is
+  // allowed to run. The denied-path test overrides this.
+  mockGetPerm.mockResolvedValue({ status: "granted", canAskAgain: false });
 });
 
 describe("isHomeNetwork", () => {
@@ -118,6 +122,80 @@ describe("evaluateHomeNetwork", () => {
 
     await evaluateHomeNetwork();
 
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  // --- iOS null-SSID transient after cold start / resume (#234) ---
+  //
+  // NetInfo.fetch() can briefly report type "wifi" with a null SSID on iOS
+  // before the OS surfaces it. Without a refresh+retry the evaluator would
+  // conclude "away" and, since no NetInfo change event follows on an already-
+  // connected device, stay stuck there until a restart. The steady-state path
+  // now falls back to refreshWifiIdentity() (NetInfo.refresh) in that case.
+
+  it("refreshes and clears away when the SSID surfaces after a null-SSID fetch", async () => {
+    (Platform as any).OS = "ios";
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    // First fetch: on WiFi but SSID not surfaced yet (the transient).
+    mockFetch.mockResolvedValueOnce(wifi(null));
+    // refresh() surfaces it; the post-refresh re-fetch reads it.
+    mockRefresh.mockResolvedValue(wifi("Home"));
+    mockFetch.mockResolvedValueOnce(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  it("refreshes on the null-SSID transient but stays away when the surfaced SSID isn't home", async () => {
+    (Platform as any).OS = "ios";
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValueOnce(wifi(null));
+    mockRefresh.mockResolvedValue(wifi("Cafe"));
+    mockFetch.mockResolvedValueOnce(wifi("Cafe"));
+
+    await evaluateHomeNetwork();
+
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  it("does NOT refresh when the first fetch already has the SSID (fast path, no wasted work)", async () => {
+    (Platform as any).OS = "ios";
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  it("does NOT refresh on a genuinely-away network (cellular resolves on the first fetch)", async () => {
+    (Platform as any).OS = "ios";
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(cellular());
+
+    await evaluateHomeNetwork();
+
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  it("falls back to away (never throws) when the refresh path errors", async () => {
+    (Platform as any).OS = "ios";
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi(null)); // stuck on the null-SSID transient
+    mockRefresh.mockRejectedValue(new Error("native refresh blew up"));
+
+    // Must resolve (not reject) and conclude away — the pre-retry behavior.
+    await expect(evaluateHomeNetwork()).resolves.toBeUndefined();
     expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
   });
 
@@ -370,6 +448,9 @@ describe("reevaluateHomeNetworkAfterImport", () => {
     const store = fakeStore();
     mockGetState.mockReturnValue(store);
     mockReqPerm.mockResolvedValue({ status: "denied" });
+    // Non-prompting status read (used by the #234 refresh guard) also denied,
+    // so the null-SSID fetch below must NOT trigger a pointless refresh loop.
+    mockGetPerm.mockResolvedValue({ status: "denied", canAskAgain: true });
     mockFetch.mockResolvedValue(wifi(null));
 
     await reevaluateHomeNetworkAfterImport();
