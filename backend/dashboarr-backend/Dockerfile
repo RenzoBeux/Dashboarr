@@ -13,7 +13,12 @@ RUN npm run build && npm prune --omit=dev
 # ---------- runtime ----------
 FROM node:22-alpine
 # tini is PID 1; su-exec drops privileges from the entrypoint.
-RUN apk upgrade --no-cache && apk add --no-cache tini su-exec
+# npm/yarn/corepack are build-time tools the runtime never invokes (the
+# entrypoint execs plain `node`); removing them keeps their bundled deps
+# out of CVE scans and off the attack surface.
+RUN apk upgrade --no-cache && apk add --no-cache tini su-exec \
+    && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
+       /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/corepack
 WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules
