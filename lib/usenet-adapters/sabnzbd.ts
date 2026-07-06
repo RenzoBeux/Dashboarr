@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SabQueue } from "@/lib/types";
 import {
+  addSabFile,
   addSabUrl,
   deleteSabHistorySlot,
   deleteSabSlot,
@@ -187,6 +188,24 @@ export const sabnzbdAdapter: UsenetAdapter = {
     return useMutation({
       mutationFn: ({ url, category }: { url: string; category?: string }) =>
         addSabUrl(url, category, id ?? undefined),
+      onSuccess: () =>
+        queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] }),
+    });
+  },
+
+  useAddFile: (instanceId) => {
+    const queryClient = useQueryClient();
+    const { instanceId: id } = useInstanceTarget("sabnzbd", instanceId);
+    return useMutation({
+      mutationFn: ({
+        fileUri,
+        fileName,
+        category,
+      }: {
+        fileUri: string;
+        fileName: string;
+        category?: string;
+      }) => addSabFile(fileUri, fileName, category, id ?? undefined),
       onSuccess: () =>
         queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] }),
     });

@@ -132,3 +132,22 @@ export async function addNzbgetUrl(
     instanceId,
   );
 }
+
+// --- Add NZB by file upload ---
+
+export async function addNzbgetFile(
+  fileName: string,
+  base64Content: string,
+  category?: string,
+  instanceId?: string,
+): Promise<number> {
+  // Same `append` method as URL adds. NZBGet decides by inspecting Content:
+  // a URL is fetched, anything else is treated as base64-encoded .nzb data —
+  // so the file body goes in Content and NZBFilename supplies the name it
+  // can't derive.
+  return nzbgetRpc<number>(
+    "append",
+    [fileName, base64Content, category ?? "", 0, false, false, "", 0, "SCORE"],
+    instanceId,
+  );
+}

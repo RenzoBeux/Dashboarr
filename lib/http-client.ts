@@ -292,7 +292,14 @@ export async function serviceRequest<T>(
     }
   }
 
-  if (!headers.has("Content-Type") && fetchOptions.body) {
+  // FormData bodies (SAB addfile upload) must keep fetch's own multipart
+  // Content-Type — the boundary parameter is generated per-request and a
+  // manual header would omit it, breaking the upload.
+  if (
+    !headers.has("Content-Type") &&
+    fetchOptions.body &&
+    !(fetchOptions.body instanceof FormData)
+  ) {
     headers.set("Content-Type", "application/json");
   }
 
