@@ -88,6 +88,17 @@ export interface UsenetAdapter {
   useAddUrl: (
     instanceId?: string,
   ) => UseMutationResult<unknown, Error, { url: string; category?: string }>;
+  // Upload a local .nzb picked with the document picker. `fileUri` is the
+  // picker's cache-copy URI; `fileName` is the original filename (services
+  // need it — SAB names the multipart file part, NZBGet can't derive a name
+  // from base64 content).
+  useAddFile: (
+    instanceId?: string,
+  ) => UseMutationResult<
+    unknown,
+    Error,
+    { fileUri: string; fileName: string; category?: string }
+  >;
   usePauseAll: (instanceId?: string) => UseMutationResult<unknown, Error, void>;
   useResumeAll: (instanceId?: string) => UseMutationResult<unknown, Error, void>;
 }

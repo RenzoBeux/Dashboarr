@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { File } from "expo-file-system";
 import {
+  addNzbgetFile,
   addNzbgetUrl,
   deleteNzbgetGroup,
   deleteNzbgetHistorySlot,
@@ -222,6 +224,27 @@ export const nzbgetAdapter: UsenetAdapter = {
     return useMutation({
       mutationFn: ({ url, category }: { url: string; category?: string }) =>
         addNzbgetUrl(url, category, id ?? undefined),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ["nzbget", id] }),
+    });
+  },
+
+  useAddFile: (instanceId) => {
+    const queryClient = useQueryClient();
+    const { instanceId: id } = useInstanceTarget("nzbget", instanceId);
+    return useMutation({
+      mutationFn: async ({
+        fileUri,
+        fileName,
+        category,
+      }: {
+        fileUri: string;
+        fileName: string;
+        category?: string;
+      }) => {
+        // NZBGet's append RPC takes the nzb as base64 text, not multipart.
+        const content = await new File(fileUri).base64();
+        return addNzbgetFile(fileName, content, category, id ?? undefined);
+      },
       onSuccess: () => queryClient.invalidateQueries({ queryKey: ["nzbget", id] }),
     });
   },

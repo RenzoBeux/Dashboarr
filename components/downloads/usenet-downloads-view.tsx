@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { View, Text, Pressable, BackHandler } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
 import {
@@ -9,6 +10,7 @@ import {
   Plus,
   CheckCircle2,
   Circle,
+  FileUp,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -92,6 +94,7 @@ export function UsenetDownloadsView({
   const { data: healthData } = useServiceHealth();
 
   const addUrl = adapter.useAddUrl();
+  const addFile = adapter.useAddFile();
   const pauseSlot = adapter.usePauseSlot();
   const resumeSlot = adapter.useResumeSlot();
   const deleteSlot = adapter.useDeleteSlot();
@@ -144,6 +147,29 @@ export function UsenetDownloadsView({
           setShowAddModal(false);
         },
         onError: (err) => toastError("Failed to add NZB", err),
+      },
+    );
+  };
+
+  const handlePickFile = async () => {
+    // iOS maps the `type` filter via UTType(mimeType:), which returns nil for
+    // niche types like application/x-nzb and leaves the picker unusable — use
+    // the wildcard (same workaround as config import) and let the server
+    // reject non-nzb files.
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "*/*",
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    addFile.mutate(
+      { fileUri: asset.uri, fileName: asset.name },
+      {
+        onSuccess: () => {
+          setNzbUrl("");
+          setShowAddModal(false);
+        },
+        onError: (err) => toastError("Failed to upload NZB", err),
       },
     );
   };
@@ -283,6 +309,14 @@ export function UsenetDownloadsView({
                   className="flex-1"
                 />
               </View>
+              <Button
+                label="Upload .nzb File"
+                variant="outline"
+                size="sm"
+                onPress={handlePickFile}
+                loading={addFile.isPending}
+                icon={<Icon icon={FileUp} size={16} color="#a1a1aa" />}
+              />
             </Card>
           ) : (
             <Button

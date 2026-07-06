@@ -132,3 +132,33 @@ export async function addSabUrl(
   if (category) params.cat = category;
   await serviceRequest<SabStatusEnvelope>("sabnzbd", "", { params, instanceId });
 }
+
+// --- Add NZB by file upload ---
+
+export async function addSabFile(
+  fileUri: string,
+  fileName: string,
+  category?: string,
+  instanceId?: string,
+): Promise<void> {
+  // mode=addfile takes the .nzb as a multipart/form-data part named "name".
+  // React Native's fetch uploads a { uri, name, type } descriptor as a file
+  // part and sets the multipart Content-Type (with boundary) itself —
+  // serviceRequest skips its JSON default for FormData bodies.
+  const form = new FormData();
+  form.append("name", {
+    uri: fileUri,
+    name: fileName,
+    type: "application/x-nzb",
+  } as unknown as Blob);
+  const params: Record<string, string | number | boolean> = {
+    mode: "addfile",
+  };
+  if (category) params.cat = category;
+  await serviceRequest<SabStatusEnvelope>("sabnzbd", "", {
+    method: "POST",
+    body: form,
+    params,
+    instanceId,
+  });
+}
