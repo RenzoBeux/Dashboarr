@@ -15,6 +15,7 @@ import {
 } from "@/services/nzbget-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { NzbgetSpeedLimitsControl } from "@/components/nzbget/speed-limits-control";
 import { combineHiLo, formatBytes, formatEta, formatSpeed } from "@/lib/utils";
 import type {
   UnifiedItem,
@@ -266,6 +267,8 @@ export const nzbgetAdapter: UsenetAdapter = {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: ["nzbget", id] }),
     });
   },
+
+  SpeedLimitsControl: NzbgetSpeedLimitsControl,
 };
 
 // Suppress unused-export warning for NzbgetStatus — kept reachable for

@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import type {
   UseMutationResult,
   UseQueryOptions,
@@ -101,6 +102,12 @@ export interface UsenetAdapter {
   >;
   usePauseAll: (instanceId?: string) => UseMutationResult<unknown, Error, void>;
   useResumeAll: (instanceId?: string) => UseMutationResult<unknown, Error, void>;
+
+  // Optional self-contained speed-limits header control (a button + sheet that
+  // owns its own client-specific hooks). Rendered in the speed row of the shared
+  // downloads view when present. Keeping the client-specific speed-limit hooks
+  // inside the control keeps the shared view free of any optional-hook hazard.
+  SpeedLimitsControl?: ComponentType;
 }
 
 export function usenetBadgeVariant(

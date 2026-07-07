@@ -8,6 +8,7 @@ import {
   deleteSabSlot,
   deleteSabHistorySlot,
   addSabUrl,
+  setSabSpeedLimit,
 } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
@@ -93,6 +94,17 @@ export function useAddSabUrl(instanceId?: string) {
     "sabnzbd",
     ({ url, category }: { url: string; category?: string }, id) =>
       addSabUrl(url, category, id),
+    instanceId,
+  );
+}
+
+// Set the download speed limit in KB/s (0 = unlimited). useServiceMutation
+// invalidates the whole ["sabnzbd", id] slice on success, so the queue's
+// `speedlimit_abs` (and the control's amber tint) refresh right after saving.
+export function useSetSabSpeedLimit(instanceId?: string) {
+  return useServiceMutation(
+    "sabnzbd",
+    (kbPerSec: number, id) => setSabSpeedLimit(kbPerSec, id),
     instanceId,
   );
 }

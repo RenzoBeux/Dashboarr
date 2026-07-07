@@ -65,6 +65,18 @@ export async function resumeNzbgetAll(instanceId?: string): Promise<void> {
   await nzbgetRpc<boolean>("resumedownload", [], instanceId);
 }
 
+// --- Speed limit ---
+
+// `rate` sets the download speed limit in KB/s; `0` disables throttling. Note
+// the scale mismatch NZBGet documents: `rate` takes KB/s, while the current
+// limit reported on `status.DownloadLimit` is in bytes/s.
+export async function setNzbgetRate(
+  kbPerSec: number,
+  instanceId?: string,
+): Promise<void> {
+  await nzbgetRpc<boolean>("rate", [Math.max(0, Math.round(kbPerSec))], instanceId);
+}
+
 // --- Per-group actions ---
 // editqueue takes [Command, Param, IDs[]]. For Group* commands the Param is
 // an empty string and IDs is the list of NZBIDs to act on.

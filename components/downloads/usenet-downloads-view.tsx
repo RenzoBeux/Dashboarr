@@ -101,6 +101,7 @@ export function UsenetDownloadsView({
   const deleteHistorySlot = adapter.useDeleteHistorySlot();
   const pauseAll = adapter.usePauseAll();
   const resumeAll = adapter.useResumeAll();
+  const SpeedLimitsControl = adapter.SpeedLimitsControl;
   const router = useRouter();
 
   const items = useMemo<UnifiedItem[]>(() => {
@@ -278,6 +279,7 @@ export function UsenetDownloadsView({
                 <Icon icon={Pause} size={20} color="#f59e0b" />
               )}
             </Pressable>
+            {SpeedLimitsControl ? <SpeedLimitsControl /> : null}
           </View>
 
           {/* Add NZB by URL */}
