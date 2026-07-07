@@ -9,6 +9,7 @@ import {
   pauseNzbgetGroup,
   resumeNzbgetAll,
   resumeNzbgetGroup,
+  setNzbgetRate,
 } from "@/services/nzbget-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
@@ -103,6 +104,16 @@ export function useAddNzbgetUrl(instanceId?: string) {
     "nzbget",
     ({ url, category }: { url: string; category?: string }, id) =>
       addNzbgetUrl(url, category, id),
+    instanceId,
+  );
+}
+
+// Set the download speed limit in KB/s (0 = unlimited). Invalidates the
+// ["nzbget", id] slice so `status.DownloadLimit` (and the control tint) refresh.
+export function useSetNzbgetRate(instanceId?: string) {
+  return useServiceMutation(
+    "nzbget",
+    (kbPerSec: number, id) => setNzbgetRate(kbPerSec, id),
     instanceId,
   );
 }

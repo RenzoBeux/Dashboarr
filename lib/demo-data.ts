@@ -158,6 +158,7 @@ const DEMO_SAB_QUEUE = {
     paused: false,
     speed: "4.2 M",
     speedlimit: "0",
+    speedlimit_abs: "0",
     size: "8.4 GB",
     sizeleft: "5.1 GB",
     noofslots: 3,

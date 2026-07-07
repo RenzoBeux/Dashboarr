@@ -148,6 +148,9 @@ export interface SabQueue {
   paused: boolean;
   speed: string;
   speedlimit: string;
+  // Absolute speed limit in bytes/s ("0" = unlimited). `speedlimit` above is a
+  // percentage of the configured line speed; this is the value we surface.
+  speedlimit_abs: string;
   size: string;
   sizeleft: string;
   noofslots: number;

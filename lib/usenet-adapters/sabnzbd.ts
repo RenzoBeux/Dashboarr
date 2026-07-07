@@ -14,6 +14,7 @@ import {
 } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { SabnzbdSpeedLimitsControl } from "@/components/sabnzbd/speed-limits-control";
 import type {
   UnifiedItem,
   UsenetAdapter,
@@ -230,4 +231,6 @@ export const sabnzbdAdapter: UsenetAdapter = {
         queryClient.invalidateQueries({ queryKey: ["sabnzbd", id] }),
     });
   },
+
+  SpeedLimitsControl: SabnzbdSpeedLimitsControl,
 };

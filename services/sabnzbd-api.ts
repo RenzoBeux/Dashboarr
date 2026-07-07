@@ -59,6 +59,24 @@ export async function resumeSabAll(instanceId?: string): Promise<void> {
   });
 }
 
+// --- Speed limit ---
+
+// SAB's `config&name=speedlimit&value=X` treats a bare number as a *percentage*
+// of the user's configured max line speed. Appending `K` makes it an absolute
+// KB/s limit, which is what we expose (works even when no line speed is set and
+// matches how qBittorrent's limit reads). `value=0` clears the limit. The
+// current absolute limit comes back on the queue as `speedlimit_abs` (bytes/s).
+export async function setSabSpeedLimit(
+  kbPerSec: number,
+  instanceId?: string,
+): Promise<void> {
+  const value = kbPerSec > 0 ? `${Math.round(kbPerSec)}K` : "0";
+  await serviceRequest<SabStatusEnvelope>("sabnzbd", "", {
+    params: { mode: "config", name: "speedlimit", value },
+    instanceId,
+  });
+}
+
 // --- Per-slot actions ---
 
 export async function pauseSabSlot(
