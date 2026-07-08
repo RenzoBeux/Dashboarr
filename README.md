@@ -121,6 +121,8 @@ pnpm start
 
 Scan the QR code with [Expo Go](https://expo.dev/go) on your device, or press `a` for Android emulator / `i` for iOS simulator.
 
+For a native development build, run `pnpm android` / `pnpm ios` (or `pnpm android:dev` / `pnpm ios:dev` for the side-by-side dev variant). `google-services.json` (Firebase Cloud Messaging credentials) is not included in the repo — native builds work without it, but push notifications will be unavailable. Release builds fail without it by design.
+
 ### Building for Production
 
 ```bash
