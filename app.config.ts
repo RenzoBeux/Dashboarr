@@ -131,6 +131,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "./plugins/withCleartextTraffic",
     "./plugins/withDevVariant",
     "./plugins/withFmtConstevalFix",
+    "./plugins/withGradleJvmArgs",
     "./plugins/withInsecureTls",
     [
       "expo-location",
