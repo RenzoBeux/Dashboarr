@@ -50,6 +50,7 @@ import {
   formatBytes,
   formatAudioChannels,
   formatResolution,
+  formatRuntime,
 } from "@/lib/utils";
 import type { RadarrMovie } from "@/lib/types";
 
@@ -458,13 +459,6 @@ function buildMovieStats(movie: RadarrMovie) {
 function capitalize(s: string): string {
   if (!s) return "";
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function formatRuntime(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 function formatReleaseDate(iso?: string): string {

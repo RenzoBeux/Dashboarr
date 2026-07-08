@@ -31,6 +31,7 @@ import { useSortStore, SORT_DEFAULTS, type MoviesSortKey } from "@/store/sort-st
 
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
+import { formatRuntime } from "@/lib/utils";
 import {
   useRadarrMovies,
   useRadarrQueue,
@@ -93,6 +94,11 @@ function nextReleaseTime(m: RadarrMovie): number | null {
   const future = times.filter((t) => t >= now);
   if (future.length) return Math.min(...future);
   return Math.max(...times);
+}
+
+// Poster footer: year plus duration when Radarr knows the runtime (0 = unknown).
+function movieFooter(m: RadarrMovie): string {
+  return m.runtime ? `${m.year} · ${formatRuntime(m.runtime)}` : String(m.year);
 }
 
 function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): number {
@@ -473,7 +479,7 @@ function MovieLibrary({
       serviceId="radarr"
       placeholderIcon={Film}
       nounPlural="movies"
-      renderFooter={(m) => String(m.year)}
+      renderFooter={movieFooter}
       posterStatus={(m) => ({
         barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
         cornerColor: cornerColorFor(m.status),
@@ -585,7 +591,7 @@ function MovieWanted({
       serviceId="radarr"
       placeholderIcon={Film}
       nounPlural="missing movies"
-      renderFooter={(m) => String(m.year)}
+      renderFooter={movieFooter}
       posterStatus={(m) => ({
         barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
         cornerColor: cornerColorFor(m.status),
