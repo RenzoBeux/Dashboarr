@@ -31,6 +31,7 @@ import { useSortStore, SORT_DEFAULTS, type MoviesSortKey } from "@/store/sort-st
 
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
+import { formatRuntime } from "@/lib/utils";
 import {
   useRadarrMovies,
   useRadarrQueue,
@@ -79,6 +80,8 @@ const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "release-desc", label: "Release Date: Newest First" },
   { key: "release-asc", label: "Release Date: Oldest First" },
   { key: "size-desc", label: "Size: Largest First" },
+  { key: "duration-desc", label: "Duration: Longest First" },
+  { key: "duration-asc", label: "Duration: Shortest First" },
 ];
 
 function nextReleaseTime(m: RadarrMovie): number | null {
@@ -91,6 +94,11 @@ function nextReleaseTime(m: RadarrMovie): number | null {
   const future = times.filter((t) => t >= now);
   if (future.length) return Math.min(...future);
   return Math.max(...times);
+}
+
+// Poster footer: year plus duration when Radarr knows the runtime (0 = unknown).
+function movieFooter(m: RadarrMovie): string {
+  return m.runtime ? `${m.year} · ${formatRuntime(m.runtime)}` : String(m.year);
 }
 
 function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): number {
@@ -117,6 +125,17 @@ function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): num
     }
     case "size-desc":
       return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+    case "duration-desc":
+    case "duration-asc": {
+      // Radarr reports 0 for unknown runtime — sort those last either way.
+      const aR = a.runtime || 0;
+      const bR = b.runtime || 0;
+      if (!aR && !bR)
+        return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+      if (!aR) return 1;
+      if (!bR) return -1;
+      return sort === "duration-desc" ? bR - aR : aR - bR;
+    }
     case "next-airing-asc": {
       const aT = nextReleaseTime(a);
       const bT = nextReleaseTime(b);
@@ -460,7 +479,7 @@ function MovieLibrary({
       serviceId="radarr"
       placeholderIcon={Film}
       nounPlural="movies"
-      renderFooter={(m) => String(m.year)}
+      renderFooter={movieFooter}
       posterStatus={(m) => ({
         barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
         cornerColor: cornerColorFor(m.status),
@@ -572,7 +591,7 @@ function MovieWanted({
       serviceId="radarr"
       placeholderIcon={Film}
       nounPlural="missing movies"
-      renderFooter={(m) => String(m.year)}
+      renderFooter={movieFooter}
       posterStatus={(m) => ({
         barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
         cornerColor: cornerColorFor(m.status),

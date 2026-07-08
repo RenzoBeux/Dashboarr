@@ -2,6 +2,7 @@ import {
   formatBytes,
   formatSpeed,
   formatEta,
+  formatRuntime,
   formatProgress,
   truncateText,
   formatEpisodeCode,
@@ -67,6 +68,20 @@ describe("formatEta", () => {
 
   it("formats hours plus minutes", () => {
     expect(formatEta(2 * 3600 + 15 * 60)).toBe("2h 15m");
+  });
+});
+
+describe("formatRuntime", () => {
+  it("formats <60 minutes as 'Nm'", () => {
+    expect(formatRuntime(45)).toBe("45m");
+  });
+
+  it("formats whole hours without a minutes part", () => {
+    expect(formatRuntime(120)).toBe("2h");
+  });
+
+  it("formats hours plus minutes", () => {
+    expect(formatRuntime(138)).toBe("2h 18m");
   });
 });
 

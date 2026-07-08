@@ -53,6 +53,16 @@ export function formatEta(seconds: number): string {
 }
 
 /**
+ * Format a runtime in minutes (e.g., 138 → "2h 18m", 45 → "45m")
+ */
+export function formatRuntime(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/**
  * Format a percentage (0-1 float to "45.2%")
  */
 export function formatProgress(progress: number): string {
