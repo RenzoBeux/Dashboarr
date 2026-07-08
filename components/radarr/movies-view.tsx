@@ -79,6 +79,8 @@ const SORT_OPTIONS: { key: MoviesSortKey; label: string }[] = [
   { key: "release-desc", label: "Release Date: Newest First" },
   { key: "release-asc", label: "Release Date: Oldest First" },
   { key: "size-desc", label: "Size: Largest First" },
+  { key: "duration-desc", label: "Duration: Longest First" },
+  { key: "duration-asc", label: "Duration: Shortest First" },
 ];
 
 function nextReleaseTime(m: RadarrMovie): number | null {
@@ -117,6 +119,17 @@ function compareMovies(a: RadarrMovie, b: RadarrMovie, sort: MoviesSortKey): num
     }
     case "size-desc":
       return (b.sizeOnDisk ?? 0) - (a.sizeOnDisk ?? 0);
+    case "duration-desc":
+    case "duration-asc": {
+      // Radarr reports 0 for unknown runtime — sort those last either way.
+      const aR = a.runtime || 0;
+      const bR = b.runtime || 0;
+      if (!aR && !bR)
+        return (a.sortTitle || a.title).localeCompare(b.sortTitle || b.title);
+      if (!aR) return 1;
+      if (!bR) return -1;
+      return sort === "duration-desc" ? bR - aR : aR - bR;
+    }
     case "next-airing-asc": {
       const aT = nextReleaseTime(a);
       const bT = nextReleaseTime(b);

@@ -12,9 +12,13 @@ export type MoviesSortKey =
   | "release-desc"
   | "release-asc"
   | "size-desc"
+  | "duration-desc"
+  | "duration-asc"
   | "next-airing-asc";
 
-export type SeriesSortKey = MoviesSortKey;
+// Sonarr's runtime is per-episode, not per-series, so duration isn't a
+// meaningful series sort axis.
+export type SeriesSortKey = Exclude<MoviesSortKey, "duration-desc" | "duration-asc">;
 
 // Lidarr artists have no release year / next-airing axis, so they sort on a
 // narrower set than movies/series.
