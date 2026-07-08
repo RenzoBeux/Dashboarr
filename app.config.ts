@@ -1,4 +1,6 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
+import fs from "fs";
+import path from "path";
 import pkg from "./package.json";
 
 // Derives a monotonic integer from semver so `pnpm bump:*` propagates to the
@@ -14,6 +16,37 @@ const IS_DEV = process.env.APP_VARIANT === "development";
 const APP_NAME = IS_DEV ? "Dashboarr Dev" : "Dashboarr";
 const BUNDLE_ID = IS_DEV ? "com.dashboarr.app.dev" : "com.dashboarr.app";
 const APP_SCHEME = IS_DEV ? "dashboarr-dev" : "dashboarr";
+
+// google-services.json holds real FCM credentials, so it's gitignored and a
+// fresh clone won't have it. Local dev builds must still work: when the file
+// is missing we omit android.googleServicesFile entirely, prebuild skips the
+// Google Services gradle plugin, and push tokens are simply unavailable at
+// runtime. Without this, a missing file aborts prebuild partway and leaves a
+// broken half-generated android/ folder.
+// Builds that ship must instead fail loudly — silently dropping FCM would
+// break push for every user. That means any EAS Android build (the file
+// arrives there via the GOOGLE_SERVICES_JSON file secret) and local release
+// builds (scripts/build-android-prod.js sets DASHBOARR_RELEASE=1). iOS never
+// uses this file — push goes through APNs.
+const GOOGLE_SERVICES_FILE = process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json";
+const HAS_GOOGLE_SERVICES = fs.existsSync(
+  path.isAbsolute(GOOGLE_SERVICES_FILE) ? GOOGLE_SERVICES_FILE : path.join(__dirname, GOOGLE_SERVICES_FILE)
+);
+const IS_ANDROID_RELEASE =
+  process.env.DASHBOARR_RELEASE === "1" || process.env.EAS_BUILD_PLATFORM === "android";
+if (!HAS_GOOGLE_SERVICES) {
+  if (IS_ANDROID_RELEASE) {
+    throw new Error(
+      `google-services.json not found (looked for ${GOOGLE_SERVICES_FILE}). ` +
+        "Release builds require real FCM credentials: place google-services.json at the " +
+        "project root, or point GOOGLE_SERVICES_JSON at it (EAS file secret on cloud builds)."
+    );
+  }
+  console.warn(
+    "[app.config] google-services.json not found — building without FCM. " +
+      "Push notifications will be unavailable in this build."
+  );
+}
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -77,7 +110,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // when invoking gradlew, without a second prebuild.
     package: "com.dashboarr.app",
     versionCode: nativeBuildNumber,
-    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
+    ...(HAS_GOOGLE_SERVICES ? { googleServicesFile: GOOGLE_SERVICES_FILE } : {}),
   },
   scheme: APP_SCHEME,
   // Shared EAS project used by every install. Required for real push tokens —

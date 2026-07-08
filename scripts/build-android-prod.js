@@ -4,6 +4,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// Release builds must not silently ship without FCM credentials — this makes
+// app.config.ts fail hard if google-services.json is missing (see there).
+process.env.DASHBOARR_RELEASE = '1';
+
 const ROOT = path.join(__dirname, '..');
 const ANDROID_DIR = path.join(ROOT, 'android');
 const IS_WINDOWS = process.platform === 'win32';
