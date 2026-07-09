@@ -48,7 +48,13 @@ import {
 } from "@/store/sort-store";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { formatSpeed, formatEta, formatBytes, truncateText } from "@/lib/utils";
+import {
+  formatSpeed,
+  formatEta,
+  formatBytes,
+  truncateText,
+  magnetDisplayName,
+} from "@/lib/utils";
 import {
   torrentBadgeVariant,
   type TorrentAdapter,
@@ -85,6 +91,11 @@ interface ViewProps {
   adapter: TorrentAdapter;
   showHeader?: boolean;
   segmentedControl?: React.ReactNode;
+  // Magnet URI from the OS-level magnet: handler (app/+native-intent.ts →
+  // downloads.tsx). Prefills and opens the add card; the parent clears it via
+  // onMagnetConsumed once the torrent is added or the card is dismissed.
+  incomingMagnet?: string;
+  onMagnetConsumed?: () => void;
 }
 
 // Shared downloads view for every torrent client. Driven entirely by the
@@ -95,6 +106,8 @@ export function TorrentDownloadsView({
   adapter,
   showHeader = true,
   segmentedControl,
+  incomingMagnet,
+  onMagnetConsumed,
 }: ViewProps) {
   const [filter, setFilter] = useState<TorrentFilterType>("all");
   const [category, setCategory] = useState<string>(ALL_CATEGORIES);
@@ -105,6 +118,14 @@ export function TorrentDownloadsView({
   const [categoryBulkOpen, setCategoryBulkOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
+
+  // Runs on mount too (segment switches remount this view per client), so a
+  // pending magnet re-prefills whichever client the user lands on.
+  useEffect(() => {
+    if (!incomingMagnet) return;
+    setMagnetUri(incomingMagnet);
+    setShowAddModal(true);
+  }, [incomingMagnet]);
 
   // "all" sentinel → omit the param entirely (qBittorrent reads no param as
   // "all categories"); "" stays "" so it maps to uncategorized.
@@ -184,6 +205,10 @@ export function TorrentDownloadsView({
     }, [multiSelect.isActive, multiSelect.clear]),
   );
 
+  // Torrent name from the magnet's `dn` param, shown above the input so the
+  // user sees what they're adding (covers pasted and incoming magnets alike).
+  const magnetName = magnetDisplayName(magnetUri.trim());
+
   const handleAdd = () => {
     if (!magnetUri.trim()) return;
     addTorrent.mutate(
@@ -192,6 +217,8 @@ export function TorrentDownloadsView({
         onSuccess: () => {
           setMagnetUri("");
           setShowAddModal(false);
+          onMagnetConsumed?.();
+          toast("Torrent added");
         },
         onError: (err) => toastError("Failed to add torrent", err),
       },
@@ -342,11 +369,18 @@ export function TorrentDownloadsView({
       {/* Add Torrent */}
       {showAddModal ? (
         <Card className="mb-4 gap-3">
+          {magnetName ? (
+            <Text className="text-zinc-100 text-sm font-semibold" numberOfLines={2}>
+              {magnetName}
+            </Text>
+          ) : null}
           <TextInput
             placeholder="Paste magnet link..."
             value={magnetUri}
             onChangeText={setMagnetUri}
-            autoFocus
+            // Incoming magnets arrive prefilled — popping the keyboard would
+            // just cover the Add button.
+            autoFocus={!incomingMagnet}
           />
           <View className="flex-row gap-2">
             <Button
@@ -356,6 +390,7 @@ export function TorrentDownloadsView({
               onPress={() => {
                 setShowAddModal(false);
                 setMagnetUri("");
+                onMagnetConsumed?.();
               }}
               className="flex-1"
             />

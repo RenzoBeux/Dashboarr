@@ -5,6 +5,7 @@ import {
   formatRuntime,
   formatProgress,
   truncateText,
+  magnetDisplayName,
   formatEpisodeCode,
   relativeDate,
   formatAudioChannels,
@@ -106,6 +107,27 @@ describe("truncateText", () => {
 
   it("ellipsizes when too long", () => {
     expect(truncateText("hello world", 5)).toBe("hell…");
+  });
+});
+
+describe("magnetDisplayName", () => {
+  it("extracts a percent-encoded dn param", () => {
+    expect(
+      magnetDisplayName("magnet:?xt=urn:btih:abc123&dn=Some%20Torrent%20Name&tr=udp"),
+    ).toBe("Some Torrent Name");
+  });
+
+  it("decodes + as space", () => {
+    expect(magnetDisplayName("magnet:?xt=urn:btih:abc&dn=Some+Name")).toBe("Some Name");
+  });
+
+  it("returns null when dn is absent", () => {
+    expect(magnetDisplayName("magnet:?xt=urn:btih:abc123")).toBeNull();
+  });
+
+  it("returns null for non-magnet text and malformed encodings", () => {
+    expect(magnetDisplayName("hello world")).toBeNull();
+    expect(magnetDisplayName("magnet:?xt=urn:btih:abc&dn=%E0%A4%A")).toBeNull();
   });
 });
 

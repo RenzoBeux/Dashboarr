@@ -78,6 +78,20 @@ export function truncateText(text: string, maxLength: number): string {
 }
 
 /**
+ * Display name (`dn` param) from a magnet URI, or null when absent/malformed.
+ */
+export function magnetDisplayName(uri: string): string | null {
+  const match = uri.match(/[?&]dn=([^&]+)/);
+  if (!match) return null;
+  try {
+    const name = decodeURIComponent(match[1].replace(/\+/g, " ")).trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Format season/episode as S01E05
  */
 export function formatEpisodeCode(season: number, episode: number): string {

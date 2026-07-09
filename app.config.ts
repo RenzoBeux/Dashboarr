@@ -112,7 +112,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     versionCode: nativeBuildNumber,
     ...(HAS_GOOGLE_SERVICES ? { googleServicesFile: GOOGLE_SERVICES_FILE } : {}),
   },
-  scheme: APP_SCHEME,
+  // APP_SCHEME must stay first — expo-linking's createURL uses the first entry.
+  // "magnet" registers the app as a magnet-link handler (Android intent filter
+  // + iOS CFBundleURLSchemes); incoming URLs are rewritten by app/+native-intent.ts.
+  scheme: [APP_SCHEME, "magnet"],
   // Shared EAS project used by every install. Required for real push tokens —
   // Notifications.getExpoPushTokenAsync({ projectId }) reads from extra.eas.projectId.
   // Keep this stable across releases; replace with the real EAS project UUID

@@ -11,7 +11,12 @@ import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
 import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
 import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useLocalSearchParams } from "expo-router";
+import { ActionSheet } from "@/components/ui/action-sheet";
+import { toastError } from "@/components/ui/toast";
+import { useActiveInstance } from "@/hooks/use-active-instance";
+import { magnetDisplayName } from "@/lib/utils";
+import type { ServiceInstance } from "@/store/config-store";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 type DownloadClient =
   | "qbittorrent"
@@ -19,6 +24,14 @@ type DownloadClient =
   | "transmission"
   | "sabnzbd"
   | "nzbget";
+
+// One candidate destination for an incoming magnet link: a torrent client
+// kind + a specific configured instance of it.
+interface MagnetTarget {
+  client: DownloadClient;
+  instanceId: string;
+  label: string;
+}
 
 // Top-level switcher for the Downloads tab. When more than one download client
 // is enabled the user picks via a segmented control; otherwise the available
@@ -49,8 +62,12 @@ export default function DownloadsScreen() {
 
   // `?client=...` lets the Services tab (and dashboard Status widget) deep-link
   // straight to the matching segment instead of always landing on whichever
-  // client was opened first.
-  const { client: clientParam } = useLocalSearchParams<{ client?: string }>();
+  // client was opened first. `?magnet=...` arrives from the OS magnet-link
+  // handler (see app/+native-intent.ts) and prefills the add card.
+  const { client: clientParam, magnet: magnetParam } = useLocalSearchParams<{
+    client?: string;
+    magnet?: string;
+  }>();
   const paramClient =
     clientParam === "qbittorrent" ||
     clientParam === "rtorrent" ||
@@ -74,6 +91,85 @@ export default function DownloadsScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramClient]);
+
+  // Incoming magnet link. Stash it in state (not the route) so the prefill
+  // survives segment switches — TorrentDownloadsView remounts per client — and
+  // clear the param immediately so tab revisits don't re-trigger the add card.
+  //
+  // Candidate destinations are every enabled+attached instance of every
+  // enabled torrent client. One candidate → open the add card directly;
+  // several → an ActionSheet picks the client + instance first.
+  const router = useRouter();
+  const [pendingMagnet, setPendingMagnet] = useState<string>();
+  // Magnet waiting on the destination ActionSheet (only set with 2+ targets).
+  const [magnetPick, setMagnetPick] = useState<string>();
+  const qbInstances = useActiveInstance("qbittorrent").instances;
+  const rtInstances = useActiveInstance("rtorrent").instances;
+  const trInstances = useActiveInstance("transmission").instances;
+  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+
+  const torrentInstances: [DownloadClient, ServiceInstance[]][] = [
+    ["qbittorrent", qbInstances],
+    ["rtorrent", rtInstances],
+    ["transmission", trInstances],
+  ];
+  const magnetTargets: MagnetTarget[] = torrentInstances.flatMap(
+    ([kind, instances]) =>
+      enabledClients.includes(kind)
+        ? instances.map((i) => ({
+            client: kind,
+            instanceId: i.id,
+            // Only disambiguate with the instance name when the kind has
+            // several instances — "qBittorrent · Seedbox" vs just "qBittorrent".
+            label:
+              instances.length > 1
+                ? `${SEGMENT_LABELS[kind]} · ${i.name || i.id}`
+                : SEGMENT_LABELS[kind],
+          }))
+        : [],
+  );
+
+  const applyMagnetTarget = (target: MagnetTarget, magnet: string) => {
+    setClient(target.client);
+    // Switch the tab to the picked instance so the torrent list and add card
+    // show the actual destination (useAddTorrent follows the active instance).
+    setActiveInstance(target.client, target.instanceId);
+    setPendingMagnet(magnet);
+  };
+
+  useEffect(() => {
+    if (!magnetParam) return;
+    router.setParams({ magnet: undefined });
+    if (magnetTargets.length === 0) {
+      toastError("No torrent client enabled");
+      return;
+    }
+    if (magnetTargets.length === 1) {
+      applyMagnetTarget(magnetTargets[0], magnetParam);
+    } else {
+      setMagnetPick(magnetParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [magnetParam]);
+
+  // Destination picker for incoming magnets. Action presses only set inline
+  // state (no second modal, no navigation), so this doesn't need useModalFlow.
+  const magnetSheet = (
+    <ActionSheet
+      visible={magnetPick !== undefined}
+      onClose={() => setMagnetPick(undefined)}
+      title="Add Torrent To"
+      subtitle={
+        magnetPick ? magnetDisplayName(magnetPick) ?? undefined : undefined
+      }
+      actions={magnetTargets.map((t) => ({
+        label: t.label,
+        onPress: () => {
+          if (magnetPick) applyMagnetTarget(t, magnetPick);
+        },
+      }))}
+    />
+  );
 
   if (enabledClients.length === 0) {
     return (
@@ -109,6 +205,7 @@ export default function DownloadsScreen() {
           showHeader={!showSegmented}
           segmentedControl={segmentedControl}
         />
+        {magnetSheet}
       </ScreenWrapper>
     );
   }
@@ -121,6 +218,7 @@ export default function DownloadsScreen() {
           showHeader={!showSegmented}
           segmentedControl={segmentedControl}
         />
+        {magnetSheet}
       </ScreenWrapper>
     );
   }
@@ -136,11 +234,16 @@ export default function DownloadsScreen() {
         ? transmissionTorrentAdapter
         : qbittorrentTorrentAdapter;
   return (
-    <TorrentDownloadsView
-      key={activeClient}
-      adapter={torrentAdapter}
-      segmentedControl={segmentedControl}
-    />
+    <>
+      <TorrentDownloadsView
+        key={activeClient}
+        adapter={torrentAdapter}
+        segmentedControl={segmentedControl}
+        incomingMagnet={pendingMagnet}
+        onMagnetConsumed={() => setPendingMagnet(undefined)}
+      />
+      {magnetSheet}
+    </>
   );
 }
 
