@@ -33,6 +33,9 @@ export function PosterCard({ item, onPress, size = "sm", widthOverride }: Poster
     item.releaseDate?.slice(0, 4) || item.firstAirDate?.slice(0, 4);
   const posterUrl = getPosterUrl(item.posterPath, poster);
   const isAvailable = item.mediaInfo?.status === 5;
+  // Partially available (TV with some seasons present) — green like Seerr,
+  // but with a clock glyph to distinguish it from fully available.
+  const isPartial = item.mediaInfo?.status === 4;
   const isPending =
     item.mediaInfo?.status === 2 || item.mediaInfo?.status === 3;
 
@@ -67,6 +70,11 @@ export function PosterCard({ item, onPress, size = "sm", widthOverride }: Poster
         {isAvailable && (
           <View className="absolute top-1.5 right-1.5 bg-green-600 rounded-full p-1">
             <Icon icon={Check} size={10} color="#fff" />
+          </View>
+        )}
+        {isPartial && (
+          <View className="absolute top-1.5 right-1.5 bg-green-600 rounded-full p-1">
+            <Icon icon={Clock} size={10} color="#fff" />
           </View>
         )}
         {isPending && (
