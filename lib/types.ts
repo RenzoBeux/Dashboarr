@@ -890,7 +890,9 @@ export type OverseerrMediaStatus =
   | 2 // PENDING
   | 3 // PROCESSING
   | 4 // PARTIALLY_AVAILABLE
-  | 5; // AVAILABLE
+  | 5 // AVAILABLE
+  | 6 // BLOCKLISTED (Jellyseerr)
+  | 7; // DELETED (Jellyseerr)
 
 export const OVERSEERR_STATUS_LABELS: Record<number, string> = {
   1: "Unknown",
@@ -898,6 +900,8 @@ export const OVERSEERR_STATUS_LABELS: Record<number, string> = {
   3: "Processing",
   4: "Partial",
   5: "Available",
+  6: "Blocklisted",
+  7: "Deleted",
 };
 
 export interface OverseerrRequest {

@@ -101,7 +101,10 @@ export function useOverseerrMediaDetails(
       mediaType === "movie"
         ? getMovieDetails(tmdbId, id ?? undefined)
         : getTVDetails(tmdbId, id ?? undefined),
-    staleTime: 600000, // 10 min — titles don't change
+    // Short: the payload carries live mediaInfo.status, which flips when a
+    // Seerr availability scan runs — a long staleTime kept showing
+    // "Requested" for titles already available (#266).
+    staleTime: 30000,
     enabled: enabled && !!id && tmdbId > 0 && active,
   });
 }

@@ -181,13 +181,19 @@ export function MediaDetailModal({
   // carries status but no id).
   const mediaDbId = detailsData?.mediaInfo?.id;
 
+  // Partial (4) only occurs for TV upstream; a partially available show can
+  // still request its remaining seasons (Seerr's "Request More").
   const isAvailableHd = statusHd === 5;
+  const isPartialHd = statusHd === 4;
   const isPendingHd = statusHd === 2 || statusHd === 3;
-  const canRequestHd = !isAvailableHd && !isPendingHd;
+  const canRequestHd =
+    !isAvailableHd && !isPendingHd && (!isPartialHd || isTv);
 
   const isAvailable4k = status4k === 5;
+  const isPartial4k = status4k === 4;
   const isPending4k = status4k === 2 || status4k === 3;
-  const canRequest4k = has4kServer && !isAvailable4k && !isPending4k;
+  const canRequest4k =
+    has4kServer && !isAvailable4k && !isPending4k && (!isPartial4k || isTv);
 
   const trailer = pickTrailer(detailsData?.relatedVideos);
   const submitting = quickKind !== null;
@@ -237,8 +243,8 @@ export function MediaDetailModal({
   //
   // Tracked = Seerr holds a media record for either tier in any requested state:
   // pending (2) / processing (3) / partial (4) / available (5). status 1
-  // (unknown) is excluded. Checked directly off the status because the
-  // isPending*/isAvailable* flags above skip PARTIAL (4).
+  // (unknown) is excluded. Checked directly off the status rather than
+  // combining the per-tier flags above.
   const isTracked =
     mediaDbId !== undefined &&
     [statusHd, status4k].some((s) => s !== undefined && s >= 2);
@@ -380,9 +386,20 @@ export function MediaDetailModal({
             {/* Request actions */}
             <View className="mt-3 gap-2.5">
               {/* HD / regular */}
+              {isAvailableHd ? (
+                <StatusPill tone="success" icon={Check} label="Available" />
+              ) : isPartialHd ? (
+                <StatusPill
+                  tone="success"
+                  icon={Check}
+                  label="Partially Available"
+                />
+              ) : !canRequestHd ? (
+                <StatusPill tone="warning" icon={Clock} label="Requested" />
+              ) : null}
               {canRequestHd ? (
                 <Button
-                  label="Request"
+                  label={isPartialHd ? "Request More" : "Request"}
                   onPress={() => handleQuickRequest("hd")}
                   loading={quickKind === "hd"}
                   disabled={submitting}
@@ -390,46 +407,53 @@ export function MediaDetailModal({
                   size="lg"
                   className="w-full"
                 />
-              ) : isAvailableHd ? (
-                <StatusPill tone="success" icon={Check} label="Available" />
-              ) : (
-                <StatusPill tone="warning" icon={Clock} label="Requested" />
-              )}
+              ) : null}
 
               {/* 4K — only when Seerr has a 4K-capable server for this type */}
               {has4kServer ? (
-                canRequest4k ? (
-                  <Pressable
-                    onPress={() => handleQuickRequest("4k")}
-                    disabled={submitting}
-                    accessibilityRole="button"
-                    accessibilityLabel="Request in 4K"
-                    className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${submitting ? "opacity-50" : "active:opacity-80"}`}
-                  >
-                    {quickKind === "4k" ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <>
-                        <Icon icon={Plus} size={16} color="#fff" />
-                        <Text className="text-white font-semibold text-base">
-                          Request 4K
-                        </Text>
-                      </>
-                    )}
-                  </Pressable>
-                ) : isAvailable4k ? (
-                  <StatusPill
-                    tone="success"
-                    icon={Check}
-                    label="Available in 4K"
-                  />
-                ) : (
-                  <StatusPill
-                    tone="warning"
-                    icon={Clock}
-                    label="Requested in 4K"
-                  />
-                )
+                <>
+                  {isAvailable4k ? (
+                    <StatusPill
+                      tone="success"
+                      icon={Check}
+                      label="Available in 4K"
+                    />
+                  ) : isPartial4k ? (
+                    <StatusPill
+                      tone="success"
+                      icon={Check}
+                      label="Partially Available in 4K"
+                    />
+                  ) : !canRequest4k ? (
+                    <StatusPill
+                      tone="warning"
+                      icon={Clock}
+                      label="Requested in 4K"
+                    />
+                  ) : null}
+                  {canRequest4k ? (
+                    <Pressable
+                      onPress={() => handleQuickRequest("4k")}
+                      disabled={submitting}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        isPartial4k ? "Request more in 4K" : "Request in 4K"
+                      }
+                      className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${submitting ? "opacity-50" : "active:opacity-80"}`}
+                    >
+                      {quickKind === "4k" ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <Icon icon={Plus} size={16} color="#fff" />
+                          <Text className="text-white font-semibold text-base">
+                            {isPartial4k ? "Request More 4K" : "Request 4K"}
+                          </Text>
+                        </>
+                      )}
+                    </Pressable>
+                  ) : null}
+                </>
               ) : null}
 
               {/* Advanced options */}

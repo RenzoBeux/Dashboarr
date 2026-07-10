@@ -156,7 +156,7 @@ const MEDIA_STATUS_VARIANT_OVERRIDE: Record<
   "info" | "success" | "warning" | undefined
 > = {
   3: "info",
-  4: "warning",
+  4: "success",
   5: "success",
 };
 
