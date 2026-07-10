@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { Hourglass, Search } from "lucide-react-native";
+import { Hourglass, Search, UserSearch } from "lucide-react-native";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
@@ -35,6 +35,11 @@ import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import { useSearchForMovie } from "@/hooks/use-radarr";
 import { useSearchForEpisodes } from "@/hooks/use-sonarr";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from "@/components/ui/action-sheet";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import {
   radarrBarKind,
@@ -320,6 +325,8 @@ function titleOf(item: PendingItem): string {
 
 // Per-row search mutations are owned by the row components so each row scopes
 // its command to the instance it came from (download-card TorrentTile pattern).
+// The magnifier opens an automatic-vs-interactive chooser (issue #238), same
+// labeled rows as the episode "⋯" sheet on the series detail screen.
 function PendingEpisodeRow({
   entry,
   instanceId,
@@ -331,23 +338,52 @@ function PendingEpisodeRow({
   downloading: boolean;
   onPress: () => void;
 }) {
+  const router = useRouter();
   const search = useSearchForEpisodes(instanceId);
+  const flow = useModalFlow<{ menu: void }>();
+
+  const searchActions: ActionSheetAction[] = [
+    {
+      label: "Automatic Search",
+      icon: <Icon icon={Search} size={20} color="#a1a1aa" />,
+      onPress: () => search.mutate([entry.id]),
+    },
+    {
+      label: "Interactive Search",
+      icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        flow.whenClear(() =>
+          router.push(
+            `/series/releases/${entry.seriesId}?episodeId=${entry.id}&instanceId=${instanceId}`,
+          ),
+        ),
+    },
+  ];
+
   return (
-    <CalendarEventRow
-      images={entry.series?.images ?? []}
-      service="sonarr"
-      title={entry.series?.title ?? "Unknown series"}
-      subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
-      hasFile={false}
-      downloading={downloading}
-      barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
-      onPress={onPress}
-      action={{
-        icon: Search,
-        onPress: () => search.mutate([entry.id]),
-        loading: search.isPending,
-      }}
-    />
+    <>
+      <CalendarEventRow
+        images={entry.series?.images ?? []}
+        service="sonarr"
+        title={entry.series?.title ?? "Unknown series"}
+        subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
+        hasFile={false}
+        downloading={downloading}
+        barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
+        onPress={onPress}
+        action={{
+          icon: Search,
+          onPress: () => flow.open("menu"),
+          loading: search.isPending,
+        }}
+      />
+      <ActionSheet
+        {...flow.bind("menu")}
+        title={entry.series?.title ?? "Unknown series"}
+        subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
+        actions={searchActions}
+      />
+    </>
   );
 }
 
@@ -362,22 +398,49 @@ function PendingMovieRow({
   downloading: boolean;
   onPress: () => void;
 }) {
+  const router = useRouter();
   const search = useSearchForMovie(instanceId);
+  const flow = useModalFlow<{ menu: void }>();
+
+  const searchActions: ActionSheetAction[] = [
+    {
+      label: "Automatic Search",
+      icon: <Icon icon={Search} size={20} color="#a1a1aa" />,
+      onPress: () => search.mutate(movie.id),
+    },
+    {
+      label: "Interactive Search",
+      icon: <Icon icon={UserSearch} size={20} color="#a1a1aa" />,
+      onPress: () =>
+        flow.whenClear(() =>
+          router.push(`/movie/releases/${movie.id}?instanceId=${instanceId}`),
+        ),
+    },
+  ];
+
   return (
-    <CalendarEventRow
-      images={movie.images}
-      service="radarr"
-      title={movie.title}
-      subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
-      hasFile={false}
-      downloading={downloading}
-      barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
-      onPress={onPress}
-      action={{
-        icon: Search,
-        onPress: () => search.mutate(movie.id),
-        loading: search.isPending,
-      }}
-    />
+    <>
+      <CalendarEventRow
+        images={movie.images}
+        service="radarr"
+        title={movie.title}
+        subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
+        hasFile={false}
+        downloading={downloading}
+        barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
+        onPress={onPress}
+        action={{
+          icon: Search,
+          onPress: () => flow.open("menu"),
+          loading: search.isPending,
+        }}
+      />
+      <ActionSheet
+        {...flow.bind("menu")}
+        title={movie.title}
+        subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
+        actions={searchActions}
+      />
+    </>
   );
 }
