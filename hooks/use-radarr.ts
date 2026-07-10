@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getMovies,
   getMovie,
+  getCollectionByTmdbId,
   getQueue,
   getHistory,
   getMovieHistory,
@@ -58,6 +59,23 @@ export function useRadarrMovie(movieId: number, instanceId?: string) {
     queryKey: ["radarr", id, "movie", movieId],
     queryFn: () => getMovie(movieId, id ?? undefined),
     enabled: movieId > 0 && !!id,
+  });
+}
+
+// Collection membership is static TMDB metadata, so it caches like the other
+// static lookups (profiles/rootFolders/tags). Ownership of each member is
+// derived client-side from the live ["radarr", id, "movies"] cache, not from
+// the cached `isExisting` flags.
+export function useRadarrCollection(
+  collectionTmdbId: number | undefined,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
+  return useQuery({
+    queryKey: ["radarr", id, "collection", collectionTmdbId],
+    queryFn: () => getCollectionByTmdbId(collectionTmdbId!, id ?? undefined),
+    enabled: enabled && !!id && !!collectionTmdbId,
+    staleTime: Infinity,
   });
 }
 
@@ -129,6 +147,8 @@ export function useAddMovie(instanceId?: string) {
       addMovie(movie, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
+      // Refresh cached collections so their `isExisting` flags don't go stale.
+      queryClient.invalidateQueries({ queryKey: ["radarr", id, "collection"] });
     },
   });
 }

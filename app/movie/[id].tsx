@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, ScrollView, Linking, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -14,6 +14,7 @@ import {
   FolderTree,
   History,
   Pencil,
+  Plus,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -33,6 +34,8 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   useRadarrMovie,
+  useRadarrMovies,
+  useRadarrCollection,
   useRadarrQueue,
   useDeleteMovie,
   useToggleMovieMonitored,
@@ -43,7 +46,15 @@ import {
   useRadarrTags,
 } from "@/hooks/use-radarr";
 import { MovieOptionsSheet } from "@/components/radarr/movie-options-sheet";
-import { MIN_AVAILABILITY_OPTIONS } from "@/components/radarr/add-movie-sheet";
+import {
+  AddMovieSheet,
+  MIN_AVAILABILITY_OPTIONS,
+} from "@/components/radarr/add-movie-sheet";
+import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
+import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
+import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
+import { BAR_KIND_COLOR, radarrBarKind } from "@/lib/arr-poster-status";
+import { getRadarrPoster } from "@/services/radarr-api";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
@@ -52,7 +63,12 @@ import {
   formatResolution,
   formatRuntime,
 } from "@/lib/utils";
-import type { RadarrMovie } from "@/lib/types";
+import type {
+  RadarrMovie,
+  RadarrCollection,
+  RadarrCollectionMovie,
+  RadarrSearchResult,
+} from "@/lib/types";
 
 type DeleteMode = "keep" | "withFiles";
 
@@ -72,6 +88,11 @@ export default function MovieDetailScreen() {
   const updateRootFolder = useUpdateMovieRootFolder(instanceId);
   const { data: tags } = useRadarrTags(instanceId);
   const [optionsVisible, setOptionsVisible] = useState(false);
+  // Missing collection member being added. Plain useState, not a flow step:
+  // AddMediaSheet is a pageSheet Modal without onClosed plumbing, and nothing
+  // else is open when a poster tile is tapped (mirrors app/movie/search.tsx).
+  const [collectionAddTarget, setCollectionAddTarget] =
+    useState<RadarrSearchResult | null>(null);
 
   // All modal sequencing (sheet → confirm, sheet → sheet, confirm → pop) goes
   // through the flow — see hooks/use-modal-flow.ts.
@@ -296,6 +317,12 @@ export default function MovieDetailScreen() {
             </View>
           ) : null}
 
+          <CollectionBlock
+            movie={movie}
+            instanceId={instanceId}
+            onAddMissing={setCollectionAddTarget}
+          />
+
           <ReleaseDatesBlock movie={movie} />
         </View>
       </ScreenWrapper>
@@ -359,6 +386,13 @@ export default function MovieDetailScreen() {
         visible={optionsVisible}
         onClose={() => setOptionsVisible(false)}
         movie={movie}
+        instanceId={instanceId}
+      />
+
+      <AddMovieSheet
+        result={collectionAddTarget}
+        visible={collectionAddTarget !== null}
+        onClose={() => setCollectionAddTarget(null)}
         instanceId={instanceId}
       />
 
@@ -643,6 +677,137 @@ function ReleaseDatesBlock({ movie }: { movie: RadarrMovie }) {
       </View>
     </View>
   );
+}
+
+// Horizontal poster row of the movie's TMDB collection (issue #244). Owned
+// members show the standard status strip and navigate to their detail screen;
+// missing members show a Plus badge and open the AddMovieSheet.
+function CollectionBlock({
+  movie,
+  instanceId,
+  onAddMissing,
+}: {
+  movie: RadarrMovie;
+  instanceId?: string;
+  onAddMissing: (result: RadarrSearchResult) => void;
+}) {
+  const router = useRouter();
+  const collectionTmdbId = movie.collection?.tmdbId;
+  const { data: collection, isLoading, error } = useRadarrCollection(
+    collectionTmdbId,
+    instanceId,
+  );
+  // Ownership + status color come from the live library, not the collection's
+  // cached isExisting flags. The queue query shares the parent's cache entry.
+  const { data: library } = useRadarrMovies(instanceId);
+  const { data: queue } = useRadarrQueue(instanceId);
+
+  const libraryByTmdbId = useMemo(
+    () => new Map((library ?? []).map((m) => [m.tmdbId, m])),
+    [library],
+  );
+  const downloadingIds = useMemo(
+    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+    [queue],
+  );
+
+  if (!collectionTmdbId) return null;
+  // Supplementary content — hide quietly on error instead of a banner.
+  if (error) return null;
+  if (isLoading) {
+    return (
+      <View className="mb-5">
+        <SectionLabel>{movie.collection?.title || "Collection"}</SectionLabel>
+        <PosterSkeletonRow count={3} showSubtitle />
+      </View>
+    );
+  }
+  if (!collection || collection.movies.length < 2) return null;
+
+  const members = [...collection.movies].sort(
+    (a, b) => (a.year || 9999) - (b.year || 9999),
+  );
+
+  return (
+    <View className="mb-5">
+      <SectionLabel>{collection.title || "Collection"}</SectionLabel>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 12 }}
+      >
+        {members.map((cm) => {
+          const owned = libraryByTmdbId.get(cm.tmdbId);
+          const isCurrent = cm.tmdbId === movie.tmdbId;
+          // isExisting is the fallback while the library query is loading, so
+          // an owned movie never shows an Add affordance that would 400.
+          const isOwned = !!owned || cm.isExisting;
+          return (
+            <MediaPosterTile
+              key={cm.tmdbId}
+              posterUrl={getRadarrPoster(cm.images)}
+              title={cm.title}
+              subtitle={cm.year ? String(cm.year) : undefined}
+              fallbackIcon={Film}
+              mediaType="movie"
+              cornerBadge={
+                isOwned
+                  ? undefined
+                  : { icon: Plus, color: BAR_KIND_COLOR.primary }
+              }
+              bottomOverlay={
+                isOwned ? (
+                  <PosterProgressStrip
+                    progress={1}
+                    color={
+                      owned
+                        ? BAR_KIND_COLOR[
+                            radarrBarKind(owned, downloadingIds.has(owned.id))
+                          ]
+                        : BAR_KIND_COLOR.default
+                    }
+                  />
+                ) : undefined
+              }
+              onPress={
+                isCurrent
+                  ? undefined
+                  : owned
+                    ? () =>
+                        router.push(
+                          instanceId
+                            ? `/movie/${owned.id}?instanceId=${instanceId}`
+                            : `/movie/${owned.id}`,
+                        )
+                    : isOwned
+                      ? undefined
+                      : () => onAddMissing(toSearchResult(cm, collection))
+              }
+            />
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+// AddMovieSheet only reads tmdbId/title/year/overview/images; ratings and
+// runtime just satisfy the RadarrSearchResult shape. Filling `collection`
+// makes the sheet's "Part of …" meta line show here too.
+function toSearchResult(
+  cm: RadarrCollectionMovie,
+  collection: RadarrCollection,
+): RadarrSearchResult {
+  return {
+    tmdbId: cm.tmdbId,
+    title: cm.title,
+    year: cm.year,
+    overview: cm.overview ?? "",
+    images: cm.images,
+    ratings: { votes: 0, value: 0 },
+    runtime: cm.runtime ?? 0,
+    collection: { title: collection.title, tmdbId: collection.tmdbId },
+  };
 }
 
 function AboutRow({

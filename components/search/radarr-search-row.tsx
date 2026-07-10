@@ -55,7 +55,16 @@ export function RadarrSearchRow({
       poster={result.images.find((i) => i.coverType === "poster")}
       fallbackIcon={Film}
       title={result.title}
-      metaLine={result.year ? String(result.year) : undefined}
+      metaLine={
+        [
+          result.year ? String(result.year) : undefined,
+          result.collection?.title
+            ? `Part of ${result.collection.title}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(" · ") || undefined
+      }
       overview={result.overview}
       alreadyAdded={existingMovieId !== undefined}
       addPending={addMovie.isPending}
