@@ -19,6 +19,9 @@ interface AddMovieSheetProps {
   result: RadarrSearchResult | null;
   visible: boolean;
   onClose: () => void;
+  // Scopes profiles/folders/tags and the add itself to a specific Radarr
+  // instance; undefined keeps the active-instance behavior.
+  instanceId?: string;
 }
 
 // Shared with the movie-edit sheet (components/radarr/movie-options-sheet.tsx),
@@ -43,11 +46,16 @@ const MONITOR_OPTIONS: {
   { value: "none", label: "None", description: "Don't monitor" },
 ];
 
-export function AddMovieSheet({ result, visible, onClose }: AddMovieSheetProps) {
-  const { data: profiles } = useRadarrQualityProfiles();
-  const { data: folders } = useRadarrRootFolders();
-  const { data: tags } = useRadarrTags();
-  const addMovie = useAddMovie();
+export function AddMovieSheet({
+  result,
+  visible,
+  onClose,
+  instanceId,
+}: AddMovieSheetProps) {
+  const { data: profiles } = useRadarrQualityProfiles(instanceId);
+  const { data: folders } = useRadarrRootFolders(instanceId);
+  const { data: tags } = useRadarrTags(instanceId);
+  const addMovie = useAddMovie(instanceId);
 
   const [minimumAvailability, setMinimumAvailability] =
     useState<RadarrMinimumAvailability>("released");
@@ -62,6 +70,16 @@ export function AddMovieSheet({ result, visible, onClose }: AddMovieSheetProps) 
       sheetTitle="Add Movie"
       submitLabel="Add Movie"
       placeholderIcon={Film}
+      metaLine={
+        result?.collection?.title
+          ? [
+              result.year ? String(result.year) : undefined,
+              `Part of ${result.collection.title}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : undefined
+      }
       profiles={profiles}
       folders={folders}
       tags={tags}

@@ -8,6 +8,7 @@ import type {
   RadarrSearchResult,
   RadarrImage,
   RadarrRelease,
+  RadarrCollection,
 } from "@/lib/types";
 
 // Interactive search hits indexers live and frequently exceeds the 15s
@@ -46,6 +47,25 @@ export function getMovies(instanceId?: string): Promise<RadarrMovie[]> {
 
 export function getMovie(id: number, instanceId?: string): Promise<RadarrMovie> {
   return serviceRequest<RadarrMovie>("radarr", `/movie/${id}`, { instanceId });
+}
+
+// --- Collections ---
+
+// Radarr filters /collection by the COLLECTION's TMDB id (the `collection`
+// field on a movie resource). The endpoint always returns an array; match on
+// tmdbId defensively and fall back to the first element. Returns null (not
+// undefined — TanStack Query rejects undefined) when Radarr knows nothing
+// about the collection.
+export function getCollectionByTmdbId(
+  collectionTmdbId: number,
+  instanceId?: string,
+): Promise<RadarrCollection | null> {
+  return serviceRequest<RadarrCollection[]>("radarr", "/collection", {
+    params: { tmdbId: collectionTmdbId },
+    instanceId,
+  }).then(
+    (list) => list.find((c) => c.tmdbId === collectionTmdbId) ?? list[0] ?? null,
+  );
 }
 
 // --- Queue ---

@@ -333,6 +333,9 @@ export interface RadarrMovie {
   tags?: number[];
   certification?: string;
   studio?: string;
+  // Lightweight collection ref on MovieResource; null/absent when the movie
+  // isn't part of a TMDB collection.
+  collection?: { title: string; tmdbId: number } | null;
 }
 
 export interface RatingChild {
@@ -446,6 +449,44 @@ export interface RadarrSearchResult {
   images: RadarrImage[];
   ratings: { votes: number; value: number };
   runtime: number;
+  collection?: { title: string; tmdbId: number } | null;
+}
+
+// --- Collections ---
+
+// Member of a Radarr /collection response: every TMDB movie in the collection,
+// whether or not it's in the library. `isExisting` marks members already added.
+export interface RadarrCollectionMovie {
+  tmdbId: number;
+  imdbId?: string;
+  title: string;
+  sortTitle?: string;
+  status: string;
+  overview?: string;
+  runtime: number;
+  images: RadarrImage[];
+  year: number;
+  genres?: string[];
+  folder?: string;
+  isExisting: boolean;
+  isExcluded: boolean;
+}
+
+export interface RadarrCollection {
+  id: number;
+  title: string;
+  sortTitle?: string;
+  tmdbId: number;
+  images: RadarrImage[];
+  overview?: string;
+  monitored: boolean;
+  rootFolderPath?: string;
+  qualityProfileId?: number;
+  searchOnAdd?: boolean;
+  minimumAvailability?: string;
+  movies: RadarrCollectionMovie[];
+  missingMovies?: number;
+  tags?: number[];
 }
 
 // --- Interactive search (releases) ---
