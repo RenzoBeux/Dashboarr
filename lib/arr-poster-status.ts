@@ -191,6 +191,29 @@ export function lidarrAlbumBarKind(
 }
 
 /**
+ * "Missing" predicates for the library filter (issue #265): released/aired but
+ * not downloaded, monitored only. Each mirrors its service's danger-bar branch
+ * above so the filter and the red poster bar select the same items.
+ */
+export function radarrIsMissing(movie: RadarrMovie): boolean {
+  return movie.monitored && movie.isAvailable && !movie.hasFile;
+}
+
+export function sonarrIsMissing(series: SonarrSeries): boolean {
+  return series.monitored && sonarrBarProgress(series) < 100;
+}
+
+export function lidarrArtistIsMissing(artist: LidarrArtist): boolean {
+  return artist.monitored && lidarrArtistBarProgress(artist) < 100;
+}
+
+export function lidarrAlbumIsMissing(album: LidarrAlbum): boolean {
+  const trackCount = album.statistics?.trackCount ?? 0;
+  const fileCount = album.statistics?.trackFileCount ?? 0;
+  return album.monitored && trackCount > 0 && fileCount < trackCount;
+}
+
+/**
  * Top-right corner triangle color, or null for no triangle.
  * Sonarr: `ended` → red, `deleted` → gray. Radarr movie status is never
  * `ended`, so only `deleted` produces a triangle there.

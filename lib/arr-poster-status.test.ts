@@ -1,8 +1,10 @@
 import {
   radarrBarKind,
+  radarrIsMissing,
   sonarrBarKind,
   sonarrEpisodeBarKind,
   sonarrBarProgress,
+  sonarrIsMissing,
   cornerColorFor,
   downloadIndicator,
   DOWNLOAD_INDICATOR_COLOR,
@@ -227,6 +229,75 @@ describe("radarrBarKind", () => {
     expect(
       radarrBarKind(movie({ monitored: true, hasFile: false, isAvailable: false }), false),
     ).toBe("primary");
+  });
+});
+
+describe("radarrIsMissing", () => {
+  it("monitored + available + no file → missing", () => {
+    expect(
+      radarrIsMissing(movie({ monitored: true, isAvailable: true, hasFile: false })),
+    ).toBe(true);
+  });
+
+  it("unreleased (not available) → not missing — the point of #265", () => {
+    expect(
+      radarrIsMissing(movie({ monitored: true, isAvailable: false, hasFile: false })),
+    ).toBe(false);
+  });
+
+  it("downloaded → not missing", () => {
+    expect(
+      radarrIsMissing(movie({ monitored: true, isAvailable: true, hasFile: true })),
+    ).toBe(false);
+  });
+
+  it("unmonitored → not missing", () => {
+    expect(
+      radarrIsMissing(movie({ monitored: false, isAvailable: true, hasFile: false })),
+    ).toBe(false);
+  });
+});
+
+describe("sonarrIsMissing", () => {
+  it("monitored with undownloaded aired episodes → missing", () => {
+    expect(
+      sonarrIsMissing(series({ monitored: true, episodeCount: 10, episodeFileCount: 4 })),
+    ).toBe(true);
+  });
+
+  it("fully downloaded → not missing", () => {
+    expect(
+      sonarrIsMissing(series({ monitored: true, episodeCount: 10, episodeFileCount: 10 })),
+    ).toBe(false);
+  });
+
+  it("zero countable episodes → treated complete, not missing", () => {
+    expect(
+      sonarrIsMissing(series({ monitored: true, episodeCount: 0, episodeFileCount: 0 })),
+    ).toBe(false);
+  });
+
+  it("unmonitored → not missing", () => {
+    expect(
+      sonarrIsMissing(series({ monitored: false, episodeCount: 10, episodeFileCount: 4 })),
+    ).toBe(false);
+  });
+
+  it("prefers statistics over top-level counts", () => {
+    const s = series({
+      monitored: true,
+      episodeCount: 0,
+      episodeFileCount: 0,
+      statistics: {
+        seasonCount: 1,
+        episodeCount: 10,
+        episodeFileCount: 3,
+        totalEpisodeCount: 10,
+        sizeOnDisk: 0,
+        percentOfEpisodes: 30,
+      },
+    });
+    expect(sonarrIsMissing(s)).toBe(true);
   });
 });
 

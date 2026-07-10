@@ -51,7 +51,9 @@ import {
   cornerColorFor,
   lidarrArtistBarKind,
   lidarrArtistBarProgress,
+  lidarrArtistIsMissing,
   lidarrAlbumBarKind,
+  lidarrAlbumIsMissing,
 } from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum, LidarrQueueItem } from "@/lib/types";
 
@@ -448,6 +450,7 @@ function ArtistLibrary({
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
+      isMissing={lidarrArtistIsMissing}
       sort={sort}
       compare={compareArtists}
       serviceId="lidarr"
@@ -557,6 +560,7 @@ function AlbumWanted({
       isLoading={isLoading}
       error={error}
       monitorFilter="all"
+      isMissing={lidarrAlbumIsMissing}
       sort="release-desc"
       compare={compareAlbumsByRelease}
       serviceId="lidarr"

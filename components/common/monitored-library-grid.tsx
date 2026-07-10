@@ -32,11 +32,12 @@ export interface PosterStatus {
   progress?: number;
 }
 
-export type MonitorFilter = "monitored" | "unmonitored" | "all";
+export type MonitorFilter = "monitored" | "unmonitored" | "missing" | "all";
 
 export const MONITOR_FILTER_OPTIONS: { value: MonitorFilter; label: string }[] = [
   { value: "monitored", label: "Monitored" },
   { value: "unmonitored", label: "Unmonitored" },
+  { value: "missing", label: "Missing" },
   { value: "all", label: "All" },
 ];
 
@@ -58,6 +59,12 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
   isLoading: boolean;
   error: Error | null;
   monitorFilter: MonitorFilter;
+  /**
+   * Predicate for the "Missing" filter — released/aired but not downloaded
+   * (issue #265). Injected per screen since the check reads service-specific
+   * fields the generic item type doesn't know (hasFile / episode counts).
+   */
+  isMissing: (item: T) => boolean;
   sort: S;
   compare: (a: T, b: T, sort: S) => number;
   serviceId: "radarr" | "sonarr" | "lidarr";
@@ -101,6 +108,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   isLoading,
   error,
   monitorFilter,
+  isMissing,
   sort,
   compare,
   serviceId,
@@ -126,10 +134,11 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
     const filtered = data.filter((item) => {
       if (monitorFilter === "monitored") return item.monitored;
       if (monitorFilter === "unmonitored") return !item.monitored;
+      if (monitorFilter === "missing") return isMissing(item);
       return true;
     });
     return [...filtered].sort((a, b) => compare(a, b, sort));
-  }, [data, monitorFilter, sort, compare]);
+  }, [data, monitorFilter, isMissing, sort, compare]);
 
   const emptyState = useMemo(() => {
     if (isLoading) {
@@ -160,7 +169,9 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
         ? `No monitored ${nounPlural}`
         : monitorFilter === "unmonitored"
           ? `No unmonitored ${nounPlural}`
-          : `No ${nounPlural} in library`;
+          : monitorFilter === "missing"
+            ? `No missing ${nounPlural}`
+            : `No ${nounPlural} in library`;
     return (
       <EmptyState
         icon={<Icon icon={placeholderIcon} size={32} color="#71717a" />}
