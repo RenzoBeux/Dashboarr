@@ -50,6 +50,7 @@ import {
   BAR_KIND_COLOR,
   cornerColorFor,
   radarrBarKind,
+  radarrIsMissing,
   DOWNLOAD_INDICATOR_COLOR,
 } from "@/lib/arr-poster-status";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -474,6 +475,7 @@ function MovieLibrary({
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
+      isMissing={radarrIsMissing}
       sort={sort}
       compare={compareMovies}
       serviceId="radarr"
@@ -586,6 +588,7 @@ function MovieWanted({
       isLoading={isLoading}
       error={error}
       monitorFilter="all"
+      isMissing={radarrIsMissing}
       sort="title-asc"
       compare={compareMovies}
       serviceId="radarr"

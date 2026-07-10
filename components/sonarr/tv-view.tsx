@@ -61,6 +61,7 @@ import {
   cornerColorFor,
   sonarrBarKind,
   sonarrBarProgress,
+  sonarrIsMissing,
   sonarrEpisodeBarKind,
 } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -487,6 +488,7 @@ function SeriesLibrary({
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
+      isMissing={sonarrIsMissing}
       sort={sort}
       compare={compareSeries}
       serviceId="sonarr"
