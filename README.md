@@ -254,10 +254,10 @@ This project is open source. See the [LICENSE](LICENSE) file for details.
 
 ## Star History
 
-<a href="https://www.star-history.com/#RenzoBeux/Dashboarr&Date">
+<a href="https://www.star-history.com/?type=date&repos=RenzoBeux%2FDashboarr">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=RenzoBeux/Dashboarr&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&theme=dark&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
  </picture>
 </a>
