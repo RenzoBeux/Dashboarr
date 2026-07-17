@@ -49,6 +49,9 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   // explicitly from the hooks layer so multi-instance setups can route each
   // request to the right server.
   instanceId?: string;
+  // External abort signal (e.g. TanStack Query's queryFn signal). Composed
+  // with the internal timeout controller: the fetch aborts when either fires.
+  signal?: AbortSignal;
 }
 
 const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token"];
@@ -139,6 +142,13 @@ export function getHttpErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
+// RN/Hermes has no DOMException global; aborted fetches reject with a plain
+// Error named "AbortError". True for both the internal timeout abort and an
+// external (query-cancellation) abort.
+export function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
 // Produce a verbose, paste-friendly representation of any caught error.
 // Used as the clipboard payload for error toasts so users can share or
 // search the underlying cause even when the toast shows a friendly summary.
@@ -180,7 +190,13 @@ export async function serviceRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { timeout = DEFAULT_TIMEOUT, params, instanceId, ...fetchOptions } = options;
+  const {
+    timeout = DEFAULT_TIMEOUT,
+    params,
+    instanceId,
+    signal: externalSignal,
+    ...fetchOptions
+  } = options;
   const store = useConfigStore.getState();
 
   if (store.demoMode) {
@@ -303,8 +319,15 @@ export async function serviceRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
+  // No AbortSignal.any on RN/Hermes — compose the external signal with the
+  // timeout controller by hand. Double-abort is a spec no-op.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener("abort", onExternalAbort);
+  }
 
   try {
     const response = await fetch(url, {
@@ -357,6 +380,7 @@ export async function serviceRequest<T>(
     return body as unknown as T;
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", onExternalAbort);
   }
 }
 
@@ -560,11 +584,8 @@ export async function testServiceConnection(
     }
     return result;
   } catch (err) {
-    // AbortError = our 8s timeout fired. Note: don't reference `DOMException`
-    // here — it isn't a global in React Native's Hermes engine, so
-    // `err instanceof DOMException` throws "Property 'DOMException' doesn't
-    // exist". RN rejects aborted fetches with an Error named "AbortError".
-    if (err instanceof Error && err.name === "AbortError") {
+    // AbortError = our 8s timeout fired.
+    if (isAbortError(err)) {
       return { kind: "unreachable", message: "Request timed out" };
     }
     return {

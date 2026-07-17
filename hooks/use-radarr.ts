@@ -438,13 +438,16 @@ export function useRadarrTags(instanceId?: string) {
 }
 
 // Interactive search is expensive (live indexer hit, often 30s+) — don't
-// auto-retry on transient failure, and keep the cache warm long enough that
-// back-navigation doesn't re-trigger.
+// auto-retry on transient failure, and keep completed results cached long
+// enough that back-navigation doesn't re-trigger. Consuming the queryFn signal
+// means an in-flight search aborts when the user backs out or restarts it —
+// without it a hung fetch becomes a zombie the query dedupes onto forever
+// (the "no results until app restart" symptom, #290).
 export function useRadarrReleases(movieId: number, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
     queryKey: ["radarr", id, "releases", movieId],
-    queryFn: () => getReleasesForMovie(movieId, id ?? undefined),
+    queryFn: ({ signal }) => getReleasesForMovie(movieId, id ?? undefined, signal),
     enabled: enabled && movieId > 0 && !!id,
     staleTime: 60_000,
     gcTime: 5 * 60_000,

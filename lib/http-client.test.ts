@@ -3,6 +3,8 @@ import {
   pingService,
   testServiceConnection,
   AuthProxyResponseError,
+  HttpError,
+  isAbortError,
 } from "./http-client";
 
 // jest.mock factories run before module-scope code; the only refs allowed
@@ -492,5 +494,105 @@ describe("testServiceConnection — auth-proxy detection (#239)", () => {
       apiKey: "k",
     });
     expect(result.kind).toBe("ok");
+  });
+});
+
+// External signal (TanStack Query's queryFn signal) composed with the internal
+// timeout controller — either firing must abort the fetch (#290).
+describe("serviceRequest — signal composition (#290)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  // A fetch that never resolves on its own and rejects the way RN does when
+  // its signal aborts: a plain Error named "AbortError" (no DOMException).
+  function hangingFetch(): jest.Mock {
+    return jest.fn(
+      (_url: string, init: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const fail = () =>
+            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+          if (init.signal.aborted) fail();
+          else init.signal.addEventListener("abort", fail);
+        }),
+    );
+  }
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.useRealTimers();
+  });
+
+  it("aborts the fetch when the external signal fires mid-flight", async () => {
+    fetchSpy = hangingFetch();
+    global.fetch = fetchSpy as any;
+    const external = new AbortController();
+    const promise = serviceRequest("radarr", "/release", {
+      signal: external.signal,
+    });
+    const expectation = expect(promise).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    external.abort();
+    await expectation;
+  });
+
+  it("rejects immediately when the external signal is already aborted", async () => {
+    fetchSpy = hangingFetch();
+    global.fetch = fetchSpy as any;
+    const external = new AbortController();
+    external.abort();
+    await expect(
+      serviceRequest("radarr", "/release", { signal: external.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("still times out with an unfired external signal attached", async () => {
+    jest.useFakeTimers();
+    fetchSpy = hangingFetch();
+    global.fetch = fetchSpy as any;
+    const external = new AbortController();
+    const promise = serviceRequest("radarr", "/release", {
+      timeout: 5000,
+      signal: external.signal,
+    });
+    const expectation = expect(promise).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    jest.advanceTimersByTime(5001);
+    await expectation;
+  });
+
+  it("resolves normally with an external signal attached; a later abort is a no-op", async () => {
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    const external = new AbortController();
+    await expect(
+      serviceRequest("radarr", "/system/status", { signal: external.signal }),
+    ).resolves.toEqual({});
+    // The abort listener was removed in the finally — firing it now must not
+    // surface an unhandled rejection or throw.
+    external.abort();
+  });
+});
+
+describe("isAbortError", () => {
+  it("matches RN's abort rejection shape", () => {
+    expect(
+      isAbortError(Object.assign(new Error("Aborted"), { name: "AbortError" })),
+    ).toBe(true);
+  });
+
+  it("rejects everything else", () => {
+    expect(isAbortError(new Error("boom"))).toBe(false);
+    expect(isAbortError(new HttpError(500, "Internal", "http://x.local"))).toBe(
+      false,
+    );
+    expect(isAbortError("AbortError")).toBe(false);
+    expect(isAbortError(undefined)).toBe(false);
   });
 });

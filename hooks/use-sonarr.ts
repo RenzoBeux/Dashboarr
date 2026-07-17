@@ -486,7 +486,8 @@ export function useSonarrReleasesForEpisode(
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "releases", "episode", episodeId],
-    queryFn: () => getReleasesForEpisode(episodeId, id ?? undefined),
+    queryFn: ({ signal }) =>
+      getReleasesForEpisode(episodeId, id ?? undefined, signal),
     enabled: enabled && episodeId > 0 && !!id,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
@@ -503,8 +504,8 @@ export function useSonarrReleasesForSeason(
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "releases", "season", seriesId, seasonNumber],
-    queryFn: () =>
-      getReleasesForSeason(seriesId, seasonNumber, id ?? undefined),
+    queryFn: ({ signal }) =>
+      getReleasesForSeason(seriesId, seasonNumber, id ?? undefined, signal),
     enabled: enabled && seriesId > 0 && seasonNumber >= 0 && !!id,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
