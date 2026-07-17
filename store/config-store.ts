@@ -84,6 +84,14 @@ export interface ServiceConfig {
   // lib/insecure-tls.ts), which bypasses trust evaluation for exactly those
   // hosts. Absent/undefined behaves like false.
   ignoreCertErrors?: boolean;
+  // v36 (#287): per-instance defaults preselected in the arr add flows
+  // (components/common/add-media-sheet.tsx). Absent/undefined keeps the
+  // previous "first in the server's list" behavior; a stale value (profile or
+  // folder deleted upstream) also falls back to first-in-list at add time.
+  // defaultMetadataProfileId is Lidarr-only.
+  defaultQualityProfileId?: number;
+  defaultRootFolderPath?: string;
+  defaultMetadataProfileId?: number;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that

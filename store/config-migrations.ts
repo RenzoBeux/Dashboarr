@@ -137,8 +137,13 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         unraid instance at import time, so older exports just need the
  *         version field bumped.
+ *   v36 — optional per-instance arr add-flow defaults on ServiceConfig
+ *         (defaultQualityProfileId / defaultRootFolderPath /
+ *         defaultMetadataProfileId, #287). Pure version stamp — the fields are
+ *         optional, absence means "first in list", and coerceServiceInstance
+ *         validates them on import.
  */
-export const CURRENT_CONFIG_VERSION = 35;
+export const CURRENT_CONFIG_VERSION = 36;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -637,6 +642,11 @@ const migrations: Record<number, (payload: any) => any> = {
   // v34 → v35: added the unraid service entry. Pure version stamp —
   // defaultInstances() backfills a disabled unraid instance at import.
   34: (payload) => ({ ...payload, version: 35 }),
+  // v35 → v36: optional per-instance arr add-flow defaults on ServiceConfig
+  // (defaultQualityProfileId / defaultRootFolderPath / defaultMetadataProfileId,
+  // #287). Pure version stamp — the fields are optional and absence means
+  // "first in list".
+  35: (payload) => ({ ...payload, version: 36 }),
 };
 
 /**

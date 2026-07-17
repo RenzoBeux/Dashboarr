@@ -79,6 +79,7 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
+import { ArrDefaultsCard } from "@/components/settings/arr-defaults-card";
 import { AddToDashboardsSheet } from "@/components/dashboard/add-to-dashboards-sheet";
 import {
   forgetRememberedPassphrase,
@@ -1464,6 +1465,8 @@ function ServiceEditor({
           helperText="Sent on every request to this instance. Combined with the global headers (Settings → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
         />
       </Card>
+
+      <ArrDefaultsCard serviceId={serviceId} instanceId={instanceId} />
 
       <InstanceNotificationsCard serviceId={serviceId} instanceId={instanceId} />
 

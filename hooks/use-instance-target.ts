@@ -49,3 +49,24 @@ export function useInstanceTarget(
   });
   return { instanceId: targetId, enabled };
 }
+
+/**
+ * The full ServiceInstance a sheet or settings card is targeting: the explicit
+ * `instanceId` when given, otherwise the workspace-resolved active instance for
+ * the kind. Used to read per-instance preferences (e.g. the arr add-flow
+ * defaults) alongside the instance-scoped profile/folder hooks.
+ *
+ * Returns a stable array-element reference from the store, so no `useShallow`
+ * is needed — the selector only signals a change when the resolved instance
+ * object itself changes.
+ */
+export function useTargetInstance(
+  serviceId: ServiceId,
+  instanceId?: string,
+): ServiceInstance | undefined {
+  return useConfigStore((s) => {
+    const targetId = instanceId ?? s.activeInstance[serviceId] ?? null;
+    if (!targetId) return undefined;
+    return (s.serviceInstances[serviceId] ?? []).find((i) => i.id === targetId);
+  });
+}

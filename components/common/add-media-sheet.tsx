@@ -9,6 +9,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { useTargetInstance } from "@/hooks/use-instance-target";
 import { formatBytes } from "@/lib/utils";
 
 export interface AddMediaSheetCommonState {
@@ -49,6 +50,9 @@ interface AddMediaSheetProps {
     images: MediaImage[];
   } | null;
   serviceId: "radarr" | "sonarr" | "lidarr";
+  /** Scopes which instance's stored defaults preselect the Quality Profile and
+   *  Root Folder. Omit to follow the active instance for `serviceId`. */
+  instanceId?: string;
   sheetTitle: string;
   submitLabel: string;
   metaLine?: string;
@@ -69,6 +73,7 @@ export function AddMediaSheet({
   onClose,
   result,
   serviceId,
+  instanceId,
   sheetTitle,
   submitLabel,
   metaLine,
@@ -86,8 +91,24 @@ export function AddMediaSheet({
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [searchOnAdd, setSearchOnAdd] = useState(true);
 
-  const effectiveQualityProfileId = qualityProfileId ?? profiles?.[0]?.id;
-  const effectiveRootFolderPath = rootFolderPath ?? folders?.[0]?.path;
+  // User-configured defaults for this instance (Settings → Add Defaults), with
+  // first-in-list as the fallback when unset or when the stored value no longer
+  // exists on the server (profile/folder deleted upstream). An in-sheet pick
+  // (qualityProfileId / rootFolderPath state) always wins over the default.
+  const inst = useTargetInstance(serviceId, instanceId);
+  const storedProfileId = inst?.defaultQualityProfileId;
+  const defaultProfileId =
+    storedProfileId != null && profiles?.some((p) => p.id === storedProfileId)
+      ? storedProfileId
+      : profiles?.[0]?.id;
+  const storedFolderPath = inst?.defaultRootFolderPath;
+  const defaultFolderPath =
+    storedFolderPath != null && folders?.some((f) => f.path === storedFolderPath)
+      ? storedFolderPath
+      : folders?.[0]?.path;
+
+  const effectiveQualityProfileId = qualityProfileId ?? defaultProfileId;
+  const effectiveRootFolderPath = rootFolderPath ?? defaultFolderPath;
 
   const poster = result?.images.find((i) => i.coverType === "poster");
   const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, serviceId);

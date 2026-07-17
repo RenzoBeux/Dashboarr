@@ -67,6 +67,7 @@ export function AddMovieSheet({
       onClose={onClose}
       result={result}
       serviceId="radarr"
+      instanceId={instanceId}
       sheetTitle="Add Movie"
       submitLabel="Add Movie"
       placeholderIcon={Film}

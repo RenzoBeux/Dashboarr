@@ -71,7 +71,7 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (!isHttpUrlOrEmpty(v.localUrl)) return null;
   if (!isHttpUrlOrEmpty(v.remoteUrl)) return null;
   if (typeof v.useRemote !== "boolean") return null;
-  return {
+  const out: ServiceInstance = {
     id: v.id,
     enabled: v.enabled,
     name: v.name,
@@ -82,6 +82,27 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
     // (older exports, hand-edited files) lands on the secure default.
     ignoreCertErrors: v.ignoreCertErrors === true,
   };
+  // v36 (#287): optional per-instance arr add-flow defaults. Drop invalid
+  // values rather than rejecting the whole instance — absence just falls back
+  // to first-in-list at add time.
+  if (isPositiveInt(v.defaultQualityProfileId)) {
+    out.defaultQualityProfileId = v.defaultQualityProfileId;
+  }
+  if (isPositiveInt(v.defaultMetadataProfileId)) {
+    out.defaultMetadataProfileId = v.defaultMetadataProfileId;
+  }
+  if (
+    typeof v.defaultRootFolderPath === "string" &&
+    v.defaultRootFolderPath.length > 0 &&
+    v.defaultRootFolderPath.length <= 1024
+  ) {
+    out.defaultRootFolderPath = v.defaultRootFolderPath;
+  }
+  return out;
+}
+
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0;
 }
 
 function coerceServiceSecrets(v: unknown): ServiceSecrets | null {

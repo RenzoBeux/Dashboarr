@@ -3,6 +3,7 @@ import { Mic2 } from "lucide-react-native";
 import { Select } from "@/components/ui/select";
 import { toast, toastError } from "@/components/ui/toast";
 import { AddMediaSheet } from "@/components/common/add-media-sheet";
+import { useTargetInstance } from "@/hooks/use-instance-target";
 import {
   useAddArtist,
   useLidarrQualityProfiles,
@@ -41,7 +42,17 @@ export function AddArtistSheet({ result, visible, onClose }: AddArtistSheetProps
   const [metadataProfileId, setMetadataProfileId] = useState<number | undefined>();
   const [monitor, setMonitor] = useState<LidarrMonitorOption>("all");
 
-  const effectiveMetadataProfileId = metadataProfileId ?? metadataProfiles?.[0]?.id;
+  // Mirror AddMediaSheet's default resolution for Lidarr's extra Metadata
+  // Profile picker: the instance's stored default (Settings → Add Defaults),
+  // falling back to first-in-list when unset or stale.
+  const inst = useTargetInstance("lidarr");
+  const storedMetadataProfileId = inst?.defaultMetadataProfileId;
+  const defaultMetadataProfileId =
+    storedMetadataProfileId != null &&
+    metadataProfiles?.some((p) => p.id === storedMetadataProfileId)
+      ? storedMetadataProfileId
+      : metadataProfiles?.[0]?.id;
+  const effectiveMetadataProfileId = metadataProfileId ?? defaultMetadataProfileId;
 
   return (
     <AddMediaSheet

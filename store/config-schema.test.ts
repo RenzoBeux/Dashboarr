@@ -265,6 +265,44 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.radarr[0].ignoreCertErrors).toBe(false);
     expect(result.services.sonarr[0].ignoreCertErrors).toBe(false);
   });
+
+  it("round-trips arr add-flow defaults (v36)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        lidarr: [
+          validInstance({
+            defaultQualityProfileId: 4,
+            defaultRootFolderPath: "/movies",
+            defaultMetadataProfileId: 1,
+          }),
+        ],
+      },
+    });
+    expect(result.services.lidarr[0].defaultQualityProfileId).toBe(4);
+    expect(result.services.lidarr[0].defaultRootFolderPath).toBe("/movies");
+    expect(result.services.lidarr[0].defaultMetadataProfileId).toBe(1);
+  });
+
+  it("drops invalid arr defaults without rejecting the instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        radarr: [
+          validInstance({
+            defaultQualityProfileId: "4",
+            defaultRootFolderPath: 42,
+            defaultMetadataProfileId: -1,
+          }),
+        ],
+      },
+    });
+    // The instance survives; only the garbage default fields are stripped.
+    expect(result.services.radarr).toHaveLength(1);
+    expect(result.services.radarr[0].defaultQualityProfileId).toBeUndefined();
+    expect(result.services.radarr[0].defaultRootFolderPath).toBeUndefined();
+    expect(result.services.radarr[0].defaultMetadataProfileId).toBeUndefined();
+  });
 });
 
 describe("validateExportPayload — service IDs (forward-compat silent drop)", () => {

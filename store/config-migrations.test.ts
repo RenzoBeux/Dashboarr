@@ -1601,3 +1601,48 @@ describe("migrateWidgetSlotSettings (v25 stream-monitor split)", () => {
     expect(migrateWidgetSlotSettings("stream-monitor", settings)).toBe(settings);
   });
 });
+
+describe("v35 → v36 (arr add-flow defaults stamp)", () => {
+  it("just stamps the version and preserves any already-set defaults", () => {
+    const result: any = migrateConfig({
+      version: 35,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "",
+            remoteUrl: "",
+            useRemote: false,
+            defaultQualityProfileId: 4,
+            defaultRootFolderPath: "/movies",
+          },
+        ],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.radarr[0].defaultQualityProfileId).toBe(4);
+    expect(result.services.radarr[0].defaultRootFolderPath).toBe("/movies");
+  });
+
+  it("leaves the defaults absent when the source payload omitted them", () => {
+    const result: any = migrateConfig({
+      version: 35,
+      services: {
+        radarr: [{ id: "r1", enabled: true, name: "Radarr", localUrl: "", remoteUrl: "", useRemote: false }],
+      },
+      secrets: {},
+      activeInstance: { radarr: "r1" },
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.radarr[0].defaultQualityProfileId).toBeUndefined();
+    expect(result.services.radarr[0].defaultRootFolderPath).toBeUndefined();
+  });
+});
