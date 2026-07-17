@@ -396,11 +396,13 @@ export function searchAllMissingEpisodes(instanceId?: string): Promise<void> {
 export function getReleasesForEpisode(
   episodeId: number,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<SonarrRelease[]> {
   return serviceRequest<SonarrRelease[]>("sonarr", "/release", {
     params: { episodeId },
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
+    signal,
   });
 }
 
@@ -408,11 +410,13 @@ export function getReleasesForSeason(
   seriesId: number,
   seasonNumber: number,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<SonarrRelease[]> {
   return serviceRequest<SonarrRelease[]>("sonarr", "/release", {
     params: { seriesId, seasonNumber },
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
+    signal,
   });
 }
 

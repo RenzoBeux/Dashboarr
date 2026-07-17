@@ -249,11 +249,13 @@ export function searchAllMissingMovies(instanceId?: string): Promise<void> {
 export function getReleasesForMovie(
   movieId: number,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<RadarrRelease[]> {
   return serviceRequest<RadarrRelease[]>("radarr", "/release", {
     params: { movieId },
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
+    signal,
   });
 }
 

@@ -22,7 +22,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { lightHaptic } from "@/lib/haptics";
-import { getHttpErrorMessage } from "@/lib/http-client";
+import { getHttpErrorMessage, isAbortError } from "@/lib/http-client";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useSortStore, type ReleasesSortKey } from "@/store/sort-store";
 import {
@@ -260,18 +260,19 @@ export function ReleasesPicker({
   // Loading-time progression: skeletons until 8s, then contextual empty state
   // with a "this can take up to a minute" hint, then a "still searching" hint
   // past 30s.
+  // searchEpoch bumps on a manual restart so the ticker resets even though
+  // isFetching never flips across the cancel-and-refetch.
   const [elapsed, setElapsed] = useState(0);
+  const [searchEpoch, setSearchEpoch] = useState(0);
   useEffect(() => {
-    if (!isLoading && !isFetching) {
-      setElapsed(0);
-      return;
-    }
+    setElapsed(0);
+    if (!isLoading && !isFetching) return;
     const start = Date.now();
     const id = setInterval(() => {
       setElapsed(Math.round((Date.now() - start) / 1000));
     }, 1000);
     return () => clearInterval(id);
-  }, [isLoading, isFetching]);
+  }, [isLoading, isFetching, searchEpoch]);
 
   // "Tick" so the relative-time string in the status bar stays fresh once
   // results are in.
@@ -335,9 +336,12 @@ export function ReleasesPicker({
     }
   }, [data, prefHideRejected]);
 
+  // No isFetching guard: with the queryFn consuming the abort signal, v5's
+  // refetch (cancelRefetch defaults true) aborts an in-flight search and starts
+  // a fresh one — the in-app recovery for a hung search (#290).
   function handleRefresh() {
-    if (isFetching) return;
     lightHaptic();
+    setSearchEpoch((e) => e + 1);
     refetch();
   }
 
@@ -486,6 +490,15 @@ export function ReleasesPicker({
                   ? "Still searching. Some indexers are slower than others."
                   : "This can take up to a minute."
               }
+              action={
+                showLongSearchingHint ? (
+                  <Button
+                    label="Restart search"
+                    variant="outline"
+                    onPress={handleRefresh}
+                  />
+                ) : undefined
+              }
             />
           ) : (
             <View className="gap-2">
@@ -499,7 +512,13 @@ export function ReleasesPicker({
         <EmptyState
           icon={<Icon icon={AlertTriangle} size={28} color="#ef4444" />}
           title="Search failed"
-          message={getHttpErrorMessage(error) ?? error?.message ?? "Unknown error"}
+          message={
+            // A TanStack-initiated cancel reverts the query instead of erroring,
+            // so an AbortError landing here is always the fetch timeout.
+            isAbortError(error)
+              ? "Search timed out. Indexers may be slow or unreachable. Try again."
+              : (getHttpErrorMessage(error) ?? error?.message ?? "Unknown error")
+          }
           action={<Button label="Retry" onPress={handleRefresh} />}
         />
       ) : (
