@@ -1646,3 +1646,36 @@ describe("v35 → v36 (arr add-flow defaults stamp)", () => {
     expect(result.services.radarr[0].defaultRootFolderPath).toBeUndefined();
   });
 });
+
+describe("v36 → v37 (per-workspace tabIcons stamp)", () => {
+  it("just stamps the version and preserves an already-set tabIcons map", () => {
+    const result: any = migrateConfig({
+      version: 36,
+      services: {},
+      secrets: {},
+      dashboards: [
+        {
+          id: "d1",
+          name: "Default",
+          widgets: [],
+          tabIcons: { movies: "Clapperboard" },
+        },
+      ],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.dashboards[0].tabIcons).toEqual({ movies: "Clapperboard" });
+  });
+
+  it("leaves tabIcons absent when the source payload omitted it", () => {
+    const result: any = migrateConfig({
+      version: 36,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.dashboards[0].tabIcons).toBeUndefined();
+  });
+});

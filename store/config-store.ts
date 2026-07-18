@@ -31,9 +31,16 @@ import {
   MAX_HOME_NETWORKS,
 } from "@/lib/constants";
 import type { UiScale } from "@/lib/constants";
-import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-icons";
+import {
+  DEFAULT_DASHBOARD_ICON,
+  type DashboardIconName,
+} from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
-import { MAX_PINNED_TABS } from "@/lib/tab-routes";
+import {
+  ALL_PICKABLE_TABS,
+  MAX_PINNED_TABS,
+  type TabRouteId,
+} from "@/lib/tab-routes";
 import {
   CURRENT_CONFIG_VERSION,
   migrateConfig,
@@ -187,6 +194,14 @@ export interface Dashboard {
   // at the end in canonical order (same forgiving semantics as the global
   // servicesOrder), so adding a new service kind never hides it.
   servicesOrder?: ServiceId[];
+  // v37: optional per-workspace overrides for the middle bottom-tab icons
+  // (#195). Keys are TabRouteIds, values lucide names from the curated
+  // registry in lib/dashboard-icons. A missing key (or unknown icon name)
+  // falls back to the default at render time via resolveTabIcon, so only
+  // actual overrides are stored — picking the default removes the entry.
+  // Kept loose (string/string) like `icon`/`pinnedTabs` so entries survive
+  // app upgrades that add/remove tabs or icons.
+  tabIcons?: Record<string, string>;
 }
 
 // Legacy widget-settings shape carried by v13 exports. v13→v14 migration folds
@@ -478,6 +493,14 @@ interface ConfigActions {
   setDashboardServicesOrder: (
     dashboardId: string,
     order: ServiceId[] | undefined,
+  ) => void;
+  // v37: per-workspace bottom-tab icon overrides (#195). Pass the full map of
+  // overrides for this dashboard; entries matching the defaults should already
+  // be absent (the editor stores only real overrides). An empty map drops the
+  // key entirely so "no overrides" stays canonical.
+  setDashboardTabIcons: (
+    dashboardId: string,
+    icons: Partial<Record<TabRouteId, DashboardIconName>>,
   ) => void;
 
   // Slots (v14+). Operate on the active dashboard's widget list. addWidget
@@ -1306,6 +1329,24 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
             }
             dashboard.servicesOrder = order;
           }
+          // v37: per-workspace bottom-tab icon overrides (#195). Rehydrated
+          // here like every other Dashboard field — dropping it on cold start
+          // would silently reset custom tab icons. Unknown tab keys and
+          // malformed values are dropped; icon-name validity is checked at
+          // render time (resolveTabIcon falls back to the default).
+          if (isPlainObject(d.tabIcons)) {
+            const cleaned: Record<string, string> = {};
+            for (const [tab, icon] of Object.entries(d.tabIcons)) {
+              if (!(ALL_PICKABLE_TABS as readonly string[]).includes(tab)) continue;
+              if (typeof icon !== "string" || icon.length === 0 || icon.length > 64) {
+                continue;
+              }
+              cleaned[tab] = icon;
+            }
+            if (Object.keys(cleaned).length > 0) {
+              dashboard.tabIcons = cleaned;
+            }
+          }
           // Backfill v20 fields one-time for users upgrading from a v14-v19
           // local install (the AsyncStorage payload is the legacy shape, even
           // though the export migration handles them at import time).
@@ -1940,6 +1981,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ...(src.activeInstance ? { activeInstance: { ...src.activeInstance } } : {}),
       ...(src.homeNetworkIds ? { homeNetworkIds: [...src.homeNetworkIds] } : {}),
       ...(src.servicesOrder ? { servicesOrder: [...src.servicesOrder] } : {}),
+      ...(src.tabIcons ? { tabIcons: { ...src.tabIcons } } : {}),
     };
     set((state) => {
       const dashboards = [...state.dashboards, clone];
@@ -2227,6 +2269,31 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           sanitized.push(id);
         }
         return { ...d, servicesOrder: sanitized };
+      });
+      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      return { dashboards };
+    });
+  },
+
+  setDashboardTabIcons: (dashboardId, icons) => {
+    set((state) => {
+      const dashboards = state.dashboards.map((d) => {
+        if (d.id !== dashboardId) return d;
+        // Drop unknown tab keys and empty values; the setter's type already
+        // constrains icon names, but imports/drafts stay defensive.
+        const sanitized: Record<string, string> = {};
+        for (const [tab, icon] of Object.entries(icons)) {
+          if (!(ALL_PICKABLE_TABS as readonly string[]).includes(tab)) continue;
+          if (typeof icon !== "string" || icon.length === 0) continue;
+          sanitized[tab] = icon;
+        }
+        // No overrides → drop the key so "all defaults" stays canonical,
+        // like homeNetworkIds/servicesOrder do for `undefined`.
+        if (Object.keys(sanitized).length === 0) {
+          const { tabIcons: _omit, ...rest } = d;
+          return rest;
+        }
+        return { ...d, tabIcons: sanitized };
       });
       setJSON(STORAGE_KEYS.dashboards, dashboards);
       return { dashboards };

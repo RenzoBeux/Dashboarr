@@ -142,8 +142,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultMetadataProfileId, #287). Pure version stamp — the fields are
  *         optional, absence means "first in list", and coerceServiceInstance
  *         validates them on import.
+ *   v37 — optional per-workspace `tabIcons` on each Dashboard (#195): map of
+ *         TabRouteId → lucide icon name overriding the bottom-tab icon.
+ *         Pure version stamp — absence means default tab icons, and
+ *         coerceDashboard validates entries on import.
  */
-export const CURRENT_CONFIG_VERSION = 36;
+export const CURRENT_CONFIG_VERSION = 37;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -647,6 +651,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // #287). Pure version stamp — the fields are optional and absence means
   // "first in list".
   35: (payload) => ({ ...payload, version: 36 }),
+  // v36 → v37: optional per-workspace `tabIcons` bottom-tab icon overrides on
+  // Dashboard (#195). Pure version stamp — absence means default tab icons.
+  36: (payload) => ({ ...payload, version: 37 }),
 };
 
 /**

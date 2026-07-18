@@ -44,6 +44,9 @@ interface DashboardIconPickerSheetProps {
   selected: string;
   color: string;
   onSelect: (icon: DashboardIconName) => void;
+  // Header title — lets reusers (e.g. the per-tab icon override picker) say
+  // what the icon is being chosen for.
+  title?: string;
 }
 
 export function DashboardIconPickerSheet({
@@ -52,6 +55,7 @@ export function DashboardIconPickerSheet({
   selected,
   color,
   onSelect,
+  title = "Choose icon",
 }: DashboardIconPickerSheetProps) {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
@@ -138,7 +142,7 @@ export function DashboardIconPickerSheet({
                 <View className="flex-row items-center justify-between px-5 pt-4 pb-3">
                   <View className="flex-1 pr-3">
                     <Text className="text-zinc-100 text-xl font-bold">
-                      Choose icon
+                      {title}
                     </Text>
                     <Text className="text-zinc-500 text-xs mt-0.5">
                       {LUCIDE_ICON_NAMES.length} icons

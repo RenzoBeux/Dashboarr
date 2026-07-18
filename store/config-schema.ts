@@ -16,11 +16,12 @@ import type {
 } from "@/store/config-store";
 import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/store/config-store";
 import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
-import { MAX_PINNED_TABS } from "@/lib/tab-routes";
+import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
 const SERVICE_ID_SET: ReadonlySet<string> = new Set(SERVICE_IDS);
+const PICKABLE_TAB_SET: ReadonlySet<string> = new Set(ALL_PICKABLE_TABS);
 const WIDGET_ID_SET: ReadonlySet<string> = new Set(DASHBOARD_WIDGET_IDS);
 
 // Accepts the 8 hex characters palette swatches use. Restrictive on purpose —
@@ -265,6 +266,24 @@ function coerceDashboard(v: unknown): Dashboard | null {
       order.push(sid as ServiceId);
     }
     out.servicesOrder = order;
+  }
+  // v37: optional per-workspace bottom-tab icon overrides (#195). Present-but-
+  // not-object is rejected; otherwise drop unknown tab keys and malformed
+  // values. Icon names are deliberately NOT validated against the lucide
+  // registry here (this module must stay free of react-native imports for
+  // jest) — render-time resolveTabIcon falls back to the default, same policy
+  // as the `icon` field above.
+  if (v.tabIcons !== undefined && v.tabIcons !== null) {
+    if (!isPlainObject(v.tabIcons)) return null;
+    const icons: Record<string, string> = {};
+    for (const [tab, icon] of Object.entries(v.tabIcons)) {
+      if (!PICKABLE_TAB_SET.has(tab)) continue;
+      if (typeof icon !== "string" || icon.length === 0 || icon.length > 64) continue;
+      icons[tab] = icon;
+    }
+    if (Object.keys(icons).length > 0) {
+      out.tabIcons = icons;
+    }
   }
   return out;
 }
