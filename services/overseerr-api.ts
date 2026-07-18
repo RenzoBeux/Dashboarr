@@ -1,6 +1,8 @@
 import { serviceRequest } from "@/lib/http-client";
 import type {
   OverseerrMediaType,
+  OverseerrMediaListResponse,
+  OverseerrMediaResult,
   OverseerrRequestsResponse,
   OverseerrSearchResponse,
   OverseerrGenreSliderItem,
@@ -117,12 +119,61 @@ export function getUpcomingMovies(
   });
 }
 
-export function getRecentlyAdded(
+// Seerr has no /discover/recently-added endpoint (verified against both the
+// Overseerr and Jellyseerr route sources) — the web UI's Recently Added slider
+// reads GET /media sorted by mediaAddedAt and hydrates each bare Media entity
+// (ids + status only) from the movie/tv details endpoints. We do the same and
+// shape the result as a search response so the row renders like any other
+// slider. Entries whose details fetch fails are dropped rather than failing
+// the whole row.
+export async function getRecentlyAdded(
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/recently-added", {
+  const media = await serviceRequest<OverseerrMediaListResponse>("overseerr", "/media", {
+    params: { filter: "allavailable", take: 20, sort: "mediaAdded" },
     instanceId,
   });
+  const hydrated = await Promise.allSettled(
+    (media.results ?? []).map(async (entity): Promise<OverseerrMediaResult> => {
+      if (entity.mediaType === "movie") {
+        const d = await getMovieDetails(entity.tmdbId, instanceId);
+        return {
+          id: d.id,
+          mediaType: "movie",
+          title: d.title,
+          overview: d.overview ?? "",
+          posterPath: d.posterPath,
+          backdropPath: d.backdropPath,
+          releaseDate: d.releaseDate,
+          voteAverage: d.voteAverage ?? 0,
+          mediaInfo: d.mediaInfo ?? { status: entity.status, status4k: entity.status4k },
+        };
+      }
+      const d = await getTVDetails(entity.tmdbId, instanceId);
+      return {
+        id: d.id,
+        mediaType: "tv",
+        name: d.name,
+        overview: d.overview ?? "",
+        posterPath: d.posterPath,
+        backdropPath: d.backdropPath,
+        firstAirDate: d.firstAirDate,
+        voteAverage: d.voteAverage ?? 0,
+        mediaInfo: d.mediaInfo ?? { status: entity.status, status4k: entity.status4k },
+      };
+    }),
+  );
+  const results = hydrated
+    .filter(
+      (r): r is PromiseFulfilledResult<OverseerrMediaResult> => r.status === "fulfilled",
+    )
+    .map((r) => r.value);
+  return {
+    page: 1,
+    totalPages: 1,
+    totalResults: results.length,
+    results,
+  };
 }
 
 // --- Browse by network / studio / genre ---

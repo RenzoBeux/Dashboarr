@@ -966,6 +966,28 @@ export interface OverseerrSearchResponse {
   results: OverseerrMediaResult[];
 }
 
+// One row from GET /media — a bare Media entity (ids + status only, no title or
+// artwork). Used by the Recently Added slider, which hydrates each entry via
+// the movie/tv details endpoints.
+export interface OverseerrMediaEntity {
+  id: number;
+  mediaType: OverseerrMediaType;
+  tmdbId: number;
+  tvdbId?: number;
+  status: OverseerrMediaStatus;
+  status4k?: OverseerrMediaStatus;
+}
+
+export interface OverseerrMediaListResponse {
+  pageInfo: {
+    pages: number;
+    pageSize: number;
+    results: number;
+    page: number;
+  };
+  results: OverseerrMediaEntity[];
+}
+
 // One entry from /discover/genreslider/{movie,tv}: a genre plus a few backdrop
 // paths used to illustrate the genre tile.
 export interface OverseerrGenreSliderItem {
@@ -995,8 +1017,11 @@ export interface OverseerrRelatedVideo {
 export interface OverseerrMovieDetails {
   id: number;
   title: string;
+  overview?: string;
   posterPath?: string;
+  backdropPath?: string;
   releaseDate?: string;
+  voteAverage?: number;
   relatedVideos?: OverseerrRelatedVideo[];
   mediaInfo?: {
     id: number;
@@ -1016,8 +1041,11 @@ export interface OverseerrSeasonInfo {
 export interface OverseerrTVDetails {
   id: number;
   name: string;
+  overview?: string;
   posterPath?: string;
+  backdropPath?: string;
   firstAirDate?: string;
+  voteAverage?: number;
   seasons?: OverseerrSeasonInfo[];
   relatedVideos?: OverseerrRelatedVideo[];
   mediaInfo?: {
