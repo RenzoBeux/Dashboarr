@@ -557,6 +557,98 @@ describe("validateExportPayload — dashboard.homeNetworkIds (v29)", () => {
   });
 });
 
+describe("validateExportPayload — dashboard.tabIcons (v37)", () => {
+  it("omits dashboard.tabIcons when not provided (default tab icons)", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.dashboards[0].tabIcons).toBeUndefined();
+  });
+
+  it("preserves a valid per-dashboard tabIcons map", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          tabIcons: { movies: "Clapperboard", requests: "Bell" },
+        },
+      ],
+    });
+    expect(result.dashboards[0].tabIcons).toEqual({
+      movies: "Clapperboard",
+      requests: "Bell",
+    });
+  });
+
+  it("drops unknown tab keys and malformed values, keeping valid entries", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          tabIcons: {
+            movies: "Clapperboard",
+            notATab: "Film",
+            tv: 42,
+            requests: "",
+            downloads: "x".repeat(65),
+          } as any,
+        },
+      ],
+    });
+    expect(result.dashboards[0].tabIcons).toEqual({ movies: "Clapperboard" });
+  });
+
+  it("omits tabIcons entirely when every entry is dropped", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          tabIcons: { notATab: "Film" } as any,
+        },
+      ],
+    });
+    expect(result.dashboards[0].tabIcons).toBeUndefined();
+  });
+
+  it("keeps unknown icon names for known tabs (render-time fallback)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      dashboards: [
+        {
+          id: TEST_DASHBOARD_ID,
+          name: "Default",
+          widgets: [],
+          tabIcons: { movies: "NotARealIcon" },
+        },
+      ],
+    });
+    expect(result.dashboards[0].tabIcons).toEqual({ movies: "NotARealIcon" });
+  });
+
+  it("rejects a dashboard with a non-object tabIcons", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        dashboards: [
+          {
+            id: TEST_DASHBOARD_ID,
+            name: "Default",
+            widgets: [],
+            tabIcons: "nope" as any,
+          },
+        ],
+      }),
+    ).toThrow(/dashboards entry is invalid/);
+  });
+});
+
 describe("validateExportPayload — WOL devices", () => {
   const baseWol = () => ({ id: "d1", name: "Server", mac: "aa:bb:cc:dd:ee:ff" });
 

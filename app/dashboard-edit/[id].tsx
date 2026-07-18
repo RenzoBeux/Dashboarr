@@ -47,6 +47,7 @@ import {
   pickableTabIdsFor,
   type TabRouteId,
 } from "@/lib/tab-routes";
+import { DEFAULT_TAB_ICON_NAMES, resolveTabIcon } from "@/lib/tab-icons";
 import { toast } from "@/components/ui/toast";
 import { DashboardIconPickerSheet } from "@/components/dashboard/dashboard-icon-picker-sheet";
 
@@ -85,6 +86,7 @@ export default function DashboardEditScreen() {
   const setDashboardPinnedTabs = useConfigStore(
     (s) => s.setDashboardPinnedTabs,
   );
+  const setDashboardTabIcons = useConfigStore((s) => s.setDashboardTabIcons);
   const globalHomeNetworks = useConfigStore((s) => s.homeNetworks);
   const setDashboardHomeNetworkIds = useConfigStore(
     (s) => s.setDashboardHomeNetworkIds,
@@ -133,7 +135,17 @@ export default function DashboardEditScreen() {
   const [pinned, setPinned] = useState<TabRouteId[]>(() =>
     sanitizePins(dashboard?.pinnedTabs ?? []),
   );
-  const [iconSheetOpen, setIconSheetOpen] = useState(false);
+  // Per-tab bottom-bar icon overrides (v37, #195). Only actual overrides are
+  // stored — an entry equal to the tab's default is normalized away, so
+  // re-picking the default is the "reset" affordance.
+  const [tabIcons, setTabIcons] = useState<TabIconDraft>(() =>
+    sanitizeTabIcons(dashboard?.tabIcons),
+  );
+  // One picker sheet serves both the workspace icon and the per-tab chips —
+  // the target says which the next pick applies to.
+  const [iconPickerTarget, setIconPickerTarget] = useState<
+    "workspace" | TabRouteId | null
+  >(null);
 
   // Home-network selection editing state. `homeNetworkIdsDraft === undefined`
   // means "All" (use every home network); an array is a custom subset of the
@@ -155,6 +167,12 @@ export default function DashboardEditScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dashboard?.id],
   );
+  const initialTabIcons = useMemo(
+    () => sanitizeTabIcons(dashboard?.tabIcons),
+    // Snapshot on mount — same lifecycle as initialAttached, see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dashboard?.id],
+  );
   const trimmedName = name.trim();
   const homeNetworksDirty = !idSelectionsEqual(
     homeNetworkIdsDraft,
@@ -166,6 +184,7 @@ export default function DashboardEditScreen() {
     color !== initialColor ||
     touchedAttached ||
     !arraysEqual(pinned, initialPinned) ||
+    !recordsEqual(tabIcons, initialTabIcons) ||
     homeNetworksDirty;
 
   // Intercept back/swipe-dismiss while the draft is dirty so the user gets a
@@ -396,6 +415,9 @@ export default function DashboardEditScreen() {
     if (!arraysEqual(pinned, initialPinned)) {
       setDashboardPinnedTabs(dashboard.id, pinned);
     }
+    if (!recordsEqual(tabIcons, initialTabIcons)) {
+      setDashboardTabIcons(dashboard.id, tabIcons);
+    }
     if (homeNetworksDirty) {
       // undefined → use all home networks; an array → custom subset by id.
       setDashboardHomeNetworkIds(dashboard.id, homeNetworkIdsDraft);
@@ -429,6 +451,12 @@ export default function DashboardEditScreen() {
   }
 
   const saveTextColor = pickReadableForeground(color);
+  // The tab the picker sheet is currently editing, or null when it's closed
+  // or targeting the workspace icon.
+  const pickerTab: TabRouteId | null =
+    iconPickerTarget !== null && iconPickerTarget !== "workspace"
+      ? iconPickerTarget
+      : null;
   const PreviewIcon = LUCIDE_BY_NAME[icon as DashboardIconName] ?? resolveDashboardIcon(icon);
   const previewName = trimmedName.length > 0 ? trimmedName : "Untitled dashboard";
   const previewSummary = (() => {
@@ -518,7 +546,7 @@ export default function DashboardEditScreen() {
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
-            setIconSheetOpen(true);
+            setIconPickerTarget("workspace");
           }}
           className="flex-row items-center gap-3 rounded-2xl bg-surface-light border border-border/70 px-3 py-3 active:bg-surface mb-3"
         >
@@ -586,7 +614,7 @@ export default function DashboardEditScreen() {
 
       <Section
         label={`Pinned tabs (${pinned.length}/${MAX_PINNED_TABS})`}
-        hint="Pinned tabs appear between Dashboard and Settings in the bottom bar."
+        hint="Pinned tabs appear between Dashboard and Settings in the bottom bar. Tap a tab's icon to change it."
       >
         {pickable.length === 0 ? (
           <Text className="text-zinc-500 text-xs">
@@ -609,6 +637,27 @@ export default function DashboardEditScreen() {
                     backgroundColor: `${color}1A`,
                   }}
                 >
+                  {/* Icon chip — shows the tab's effective bottom-bar icon and
+                      opens the picker for it. An accent border marks tabs
+                      whose icon differs from the default (#195). */}
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setIconPickerTarget(tab);
+                    }}
+                    hitSlop={4}
+                    className="w-8 h-8 rounded-lg items-center justify-center border active:opacity-70"
+                    style={{
+                      backgroundColor: `${color}26`,
+                      borderColor: tabIcons[tab] ? color : "transparent",
+                    }}
+                  >
+                    <Icon
+                      icon={resolveTabIcon(tab, tabIcons[tab])}
+                      size={ICON.MD}
+                      color={color}
+                    />
+                  </Pressable>
                   <Text className="flex-1 text-zinc-100 text-sm font-medium">
                     {TAB_LABELS[tab]}
                   </Text>
@@ -794,11 +843,34 @@ export default function DashboardEditScreen() {
       />
 
       <DashboardIconPickerSheet
-        visible={iconSheetOpen}
-        onClose={() => setIconSheetOpen(false)}
-        selected={icon}
+        visible={iconPickerTarget !== null}
+        onClose={() => setIconPickerTarget(null)}
+        // For a tab target, highlight the *effective* icon so the current
+        // default reads as selected even when no override is stored.
+        selected={
+          pickerTab !== null
+            ? (tabIcons[pickerTab] ?? DEFAULT_TAB_ICON_NAMES[pickerTab])
+            : icon
+        }
         color={color}
-        onSelect={(picked) => setIcon(picked)}
+        title={
+          pickerTab !== null ? `Icon for ${TAB_LABELS[pickerTab]}` : undefined
+        }
+        onSelect={(picked) => {
+          if (pickerTab === null) {
+            setIcon(picked);
+            return;
+          }
+          setTabIcons((prev) => {
+            // Picking the default clears the override (absence = default),
+            // so future default changes flow through automatically.
+            if (picked === DEFAULT_TAB_ICON_NAMES[pickerTab]) {
+              const { [pickerTab]: _omit, ...rest } = prev;
+              return rest;
+            }
+            return { ...prev, [pickerTab]: picked };
+          });
+        }}
       />
     </ScreenWrapper>
   );
@@ -1080,6 +1152,39 @@ const InstanceKindCard = memo(function InstanceKindCard({
 function resolveIconName(name: string | undefined): DashboardIconName {
   if (name && name in LUCIDE_BY_NAME) return name as DashboardIconName;
   return LUCIDE_ICON_NAMES[0];
+}
+
+type TabIconDraft = Partial<Record<TabRouteId, DashboardIconName>>;
+
+// Normalize a stored tabIcons map into the draft shape: drop unknown tab keys,
+// unknown icon names, and entries equal to the tab's default (absence IS the
+// default, so a stored default would read as a phantom override).
+function sanitizeTabIcons(
+  raw: Record<string, string> | undefined,
+): TabIconDraft {
+  if (!raw) return {};
+  const valid = new Set<string>(ALL_PICKABLE_TABS);
+  const out: TabIconDraft = {};
+  for (const [tab, iconName] of Object.entries(raw)) {
+    if (!valid.has(tab)) continue;
+    if (!(iconName in LUCIDE_BY_NAME)) continue;
+    if (iconName === DEFAULT_TAB_ICON_NAMES[tab as TabRouteId]) continue;
+    out[tab as TabRouteId] = iconName as DashboardIconName;
+  }
+  return out;
+}
+
+function recordsEqual(
+  a: Readonly<Record<string, string | undefined>>,
+  b: Readonly<Record<string, string | undefined>>,
+): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const k of keysA) {
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
 }
 
 function sanitizePins(pins: readonly string[]): TabRouteId[] {

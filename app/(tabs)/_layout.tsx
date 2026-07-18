@@ -1,26 +1,7 @@
 import { createElement, useEffect, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native";
 import { Tabs, useRouter, usePathname } from "expo-router";
-import {
-  Activity,
-  CalendarDays,
-  Captions,
-  Clapperboard,
-  Cpu,
-  Download,
-  Film,
-  Inbox,
-  LayoutGrid,
-  Library,
-  MonitorPlay,
-  Music,
-  PlayCircle,
-  Radar,
-  Server,
-  Settings,
-  Tv,
-  type LucideIcon,
-} from "lucide-react-native";
+import { Settings } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightHaptic } from "@/lib/haptics";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -28,6 +9,7 @@ import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
 import { useActiveDashboard, useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
+import { resolveTabIcon } from "@/lib/tab-icons";
 import {
   ALL_PICKABLE_TABS,
   visiblePinnedTabs,
@@ -36,27 +18,6 @@ import {
 
 const TAB_ICON_SIZE = 24;
 const INACTIVE_COLOR = "#71717a";
-
-// Static icon map for the user-pickable middle tabs. Lives outside the
-// component so the layout doesn't re-create the lookup on every render.
-const TAB_ICONS: Record<TabRouteId, LucideIcon> = {
-  downloads: Download,
-  calendar: CalendarDays,
-  services: LayoutGrid,
-  movies: Film,
-  tv: Tv,
-  library: Library,
-  music: Music,
-  requests: Inbox,
-  activity: Activity,
-  indexers: Radar,
-  plex: PlayCircle,
-  jellyfin: Clapperboard,
-  emby: MonitorPlay,
-  glances: Cpu,
-  bazarr: Captions,
-  unraid: Server,
-};
 
 export default function TabLayout() {
   const { bottom } = useSafeAreaInsets();
@@ -154,7 +115,11 @@ export default function TabLayout() {
       />
 
       {middleTabs.map((name) => {
-        const IconComponent = TAB_ICONS[name];
+        // Per-workspace icon override (v37, #195); falls back to the default.
+        const IconComponent = resolveTabIcon(
+          name,
+          activeDashboard?.tabIcons?.[name],
+        );
         const visible = pinnedSet.has(name);
         return (
           <Tabs.Screen
