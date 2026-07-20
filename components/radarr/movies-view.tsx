@@ -56,6 +56,7 @@ import {
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 type MovieSheetTarget =
   | { kind: "movie"; item: RadarrMovie }
@@ -167,6 +168,7 @@ export const MoviesView = memo(function MoviesView({
   embedded?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("library");
+  const theme = useAppTheme();
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
   const sort = useSortStore((s) => s.movies);
   const setSort = useSortStore((s) => s.setMovies);
@@ -292,7 +294,7 @@ export const MoviesView = memo(function MoviesView({
       onRefresh={onRefresh}
       tintColor="#3b82f6"
       colors={["#3b82f6"]}
-      progressBackgroundColor="#18181b"
+      progressBackgroundColor={theme.surface}
     />
   );
 

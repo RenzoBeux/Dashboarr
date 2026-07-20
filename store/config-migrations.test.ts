@@ -1679,3 +1679,30 @@ describe("v36 → v37 (per-workspace tabIcons stamp)", () => {
     expect(result.dashboards[0].tabIcons).toBeUndefined();
   });
 });
+
+describe("v37 → v38 (appTheme stamp)", () => {
+  it("just stamps the version and preserves an already-set appTheme", () => {
+    const result: any = migrateConfig({
+      version: 37,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      appTheme: "ember",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.appTheme).toBe("ember");
+  });
+
+  it("leaves appTheme absent when the source payload omitted it", () => {
+    const result: any = migrateConfig({
+      version: 37,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.appTheme).toBeUndefined();
+  });
+});

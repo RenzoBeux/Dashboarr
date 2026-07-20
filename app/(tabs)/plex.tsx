@@ -52,6 +52,7 @@ import { useUiScale } from "@/hooks/use-ui-scale";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
 import type { PlexSession, PlexMediaItem, PlexLibrary } from "@/lib/types";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 type Tab = "playing" | "recent" | "ondeck" | "libraries";
 
@@ -96,6 +97,7 @@ export default function PlexScreen() {
 
 function PlexScreenInner() {
   const [tab, setTab] = useState<Tab>("playing");
+  const theme = useAppTheme();
   const recentSort = useSortStore((s) => s.plexRecent);
   const setRecentSort = useSortStore((s) => s.setPlexRecent);
   const [recentSortOpen, setRecentSortOpen] = useState(false);
@@ -119,7 +121,7 @@ function PlexScreenInner() {
       onRefresh={onRefresh}
       tintColor="#3b82f6"
       colors={["#3b82f6"]}
-      progressBackgroundColor="#18181b"
+      progressBackgroundColor={theme.surface}
     />
   );
 

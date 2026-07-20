@@ -1,12 +1,14 @@
 import { useContext } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RefreshControl, Platform } from "react-native";
+import { RefreshControl, Platform, StyleSheet } from "react-native";
 import type { ViewProps } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { cssInterop } from "nativewind";
+import { LinearGradient } from "expo-linear-gradient";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { DemoBanner } from "@/components/common/demo-banner";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 cssInterop(KeyboardAwareScrollView, {
   className: "style",
@@ -77,14 +79,28 @@ export function ScreenWrapper({
   const usesFloatingTabBar = HAS_GLASS_TAB_BAR && tabBarHeight !== undefined;
   const safeAreaEdges = useScreenSafeAreaEdges(edgeToEdge);
   const scrollPaddingBottom = useScreenBottomPadding();
+  const theme = useAppTheme();
+
+  // Full-bleed theme backdrop: a soft top glow fading into the flat
+  // background color. SafeAreaView is padding-based, so absoluteFill covers
+  // the status-bar region too; pointerEvents="none" keeps scroll and
+  // pull-to-refresh untouched.
+  const backdrop = (
+    <LinearGradient
+      colors={theme.gradient}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+  );
 
   if (scrollable) {
     return (
       <SafeAreaView
         edges={safeAreaEdges}
-        className={`flex-1 bg-background ${className}`}
+        className={`flex-1 ${className}`}
         {...props}
       >
+        {backdrop}
         <DemoBanner />
         <KeyboardAwareScrollView
           className="flex-1"
@@ -101,7 +117,7 @@ export function ScreenWrapper({
                 onRefresh={onRefresh}
                 tintColor="#3b82f6"
                 colors={["#3b82f6"]}
-                progressBackgroundColor="#18181b"
+                progressBackgroundColor={theme.surface}
               />
             ) : undefined
           }
@@ -116,9 +132,10 @@ export function ScreenWrapper({
     <SafeAreaView
       edges={safeAreaEdges}
       style={usesFloatingTabBar ? { paddingBottom: tabBarHeight } : undefined}
-      className={`flex-1 bg-background ${edgeToEdge ? "" : "px-4"} ${className}`}
+      className={`flex-1 ${edgeToEdge ? "" : "px-4"} ${className}`}
       {...props}
     >
+      {backdrop}
       <DemoBanner />
       {children}
     </SafeAreaView>

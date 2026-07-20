@@ -25,6 +25,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import { TextInput } from "@/components/ui/text-input";
 import { useConfigStore, type ServiceInstance } from "@/store/config-store";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   ICON,
   SERVICE_DEFAULTS,
@@ -929,13 +930,14 @@ const SegmentButton = memo(function SegmentButton({
   color,
   onPress,
 }: SegmentButtonProps) {
+  const theme = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
       className="flex-1 rounded-xl py-2.5 items-center border active:opacity-80"
       style={{
         backgroundColor: active ? `${color}1A` : "transparent",
-        borderColor: active ? color : "#3f3f46",
+        borderColor: active ? color : theme.border,
       }}
     >
       <Text
@@ -955,12 +957,13 @@ interface CheckboxProps {
 }
 
 const Checkbox = memo(function Checkbox({ on, color, disabled }: CheckboxProps) {
+  const theme = useAppTheme();
   return (
     <View
       className="w-5 h-5 rounded items-center justify-center border"
       style={{
         backgroundColor: on ? color : "transparent",
-        borderColor: on ? color : disabled ? "#3f3f46" : "#52525b",
+        borderColor: on ? color : disabled ? theme.border : "#52525b",
       }}
     >
       {on && <Icon icon={Check} size={14} color="#ffffff" />}

@@ -8,6 +8,7 @@ import Animated, {
   Easing,
   ReduceMotion,
 } from "react-native-reanimated";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 interface SkeletonProps {
   width?: number | string;
@@ -23,6 +24,7 @@ export function Skeleton({
   className,
 }: SkeletonProps) {
   const translateX = useSharedValue(-1);
+  const theme = useAppTheme();
 
   useEffect(() => {
     // ReduceMotion.Never: the shimmer is a loading affordance, so keep it moving
@@ -53,7 +55,7 @@ export function Skeleton({
         width: width as any,
         height,
         borderRadius,
-        backgroundColor: "#27272a",
+        backgroundColor: theme.surfaceLight,
         overflow: "hidden",
       }}
     >
@@ -64,7 +66,7 @@ export function Skeleton({
             top: 0,
             bottom: 0,
             width: "40%",
-            backgroundColor: "#3f3f46",
+            backgroundColor: theme.border,
             borderRadius,
             opacity: 0.5,
           },

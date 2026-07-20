@@ -20,6 +20,7 @@ import { getCpu, getMem, getFs, getGpu, getNet, getLoad, selectInterfaces, type 
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   SERVER_STATS_DEFAULT_SETTINGS,
   type ServerStatsSettingsValue,
@@ -56,6 +57,7 @@ const MetricRing = memo(function MetricRing({ percent, label, sublabel, icon }: 
   // Use numeric pixel size scaled by uiScale so the ring resizes with
   // accessibility scaling — react-native-svg props are numeric, not rem.
   const scale = useUiScale();
+  const theme = useAppTheme();
   const size = Math.round(RING_BASE * scale);
   const stroke = Math.max(4, Math.round(STROKE_WIDTH * scale));
   const radius = (size - stroke) / 2;
@@ -73,7 +75,7 @@ const MetricRing = memo(function MetricRing({ percent, label, sublabel, icon }: 
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke="#27272a"
+            stroke={theme.surfaceLight}
             strokeWidth={stroke}
             fill="none"
           />

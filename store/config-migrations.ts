@@ -146,8 +146,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         TabRouteId → lucide icon name overriding the bottom-tab icon.
  *         Pure version stamp — absence means default tab icons, and
  *         coerceDashboard validates entries on import.
+ *   v38 — optional global `appTheme` preset id (#288). Pure version stamp —
+ *         absence means the default zinc theme, and validateExportPayload
+ *         whitelists the id on import.
  */
-export const CURRENT_CONFIG_VERSION = 37;
+export const CURRENT_CONFIG_VERSION = 38;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -654,6 +657,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v36 → v37: optional per-workspace `tabIcons` bottom-tab icon overrides on
   // Dashboard (#195). Pure version stamp — absence means default tab icons.
   36: (payload) => ({ ...payload, version: 37 }),
+  // v37 → v38: optional global `appTheme` preset id (#288). Pure version
+  // stamp — absence falls back to the default theme.
+  37: (payload) => ({ ...payload, version: 38 }),
 };
 
 /**

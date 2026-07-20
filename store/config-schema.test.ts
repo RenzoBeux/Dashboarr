@@ -1379,6 +1379,30 @@ describe("validateExportPayload — uiScale", () => {
   });
 });
 
+describe("validateExportPayload — appTheme", () => {
+  it("accepts a whitelisted appTheme id", () => {
+    const result = validateExportPayload({ ...baseValid(), appTheme: "ember" });
+    expect(result.appTheme).toBe("ember");
+  });
+
+  it("omits appTheme from the result when absent in input", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result.appTheme).toBeUndefined();
+  });
+
+  it("rejects an unknown appTheme id", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), appTheme: "hotpink" as any }),
+    ).toThrow(/appTheme/);
+  });
+
+  it("rejects a non-string appTheme", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), appTheme: 3 as any }),
+    ).toThrow(/appTheme/);
+  });
+});
+
 describe("validateExportPayload — slot settings", () => {
   it("preserves a slot's settings object verbatim", () => {
     const result = validateExportPayload({

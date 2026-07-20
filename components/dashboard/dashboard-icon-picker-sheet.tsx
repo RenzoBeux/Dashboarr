@@ -28,6 +28,7 @@ import * as Haptics from "expo-haptics";
 import { Icon } from "@/components/ui/icon";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { ICON } from "@/lib/constants";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   LUCIDE_BY_NAME,
   LUCIDE_ICON_NAMES,
@@ -202,6 +203,7 @@ const IconCell = memo(function IconCell({
   index,
   onPress,
 }: IconCellProps) {
+  const theme = useAppTheme();
   const Comp = LUCIDE_BY_NAME[name];
   // Cap the cascade delay — past ~30 cells the stagger should be effectively
   // simultaneous so the bottom of the grid doesn't look like it's still
@@ -214,8 +216,8 @@ const IconCell = memo(function IconCell({
         hitSlop={4}
         className="w-12 h-12 rounded-xl items-center justify-center"
         style={{
-          backgroundColor: selected ? `${color}26` : "#27272a",
-          borderColor: selected ? color : "#3f3f46",
+          backgroundColor: selected ? `${color}26` : theme.surfaceLight,
+          borderColor: selected ? color : theme.border,
           borderWidth: selected ? 2 : 1,
         }}
       >

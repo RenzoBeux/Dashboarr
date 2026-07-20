@@ -35,6 +35,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { Select } from "@/components/ui/select";
+import { APP_THEMES, type AppThemeId } from "@/lib/app-themes";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
@@ -212,6 +213,8 @@ export default function SettingsScreen() {
   const setHapticsEnabled = useConfigStore((s) => s.setHapticsEnabled);
   const uiScale = useConfigStore((s) => s.uiScale);
   const setUiScale = useConfigStore((s) => s.setUiScale);
+  const appTheme = useConfigStore((s) => s.appTheme);
+  const setAppTheme = useConfigStore((s) => s.setAppTheme);
 
   // GitHub logo is an SVG (lucide v1 dropped brand icons), so size it manually
   // to match the lucide icons in other rows (size=20 with rem scale).
@@ -560,6 +563,18 @@ export default function SettingsScreen() {
               { value: 1.3, label: "Extra Large", description: "+30% fonts, spacing, and icons" },
             ]}
             onChange={(v) => setUiScale(v as 1 | 1.15 | 1.3)}
+          />
+        </View>
+        <View className="px-4 py-3">
+          <Select<AppThemeId>
+            label="Theme"
+            value={appTheme}
+            options={APP_THEMES.map((t) => ({
+              value: t.id,
+              label: t.label,
+              description: t.description,
+            }))}
+            onChange={setAppTheme}
           />
         </View>
         <SettingsToggleRow

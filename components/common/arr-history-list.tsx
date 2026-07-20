@@ -15,6 +15,7 @@ import {
   HISTORY_TONE_COLOR,
   type ArrHistoryEntry,
 } from "@/lib/arr-history";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 interface ArrHistoryListProps<T> {
   query: UseQueryResult<T[], Error>;
@@ -111,6 +112,7 @@ export function ArrHistoryList<T>({ query, normalize }: ArrHistoryListProps<T>) 
     () => (data ?? []).map(normalize),
     [data, normalize],
   );
+  const theme = useAppTheme();
 
   const handleRefresh = useCallback(() => {
     if (isFetching) return;
@@ -152,7 +154,7 @@ export function ArrHistoryList<T>({ query, normalize }: ArrHistoryListProps<T>) 
           onRefresh={handleRefresh}
           tintColor="#3b82f6"
           colors={["#3b82f6"]}
-          progressBackgroundColor="#18181b"
+          progressBackgroundColor={theme.surface}
         />
       }
       ListEmptyComponent={

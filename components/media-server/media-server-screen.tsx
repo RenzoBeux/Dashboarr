@@ -45,6 +45,7 @@ import { useUiScale } from "@/hooks/use-ui-scale";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
 import type { JellyfinItem, JellyfinLibrary, JellyfinSession } from "@/lib/types";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 // One hook set per media-server kind, stamped once at module scope. Selecting
 // from this map by serviceId (which is fixed per mounted screen) keeps hook
@@ -101,6 +102,7 @@ function compareRecent(
 export function MediaServerScreen({ serviceId }: { serviceId: MediaServerId }) {
   const { displayName } = getMediaServerConfig(serviceId);
   const [tab, setTab] = useState<Tab>("playing");
+  const theme = useAppTheme();
 
   // Sort preference is per-kind so the two tabs keep independent state.
   const jellyfinSort = useSortStore((s) => s.jellyfinRecent);
@@ -131,7 +133,7 @@ export function MediaServerScreen({ serviceId }: { serviceId: MediaServerId }) {
       onRefresh={onRefresh}
       tintColor="#3b82f6"
       colors={["#3b82f6"]}
-      progressBackgroundColor="#18181b"
+      progressBackgroundColor={theme.surface}
     />
   );
 
