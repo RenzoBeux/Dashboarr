@@ -86,6 +86,16 @@ type SeriesSheetTarget =
 
 type Tab = "library" | "calendar";
 
+type SeriesStatusFilter = "all" | "continuing" | "ended" | "upcoming" | "deleted";
+
+const STATUS_FILTER_OPTIONS: { key: SeriesStatusFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "continuing", label: "Continuing" },
+  { key: "ended", label: "Ended" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "deleted", label: "Deleted" },
+];
+
 const SORT_OPTIONS: { key: SeriesSortKey; label: string }[] = [
   { key: "added-desc", label: "Recently Added" },
   { key: "next-airing-asc", label: "Next Airing" },
@@ -157,6 +167,7 @@ export const TvView = memo(function TvView({
   const [tab, setTab] = useState<Tab>("library");
   const [monitorFilter, setMonitorFilter] =
     useState<MonitorFilter>("monitored");
+  const [statusFilter, setStatusFilter] = useState<SeriesStatusFilter>("all");
   const sort = useSortStore((s) => s.series);
   const setSort = useSortStore((s) => s.setSeries);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
@@ -355,10 +366,22 @@ export const TvView = memo(function TvView({
       {tab === "library" && (
         <View className="mb-4">
           <FilterSortButton
-            summary={`${MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+            summary={[
+              MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)
+                ?.label ?? "",
+              statusFilter !== "all"
+                ? (STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)
+                    ?.label ?? "")
+                : null,
+              SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
             onPress={() => setFilterSortOpen(true)}
             active={
-              monitorFilter !== "monitored" || sort !== SORT_DEFAULTS.series
+              monitorFilter !== "monitored" ||
+              statusFilter !== "all" ||
+              sort !== SORT_DEFAULTS.series
             }
           />
         </View>
@@ -371,6 +394,7 @@ export const TvView = memo(function TvView({
       {tab === "library" && (
         <SeriesLibrary
           monitorFilter={monitorFilter}
+          statusFilter={statusFilter}
           sort={sort}
           onLongPress={openSeriesSheet}
           listHeader={header}
@@ -407,6 +431,14 @@ export const TvView = memo(function TvView({
         }))}
         filterValue={monitorFilter}
         onFilterChange={setMonitorFilter}
+        extraSections={[
+          {
+            label: "Status",
+            options: STATUS_FILTER_OPTIONS,
+            value: statusFilter,
+            onChange: (v) => setStatusFilter(v as SeriesStatusFilter),
+          },
+        ]}
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         sortValue={sort}
         onSortChange={setSort}
@@ -458,6 +490,7 @@ export const TvView = memo(function TvView({
 
 function SeriesLibrary({
   monitorFilter,
+  statusFilter,
   sort,
   onLongPress,
   listHeader,
@@ -465,6 +498,7 @@ function SeriesLibrary({
   contentContainerStyle,
 }: {
   monitorFilter: MonitorFilter;
+  statusFilter: SeriesStatusFilter;
   sort: SeriesSortKey;
   onLongPress: (series: SonarrSeries) => void;
   listHeader: React.ReactElement;
@@ -482,12 +516,21 @@ function SeriesLibrary({
     [queue],
   );
 
+  const statusPredicate = useMemo(
+    () =>
+      statusFilter === "all"
+        ? undefined
+        : (s: SonarrSeries) => s.status === statusFilter,
+    [statusFilter],
+  );
+
   return (
     <MonitoredLibraryGrid
       data={series}
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
+      extraFilter={statusPredicate}
       isMissing={sonarrIsMissing}
       sort={sort}
       compare={compareSeries}
