@@ -8,7 +8,10 @@ import {
   ChevronDown,
   ChevronUp,
   ChartColumn,
+  Film,
+  Tv,
 } from "lucide-react-native";
+import { Image } from "expo-image";
 import { useQueries } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -263,37 +266,56 @@ function StreamCard({
           : undefined
       }
     >
-      <View className="flex-row items-center gap-2 mb-2">
-        <Icon icon={StateIcon} size={16} color={stateColor} />
-        <Text className="text-zinc-200 text-sm font-medium flex-1" numberOfLines={1}>
-          {stream.title}
-        </Text>
-        {showSource && <ServiceLogo id={stream.serviceId} size={16} />}
-        {expandable && (
-          <Icon icon={expanded ? ChevronUp : ChevronDown} size={16} color="#71717a" />
+      <View className="flex-row gap-3">
+        {stream.poster ? (
+          <Image
+            source={stream.poster}
+            className="w-14 h-20 rounded-lg bg-surface-light"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+            recyclingKey={stream.poster.cacheKey}
+          />
+        ) : (
+          <View className="w-14 h-20 rounded-lg bg-surface-light items-center justify-center">
+            <Icon icon={stream.mediaType === "tv" ? Tv : Film} size={18} color="#71717a" />
+          </View>
         )}
-      </View>
 
-      <ProgressBar progress={stream.progress} showLabel className="mb-2" />
+        <View className="flex-1">
+          <View className="flex-row items-center gap-2 mb-2">
+            <Icon icon={StateIcon} size={16} color={stateColor} />
+            <Text className="text-zinc-200 text-sm font-medium flex-1" numberOfLines={2}>
+              {stream.title}
+            </Text>
+            {showSource && <ServiceLogo id={stream.serviceId} size={16} />}
+            {expandable && (
+              <Icon icon={expanded ? ChevronUp : ChevronDown} size={16} color="#71717a" />
+            )}
+          </View>
 
-      <View className="flex-row items-center gap-2 flex-wrap">
-        <Badge label={stream.transcoding ? "Transcode" : "Direct Play"} variant={stream.transcoding ? "warning" : "success"} />
-        {stream.resolution && <Badge label={stream.resolution} variant="default" />}
-        {details?.totalBitrateLabel && (
-          <Badge label={details.totalBitrateLabel} variant="default" />
-        )}
-      </View>
+          <ProgressBar progress={stream.progress} showLabel className="mb-2" />
 
-      {meta.length > 0 && (
-        <View className="flex-row items-center gap-2 mt-2">
-          {meta.map((m, i) => (
-            <View key={i} className="flex-row items-center gap-2">
-              {i > 0 && <Text className="text-zinc-600 text-xs">·</Text>}
-              <Text className="text-zinc-500 text-xs">{m}</Text>
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <Badge label={stream.transcoding ? "Transcode" : "Direct Play"} variant={stream.transcoding ? "warning" : "success"} />
+            {stream.resolution && <Badge label={stream.resolution} variant="default" />}
+            {details?.totalBitrateLabel && (
+              <Badge label={details.totalBitrateLabel} variant="default" />
+            )}
+          </View>
+
+          {meta.length > 0 && (
+            <View className="flex-row items-center gap-2 mt-2">
+              {meta.map((m, i) => (
+                <View key={i} className="flex-row items-center gap-2">
+                  {i > 0 && <Text className="text-zinc-600 text-xs">·</Text>}
+                  <Text className="text-zinc-500 text-xs">{m}</Text>
+                </View>
+              ))}
             </View>
-          ))}
+          )}
         </View>
-      )}
+      </View>
 
       {expandable && expanded && <StreamDetailSection details={details} />}
     </Card>

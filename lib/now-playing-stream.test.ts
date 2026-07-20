@@ -23,10 +23,39 @@ jest.mock("expo-secure-store", () => ({
 import {
   plexSessionToStream,
   mediaServerSessionToStream,
+  formatEpisodeStreamTitle,
   isLocalEndpoint,
   parseHiddenUsers,
 } from "./now-playing-stream";
 import type { JellyfinSession, PlexSession } from "./types";
+
+describe("formatEpisodeStreamTitle", () => {
+  it("builds the 3-part title from numeric indices", () => {
+    expect(formatEpisodeStreamTitle("Fallout", 1, 5, "The Big Door Prize")).toBe(
+      "Fallout — S01E05 — The Big Door Prize",
+    );
+  });
+
+  it("coerces Tautulli's string indices", () => {
+    expect(formatEpisodeStreamTitle("Fallout", "1", "5", "The Big Door Prize")).toBe(
+      "Fallout — S01E05 — The Big Door Prize",
+    );
+  });
+
+  it("keeps season 0 (specials)", () => {
+    expect(formatEpisodeStreamTitle("Show", 0, 3, "Special")).toBe("Show — S00E03 — Special");
+  });
+
+  it("drops the code when either index is missing, blank, or NaN", () => {
+    expect(formatEpisodeStreamTitle("Show", undefined, 5, "Ep")).toBe("Show — Ep");
+    expect(formatEpisodeStreamTitle("Show", "", "", "Ep")).toBe("Show — Ep");
+    expect(formatEpisodeStreamTitle("Show", "abc", 5, "Ep")).toBe("Show — Ep");
+  });
+
+  it("falls back to Unknown when everything is missing", () => {
+    expect(formatEpisodeStreamTitle(undefined, null, null, undefined)).toBe("Unknown");
+  });
+});
 
 describe("plexSessionToStream", () => {
   it("maps a paused, transcoding episode", () => {
@@ -93,6 +122,8 @@ describe("mediaServerSessionToStream", () => {
         Name: "Pilot",
         Type: "Episode",
         SeriesName: "Series",
+        ParentIndexNumber: 1,
+        IndexNumber: 1,
         RunTimeTicks: 600_000_000, // 60s
         ImageTags: {},
       },
@@ -101,7 +132,7 @@ describe("mediaServerSessionToStream", () => {
 
     const s = mediaServerSessionToStream(session, "inst-1", "jellyfin");
     expect(s.serviceId).toBe("jellyfin");
-    expect(s.title).toBe("Series — Pilot");
+    expect(s.title).toBe("Series — S01E01 — Pilot");
     expect(s.state).toBe("paused");
     expect(s.transcoding).toBe(true);
     expect(s.progress).toBeCloseTo(0.5);
