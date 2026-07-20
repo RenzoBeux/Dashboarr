@@ -3,6 +3,7 @@ import { View, Text, Pressable } from "react-native";
 import { Check } from "lucide-react-native";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Icon } from "@/components/ui/icon";
+import { Toggle } from "@/components/ui/toggle";
 
 /**
  * Section header + body wrapper used by every widget-settings panel. Keeps
@@ -115,6 +116,31 @@ export function SelectRow({
         ) : null}
       </View>
     </Pressable>
+  );
+}
+
+/**
+ * "Hide when empty" toggle (#282). Rendered as the last section of a widget's
+ * settings form; the widget wires the value into `useHideWhenEmpty`.
+ */
+export function HideWhenEmptyToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <SettingsSection label="Visibility">
+      <ToggleCard>
+        <Toggle
+          label="Hide when empty"
+          description="Hide this widget from the dashboard when there is nothing to show"
+          value={value}
+          onValueChange={onChange}
+        />
+      </ToggleCard>
+    </SettingsSection>
   );
 }
 

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { getIndexers, getIndexerStatuses } from "@/services/prowlarr-api";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
@@ -66,6 +67,12 @@ export function ProwlarrStatsCard({ slotId }: WidgetComponentProps) {
     ({ indexer, instanceId }) =>
       failedByInstance.get(instanceId)?.has(indexer.id) ?? false,
   ).length;
+
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenEmpty,
+    isEmpty: instances.length === 0 || enabled.length === 0,
+    isLoading: isInitialLoading,
+  });
 
   return (
     <Card onPress={() => router.push("/(tabs)/indexers")}>

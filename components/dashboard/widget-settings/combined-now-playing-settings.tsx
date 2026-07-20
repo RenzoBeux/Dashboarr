@@ -10,6 +10,7 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -24,6 +25,7 @@ export interface CombinedNowPlayingSettingsValue extends Record<string, unknown>
   hideUsers: string;
   showTranscoding: boolean;
   showUserAndDevice: boolean;
+  hideWhenEmpty: boolean;
 }
 
 export const COMBINED_NOW_PLAYING_DEFAULT_SETTINGS: CombinedNowPlayingSettingsValue = {
@@ -35,6 +37,7 @@ export const COMBINED_NOW_PLAYING_DEFAULT_SETTINGS: CombinedNowPlayingSettingsVa
   hideUsers: "",
   showTranscoding: true,
   showUserAndDevice: true,
+  hideWhenEmpty: false,
 };
 
 const MAX_OPTIONS: { value: number; label: string }[] = [
@@ -124,6 +127,11 @@ export function CombinedNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
         options={MAX_OPTIONS}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

@@ -10,6 +10,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   ChipGroup,
+  HideWhenEmptyToggle,
   SettingsSection,
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
@@ -24,6 +25,7 @@ export interface CalendarSettingsValue extends Record<string, unknown> {
   includeRadarr: boolean;
   daysAhead: number;
   radarrReleaseType: "cinemas" | "digital" | "physical" | "any";
+  hideWhenEmpty: boolean;
 }
 
 export const CALENDAR_DEFAULT_SETTINGS: CalendarSettingsValue = {
@@ -35,6 +37,7 @@ export const CALENDAR_DEFAULT_SETTINGS: CalendarSettingsValue = {
   // Default to "any" so movies show up regardless of which release Radarr
   // marks them with — matches how Radarr's calendar groups by default.
   radarrReleaseType: "any",
+  hideWhenEmpty: false,
 };
 
 const DAYS_OPTIONS: { value: number; label: string }[] = [
@@ -124,6 +127,11 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
           onChange={(radarrReleaseType) => update({ radarrReleaseType })}
         />
       )}
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
+      />
     </View>
   );
 }

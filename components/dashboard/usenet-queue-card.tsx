@@ -8,6 +8,7 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { downloadStatusColor } from "@/lib/download-status";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
@@ -85,6 +86,14 @@ export function UsenetQueueCard({ slotId, adapter }: Props) {
   const display = filtered.slice(0, settings.maxItems);
   const hasMore = filtered.length > settings.maxItems;
   const allHidden = allowedStatuses.size === 0;
+
+  // The "all states hidden" misconfiguration hint stays visible so the user
+  // can find their way back to the widget settings.
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenEmpty,
+    isEmpty: instances.length === 0 || (!allHidden && filtered.length === 0),
+    isLoading: isInitialLoading,
+  });
 
   return (
     <Card>

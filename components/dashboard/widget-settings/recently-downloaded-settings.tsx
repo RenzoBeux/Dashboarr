@@ -9,6 +9,7 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -23,6 +24,7 @@ export interface RecentlyDownloadedSettingsValue extends Record<string, unknown>
   includeSonarr: boolean;
   includeRadarr: boolean;
   maxItems: number;
+  hideWhenEmpty: boolean;
 }
 
 export const RECENTLY_DOWNLOADED_DEFAULT_SETTINGS: RecentlyDownloadedSettingsValue = {
@@ -31,6 +33,7 @@ export const RECENTLY_DOWNLOADED_DEFAULT_SETTINGS: RecentlyDownloadedSettingsVal
   includeSonarr: true,
   includeRadarr: true,
   maxItems: 10,
+  hideWhenEmpty: false,
 };
 
 export function RecentlyDownloadedSettings({ slotId }: WidgetSettingsComponentProps) {
@@ -91,6 +94,11 @@ export function RecentlyDownloadedSettings({ slotId }: WidgetSettingsComponentPr
       <MaxItemsSelector
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

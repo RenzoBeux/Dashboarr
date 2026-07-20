@@ -9,6 +9,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   ChipGroup,
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -26,6 +27,7 @@ export interface DownloadsSettingsValue extends Record<string, unknown> {
   showPaused: boolean;
   showErrored: boolean;
   sortBy: DownloadsSortBy;
+  hideWhenEmpty: boolean;
 }
 
 export const DOWNLOADS_DEFAULT_SETTINGS: DownloadsSettingsValue = {
@@ -36,6 +38,7 @@ export const DOWNLOADS_DEFAULT_SETTINGS: DownloadsSettingsValue = {
   showPaused: false,
   showErrored: false,
   sortBy: "speed",
+  hideWhenEmpty: false,
 };
 
 const SORT_OPTIONS: { value: DownloadsSortBy; label: string }[] = [
@@ -100,6 +103,11 @@ export function DownloadsSettings({ slotId }: WidgetSettingsComponentProps) {
         options={SORT_OPTIONS}
         value={settings.sortBy}
         onChange={(sortBy) => update({ sortBy })}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

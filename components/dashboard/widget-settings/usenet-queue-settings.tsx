@@ -9,6 +9,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   ChipGroup,
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -24,6 +25,7 @@ export interface UsenetQueueSettingsValue extends Record<string, unknown> {
   showPaused: boolean;
   showQueued: boolean;
   sortBy: UsenetQueueSortBy;
+  hideWhenEmpty: boolean;
 }
 
 export const USENET_QUEUE_DEFAULT_SETTINGS: UsenetQueueSettingsValue = {
@@ -33,6 +35,7 @@ export const USENET_QUEUE_DEFAULT_SETTINGS: UsenetQueueSettingsValue = {
   showPaused: true,
   showQueued: true,
   sortBy: "progress",
+  hideWhenEmpty: false,
 };
 
 const SORT_OPTIONS: { value: UsenetQueueSortBy; label: string }[] = [
@@ -90,6 +93,11 @@ export function UsenetQueueSettings({ slotId, serviceId }: Props) {
         options={SORT_OPTIONS}
         value={settings.sortBy}
         onChange={(sortBy) => update({ sortBy })}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

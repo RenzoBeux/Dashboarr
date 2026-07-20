@@ -8,6 +8,7 @@ import {
   Copy,
   Pencil,
   Check,
+  EyeOff,
   Search,
   Settings,
   SlidersHorizontal,
@@ -22,6 +23,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useConfigStore } from "@/store/config-store";
+import { useWidgetVisibilityStore } from "@/store/widget-visibility-store";
 import { CardErrorBoundary } from "@/components/common/error-boundary";
 import { ICON, type WidgetId } from "@/lib/constants";
 import {
@@ -90,6 +92,10 @@ export default function DashboardScreen() {
   // ActionSheet below; null when closed.
   const [copySlotId, setCopySlotId] = useState<string | null>(null);
   const [revealCount, setRevealCount] = useState(REVEAL_INITIAL);
+  // Slots whose widget reported "empty + hide when empty enabled" (#282).
+  // Only changes when such a widget's emptiness actually flips, so this
+  // subscription rarely re-renders the screen.
+  const hiddenSlots = useWidgetVisibilityStore((s) => s.hiddenSlots);
 
   // Entering edit mode mounts a per-widget control row (several SVG icons each)
   // for every visible widget at once — heavy enough to stall the tap. So show
@@ -362,12 +368,22 @@ export default function DashboardScreen() {
             const { label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleSlots.length - 1;
+            const hidesWhenEmpty = slot.settings?.hideWhenEmpty === true;
+            // display:none (not unmount) so the widget's queries keep polling
+            // and it reappears the moment content shows up. Edit mode always
+            // shows the card so the toggle stays reachable. Yoga excludes
+            // display:none nodes from the parent gap, so no stray spacing.
+            const hiddenWhenEmpty = !editMode && !!hiddenSlots[slot.id];
 
             return (
               // No per-index delay: progressive mounting already staggers the
               // reveal (each widget springs in as its batch mounts), so an
               // index-based delay would make late widgets wait ~1s to appear.
-              <Animated.View key={slot.id} entering={FadeInDown.springify()}>
+              <Animated.View
+                key={slot.id}
+                entering={FadeInDown.springify()}
+                style={hiddenWhenEmpty ? { display: "none" } : undefined}
+              >
                 {showEditControls && (
                   <View className="flex-row items-center justify-between mb-1 px-1">
                     <View className="flex-row items-center gap-1.5 flex-1">
@@ -375,6 +391,9 @@ export default function DashboardScreen() {
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
                         {label}
                       </Text>
+                      {hidesWhenEmpty && (
+                        <Icon icon={EyeOff} size={ICON.SM} color="#52525b" />
+                      )}
                     </View>
                     <View className="flex-row items-center gap-1">
                       <TouchableOpacity
