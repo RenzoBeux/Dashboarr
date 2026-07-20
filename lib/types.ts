@@ -1188,6 +1188,10 @@ export interface TautulliSession {
   parent_title: string; // show name for episodes
   grandparent_title: string; // show name for episodes
   full_title: string;
+  // Season/episode numbers for media_type "episode". Tautulli serializes them
+  // as strings; absent/"" for movies and tracks.
+  parent_media_index?: string;
+  media_index?: string;
   year: string;
   rating_key: string;
   parent_rating_key: string;
@@ -1582,6 +1586,9 @@ export interface PlexSession {
   title: string;
   parentTitle?: string;
   grandparentTitle?: string;
+  // Episode numbering (episodes only): index = episode, parentIndex = season.
+  index?: number;
+  parentIndex?: number;
   thumb?: string;
   grandparentThumb?: string;
   year?: number;

@@ -1,5 +1,6 @@
 import {
   formatBitrateKbps,
+  formatEpisodeStreamTitle,
   isLocalEndpoint,
   mediaServerSessionToStream,
   type NowPlayingStream,
@@ -182,7 +183,15 @@ function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPla
     key: `tautulli:${instanceId}:${s.session_key}`,
     serviceId: "tautulli",
     instanceId,
-    title: s.full_title,
+    title:
+      s.media_type === "episode"
+        ? formatEpisodeStreamTitle(
+            s.grandparent_title,
+            s.parent_media_index,
+            s.media_index,
+            s.title,
+          )
+        : s.full_title,
     user: s.user,
     device: s.player,
     isLocal: false,
@@ -216,7 +225,9 @@ function tautulliHistoryToItem(h: TautulliHistoryItem, instanceId: string): Moni
 
 function tracearrStreamToStream(s: TracearrStream, instanceId: string): NowPlayingStream {
   const title =
-    s.mediaType === "episode" && s.showTitle ? `${s.showTitle} — ${s.mediaTitle}` : s.mediaTitle;
+    s.mediaType === "episode" && s.showTitle
+      ? formatEpisodeStreamTitle(s.showTitle, s.seasonNumber, s.episodeNumber, s.mediaTitle)
+      : s.mediaTitle;
   const progress = s.durationMs && s.durationMs > 0 ? s.progressMs / s.durationMs : 0;
   const transcoding =
     s.isTranscode === true || s.videoDecision === "transcode" || s.audioDecision === "transcode";
@@ -243,7 +254,9 @@ function tracearrHistoryToItem(
   instanceId: string,
 ): MonitorHistoryItem {
   const title =
-    h.mediaType === "episode" && h.showTitle ? `${h.showTitle} — ${h.mediaTitle}` : h.mediaTitle;
+    h.mediaType === "episode" && h.showTitle
+      ? formatEpisodeStreamTitle(h.showTitle, h.seasonNumber, h.episodeNumber, h.mediaTitle)
+      : h.mediaTitle;
   const pct =
     h.totalDurationMs && h.totalDurationMs > 0 && h.progressMs != null
       ? Math.round((h.progressMs / h.totalDurationMs) * 100)
@@ -267,14 +280,19 @@ function tracearrHistoryToItem(
 // these reuse the Jellyfin helpers (ticksToMs, isJellyfinTranscoding). Unlike
 // the native Jellyfin adapter we can't build a poster — JellyStat doesn't proxy
 // item images and we don't hold the Jellyfin URL/key here — so poster is null
-// (the Activity tab's stream cards don't render posters anyway).
+// and JellyStat stream cards show the media-type fallback icon.
 function jellystatSessionToStream(s: JellyfinSession, instanceId: string): NowPlayingStream {
   const item = s.NowPlayingItem;
   const durationMs = ticksToMs(item?.RunTimeTicks);
   const positionMs = ticksToMs(s.PlayState?.PositionTicks);
   const title =
     item?.Type === "Episode" && item.SeriesName
-      ? `${item.SeriesName} — ${item.Name}`
+      ? formatEpisodeStreamTitle(
+          item.SeriesName,
+          item.ParentIndexNumber,
+          item.IndexNumber,
+          item.Name,
+        )
       : (item?.Name ?? "Unknown");
   return {
     key: `jellystat:${instanceId}:${s.Id}`,

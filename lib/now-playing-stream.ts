@@ -8,6 +8,7 @@ import {
 import type { MediaServerId } from "@/lib/media-server-config";
 import type { ServiceId } from "@/lib/constants";
 import { isPrivateHost } from "@/lib/url-validation";
+import { formatEpisodeCode } from "@/lib/utils";
 
 // The media servers whose live sessions the combined "Now Playing" widget
 // aggregates. Tautulli is deliberately excluded — it reports Plex's own
@@ -67,6 +68,29 @@ export interface StreamDetails {
   totalBitrateLabel?: string;
   // Tautulli's quality-profile label ("Original", "1080p 8 Mbps", …).
   qualityProfile?: string;
+}
+
+// Tautulli serializes season/episode indices as strings ("" when absent);
+// 0 is a valid season (specials → S00), so never truthiness-check.
+function toEpisodeIndex(v: number | string | null | undefined): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// "Show — S01E05 — Episode Title", dropping any missing segment (falls back to
+// the 2-part "Show — Episode Title" when indices are unknown). Shared by every
+// mapper so the Activity tab and dashboard tiles agree (issue #270).
+export function formatEpisodeStreamTitle(
+  show: string | null | undefined,
+  season: number | string | null | undefined,
+  episode: number | string | null | undefined,
+  episodeTitle: string | null | undefined,
+): string {
+  const s = toEpisodeIndex(season);
+  const e = toEpisodeIndex(episode);
+  const code = s != null && e != null ? formatEpisodeCode(s, e) : null;
+  return [show, code, episodeTitle].filter(Boolean).join(" — ") || "Unknown";
 }
 
 // kbps → compact label. Returns undefined for 0/unknown so callers can omit it.
@@ -132,7 +156,12 @@ export function plexSessionToStream(
         : "playing";
   const title =
     session.type === "episode"
-      ? `${session.grandparentTitle} — ${session.title}`
+      ? formatEpisodeStreamTitle(
+          session.grandparentTitle,
+          session.parentIndex,
+          session.index,
+          session.title,
+        )
       : session.title;
 
   return {
@@ -166,7 +195,12 @@ export function mediaServerSessionToStream(
   const positionMs = ticksToMs(session.PlayState?.PositionTicks);
   const title =
     item?.Type === "Episode" && item.SeriesName
-      ? `${item.SeriesName} — ${item.Name}`
+      ? formatEpisodeStreamTitle(
+          item.SeriesName,
+          item.ParentIndexNumber,
+          item.IndexNumber,
+          item.Name,
+        )
       : (item?.Name ?? "Unknown");
 
   return {
