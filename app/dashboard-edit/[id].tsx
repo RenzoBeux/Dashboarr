@@ -732,11 +732,11 @@ export default function DashboardEditScreen() {
 
       <Section
         label="Home networks"
-        hint="Local URLs are used only on a confirmed home WiFi. This workspace uses all your home networks by default — switch to Custom to use only some. Add or edit networks in Settings → Home Networks."
+        hint="Local URLs are used only on a confirmed home WiFi. This workspace uses all your home networks by default — switch to Custom to use only some. Add or edit networks in Settings → Network → Home Networks."
       >
         {globalHomeNetworks.length === 0 ? (
           <Text className="text-zinc-500 text-xs leading-4">
-            No home networks yet. Add them in Settings → Home Networks, then
+            No home networks yet. Add them in Settings → Network → Home Networks, then
             choose which apply to this workspace here.
           </Text>
         ) : (
