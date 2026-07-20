@@ -32,6 +32,11 @@ import {
 } from "@/lib/constants";
 import type { UiScale } from "@/lib/constants";
 import {
+  DEFAULT_APP_THEME,
+  isValidAppTheme,
+  type AppThemeId,
+} from "@/lib/app-themes";
+import {
   DEFAULT_DASHBOARD_ICON,
   type DashboardIconName,
 } from "@/lib/dashboard-icons";
@@ -368,6 +373,8 @@ interface ConfigState {
   globalCustomHeaders: Record<string, string>;
   // Accessibility multiplier applied app-wide via NativeWind's rem observable.
   uiScale: UiScale;
+  // Global chrome tint preset applied via NativeWind CSS vars (ThemeRoot).
+  appTheme: AppThemeId;
   notificationSettings: NotificationSettings;
 }
 
@@ -401,6 +408,8 @@ export interface ExportPayload {
   servicesOrder?: ServiceId[];
   // v32 — opt-in "VPN connected counts as home" (#185).
   treatVpnAsHome?: boolean;
+  // v38 — global app theme preset.
+  appTheme?: AppThemeId;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -519,6 +528,7 @@ interface ConfigActions {
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
+  setAppTheme: (theme: AppThemeId) => void;
   setNotificationSetting: <K extends keyof NotificationSettings>(
     key: K,
     value: NotificationSettings[K],
@@ -985,6 +995,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   hapticsEnabled: true,
   globalCustomHeaders: {},
   uiScale: DEFAULT_UI_SCALE,
+  appTheme: DEFAULT_APP_THEME,
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 
   hydrate: async () => {
@@ -1440,6 +1451,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ? (storedUiScale as UiScale)
         : DEFAULT_UI_SCALE;
 
+    const storedAppTheme = getString(STORAGE_KEYS.appTheme);
+    const appTheme: AppThemeId = isValidAppTheme(storedAppTheme)
+      ? storedAppTheme
+      : DEFAULT_APP_THEME;
+
     // Notification settings persisted under their own AsyncStorage key since
     // v2 (originally owned by a standalone notifications-store). Merge over
     // defaults so a partially-stored payload (older app picking up newer
@@ -1534,6 +1550,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      appTheme,
       notificationSettings,
       hydrated: true,
     });
@@ -2437,6 +2454,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ uiScale: scale });
   },
 
+  setAppTheme: (theme) => {
+    if (!isValidAppTheme(theme)) return;
+    setString(STORAGE_KEYS.appTheme, theme);
+    set({ appTheme: theme });
+  },
+
   setNotificationSetting: (key, value) => {
     const next = { ...get().notificationSettings, [key]: value };
     setJSON(STORAGE_KEYS.notificationSettings, next);
@@ -2644,6 +2667,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      appTheme,
       notificationSettings: notifSettings,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
@@ -2667,6 +2691,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled,
       globalCustomHeaders,
       uiScale,
+      appTheme,
     };
 
     onStage?.("encrypting");
@@ -2838,6 +2863,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ? payload.uiScale
         : DEFAULT_UI_SCALE;
     setJSON(STORAGE_KEYS.uiScale, importedUiScale);
+    const importedAppTheme: AppThemeId = isValidAppTheme(payload.appTheme)
+      ? payload.appTheme
+      : DEFAULT_APP_THEME;
+    setString(STORAGE_KEYS.appTheme, importedAppTheme);
     const importedServicesOrder = sanitizeServicesOrder(payload.servicesOrder);
     setJSON(STORAGE_KEYS.servicesOrder, importedServicesOrder);
 
@@ -2892,6 +2921,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,
       uiScale: importedUiScale,
+      appTheme: importedAppTheme,
       notificationSettings: importedNotificationSettings,
     });
 

@@ -56,6 +56,7 @@ import {
   lidarrAlbumIsMissing,
 } from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum, LidarrQueueItem } from "@/lib/types";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 // MonitoredLibraryGrid keys on `title`; Lidarr artists use `artistName`, so we
 // project a `title` field on before handing them to the grid.
@@ -110,6 +111,7 @@ export const MusicView = memo(function MusicView({
   embedded?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("library");
+  const theme = useAppTheme();
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("monitored");
   const sort = useSortStore((s) => s.music);
   const setSort = useSortStore((s) => s.setMusic);
@@ -245,7 +247,7 @@ export const MusicView = memo(function MusicView({
       onRefresh={onRefresh}
       tintColor="#3b82f6"
       colors={["#3b82f6"]}
-      progressBackgroundColor="#18181b"
+      progressBackgroundColor={theme.surface}
     />
   );
 

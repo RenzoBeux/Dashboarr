@@ -35,6 +35,7 @@ import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import { hasSearchableKind } from "@/lib/global-search";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
@@ -75,6 +76,7 @@ const WidgetSlotBody = memo(function WidgetSlotBody({
 
 export default function DashboardScreen() {
   const { refreshing, onRefresh } = usePullToRefresh();
+  const theme = useAppTheme();
   const services = useConfigStore((s) => s.services);
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const dashboards = useConfigStore((s) => s.dashboards);
@@ -448,7 +450,7 @@ export default function DashboardScreen() {
                   style={editMode ? {
                     borderWidth: 1,
                     borderStyle: "dashed",
-                    borderColor: "#3f3f46",
+                    borderColor: theme.border,
                     borderRadius: 16,
                     opacity: 0.85,
                   } : undefined}

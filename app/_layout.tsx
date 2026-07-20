@@ -1,14 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
-import { AppState } from "react-native";
+import { AppState, View } from "react-native";
 import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { rem } from "nativewind";
+import { rem, vars } from "nativewind";
+import { hexToRgbChannels } from "@/lib/app-themes";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
@@ -198,6 +200,26 @@ function UiScaleBridge() {
   return null;
 }
 
+// Applies the selected app theme by overriding the chrome-token CSS variables
+// (see tailwind.config.ts / global.css). vars() propagates through React
+// context, so everything below — Stack screens, overlays, toasts, and Modal
+// content (Modals stay in the React tree) — re-resolves bg-background /
+// bg-surface / bg-surface-light / border-border against the active theme.
+function ThemeRoot({ children }: { children: ReactNode }) {
+  const theme = useAppTheme();
+  const themeVars = useMemo(
+    () =>
+      vars({
+        "--color-background": hexToRgbChannels(theme.background),
+        "--color-surface": hexToRgbChannels(theme.surface),
+        "--color-surface-light": hexToRgbChannels(theme.surfaceLight),
+        "--color-border": hexToRgbChannels(theme.border),
+      }),
+    [theme],
+  );
+  return <View style={[{ flex: 1 }, themeVars]}>{children}</View>;
+}
+
 // Keeps the native TLS-bypass allowlist in lockstep with config: which hosts
 // the user opted out of certificate validation for. Pushes once on hydrate and
 // again on every config change (the sync itself dedupes, so unrelated changes
@@ -264,6 +286,7 @@ export default function RootLayout() {
   const introSeen = useIntroStore((s) => s.workspaceIntroSeen);
   const introReplayVersion = useIntroStore((s) => s.showRequestVersion);
   const markIntroSeen = useIntroStore((s) => s.markWorkspaceIntroSeen);
+  const theme = useAppTheme();
 
   useEffect(() => {
     hydrate();
@@ -309,57 +332,59 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <KeyboardProvider>
-        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-          <QueryClientProvider client={queryClient}>
-            <ErrorBoundary>
-              {/* Invisible root subscribers — isolated so a single failing
-                  watcher (e.g. a service returning an unexpected payload) can't
-                  unmount the navigator and trap the user on the fallback. */}
-              <SilentErrorBoundary label="notification-watchers">
-                <NotificationWatchers />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="notification-router">
-                <NotificationRouter />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="backend-health">
-                <BackendHealthPoller />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="network-auto-switch">
-                <NetworkAutoSwitcher />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="config-sync">
-                <ConfigSyncBridge />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="insecure-tls">
-                <InsecureTlsBridge />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="widget-refresh">
-                <WidgetRefreshBridge />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="ui-scale">
-                <UiScaleBridge />
-              </SilentErrorBoundary>
-              <SilentErrorBoundary label="app-update-checker">
-                <AppUpdateChecker />
-              </SilentErrorBoundary>
-              <StatusBar style="light" />
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: "#09090b" },
-                  animation: "slide_from_right",
-                }}
-              />
-              <WorkspaceIntroOverlay
-                visible={showIntro}
-                onDismiss={markIntroSeen}
-              />
-              <ToastContainer />
-            </ErrorBoundary>
-          </QueryClientProvider>
-        </SafeAreaProvider>
-      </KeyboardProvider>
+      <ThemeRoot>
+        <KeyboardProvider>
+          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+            <QueryClientProvider client={queryClient}>
+              <ErrorBoundary>
+                {/* Invisible root subscribers — isolated so a single failing
+                    watcher (e.g. a service returning an unexpected payload) can't
+                    unmount the navigator and trap the user on the fallback. */}
+                <SilentErrorBoundary label="notification-watchers">
+                  <NotificationWatchers />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="notification-router">
+                  <NotificationRouter />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="backend-health">
+                  <BackendHealthPoller />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="network-auto-switch">
+                  <NetworkAutoSwitcher />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="config-sync">
+                  <ConfigSyncBridge />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="insecure-tls">
+                  <InsecureTlsBridge />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="widget-refresh">
+                  <WidgetRefreshBridge />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="ui-scale">
+                  <UiScaleBridge />
+                </SilentErrorBoundary>
+                <SilentErrorBoundary label="app-update-checker">
+                  <AppUpdateChecker />
+                </SilentErrorBoundary>
+                <StatusBar style="light" />
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: theme.background },
+                    animation: "slide_from_right",
+                  }}
+                />
+                <WorkspaceIntroOverlay
+                  visible={showIntro}
+                  onDismiss={markIntroSeen}
+                />
+                <ToastContainer />
+              </ErrorBoundary>
+            </QueryClientProvider>
+          </SafeAreaProvider>
+        </KeyboardProvider>
+      </ThemeRoot>
     </GestureHandlerRootView>
   );
 }

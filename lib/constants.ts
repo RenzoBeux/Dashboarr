@@ -198,6 +198,7 @@ export const STORAGE_KEYS = {
   hapticsEnabled: "app.hapticsEnabled",
   globalCustomHeaders: "app.globalCustomHeaders",
   uiScale: "app.uiScale",
+  appTheme: "app.appTheme",
   // v17: user-defined display order for the Services tab tiles. Stored as a
   // ServiceId[]; unknown ids in this list are ignored at render time, and
   // any SERVICE_IDS missing from the list are appended in their canonical

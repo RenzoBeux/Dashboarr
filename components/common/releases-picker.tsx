@@ -32,6 +32,7 @@ import {
 } from "@/store/releases-filter-store";
 import { useArrCustomFilters } from "@/hooks/use-arr-custom-filters";
 import { applyArrCustomFilter } from "@/lib/arr-custom-filters";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 type Release = ArrRelease | SonarrRelease;
 
@@ -127,6 +128,7 @@ function ReleaseFlatList({
     ),
     [onSelect],
   );
+  const theme = useAppTheme();
 
   const keyExtractor = useCallback((r: Release) => r.guid, []);
 
@@ -147,7 +149,7 @@ function ReleaseFlatList({
           onRefresh={onRefresh}
           tintColor="#3b82f6"
           colors={["#3b82f6"]}
-          progressBackgroundColor="#18181b"
+          progressBackgroundColor={theme.surface}
         />
       }
       ListEmptyComponent={

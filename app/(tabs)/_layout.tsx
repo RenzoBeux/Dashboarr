@@ -10,6 +10,7 @@ import { useActiveDashboard, useAttachedKinds } from "@/hooks/use-active-dashboa
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 import { resolveTabIcon } from "@/lib/tab-icons";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   ALL_PICKABLE_TABS,
   visiblePinnedTabs,
@@ -40,6 +41,7 @@ export default function TabLayout() {
 
   const dashIcon = resolveDashboardIcon(activeDashboard?.icon);
   const accent = resolveDashboardColor(activeDashboard?.color);
+  const theme = useAppTheme();
 
   // If the focused tab is no longer pinned (because the user switched to a
   // dashboard that doesn't include it, or unattached its underlying service),
@@ -81,8 +83,8 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: HAS_GLASS_TAB_BAR ? "transparent" : "#18181b",
-          borderTopColor: HAS_GLASS_TAB_BAR ? "transparent" : "#3f3f46",
+          backgroundColor: HAS_GLASS_TAB_BAR ? "transparent" : theme.surface,
+          borderTopColor: HAS_GLASS_TAB_BAR ? "transparent" : theme.border,
           borderTopWidth: HAS_GLASS_TAB_BAR ? 0 : 0.5,
           height: 52 + bottom,
           paddingBottom: 4 + bottom,

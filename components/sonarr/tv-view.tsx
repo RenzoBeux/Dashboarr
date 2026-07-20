@@ -78,6 +78,7 @@ import {
 } from "@/lib/utils";
 import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 type SeriesSheetTarget =
   | { kind: "series"; item: SonarrSeries }
@@ -155,6 +156,7 @@ export const TvView = memo(function TvView({
   embedded?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("library");
+  const theme = useAppTheme();
   const [monitorFilter, setMonitorFilter] =
     useState<MonitorFilter>("monitored");
   const sort = useSortStore((s) => s.series);
@@ -302,7 +304,7 @@ export const TvView = memo(function TvView({
       onRefresh={onRefresh}
       tintColor="#3b82f6"
       colors={["#3b82f6"]}
-      progressBackgroundColor="#18181b"
+      progressBackgroundColor={theme.surface}
     />
   );
 

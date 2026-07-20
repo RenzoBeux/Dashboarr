@@ -61,6 +61,7 @@ import {
   type TorrentFilterType,
   type UnifiedTorrent,
 } from "@/lib/torrent-adapter";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 const FILTER_OPTIONS: { key: TorrentFilterType; label: string }[] = [
   { key: "all", label: "All" },
@@ -110,6 +111,7 @@ export function TorrentDownloadsView({
   onMagnetConsumed,
 }: ViewProps) {
   const [filter, setFilter] = useState<TorrentFilterType>("all");
+  const theme = useAppTheme();
   const [category, setCategory] = useState<string>(ALL_CATEGORIES);
   const sort = useSortStore((s) => s.downloads);
   const setSort = useSortStore((s) => s.setDownloads);
@@ -502,7 +504,7 @@ export function TorrentDownloadsView({
             onRefresh={onRefresh}
             tintColor="#3b82f6"
             colors={["#3b82f6"]}
-            progressBackgroundColor="#18181b"
+            progressBackgroundColor={theme.surface}
           />
         }
         keyboardShouldPersistTaps="handled"

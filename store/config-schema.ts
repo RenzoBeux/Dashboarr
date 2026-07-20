@@ -16,6 +16,7 @@ import type {
 } from "@/store/config-store";
 import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/store/config-store";
 import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
+import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
@@ -546,6 +547,13 @@ export function validateExportPayload(raw: unknown): ExportPayload {
       throw new Error("Config uiScale is invalid");
     }
     payload.uiScale = raw.uiScale as ExportPayload["uiScale"];
+  }
+
+  if (raw.appTheme !== undefined) {
+    if (!isValidAppTheme(raw.appTheme)) {
+      throw new Error("Config appTheme is invalid");
+    }
+    payload.appTheme = raw.appTheme;
   }
 
   if (raw.servicesOrder !== undefined && raw.servicesOrder !== null) {
