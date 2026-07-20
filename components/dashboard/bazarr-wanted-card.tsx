@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useBazarrPosters } from "@/hooks/use-bazarr-posters";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
@@ -99,6 +100,12 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
 
   const display = previewItems.slice(0, MAX_PREVIEW);
   const hasMore = totalMissing > display.length;
+
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenEmpty,
+    isEmpty: instances.length === 0 || display.length === 0,
+    isLoading: isInitialLoading,
+  });
 
   return (
     <Card>

@@ -6,17 +6,22 @@ import {
   INSTANCE_BINDING_ALL,
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
-import { MaxItemsSelector } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+import {
+  HideWhenEmptyToggle,
+  MaxItemsSelector,
+} from "@/components/dashboard/widget-settings/widget-settings-blocks";
 import type { ServiceId } from "@/lib/constants";
 
 export interface ArrQueueSettingsValue extends Record<string, unknown> {
   instanceIds: InstanceBindingValue;
   maxItems: number;
+  hideWhenEmpty: boolean;
 }
 
 export const ARR_QUEUE_DEFAULT_SETTINGS: ArrQueueSettingsValue = {
   instanceIds: INSTANCE_BINDING_ALL,
   maxItems: 5,
+  hideWhenEmpty: false,
 };
 
 interface Props extends WidgetSettingsComponentProps {
@@ -42,6 +47,10 @@ export function ArrQueueSettings({ slotId, serviceId }: Props) {
       <MaxItemsSelector
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
+      />
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

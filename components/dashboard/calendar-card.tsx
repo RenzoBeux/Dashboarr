@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
@@ -194,6 +195,14 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
 
   const headerCount = items.length;
   const headerNoun = headerCount === 1 ? "release" : "releases";
+
+  // The no-sources misconfiguration hint stays visible so the user can find
+  // their way back to the widget settings.
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenEmpty,
+    isEmpty: !noSources && grouped.length === 0,
+    isLoading,
+  });
 
   return (
     <Card>

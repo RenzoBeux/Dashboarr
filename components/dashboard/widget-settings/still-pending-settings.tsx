@@ -10,6 +10,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   ChipGroup,
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -27,6 +28,7 @@ export interface StillPendingSettingsValue extends Record<string, unknown> {
   // too (they also appear under "Today" in the Releasing Soon widget). Off by
   // default so the two cards never list the same item.
   includeToday: boolean;
+  hideWhenEmpty: boolean;
 }
 
 export const STILL_PENDING_DEFAULT_SETTINGS: StillPendingSettingsValue = {
@@ -39,6 +41,7 @@ export const STILL_PENDING_DEFAULT_SETTINGS: StillPendingSettingsValue = {
   lookbackDays: 14,
   maxItems: 5,
   includeToday: false,
+  hideWhenEmpty: false,
 };
 
 const LOOKBACK_OPTIONS: { value: number; label: string }[] = [
@@ -125,6 +128,11 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
           />
         </ToggleCard>
       </SettingsSection>
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
+      />
     </View>
   );
 }

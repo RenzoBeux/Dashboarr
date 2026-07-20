@@ -10,6 +10,7 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -23,6 +24,7 @@ export interface StreamMonitorSettingsValue extends Record<string, unknown> {
   showTranscoding: boolean;
   showUserAndDevice: boolean;
   showBandwidthSummary: boolean;
+  hideWhenEmpty: boolean;
 }
 
 export const STREAM_MONITOR_DEFAULT_SETTINGS: StreamMonitorSettingsValue = {
@@ -33,6 +35,7 @@ export const STREAM_MONITOR_DEFAULT_SETTINGS: StreamMonitorSettingsValue = {
   showTranscoding: true,
   showUserAndDevice: true,
   showBandwidthSummary: true,
+  hideWhenEmpty: false,
 };
 
 const MAX_OPTIONS: { value: number; label: string }[] = [
@@ -109,6 +112,11 @@ export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) 
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
         options={MAX_OPTIONS}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

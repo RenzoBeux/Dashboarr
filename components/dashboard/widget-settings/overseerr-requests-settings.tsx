@@ -9,6 +9,7 @@ import {
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
   ChipGroup,
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -21,6 +22,7 @@ export interface OverseerrRequestsSettingsValue extends Record<string, unknown> 
   statusFilter: OverseerrStatusFilter;
   maxItems: number;
   showRequester: boolean;
+  hideWhenEmpty: boolean;
 }
 
 export const OVERSEERR_REQUESTS_DEFAULT_SETTINGS: OverseerrRequestsSettingsValue = {
@@ -28,6 +30,7 @@ export const OVERSEERR_REQUESTS_DEFAULT_SETTINGS: OverseerrRequestsSettingsValue
   statusFilter: "pending",
   maxItems: 5,
   showRequester: true,
+  hideWhenEmpty: false,
 };
 
 const STATUS_OPTIONS: { value: OverseerrStatusFilter; label: string }[] = [
@@ -70,6 +73,11 @@ export function OverseerrRequestsSettings({ slotId }: WidgetSettingsComponentPro
       <MaxItemsSelector
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );

@@ -8,6 +8,7 @@ import { getHistory as getRadarrHistory, getRadarrPoster } from "@/services/rada
 import { getHistory as getSonarrHistory, getSonarrPoster } from "@/services/sonarr-api";
 import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { formatEpisodeCode, relativeDate } from "@/lib/utils";
@@ -131,6 +132,14 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
   // The combined now-playing card uses a logo badge only when more than one
   // kind is active — same here, so a single-source feed isn't cluttered.
   const showSourceBadge = showSonarr && showRadarr;
+
+  // The no-sources misconfiguration hint stays visible so the user can find
+  // their way back to the widget settings.
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenEmpty,
+    isEmpty: !noSources && display.length === 0,
+    isLoading,
+  });
 
   return (
     <Card>

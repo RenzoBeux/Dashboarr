@@ -9,6 +9,7 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
+  HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
@@ -23,6 +24,7 @@ export interface StreamingNowPlayingSettingsValue extends Record<string, unknown
   showBitrate: boolean;
   showTranscoding: boolean;
   showUserAndDevice: boolean;
+  hideWhenEmpty: boolean;
 }
 
 export const STREAMING_NOW_PLAYING_DEFAULT_SETTINGS: StreamingNowPlayingSettingsValue = {
@@ -33,6 +35,7 @@ export const STREAMING_NOW_PLAYING_DEFAULT_SETTINGS: StreamingNowPlayingSettings
   showBitrate: false,
   showTranscoding: true,
   showUserAndDevice: true,
+  hideWhenEmpty: false,
 };
 
 const MAX_OPTIONS: { value: number; label: string }[] = [
@@ -109,6 +112,11 @@ export function StreamingNowPlayingSettings({
         value={settings.maxItems}
         onChange={(maxItems) => update({ maxItems })}
         options={MAX_OPTIONS}
+      />
+
+      <HideWhenEmptyToggle
+        value={settings.hideWhenEmpty}
+        onChange={(hideWhenEmpty) => update({ hideWhenEmpty })}
       />
     </View>
   );
