@@ -23,7 +23,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import { lightHaptic } from "@/lib/haptics";
 import { ICON } from "@/lib/constants";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -117,7 +117,7 @@ function SelectSheet<T extends string | number>({
   value,
   onChange,
 }: SelectSheetProps<T>) {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   const [mounted, setMounted] = useState(false);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
@@ -184,7 +184,7 @@ function SelectSheet<T extends string | number>({
               sheetStyle,
               {
                 maxHeight: SHEET_MAX,
-                paddingBottom: insets.bottom + 8,
+                paddingBottom: bottomInset + 8,
                 overflow: "hidden",
               },
             ]}

@@ -23,7 +23,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import * as Haptics from "expo-haptics";
 import { Icon } from "@/components/ui/icon";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -58,7 +58,7 @@ export function DashboardIconPickerSheet({
   onSelect,
   title = "Choose icon",
 }: DashboardIconPickerSheetProps) {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   const [mounted, setMounted] = useState(false);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
@@ -126,7 +126,7 @@ export function DashboardIconPickerSheet({
               sheetStyle,
               {
                 maxHeight: SHEET_MAX_HEIGHT,
-                paddingBottom: insets.bottom + 8,
+                paddingBottom: bottomInset + 8,
                 overflow: "hidden",
               },
             ]}

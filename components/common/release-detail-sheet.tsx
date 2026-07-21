@@ -23,7 +23,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Button } from "@/components/ui/button";
 import { ICON } from "@/lib/constants";
@@ -57,7 +57,7 @@ export function ReleaseDetailSheet({
   onClose,
   onClosed,
 }: ReleaseDetailSheetProps) {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   const [mounted, setMounted] = useState(false);
   const handleDismiss = useModalClosed(mounted, onClosed);
   const translateY = useSharedValue(OFFSCREEN);
@@ -168,7 +168,7 @@ export function ReleaseDetailSheet({
               sheetStyle,
               {
                 maxHeight: SHEET_MAX,
-                paddingBottom: insets.bottom + 8,
+                paddingBottom: bottomInset + 8,
                 overflow: "hidden",
               },
             ]}

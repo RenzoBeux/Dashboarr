@@ -24,7 +24,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import { lightHaptic, errorHaptic } from "@/lib/haptics";
 import { ICON } from "@/lib/constants";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -67,7 +67,7 @@ export function ActionSheet({
   actions,
   onClosed,
 }: ActionSheetProps) {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   const [mounted, setMounted] = useState(false);
   // Fire onClosed once the sheet's native <Modal> is fully gone — the safe
   // point to open another modal / navigate on iOS. See useModalClosed.
@@ -153,7 +153,7 @@ export function ActionSheet({
           <Animated.View
             style={[
               sheetStyle,
-              { maxHeight: SHEET_MAX, paddingBottom: insets.bottom + 8, overflow: "hidden" },
+              { maxHeight: SHEET_MAX, paddingBottom: bottomInset + 8, overflow: "hidden" },
             ]}
             className="rounded-t-3xl border-t border-border"
           >

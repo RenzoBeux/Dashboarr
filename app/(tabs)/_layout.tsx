@@ -2,7 +2,7 @@ import { createElement, useEffect, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native";
 import { Tabs, useRouter, usePathname } from "expo-router";
 import { Settings } from "lucide-react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import { lightHaptic } from "@/lib/haptics";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
@@ -21,7 +21,7 @@ const TAB_ICON_SIZE = 24;
 const INACTIVE_COLOR = "#71717a";
 
 export default function TabLayout() {
-  const { bottom } = useSafeAreaInsets();
+  const bottom = useBottomInset();
   const router = useRouter();
   // The (tabs) group doesn't appear in the URL, so pathname looks like
   // "/movies" or "/dashboard" — the first path segment is the route name.

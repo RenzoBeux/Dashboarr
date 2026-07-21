@@ -37,7 +37,7 @@ import {
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import { ICON } from "@/lib/constants";
 import { lightHaptic } from "@/lib/haptics";
 import { GlassSurface } from "@/components/ui/glass-surface";
@@ -170,7 +170,7 @@ interface AddSliderSheetProps {
 // stacks a second native modal over itself (the iOS Fabric hang). On completion
 // it calls onAdd and closes; the editor appends the result to its draft.
 export function AddSliderSheet({ visible, onClose, onAdd }: AddSliderSheetProps) {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   const [mounted, setMounted] = useState(false);
   const [chosen, setChosen] = useState<AddTypeOption | null>(null);
   const [title, setTitle] = useState("");
@@ -287,7 +287,7 @@ export function AddSliderSheet({ visible, onClose, onAdd }: AddSliderSheetProps)
               sheetStyle,
               {
                 maxHeight: SHEET_MAX,
-                paddingBottom: insets.bottom + 8,
+                paddingBottom: bottomInset + 8,
                 overflow: "hidden",
               },
             ]}

@@ -33,7 +33,7 @@ import {
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import * as Haptics from "expo-haptics";
 import { useConfigStore } from "@/store/config-store";
 import { ICON } from "@/lib/constants";
@@ -57,7 +57,7 @@ export function WidgetSettingsSheet({
   slotId,
   onClose,
 }: WidgetSettingsSheetProps) {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
   const resetSlotSettings = useConfigStore((s) => s.resetSlotSettings);
   // True when the slot has any persisted overrides — drives whether the
   // "Reset to defaults" button is shown.
@@ -172,7 +172,7 @@ export function WidgetSettingsSheet({
           <Animated.View
             style={[
               sheetStyle,
-              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8, overflow: "hidden" },
+              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: bottomInset + 8, overflow: "hidden" },
             ]}
             className="rounded-t-3xl border-t border-border"
           >

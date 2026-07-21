@@ -35,7 +35,7 @@ import {
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import * as Haptics from "expo-haptics";
 import { useConfigStore } from "@/store/config-store";
 import { ICON } from "@/lib/constants";
@@ -62,7 +62,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
   const setActiveDashboard = useConfigStore((s) => s.setActiveDashboard);
   const moveDashboard = useConfigStore((s) => s.moveDashboard);
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
 
   const [mounted, setMounted] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Dashboard | null>(null);
@@ -228,7 +228,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
               sheetStyle,
               {
                 maxHeight: SHEET_MAX_HEIGHT,
-                paddingBottom: insets.bottom + 8,
+                paddingBottom: bottomInset + 8,
                 overflow: "hidden",
               },
             ]}

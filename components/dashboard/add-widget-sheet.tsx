@@ -24,7 +24,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomInset } from "@/hooks/use-bottom-inset";
 import * as Haptics from "expo-haptics";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS, ICON } from "@/lib/constants";
@@ -50,7 +50,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
   const services = useConfigStore((s) => s.services);
   const addWidget = useConfigStore((s) => s.addWidget);
   const attachedKinds = useAttachedKinds();
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomInset();
 
   const [mounted, setMounted] = useState(false);
   const translateY = useSharedValue(OFFSCREEN);
@@ -130,7 +130,7 @@ export function AddWidgetSheet({ visible, onClose }: AddWidgetSheetProps) {
           <Animated.View
             style={[
               sheetStyle,
-              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: insets.bottom + 8, overflow: "hidden" },
+              { maxHeight: SHEET_MAX_HEIGHT, paddingBottom: bottomInset + 8, overflow: "hidden" },
             ]}
             className="rounded-t-3xl border-t border-border"
           >
