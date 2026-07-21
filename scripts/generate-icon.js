@@ -62,14 +62,18 @@ const iconSvg = `
 
 // ── Android adaptive icon foreground (1024x1024, transparent bg) ─────────────
 // Android composites this over the backgroundColor from app.config.ts (#09090b).
-// Glyph extent is 720px; scaled to 0.9 (= 648px) to stay within the 66% safe
-// zone. Also used as the notification small-icon silhouette (alpha channel only).
+// Launchers mask to the inner 72/108 of the canvas (~683px here); Material's
+// keyline for circular artwork is 52/108 (~493px). Glyph extent is 720px, so
+// scale 0.68 (= 490px) lands on the keyline — 0.9 (648px) overflowed even the
+// 66/108 safe zone (~626px) and touched the mask edge on circular launchers.
+// Also used as the notification small-icon silhouette (alpha channel only)
+// and the Android 12+ splash logo (safe circle: inner 2/3).
 const adaptiveIconSvg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 1024 1024">
   <defs>${BRAND_GRAD}</defs>
 
   <!-- Badge centered in safe zone on transparent background -->
-  <g transform="translate(512 512) scale(0.9) translate(-512 -512)">
+  <g transform="translate(512 512) scale(0.68) translate(-512 -512)">
     ${BADGE}
   </g>
 </svg>
@@ -99,8 +103,21 @@ const splashSvg = `
 </svg>
 `;
 
+// Android 12+ system splash shows a small centered icon drawable (288dp), not
+// the full splash image. Prebuild derives these from android.splash.image
+// (the adaptive icon art); we also write them directly so a regenerate doesn't
+// require a full `expo prebuild`. Sizes are 288dp at each density bucket.
+const ANDROID_SPLASH_DENSITIES = {
+  mdpi: 288,
+  hdpi: 432,
+  xhdpi: 576,
+  xxhdpi: 864,
+  xxxhdpi: 1152,
+};
+
 async function generate() {
   const assetsDir = path.join(__dirname, "..", "assets");
+  const androidRes = path.join(__dirname, "..", "android", "app", "src", "main", "res");
 
   await Promise.all([
     sharp(Buffer.from(iconSvg))
@@ -126,6 +143,16 @@ async function generate() {
       .png()
       .toFile(path.join(assetsDir, "splash.png"))
       .then(() => console.log("Generated splash.png (1284x2778)")),
+
+    ...Object.entries(ANDROID_SPLASH_DENSITIES).map(([density, size]) =>
+      sharp(Buffer.from(adaptiveIconSvg))
+        .resize(size, size)
+        .png()
+        .toFile(path.join(androidRes, `drawable-${density}`, "splashscreen_logo.png"))
+        .then(() =>
+          console.log(`Generated android splashscreen_logo.png ${density} (${size}x${size})`)
+        )
+    ),
   ]);
 }
 

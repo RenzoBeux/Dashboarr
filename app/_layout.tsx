@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { AppState, View } from "react-native";
 import type { AppStateStatus } from "react-native";
@@ -30,10 +31,16 @@ import { evaluateHomeNetwork } from "@/lib/network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
+import { AnimatedSplash } from "@/components/common/animated-splash";
 import { AppUpdateChecker } from "@/components/common/app-update-checker";
 import { ToastContainer } from "@/components/ui/toast";
 import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
 import "../global.css";
+
+// Keep the native splash up while stores hydrate; AnimatedSplash then takes
+// over with an identical frame and animates the reveal. Failure to prevent is
+// harmless (splash just auto-hides and the overlay still plays).
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Pause/resume polling based on app state
 function onAppStateChange(status: AppStateStatus) {
@@ -287,6 +294,16 @@ export default function RootLayout() {
   const introReplayVersion = useIntroStore((s) => s.showRequestVersion);
   const markIntroSeen = useIntroStore((s) => s.markWorkspaceIntroSeen);
   const theme = useAppTheme();
+  const [splashDone, setSplashDone] = useState(false);
+
+  // Backstop: if hydration ever hangs, don't leave the native splash stuck
+  // on screen forever — hideAsync is idempotent with the overlay's own hide.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     hydrate();
@@ -380,6 +397,11 @@ export default function RootLayout() {
                   onDismiss={markIntroSeen}
                 />
                 <ToastContainer />
+                {!splashDone && (
+                  <SilentErrorBoundary label="animated-splash">
+                    <AnimatedSplash onDone={() => setSplashDone(true)} />
+                  </SilentErrorBoundary>
+                )}
               </ErrorBoundary>
             </QueryClientProvider>
           </SafeAreaProvider>

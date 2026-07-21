@@ -100,6 +100,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
+    // Android 12+ ignores full-screen splash images — the system splash is a
+    // small centered icon (~288dp). Feeding it the tall splash.png shrinks the
+    // badge to a speck (reported on Honor Magic 6 Pro), so Android gets the
+    // badge-only square art instead; iOS keeps the full-screen splash above.
+    // scripts/generate-icon.js also writes the density drawables directly.
+    splash: {
+      image: "./assets/adaptive-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#09090b",
+    },
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#09090b",
