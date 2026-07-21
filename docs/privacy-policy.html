@@ -3,80 +3,98 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboarr - Privacy Policy</title>
+  <title>Privacy Policy | Dashboarr</title>
+  <meta name="description" content="Dashboarr privacy policy. No accounts, no analytics, no tracking. Your configuration stays on your device.">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/style.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #09090b;
-      color: #e4e4e7;
-      line-height: 1.7;
-      padding: 2rem 1rem;
-    }
-    .container {
-      max-width: 720px;
-      margin: 0 auto;
-    }
-    h1 {
-      font-size: 2rem;
-      color: #fafafa;
-      margin-bottom: 0.5rem;
-    }
-    h2 {
-      font-size: 1.25rem;
-      color: #fafafa;
-      margin-top: 2rem;
-      margin-bottom: 0.75rem;
-    }
-    p, li {
-      color: #a1a1aa;
-      margin-bottom: 0.75rem;
-    }
-    ul {
-      padding-left: 1.5rem;
-      margin-bottom: 0.75rem;
-    }
-    .date {
-      color: #71717a;
-      font-size: 0.875rem;
-      margin-bottom: 2rem;
-    }
-    a { color: #60a5fa; }
+    .policy { max-width: 720px; margin: 0 auto; padding: 3rem 1.5rem 1rem; }
+    .policy h1 { font-size: 2.1rem; color: var(--fg-strong); margin-bottom: 0.4rem; letter-spacing: -0.03em; }
+    .policy h2 { font-size: 1.2rem; color: var(--fg-strong); margin: 2.5rem 0 0.75rem; }
+    .policy p { color: var(--muted); margin-bottom: 0.85rem; }
+    .policy ul { padding-left: 1.4rem; margin-bottom: 1rem; color: var(--muted); }
+    .policy li { margin-bottom: 0.45rem; }
+    .policy li::marker { color: var(--dimmer); }
+    .policy strong { color: var(--fg-strong); font-weight: 600; }
+    .date { color: var(--dim); font-size: 0.875rem; margin-bottom: 2.5rem; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Privacy Policy</h1>
-    <p class="date">Effective date: April 5, 2026</p>
 
-    <p>Dashboarr ("the App") is a free, open-source mobile application that lets you manage your self-hosted media services (such as qBittorrent, Radarr, Sonarr, Seerr, Tautulli, Prowlarr, and Plex) from a single interface.</p>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="index.html">
+        <img src="assets/icon.png" alt=""> Dashboarr
+      </a>
+      <div class="nav-links">
+        <a href="index.html#features" class="nav-sm-hide">Features</a>
+        <a href="guide.html">Guide</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="policy">
+    <h1>Privacy Policy</h1>
+    <p class="date">Effective date: July 21, 2026</p>
+
+    <p>Dashboarr ("the App") is a free, open-source mobile application that lets you manage your self-hosted media services (such as qBittorrent, Radarr, Sonarr, Seerr, Tautulli, Prowlarr, Plex and Jellyfin) from a single interface.</p>
 
     <h2>Data Collection</h2>
-    <p>Dashboarr does <strong>not</strong> collect, store, or transmit any personal data to external servers. The App has:</p>
+    <p>Dashboarr does <strong>not</strong> collect, store, or transmit any personal data to us or to any third party. The App has:</p>
     <ul>
       <li>No user accounts or authentication system</li>
       <li>No analytics or tracking</li>
       <li>No advertising</li>
       <li>No third-party data sharing</li>
-      <li>No cloud services or remote backend</li>
+      <li>No cloud service operated by us</li>
     </ul>
 
     <h2>Data Stored on Your Device</h2>
     <p>The App stores the following data locally on your device only:</p>
     <ul>
-      <li><strong>Service URLs and API keys</strong> &mdash; the connection details you enter for your self-hosted services. API keys are stored using your device's secure storage (Keychain on iOS, Keystore on Android).</li>
-      <li><strong>App preferences</strong> &mdash; your configuration settings such as enabled services and display preferences.</li>
+      <li><strong>Service URLs and API keys</strong>: the connection details you enter for your self-hosted services. API keys, usernames and passwords are stored using your device's secure storage (Keychain on iOS, Keystore on Android).</li>
+      <li><strong>App preferences</strong>: your configuration, such as enabled services, dashboards, widgets and display settings.</li>
     </ul>
-    <p>This data never leaves your device. It is used solely to communicate directly with your own self-hosted services on your local network or via your own remote access setup.</p>
+    <p>This data is used solely to communicate directly with your own self-hosted services, on your local network or via your own remote access setup. It leaves your device in only two cases, both under your control:</p>
+    <ul>
+      <li>When you explicitly <strong>export a backup</strong> (see below).</li>
+      <li>When you <strong>pair the optional self-hosted backend</strong>. Pairing uploads your service URLs, API keys, usernames and passwords to that backend so it can watch your services for notifications, and re-uploads them whenever your configuration changes. The backend runs on your own hardware. We never receive this data.</li>
+    </ul>
+
+    <h2>Configuration Backups</h2>
+    <p>If you use the export feature, the App writes a single configuration file and hands it to your operating system's share sheet, so you choose where it goes. That file is encrypted with a passphrase you set, and the App never uploads it anywhere.</p>
 
     <h2>Network Permissions</h2>
-    <p>The App requires network access to communicate with your self-hosted services. All network requests go directly from your device to your own servers &mdash; no data is routed through any intermediary.</p>
+    <p>The App requires network access. Requests to your media services go directly from your device to your own servers, with no data routed through any intermediary operated by us.</p>
+    <p>The App also makes a small number of requests to third parties that we do not operate:</p>
+    <ul>
+      <li><strong>Poster and backdrop artwork</strong> is loaded by the App directly from TMDB's image CDN (<code>image.tmdb.org</code>), including from the Android home-screen widget. TMDB therefore receives your device's IP address whenever artwork loads.</li>
+      <li><strong>Signing in to Plex</strong>, if you use that option instead of pasting a token, contacts <code>plex.tv</code>.</li>
+      <li><strong>Update checks</strong>, described below.</li>
+    </ul>
+    <p>These requests carry no configuration data, no credentials and no personal identifiers beyond the ordinary network metadata (such as your IP address) that any HTTP request carries.</p>
+
+    <h2>Automatic Update Checks</h2>
+    <p>On launch the App checks for over-the-air JavaScript updates through <a href="https://expo.dev/privacy">Expo's update service</a> (<code>u.expo.dev</code>). Roughly once a day it also checks whether a newer published version exists, by querying the Apple App Store lookup API, the Google Play listing, or the GitHub releases API depending on how the App was installed. These checks send only the App's version, build channel and platform.</p>
 
     <h2>Location Permission</h2>
-    <p>The App may request location permission solely to detect your current Wi-Fi network name (SSID). This is used to automatically switch between local and remote service URLs depending on whether you are on your home network. Your location data is never stored, transmitted, or shared &mdash; it is used only for this on-device network detection.</p>
+    <p>The App may request location permission solely to detect your current Wi-Fi network name (SSID). This is used to automatically switch between local and remote service URLs depending on whether you are on your home network.</p>
+    <p>Alongside the network name, the App may read and save the access point's hardware address (BSSID) for networks you add yourself, so that a different access point broadcasting the same network name cannot trick the App into using your local addresses. Both values are stored only in the App's local configuration on your device, and inside an encrypted backup if you export one. No GPS coordinates are ever read, stored, transmitted, or shared, and location is only ever requested while the App is in the foreground.</p>
+
+    <h2>Camera Permission</h2>
+    <p>The App requests camera access for one purpose: scanning the QR code printed by your self-hosted backend when you pair it. The camera preview is processed entirely on-device, nothing is recorded, and no image or video ever leaves your device. If you pair by typing the token manually, the permission is never requested.</p>
+
+    <h2>Device Authentication</h2>
+    <p>Before exporting a configuration backup, the App asks your device to verify you with biometrics or your passcode. This uses the operating system's authentication API. The App only receives a success or failure result and never sees your biometric data or passcode.</p>
+
+    <h2>Optional Push Notifications</h2>
+    <p>Push notifications are optional and off unless you set them up. They require you to self-host the companion Dashboarr backend on your own hardware. We do not operate a server for this.</p>
+    <p>When you enable them, notification delivery necessarily uses the standard mobile push infrastructure: the <a href="https://expo.dev/privacy">Expo push service</a> and then <a href="https://www.apple.com/legal/privacy/">Apple Push Notification service</a> or <a href="https://firebase.google.com/support/privacy">Firebase Cloud Messaging</a>. This means the notification title and body (for example, a movie name and the words "downloaded") and your device push token pass through those providers, exactly as they do for any app that can wake a locked phone. No other data from your configuration is sent. If you do not enable push notifications, none of this applies.</p>
 
     <h2>Third-Party Services</h2>
-    <p>The App does not integrate with any third-party analytics, advertising, or tracking services. The only external communication is with the self-hosted services you configure yourself.</p>
+    <p>The App does not integrate with any analytics, advertising, or tracking services, and contains no analytics or crash-reporting SDK. Movie and TV metadata comes from the services you configure, which source it from providers such as TMDB and TheTVDB. Poster and backdrop artwork, however, is fetched by the App itself directly from TMDB's image CDN, as described under Network Permissions above.</p>
 
     <h2>Children's Privacy</h2>
     <p>The App does not collect any personal information from anyone, including children under the age of 13.</p>
@@ -86,6 +104,16 @@
 
     <h2>Contact</h2>
     <p>If you have questions about this privacy policy, you can open an issue on the <a href="https://github.com/RenzoBeux/Dashboarr">GitHub repository</a>.</p>
-  </div>
+  </main>
+
+  <footer>
+    <div class="footer-links">
+      <a href="index.html">Home</a>
+      <a href="guide.html">Guide</a>
+      <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+    </div>
+    <p>Open source under GPL-3.0. Built by <a href="https://github.com/RenzoBeux">Renzo Beux</a>.</p>
+  </footer>
+
 </body>
 </html>

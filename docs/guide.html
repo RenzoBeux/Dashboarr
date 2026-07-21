@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guide | Dashboarr</title>
+  <meta name="description" content="How to set up and use Dashboarr: adding services, local and remote URLs, dashboards and widgets, push notifications, backups and troubleshooting.">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    :root { --maxw: 1180px; }
+
+    .doc {
+      max-width: var(--maxw);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 3.5rem;
+      align-items: start;
+    }
+
+    /* TOC */
+    .toc {
+      position: sticky;
+      top: 5rem;
+      padding: 2.5rem 0 2rem;
+      font-size: 0.87rem;
+    }
+    .toc-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--dimmer);
+      margin-bottom: 0.85rem;
+      font-weight: 600;
+    }
+    .toc ol { list-style: none; counter-reset: toc; }
+    .toc li { counter-increment: toc; margin-bottom: 0.1rem; }
+    .toc a {
+      display: block;
+      color: var(--dim);
+      padding: 0.3rem 0 0.3rem 2.15rem;
+      border-left: 2px solid var(--border);
+      position: relative;
+      line-height: 1.4;
+    }
+    .toc a::before {
+      content: counter(toc);
+      position: absolute;
+      left: 0.5rem;
+      width: 1.1rem;
+      text-align: right;
+      color: var(--dimmer);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.78rem;
+    }
+    .toc a:hover { color: var(--fg-strong); border-left-color: #52525b; text-decoration: none; }
+
+    /* Content */
+    .content { padding: 2.5rem 0 1rem; min-width: 0; max-width: 46rem; }
+
+    .doc-head { margin-bottom: 2.5rem; }
+    .doc-head h1 {
+      font-size: 2.35rem;
+      color: var(--fg-strong);
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+    .doc-head p { color: var(--muted); font-size: 1.02rem; }
+
+    .content h2 {
+      font-size: 1.5rem;
+      color: var(--fg-strong);
+      margin: 3.5rem 0 1rem;
+      padding-top: 1.75rem;
+      border-top: 1px solid var(--border);
+      letter-spacing: -0.02em;
+    }
+    .content section:first-of-type h2 { margin-top: 0; padding-top: 0; border-top: 0; }
+    .content h3 {
+      font-size: 1.08rem;
+      color: var(--fg-strong);
+      margin: 2rem 0 0.6rem;
+      font-weight: 600;
+    }
+    .content h4 {
+      font-size: 0.95rem;
+      color: var(--fg);
+      margin: 1.5rem 0 0.4rem;
+      font-weight: 600;
+    }
+    .content p { margin-bottom: 0.9rem; color: var(--muted); }
+    .content strong { color: var(--fg-strong); font-weight: 600; }
+    .content ul, .content ol { margin: 0 0 1.1rem 1.25rem; color: var(--muted); }
+    .content li { margin-bottom: 0.4rem; padding-left: 0.25rem; }
+    .content li::marker { color: var(--dimmer); }
+    .content ul ul, .content ol ol { margin-top: 0.4rem; margin-bottom: 0.4rem; }
+
+    .lede { font-size: 1rem; color: var(--muted); }
+
+    .quote {
+      border-left: 2px solid #3f3f46;
+      padding: 0.2rem 0 0.2rem 1rem;
+      margin: 1.1rem 0;
+      color: var(--dim);
+      font-size: 0.92rem;
+    }
+
+    .anchor {
+      color: var(--dimmer);
+      font-weight: 400;
+      opacity: 0;
+      margin-left: 0.4rem;
+      font-size: 0.8em;
+      transition: opacity 0.15s;
+    }
+    h2:hover .anchor, h3:hover .anchor,
+    h2:focus-within .anchor, h3:focus-within .anchor,
+    .anchor:focus, .anchor:focus-visible { opacity: 1; }
+    .anchor:hover { text-decoration: none; color: var(--link); }
+
+    .pathlist { list-style: none; margin-left: 0; }
+    .pathlist li {
+      padding-left: 0;
+      margin-bottom: 0.55rem;
+    }
+
+    .next {
+      margin: 4rem 0 0;
+      padding: 1.6rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      text-align: center;
+    }
+    .next p { margin-bottom: 1.1rem; color: var(--dim); font-size: 0.93rem; }
+    .next .btn { margin: 0 0.3rem; }
+
+    @media (max-width: 900px) {
+      .doc { grid-template-columns: minmax(0, 1fr); gap: 0; }
+      .toc {
+        position: sticky;
+        top: 3.55rem;
+        box-shadow: 0 -0.75rem 0 rgba(9, 9, 11, 0.92);
+        z-index: 40;
+        padding: 0.75rem 0;
+        margin: 0 -1.5rem;
+        background: rgba(9, 9, 11, 0.92);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .toc-label { display: none; }
+      .toc ol { display: flex; gap: 0.5rem; padding: 0 1.5rem; width: max-content; }
+      .toc li { margin: 0; }
+      .toc a {
+        border-left: 0;
+        padding: 0.3rem 0.8rem;
+        white-space: nowrap;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 0.82rem;
+      }
+      .toc a::before { display: none; }
+      .content { padding-top: 2rem; }
+      .doc-head h1 { font-size: 1.95rem; }
+      html { scroll-padding-top: 7.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="index.html">
+        <img src="assets/icon.png" alt=""> Dashboarr
+      </a>
+      <div class="nav-links">
+        <a href="index.html#features" class="nav-sm-hide">Features</a>
+        <a href="index.html#services" class="nav-sm-hide">Services</a>
+        <a href="guide.html" class="active">Guide</a>
+        <a href="index.html#faq">FAQ</a>
+        <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="doc">
+
+    <nav class="toc" aria-label="Guide contents">
+      <p class="toc-label">Contents</p>
+      <ol>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#first-launch">First launch</a></li>
+        <li><a href="#add-service">Add your first service</a></li>
+        <li><a href="#networks">Local and remote URLs</a></li>
+        <li><a href="#credentials">Service reference</a></li>
+        <li><a href="#dashboards">Dashboards and widgets</a></li>
+        <li><a href="#tabs">Tabs and screens</a></li>
+        <li><a href="#notifications">Notifications</a></li>
+        <li><a href="#backup">Backup and restore</a></li>
+        <li><a href="#appearance">Appearance and updates</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+
+      <div class="doc-head">
+        <h1>Getting started</h1>
+        <p class="lede">
+          Dashboarr is a single mobile app for your whole self-hosted media stack. It talks
+          directly from your phone to your own servers using each service's official API.
+          No accounts, no cloud service, and no server component required. This guide walks
+          through a first-time setup in the order you will actually do it.
+        </p>
+      </div>
+
+      <!-- 1 -->
+      <section id="install">
+        <h2>1. Install <a class="anchor" href="#install" aria-label="Permalink to Install">#</a></h2>
+        <p>Dashboarr ships on three channels:</p>
+        <ul>
+          <li><a href="https://apps.apple.com/app/dashboarr/id6762170117"><strong>Apple App Store</strong></a> for iPhone and iPad.</li>
+          <li><a href="https://play.google.com/store/apps/details?id=com.dashboarr.app"><strong>Google Play</strong></a> for Android.</li>
+          <li>A <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest"><strong>signed APK</strong></a> attached to each GitHub release, for de-Googled or sideloaded installs. Sideloaded builds update manually: the app checks the releases page and opens it for you, but there is no in-app installer.</li>
+        </ul>
+        <p>
+          The optional push-notification backend is a separate, self-hosted Docker or Node.js
+          service. You do not need it to use the app. <a href="#notifications">Section 8</a> covers it.
+        </p>
+      </section>
+
+      <!-- 2 -->
+      <section id="first-launch">
+        <h2>2. First launch <a class="anchor" href="#first-launch" aria-label="Permalink to First launch">#</a></h2>
+        <p>On a fresh install the Dashboard tab shows:</p>
+        <div class="quote">
+          <strong>No services configured yet.</strong><br>
+          Go to Settings to add your first service.
+        </div>
+        <p>
+          A three-step intro carousel explains the workspace concept. You can skip it and replay
+          it later from <strong>Settings, About, "Show workspace tour"</strong>.
+        </p>
+        <p>A few things already exist before you configure anything:</p>
+        <ul>
+          <li>One dashboard named <strong>Default</strong>, holding three widget cards: Service Health, Radarr Queue and Calendar.</li>
+          <li>Three pinned bottom tabs: <strong>Downloads</strong>, <strong>Calendar</strong> and <strong>Services</strong>. Together with Dashboard and Settings, that is the five-icon bar you see on day one.</li>
+          <li>One placeholder instance for every supported service, all disabled with blank URLs. That is why you normally tap an existing row in Settings rather than creating anything new.</li>
+        </ul>
+
+        <h3>Want to look around first?</h3>
+        <p>
+          Turn on <strong>Settings, Backup &amp; Storage, Advanced, Demo Mode</strong>
+          ("Show sample data, no server required"). Every service switches to realistic sample
+          content without touching your real configuration, and a banner reads
+          <strong>DEMO MODE, Sample data only</strong> with an <strong>Exit</strong> link.
+          Turn it off and everything comes back exactly as it was.
+        </p>
+        <div class="note warn">
+          <strong>Note.</strong> With Demo Mode on, <strong>Test Connection</strong> always reports
+          success. Do not use it to validate a real server.
+        </div>
+      </section>
+
+      <!-- 3 -->
+      <section id="add-service">
+        <h2>3. Add your first service <a class="anchor" href="#add-service" aria-label="Permalink to Add your first service">#</a></h2>
+        <p>
+          Everything lives on the <strong>Settings</strong> tab, subtitled "Applies to all dashboards".
+          It has two groups:
+        </p>
+        <ul>
+          <li><strong>Services</strong>, one row per service kind. Configured kinds sort first, the rest sit under a <strong>Not configured</strong> divider.</li>
+          <li><strong>App</strong>: Network, Notifications, Appearance, Backup &amp; Storage, About.</li>
+        </ul>
+        <p>Tap a service kind to open its instance list, then tap the instance to open the editor.</p>
+
+        <h3>The instance editor, top to bottom</h3>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Card</th><th>What is in it</th></tr></thead>
+            <tbody>
+              <tr><td>(first card)</td><td><strong>Name</strong> and an <strong>Enabled</strong> toggle</td></tr>
+              <tr><td>(second card)</td><td><strong>Local URL</strong>, <strong>Remote URL</strong>, <strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong></td></tr>
+              <tr><td>Authentication</td><td>Either <strong>Username</strong> and <strong>Password</strong>, or a single <strong>API Key</strong>. Plex also gets a <strong>Connect with Plex</strong> button.</td></tr>
+              <tr><td>Custom Headers</td><td>Optional per-instance headers for reverse-proxy auth</td></tr>
+              <tr><td>Add Defaults</td><td>Radarr, Sonarr and Lidarr only: Quality Profile, Root Folder, and Metadata Profile for Lidarr</td></tr>
+              <tr><td>Notifications</td><td>Per-instance overrides for each notification category</td></tr>
+              <tr><td>Webhook Attribution</td><td>Only when a backend is paired, and only for Radarr, Sonarr, Tautulli, Seerr, Bazarr and Tracearr</td></tr>
+              <tr><td>(buttons)</td><td><strong>Test Connection</strong> and <strong>Save</strong>, side by side</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>URL rules</h3>
+        <ul>
+          <li>Enter the <strong>bare origin</strong>, for example <code>http://192.168.1.100:7878</code>. Dashboarr appends the API path itself. Never paste <code>/api/v3</code> into the URL box.</li>
+          <li>A reverse-proxy sub-path is supported and preserved: <code>https://media.example.com/radarr</code> becomes <code>https://media.example.com/radarr/api/v3/...</code></li>
+          <li>Typing a URL without a scheme auto-prefixes <code>http://</code> when the field loses focus.</li>
+          <li>Only <code>http://</code> and <code>https://</code> are accepted. A trailing slash is harmless.</li>
+          <li>Saving a <strong>Remote URL</strong> on plain <code>http://</code> raises a confirmation titled <strong>"Remote URL uses HTTP"</strong> with a <strong>Save anyway</strong> button, because API keys would cross the internet in cleartext. A local <code>http://</code> URL is accepted silently, which is the normal case on a LAN.</li>
+        </ul>
+
+        <h3>What saves instantly, and what does not</h3>
+        <p>
+          <strong>Enabled</strong>, <strong>Always use Remote URL</strong>,
+          <strong>Allow invalid certificates</strong> and the Add Defaults pickers apply the moment
+          you flip them. <strong>Name</strong>, both URLs, credentials and Custom Headers only
+          persist when you press <strong>Save</strong>. While changes are pending the editor title
+          shows <strong>"unsaved"</strong> in amber, and backing out offers Save or Discard.
+        </p>
+
+        <h3>Test Connection</h3>
+        <p>
+          <strong>Test Connection</strong> probes the values currently typed in the form, so you can
+          validate before saving. It tests exactly <strong>one</strong> URL, whichever the app would
+          use right now, and tells you which:
+        </p>
+        <ul>
+          <li><code>Connected via local URL in 42ms</code></li>
+          <li><code>Auth failed (remote URL): ...</code></li>
+          <li><code>Could not reach local URL: ...</code></li>
+        </ul>
+        <p>The probe times out after 8 seconds. It never tests both URLs in one tap.</p>
+
+        <h3>Then attach it to a dashboard</h3>
+        <p>
+          The first time you save an instance that has both a URL and a credential, an
+          <strong>Add to dashboards</strong> sheet appears so you can pick which workspaces include it.
+        </p>
+        <div class="note">
+          Enabling a service does three separate things that are easy to conflate: it makes the
+          instance live, it may be attached to one or more dashboards, and
+          <strong>its widget still has to be added by hand</strong>. Open a dashboard and tap
+          "Add widget" to put a service's card on it.
+        </div>
+
+        <h3>Status dots</h3>
+        <p>
+          Once a kind has at least one enabled instance, its Settings row shows a coloured dot:
+          <strong>green</strong> for reachable, <strong>amber</strong> for reachable but credentials
+          rejected, <strong>red</strong> for unreachable. While the first health check is running
+          there is no dot at all. Health polls every 30 seconds, so Settings can lag a config change
+          by up to half a minute. Test Connection is the only immediate probe.
+        </p>
+
+        <h3>Multiple instances</h3>
+        <p>
+          Every service supports multiple instances: two Radarrs, an anime Sonarr, a second
+          household. Use <strong>"Add another instance"</strong> at the bottom of the instance list.
+          New instances auto-name themselves (<code>Radarr</code>, then <code>Radarr 2</code>). With
+          two or more, each row gains reorder arrows and a delete button, and that order is the order
+          shown in the per-screen instance switcher. You cannot delete the last remaining instance of
+          a kind, so disable it instead.
+        </p>
+        <p>
+          When a kind has two or more enabled instances attached to the current dashboard, its screen
+          header shows the instance name with a chevron. Tapping it opens a
+          <strong>Switch instance</strong> sheet.
+        </p>
+      </section>
+
+      <!-- 4 -->
+      <section id="networks">
+        <h2>4. Local and remote URLs <a class="anchor" href="#networks" aria-label="Permalink to Local and remote URLs">#</a></h2>
+        <p>This is the most important concept in Dashboarr, and the source of most confusion.</p>
+
+        <h3>The default: auto-switch is off</h3>
+        <p>
+          <strong>Settings, Network, "Auto-switch network"</strong> is <strong>off</strong> on a fresh
+          install. With it off, every service always uses its <strong>Local URL</strong> (or the
+          Remote URL if no local one is set), on any network. Nothing else in this section applies
+          until you turn it on. If you only use the app at home, or you address everything through
+          Tailscale, you can leave it off and skip ahead.
+        </p>
+
+        <h3>With auto-switch on</h3>
+        <p>
+          The app uses a service's <strong>Local URL only when it has positively confirmed you are on
+          one of your saved home WiFi networks</strong>. Anywhere else it uses the
+          <strong>Remote URL only</strong> and deliberately never falls back to the local one. The
+          reason is concrete: <code>192.168.1.50</code> on airport WiFi belongs to a stranger, and
+          falling back would hand them your API key.
+        </p>
+        <p>Consequences to be aware of:</p>
+        <ul>
+          <li>A service that only has a Local URL is simply unavailable while you are away. That is intended, not a bug.</li>
+          <li>"Away" is the default at every cold start, until the WiFi name is read.</li>
+          <li>If auto-switch is on, you have saved no home networks, and "Treat VPN as home" is off, the Settings row turns amber: <strong>"Add at least one, without it the app stays on remote URLs"</strong>.</li>
+        </ul>
+
+        <h3>Adding a home network</h3>
+        <p>
+          <strong>Settings, Network, Home Networks.</strong> Use <strong>"Add current WiFi"</strong> to
+          auto-detect and pre-fill, or <strong>"Add manually"</strong>. The form has two fields:
+        </p>
+        <ul>
+          <li><strong>WiFi Name (SSID)</strong>, required, matched exactly and case-sensitively.</li>
+          <li><strong>Access Point MAC (BSSID)</strong>, optional. Leave empty to match any access point with that name. Setting it guards against a rogue AP cloning your SSID.</li>
+        </ul>
+        <p>
+          Up to 20 networks can be saved. If your router broadcasts separate 2.4 GHz and 5 GHz SSIDs,
+          save both.
+        </p>
+        <div class="note warn">
+          <strong>Pin the BSSID only if you mean it.</strong> On a mesh or multi-AP house a pinned
+          BSSID matches only the one radio you pinned, and if the OS refuses to report the BSSID the
+          match fails closed and you are treated as away. SSID-only entries are the safer default.
+        </div>
+
+        <h3>Location permission</h3>
+        <p>
+          Reading the WiFi network name requires <strong>Location permission on both iOS and
+          Android</strong>. Without it the app can never confirm you are home, so it silently stays on
+          remote URLs.
+        </p>
+        <p>
+          On iOS you also need <strong>Precise Location</strong> enabled for Dashboarr. With
+          Approximate location the system still shows the location indicator, so permission looks
+          granted, but iOS will not reveal the network name. The Home Networks screen surfaces this
+          with an amber <strong>"Using remote URLs"</strong> card and a
+          <strong>Grant Location permission</strong> button, plus a <strong>Retry detection</strong>
+          path when Location is allowed but the name still will not appear. Toggling WiFi off and on
+          usually clears it.
+        </p>
+
+        <h3>VPNs and Tailscale</h3>
+        <p>
+          Under a VPN the OS normally masks the WiFi name, so the app reads you as away and uses
+          remote URLs. Turn on <strong>Settings, Network, "Treat VPN as home"</strong> (visible only
+          while auto-switch is on) to use local URLs whenever a VPN is connected. The app can only
+          detect that <em>some</em> VPN is up, not which one, so enable this only if your VPN actually
+          reaches your home LAN.
+        </p>
+        <div class="note">
+          <strong>The simplest setup of all, if you use Tailscale.</strong> Address services by their
+          Tailscale or MagicDNS name, turn on <strong>Always use Remote URL</strong>, and leave the
+          Local URL empty. One address that works on WiFi and on cellular, with no home-network
+          configuration at all. Dashboarr deliberately does not treat Tailscale's
+          <code>100.64.0.0/10</code> range as LAN-only, so those addresses are never blocked when you
+          are away.
+        </div>
+
+        <h3>Diagnostics</h3>
+        <p>
+          <strong>Settings, Network, Home Networks, "Network diagnostics"</strong> (collapsed, labelled
+          "For bug reports") shows Platform, VPN native module, VPN detected, VPN flag, On WiFi,
+          Auto-switch, Treat VPN as home, and <strong>Away from home</strong> as
+          <code>yes (remote-only)</code> or <code>no (local OK)</code>. Quote this panel in bug reports.
+        </p>
+
+        <h3>Per-dashboard home networks</h3>
+        <p>
+          Each dashboard can restrict which home networks count as home for it, under
+          <strong>Edit dashboard, "Home networks", All / Custom</strong>. Selecting <strong>Custom</strong>
+          with nothing ticked forces that workspace onto remote URLs everywhere, and that wins even
+          when the global auto-switch toggle is off.
+        </p>
+
+        <h3>Custom headers and Wake-on-LAN</h3>
+        <ul>
+          <li>
+            <strong>Custom Headers</strong> exist at two levels: globally
+            (<strong>Settings, Network, Custom Headers</strong>, sent on every request to every enabled
+            service) and per instance. Per-instance headers override global ones on a name collision,
+            and the service's own auth always wins. Up to 32 headers each. Useful for Cloudflare
+            Access, Authelia and similar static-header schemes. They cannot fix cookie or session
+            based SSO.
+          </li>
+          <li>
+            <strong>Wake-on-LAN</strong> lives at <strong>Settings, Network, Wake-on-LAN</strong>.
+            Fields are Device Name, MAC Address, Broadcast Address and Port; only name and MAC are
+            required. Defaults are <code>255.255.255.255</code> and port 9, but a subnet-directed
+            broadcast such as <code>192.168.1.255</code> is far more reliable, since many routers drop
+            the global broadcast. MACs may be typed with colons, dashes, dots or nothing at all. The
+            MAC is validated at send time, not when you save the device. A <strong>Wake</strong>
+            button appears in the Services tab header once you have devices saved.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 5 -->
+      <section id="credentials">
+        <h2>5. Service reference <a class="anchor" href="#credentials" aria-label="Permalink to Service reference">#</a></h2>
+        <p>
+          Dashboarr stores exactly three credential fields per instance (API key, username, password)
+          plus optional custom headers. The editor shows one of two shapes:
+          <strong>Username and Password</strong> for five services, <strong>API Key</strong> for
+          everything else. Plex adds a "Connect with Plex" button on top of the API Key field.
+        </p>
+        <p>
+          The ports below are the upstream defaults, for reference only. Dashboarr never prefills or
+          appends a port, so type the full URL yourself.
+        </p>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Service</th><th>Port</th><th>Auth</th><th>Key gotcha</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>qBittorrent</strong></td><td>8080</td><td>User + password</td><td>WebUI must be enabled. qBittorrent 5.2.0 changed the login response, so you need app v1.6.3+ (and backend v1.2.5+) or valid credentials are rejected.</td></tr>
+              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>User + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
+              <tr><td><strong>Transmission</strong></td><td>9091</td><td>User + password (both optional)</td><td>The RPC server must be enabled and its host whitelist must allow your phone. A blocked host answers 403, which looks like a credentials error.</td></tr>
+              <tr><td><strong>SABnzbd</strong></td><td>8080</td><td>API key</td><td>The key travels in the URL query string, so a reverse proxy that strips or logs query params will break or leak it.</td></tr>
+              <tr><td><strong>NZBGet</strong></td><td>6789</td><td>User + password</td><td>These are <code>ControlUsername</code> and <code>ControlPassword</code> from <code>nzbget.conf</code>, not a separate web login.</td></tr>
+              <tr><td><strong>Radarr</strong></td><td>7878</td><td>API key</td><td>Test Connection sends your API key to <code>/api/v3/system/status</code> and only accepts a JSON 200, so a wrong port fails the test rather than passing silently. Enter the bare origin with no <code>/api/v3</code> suffix.</td></tr>
+              <tr><td><strong>Sonarr</strong></td><td>8989</td><td>API key</td><td>Same v3 API and the same authenticated <code>/api/v3/system/status</code> probe as Radarr.</td></tr>
+              <tr><td><strong>Lidarr</strong></td><td>8686</td><td>API key</td><td>Uses the v1 API, not v3. Only matters if you hand-write proxy path rules.</td></tr>
+              <tr><td><strong>Prowlarr</strong></td><td>9696</td><td>API key</td><td>No webhook integration, so it is poll-only on the backend.</td></tr>
+              <tr><td><strong>Seerr</strong></td><td>5055</td><td>API key</td><td>If CSRF protection is enabled in Seerr, the API is read-only and submitting a request fails with 403 "invalid csrf token". Turn CSRF protection off.</td></tr>
+              <tr><td><strong>Tautulli</strong></td><td>8181</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Webhooks are ingested but do not raise a push yet.</td></tr>
+              <tr><td><strong>Tracearr</strong></td><td>3000</td><td>API key (<code>trr_pub_</code> token)</td><td>Webhook-only for notifications, and its webhook URL must carry <code>?instance=&lt;id&gt;</code> or its per-instance toggles are ignored.</td></tr>
+              <tr><td><strong>Jellystat</strong></td><td>3000</td><td>API key</td><td>At least one API key must exist in Jellystat itself. With none configured the server answers 404.</td></tr>
+              <tr><td><strong>Plex</strong></td><td>32400</td><td>Token, or in-app sign-in</td><td><strong>Connect with Plex</strong> auto-fills the server URLs, token and name. With more than one server you get a server picker.</td></tr>
+              <tr><td><strong>Jellyfin</strong></td><td>8096</td><td>API key</td><td>A server-wide API key or a user token both work.</td></tr>
+              <tr><td><strong>Emby</strong></td><td>8096</td><td>API key</td><td>Same default port as Jellyfin. If you run both on one host, re-port one of them.</td></tr>
+              <tr><td><strong>Bazarr</strong></td><td>6767</td><td>API key</td><td>Webhooks are ingested but do not raise a push yet.</td></tr>
+              <tr><td><strong>Glances</strong></td><td>61208</td><td>User + password (optional)</td><td>Glances must run in web server mode. A Dockerized Glances reports no disks unless the host root is bind-mounted read-only (<code>/:/rootfs:ro</code>); CPU and RAM still work, which makes it look like an app bug.</td></tr>
+              <tr><td><strong>unRAID</strong></td><td>80</td><td>API key</td><td>The GraphQL API must be enabled first (native on unRAID 7.2+ under Settings, Management Access). The key also needs array-read permission. The API is GraphQL only, so opening the URL in a browser looks broken even when it is correct.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Where to find each API key is documented by each upstream project, generally under that
+          service's own General or Security settings.
+        </p>
+
+        <h3>Self-signed certificates</h3>
+        <p>
+          Turn on <strong>Allow invalid certificates</strong> in the instance editor. The bypass is
+          keyed to hostname and covers both that instance's local and remote hostnames, which means
+          any other service on the same hostname is relaxed too.
+        </p>
+
+        <h3>Behind a forward-auth SSO proxy</h3>
+        <p>
+          With Authentik or Authelia in front, the proxy hands API calls an HTML login page instead of
+          JSON. Dashboarr detects this and says so rather than falsely reporting the service healthy.
+          The fix is on the proxy side: exclude the API path from authentication. For Authentik, add
+          <code>^/api</code> and <code>^/ping</code> to the Proxy Provider's Unauthenticated Paths.
+          This is safe because the *arr API is already protected by its own API key. Custom Headers
+          cannot solve this, because proxy auth here is cookie based, not header based.
+        </p>
+      </section>
+
+      <!-- 6 -->
+      <section id="dashboards">
+        <h2>6. Dashboards and widgets <a class="anchor" href="#dashboards" aria-label="Permalink to Dashboards and widgets">#</a></h2>
+        <p>
+          Dashboarr supports multiple named dashboards, internally called workspaces. Each holds its
+          own widget cards, icon and accent colour, pinned tabs, attached service instances, and
+          home-network selection.
+        </p>
+
+        <h3>Switching and creating</h3>
+        <p>
+          Tap the dashboard name in the Dashboard header to open the <strong>Dashboards</strong> sheet.
+          From there you can switch, reorder with the chevrons, duplicate with the copy icon, delete
+          with the trash icon, or tap <strong>Add dashboard</strong>.
+        </p>
+        <p>
+          Creating is submit-only: type the name (40 characters max) and confirm with the keyboard's
+          Done key or the check button. Tapping elsewhere discards it. The new dashboard opens
+          straight into its editor, and it starts genuinely empty: no widgets, no attached instances,
+          and only the Services tab pinned.
+        </p>
+        <p>
+          Duplicating produces <code>&lt;name&gt; copy</code> and clones widgets, per-widget settings,
+          attachments, pinned tabs, tab icons, home networks and tile order. The last remaining
+          dashboard cannot be deleted. There is no cap on how many you create.
+        </p>
+
+        <h3>Two different "edit" surfaces</h3>
+        <p>This trips people up, so be precise:</p>
+        <ul>
+          <li>The <strong>pencil</strong> icon toggles <strong>widget edit mode</strong>: reorder, remove, copy and configure the cards on the dashboard.</li>
+          <li>The <strong>sliders</strong> icon (or the gear on a row in the Dashboards sheet) opens <strong>Edit dashboard</strong>: name, icon, colour, attached instances, pinned tabs, home networks.</li>
+        </ul>
+        <p>
+          Renaming a dashboard only exists in <strong>Edit dashboard, Name</strong>. Tapping a name in
+          the Dashboards sheet just switches to it.
+        </p>
+
+        <h3>Widget edit mode</h3>
+        <p>
+          The pencil appears once at least one instance is enabled anywhere. In edit mode a banner
+          reads <strong>"Reorder, remove, or add widgets"</strong>, every card gains a dashed border,
+          and a control row appears above each one with:
+        </p>
+        <ul>
+          <li>up and down chevrons to reorder. There is no drag-and-drop for cards, and cards cannot be resized: they are always full width, stacked.</li>
+          <li>a copy icon (only with more than one dashboard) that opens <strong>"Copy widget to..."</strong> and creates an independent copy with the same settings.</li>
+          <li>a gear for widget settings.</li>
+          <li>a red X to remove, with no confirmation.</li>
+        </ul>
+        <p>
+          <strong>Add widget</strong> at the bottom opens a sheet grouped into <strong>Available</strong>
+          and <strong>Requires setup</strong>. "Requires setup" items are widgets whose service is
+          attached to this dashboard but currently disabled in Settings. Widgets for services that are
+          not attached at all are hidden entirely, so if a widget you expect is missing, attach its
+          service first.
+        </p>
+
+        <h3>The widget catalogue</h3>
+        <p>Twenty-five widgets are available:</p>
+        <p style="color:var(--muted)">
+          Service Health, Server Stats, Speed Stats, Downloads, SABnzbd Queue, NZBGet Queue,
+          Radarr Queue, Sonarr Queue, Lidarr Queue, Recently Downloaded, Calendar, Still Pending,
+          Stream Activity, Streaming Bandwidth, Seerr Requests, Now Playing (All Servers),
+          Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats, Bazarr Wanted,
+          Wake-on-LAN, Disk Space, Health Alerts, unRAID Array.
+        </p>
+        <p>
+          The same widget can be placed more than once on one dashboard, each copy with its own
+          settings, which is how you show two download clients or two Radarrs side by side. Three
+          widgets have no options and therefore no gear: Wake-on-LAN, Health Alerts and unRAID Array.
+        </p>
+        <p>
+          Most settings sheets include a <strong>Visibility, "Hide when empty"</strong> toggle. Cards
+          hidden that way still appear in edit mode, marked with a crossed-out-eye icon, so a
+          "vanished" widget is easy to find. Widgets for services that support several instances also
+          expose an instance chip row with an <strong>All instances</strong> chip.
+        </p>
+
+        <h3>Attached instances and auto-attach</h3>
+        <p>
+          <strong>Edit dashboard, Attached instances</strong> controls which service instances this
+          workspace can see. Attachment is per instance, not per kind, so a "Home" Radarr and a
+          "Cabin" Radarr can live on different dashboards.
+        </p>
+        <p>
+          The starting Default dashboard is in <strong>auto-attach mode</strong>: it implicitly
+          includes every service and instance you ever add. While that is true, the Dashboard tab
+          shows an <strong>"Auto-attach mode"</strong> banner with a <strong>Curate</strong> shortcut.
+        </p>
+        <div class="note warn">
+          <strong>This looks like a bug and is not.</strong> When you open the editor on an
+          auto-attach dashboard, every checkbox starts unticked. If you tick anything and save, the
+          dashboard leaves auto-attach mode permanently and only the ticked instances will ever appear
+          on it. To change just the colour or icon without committing to a curated list, change it and
+          save without touching a checkbox.
+        </div>
+        <p>
+          Instances that are disabled in Settings cannot be newly attached. Their rows are dimmed and
+          read "Enable in Settings to attach".
+        </p>
+
+        <h3>Appearance</h3>
+        <p>
+          <strong>Edit dashboard, Appearance</strong> gives each dashboard an icon (61 to choose from)
+          and one of eight accent colours: Blue (default), Red, Amber, Green, Teal, Purple, Pink and
+          Slate. The accent tints the dashboard chrome, the Save button and the active tab icon in the
+          bottom bar, so switching dashboards visibly recolours the app. A live preview tile at the
+          top of the editor shows the result.
+        </p>
+      </section>
+
+      <!-- 7 -->
+      <section id="tabs">
+        <h2>7. Tabs and screens <a class="anchor" href="#tabs" aria-label="Permalink to Tabs and screens">#</a></h2>
+        <p>
+          The bottom bar is <strong>Dashboard first, Settings last, and up to three tabs of your
+          choosing in between</strong>. It shows icons only, no labels.
+        </p>
+        <p>
+          Configure them in <strong>Edit dashboard, "Pinned tabs"</strong>: tap a chip to pin, use the
+          chevrons to reorder, the red X to unpin, and tap a pinned tab's small icon chip to change
+          which icon represents it in the bar.
+        </p>
+        <p>The sixteen pinnable tabs are:</p>
+        <p style="color:var(--muted)">
+          Downloads, Calendar, Services, Movies, TV, Library, Music, Requests, Activity, Indexers,
+          Plex, Jellyfin, Emby, Glances, Bazarr, unRAID.
+        </p>
+        <p>
+          A tab becomes pickable when the workspace has at least one <strong>attached</strong> instance
+          of a backing service. Movies needs Radarr, TV needs Sonarr, Music needs Lidarr, Requests
+          needs Seerr, Indexers needs Prowlarr, Downloads needs any download client, Calendar needs
+          Sonarr or Radarr, Library needs Radarr or Sonarr, and Activity needs any of Tautulli,
+          Tracearr, Jellystat, Jellyfin or Emby. <strong>Services</strong> is always pickable.
+        </p>
+        <p>Notes worth knowing:</p>
+        <ul>
+          <li>Pins are per dashboard. Switching dashboards rebuilds the whole bar, including order, icons and accent colour. If the tab you are on is not pinned on the new dashboard, the app takes you back to Dashboard so you are never stranded.</li>
+          <li>Un-attaching a service hides its pinned tab but <strong>keeps the pin stored</strong>, so re-attaching restores it. Merely disabling the instance does not hide the tab.</li>
+          <li>Unpinned tabs are not unreachable. Tapping a tile in the <strong>Services</strong> tab, or a service in the Service Health widget, opens that screen directly.</li>
+          <li><strong>Movies + TV</strong> and <strong>Library</strong> overlap: Library is those same two libraries behind one switcher. Pinning all three spends your slots on duplicate content.</li>
+        </ul>
+
+        <h3>What is on each screen</h3>
+        <p>Most service tabs are one screen with a chip row acting as sub-tabs, plus pull-to-refresh.</p>
+        <ul>
+          <li><strong>Downloads</strong>: a segmented control across enabled clients, hidden when you only have one. Torrent view has down and up speed pills, a speed-limits control (qBittorrent, rTorrent and Transmission), <strong>Add Torrent</strong> with a paste-magnet field, and a filter and sort sheet. Long-press a row for multi-select with Pause, Resume, Category (qBittorrent only) and Delete. Deleting always asks <strong>Delete</strong> versus <strong>Delete + Files</strong>. The Usenet view adds queue-wide pause and resume, and <strong>Add NZB</strong> by URL or file upload.</li>
+          <li><strong>Calendar</strong>: a month grid merging Sonarr air dates with Radarr release dates (Digital, Physical or In Cinemas). Green dots mark episode days, amber dots movie days. Chips are All / TV / Movies plus an <strong>Include unmonitored</strong> toggle that is remembered between launches.</li>
+          <li><strong>Activity</strong>: merges Tautulli, Tracearr, Jellystat, Jellyfin and Emby. Sub-tabs are Streams and History; History only appears when a source that supports it is configured, because Jellyfin and Emby report live sessions only. Streams refresh every 5 seconds, history every 60.</li>
+          <li><strong>Movies</strong> (Radarr): Library, Queue, Wanted, with a filter and sort sheet and long-press action sheets.</li>
+          <li><strong>TV</strong> (Sonarr): Library and Calendar, with filter and sort and a "Search Missing Episodes" confirmation.</li>
+          <li><strong>Music</strong> (Lidarr): Library, Queue, Wanted.</li>
+          <li><strong>Requests</strong> (Seerr): Discover, Search, Requests, with per-row approve and decline, and a Customize link to reorder your Discover sliders.</li>
+          <li><strong>Indexers</strong> (Prowlarr): Indexers, Search, Stats. Indexers toggle with a power button; grabbing a release confirms first.</li>
+          <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
+          <li><strong>Glances</strong> (headed "Server"): CPU, Memory, GPU, Disks, Disk I/O, Network and Containers cards. Containers are read-only here.</li>
+          <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container.</li>
+          <li><strong>Bazarr</strong>: Movies, Episodes, History, with a per-item search button for missing subtitles.</li>
+          <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
+        </ul>
+
+        <h3>Global search</h3>
+        <p>
+          The magnifier in the Dashboard header opens <strong>Search</strong>. It needs two characters
+          and covers <strong>Radarr, Sonarr, Lidarr, Seerr and Prowlarr</strong>, grouped into Movies,
+          TV Shows, Music, Requests and Releases. Each section loads independently, so a slow indexer
+          search never blocks the rest. Plex, Jellyfin and Emby library search is not included, and
+          the magnifier is hidden entirely when none of those five services is attached.
+        </p>
+
+        <h3>Magnet links</h3>
+        <p>
+          Dashboarr registers itself as a magnet handler. Tapping a magnet link in a browser opens the
+          Downloads tab with the add card pre-filled. With more than one torrent destination you first
+          get an <strong>Add Torrent To</strong> sheet. SABnzbd and NZBGet are not magnet destinations.
+        </p>
+      </section>
+
+      <!-- 8 -->
+      <section id="notifications">
+        <h2>8. Notifications and the optional backend <a class="anchor" href="#notifications" aria-label="Permalink to Notifications">#</a></h2>
+
+        <h3>Without a backend</h3>
+        <p>
+          Dashboarr raises <strong>local</strong> notifications while the app is running. There is no
+          background task, so a closed or force-quit app produces nothing. This is the number one
+          notification question, and the honest answer is: the toggles work, but only while the app is
+          open.
+        </p>
+        <p>
+          <strong>Settings, Notifications</strong> has a master <strong>Enable notifications</strong>
+          switch and, when on, seven category toggles: Torrent completed, SABnzbd completed, NZBGet
+          completed, Movie downloaded, Episode downloaded, Service offline, New Seerr request.
+        </p>
+        <p>
+          Every instance editor also has a <strong>Notifications</strong> card where each category is a
+          three-way picker: <strong>Use default</strong>, <strong>Always notify</strong>,
+          <strong>Never notify</strong>. Every service kind has at least "Service offline". Tracearr
+          additionally exposes seven categories that exist only per instance, with no global toggles.
+        </p>
+        <div class="note">
+          <strong>Two notifications for one download is expected.</strong> Your download client fires
+          "Download complete" when the file finishes, and Radarr or Sonarr fires "Movie downloaded" or
+          "Episode downloaded" a minute later when it imports. Silence whichever you prefer.
+        </div>
+
+        <h3>What the backend adds</h3>
+        <p>
+          The optional self-hosted backend moves the watching server-side, so events reach your lock
+          screen with the app closed. It also adds webhook ingestion, a service-offline watchdog, and
+          an optional Apprise fan-out to Discord, Telegram, ntfy or email.
+        </p>
+        <p>Minimum <code>docker-compose.yml</code>:</p>
+<pre><code>services:
+  dashboarr-backend:
+    image: ghcr.io/renzobeux/dashboarr-backend:latest
+    container_name: dashboarr-backend
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped</code></pre>
+        <p>
+          Then <code>docker compose up -d</code> and <code>docker logs -f dashboarr-backend</code>.
+          All state lives in one SQLite file at <code>/data/dashboarr.db</code>. On Synology Container
+          Manager, create the lowercase <code>data</code> folder inside your project folder in File
+          Station first, or the build fails with a bind-mount error.
+        </p>
+        <p>
+          It also runs without Docker on Node.js 20+: clone the repo,
+          <code>cd backend/dashboarr-backend</code>, then <code>npm install</code>,
+          <code>npm run build</code>, <code>npm start</code>.
+        </p>
+
+        <h4>Environment variables, all optional</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Variable</th><th>Default</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>PORT</code></td><td>4000</td><td></td></tr>
+              <tr><td><code>HOST</code></td><td>0.0.0.0</td><td></td></tr>
+              <tr><td><code>DATA_DIR</code></td><td>/data in Docker</td><td></td></tr>
+              <tr><td><code>LOG_LEVEL</code></td><td>info</td><td></td></tr>
+              <tr><td><code>PUBLIC_URL</code></td><td>unset</td><td>Set this to your public https URL and the startup QR embeds it, so pairing is one scan.</td></tr>
+              <tr><td><code>PUSH_RECEIPTS</code></td><td>false</td><td></td></tr>
+              <tr><td><code>TRUST_PROXY</code></td><td>false</td><td></td></tr>
+              <tr><td><code>OFFLINE_THRESHOLD</code></td><td>3</td><td>Consecutive failed 30-second health checks before a "service offline" push. 3 is about 90 seconds; use 10 for about 5 minutes if your DDNS is slow.</td></tr>
+              <tr><td><code>BACKEND_USE_REMOTE</code></td><td>false</td><td>Poll services over their local URLs (default) or remote URLs. The app's own local/remote toggle is always ignored server-side.</td></tr>
+              <tr><td><code>CONFIG_ENCRYPTION_KEY</code></td><td>unset</td><td>At least 16 characters. Encrypts stored service credentials at rest with AES-256-GCM. A shorter value makes the process refuse to start. Losing an in-use key means re-pushing config from the app.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Pairing</h3>
+        <p>
+          The pairing QR and token are printed <strong>to the backend's startup log only</strong>.
+          There is no web pairing page. Read them with <code>docker logs -f dashboarr-backend</code>.
+        </p>
+        <p>
+          In the app: <strong>Settings, Notifications, Backend</strong>. Enter the
+          <strong>Backend URL</strong>, then either <strong>Scan pairing QR</strong> or
+          <strong>Enter token manually</strong>.
+        </p>
+        <ul>
+          <li>The token is a 32-character hex string, valid for about 10 minutes, and single-use. If it expires, restart the container to print a fresh one. There is no regeneration endpoint by design.</li>
+          <li>With <code>PUBLIC_URL</code> set, the QR carries the URL and the token together. Without it, the QR carries only the token, so type the backend URL into the app first.</li>
+          <li>On success the app pushes its full config snapshot to the backend. After that, any config change re-syncs automatically after a couple of seconds, so make settings changes while your phone can see the backend.</li>
+          <li>If pairing fails with "Push permissions denied or projectId missing", the OS notification permission is off. Turn on notifications for Dashboarr in your phone's settings, reopen the app, and pair again with a fresh token.</li>
+        </ul>
+        <p>
+          Once paired, the Backend screen offers <strong>Send test push</strong>,
+          <strong>Rotate secret</strong> and <strong>Unpair</strong>, and tells you the state of the
+          local fallback. The app polls the backend's health every 60 seconds and needs two
+          consecutive failures before handing back to local watchers, so allow a couple of minutes for
+          that transition.
+        </p>
+
+        <h3>Exposure</h3>
+        <p>
+          The backend does not need to be exposed to the internet. It needs outbound access to reach
+          Expo's push service, and to be reachable by your phone on your home network. Pushes are
+          delivered through Expo and then Apple or Google, so they still arrive over cellular with
+          nothing port-forwarded. LAN-only is the recommended setup.
+        </p>
+        <p>
+          If you do expose it, the backend does not terminate TLS itself. Put a reverse proxy or
+          Cloudflare Tunnel in front and set <code>PUBLIC_URL</code> to the https URL, otherwise an
+          http to https redirect silently turns the pairing POST into a GET and 404s.
+        </p>
+
+        <h3>Webhooks</h3>
+        <p>
+          Webhooks make Radarr, Sonarr, Seerr and Tracearr events near-instant instead of waiting for
+          a poll. Only six kinds have endpoints today: <strong>Radarr, Sonarr, Seerr, Bazarr, Tautulli
+          and Tracearr</strong>, and of those Bazarr and Tautulli events are ingested and logged but do
+          not raise a push yet.
+        </p>
+        <p>Get your exact URLs and the shared secret from the file the backend writes at startup:</p>
+<pre><code>docker exec dashboarr-backend cat /data/webhook-urls.txt</code></pre>
+        <p>
+          That file is mode 0600 and the secret is deliberately never printed to stdout, because logs
+          often get shipped elsewhere.
+        </p>
+        <p>
+          Two URL shapes are supported: the secret in an <code>X-Dashboarr-Secret</code> header
+          (preferred, keeps it out of proxy logs), or the secret as a path segment for services that
+          cannot send custom headers. Configure Radarr and Sonarr as a Custom webhook connection on
+          the <strong>Download</strong> event, and Seerr on <strong>MEDIA_PENDING</strong>. Each of
+          those sends a test event that produces a confirmation push, so you can verify the wiring
+          without waiting for a real download. Tracearr is path-secret only, configured as its JSON
+          Webhook agent, and must include <code>?instance=&lt;uuid&gt;</code>.
+        </p>
+        <p>
+          The <code>?instance=&lt;uuid&gt;</code> parameter is optional elsewhere. Adding it prefixes
+          push titles with the instance name and namespaces dedupe keys, so two Radarrs grabbing the
+          same release produce two pushes. Copy the UUID from the <strong>Webhook Attribution</strong>
+          card in the instance editor, which appears once a backend is paired. A wrong or stale value
+          never drops the event; the backend quietly falls back to kind-only attribution.
+        </p>
+
+        <h3>Apprise</h3>
+        <p>
+          <strong>Settings, Notifications, Backend, "Apprise notifications"</strong> also sends to
+          Discord, Telegram, ntfy or email via an Apprise server. Add your service URLs in the Apprise
+          server's own config under a key, then paste that server's full <code>/notify/&lt;key&gt;</code>
+          URL into the <strong>Apprise notify URL</strong> field, with optional <strong>Tags</strong> to
+          filter which saved URLs fire. There is a <strong>Send Apprise test</strong> button. Apprise
+          is additive: Expo push keeps working, the same toggles apply, and Apprise fires even with no
+          phone paired. It requires a paired backend.
+        </p>
+      </section>
+
+      <!-- 9 -->
+      <section id="backup">
+        <h2>9. Backup and restore <a class="anchor" href="#backup" aria-label="Permalink to Backup and restore">#</a></h2>
+        <p>
+          <strong>Settings, Backup &amp; Storage.</strong> <strong>Export settings</strong> writes a
+          single file named <code>dashboarr-config.json</code> and hands it to the system share sheet,
+          so you choose where it lands. Despite the extension, the contents are encrypted: a small
+          envelope wrapping AES-256-GCM ciphertext, with the key derived from your passphrase.
+        </p>
+        <ul>
+          <li>A passphrase is <strong>mandatory</strong>, minimum 8 characters, typed twice. The dialog says it plainly: there is no recovery, and forgetting the passphrase makes the backup useless.</li>
+          <li>Export also requires your device biometric or passcode. Cancelling that OS prompt silently aborts the export.</li>
+          <li><strong>"Remember on this device"</strong> stores the passphrase in the Keychain or Keystore behind biometrics, and adds a <strong>Use saved passphrase</strong> button next time. It only helps on the same device; migrating to a new phone always needs the typed passphrase.</li>
+        </ul>
+
+        <p>
+          <strong>What is in the file:</strong> every configured instance (names, local and remote
+          URLs, per-instance flags) and its secrets (API key, username, password, custom headers), all
+          dashboards with their widgets and per-widget settings, the active dashboard, home networks,
+          the auto-switch and treat-VPN-as-home settings, Services tile order, Wake-on-LAN devices,
+          haptics, global custom headers, UI scale, theme, notification settings, and your backend
+          pairing.
+        </p>
+        <div class="note warn">
+          <strong>Treat the file like a password vault.</strong> It contains every API key and your
+          backend shared secret.
+        </div>
+        <p>
+          <strong>What is not in it:</strong> cached posters, live network state, onboarding flags (so
+          a restored install replays the intro), and anything about your media servers' content.
+        </p>
+
+        <p>
+          <strong>Import settings</strong> confirms first, then opens a file picker, then asks for the
+          passphrase. It is a full replace, not a merge, so export your current setup first if you
+          might want it back. Older unencrypted backups from previous app versions still import
+          without a passphrase. Backups are forward-migrated automatically; a backup made by a newer
+          app version is refused with a message telling you to update the app first.
+        </p>
+        <p>Two deliberate behaviours after an import:</p>
+        <ul>
+          <li>Any pinned access-point BSSIDs on your home networks are stripped, because a pin recorded on the old phone will not match on the new one. Matching falls back to SSID only; re-pin manually if you want it.</li>
+          <li>If auto-switch is on, services fall back to remote URLs until the home WiFi is re-confirmed, and the app re-asks for Location.</li>
+        </ul>
+        <p>
+          Backend push must be re-paired on the new phone, since the push token belongs to the
+          physical device. Restart the backend for a fresh pairing token.
+        </p>
+        <p>
+          The same screen also holds <strong>Clear image cache</strong>, for when cached posters and
+          backdrops add up, and the <strong>Demo Mode</strong> toggle under Advanced.
+        </p>
+      </section>
+
+      <!-- 10 -->
+      <section id="appearance">
+        <h2>10. Appearance and updates <a class="anchor" href="#appearance" aria-label="Permalink to Appearance and updates">#</a></h2>
+        <p><strong>Settings, Appearance</strong> has three controls:</p>
+        <ul>
+          <li><strong>UI Scale</strong>: Normal, <strong>Large</strong> (+15% fonts, spacing and icons) or <strong>Extra Large</strong> (+30%). It applies live across the whole app. Poster grids intentionally drop from three columns to two at Large and above.</li>
+          <li><strong>Theme</strong>: Default (neutral zinc), Ember (warm red-brown), Midnight (deep navy), Forest (dark green) and Violet (dark purple). All five are dark; Dashboarr is dark-mode only and has no light theme. A theme re-tints backgrounds, surfaces and borders but deliberately leaves accent colours alone, so the difference is subtle by design.</li>
+          <li><strong>Haptic feedback</strong>: vibrations on taps, toggles and refreshes.</li>
+        </ul>
+        <p>
+          <strong>Settings, About</strong> holds View on GitHub, Report an issue (pre-filled with your
+          version, runtime and platform), Support development, Show workspace tour, and the app
+          version card with a <strong>Check for updates</strong> button.
+        </p>
+        <p>
+          The app checks for a newer version automatically at most once every 24 hours, a few seconds
+          after launch. Sideloaded Android builds check the GitHub releases page; store installs check
+          their store. The prompt offers <strong>Update now</strong> and
+          <strong>Skip this version</strong>; dismissing it counts as "later" and silences it for
+          seven days, while "Skip this version" is permanent for that version number.
+        </p>
+        <div class="note">
+          Because updates can ship over the air, the store listing may lag behind what you are
+          actually running. The version at the bottom of <strong>Settings, About</strong> is the truth,
+          and it is the one to quote in a bug report.
+        </div>
+      </section>
+
+      <!-- 11 -->
+      <section id="troubleshooting">
+        <h2>11. Troubleshooting <a class="anchor" href="#troubleshooting" aria-label="Permalink to Troubleshooting">#</a></h2>
+
+        <h3>Everything is red, or shows "Remote", and I am at home.</h3>
+        <p>
+          Auto-switch is on and the app has not confirmed you are on a saved home WiFi. Check
+          Settings, Network, Home Networks, Network diagnostics: if "Away from home" reads
+          <code>yes (remote-only)</code>, the app cannot read your network name. Grant Location
+          permission, enable Precise Location on iOS, and make sure the network you are on is saved
+          (SSID-only if you have a mesh). A service with only a Local URL is unreachable while away,
+          by design.
+        </p>
+
+        <h3>Everything broke when I turned on my VPN.</h3>
+        <p>
+          Enable Settings, Network, "Treat VPN as home", or switch to addressing services by their VPN
+          hostname with "Always use Remote URL".
+        </p>
+
+        <h3>Test Connection passes but the screen is empty or 404s.</h3>
+        <p>
+          Test Connection authenticates against each service's API root, so a wrong port normally fails
+          it outright rather than passing. When the test passes but a screen stays empty, confirm the URL
+          is the bare origin with no <code>/api/...</code> suffix, and that the instance points at the
+          service you think it does.
+        </p>
+
+        <h3>A service is green in Settings but missing from the Services tab.</h3>
+        <p>
+          The Services tab only shows services attached to the dashboard you are on. Attach it via
+          Dashboard, sliders icon, Attached instances.
+        </p>
+
+        <h3>A widget I expect is not in the Add widget sheet.</h3>
+        <p>
+          Its service is not attached to this dashboard. Attach it first. If it appears greyed out
+          under "Requires setup", the service is attached but disabled in Settings.
+        </p>
+
+        <h3>A widget disappeared from the dashboard.</h3>
+        <p>
+          Either its service was disabled or un-attached (it is hidden, not deleted, and returns when
+          you restore it), or it has "Hide when empty" on. Enter widget edit mode to see hidden cards,
+          marked with a crossed-out-eye icon.
+        </p>
+
+        <h3>qBittorrent says wrong username or password.</h3>
+        <p>
+          qBittorrent 5.2.0 changed its login API. Update to app v1.6.3 or newer, and backend v1.2.5
+          or newer. Also check the URL is the bare origin with no <code>/api/v2</code> suffix.
+        </p>
+
+        <h3>Radarr or Sonarr behind Authentik or Authelia will not connect.</h3>
+        <p>
+          The proxy is returning its HTML login page instead of JSON. Exclude the API path from the
+          proxy: for Authentik, add <code>^/api</code> and <code>^/ping</code> to Unauthenticated
+          Paths. Custom Headers cannot fix cookie-based SSO.
+        </p>
+
+        <h3>Seerr requests fail with HTTP 403 "invalid csrf token".</h3>
+        <p>Turn off CSRF protection in Seerr, which otherwise limits the API to read-only.</p>
+
+        <h3>Glances shows no disks.</h3>
+        <p>
+          A Dockerized Glances cannot see the host filesystem. Bind-mount the host root read-only
+          (<code>- /:/rootfs:ro</code>). CPU and RAM keep working because they come from
+          <code>/proc</code>, which is why it looks like an app bug.
+        </p>
+
+        <h3>Backend paired but no notifications arrive.</h3>
+        <p>
+          Check, in order: the master switch under Settings, Notifications is on; the backend only
+          notifies about events that complete <em>after</em> it starts, so anything already finished is
+          treated as seen; for Radarr, Sonarr and Seerr the webhook test event should produce a
+          confirmation push; and Bazarr and Tautulli webhooks are logged but do not push yet.
+        </p>
+
+        <h3>Wake-on-LAN does nothing.</h3>
+        <p>
+          Set a subnet-directed broadcast such as <code>192.168.1.255</code> rather than the default
+          <code>255.255.255.255</code>, which many routers drop, and confirm you are on the same LAN as
+          the target. The MAC is only validated when you press Wake, so an invalid MAC surfaces as a
+          send-time error.
+        </p>
+
+        <h3>The Health Alerts widget is empty.</h3>
+        <p>That is correct. It only renders when there is a problem to report.</p>
+
+        <h3>Filing a bug.</h3>
+        <p>
+          Use <strong>Settings, About, "Report an issue"</strong>, which pre-fills your version and
+          platform, and include the Network diagnostics rows if the problem is connectivity related.
+        </p>
+      </section>
+
+      <div class="next">
+        <p>Still stuck, or want a service that is not on the list?</p>
+        <a href="https://github.com/RenzoBeux/Dashboarr/issues" class="btn btn-primary">Open an issue</a>
+        <a href="index.html#faq" class="btn btn-secondary">Read the FAQ</a>
+      </div>
+
+    </main>
+  </div>
+
+  <footer>
+    <div class="footer-links">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+      <a href="https://apps.apple.com/app/dashboarr/id6762170117">App Store</a>
+      <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app">Google Play</a>
+      <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest">APK</a>
+      <a href="https://ko-fi.com/renzobeux">Ko-fi</a>
+      <a href="privacy-policy.html">Privacy Policy</a>
+    </div>
+    <p>Open source under GPL-3.0. Built by <a href="https://github.com/RenzoBeux">Renzo Beux</a>.</p>
+  </footer>
+
+</body>
+</html>

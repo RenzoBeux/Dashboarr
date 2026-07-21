@@ -40,6 +40,8 @@ Thanks to everyone who has contributed to Dashboarr!
 
 Dashboarr is a native mobile app (Android & iOS) that connects directly to your self-hosted *arr stack and media services. No backend server required — the app talks to each service's REST API using your API keys.
 
+> **New here?** The [user guide](https://renzobeux.github.io/Dashboarr/guide.html) walks through a first-time setup, and the [FAQ](https://renzobeux.github.io/Dashboarr/#faq) covers the questions that come up most often.
+
 **Supported services:**
 
 | Service | What you can do |
@@ -154,6 +156,8 @@ The backend polls your services and ingests their webhooks, then fires Expo push
 For setup, configuration, environment variables, webhook URLs, and per-instance push attribution, see the **[backend README](backend/dashboarr-backend/README.md)**.
 
 ## Configuration
+
+Full walkthrough: **[Dashboarr user guide](https://renzobeux.github.io/Dashboarr/guide.html)**.
 
 All service configuration is done in the **Settings** tab within the app:
 

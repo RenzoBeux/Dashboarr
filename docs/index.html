@@ -3,368 +3,544 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboarr — Manage Your Media Stack</title>
-  <meta name="description" content="A mobile app to manage your self-hosted media stack from a single interface. Built with Expo & React Native.">
+  <title>Dashboarr | Manage Your Media Stack</title>
+  <meta name="description" content="A mobile app for iOS and Android to manage your whole self-hosted media stack from one interface. qBittorrent, Radarr, Sonarr, Plex, Jellyfin and more. Free, open source, no accounts.">
+  <link rel="icon" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/style.css">
+  <meta property="og:title" content="Dashboarr | Manage Your Media Stack">
+  <meta property="og:description" content="One mobile app for your whole self-hosted media stack. 19 services, no accounts, no cloud.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://renzobeux.github.io/Dashboarr/">
+  <meta property="og:image" content="https://renzobeux.github.io/Dashboarr/assets/icon.png">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #09090b;
-      color: #e4e4e7;
-      line-height: 1.7;
-    }
-    a { color: #60a5fa; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
     /* Hero */
-    .hero {
-      text-align: center;
-      padding: 5rem 1.5rem 3rem;
-    }
-    .hero-icon {
-      width: 100px;
-      height: 100px;
-      border-radius: 22px;
-      margin-bottom: 1.5rem;
-    }
+    .hero { text-align: center; padding: 4rem 1.5rem 2.5rem; }
+    .hero-icon { width: 96px; height: 96px; border-radius: 22px; margin-bottom: 1.5rem; }
     .hero h1 {
-      font-size: 2.75rem;
+      font-size: 3rem;
       font-weight: 700;
-      color: #fafafa;
-      margin-bottom: 0.75rem;
+      color: var(--fg-strong);
+      margin-bottom: 0.6rem;
+      letter-spacing: -0.035em;
     }
-    .hero p {
+    .hero .tagline {
       font-size: 1.2rem;
-      color: #a1a1aa;
-      max-width: 520px;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 0.8rem;
+    }
+    .hero .sub {
+      font-size: 0.95rem;
+      color: var(--dim);
+      max-width: 560px;
       margin: 0 auto 2rem;
     }
-    .hero-buttons {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
+    .hero-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+    .hero-secondary {
+      display: flex; gap: 1.25rem; justify-content: center; flex-wrap: wrap;
+      margin-top: 1.1rem; font-size: 0.88rem;
     }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1.5rem;
-      border-radius: 10px;
-      font-size: 1rem;
-      font-weight: 500;
-      text-decoration: none;
-      transition: opacity 0.2s;
-    }
-    .btn:hover { text-decoration: none; opacity: 0.85; }
-    .btn-primary {
-      background: linear-gradient(135deg, #3b82f6, #22c55e);
-      color: #fff;
-    }
-    .btn-secondary {
-      background: #27272a;
-      color: #e4e4e7;
-      border: 1px solid #3f3f46;
-    }
-    .btn-kofi {
-      background: #FF5E5B;
-      color: #fff;
-    }
-    .btn svg { width: 20px; height: 20px; fill: currentColor; }
+    .hero-secondary a { color: var(--dim); display: inline-flex; align-items: center; gap: 0.4rem; }
+    .hero-secondary a:hover { color: var(--fg); text-decoration: none; }
+    .hero-secondary svg { width: 15px; height: 15px; fill: currentColor; }
+    @media (max-width: 560px) { .hero h1 { font-size: 2.35rem; } .hero { padding-top: 3rem; } }
 
-    /* Badges */
-    .badges {
-      display: flex;
-      gap: 0.5rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 2rem;
+    /* Stats strip */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      margin: 2.5rem 0 0;
     }
-    .badge {
-      display: inline-block;
-      padding: 0.25rem 0.75rem;
-      font-size: 0.8rem;
-      border-radius: 999px;
-      background: #18181b;
-      color: #a1a1aa;
-      border: 1px solid #27272a;
+    .stat { background: var(--bg); padding: 1.4rem 0.75rem; text-align: center; }
+    .stat b { display: block; font-size: 1.6rem; color: var(--fg-strong); font-weight: 650; letter-spacing: -0.02em; }
+    .stat span { font-size: 0.78rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+    @media (max-width: 600px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat b { font-size: 1.35rem; }
     }
 
-    /* Features */
-    .features {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 3rem 1.5rem;
-    }
-    .features h2 {
-      text-align: center;
-      font-size: 1.75rem;
-      color: #fafafa;
-      margin-bottom: 2rem;
-    }
+    /* Sections */
+    .sec { padding: 4rem 0 1rem; }
+
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.25rem;
-    }
-    .feature-card {
-      background: #18181b;
-      border: 1px solid #27272a;
-      border-radius: 12px;
-      padding: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+      gap: 1rem;
     }
     .feature-card h3 {
-      font-size: 1rem;
-      color: #fafafa;
+      font-size: 0.98rem;
+      color: var(--fg-strong);
       margin-bottom: 0.4rem;
+      display: flex; align-items: center; gap: 0.5rem;
     }
-    .feature-card p {
-      font-size: 0.9rem;
-      color: #a1a1aa;
+    .feature-card p { font-size: 0.89rem; color: var(--muted); line-height: 1.6; }
+    .feature-card .dot {
+      width: 7px; height: 7px; border-radius: 999px;
+      background: var(--grad); flex-shrink: 0;
     }
 
     /* Services */
-    .services {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 2rem 1.5rem 3rem;
-    }
-    .services h2 {
-      text-align: center;
-      font-size: 1.75rem;
-      color: #fafafa;
-      margin-bottom: 2rem;
-    }
     .services-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+      gap: 0.75rem;
     }
     .service-card {
-      background: #18181b;
-      border: 1px solid #27272a;
-      border-radius: 10px;
-      padding: 1rem 1.25rem;
-    }
-    .service-card h3 {
-      font-size: 0.95rem;
-      color: #fafafa;
-      margin-bottom: 0.25rem;
-    }
-    .service-card p {
-      font-size: 0.8rem;
-      color: #71717a;
-    }
-
-    /* Footer */
-    footer {
-      text-align: center;
-      padding: 2rem 1.5rem 3rem;
-      color: #52525b;
-      font-size: 0.85rem;
-    }
-    footer a { color: #71717a; }
-    footer a:hover { color: #a1a1aa; }
-    .footer-links {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 0.9rem 1rem;
       display: flex;
-      gap: 1.5rem;
-      justify-content: center;
-      margin-bottom: 1rem;
+      align-items: flex-start;
+      gap: 0.8rem;
+      transition: border-color 0.2s, background 0.2s;
     }
+    .service-card:hover { border-color: #3a3a40; background: var(--card-hover); }
+    .service-card img {
+      width: 30px; height: 30px;
+      border-radius: 7px;
+      object-fit: contain;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .service-card h3 { font-size: 0.9rem; color: var(--fg-strong); margin-bottom: 0.1rem; font-weight: 600; }
+    .service-card p { font-size: 0.78rem; color: var(--dim); line-height: 1.45; }
 
-    /* Star History */
-    .star-history {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 1rem 1.5rem 3rem;
+    /* FAQ */
+    .faq { max-width: 780px; margin: 0 auto; }
+    details.faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+    details.faq-item:first-of-type { border-top: 1px solid var(--border); }
+    details.faq-item summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 1.1rem 2.25rem 1.1rem 0;
+      font-size: 1rem;
+      font-weight: 550;
+      color: var(--fg-strong);
+      position: relative;
+      transition: color 0.15s;
+    }
+    details.faq-item summary::-webkit-details-marker { display: none; }
+    details.faq-item summary:hover { color: #fff; }
+    details.faq-item summary::after {
+      content: "";
+      position: absolute;
+      right: 0.35rem;
+      top: 50%;
+      width: 8px; height: 8px;
+      border-right: 2px solid var(--dim);
+      border-bottom: 2px solid var(--dim);
+      transform: translateY(-70%) rotate(45deg);
+      transition: transform 0.2s;
+    }
+    details.faq-item[open] summary::after { transform: translateY(-30%) rotate(-135deg); }
+    details.faq-item .answer {
+      padding: 0 0 1.3rem;
+      color: var(--muted);
+      font-size: 0.93rem;
+      max-width: 68ch;
+    }
+    details.faq-item .answer p + p { margin-top: 0.8rem; }
+
+    /* CTA */
+    .cta {
       text-align: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.75rem 1.75rem;
+      margin: 4rem 0 1rem;
     }
-    .star-history h2 {
-      font-size: 1.75rem;
-      color: #fafafa;
-      margin-bottom: 2rem;
-    }
-    .star-history img {
-      max-width: 100%;
-      height: auto;
-      border-radius: 10px;
-      border: 1px solid #27272a;
+    .cta h2 { font-size: 1.5rem; color: var(--fg-strong); margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+    .cta p { color: var(--dim); margin-bottom: 1.75rem; font-size: 0.95rem; }
+
+    /* Star history */
+    .star-history { text-align: center; padding-top: 4rem; }
+    .star-history img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); }
+
+    .badges { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.78rem;
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--dim);
+      border: 1px solid var(--border);
     }
   </style>
 </head>
 <body>
 
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="index.html">
+        <img src="assets/icon.png" alt=""> Dashboarr
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-sm-hide">Features</a>
+        <a href="#services" class="nav-sm-hide">Services</a>
+        <a href="guide.html">Guide</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
   <section class="hero">
-    <img
-      src="https://raw.githubusercontent.com/RenzoBeux/Dashboarr/main/assets/icon.png"
-      alt="Dashboarr"
-      class="hero-icon"
-    />
+    <img src="assets/icon.png" alt="Dashboarr" class="hero-icon" />
     <h1>Dashboarr</h1>
-    <p>A mobile app to manage your self-hosted media stack from a single interface.</p>
+    <p class="tagline">One mobile app for your whole self-hosted media stack.</p>
+    <p class="sub">
+      Your phone talks straight to your own servers over each service's official API.
+      No accounts, no cloud, no tracking. Free and open source.
+    </p>
     <div class="hero-buttons">
+      <a href="https://apps.apple.com/app/dashboarr/id6762170117" class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><path d="M17.05 12.53c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.61-1.7-3.18-1.72-1.35-.14-2.64.79-3.33.79-.69 0-1.75-.77-2.87-.75-1.48.02-2.84.86-3.6 2.18-1.53 2.66-.39 6.6 1.11 8.76.73 1.06 1.6 2.25 2.74 2.2 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.7.71 2.87.69 1.18-.02 1.93-1.08 2.65-2.14.83-1.22 1.18-2.41 1.2-2.47-.03-.01-2.3-.88-2.32-3.52zM14.88 5.9c.6-.74 1.01-1.75.9-2.77-.87.04-1.94.59-2.57 1.32-.56.64-1.06 1.68-.93 2.67.97.08 1.97-.49 2.6-1.22z"/></svg>
+        App Store
+      </a>
       <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app" class="btn btn-primary">
         <svg viewBox="0 0 24 24"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 2.302-2.302 2.302-2.593-2.302 2.593-2.302zM5.864 2.658L16.8 8.99l-2.302 2.302-8.635-8.635z"/></svg>
         Google Play
       </a>
-      <a href="https://github.com/RenzoBeux/Dashboarr" class="btn btn-secondary">
+      <a href="guide.html" class="btn btn-secondary">
+        <svg viewBox="0 0 24 24"><path d="M6 2h11a2 2 0 0 1 2 2v13H6.5a1.5 1.5 0 0 0 0 3H19v2H6.5A3.5 3.5 0 0 1 3 18.5v-13A3.5 3.5 0 0 1 6.5 2H6zm2.5 4a1 1 0 0 0 0 2h7a1 1 0 0 0 0-2h-7zm0 4a1 1 0 0 0 0 2h5a1 1 0 0 0 0-2h-5z"/></svg>
+        Read the guide
+      </a>
+    </div>
+    <div class="hero-secondary">
+      <a href="https://github.com/RenzoBeux/Dashboarr">
         <svg viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-        GitHub
+        Source on GitHub
       </a>
-      <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest" class="btn btn-secondary">
+      <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest">
         <svg viewBox="0 0 24 24"><path d="M12 16l-5.5-5.5 1.4-1.4L11 12.2V2h2v10.2l3.1-3.1 1.4 1.4L12 16zm-7 4v-2h14v2H5z"/></svg>
-        APK
+        Download APK (sideload)
       </a>
-      <a href="https://ko-fi.com/renzobeux" class="btn btn-kofi" target="_blank" rel="noopener">
+      <a href="https://ko-fi.com/renzobeux" target="_blank" rel="noopener">
         <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
         Support on Ko-fi
       </a>
     </div>
-    <div class="badges">
-      <span class="badge">Expo SDK 54</span>
-      <span class="badge">React Native</span>
-      <span class="badge">TypeScript</span>
-      <span class="badge">Open Source</span>
-    </div>
   </section>
 
-  <section class="features">
-    <h2>Features</h2>
-    <div class="features-grid">
-      <div class="feature-card">
-        <h3>Unified Dashboard</h3>
-        <p>All your services at a glance with customizable, reorderable cards.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Auto Network Switching</h3>
-        <p>Detects your home WiFi and switches between local and remote URLs automatically.</p>
-      </div>
-      <div class="feature-card">
-        <h3>No Backend Required</h3>
-        <p>Connects directly to your services. Your data stays between your phone and your servers.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Push Notifications</h3>
-        <p>Optional self-hosted backend for real-time notifications when downloads finish or media arrives. Fan out to Discord, Telegram, ntfy, email and more via Apprise.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Secure Storage</h3>
-        <p>API keys stored in your device's secure enclave. No cloud, no accounts, no tracking.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Config Backup</h3>
-        <p>Export and import your entire configuration with biometric authentication.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Multiple Instances</h3>
-        <p>Configure two qBittorrents, split 4K and 1080p Radarrs, or any combination — switch in-tab and aggregate on the dashboard.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Magnet Link Handler</h3>
-        <p>Tap a magnet link anywhere and send it straight to qBittorrent, rTorrent, or Transmission.</p>
-      </div>
-    </div>
-  </section>
+  <div class="stats">
+    <div class="stat"><b>19</b><span>Services</span></div>
+    <div class="stat"><b>25</b><span>Widgets</span></div>
+    <div class="stat"><b>0</b><span>Accounts</span></div>
+    <div class="stat"><b>GPL-3.0</b><span>Open source</span></div>
+  </div>
 
-  <section class="services">
-    <h2>Supported Services</h2>
-    <div class="services-grid">
-      <div class="service-card">
-        <h3>qBittorrent</h3>
-        <p>Queue, pause, resume, delete, speed stats</p>
-      </div>
-      <div class="service-card">
-        <h3>rTorrent / ruTorrent</h3>
-        <p>Queue, pause, resume, delete, add, speed limits</p>
-      </div>
-      <div class="service-card">
-        <h3>Transmission</h3>
-        <p>Queue, pause, resume, delete, add, files, speed limits, turtle mode</p>
-      </div>
-      <div class="service-card">
-        <h3>SABnzbd</h3>
-        <p>Usenet queue, history, pause, resume, add NZB</p>
-      </div>
-      <div class="service-card">
-        <h3>NZBGet</h3>
-        <p>Usenet queue, history, pause, resume, add NZB</p>
-      </div>
-      <div class="service-card">
-        <h3>Radarr</h3>
-        <p>Search, add movies, monitor, queue</p>
-      </div>
-      <div class="service-card">
-        <h3>Sonarr</h3>
-        <p>Search, add shows, episode monitoring</p>
-      </div>
-      <div class="service-card">
-        <h3>Lidarr</h3>
-        <p>Search, add artists, album monitoring</p>
-      </div>
-      <div class="service-card">
-        <h3>Seerr</h3>
-        <p>Browse, request, approve media</p>
-      </div>
-      <div class="service-card">
-        <h3>Tautulli</h3>
-        <p>Active streams, bandwidth, history</p>
-      </div>
-      <div class="service-card">
-        <h3>Tracearr</h3>
-        <p>Plex, Jellyfin & Emby streams and history</p>
-      </div>
-      <div class="service-card">
-        <h3>JellyStat</h3>
-        <p>Jellyfin watch history, stats & charts</p>
-      </div>
-      <div class="service-card">
-        <h3>Prowlarr</h3>
-        <p>Indexer management, search, stats</p>
-      </div>
-      <div class="service-card">
-        <h3>Plex</h3>
-        <p>Now playing, recently added, on deck</p>
-      </div>
-      <div class="service-card">
-        <h3>Jellyfin</h3>
-        <p>Now playing, recently added, continue watching</p>
-      </div>
-      <div class="service-card">
-        <h3>Emby</h3>
-        <p>Now playing, recently added, continue watching</p>
-      </div>
-      <div class="service-card">
-        <h3>Bazarr</h3>
-        <p>Wanted subtitles, history, on-demand search</p>
-      </div>
-      <div class="service-card">
-        <h3>Glances</h3>
-        <p>Server CPU, RAM, disk, network stats</p>
-      </div>
-      <div class="service-card">
-        <h3>unRAID</h3>
-        <p>Container start/stop, array &amp; disk health</p>
-      </div>
-    </div>
-  </section>
+  <div class="wrap">
 
-  <section class="star-history">
-    <h2>Star History</h2>
-    <a href="https://www.star-history.com/?type=date&repos=RenzoBeux%2FDashboarr">
-      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&theme=dark&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
-    </a>
-  </section>
+    <section class="sec" id="features">
+      <h2 class="section-title">Features</h2>
+      <p class="section-sub">Built for people who actually run this stack, not for a screenshot.</p>
+      <div class="features-grid">
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Multiple dashboards</h3>
+          <p>Create as many workspaces as you like. Each gets its own widgets, icon, accent colour, bottom-bar tabs and its own subset of servers, so a "Home" and a "Cabin" dashboard can show completely different stacks.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>25 widgets</h3>
+          <p>Queues, calendars, disk space, stream activity, server stats, health alerts and more. Place the same widget twice with different settings to watch two servers side by side.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Multiple instances</h3>
+          <p>Two qBittorrents, a 4K and a 1080p Radarr, a separate anime Sonarr. Switch in-tab and aggregate on the dashboard.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Smart local and remote URLs</h3>
+          <p>Give each service a LAN address and an internet address. On your home WiFi the app uses the fast local one, and away it switches to remote, never leaking a LAN URL onto a stranger's network.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>No backend required</h3>
+          <p>Connects straight to your services. Your data stays between your phone and your servers.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Push notifications</h3>
+          <p>Optional self-hosted backend for lock-screen pushes when a download finishes, media is imported or a service goes offline. Fan out to Discord, Telegram, ntfy or email via Apprise.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Secure storage</h3>
+          <p>API keys live in the device Keychain or Keystore. No cloud, no accounts, no analytics, no ads.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Reverse proxy friendly</h3>
+          <p>Sub-paths, self-signed certificates and custom auth headers are all supported, globally or per service instance.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Global search</h3>
+          <p>One search box across Radarr, Sonarr, Lidarr, Seerr and Prowlarr, with each section loading independently.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Unified calendar and activity</h3>
+          <p>Sonarr air dates and Radarr releases in one month grid. Live streams and history merged across Tautulli, Tracearr, Jellystat, Jellyfin and Emby.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Magnet link handler</h3>
+          <p>Tap a magnet link anywhere and send it straight to qBittorrent, rTorrent or Transmission.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Encrypted config backup</h3>
+          <p>Export every service, credential, dashboard and widget into one passphrase-encrypted file, gated behind your device biometrics. Import it on a new phone.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Wake-on-LAN</h3>
+          <p>Wake a sleeping server straight from the Services tab.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Accessible by design</h3>
+          <p>Five dark themes and three UI scales that resize the entire interface, including icons and poster grids.</p>
+        </div>
+        <div class="card feature-card">
+          <h3><span class="dot"></span>Demo mode</h3>
+          <p>Explore the whole app with realistic sample data before you connect a single server.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="services">
+      <h2 class="section-title">Supported services</h2>
+      <p class="section-sub">Nineteen integrations, each talking to its own official API. Enable only what you run.</p>
+      <div class="services-grid">
+        <div class="service-card">
+          <img src="assets/services/qbittorrent.svg" alt="">
+          <div><h3>qBittorrent</h3><p>Queue, pause, resume, delete, categories, speed limits</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/rtorrent.png" alt="">
+          <div><h3>rTorrent / ruTorrent</h3><p>Queue, pause, resume, delete, add, speed limits</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/transmission.svg" alt="">
+          <div><h3>Transmission</h3><p>Queue, files, speed limits, turtle mode</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/sabnzbd.svg" alt="">
+          <div><h3>SABnzbd</h3><p>Usenet queue, history, add NZB by URL or file</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/nzbget.svg" alt="">
+          <div><h3>NZBGet</h3><p>Usenet queue, history, add NZB by URL or file</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/radarr.png" alt="">
+          <div><h3>Radarr</h3><p>Library, search and add movies, queue, wanted</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/sonarr.png" alt="">
+          <div><h3>Sonarr</h3><p>Library, add shows, episode monitoring, calendar</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/lidarr.png" alt="">
+          <div><h3>Lidarr</h3><p>Library, add artists, album monitoring, queue</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/prowlarr.png" alt="">
+          <div><h3>Prowlarr</h3><p>Indexer status, search across indexers, grab, stats</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/overseerr.svg" alt="">
+          <div><h3>Seerr</h3><p>Discover, request, approve. Overseerr and Jellyseerr</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/plex.svg" alt="">
+          <div><h3>Plex</h3><p>Now playing, recent, on deck, libraries</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/jellyfin.svg" alt="">
+          <div><h3>Jellyfin</h3><p>Now playing, recent, continue watching, libraries</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/emby.svg" alt="">
+          <div><h3>Emby</h3><p>Now playing, recent, continue watching, libraries</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/tautulli.png" alt="">
+          <div><h3>Tautulli</h3><p>Active Plex streams, bandwidth, history, stats</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/tracearr.png" alt="">
+          <div><h3>Tracearr</h3><p>Plex, Jellyfin and Emby streams and history</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/jellystat.png" alt="">
+          <div><h3>Jellystat</h3><p>Jellyfin watch history, stats and charts</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/bazarr.png" alt="">
+          <div><h3>Bazarr</h3><p>Wanted subtitles, history, on-demand search</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/glances.png" alt="">
+          <div><h3>Glances</h3><p>CPU, memory, GPU, disks, network, containers</p></div>
+        </div>
+        <div class="service-card">
+          <img src="assets/services/unraid.svg" alt="">
+          <div><h3>unRAID</h3><p>Container start/stop, array and disk health</p></div>
+        </div>
+      </div>
+      <p style="text-align:center;color:var(--dim);font-size:0.88rem;margin-top:1.75rem;">
+        Missing one? Most of these exist because someone
+        <a href="https://github.com/RenzoBeux/Dashboarr/issues">opened an issue</a> asking for it.
+      </p>
+    </section>
+
+    <section class="sec" id="faq">
+      <h2 class="section-title">Frequently asked questions</h2>
+      <p class="section-sub">The questions that come up most often on the issue tracker.</p>
+      <div class="faq">
+
+        <details class="faq-item">
+          <summary>Do I need a server or backend to use Dashboarr?</summary>
+          <div class="answer">
+            <p>No. Dashboarr talks directly from your phone to your own services and works fully on its own. The optional self-hosted backend exists for one thing: real push notifications on your lock screen while the app is closed. Without it notifications still fire, but only while the app is open.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Do I have to expose anything to the internet?</summary>
+          <div class="answer">
+            <p>No. If you only use the app at home, local URLs are enough. For remote access, give each service a remote URL through your reverse proxy, VPN or tunnel.</p>
+            <p>Even the optional notification backend does not need to be exposed. It needs outbound internet access and to be reachable by your phone on your LAN. Pushes still arrive over cellular because they go out through the standard Apple and Google push infrastructure.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Why do my services show as offline when I am sitting at home?</summary>
+          <div class="answer">
+            <p>This is deliberate. With network auto-switch on, Dashboarr uses a service's local LAN URL only once it has confirmed you are on one of your saved home WiFi networks. Anywhere else it uses your remote URL and never falls back, because a <code>192.168.x.x</code> address on an unknown network could belong to a stranger and would leak your API key.</p>
+            <p>If it cannot read your WiFi name it plays it safe and stays remote. Grant Location permission (required on both iOS and Android just to read the network name), enable Precise Location on iOS, and add your network under Settings, Network, Home Networks. There is a diagnostics panel on that screen that tells you exactly what the app currently sees.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Why does the app ask for Location permission?</summary>
+          <div class="answer">
+            <p>Only to read your WiFi network name, so it can tell "I am home, use the LAN address" apart from "I am out, use the remote address". Both iOS and Android gate the network name behind Location. Nothing about your location leaves the device, and there is no location tracking or logging of any kind.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Does it work over Tailscale, WireGuard or a VPN?</summary>
+          <div class="answer">
+            <p>Yes, two ways. The simplest is to address your services by their Tailscale or MagicDNS name, turn on "Always use Remote URL" and leave the local URL empty. One address that works on WiFi and on cellular, with no home-network setup at all.</p>
+            <p>Alternatively turn on Settings, Network, "Treat VPN as home" so local URLs are used whenever a VPN is connected. The app can only detect that <em>some</em> VPN is up, not which one, so only enable that if your VPN actually reaches your home network.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Does it support reverse proxies, sub-paths and self-signed certificates?</summary>
+          <div class="answer">
+            <p>Yes to all three. Enter your proxied URL including any sub-path, such as <code>https://media.example.com/radarr</code>, and the app appends the API path itself. Each service instance has an "Allow invalid certificates" toggle for self-signed setups, plus a Custom Headers section for proxies that need their own headers, and a global header list under Settings, Network.</p>
+            <p>One caveat: forward-auth SSO such as Authentik or Authelia is cookie based, so headers cannot help. Exclude the API path from the proxy instead (<code>^/api</code> for the *arr apps, since the connection test goes through <code>/api/v3/system/status</code>). That is safe, because those APIs are already protected by their own API key.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Can I run more than one of a service, or more than one dashboard?</summary>
+          <div class="answer">
+            <p>Yes to both. Every service supports multiple instances, so two Sonarrs, a separate anime stack or a second household all work. You can also create as many dashboards as you like, each with its own widgets, icon, accent colour, bottom-bar tabs and its own subset of service instances.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Where are my API keys stored, and does anything phone home?</summary>
+          <div class="answer">
+            <p>API keys live in your device's secure store (iOS Keychain, Android Keystore) and the rest of your configuration in local app storage. There are no accounts, no analytics, no ads and no tracking, and there is no analytics or crash-reporting SDK in the app at all. Requests to your media services go straight from your phone to your own servers, and config backups are always encrypted with a passphrase you choose.</p>
+            <p>A few things do reach the internet by design, and the <a href="privacy-policy.html">privacy policy</a> lists them all: posters load from TMDB's image CDN, Plex sign-in talks to plex.tv, and the app checks the store (or GitHub) and Expo's update service for new versions. None of that carries your credentials.</p>
+            <p>Push notifications, if you opt into the self-hosted backend, are delivered via Expo and then Apple or Google, so the notification title and body pass through them, exactly as for any app that can wake a locked phone. The backend itself stays on your hardware, though pairing does upload your service URLs and keys to it so it can do the watching.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>How do notifications work, and why do I get two for one download?</summary>
+          <div class="answer">
+            <p>Without the backend, the app watches your services and raises notifications while it is open. With the backend, the watching happens server-side and pushes arrive with the app closed.</p>
+            <p>Two notifications for one download is expected rather than a bug: your download client reports "Download complete" when the file finishes, and Radarr or Sonarr reports "Movie downloaded" or "Episode downloaded" a minute later when it imports into the library. Turn either one off under Settings, Notifications, globally or per instance.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>I paired the backend but nothing arrives.</summary>
+          <div class="answer">
+            <p>Check in this order. The master switch under Settings, Notifications must be on. The backend only notifies about events that complete <em>after</em> it starts, so a download that already finished is treated as seen, which is why testing with an old download looks broken. For Radarr, Sonarr and Seerr, send the webhook test event from the service itself: it should produce a confirmation push. Bazarr and Tautulli webhooks are ingested and logged today but do not raise a push yet.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Test Connection passes but the screen is empty or errors.</summary>
+          <div class="answer">
+            <p>Almost always the wrong port. The connection test succeeds against whatever is listening, then the API path fails. Check the service's real port, and make sure the URL is the bare origin with no <code>/api/...</code> suffix, since the app adds that itself.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Can I move my setup to a new phone?</summary>
+          <div class="answer">
+            <p>Yes. Settings, Backup &amp; Storage, Export settings writes one encrypted file containing every service, credential, dashboard and widget. Import it on the new phone.</p>
+            <p>Two things cannot travel in a file: OS permissions, so grant Location and Notifications again, and your device's push token. The backup does restore the backend URL and pairing secret, so the new phone will look paired, but the backend is still pointed at the old device, so re-pair from Settings, Backend to make notifications land on the new phone. Saved home networks also drop any pinned access-point MAC on import, since those never match across phones.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Is it free? Where is the source?</summary>
+          <div class="answer">
+            <p>Dashboarr is free and open source under GPL-3.0, with no accounts, subscriptions, ads or in-app purchases. The source lives at <a href="https://github.com/RenzoBeux/Dashboarr">github.com/RenzoBeux/Dashboarr</a>. It is on the App Store, on Google Play, and available as a signed APK attached to each GitHub release for sideloading on de-Googled Android.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <section class="cta">
+      <h2>Ready to set it up?</h2>
+      <p>The guide walks through a first-time setup in the order you will actually do it.</p>
+      <div class="hero-buttons">
+        <a href="guide.html" class="btn btn-primary">Open the guide</a>
+        <a href="https://github.com/RenzoBeux/Dashboarr/issues" class="btn btn-secondary">Ask a question</a>
+      </div>
+      <div class="badges">
+        <span class="badge">Expo SDK 54</span>
+        <span class="badge">React Native</span>
+        <span class="badge">TypeScript</span>
+        <span class="badge">GPL-3.0</span>
+      </div>
+    </section>
+
+    <section class="star-history">
+      <h2 class="section-title">Star history</h2>
+      <a href="https://www.star-history.com/?type=date&repos=RenzoBeux%2FDashboarr">
+        <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&theme=dark&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
+      </a>
+    </section>
+
+  </div>
 
   <footer>
     <div class="footer-links">
+      <a href="guide.html">Guide</a>
       <a href="https://github.com/RenzoBeux/Dashboarr">GitHub</a>
+      <a href="https://apps.apple.com/app/dashboarr/id6762170117">App Store</a>
       <a href="https://play.google.com/store/apps/details?id=com.dashboarr.app">Google Play</a>
-      <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest">APK Download</a>
-      <a href="https://ko-fi.com/renzobeux">Support on Ko-fi</a>
+      <a href="https://github.com/RenzoBeux/Dashboarr/releases/latest">APK</a>
+      <a href="https://ko-fi.com/renzobeux">Ko-fi</a>
       <a href="privacy-policy.html">Privacy Policy</a>
     </div>
     <p>Open source under GPL-3.0. Built by <a href="https://github.com/RenzoBeux">Renzo Beux</a>.</p>
-    <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #52525b;">Movie &amp; TV metadata from <a href="https://www.themoviedb.org">TMDB</a> and <a href="https://thetvdb.com">TheTVDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    <p class="footer-fine">
+      Movie and TV metadata from <a href="https://www.themoviedb.org">TMDB</a> and <a href="https://thetvdb.com">TheTVDB</a>.
+      This product uses the TMDB API but is not endorsed or certified by TMDB.
+      Service names and logos are trademarks of their respective projects and are used here for identification only.
+    </p>
   </footer>
 
 </body>
