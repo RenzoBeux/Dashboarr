@@ -516,10 +516,21 @@
       </div>
     </section>
 
-    <section class="star-history">
+    <!-- api.star-history.com is a third party and goes down for minutes at a time (it answers
+         500 "timeout of 10000ms exceeded" for every repo when it does). The README survives that
+         because GitHub's camo proxy serves a cached render; this page has no such cache and would
+         show a broken image, so the whole section removes itself if the chart fails to load.
+         Deliberately NOT loading="lazy": the fetch must start on page load so a failure resolves
+         while the reader is still up top, instead of the section vanishing under them mid-scroll.
+         The lowercase repo slug is also deliberate: the mixed-case form costs an extra 301. -->
+    <section class="star-history" id="star-history">
       <h2 class="section-title">Star history</h2>
       <a href="https://www.star-history.com/?type=date&repos=RenzoBeux%2FDashboarr">
-        <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&theme=dark&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
+        <img
+          alt="Star history chart for Dashboarr"
+          src="https://api.star-history.com/chart?repos=renzobeux/dashboarr&type=date&theme=dark&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs"
+          onerror="document.getElementById('star-history').remove()"
+        />
       </a>
     </section>
 
