@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useServiceTileLayout } from "@/hooks/use-service-tile-cell";
 import { useManualRefresh } from "@/store/manual-refresh-store";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
@@ -98,6 +99,9 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const attachedInstances = useAttachedInstances();
   const activeDashboard = useActiveDashboard();
+  // Fixed-width cells so a long instance name truncates instead of stretching
+  // its tile and knocking every following tile out of its column.
+  const { width: tileWidth, gap: tileGap } = useServiceTileLayout();
   const router = useRouter();
 
   // A workspace that explicitly selected no live home networks (homeNetworkIds:
@@ -193,7 +197,9 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           {determining ? <CheckingIndicator /> : null}
         </View>
       </CardHeader>
-      <View className="flex-row flex-wrap gap-4">
+      {/* Gap comes from the same hook as the cell width so the two can't
+          drift — a className gap here would silently break the column math. */}
+      <View className="flex-row flex-wrap" style={{ gap: tileGap }}>
         {entries.map((entry) => {
           const route = SERVICE_ROUTES[entry.kindId];
 
@@ -201,6 +207,10 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
             <Animated.View
               key={`${entry.kindId}:${entry.instanceId}`}
               layout={REORDER_LAYOUT}
+              // The Animated.View is the wrap container's flex child, so the
+              // cell width belongs here — on the Pressable it wouldn't
+              // constrain the row.
+              style={{ width: tileWidth }}
             >
             <Pressable
               onPress={() => {
@@ -219,7 +229,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                 setActiveInstance(entry.kindId, entry.instanceId);
                 router.push(route as any);
               }}
-              className="items-center gap-1.5 active:opacity-70"
+              className="w-full items-center gap-1.5 active:opacity-70"
               hitSlop={6}
             >
               <View className="relative">
@@ -259,7 +269,20 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                   shadow
                 />
               </View>
-              <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+              {/* w-full bounds the label to the cell (items-center would
+                  otherwise shrink-wrap it) so it truncates with a tail
+                  ellipsis instead of widening the tile.
+                  Two lines, not one: at default UI scale a cell is ~72px, and
+                  a single line cuts "qBittorrent Home" and "qBittorrent Cabin"
+                  to the same "qBittorrent …" — which defeats the reason the
+                  tile shows the instance name at all (see the label comment
+                  above). Wrapping keeps the discriminating suffix. Rows in a
+                  wrap grid size to their tallest item, so the logos stay
+                  aligned either way. */}
+              <Text
+                className="text-zinc-500 text-xs text-center w-full"
+                numberOfLines={2}
+              >
                 {entry.label}
               </Text>
             </Pressable>
