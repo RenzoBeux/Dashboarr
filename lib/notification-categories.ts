@@ -26,6 +26,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   lidarr:      ["serviceOffline"],
   overseerr:   ["overseerrNewRequest", "serviceOffline"],
   prowlarr:    ["serviceOffline"],
+  jackett:     ["serviceOffline"],
   tautulli:    ["serviceOffline"],
   // Tracearr webhook events. These have no global toggle rows in Settings →
   // Notifications; they're controlled per-instance here (each Tracearr instance

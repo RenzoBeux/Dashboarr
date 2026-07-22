@@ -46,6 +46,7 @@ import { JellyfinNowPlayingCard } from "@/components/dashboard/jellyfin-now-play
 import { EmbyNowPlayingCard } from "@/components/dashboard/emby-now-playing-card";
 import { CombinedNowPlayingCard } from "@/components/dashboard/combined-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
+import { JackettCard } from "@/components/dashboard/jackett-card";
 import { ArrHealthCard } from "@/components/dashboard/arr-health-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
@@ -151,6 +152,11 @@ import {
   PROWLARR_STATS_DEFAULT_SETTINGS,
   type ProwlarrStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/prowlarr-stats-settings";
+import {
+  JackettIndexersSettings,
+  JACKETT_INDEXERS_DEFAULT_SETTINGS,
+  type JackettIndexersSettingsValue,
+} from "@/components/dashboard/widget-settings/jackett-indexers-settings";
 import {
   BazarrWantedSettings,
   BAZARR_WANTED_DEFAULT_SETTINGS,
@@ -437,6 +443,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: ProwlarrStatsSettings,
     defaultSettings: PROWLARR_STATS_DEFAULT_SETTINGS,
   },
+  "jackett-indexers": {
+    id: "jackett-indexers",
+    label: "Jackett Indexers",
+    description: "Configured indexers on your Jackett server",
+    icon: Radar,
+    service: "jackett",
+    component: JackettCard,
+    settingsComponent: JackettIndexersSettings,
+    defaultSettings: JACKETT_INDEXERS_DEFAULT_SETTINGS,
+  },
   "bazarr-wanted": {
     id: "bazarr-wanted",
     label: "Bazarr Wanted",
@@ -512,6 +528,7 @@ export type {
   LidarrQueueSettingsValue,
   RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
+  JackettIndexersSettingsValue,
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
 };

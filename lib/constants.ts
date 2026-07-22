@@ -12,6 +12,7 @@ export const SERVICE_IDS = [
   "tracearr",
   "jellystat",
   "prowlarr",
+  "jackett",
   "plex",
   "jellyfin",
   "emby",
@@ -92,6 +93,18 @@ export const SERVICE_DEFAULTS: Record<
     pingPath: "/stats/getLibraryOverview",
   },
   prowlarr: { name: "Prowlarr", defaultPort: 9696, apiBasePath: "/api/v1", pingPath: "/system/status" },
+  // Jackett authenticates with an `apikey` QUERY PARAM (not a header); its
+  // admin REST endpoints (/indexers, /server/config) require the admin-password
+  // cookie, so the only apikey-validated GETs are the results/Torznab routes.
+  // pingPath is the Torznab meta endpoint — with t=indexers&configured=true
+  // (injected as params in pingService) it lists configured indexers without
+  // hitting any tracker, making it the cheapest authenticated probe.
+  jackett: {
+    name: "Jackett",
+    defaultPort: 9117,
+    apiBasePath: "/api/v2.0",
+    pingPath: "/indexers/all/results/torznab/api",
+  },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
   jellyfin: { name: "Jellyfin", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
   // Emby shares Jellyfin's API surface (same default port, root API path, and
@@ -138,6 +151,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "jellyfin-now-playing",
   "emby-now-playing",
   "prowlarr-stats",
+  "jackett-indexers",
   "bazarr-wanted",
   "wol-devices",
   "disk-space",

@@ -13,9 +13,8 @@ import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission"
 import { EmptyState } from "@/components/ui/empty-state";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { toastError } from "@/components/ui/toast";
-import { useActiveInstance } from "@/hooks/use-active-instance";
+import { useTorrentTargets, type TorrentTarget } from "@/hooks/use-torrent-targets";
 import { magnetDisplayName } from "@/lib/utils";
-import type { ServiceInstance } from "@/store/config-store";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 type DownloadClient =
@@ -24,14 +23,6 @@ type DownloadClient =
   | "transmission"
   | "sabnzbd"
   | "nzbget";
-
-// One candidate destination for an incoming magnet link: a torrent client
-// kind + a specific configured instance of it.
-interface MagnetTarget {
-  client: DownloadClient;
-  instanceId: string;
-  label: string;
-}
 
 // Top-level switcher for the Downloads tab. When more than one download client
 // is enabled the user picks via a segmented control; otherwise the available
@@ -103,33 +94,12 @@ export default function DownloadsScreen() {
   const [pendingMagnet, setPendingMagnet] = useState<string>();
   // Magnet waiting on the destination ActionSheet (only set with 2+ targets).
   const [magnetPick, setMagnetPick] = useState<string>();
-  const qbInstances = useActiveInstance("qbittorrent").instances;
-  const rtInstances = useActiveInstance("rtorrent").instances;
-  const trInstances = useActiveInstance("transmission").instances;
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
 
-  const torrentInstances: [DownloadClient, ServiceInstance[]][] = [
-    ["qbittorrent", qbInstances],
-    ["rtorrent", rtInstances],
-    ["transmission", trInstances],
-  ];
-  const magnetTargets: MagnetTarget[] = torrentInstances.flatMap(
-    ([kind, instances]) =>
-      enabledClients.includes(kind)
-        ? instances.map((i) => ({
-            client: kind,
-            instanceId: i.id,
-            // Only disambiguate with the instance name when the kind has
-            // several instances — "qBittorrent · Seedbox" vs just "qBittorrent".
-            label:
-              instances.length > 1
-                ? `${SEGMENT_LABELS[kind]} · ${i.name || i.id}`
-                : SEGMENT_LABELS[kind],
-          }))
-        : [],
-  );
+  // Shared with the Jackett grab flow — see hooks/use-torrent-targets.ts.
+  const magnetTargets = useTorrentTargets();
 
-  const applyMagnetTarget = (target: MagnetTarget, magnet: string) => {
+  const applyMagnetTarget = (target: TorrentTarget, magnet: string) => {
     setClient(target.client);
     // Switch the tab to the picked instance so the torrent list and add card
     // show the actual destination (useAddTorrent follows the active instance).

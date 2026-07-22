@@ -51,6 +51,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   tracearr: "activity",
   jellystat: "activity",
   prowlarr: "indexers",
+  jackett: "indexers",
   plex: "plex",
   jellyfin: "jellyfin",
   emby: "emby",
@@ -77,7 +78,8 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   // dedicated tabs, but the Activity tab is also pickable when they're attached.
   // JellyStat is an Activity-only stream monitor (history + stats for Jellyfin).
   activity: ["tautulli", "tracearr", "jellystat", "jellyfin", "emby"],
-  indexers: ["prowlarr"],
+  // The Indexers tab hosts both indexer proxies behind a source switcher.
+  indexers: ["prowlarr", "jackett"],
   plex: ["plex"],
   jellyfin: ["jellyfin"],
   emby: ["emby"],

@@ -60,8 +60,9 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     // cookie-based — qbittorrent.ts handles it
     return;
   }
-  if (id === "sabnzbd") {
-    // apikey is injected as a query param in serviceFetch — no header needed
+  if (id === "sabnzbd" || id === "jackett") {
+    // apikey is injected as a query param in serviceFetch/pingService — no
+    // header needed
     return;
   }
   if (id === "glances") {
@@ -125,11 +126,13 @@ export async function serviceFetch<T>(
   if (!baseUrl) throw new Error(`No URL configured for ${config.id}`);
   const apiBase = SERVICE_API_BASE[config.id];
 
-  // SABnzbd auth lives in the query string, not headers.
+  // SABnzbd and Jackett auth live in the query string, not headers.
   const finalParams =
     config.id === "sabnzbd"
       ? { ...(options.params ?? {}), apikey: config.apiKey ?? "", output: "json" }
-      : options.params;
+      : config.id === "jackett"
+        ? { ...(options.params ?? {}), apikey: config.apiKey ?? "" }
+        : options.params;
 
   const url = buildUrl(baseUrl, apiBase, path, finalParams);
 
@@ -171,10 +174,14 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
 
   const apiBase = SERVICE_API_BASE[config.id];
   // SAB exposes its version through ?mode=version on the same /api endpoint.
-  const pingParams =
+  // Jackett's Torznab t=indexers listing is its cheapest apikey-validated GET
+  // (apikey in the query string, mirroring the app's pingService).
+  const pingParams: Record<string, string> | undefined =
     config.id === "sabnzbd"
       ? { mode: "version", apikey: config.apiKey ?? "", output: "json" }
-      : undefined;
+      : config.id === "jackett"
+        ? { t: "indexers", configured: "true", apikey: config.apiKey ?? "" }
+        : undefined;
   const url = buildUrl(baseUrl, apiBase, SERVICE_PING_PATH[config.id], pingParams);
   const headers = new Headers();
   applyAuth(headers, config);

@@ -12,7 +12,9 @@ import { RadarrSearchSection } from "@/components/search/radarr-search-section";
 import { SonarrSearchSection } from "@/components/search/sonarr-search-section";
 import { LidarrSearchSection } from "@/components/search/lidarr-search-section";
 import { OverseerrSearchSection } from "@/components/search/overseerr-search-section";
-import { ProwlarrSearchSection } from "@/components/search/prowlarr-search-section";
+import { ReleaseSearchSection } from "@/components/search/release-search-section";
+import { prowlarrIndexerAdapter } from "@/lib/indexer-adapters/prowlarr";
+import { jackettIndexerAdapter } from "@/lib/indexer-adapters/jackett";
 
 const MIN_QUERY = 2;
 
@@ -32,6 +34,7 @@ export default function GlobalSearchScreen() {
   const hasLidarr = attachedKinds.has("lidarr");
   const hasOverseerr = attachedKinds.has("overseerr");
   const hasProwlarr = attachedKinds.has("prowlarr");
+  const hasJackett = attachedKinds.has("jackett");
   const anySearchable = hasSearchableKind(attachedKinds);
 
   const active = debounced.length >= MIN_QUERY;
@@ -52,7 +55,7 @@ export default function GlobalSearchScreen() {
         <EmptyState
           icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="No searchable services"
-          message="Attach Radarr, Sonarr, Lidarr, Seerr, or Prowlarr to this dashboard to search them here."
+          message="Attach Radarr, Sonarr, Lidarr, Seerr, Prowlarr, or Jackett to this dashboard to search them here."
         />
       ) : !active ? (
         <EmptyState
@@ -66,7 +69,12 @@ export default function GlobalSearchScreen() {
           {hasSonarr && <SonarrSearchSection query={debounced} />}
           {hasLidarr && <LidarrSearchSection query={debounced} />}
           {hasOverseerr && <OverseerrSearchSection query={debounced} />}
-          {hasProwlarr && <ProwlarrSearchSection query={debounced} />}
+          {hasProwlarr && (
+            <ReleaseSearchSection adapter={prowlarrIndexerAdapter} query={debounced} />
+          )}
+          {hasJackett && (
+            <ReleaseSearchSection adapter={jackettIndexerAdapter} query={debounced} />
+          )}
         </>
       )}
     </ScreenWrapper>

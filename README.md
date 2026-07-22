@@ -56,6 +56,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Tracearr** | Live streams with codec/quality details, bandwidth, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
+| **Jackett** | Search across all indexers, send releases to your torrent client, indexer list |
 | **Plex** | Now playing, recently added, on deck, library browsing |
 | **Jellyfin** | Now playing, recently added, continue watching, library browsing |
 | **Emby** | Now playing, recently added, continue watching, library browsing |

@@ -1072,6 +1072,92 @@ const DEMO_PROWLARR_SEARCH_RESULTS = [
   { guid: "prowlarr-2-tt789012", indexerId: 2, indexer: "1337x", title: "Demo.Movie.2024.2160p.UHD.BluRay.HDR.x265-GROUP", size: 48318382080, publishDate: daysFromNowFull(-3), categories: [{ id: 2000, name: "Movies" }], seeders: 127, leechers: 8, protocol: "torrent", age: 3, ageMinutes: 4320 },
 ];
 
+// --- Jackett ---
+
+// Torznab t=indexers response — a raw XML string because the real endpoint is
+// XML and services/jackett-api.ts parses whatever serviceRequest returns.
+const DEMO_JACKETT_INDEXERS_XML = `<?xml version="1.0" encoding="utf-8"?>
+<indexers>
+  <indexer id="1337x" configured="true">
+    <title>1337x</title>
+    <description>1337x is a Public torrent site that offers verified torrent downloads</description>
+    <link>https://1337x.to/</link>
+    <language>en-US</language>
+    <type>public</type>
+  </indexer>
+  <indexer id="eztv" configured="true">
+    <title>EZTV</title>
+    <description>EZTV is a Public torrent site for TV shows</description>
+    <link>https://eztvx.to/</link>
+    <language>en-US</language>
+    <type>public</type>
+  </indexer>
+  <indexer id="demo-tracker" configured="true">
+    <title>DemoTracker</title>
+    <description>A Private tracker for demo releases</description>
+    <link>https://demo-tracker.example/</link>
+    <language>en-US</language>
+    <type>private</type>
+  </indexer>
+</indexers>`;
+
+// JSON manual-search response. One magnet-only and one Link-only release so
+// the grab sheet's uri fallback chain is exercised in demo mode.
+const DEMO_JACKETT_RESULTS = {
+  Results: [
+    {
+      Guid: "https://1337x.to/torrent/demo-1",
+      Title: "Demo.Movie.2024.1080p.BluRay.x264-GROUP",
+      Tracker: "1337x",
+      TrackerId: "1337x",
+      CategoryDesc: "Movies",
+      PublishDate: daysFromNowFull(-2),
+      Size: 9663676416,
+      Seeders: 482,
+      Peers: 23,
+      Grabs: 87,
+      Link: null,
+      MagnetUri: "magnet:?xt=urn:btih:0000000000000000000000000000000000000001&dn=Demo.Movie.2024",
+      Details: "https://1337x.to/torrent/demo-1",
+    },
+    {
+      Guid: "https://demo-tracker.example/details/42",
+      Title: "Demo.Movie.2024.2160p.UHD.BluRay.HDR.x265-GROUP",
+      Tracker: "DemoTracker",
+      TrackerId: "demo-tracker",
+      CategoryDesc: "Movies/UHD",
+      PublishDate: daysFromNowFull(-3),
+      Size: 48318382080,
+      Seeders: 127,
+      Peers: 8,
+      Grabs: 31,
+      Link: "https://demo-tracker.example/dl/42.torrent",
+      MagnetUri: null,
+      Details: "https://demo-tracker.example/details/42",
+    },
+    {
+      Guid: "https://eztvx.to/ep/demo-3",
+      Title: "Demo.Show.S01E05.1080p.WEB.h264-GROUP",
+      Tracker: "EZTV",
+      TrackerId: "eztv",
+      CategoryDesc: "TV",
+      PublishDate: daysFromNowFull(-1),
+      Size: 2147483648,
+      Seeders: 913,
+      Peers: 64,
+      Grabs: 210,
+      Link: "https://eztvx.to/dl/demo-3.torrent",
+      MagnetUri: "magnet:?xt=urn:btih:0000000000000000000000000000000000000003&dn=Demo.Show.S01E05",
+      Details: "https://eztvx.to/ep/demo-3",
+    },
+  ],
+  Indexers: [
+    { ID: "1337x", Name: "1337x", Status: 0, Results: 1, Error: null },
+    { ID: "eztv", Name: "EZTV", Status: 0, Results: 1, Error: null },
+    { ID: "demo-tracker", Name: "DemoTracker", Status: 0, Results: 1, Error: null },
+  ],
+};
+
 // --- Plex ---
 
 const DEMO_PLEX_LIBRARIES = {
@@ -1679,6 +1765,14 @@ export function getDemoResponse(
       if (normalized.startsWith("/search")) return DEMO_PROWLARR_SEARCH_RESULTS;
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/health")) return DEMO_PROWLARR_HEALTH;
+      return undefined;
+    }
+    case "jackett": {
+      // The Torznab meta endpoint answers with XML; the JSON results endpoint
+      // handles both live search and the indexer-status sidebar.
+      if (normalized.startsWith("/indexers/all/results/torznab"))
+        return DEMO_JACKETT_INDEXERS_XML;
+      if (normalized.startsWith("/indexers/all/results")) return DEMO_JACKETT_RESULTS;
       return undefined;
     }
     case "bazarr": {
