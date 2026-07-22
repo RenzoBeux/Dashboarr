@@ -1,56 +1,109 @@
-import { useState } from "react";
-import { View, Text, Pressable, Platform, ScrollView } from "react-native";
-import { toast, toastError } from "@/components/ui/toast";
-import { Search, Power, AlertTriangle, CheckCircle, XCircle } from "lucide-react-native";
-import { Icon } from "@/components/ui/icon";
+import { useEffect, useState } from "react";
+import { ScrollView } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
-import { ConfirmModal } from "@/components/common/confirm-modal";
 import { ServiceHeader } from "@/components/common/service-header";
 import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { TextInput } from "@/components/ui/text-input";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorBanner } from "@/components/common/error-banner";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
-import { SkeletonCardContent } from "@/components/ui/skeleton";
-import {
-  useProwlarrIndexers,
-  useProwlarrIndexerStatuses,
-  useProwlarrStats,
-  useProwlarrSearch,
-  useToggleIndexer,
-  useGrabRelease,
-} from "@/hooks/use-prowlarr";
+import { ProwlarrIndexerList } from "@/components/indexers/prowlarr-indexer-list";
+import { ProwlarrStats } from "@/components/indexers/prowlarr-stats";
+import { JackettIndexerList } from "@/components/indexers/jackett-indexer-list";
+import { ReleaseSearch } from "@/components/indexers/release-search";
+import { prowlarrIndexerAdapter } from "@/lib/indexer-adapters/prowlarr";
+import { jackettIndexerAdapter } from "@/lib/indexer-adapters/jackett";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { formatBytes } from "@/lib/utils";
-import type { ProwlarrIndexer, ProwlarrSearchResult } from "@/lib/types";
+import { useConfigStore } from "@/store/config-store";
+import { useAttachedKinds } from "@/hooks/use-active-dashboard";
+import { SERVICE_DEFAULTS } from "@/lib/constants";
 
+type IndexerSource = "prowlarr" | "jackett";
 type Tab = "indexers" | "search" | "stats";
+
+// Sub-tabs per source: Jackett has no admin-free stats endpoint, so its Stats
+// chip simply doesn't exist.
+const TABS_FOR_SOURCE: Record<IndexerSource, Tab[]> = {
+  prowlarr: ["indexers", "search", "stats"],
+  jackett: ["indexers", "search"],
+};
 
 export default function IndexersScreen() {
   return (
-    <WorkspaceServiceGuard kinds={["prowlarr"]}>
+    <WorkspaceServiceGuard kinds={["prowlarr", "jackett"]}>
       <IndexersScreenInner />
     </WorkspaceServiceGuard>
   );
 }
 
 function IndexersScreenInner() {
-  const [tab, setTab] = useState<Tab>("indexers");
-  const { data: healthData } = useServiceHealth();
-  const { refreshing, onRefresh } = usePullToRefresh([["prowlarr"]]);
+  const prowlarrEnabled = useConfigStore((s) => s.services.prowlarr.enabled);
+  const jackettEnabled = useConfigStore((s) => s.services.jackett?.enabled ?? false);
+  const attachedKinds = useAttachedKinds();
 
-  const prowlarrHealth = healthData?.find((s) => s.id === "prowlarr");
+  const sources: IndexerSource[] = [];
+  if (prowlarrEnabled && attachedKinds.has("prowlarr")) sources.push("prowlarr");
+  if (jackettEnabled && attachedKinds.has("jackett")) sources.push("jackett");
+
+  // `?source=...` lets the Services tab / dashboard widgets deep-link straight
+  // to the matching source (mirrors the Downloads tab's `?client=`).
+  const { source: sourceParam } = useLocalSearchParams<{ source?: string }>();
+  const paramSource =
+    sourceParam === "prowlarr" || sourceParam === "jackett" ? sourceParam : undefined;
+
+  const [source, setSource] = useState<IndexerSource>(
+    paramSource && sources.includes(paramSource) ? paramSource : sources[0] ?? "prowlarr",
+  );
+  const [tab, setTab] = useState<Tab>("indexers");
+
+  // Re-select when the deep-link param changes (e.g. user is already on this
+  // tab and taps the other indexer tile in the Services tab).
+  useEffect(() => {
+    if (paramSource && sources.includes(paramSource) && paramSource !== source) {
+      setSource(paramSource);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramSource]);
+
+  const activeSource: IndexerSource = sources.includes(source)
+    ? source
+    : sources[0] ?? "prowlarr";
+  // A source switch can strand the sub-tab on a chip the new source doesn't
+  // have (Stats → Jackett) — snap back to Indexers.
+  const activeTab: Tab = TABS_FOR_SOURCE[activeSource].includes(tab)
+    ? tab
+    : "indexers";
+
+  const { data: healthData } = useServiceHealth();
+  const { refreshing, onRefresh } = usePullToRefresh([[activeSource]]);
+
+  const health = healthData?.find((s) => s.id === activeSource);
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <ServiceHeader name="Indexers" online={prowlarrHealth?.online} serviceId="prowlarr" />
+      <ServiceHeader name="Indexers" online={health?.online} serviceId={activeSource} />
 
-      <HealthIssuesBanner serviceId="prowlarr" className="mb-4" />
+      {sources.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-2"
+          className="mb-3"
+        >
+          {sources.map((s) => (
+            <FilterChip
+              key={s}
+              label={SERVICE_DEFAULTS[s].name}
+              selected={activeSource === s}
+              onPress={() => setSource(s)}
+            />
+          ))}
+        </ScrollView>
+      )}
+
+      {activeSource === "prowlarr" && (
+        <HealthIssuesBanner serviceId="prowlarr" className="mb-4" />
+      )}
 
       <ScrollView
         horizontal
@@ -58,219 +111,27 @@ function IndexersScreenInner() {
         contentContainerClassName="gap-2"
         className="mb-4"
       >
-        {(["indexers", "search", "stats"] as Tab[]).map((t) => (
+        {TABS_FOR_SOURCE[activeSource].map((t) => (
           <FilterChip
             key={t}
             label={t.charAt(0).toUpperCase() + t.slice(1)}
-            selected={tab === t}
+            selected={activeTab === t}
             onPress={() => setTab(t)}
           />
         ))}
       </ScrollView>
 
-      {tab === "indexers" && <IndexerList />}
-      {tab === "search" && <IndexerSearch />}
-      {tab === "stats" && <IndexerStats />}
+      {activeTab === "indexers" &&
+        (activeSource === "prowlarr" ? <ProwlarrIndexerList /> : <JackettIndexerList />)}
+      {activeTab === "search" && (
+        <ReleaseSearch
+          key={activeSource}
+          adapter={
+            activeSource === "prowlarr" ? prowlarrIndexerAdapter : jackettIndexerAdapter
+          }
+        />
+      )}
+      {activeTab === "stats" && activeSource === "prowlarr" && <ProwlarrStats />}
     </ScreenWrapper>
-  );
-}
-
-function IndexerList() {
-  const { data: indexers, isLoading, error } = useProwlarrIndexers();
-  const { data: statuses } = useProwlarrIndexerStatuses();
-  const toggleIndexer = useToggleIndexer();
-
-  if (isLoading) return <SkeletonCardContent rows={4} />;
-  if (error) {
-    return <ErrorBanner error={error} title="Failed to load indexers" />;
-  }
-  if (!indexers?.length) {
-    return <EmptyState title="No indexers configured" />;
-  }
-
-  const statusMap = new Map(statuses?.map((s) => [s.indexerId, s]) ?? []);
-
-  return (
-    <View className="gap-2">
-      {indexers.map((indexer) => {
-        const status = statusMap.get(indexer.id);
-        const isDisabled = !!status?.disabledTill;
-        const isEnabled = indexer.enable;
-
-        return (
-          <Card key={indexer.id}>
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-3 flex-1">
-                <View
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    !isEnabled
-                      ? "bg-zinc-600"
-                      : isDisabled
-                        ? "bg-danger"
-                        : "bg-success"
-                  }`}
-                  style={Platform.OS === "ios" && isEnabled ? {
-                    shadowColor: isDisabled ? "#ef4444" : "#22c55e",
-                    shadowRadius: 6,
-                    shadowOpacity: 0.6,
-                    shadowOffset: { width: 0, height: 0 },
-                  } : undefined}
-                />
-                <View className="flex-1">
-                  <Text className="text-zinc-200 text-sm font-medium">
-                    {indexer.name}
-                  </Text>
-                  <Text className="text-zinc-500 text-xs">
-                    {indexer.protocol} · Priority {indexer.priority}
-                  </Text>
-                </View>
-              </View>
-              <View className="flex-row items-center gap-2">
-                {isDisabled && (
-                  <Icon icon={AlertTriangle} size={14} color="#ef4444" />
-                )}
-                <Badge
-                  label={indexer.protocol}
-                  variant={indexer.protocol === "torrent" ? "downloading" : "default"}
-                />
-                <Pressable
-                  onPress={() =>
-                    toggleIndexer.mutate({ indexer, enable: !isEnabled })
-                  }
-                  className="p-1.5 active:opacity-70"
-                  hitSlop={6}
-                >
-                  <Icon icon={Power}
-                    size={16}
-                    color={isEnabled ? "#22c55e" : "#71717a"}
-                  />
-                </Pressable>
-              </View>
-            </View>
-          </Card>
-        );
-      })}
-    </View>
-  );
-}
-
-function IndexerSearch() {
-  const [query, setQuery] = useState("");
-  const [pendingGrab, setPendingGrab] = useState<ProwlarrSearchResult | null>(
-    null,
-  );
-  const { data: results, isLoading } = useProwlarrSearch(query);
-  const grabRelease = useGrabRelease();
-
-  const confirmGrab = () => {
-    if (!pendingGrab) return;
-    grabRelease.mutate(
-      { guid: pendingGrab.guid, indexerId: pendingGrab.indexerId },
-      {
-        onSuccess: () => toast("Sent to download client"),
-        onError: (err) => toastError("Failed to grab release", err),
-      },
-    );
-    setPendingGrab(null);
-  };
-
-  return (
-    <View>
-      <TextInput
-        placeholder="Search all indexers..."
-        value={query}
-        onChangeText={setQuery}
-        autoFocus
-        containerClassName="mb-4"
-      />
-
-      {isLoading && <Text className="text-zinc-500">Searching...</Text>}
-
-      {results && results.length === 0 && query.length >= 2 && (
-        <EmptyState title="No results" />
-      )}
-
-      {results && results.length > 0 && (
-        <View className="gap-2">
-          {results.slice(0, 50).map((result) => (
-            <Card key={result.guid}>
-              <Pressable onPress={() => setPendingGrab(result)} className="active:opacity-80">
-                <Text className="text-zinc-200 text-sm" numberOfLines={2}>
-                  {result.title}
-                </Text>
-                <View className="flex-row items-center gap-3 mt-1.5">
-                  <Text className="text-zinc-500 text-xs">
-                    {formatBytes(result.size)}
-                  </Text>
-                  <Text className="text-zinc-500 text-xs">{result.indexer}</Text>
-                  {result.seeders !== undefined && (
-                    <Text className="text-success text-xs">
-                      S:{result.seeders}
-                    </Text>
-                  )}
-                  {result.leechers !== undefined && (
-                    <Text className="text-danger text-xs">
-                      L:{result.leechers}
-                    </Text>
-                  )}
-                  <Badge label={result.protocol} variant={result.protocol === "torrent" ? "downloading" : "default"} />
-                </View>
-              </Pressable>
-            </Card>
-          ))}
-        </View>
-      )}
-
-      <ConfirmModal
-        visible={pendingGrab !== null}
-        title="Grab Release"
-        message={
-          pendingGrab
-            ? `Send "${pendingGrab.title}" to download client?`
-            : ""
-        }
-        confirmLabel="Grab"
-        onConfirm={confirmGrab}
-        onCancel={() => setPendingGrab(null)}
-      />
-    </View>
-  );
-}
-
-function IndexerStats() {
-  const { data: stats, isLoading } = useProwlarrStats();
-
-  if (isLoading) return <SkeletonCardContent rows={3} />;
-  if (!stats?.indexers?.length) {
-    return <EmptyState title="No stats available" />;
-  }
-
-  return (
-    <View className="gap-2">
-      {stats.indexers.map((indexer) => (
-        <Card key={indexer.indexerId}>
-          <Text className="text-zinc-200 text-sm font-medium mb-2">
-            {indexer.indexerName}
-          </Text>
-          <View className="flex-row flex-wrap gap-x-4 gap-y-1">
-            <StatItem label="Queries" value={String(indexer.numberOfQueries)} />
-            <StatItem label="Grabs" value={String(indexer.numberOfGrabs)} />
-            <StatItem label="Failures" value={String(indexer.numberOfFailures)} danger={indexer.numberOfFailures > 0} />
-            <StatItem label="Avg Response" value={`${indexer.averageResponseTime}ms`} />
-          </View>
-        </Card>
-      ))}
-    </View>
-  );
-}
-
-function StatItem({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
-  return (
-    <View>
-      <Text className="text-zinc-500 text-xs">{label}</Text>
-      <Text className={`text-sm font-medium ${danger ? "text-danger" : "text-zinc-300"}`}>
-        {value}
-      </Text>
-    </View>
   );
 }

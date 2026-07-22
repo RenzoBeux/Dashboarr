@@ -236,13 +236,15 @@ export async function serviceRequest<T>(
     );
   }
 
-  // SABnzbd auth lives in the query string (?apikey=…&output=json), not
+  // SABnzbd and Jackett auth live in the query string (?apikey=…), not
   // headers. Merge defaults into the caller-supplied params so service
   // modules don't have to know about either of those parameters.
   const finalParams =
     serviceId === "sabnzbd"
       ? { ...(params ?? {}), apikey: secrets.apiKey ?? "", output: "json" }
-      : params;
+      : serviceId === "jackett"
+        ? { ...(params ?? {}), apikey: secrets.apiKey ?? "" }
+        : params;
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
 
@@ -259,7 +261,7 @@ export async function serviceRequest<T>(
   if (serviceId === "qbittorrent") {
     // qBittorrent uses cookie-based auth — handled by the cookie jar
     // The login function must be called first to establish the session
-  } else if (serviceId === "sabnzbd") {
+  } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
     // apikey is injected as a query param above — no header needed
   } else if (serviceId === "glances") {
     if (secrets.username && secrets.password) {
@@ -411,11 +413,15 @@ export async function pingService(
 
   // SAB has no /system endpoint to GET — it advertises version through the
   // single /api?mode=version handler, so we synthesize the ping URL from the
-  // mode + apikey params.
-  const pingParams =
+  // mode + apikey params. Jackett's apikey also lives in the query string;
+  // t=indexers lists configured indexers without querying any tracker, making
+  // it the cheapest apikey-validated GET Jackett has.
+  const pingParams: Record<string, string> | undefined =
     serviceId === "sabnzbd"
       ? { mode: "version", apikey: secrets.apiKey ?? "", output: "json" }
-      : undefined;
+      : serviceId === "jackett"
+        ? { t: "indexers", configured: "true", apikey: secrets.apiKey ?? "" }
+        : undefined;
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath, pingParams);
 
@@ -455,7 +461,7 @@ export async function pingService(
       headers.set("Authorization", `Basic ${encoded}`);
     }
     headers.set("Content-Type", "application/json");
-  } else if (serviceId === "sabnzbd") {
+  } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
     // apikey already in query params
   } else if (serviceId === "tracearr") {
     if (secrets.apiKey) headers.set("Authorization", `Bearer ${secrets.apiKey}`);
@@ -990,6 +996,38 @@ async function runConnectionProbe(
         };
       }
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "jackett": {
+      // Jackett's apikey is a query param, and only the results/Torznab routes
+      // validate it (the admin REST API wants the admin-password cookie). The
+      // Torznab meta endpoint t=indexers is the cheapest authenticated GET —
+      // it lists configured indexers without querying any tracker. Bad key →
+      // 401; a 200 HTML body means an auth proxy (or the Jackett UI) answered
+      // instead of the Torznab endpoint.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath, {
+        t: "indexers",
+        configured: "true",
+        apikey: apiKey,
+      });
+      const res = await fetch(url, { method: "GET", headers: makeHeaders(), signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const text = await res.text();
+      if (text.includes("<indexers")) return { kind: "ok" };
+      // Jackett reports a bad apikey as a Torznab <error> document on some
+      // versions instead of a 401 — surface that as an auth failure.
+      if (text.includes("<error"))
+        return { kind: "auth_failed", message: "Invalid API key" };
+      return {
+        kind: "unreachable",
+        message:
+          "Got an HTML page instead of the Torznab API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+      };
     }
 
     case "unraid": {

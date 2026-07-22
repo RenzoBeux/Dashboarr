@@ -33,6 +33,9 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   sonarr: require("@/assets/services/sonarr.png"),
   lidarr: require("@/assets/services/lidarr.png"),
   prowlarr: require("@/assets/services/prowlarr.png"),
+  // Official Jackett jacket glyph, recolored white for the dark UI (upstream
+  // ships it black-on-transparent).
+  jackett: require("@/assets/services/jackett.png"),
   tautulli: require("@/assets/services/tautulli.png"),
   tracearr: require("@/assets/services/tracearr.png"),
   jellystat: require("@/assets/services/jellystat.png"),

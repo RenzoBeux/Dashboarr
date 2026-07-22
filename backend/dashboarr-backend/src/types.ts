@@ -20,6 +20,7 @@ export const SERVICE_IDS = [
   "tracearr",
   "jellystat",
   "prowlarr",
+  "jackett",
   "plex",
   "jellyfin",
   "emby",
@@ -257,6 +258,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   tracearr: "/api/v1/public",
   jellystat: "",
   prowlarr: "/api/v1",
+  jackett: "/api/v2.0",
   plex: "",
   jellyfin: "",
   emby: "",
@@ -291,6 +293,10 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // the reachability probe (mirrors the app). No backend poller uses this today.
   jellystat: "/stats/getLibraryOverview",
   prowlarr: "/system/status",
+  // Jackett's apikey is a QUERY PARAM; pingService adds ?t=indexers&apikey=…
+  // to this Torznab meta endpoint — the only cheap apikey-validated GET
+  // Jackett has (its admin REST API wants the admin-password cookie).
+  jackett: "/indexers/all/results/torznab/api",
   plex: "/identity",
   jellyfin: "/System/Info/Public",
   emby: "/System/Info/Public",

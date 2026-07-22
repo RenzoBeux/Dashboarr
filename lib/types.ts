@@ -1523,6 +1523,55 @@ export interface ProwlarrIndexerStats {
   }[];
 }
 
+// --- Jackett Types ---
+
+// Parsed from the Torznab meta endpoint (t=indexers&configured=true), which is
+// the only indexer listing that works with just the apikey (the /indexers REST
+// route needs the admin-password cookie). XML — parsed in services/jackett-api.ts.
+export interface JackettIndexer {
+  id: string;
+  name: string;
+  // Jackett reports "public" | "private" | "semi-private"; kept as string so an
+  // upstream addition doesn't break parsing.
+  type: string;
+  configured: boolean;
+  description?: string;
+}
+
+// One release row from the JSON results endpoint. Field names are Jackett's
+// PascalCase, verbatim — do not camelCase these.
+export interface JackettRelease {
+  Guid: string;
+  Title: string;
+  Tracker: string;
+  TrackerId: string;
+  CategoryDesc: string | null;
+  PublishDate: string;
+  Size: number | null;
+  Seeders: number | null;
+  Peers: number | null;
+  Grabs: number | null;
+  // Jackett-proxied .torrent download URL (apikey embedded).
+  Link: string | null;
+  MagnetUri: string | null;
+  // Tracker details page.
+  Details: string | null;
+}
+
+// Per-indexer status attached to a JSON search response.
+export interface JackettIndexerResult {
+  ID: string;
+  Name: string;
+  Status: number;
+  Results: number;
+  Error: string | null;
+}
+
+export interface JackettResultsResponse {
+  Results: JackettRelease[];
+  Indexers: JackettIndexerResult[];
+}
+
 // --- Plex Types ---
 
 export interface PlexLibrary {

@@ -514,6 +514,7 @@
               <tr><td><strong>Sonarr</strong></td><td>8989</td><td>API key</td><td>Same v3 API and the same authenticated <code>/api/v3/system/status</code> probe as Radarr.</td></tr>
               <tr><td><strong>Lidarr</strong></td><td>8686</td><td>API key</td><td>Uses the v1 API, not v3. Only matters if you hand-write proxy path rules.</td></tr>
               <tr><td><strong>Prowlarr</strong></td><td>9696</td><td>API key</td><td>No webhook integration, so it is poll-only on the backend.</td></tr>
+              <tr><td><strong>Jackett</strong></td><td>9117</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Jackett's admin password protects its indexer management endpoints, so the app shows a read-only indexer list; search and grab work with just the API key.</td></tr>
               <tr><td><strong>Seerr</strong></td><td>5055</td><td>API key</td><td>If CSRF protection is enabled in Seerr, the API is read-only and submitting a request fails with 403 "invalid csrf token". Turn CSRF protection off.</td></tr>
               <tr><td><strong>Tautulli</strong></td><td>8181</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Webhooks are ingested but do not raise a push yet.</td></tr>
               <tr><td><strong>Tracearr</strong></td><td>3000</td><td>API key (<code>trr_pub_</code> token)</td><td>Webhook-only for notifications, and its webhook URL must carry <code>?instance=&lt;id&gt;</code> or its per-instance toggles are ignored.</td></tr>
@@ -609,13 +610,13 @@
         </p>
 
         <h3>The widget catalogue</h3>
-        <p>Twenty-five widgets are available:</p>
+        <p>Twenty-six widgets are available:</p>
         <p style="color:var(--muted)">
           Service Health, Server Stats, Speed Stats, Downloads, SABnzbd Queue, NZBGet Queue,
           Radarr Queue, Sonarr Queue, Lidarr Queue, Recently Downloaded, Calendar, Still Pending,
           Stream Activity, Streaming Bandwidth, Seerr Requests, Now Playing (All Servers),
-          Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats, Bazarr Wanted,
-          Wake-on-LAN, Disk Space, Health Alerts, unRAID Array.
+          Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats,
+          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array.
         </p>
         <p>
           The same widget can be placed more than once on one dashboard, each copy with its own
@@ -682,7 +683,7 @@
         <p>
           A tab becomes pickable when the workspace has at least one <strong>attached</strong> instance
           of a backing service. Movies needs Radarr, TV needs Sonarr, Music needs Lidarr, Requests
-          needs Seerr, Indexers needs Prowlarr, Downloads needs any download client, Calendar needs
+          needs Seerr, Indexers needs Prowlarr or Jackett, Downloads needs any download client, Calendar needs
           Sonarr or Radarr, Library needs Radarr or Sonarr, and Activity needs any of Tautulli,
           Tracearr, Jellystat, Jellyfin or Emby. <strong>Services</strong> is always pickable.
         </p>
@@ -704,7 +705,7 @@
           <li><strong>TV</strong> (Sonarr): Library and Calendar, with filter and sort and a "Search Missing Episodes" confirmation.</li>
           <li><strong>Music</strong> (Lidarr): Library, Queue, Wanted.</li>
           <li><strong>Requests</strong> (Seerr): Discover, Search, Requests, with per-row approve and decline, and a Customize link to reorder your Discover sliders.</li>
-          <li><strong>Indexers</strong> (Prowlarr): Indexers, Search, Stats. Indexers toggle with a power button; grabbing a release confirms first.</li>
+          <li><strong>Indexers</strong> (Prowlarr and Jackett, with a source switcher when both are attached): Indexers, Search, and (Prowlarr only) Stats. Prowlarr indexers toggle with a power button and grabbing a release confirms first; Jackett's list is read-only and grabbing opens a sheet to send the release to one of your torrent clients or open its details page.</li>
           <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
           <li><strong>Glances</strong> (headed "Server"): CPU, Memory, GPU, Disks, Disk I/O, Network and Containers cards. Containers are read-only here.</li>
           <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container.</li>
@@ -715,10 +716,10 @@
         <h3>Global search</h3>
         <p>
           The magnifier in the Dashboard header opens <strong>Search</strong>. It needs two characters
-          and covers <strong>Radarr, Sonarr, Lidarr, Seerr and Prowlarr</strong>, grouped into Movies,
-          TV Shows, Music, Requests and Releases. Each section loads independently, so a slow indexer
-          search never blocks the rest. Plex, Jellyfin and Emby library search is not included, and
-          the magnifier is hidden entirely when none of those five services is attached.
+          and covers <strong>Radarr, Sonarr, Lidarr, Seerr, Prowlarr and Jackett</strong>, grouped into
+          Movies, TV Shows, Music, Requests and Releases. Each section loads independently, so a slow
+          indexer search never blocks the rest. Plex, Jellyfin and Emby library search is not included,
+          and the magnifier is hidden entirely when none of those six services is attached.
         </p>
 
         <h3>Magnet links</h3>
