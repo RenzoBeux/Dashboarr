@@ -65,6 +65,12 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
    * fields the generic item type doesn't know (hasFile / episode counts).
    */
   isMissing: (item: T) => boolean;
+  /**
+   * Additional screen-level predicate ANDed with the monitor filter (e.g. the
+   * TV library's series-status filter). Pass undefined when inactive so the
+   * empty state can tell "library is empty" from "nothing matches filters".
+   */
+  extraFilter?: (item: T) => boolean;
   sort: S;
   compare: (a: T, b: T, sort: S) => number;
   serviceId: "radarr" | "sonarr" | "lidarr";
@@ -109,6 +115,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   error,
   monitorFilter,
   isMissing,
+  extraFilter,
   sort,
   compare,
   serviceId,
@@ -132,13 +139,14 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
     // keep the call site itself safe against any non-array data.
     if (!Array.isArray(data)) return [];
     const filtered = data.filter((item) => {
+      if (extraFilter && !extraFilter(item)) return false;
       if (monitorFilter === "monitored") return item.monitored;
       if (monitorFilter === "unmonitored") return !item.monitored;
       if (monitorFilter === "missing") return isMissing(item);
       return true;
     });
     return [...filtered].sort((a, b) => compare(a, b, sort));
-  }, [data, monitorFilter, isMissing, sort, compare]);
+  }, [data, monitorFilter, isMissing, extraFilter, sort, compare]);
 
   const emptyState = useMemo(() => {
     if (isLoading) {
@@ -164,8 +172,9 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
         />
       );
     }
-    const title =
-      monitorFilter === "monitored"
+    const title = extraFilter
+      ? `No ${nounPlural} match filters`
+      : monitorFilter === "monitored"
         ? `No monitored ${nounPlural}`
         : monitorFilter === "unmonitored"
           ? `No unmonitored ${nounPlural}`
@@ -178,7 +187,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
         title={title}
       />
     );
-  }, [isLoading, error, data, nounPlural, monitorFilter, placeholderIcon, cellWidth, gap]);
+  }, [isLoading, error, data, nounPlural, monitorFilter, extraFilter, placeholderIcon, cellWidth, gap]);
 
   return (
     <FlatList
