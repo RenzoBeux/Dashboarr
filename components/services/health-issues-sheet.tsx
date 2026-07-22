@@ -2,6 +2,7 @@ import { Modal, View, Text, Pressable, ScrollView, Linking } from "react-native"
 import { AlertTriangle, Info, ExternalLink } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { lightHaptic } from "@/lib/haptics";
 import { HEALTH_TYPE_COLOR, type ArrHealthType } from "@/services/arr-health";
 import type { ArrInstanceHealth } from "@/hooks/use-arr-health";
@@ -27,6 +28,7 @@ export function HealthIssuesSheet({
   // Only label each section by instance when there's more than one to
   // disambiguate; a single-instance setup needs no header noise.
   const showInstanceNames = (instances?.length ?? 0) > 1;
+  const scrollPadding = useSheetBottomPadding(16);
 
   const openWiki = (url?: string) => {
     if (!url) return;
@@ -46,6 +48,7 @@ export function HealthIssuesSheet({
 
         <ScrollView
           contentContainerClassName="px-4 py-4 gap-4"
+          contentContainerStyle={scrollPadding}
           showsVerticalScrollIndicator={false}
         >
           {instances?.map((inst) => (

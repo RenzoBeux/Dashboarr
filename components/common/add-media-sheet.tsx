@@ -9,6 +9,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useTargetInstance } from "@/hooks/use-instance-target";
 import { formatBytes } from "@/lib/utils";
 
@@ -90,6 +91,7 @@ export function AddMediaSheet({
   const [rootFolderPath, setRootFolderPath] = useState<string | undefined>();
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [searchOnAdd, setSearchOnAdd] = useState(true);
+  const footerPadding = useSheetBottomPadding();
 
   // User-configured defaults for this instance (Settings → Add Defaults), with
   // first-in-list as the fallback when unset or when the stored value no longer
@@ -236,7 +238,10 @@ export function AddMediaSheet({
           ) : null}
         </ScrollView>
 
-        <View className="px-4 pb-6 pt-3 border-t border-border bg-background">
+        <View
+          className="px-4 pb-6 pt-3 border-t border-border bg-background"
+          style={footerPadding}
+        >
           <Button
             label={submitLabel}
             onPress={handleAdd}

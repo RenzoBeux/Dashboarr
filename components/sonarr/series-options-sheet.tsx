@@ -4,6 +4,7 @@ import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { SERIES_TYPE_OPTIONS } from "@/components/sonarr/add-series-sheet";
 import { useUpdateSeriesFields } from "@/hooks/use-sonarr";
 import type { SonarrSeries, SonarrSeriesType } from "@/lib/types";
@@ -46,6 +47,7 @@ export function SeriesOptionsSheet({
   const [monitorNewItems, setMonitorNewItems] = useState(
     series.monitorNewItems,
   );
+  const scrollPadding = useSheetBottomPadding(32);
 
   // Re-seed from the server values whenever the sheet opens.
   useEffect(() => {
@@ -85,7 +87,10 @@ export function SeriesOptionsSheet({
       <View className="flex-1 bg-background">
         <SheetHeader title="Series Options" onClose={onClose} />
 
-        <ScrollView contentContainerClassName="px-4 py-4 pb-8">
+        <ScrollView
+          contentContainerClassName="px-4 py-4 pb-8"
+          contentContainerStyle={scrollPadding}
+        >
           {/* "Monitor New Seasons" only exists on Sonarr v4+ — hide otherwise. */}
           {series.monitorNewItems != null ? (
             <Select

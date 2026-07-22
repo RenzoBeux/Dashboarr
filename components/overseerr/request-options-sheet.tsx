@@ -27,6 +27,7 @@ import {
 import type { OverseerrMediaResult, OverseerrTVDetails } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
 import { useModalClosed } from "@/hooks/use-modal-closed";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 
 interface RequestOptionsSheetProps {
   item: OverseerrMediaResult | null;
@@ -56,6 +57,7 @@ export function RequestOptionsSheet({
   // Fire onClosed once the Modal is fully gone — the safe point for the
   // parent to start its own dismissal on iOS.
   const handleDismiss = useModalClosed(visible, onClosed);
+  const footerPadding = useSheetBottomPadding();
 
   const radarrServersQuery = useOverseerrRadarrServers();
   const sonarrServersQuery = useOverseerrSonarrServers();
@@ -392,7 +394,10 @@ export function RequestOptionsSheet({
           ) : null}
         </ScrollView>
 
-        <View className="px-4 pb-6 pt-3 border-t border-border bg-background">
+        <View
+          className="px-4 pb-6 pt-3 border-t border-border bg-background"
+          style={footerPadding}
+        >
           <RequestErrorBanner error={submitError} className="mb-3" />
           <Button
             label={is4k ? "Send 4K Request" : "Send Request"}

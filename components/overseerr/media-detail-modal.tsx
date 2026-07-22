@@ -35,6 +35,7 @@ import Animated, {
 import { Button } from "@/components/ui/button";
 import { toast, toastError } from "@/components/ui/toast";
 import { getHttpErrorMessage, formatErrorForCopy } from "@/lib/http-client";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import {
   getPosterUrl,
   getBackdropUrl,
@@ -118,6 +119,7 @@ export function MediaDetailModal({
   // iOS (issue #83 class). Android has no such constraint and keeps the
   // original same-tick close.
   const closeAfterOptions = useRef(false);
+  const scrollPadding = useSheetBottomPadding(0);
 
   const backdropOpacity = useSharedValue(0);
   const posterModalOpacity = useSharedValue(0);
@@ -266,7 +268,7 @@ export function MediaDetailModal({
       onRequestClose={onClose}
     >
       <View className="flex-1 bg-background">
-        <ScrollView bounces={false}>
+        <ScrollView bounces={false} contentContainerStyle={scrollPadding}>
           {/* Backdrop */}
           <View style={{ height: SCREEN_WIDTH * 0.56 }}>
             {backdropUrl ? (

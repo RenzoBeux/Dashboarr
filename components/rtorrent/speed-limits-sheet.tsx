@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { toast, toastError } from "@/components/ui/toast";
 import {
   useRtorrentGlobalStats,
@@ -49,6 +50,7 @@ export function RtorrentSpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetP
   const [dl, setDl] = useState("");
   const [up, setUp] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const scrollPadding = useSheetBottomPadding(32);
   // Seed the inputs once per open, from the first stats snapshot available.
   // Guarding with a ref (instead of re-seeding on every stats.data change) means
   // a background poll landing mid-edit can't overwrite what the user typed.
@@ -95,6 +97,7 @@ export function RtorrentSpeedLimitsSheet({ visible, onClose }: SpeedLimitsSheetP
 
         <KeyboardAwareScrollView
           contentContainerClassName="px-4 py-4 pb-8"
+          contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           bottomOffset={20}

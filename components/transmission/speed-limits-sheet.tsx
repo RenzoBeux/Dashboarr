@@ -9,6 +9,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { toast, toastError } from "@/components/ui/toast";
 import {
   useTransmissionSession,
@@ -52,6 +53,7 @@ export function TransmissionSpeedLimitsSheet({ visible, onClose }: SpeedLimitsSh
   const [altDl, setAltDl] = useState("");
   const [altUp, setAltUp] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const scrollPadding = useSheetBottomPadding(32);
 
   // Seed inputs from the server when the sheet opens (or the session reloads).
   useEffect(() => {
@@ -107,6 +109,7 @@ export function TransmissionSpeedLimitsSheet({ visible, onClose }: SpeedLimitsSh
 
         <KeyboardAwareScrollView
           contentContainerClassName="px-4 py-4 pb-8"
+          contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           bottomOffset={20}

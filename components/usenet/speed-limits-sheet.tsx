@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { toast, toastError } from "@/components/ui/toast";
 
 cssInterop(KeyboardAwareScrollView, {
@@ -70,6 +71,7 @@ export function UsenetSpeedLimitsSheet({
 }: UsenetSpeedLimitsSheetProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const scrollPadding = useSheetBottomPadding(32);
 
   // Seed the input from the current limit each time the sheet opens.
   useEffect(() => {
@@ -107,6 +109,7 @@ export function UsenetSpeedLimitsSheet({
 
         <KeyboardAwareScrollView
           contentContainerClassName="px-4 py-4 pb-8"
+          contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           bottomOffset={20}

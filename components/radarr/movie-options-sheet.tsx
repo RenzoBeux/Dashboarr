@@ -7,6 +7,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { MIN_AVAILABILITY_OPTIONS } from "@/components/radarr/add-movie-sheet";
 import { useUpdateMovieFields } from "@/hooks/use-radarr";
 import type { RadarrMinimumAvailability } from "@/services/radarr-api";
@@ -50,6 +51,7 @@ export function MovieOptionsSheet({
     );
   const [path, setPath] = useState(movie.path ?? "");
   const [moveFiles, setMoveFiles] = useState(false);
+  const scrollPadding = useSheetBottomPadding(32);
 
   // Re-seed from the server values whenever the sheet opens.
   useEffect(() => {
@@ -100,6 +102,7 @@ export function MovieOptionsSheet({
         <KeyboardAwareScrollView
           className="flex-1"
           contentContainerClassName="px-4 py-4 pb-8"
+          contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           bottomOffset={20}

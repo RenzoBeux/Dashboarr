@@ -4,6 +4,7 @@ import { Check } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { lightHaptic } from "@/lib/haptics";
 
 interface CategorySheetProps {
@@ -35,6 +36,7 @@ export function CategorySheet({
   onSave,
 }: CategorySheetProps) {
   const [selected, setSelected] = useState(current ?? NONE);
+  const footerPadding = useSheetBottomPadding();
 
   // Reseed the selection from the torrent's current category each time the
   // sheet opens (mirrors how ShareLimitsSheet seeds its form on `visible`).
@@ -100,7 +102,7 @@ export function CategorySheet({
           })}
         </ScrollView>
 
-        <View className="px-4 pb-8 pt-2 border-t border-border">
+        <View className="px-4 pb-8 pt-2 border-t border-border" style={footerPadding}>
           <Button
             label="Save Category"
             onPress={() => onSave(selected)}

@@ -9,6 +9,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { toast, toastError } from "@/components/ui/toast";
 import { useSetTransmissionShareLimits } from "@/hooks/use-transmission";
 import {
@@ -67,6 +68,7 @@ export function ShareLimitsSheet({
   const [ratio, setRatio] = useState("");
   const [minutes, setMinutes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const scrollPadding = useSheetBottomPadding(32);
 
   // Seed the form from the torrent's current limits whenever the sheet opens.
   useEffect(() => {
@@ -137,6 +139,7 @@ export function ShareLimitsSheet({
 
         <KeyboardAwareScrollView
           contentContainerClassName="px-4 py-4 pb-8"
+          contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           bottomOffset={20}
