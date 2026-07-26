@@ -21,7 +21,8 @@ interface QueueIssuesSheetProps {
   onClosed?: () => void;
 }
 
-// The blocked/failed grabs for one *arr instance, one tappable row each.
+// The stuck grabs for one *arr instance — blocked imports, stalled or failed
+// downloads — one tappable row each.
 // Unlike HealthIssuesSheet this one IS a modal-flow step: picking a row opens
 // the removal ActionSheet, so it wires `onClosed` and must only ever be
 // opened/closed through the flow.
@@ -45,7 +46,7 @@ export function QueueIssuesSheet({
       onDismiss={handleDismiss}
     >
       <View className="flex-1 bg-background">
-        <SheetHeader title={`${serviceName} Import Issues`} onClose={onClose} />
+        <SheetHeader title={`${serviceName} Queue Issues`} onClose={onClose} />
 
         <ScrollView
           contentContainerClassName="px-4 py-4 gap-2"
@@ -56,7 +57,7 @@ export function QueueIssuesSheet({
             <EmptyState
               icon={<Icon icon={CheckCircle2} size={28} color="#22c55e" />}
               title="Nothing stuck"
-              message={`${serviceName} has no blocked or failed grabs right now`}
+              message={`${serviceName} has no stuck grabs right now`}
             />
           ) : null}
 

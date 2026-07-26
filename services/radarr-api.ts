@@ -71,7 +71,7 @@ export function getCollectionByTmdbId(
 
 // --- Queue ---
 
-// `includeUnknownMovieItems` matters for the import-blocked banner (#285): a
+// `includeUnknownMovieItems` matters for the queue-issues banner (#285): a
 // grab whose movie was deleted from the library is exactly the kind that gets
 // stuck, and Radarr hides those by default. The page size is generous for the
 // same reason — blocked items have no `timeleft` and sort last under the

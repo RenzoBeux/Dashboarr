@@ -83,7 +83,7 @@ export function getTracks(
 
 // --- Queue ---
 
-// `includeUnknownArtistItems` matters for the import-blocked banner (#285): a
+// `includeUnknownArtistItems` matters for the queue-issues banner (#285): a
 // grab whose artist was deleted from the library is exactly the kind that gets
 // stuck, and Lidarr hides those by default. The page size is generous for the
 // same reason — blocked items have no `timeleft` and sort last under the

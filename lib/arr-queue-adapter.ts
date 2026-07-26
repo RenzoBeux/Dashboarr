@@ -20,11 +20,11 @@ export interface ArrQueueItem {
   // underlying media record id is unavailable (then the tile doesn't navigate).
   detailPath: string | null;
 
-  // --- Import/download trouble (#285) ---
+  // --- Stuck-grab trouble (#285) ---
   // The raw release name. `title` above prefers the media title, which for a
   // blocked grab hides which release is actually stuck.
   releaseTitle: string;
-  // null when the grab is healthy — the import-issues banner filters on this.
+  // null when the grab is healthy — the queue-issues banner filters on this.
   severity: ArrQueueSeverity | null;
   // Short state label, e.g. "Import blocked" / "Downloading".
   statusLabel: string;

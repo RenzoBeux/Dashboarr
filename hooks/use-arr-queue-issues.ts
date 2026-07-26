@@ -3,17 +3,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { toast, toastError } from "@/components/ui/toast";
 import { POLLING_INTERVALS } from "@/lib/constants";
-import { worstQueueSeverity, type ArrQueueSeverity } from "@/lib/arr-queue-issues";
 import type { ArrQueueAdapter, ArrQueueItem } from "@/lib/arr-queue-adapter";
 
 /**
  * The active instance's stuck queue items (#285) — grabs Radarr/Sonarr/Lidarr
- * flagged with a warning or error, typically a blocked import.
+ * flagged with a warning or error. A blocked import is the common case but not
+ * the only one; see lib/arr-queue-issues.ts.
  *
  * The query deliberately reuses the adapter's own key + fetcher, so it shares
  * the single cache entry `useRadarrQueue` / `ArrQueueCard` already own: mounting
  * the banner costs no extra requests. Normalization stays outside the queryFn
  * for the same reason (see lib/arr-queue-adapter.ts).
+ *
+ * Returns the raw list only — callers that hide rows (e.g. a removal awaiting
+ * its refetch) derive the summary severity from what they actually render, via
+ * `worstQueueSeverity`, so the badge can't disagree with the list.
  */
 export function useArrQueueIssues(adapter: ArrQueueAdapter, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget(
@@ -33,9 +37,7 @@ export function useArrQueueIssues(adapter: ArrQueueAdapter, instanceId?: string)
     return adapter.toItems(data, id).filter((item) => item.severity !== null);
   }, [adapter, data, id]);
 
-  const severity: ArrQueueSeverity | null = worstQueueSeverity(issues);
-
-  return { issues, severity, instanceId: id };
+  return { issues, instanceId: id };
 }
 
 /** How a stuck grab is disposed of. See ArrQueueRemoveOptions for the flags. */

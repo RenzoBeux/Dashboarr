@@ -723,14 +723,15 @@
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>
 
-        <h3>Import issues (Radarr, Sonarr, Lidarr)</h3>
+        <h3>Queue issues (Radarr, Sonarr, Lidarr)</h3>
         <p>
-          Sometimes a grab finishes downloading but the *arr refuses to import it: non-media files
-          in the release, a sample-only folder, episodes missing from the pack, no matching movie or
-          series. When that happens the Movies, TV and Music screens show an
-          <strong>import issues</strong> banner above the chip row. Amber means a warning, red means
-          the download failed outright. It only appears when something is actually stuck, and it
-          follows the instance you currently have selected.
+          Sometimes a grab gets stuck. Most often it finished downloading but the *arr refuses to
+          import it: non-media files in the release, a sample-only folder, episodes missing from the
+          pack, no matching movie or series. It can also be the download itself going wrong, such as
+          a torrent stalled with no connections. When that happens the Movies, TV and Music screens
+          show a <strong>queue issues</strong> banner above the chip row. Amber means a warning, red
+          means the download failed outright. It only appears when something is actually stuck, and
+          it follows the instance you currently have selected.
         </p>
         <p>
           Tapping it lists every stuck grab with the reason the service gave and the release name.

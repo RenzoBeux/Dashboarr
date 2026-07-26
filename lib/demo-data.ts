@@ -739,8 +739,8 @@ const DEMO_LIDARR_TRACKS = [
 
 const DEMO_LIDARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 1,
+  pageSize: 100,
+  totalRecords: 2,
   records: [
     {
       id: 401,
@@ -760,6 +760,33 @@ const DEMO_LIDARR_QUEUE = {
       quality: { quality: { name: "FLAC" } },
       artist: DEMO_LIDARR_ARTISTS[1],
       album: DEMO_LIDARR_ALBUMS[3],
+    },
+    // Finished downloading but Lidarr refuses to import it — drives the queue
+    // issues banner (#285) on the Music screen, matching Radarr and Sonarr.
+    {
+      id: 402,
+      artistId: 1,
+      albumId: 11,
+      title: "Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importPending",
+      statusMessages: [
+        {
+          title: "Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+          messages: [
+            "No files found are eligible for import in /downloads/complete/Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+          ],
+        },
+      ],
+      size: 1_073_741_824,
+      sizeleft: 0,
+      timeleft: null,
+      protocol: "torrent",
+      downloadClient: "qBittorrent",
+      quality: { quality: { name: "FLAC 24bit" } },
+      artist: DEMO_LIDARR_ARTISTS[0],
+      album: DEMO_LIDARR_ALBUMS[0],
     },
   ],
 };
@@ -1726,9 +1753,18 @@ export function getDemoResponse(
   path: string,
   params?: Record<string, string | number | boolean>,
   body?: string,
+  method?: string,
 ): unknown {
   const basePath = path.split("?")[0]!;
   const normalized = basePath.replace(/\/\d+(\.\d+)*$/, "/:id");
+
+  // Demo fixtures are static, so every mutation is a no-op — but a DELETE must
+  // not fall through to the read route for the same path. `DELETE /queue/103`
+  // would match `startsWith("/queue")` and hand the caller the whole queue back
+  // as its "void" result. Return nothing instead, so a demo delete resolves the
+  // way the real one does. POST/PUT are deliberately excluded: NZBGet,
+  // Transmission and rtorrent dispatch their reads off a POST body.
+  if (method === "DELETE") return undefined;
 
   switch (serviceId) {
     case "radarr": {

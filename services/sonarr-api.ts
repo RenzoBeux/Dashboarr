@@ -144,7 +144,7 @@ export function getWantedMissing(
 
 // --- Queue ---
 
-// `includeUnknownSeriesItems` matters for the import-blocked banner (#285): a
+// `includeUnknownSeriesItems` matters for the queue-issues banner (#285): a
 // grab whose series was deleted from the library is exactly the kind that gets
 // stuck, and Sonarr hides those by default. The page size is generous for the
 // same reason — blocked items have no `timeleft` and sort last under the

@@ -107,9 +107,6 @@ describe("queueStatusLabel", () => {
   });
 
   it("labels the failure states", () => {
-    expect(
-      queueStatusLabel(record({ trackedDownloadState: "importFailed" })),
-    ).toBe("Import failed");
     expect(queueStatusLabel(record({ trackedDownloadState: "failed" }))).toBe(
       "Download failed",
     );
@@ -121,7 +118,17 @@ describe("queueStatusLabel", () => {
     );
   });
 
+  // A state upstream doesn't have (or a future one) must not fall through to a
+  // healthy-looking label when the record is flagged.
   it("falls back to severity when the state is unknown or absent", () => {
+    expect(
+      queueStatusLabel(
+        record({
+          trackedDownloadState: "someFutureState",
+          trackedDownloadStatus: "error",
+        }),
+      ),
+    ).toBe("Download failed");
     expect(queueStatusLabel({ trackedDownloadStatus: "warning" })).toBe(
       "Download warning",
     );

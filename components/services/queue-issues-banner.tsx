@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { AlertTriangle, ChevronRight, Ban, Search, Trash2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -10,6 +11,7 @@ import {
   useRemoveFromArrQueue,
   type ArrQueueRemoveMode,
 } from "@/hooks/use-arr-queue-issues";
+import { worstQueueSeverity } from "@/lib/arr-queue-issues";
 import { lightHaptic, mediumHaptic } from "@/lib/haptics";
 import type { ArrQueueAdapter, ArrQueueItem } from "@/lib/arr-queue-adapter";
 
@@ -54,9 +56,11 @@ const REMOVAL_COPY: Record<
 
 /**
  * Top-of-screen banner for an *arr view: when the active instance has grabs
- * stuck with a warning or error (a blocked import, a failed download), it shows
- * a tappable summary that opens the issue list, where each item can be removed
- * or blocklisted (#285). Renders null when the queue is healthy.
+ * stuck with a warning or error (a blocked import, a stalled or failed
+ * download), it shows a tappable summary that opens the issue list, where each
+ * item can be removed or blocklisted (#285). Renders null when the queue is
+ * healthy. See lib/arr-queue-issues.ts for why the copy says "queue issues"
+ * rather than "import issues" — the detection is deliberately broader.
  *
  * Owns the whole modal chain — sheet → actions → confirm — through a single
  * useModalFlow, per the sequencing rules in CLAUDE.md.
@@ -66,8 +70,29 @@ export function QueueIssuesBanner({
   instanceId,
   className = "",
 }: QueueIssuesBannerProps) {
-  const { issues, severity } = useArrQueueIssues(adapter, instanceId);
+  const { issues: fetched } = useArrQueueIssues(adapter, instanceId);
   const removeMutation = useRemoveFromArrQueue(adapter, instanceId);
+
+  // Queue ids already removed on the service but still in the cached response
+  // until the invalidated refetch lands. Without this the list reopens with the
+  // row the user just handled still on it, and tapping it again fires a DELETE
+  // for an id the service no longer has (404 → error toast).
+  const [removedIds, setRemovedIds] = useState<number[]>([]);
+
+  // Forget an id once the refetch confirms it's gone, so the set can't grow
+  // unbounded across a long session.
+  useEffect(() => {
+    setRemovedIds((prev) => {
+      const next = prev.filter((id) => fetched.some((i) => i.id === id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [fetched]);
+
+  const issues = useMemo(
+    () => fetched.filter((i) => !removedIds.includes(i.id)),
+    [fetched, removedIds],
+  );
+  const severity = worstQueueSeverity(issues);
 
   const flow = useModalFlow<{
     issues: void;
@@ -108,15 +133,17 @@ export function QueueIssuesBanner({
 
   const confirmRemove = () => {
     if (!pending) return;
+    const { id } = pending.item;
     flow.close();
     removeMutation.mutate(
-      { queueId: pending.item.id, mode: pending.mode },
+      { queueId: id, mode: pending.mode },
       {
         // Back to the list so several stuck grabs can be cleared in a row. The
-        // just-handled item is filtered out; when it was the last one the list
-        // is empty and there is nothing to return to.
+        // just-handled item is hidden immediately; when it was the last one the
+        // list is empty and there is nothing to return to.
         onSuccess: () => {
-          if (issues.some((i) => i.id !== pending.item.id)) flow.open("issues");
+          setRemovedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+          if (issues.some((i) => i.id !== id)) flow.open("issues");
         },
       },
     );
@@ -124,7 +151,7 @@ export function QueueIssuesBanner({
 
   const isError = severity === "error";
   const label =
-    issues.length === 1 ? "1 import issue" : `${issues.length} import issues`;
+    issues.length === 1 ? "1 queue issue" : `${issues.length} queue issues`;
 
   // Only the banner itself is conditional. The modals stay mounted even once
   // the queue is clean — clearing the last issue resolves the query mid-dismiss,

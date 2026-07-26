@@ -91,7 +91,7 @@ export function useSonarrQueue(instanceId?: string) {
   return useQuery({
     queryKey: ["sonarr", id, "queue"],
     // Args must stay identical to sonarrArrQueueAdapter.fetchQueue — the
-    // dashboard widget and the import-issues banner share this cache entry.
+    // dashboard widget and the queue-issues banner share this cache entry.
     queryFn: () => getQueue(1, 100, true, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,

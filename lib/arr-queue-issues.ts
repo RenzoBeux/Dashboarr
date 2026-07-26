@@ -1,7 +1,7 @@
 import type { ArrQueueStatusMessage } from "@/lib/types";
 
 /**
- * Import-blocked / failed queue detection for Radarr, Sonarr and Lidarr (issue #285).
+ * Stuck-grab detection for the Radarr, Sonarr and Lidarr queues (issue #285).
  *
  * All three *arr APIs describe a stuck grab the same way, so this module is
  * structural: any queue record with these fields works, no per-service branch.
@@ -10,7 +10,16 @@ import type { ArrQueueStatusMessage } from "@/lib/types";
  *   trackedDownloadState   downloading | importPending | importBlocked |
  *                          importing | imported | failedPending | failed |
  *                          ignored                     — where it is stuck
+ *   status                 the *download client's* item status, not *arr's
  *   statusMessages / errorMessage                      — why
+ *
+ * A blocked import is the common case, but NOT the only one this catches, which
+ * is why everything user-facing says "queue issues" rather than "import issues":
+ * `status` is copied straight off the download client item
+ * (QueueService.cs: `trackedDownload.DownloadItem.Status`, whose enum is
+ * Queued/Paused/Downloading/Completed/Failed/Warning), so a stalled torrent or a
+ * client-side error surfaces here too. Both are things the user wants to act on,
+ * and both are fixed by the same remove/blocklist actions.
  *
  * Verified against Radarr's Queue/QueueController.cs + TrackedDownload model and
  * mirrored on Rudarr's QueueItem.swift (`hasIssue` = trackedDownloadStatus != ok).
@@ -61,6 +70,10 @@ export function worstQueueSeverity(
  * `importPending` is the interesting one: on its own it just means "waiting for
  * the client to finish", but paired with a warning/error it is the state
  * Sonarr/Radarr surface as "Import blocked" in their own queue UI.
+ *
+ * The cases below are the whole TrackedDownloadState enum (TrackedDownload.cs in
+ * Sonarr and Radarr, QueueItem in Lidarr) minus the healthy in-flight ones —
+ * there is deliberately no `importFailed`, that state does not exist upstream.
  */
 export function queueStatusLabel(item: ArrQueueIssueRecord): string {
   const severity = queueIssueSeverity(item);
@@ -71,8 +84,6 @@ export function queueStatusLabel(item: ArrQueueIssueRecord): string {
       return "Import blocked";
     case "importpending":
       return severity ? "Import blocked" : "Waiting to import";
-    case "importfailed":
-      return "Import failed";
     case "failed":
     case "failedpending":
       return "Download failed";

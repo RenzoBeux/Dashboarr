@@ -84,7 +84,7 @@ export function useRadarrQueue(instanceId?: string) {
   return useQuery({
     queryKey: ["radarr", id, "queue"],
     // Args must stay identical to radarrArrQueueAdapter.fetchQueue — the
-    // dashboard widget and the import-issues banner share this cache entry.
+    // dashboard widget and the queue-issues banner share this cache entry.
     queryFn: () => getQueue(1, 100, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
