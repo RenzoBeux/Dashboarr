@@ -4,15 +4,27 @@ import { useQueries } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceLogo } from "@/components/ui/service-logo";
+import {
+  ActionSheet,
+  type ActionSheetAction,
+} from "@/components/ui/action-sheet";
 import { getHistory as getRadarrHistory, getRadarrPoster } from "@/services/radarr-api";
 import { getHistory as getSonarrHistory, getSonarrPoster } from "@/services/sonarr-api";
 import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
+import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { POLLING_INTERVALS } from "@/lib/constants";
-import { formatEpisodeCode, relativeDate } from "@/lib/utils";
+import { formatBytes, formatEpisodeCode, relativeDate } from "@/lib/utils";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import { normalizeSonarrHistory } from "@/lib/arr-history";
+import { BAR_KIND_COLOR } from "@/lib/arr-poster-status";
+import {
+  groupRecentDownloads,
+  type RecentGroup,
+  type RecentItem,
+} from "@/lib/recently-downloaded";
 import {
   RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
   type RecentlyDownloadedSettingsValue,
@@ -21,28 +33,6 @@ import type { WidgetComponentProps } from "@/components/dashboard/widget-registr
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
-import type {
-  RadarrHistoryRecord,
-  SonarrHistoryRecord,
-} from "@/lib/types";
-
-// One imported entry from either Sonarr or Radarr, tagged with its source
-// instance so the per-tile router push targets the right id space (movie /
-// series ids aren't globally unique across instances of the same kind).
-type RecentItem =
-  | {
-      kind: "episode";
-      record: SonarrHistoryRecord;
-      instanceId: string;
-      // Pulled out for sorting — `date` is optional on the record type.
-      date: string;
-    }
-  | {
-      kind: "movie";
-      record: RadarrHistoryRecord;
-      instanceId: string;
-      date: string;
-    };
 
 // Radarr/Sonarr expose the import event under this name. Grab events fire too,
 // but the issue asks for "recently downloaded" — only completed imports count.
@@ -56,6 +46,10 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
   );
   const sonarrEnabled = useConfigStore((s) => s.services.sonarr.enabled);
   const radarrEnabled = useConfigStore((s) => s.services.radarr.enabled);
+
+  // A grouped tile opens a sheet whose rows navigate — a modal-into-navigation
+  // chain, so it goes through the flow rather than plain state (see CLAUDE.md).
+  const flow = useModalFlow<{ episodes: RecentGroup }>();
 
   const showSonarr = settings.includeSonarr && sonarrEnabled;
   const showRadarr = settings.includeRadarr && radarrEnabled;
@@ -123,9 +117,12 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
     });
   }
 
-  // Sort descending by import timestamp so the freshest download is leftmost.
-  items.sort((a, b) => b.date.localeCompare(a.date));
-  const display = items.slice(0, settings.maxItems);
+  // Sorted newest-first and collapsed by series (issue #307), so the cap counts
+  // tiles: a season batch no longer pushes the rest of the feed off screen.
+  const display = groupRecentDownloads(items, settings.groupEpisodes).slice(
+    0,
+    settings.maxItems,
+  );
 
   const noSources = !showSonarr && !showRadarr;
   const noServicesEnabled = !sonarrEnabled && !radarrEnabled;
@@ -139,6 +136,39 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
     enabled: settings.hideWhenEmpty,
     isEmpty: !noSources && display.length === 0,
     isLoading,
+  });
+
+  const openSeries = (item: Extract<RecentItem, { kind: "episode" }>) => {
+    const seriesId = item.record.seriesId ?? item.record.series?.id;
+    if (!seriesId) return;
+    router.push(`/series/${seriesId}?instanceId=${item.instanceId}`);
+  };
+
+  // Payload stays readable while the sheet animates out, so the rows don't
+  // blank mid-dismiss.
+  const openGroup = flow.payload("episodes");
+  const openGroupItems = (openGroup?.items ?? []).filter(
+    (i): i is Extract<RecentItem, { kind: "episode" }> => i.kind === "episode",
+  );
+
+  const episodeActions: ActionSheetAction[] = openGroupItems.map((item) => {
+    const entry = normalizeSonarrHistory(item.record);
+    const episode = item.record.episode;
+    const code = episode
+      ? formatEpisodeCode(episode.seasonNumber ?? 0, episode.episodeNumber ?? 0)
+      : null;
+    return {
+      label: [code, episode?.title].filter(Boolean).join(" · ") || entry.title,
+      subtitle:
+        [
+          entry.qualityName,
+          entry.sizeBytes ? formatBytes(entry.sizeBytes) : null,
+          relativeDate(item.date),
+        ]
+          .filter(Boolean)
+          .join(" · ") || undefined,
+      onPress: () => flow.whenClear(() => openSeries(item)),
+    };
   });
 
   return (
@@ -177,40 +207,77 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 12 }}
         >
-          {display.map((item) =>
-            item.kind === "episode" ? (
-              <EpisodeTile
-                key={`ep-${item.instanceId}-${item.record.id}`}
-                item={item}
+          {display.map((group) => {
+            const first = group.items[0];
+            if (first.kind === "movie") {
+              return (
+                <MovieTile
+                  key={group.key}
+                  item={first}
+                  showSourceBadge={showSourceBadge}
+                  onPress={() => {
+                    const movieId = first.record.movieId ?? first.record.movie?.id;
+                    if (!movieId) return;
+                    router.push(
+                      `/movie/${movieId}?instanceId=${first.instanceId}`,
+                    );
+                  }}
+                />
+              );
+            }
+            if (group.items.length === 1) {
+              return (
+                <EpisodeTile
+                  key={group.key}
+                  item={first}
+                  showSourceBadge={showSourceBadge}
+                  onPress={() => openSeries(first)}
+                />
+              );
+            }
+            return (
+              <EpisodeGroupTile
+                key={group.key}
+                group={group}
                 showSourceBadge={showSourceBadge}
-                onPress={() => {
-                  const seriesId =
-                    item.record.seriesId ?? item.record.series?.id;
-                  if (!seriesId) return;
-                  router.push(
-                    `/series/${seriesId}?instanceId=${item.instanceId}`,
-                  );
-                }}
+                onPress={() => flow.open("episodes", group)}
               />
-            ) : (
-              <MovieTile
-                key={`mv-${item.instanceId}-${item.record.id}`}
-                item={item}
-                showSourceBadge={showSourceBadge}
-                onPress={() => {
-                  const movieId = item.record.movieId ?? item.record.movie?.id;
-                  if (!movieId) return;
-                  router.push(
-                    `/movie/${movieId}?instanceId=${item.instanceId}`,
-                  );
-                }}
-              />
-            ),
-          )}
+            );
+          })}
         </ScrollView>
       )}
+
+      <ActionSheet
+        {...flow.bind("episodes")}
+        title={openGroup ? seriesTitleOf(openGroup) : undefined}
+        subtitle={openGroup ? groupSubtitle(openGroup) : undefined}
+        actions={episodeActions}
+      />
     </Card>
   );
+}
+
+// Every record in a series group names the same show, but `series` is only
+// populated when Sonarr echoed it back — fall back to the first one that did.
+function seriesTitleOf(group: RecentGroup): string {
+  for (const item of group.items) {
+    if (item.kind !== "episode") continue;
+    const title = item.record.series?.title ?? item.record.sourceTitle;
+    if (title) return title;
+  }
+  return "Episodes";
+}
+
+function seriesImagesOf(group: RecentGroup) {
+  for (const item of group.items) {
+    if (item.kind !== "episode") continue;
+    if (item.record.series?.images?.length) return item.record.series.images;
+  }
+  return undefined;
+}
+
+function groupSubtitle(group: RecentGroup): string {
+  return `${group.items.length} episodes · ${relativeDate(group.date)}`;
 }
 
 function EpisodeTile({
@@ -239,6 +306,36 @@ function EpisodeTile({
       title={title}
       subtitle={subtitle}
       mediaType="tv"
+      topLeftBadge={
+        showSourceBadge ? <ServiceLogo id="sonarr" size={14} /> : undefined
+      }
+      onPress={onPress}
+    />
+  );
+}
+
+// Several episodes of one series collapsed into a single tile (issue #307).
+// The count pill is the at-a-glance signal; the sheet behind the tap lists
+// which episodes actually landed.
+function EpisodeGroupTile({
+  group,
+  showSourceBadge,
+  onPress,
+}: {
+  group: RecentGroup;
+  showSourceBadge: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <MediaPosterTile
+      posterUrl={getSonarrPoster(seriesImagesOf(group))}
+      title={seriesTitleOf(group)}
+      subtitle={groupSubtitle(group)}
+      mediaType="tv"
+      cornerBadge={{
+        label: String(group.items.length),
+        color: BAR_KIND_COLOR.primary,
+      }}
       topLeftBadge={
         showSourceBadge ? <ServiceLogo id="sonarr" size={14} /> : undefined
       }

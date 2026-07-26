@@ -23,6 +23,8 @@ export interface RecentlyDownloadedSettingsValue extends Record<string, unknown>
   radarrInstanceIds: InstanceBindingValue;
   includeSonarr: boolean;
   includeRadarr: boolean;
+  // Collapse every import of the same series into one tile (issue #307).
+  groupEpisodes: boolean;
   maxItems: number;
   hideWhenEmpty: boolean;
 }
@@ -32,6 +34,7 @@ export const RECENTLY_DOWNLOADED_DEFAULT_SETTINGS: RecentlyDownloadedSettingsVal
   radarrInstanceIds: INSTANCE_BINDING_ALL,
   includeSonarr: true,
   includeRadarr: true,
+  groupEpisodes: true,
   maxItems: 10,
   hideWhenEmpty: false,
 };
@@ -89,6 +92,20 @@ export function RecentlyDownloadedSettings({ slotId }: WidgetSettingsComponentPr
           value={settings.radarrInstanceIds}
           onChange={(radarrInstanceIds) => update({ radarrInstanceIds })}
         />
+      )}
+
+      {/* Grouping only ever affects episodes, so the toggle follows Sonarr. */}
+      {settings.includeSonarr && sonarrEnabled && (
+        <SettingsSection label="Episodes">
+          <ToggleCard>
+            <Toggle
+              label="Group by series"
+              description="Collapse episodes of the same series into one tile"
+              value={settings.groupEpisodes}
+              onValueChange={(groupEpisodes) => update({ groupEpisodes })}
+            />
+          </ToggleCard>
+        </SettingsSection>
       )}
 
       <MaxItemsSelector
