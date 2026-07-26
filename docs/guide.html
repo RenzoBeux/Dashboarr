@@ -626,8 +626,11 @@
         <p>
           Most settings sheets include a <strong>Visibility, "Hide when empty"</strong> toggle. Cards
           hidden that way still appear in edit mode, marked with a crossed-out-eye icon, so a
-          "vanished" widget is easy to find. Widgets for services that support several instances also
-          expose an instance chip row with an <strong>All instances</strong> chip.
+          "vanished" widget is easy to find. Service Health has the same toggle worded
+          <strong>"Hide when all healthy"</strong>, since its grid is never empty: it hides while every
+          service it shows is online and comes back the moment one goes down. Widgets for services
+          that support several instances also expose an instance chip row with an
+          <strong>All instances</strong> chip.
         </p>
 
         <h3>Attached instances and auto-attach</h3>
@@ -1009,8 +1012,8 @@
         <h3>A widget disappeared from the dashboard.</h3>
         <p>
           Either its service was disabled or un-attached (it is hidden, not deleted, and returns when
-          you restore it), or it has "Hide when empty" on. Enter widget edit mode to see hidden cards,
-          marked with a crossed-out-eye icon.
+          you restore it), or it has "Hide when empty" on, or, for Service Health, "Hide when all
+          healthy". Enter widget edit mode to see hidden cards, marked with a crossed-out-eye icon.
         </p>
 
         <h3>qBittorrent says wrong username or password.</h3>

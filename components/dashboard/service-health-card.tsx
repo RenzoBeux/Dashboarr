@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useServiceTileLayout } from "@/hooks/use-service-tile-cell";
 import { useManualRefresh } from "@/store/manual-refresh-store";
 import { ICON, type ServiceId } from "@/lib/constants";
@@ -186,6 +187,23 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
       });
     }
   }
+
+  // Away-blocked instances are offline by configuration (remote-only with no
+  // remote URL, #168), not by failure, so they don't count as "something is
+  // wrong". auth_failed does — a rejected key is actionable, keep the card up.
+  const allHealthy = entries.every((e) => e.awayBlocked || e.status === "ok");
+  // Must run before the early return below — rules of hooks.
+  //
+  // isPending, not `determining`: the latter also flips on every pull-to-refresh
+  // and on re-keyed refetches, which would pop a hidden card back into view
+  // mid-refresh and collapse it again. On a cold start every entry falls back to
+  // "offline" (see status above), so the card is visible anyway; this guard only
+  // covers the vacuously-true empty-entries case.
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenAllHealthy,
+    isEmpty: allHealthy,
+    isLoading: isPending,
+  });
 
   if (entries.length === 0) return null;
 

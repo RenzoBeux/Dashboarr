@@ -370,7 +370,13 @@ export default function DashboardScreen() {
             const { label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleSlots.length - 1;
-            const hidesWhenEmpty = slot.settings?.hideWhenEmpty === true;
+            // Any of the per-widget auto-hide settings: the standard
+            // "hide when empty" (#282) or Service Health's "hide when all
+            // healthy" (#303). Only drives the edit-mode EyeOff marker — the
+            // collapse itself is widget-agnostic via the visibility store.
+            const autoHides =
+              slot.settings?.hideWhenEmpty === true ||
+              slot.settings?.hideWhenAllHealthy === true;
             // display:none (not unmount) so the widget's queries keep polling
             // and it reappears the moment content shows up. Edit mode always
             // shows the card so the toggle stays reachable. Yoga excludes
@@ -393,7 +399,7 @@ export default function DashboardScreen() {
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
                         {label}
                       </Text>
-                      {hidesWhenEmpty && (
+                      {autoHides && (
                         <Icon icon={EyeOff} size={ICON.SM} color="#52525b" />
                       )}
                     </View>
