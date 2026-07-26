@@ -1,6 +1,7 @@
 import { Modal, View, Text, Pressable, ScrollView, Linking } from "react-native";
-import { AlertTriangle, Info, ExternalLink } from "lucide-react-native";
+import { AlertTriangle, Info, ExternalLink, CheckCircle2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { EmptyState } from "@/components/ui/empty-state";
 import { SheetHeader } from "@/components/ui/sheet-header";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { lightHaptic } from "@/lib/haptics";
@@ -51,6 +52,17 @@ export function HealthIssuesSheet({
           contentContainerStyle={scrollPadding}
           showsVerticalScrollIndicator={false}
         >
+          {/* The callers keep this sheet mounted while it dismisses, so a poll
+              that resolves the last issue can empty it out from under an open
+              sheet. Say so rather than showing a blank pane. */}
+          {instances?.every((inst) => inst.issues.length === 0) ? (
+            <EmptyState
+              icon={<Icon icon={CheckCircle2} size={28} color="#22c55e" />}
+              title="All clear"
+              message={`${serviceName} has no health issues right now`}
+            />
+          ) : null}
+
           {instances?.map((inst) => (
             <View key={inst.instanceId} className="gap-2">
               {showInstanceNames ? (
