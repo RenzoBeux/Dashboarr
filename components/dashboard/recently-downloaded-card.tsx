@@ -66,6 +66,17 @@ export function RecentlyDownloadedCard({ slotId }: WidgetComponentProps) {
   // Fan history across each resolved instance. Query keys match the watchers
   // in use-notification-watchers.tsx so we share the same cached page instead
   // of issuing a second request per instance.
+  //
+  // 50 raw records covering every event type (grab, import, rename, delete) is
+  // the shared budget, so with grouping on the row can hold fewer than
+  // `maxItems` tiles: a 20-episode season eats much of the window and collapses
+  // to one tile. That's the #307 trade-off working as intended — you did
+  // download fewer distinct things. Don't "fix" it by raising the page size
+  // here: this response embeds a full series/movie object per record and is
+  // polled every 30s, so a bigger page is a real recurring cost for every user,
+  // paid to fill one widget. Narrowing to import events only would be the
+  // cheaper lever, but the key is shared — useTorrentPosterMap backfills poster
+  // lookups from grab events on it too.
   const sonarrQueries = useQueries({
     queries: showSonarr
       ? sonarrInstances.map((inst) => ({

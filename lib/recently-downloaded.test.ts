@@ -7,6 +7,7 @@ function episode(
   date: string,
   seriesId: number | undefined,
   instanceId = "sonarr-a",
+  episodeId?: number,
 ): RecentItem {
   return {
     kind: "episode",
@@ -17,6 +18,7 @@ function episode(
       eventType: "downloadFolderImported",
       date,
       ...(seriesId === undefined ? {} : { seriesId }),
+      ...(episodeId === undefined ? {} : { episodeId }),
     },
   };
 }
@@ -76,6 +78,56 @@ describe("groupRecentDownloads", () => {
       "movie:radarr-a:20",
     ]);
     expect(groups[0].items).toHaveLength(2);
+  });
+
+  // A quality upgrade re-imports an episode already in the window. Counting
+  // both would badge one episode as "2 episodes" and list it twice.
+  it("keeps only the newest import of a repeated episode", () => {
+    const groups = groupRecentDownloads(
+      [
+        episode(10, "2026-07-20T10:00:00Z", 5, "sonarr-a", 900),
+        episode(11, "2026-07-24T10:00:00Z", 5, "sonarr-a", 900),
+        episode(12, "2026-07-22T10:00:00Z", 5, "sonarr-a", 901),
+      ],
+      true,
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items.map((i) => i.record.id)).toEqual([11, 12]);
+  });
+
+  it("does not dedupe the same episode id across different series", () => {
+    const groups = groupRecentDownloads(
+      [
+        episode(10, "2026-07-24T10:00:00Z", 5, "sonarr-a", 900),
+        episode(11, "2026-07-24T11:00:00Z", 6, "sonarr-a", 900),
+      ],
+      true,
+    );
+    expect(groups).toHaveLength(2);
+  });
+
+  // Nothing to match on, so a duplicate is preferable to a dropped import.
+  it("keeps repeated imports when the episode id is missing", () => {
+    const groups = groupRecentDownloads(
+      [
+        episode(10, "2026-07-20T10:00:00Z", 5),
+        episode(11, "2026-07-24T10:00:00Z", 5),
+      ],
+      true,
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items).toHaveLength(2);
+  });
+
+  it("leaves repeated episodes alone when grouping is off", () => {
+    const groups = groupRecentDownloads(
+      [
+        episode(10, "2026-07-20T10:00:00Z", 5, "sonarr-a", 900),
+        episode(11, "2026-07-24T10:00:00Z", 5, "sonarr-a", 900),
+      ],
+      false,
+    );
+    expect(groups).toHaveLength(2);
   });
 
   it("keeps different series apart", () => {

@@ -38,12 +38,22 @@ function seriesIdOf(record: SonarrHistoryRecord): number | undefined {
   return record.seriesId ?? record.series?.id;
 }
 
+function episodeIdOf(record: SonarrHistoryRecord): number | undefined {
+  return record.episodeId ?? record.episode?.id;
+}
+
 /**
  * Merge a flat import feed into the tiles the widget renders, newest first.
  *
  * A series group takes the feed position of its newest episode, so grouping
  * never reorders the feed relative to what an ungrouped view would show — it
  * only collapses the follow-up episodes into the tile that was already there.
+ *
+ * Within a group each episode appears once. A quality upgrade emits a second
+ * `downloadFolderImported` for an episode already in the window, and counting
+ * both would badge a single episode as "2 episodes" and list it twice in the
+ * sheet. Iteration is newest-first, so the survivor is the latest import — the
+ * one whose quality and size are actually on disk.
  */
 export function groupRecentDownloads(
   items: RecentItem[],
@@ -55,6 +65,8 @@ export function groupRecentDownloads(
 
   const groups: RecentGroup[] = [];
   const bySeries = new Map<string, RecentGroup>();
+  // "<groupKey>:<episodeId>" for every episode already placed in a group.
+  const seenEpisodes = new Set<string>();
 
   for (const item of sorted) {
     const seriesId =
@@ -72,6 +84,17 @@ export function groupRecentDownloads(
     }
 
     const key = `series:${item.instanceId}:${seriesId}`;
+
+    // An episode Sonarr didn't identify can't be matched against anything, so
+    // it's kept rather than guessed at — better a duplicate than a lost import.
+    const episodeId =
+      item.kind === "episode" ? episodeIdOf(item.record) : undefined;
+    if (episodeId !== undefined) {
+      const seenKey = `${key}:${episodeId}`;
+      if (seenEpisodes.has(seenKey)) continue;
+      seenEpisodes.add(seenKey);
+    }
+
     const existing = bySeries.get(key);
     if (existing) {
       existing.items.push(item);
