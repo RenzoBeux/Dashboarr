@@ -153,6 +153,19 @@ export function AutoHideToggle({
 }
 
 /**
+ * Every slot-settings key written by an `AutoHideToggle`. Edit mode marks a slot
+ * carrying one of these with the crossed-out-eye icon, so a "vanished" widget is
+ * findable. Add a new auto-hide toggle's key here or its widget will disappear
+ * with nothing in edit mode explaining why.
+ */
+const AUTO_HIDE_SETTING_KEYS = ["hideWhenEmpty", "hideWhenAllHealthy"] as const;
+
+/** Whether this slot is configured to hide itself under some condition. */
+export function slotAutoHides(settings?: Record<string, unknown>): boolean {
+  return AUTO_HIDE_SETTING_KEYS.some((key) => settings?.[key] === true);
+}
+
+/**
  * "Hide when empty" toggle (#282) — the standard wording, used by every widget
  * whose emptiness is the signal.
  */

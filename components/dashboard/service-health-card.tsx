@@ -194,15 +194,23 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   const allHealthy = entries.every((e) => e.awayBlocked || e.status === "ok");
   // Must run before the early return below — rules of hooks.
   //
-  // isPending, not `determining`: the latter also flips on every pull-to-refresh
-  // and on re-keyed refetches, which would pop a hidden card back into view
-  // mid-refresh and collapse it again. On a cold start every entry falls back to
-  // "offline" (see status above), so the card is visible anyway; this guard only
-  // covers the vacuously-true empty-entries case.
+  // `isEmpty: allHealthy || isPending` with no isLoading gate, which inverts the
+  // usual useHideWhenEmpty contract on purpose. That contract ("never report
+  // empty while loading") exists so an emptiness-driven widget shows its
+  // skeleton instead of flashing hidden. Here the signal is inverted: until the
+  // first probe returns, `status` falls back to "offline" for every entry, so
+  // gating on isPending would render a full card of pulsing tiles on every cold
+  // start and collapse it a second later — layout shift on every launch, for a
+  // card the user asked to see only when something breaks. Nothing is known to
+  // be wrong yet, so start hidden and appear when a probe says otherwise.
+  //
+  // isPending specifically, not `determining`: the latter also flips on
+  // pull-to-refresh and re-keyed refetches, which would hide an already-visible
+  // card mid-refresh and pop it back.
   useHideWhenEmpty(slotId, {
     enabled: settings.hideWhenAllHealthy,
-    isEmpty: allHealthy,
-    isLoading: isPending,
+    isEmpty: allHealthy || isPending,
+    isLoading: false,
   });
 
   if (entries.length === 0) return null;
