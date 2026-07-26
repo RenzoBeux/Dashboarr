@@ -1,7 +1,17 @@
 import { Disc3 } from "lucide-react-native";
-import { getQueue, getWantedMissing, getLidarrAlbumCover } from "@/services/lidarr-api";
+import {
+  getQueue,
+  getWantedMissing,
+  getLidarrAlbumCover,
+  removeFromQueue,
+} from "@/services/lidarr-api";
 import type { LidarrQueue, LidarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
+import {
+  queueIssueMessages,
+  queueIssueSeverity,
+  queueStatusLabel,
+} from "@/lib/arr-queue-issues";
 
 export const lidarrArrQueueAdapter: ArrQueueAdapter = {
   serviceId: "lidarr",
@@ -15,7 +25,7 @@ export const lidarrArrQueueAdapter: ArrQueueAdapter = {
   wantedQueryKey: (instanceId) => ["lidarr", instanceId, "wanted"] as const,
 
   // Same key + args as useLidarrQueue, so the widget shares its cache entry.
-  fetchQueue: (instanceId) => getQueue(1, 20, instanceId),
+  fetchQueue: (instanceId) => getQueue(1, 100, instanceId),
 
   toItems: (data, instanceId) =>
     ((data as LidarrQueue).records ?? []).map((item) => ({
@@ -33,8 +43,15 @@ export const lidarrArrQueueAdapter: ArrQueueAdapter = {
       detailPath: item.albumId
         ? `/album/${item.albumId}?instanceId=${instanceId}`
         : null,
+      releaseTitle: item.title,
+      severity: queueIssueSeverity(item),
+      statusLabel: queueStatusLabel(item),
+      messages: queueIssueMessages(item),
     })),
 
   fetchWanted: (instanceId) => getWantedMissing(1, 1, instanceId),
   wantedCount: (data) => (data as LidarrWantedMissing).totalRecords ?? 0,
+
+  removeFromQueue: (instanceId, queueId, opts) =>
+    removeFromQueue(queueId, opts, instanceId),
 };

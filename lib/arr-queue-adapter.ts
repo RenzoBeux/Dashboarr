@@ -1,5 +1,7 @@
 import type { LucideIcon } from "lucide-react-native";
 import type { ServiceId } from "@/lib/constants";
+import type { ArrQueueSeverity } from "@/lib/arr-queue-issues";
+import type { ArrQueueRemoveOptions } from "@/lib/types";
 
 // A single queue row, normalized so the shared ArrQueueCard renders with no
 // service-specific knowledge. Radarr/Sonarr/Lidarr adapters map their raw
@@ -17,6 +19,17 @@ export interface ArrQueueItem {
   // Detail-screen deep link already carrying `?instanceId=`, or null when the
   // underlying media record id is unavailable (then the tile doesn't navigate).
   detailPath: string | null;
+
+  // --- Import/download trouble (#285) ---
+  // The raw release name. `title` above prefers the media title, which for a
+  // blocked grab hides which release is actually stuck.
+  releaseTitle: string;
+  // null when the grab is healthy — the import-issues banner filters on this.
+  severity: ArrQueueSeverity | null;
+  // Short state label, e.g. "Import blocked" / "Downloading".
+  statusLabel: string;
+  // Every reason *arr gave, deduped. Empty when it gave none.
+  messages: string[];
 }
 
 // Shared adapter: every *arr service that exposes a download queue implements
@@ -55,4 +68,12 @@ export interface ArrQueueAdapter {
   // Fetch the raw wanted/missing response; the header badge reads its total.
   fetchWanted: (instanceId: string) => Promise<unknown>;
   wantedCount: (data: unknown) => number;
+
+  // DELETE /queue/{id} — drop a stuck grab, optionally blocklisting the release
+  // so it is never picked up again (#285).
+  removeFromQueue: (
+    instanceId: string,
+    queueId: number,
+    opts: ArrQueueRemoveOptions,
+  ) => Promise<void>;
 }

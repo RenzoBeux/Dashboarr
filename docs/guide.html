@@ -723,6 +723,29 @@
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>
 
+        <h3>Import issues (Radarr, Sonarr, Lidarr)</h3>
+        <p>
+          Sometimes a grab finishes downloading but the *arr refuses to import it: non-media files
+          in the release, a sample-only folder, episodes missing from the pack, no matching movie or
+          series. When that happens the Movies, TV and Music screens show an
+          <strong>import issues</strong> banner above the chip row. Amber means a warning, red means
+          the download failed outright. It only appears when something is actually stuck, and it
+          follows the instance you currently have selected.
+        </p>
+        <p>
+          Tapping it lists every stuck grab with the reason the service gave and the release name.
+          Tap one for three actions:
+        </p>
+        <ul>
+          <li><strong>Remove from queue</strong>: drops the grab and deletes it from the download client. The release stays eligible, so the same copy can be grabbed again.</li>
+          <li><strong>Blocklist &amp; Search</strong>: also blocks the release so it is never grabbed again, then starts a search for a replacement. This is the one you want for a bad copy.</li>
+          <li><strong>Blocklist only</strong>: blocks the release with no replacement search.</li>
+        </ul>
+        <p>
+          All three ask for confirmation first, and blocklisted releases show up under
+          <em>System &rarr; Blocklist</em> in Radarr, Sonarr or Lidarr itself.
+        </p>
+
         <h3>Global search</h3>
         <p>
           The magnifier in the Dashboard header opens <strong>Search</strong>. It needs two characters

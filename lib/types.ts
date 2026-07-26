@@ -361,6 +361,26 @@ export interface RadarrImage {
   remoteUrl: string;
 }
 
+// A single queue status message as *arr reports it: `title` is usually the
+// release/file it applies to and `messages` the reasons, but a bare reason
+// arrives as a title with an empty `messages` array. Shared by every *arr queue.
+export interface ArrQueueStatusMessage {
+  title: string;
+  messages?: string[];
+}
+
+/**
+ * Query params for `DELETE /queue/{id}`, identical across Radarr v3, Sonarr v3
+ * and Lidarr v1. `blocklist` marks the grab as failed so the release is never
+ * picked up again; `skipRedownload` then suppresses the replacement search that
+ * failure would otherwise trigger (it has no effect without `blocklist`).
+ */
+export interface ArrQueueRemoveOptions {
+  removeFromClient?: boolean;
+  blocklist?: boolean;
+  skipRedownload?: boolean;
+}
+
 export interface RadarrQueueItem {
   id: number;
   movieId: number;
@@ -368,7 +388,10 @@ export interface RadarrQueueItem {
   status: string;
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
-  statusMessages: { title: string; messages: string[] }[];
+  // Why the grab is stuck, when it is. Radarr omits both on a healthy record
+  // and `statusMessages` entirely on some responses, so both are optional.
+  statusMessages?: ArrQueueStatusMessage[];
+  errorMessage?: string;
   size: number;
   sizeleft: number;
   timeleft?: string;
@@ -376,6 +399,8 @@ export interface RadarrQueueItem {
   protocol: string;
   downloadId?: string;
   downloadClient?: string;
+  indexer?: string;
+  added?: string;
   quality: { quality: { name: string } };
   movie?: RadarrMovie;
 }
@@ -678,12 +703,17 @@ export interface SonarrQueueItem {
   status: string;
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
+  statusMessages?: ArrQueueStatusMessage[];
+  errorMessage?: string;
   size: number;
   sizeleft: number;
   timeleft?: string;
   estimatedCompletionTime?: string;
   protocol: string;
   downloadId?: string;
+  downloadClient?: string;
+  indexer?: string;
+  added?: string;
   quality: { quality: { name: string } };
   series?: SonarrSeries;
   episode?: SonarrEpisode;
@@ -841,7 +871,8 @@ export interface LidarrQueueItem {
   status: string;
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
-  statusMessages?: { title: string; messages: string[] }[];
+  statusMessages?: ArrQueueStatusMessage[];
+  errorMessage?: string;
   size: number;
   sizeleft: number;
   timeleft?: string;
@@ -849,6 +880,8 @@ export interface LidarrQueueItem {
   protocol: string;
   downloadId?: string;
   downloadClient?: string;
+  indexer?: string;
+  added?: string;
   quality: { quality: { name: string } };
   artist?: LidarrArtist;
   album?: LidarrAlbum;
