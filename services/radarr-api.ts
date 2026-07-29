@@ -9,6 +9,7 @@ import type {
   RadarrImage,
   RadarrRelease,
   RadarrCollection,
+  ArrQueueRemoveOptions,
 } from "@/lib/types";
 
 // Interactive search hits indexers live and frequently exceeds the 15s
@@ -70,14 +71,39 @@ export function getCollectionByTmdbId(
 
 // --- Queue ---
 
+// `includeUnknownMovieItems` matters for the queue-issues banner (#285): a
+// grab whose movie was deleted from the library is exactly the kind that gets
+// stuck, and Radarr hides those by default. The page size is generous for the
+// same reason — blocked items have no `timeleft` and sort last under the
+// default sort, so a small page would clip them off.
 export function getQueue(
   page = 1,
-  pageSize = 20,
+  pageSize = 100,
   includeMovie = true,
   instanceId?: string,
 ): Promise<RadarrQueue> {
   return serviceRequest<RadarrQueue>("radarr", "/queue", {
-    params: { page, pageSize, includeMovie },
+    params: { page, pageSize, includeMovie, includeUnknownMovieItems: true },
+    instanceId,
+  });
+}
+
+/**
+ * Removes a queue item. See ArrQueueRemoveOptions for what the flags do; the
+ * defaults match Radarr's own (`removeFromClient=true`, no blocklist).
+ */
+export function removeFromQueue(
+  queueId: number,
+  opts: ArrQueueRemoveOptions = {},
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("radarr", `/queue/${queueId}`, {
+    method: "DELETE",
+    params: {
+      removeFromClient: opts.removeFromClient ?? true,
+      blocklist: opts.blocklist ?? false,
+      skipRedownload: opts.skipRedownload ?? false,
+    },
     instanceId,
   });
 }

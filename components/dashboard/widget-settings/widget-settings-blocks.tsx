@@ -120,8 +120,54 @@ export function SelectRow({
 }
 
 /**
- * "Hide when empty" toggle (#282). Rendered as the last section of a widget's
- * settings form; the widget wires the value into `useHideWhenEmpty`.
+ * Visibility section for a widget's "hide itself when there's nothing worth
+ * showing" toggle (#282). Rendered as the last section of a widget's settings
+ * form; the widget wires the value into `useHideWhenEmpty`. Most widgets use
+ * the `HideWhenEmptyToggle` wrapper below — pass your own copy only when
+ * "nothing worth showing" isn't emptiness (e.g. Service Health, whose grid is
+ * never empty but is uninteresting while every service is healthy, #303).
+ */
+export function AutoHideToggle({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <SettingsSection label="Visibility">
+      <ToggleCard>
+        <Toggle
+          label={label}
+          description={description}
+          value={value}
+          onValueChange={onChange}
+        />
+      </ToggleCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Every slot-settings key written by an `AutoHideToggle`. Edit mode marks a slot
+ * carrying one of these with the crossed-out-eye icon, so a "vanished" widget is
+ * findable. Add a new auto-hide toggle's key here or its widget will disappear
+ * with nothing in edit mode explaining why.
+ */
+const AUTO_HIDE_SETTING_KEYS = ["hideWhenEmpty", "hideWhenAllHealthy"] as const;
+
+/** Whether this slot is configured to hide itself under some condition. */
+export function slotAutoHides(settings?: Record<string, unknown>): boolean {
+  return AUTO_HIDE_SETTING_KEYS.some((key) => settings?.[key] === true);
+}
+
+/**
+ * "Hide when empty" toggle (#282) — the standard wording, used by every widget
+ * whose emptiness is the signal.
  */
 export function HideWhenEmptyToggle({
   value,
@@ -131,16 +177,12 @@ export function HideWhenEmptyToggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <SettingsSection label="Visibility">
-      <ToggleCard>
-        <Toggle
-          label="Hide when empty"
-          description="Hide this widget from the dashboard when there is nothing to show"
-          value={value}
-          onValueChange={onChange}
-        />
-      </ToggleCard>
-    </SettingsSection>
+    <AutoHideToggle
+      label="Hide when empty"
+      description="Hide this widget from the dashboard when there is nothing to show"
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 

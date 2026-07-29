@@ -205,7 +205,8 @@ export async function serviceRequest<T>(
     // the path or query params — pass body through so the demo router can read
     // it. Other services ignore the third arg.
     const body = typeof fetchOptions.body === "string" ? fetchOptions.body : undefined;
-    return (getDemoResponse(serviceId, path, params, body) ?? undefined) as T;
+    return (getDemoResponse(serviceId, path, params, body, fetchOptions.method) ??
+      undefined) as T;
   }
 
   const targetId = instanceId ?? store.getActiveInstanceId(serviceId);

@@ -13,6 +13,8 @@ import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
+import { QueueIssuesBanner } from "@/components/services/queue-issues-banner";
+import { lidarrArrQueueAdapter } from "@/lib/arr-queue-adapters/lidarr";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -278,6 +280,7 @@ export const MusicView = memo(function MusicView({
       </View>
 
       <HealthIssuesBanner serviceId="lidarr" className="mb-4" />
+      <QueueIssuesBanner adapter={lidarrArrQueueAdapter} className="mb-4" />
 
       <ScrollView
         horizontal

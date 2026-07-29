@@ -1,6 +1,16 @@
-import { getQueue, getWantedMissing, getSonarrPoster } from "@/services/sonarr-api";
+import {
+  getQueue,
+  getWantedMissing,
+  getSonarrPoster,
+  removeFromQueue,
+} from "@/services/sonarr-api";
 import type { SonarrQueue, SonarrQueueItem, SonarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
+import {
+  queueIssueMessages,
+  queueIssueSeverity,
+  queueStatusLabel,
+} from "@/lib/arr-queue-issues";
 
 // "S02E05" when the episode is known, else the ETA, else nothing. Gives the
 // poster tile the episode context a series poster alone can't convey.
@@ -26,7 +36,7 @@ export const sonarrArrQueueAdapter: ArrQueueAdapter = {
   wantedQueryKey: (instanceId) => ["sonarr", instanceId, "wanted"] as const,
 
   // Same key + args as useSonarrQueue, so the widget shares its cache entry.
-  fetchQueue: (instanceId) => getQueue(1, 20, true, true, instanceId),
+  fetchQueue: (instanceId) => getQueue(1, 100, true, true, instanceId),
 
   toItems: (data, instanceId) =>
     ((data as SonarrQueue).records ?? []).map((item) => {
@@ -44,9 +54,16 @@ export const sonarrArrQueueAdapter: ArrQueueAdapter = {
         detailPath: seriesId
           ? `/series/${seriesId}?instanceId=${instanceId}`
           : null,
+        releaseTitle: item.title,
+        severity: queueIssueSeverity(item),
+        statusLabel: queueStatusLabel(item),
+        messages: queueIssueMessages(item),
       };
     }),
 
   fetchWanted: (instanceId) => getWantedMissing(1, 1, instanceId),
   wantedCount: (data) => (data as SonarrWantedMissing).totalRecords ?? 0,
+
+  removeFromQueue: (instanceId, queueId, opts) =>
+    removeFromQueue(queueId, opts, instanceId),
 };

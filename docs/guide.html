@@ -619,6 +619,13 @@
           Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array.
         </p>
         <p>
+          <strong>Recently Downloaded</strong> collapses episodes of the same series into one tile,
+          badged with how many arrived, so a batch of episodes cannot push everything else out of the
+          row. Tapping that tile lists the individual episodes with their quality, size and import
+          date, and any of them opens the series. Turn it off with
+          <strong>Episodes, "Group by series"</strong> in the widget settings.
+        </p>
+        <p>
           The same widget can be placed more than once on one dashboard, each copy with its own
           settings, which is how you show two download clients or two Radarrs side by side. Three
           widgets have no options and therefore no gear: Wake-on-LAN, Health Alerts and unRAID Array.
@@ -626,8 +633,11 @@
         <p>
           Most settings sheets include a <strong>Visibility, "Hide when empty"</strong> toggle. Cards
           hidden that way still appear in edit mode, marked with a crossed-out-eye icon, so a
-          "vanished" widget is easy to find. Widgets for services that support several instances also
-          expose an instance chip row with an <strong>All instances</strong> chip.
+          "vanished" widget is easy to find. Service Health has the same toggle worded
+          <strong>"Hide when all healthy"</strong>, since its grid is never empty: it hides while every
+          service it shows is online and comes back the moment one goes down. Widgets for services
+          that support several instances also expose an instance chip row with an
+          <strong>All instances</strong> chip.
         </p>
 
         <h3>Attached instances and auto-attach</h3>
@@ -712,6 +722,30 @@
           <li><strong>Bazarr</strong>: Movies, Episodes, History, with a per-item search button for missing subtitles.</li>
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>
+
+        <h3>Queue issues (Radarr, Sonarr, Lidarr)</h3>
+        <p>
+          Sometimes a grab gets stuck. Most often it finished downloading but the *arr refuses to
+          import it: non-media files in the release, a sample-only folder, episodes missing from the
+          pack, no matching movie or series. It can also be the download itself going wrong, such as
+          a torrent stalled with no connections. When that happens the Movies, TV and Music screens
+          show a <strong>queue issues</strong> banner above the chip row. Amber means a warning, red
+          means the download failed outright. It only appears when something is actually stuck, and
+          it follows the instance you currently have selected.
+        </p>
+        <p>
+          Tapping it lists every stuck grab with the reason the service gave and the release name.
+          Tap one for three actions:
+        </p>
+        <ul>
+          <li><strong>Remove from queue</strong>: drops the grab and deletes it from the download client. The release stays eligible, so the same copy can be grabbed again.</li>
+          <li><strong>Blocklist &amp; Search</strong>: also blocks the release so it is never grabbed again, then starts a search for a replacement. This is the one you want for a bad copy.</li>
+          <li><strong>Blocklist only</strong>: blocks the release with no replacement search.</li>
+        </ul>
+        <p>
+          All three ask for confirmation first, and blocklisted releases show up under
+          <em>System &rarr; Blocklist</em> in Radarr, Sonarr or Lidarr itself.
+        </p>
 
         <h3>Global search</h3>
         <p>
@@ -1009,8 +1043,8 @@
         <h3>A widget disappeared from the dashboard.</h3>
         <p>
           Either its service was disabled or un-attached (it is hidden, not deleted, and returns when
-          you restore it), or it has "Hide when empty" on. Enter widget edit mode to see hidden cards,
-          marked with a crossed-out-eye icon.
+          you restore it), or it has "Hide when empty" on, or, for Service Health, "Hide when all
+          healthy". Enter widget edit mode to see hidden cards, marked with a crossed-out-eye icon.
         </p>
 
         <h3>qBittorrent says wrong username or password.</h3>

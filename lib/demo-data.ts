@@ -429,8 +429,8 @@ const DEMO_RADARR_MOVIES = [
 
 const DEMO_RADARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 2,
+  pageSize: 100,
+  totalRecords: 3,
   records: [
     {
       id: 101,
@@ -464,6 +464,31 @@ const DEMO_RADARR_QUEUE = {
       downloadClient: "qBittorrent",
       quality: { quality: { name: "WEBDL-1080p" } },
       movie: makeMovie(8, "Kingdom of the Planet of the Apes", 2024, 653346, false),
+    },
+    // Finished downloading but Radarr refuses to import it — drives the import
+    // issues banner (#285).
+    {
+      id: 103,
+      movieId: 11,
+      title: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importPending",
+      statusMessages: [
+        {
+          title: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+          messages: [
+            "No files found are eligible for import in /downloads/complete/Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+          ],
+        },
+      ],
+      size: 62277025792,
+      sizeleft: 0,
+      timeleft: null,
+      protocol: "torrent",
+      downloadClient: "qBittorrent",
+      quality: { quality: { name: "Bluray-2160p" } },
+      movie: makeMovie(11, "Furiosa: A Mad Max Saga", 2024, 786892, false),
     },
   ],
 };
@@ -574,8 +599,8 @@ const DEMO_SONARR_CALENDAR = [
 
 const DEMO_SONARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 1,
+  pageSize: 100,
+  totalRecords: 2,
   records: [
     {
       id: 301,
@@ -589,6 +614,31 @@ const DEMO_SONARR_QUEUE = {
       sizeleft: 1610612736,
       timeleft: "00:35:00",
       estimatedCompletionTime: daysFromNowFull(0.03),
+      protocol: "torrent",
+      quality: { quality: { name: "WEBDL-1080p" } },
+      series: makeSeries(3, "Fallout", 2024, 456789),
+    },
+    // Finished downloading but Sonarr refuses to import it — drives the import
+    // issues banner (#285).
+    {
+      id: 302,
+      seriesId: 3,
+      episodeId: 204,
+      title: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importBlocked",
+      statusMessages: [
+        {
+          title: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+          messages: [
+            "One or more episodes expected in this release were not imported or missing",
+          ],
+        },
+      ],
+      size: 2952790016,
+      sizeleft: 0,
+      timeleft: null,
       protocol: "torrent",
       quality: { quality: { name: "WEBDL-1080p" } },
       series: makeSeries(3, "Fallout", 2024, 456789),
@@ -689,8 +739,8 @@ const DEMO_LIDARR_TRACKS = [
 
 const DEMO_LIDARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 1,
+  pageSize: 100,
+  totalRecords: 2,
   records: [
     {
       id: 401,
@@ -710,6 +760,33 @@ const DEMO_LIDARR_QUEUE = {
       quality: { quality: { name: "FLAC" } },
       artist: DEMO_LIDARR_ARTISTS[1],
       album: DEMO_LIDARR_ALBUMS[3],
+    },
+    // Finished downloading but Lidarr refuses to import it — drives the queue
+    // issues banner (#285) on the Music screen, matching Radarr and Sonarr.
+    {
+      id: 402,
+      artistId: 1,
+      albumId: 11,
+      title: "Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importPending",
+      statusMessages: [
+        {
+          title: "Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+          messages: [
+            "No files found are eligible for import in /downloads/complete/Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+          ],
+        },
+      ],
+      size: 1_073_741_824,
+      sizeleft: 0,
+      timeleft: null,
+      protocol: "torrent",
+      downloadClient: "qBittorrent",
+      quality: { quality: { name: "FLAC 24bit" } },
+      artist: DEMO_LIDARR_ARTISTS[0],
+      album: DEMO_LIDARR_ALBUMS[0],
     },
   ],
 };
@@ -1676,9 +1753,18 @@ export function getDemoResponse(
   path: string,
   params?: Record<string, string | number | boolean>,
   body?: string,
+  method?: string,
 ): unknown {
   const basePath = path.split("?")[0]!;
   const normalized = basePath.replace(/\/\d+(\.\d+)*$/, "/:id");
+
+  // Demo fixtures are static, so every mutation is a no-op — but a DELETE must
+  // not fall through to the read route for the same path. `DELETE /queue/103`
+  // would match `startsWith("/queue")` and hand the caller the whole queue back
+  // as its "void" result. Return nothing instead, so a demo delete resolves the
+  // way the real one does. POST/PUT are deliberately excluded: NZBGet,
+  // Transmission and rtorrent dispatch their reads off a POST body.
+  if (method === "DELETE") return undefined;
 
   switch (serviceId) {
     case "radarr": {

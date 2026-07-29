@@ -38,6 +38,8 @@ export type ActionSheetVariant = "default" | "danger";
 
 export interface ActionSheetAction {
   label: string;
+  /** Secondary line under the label, for rows that need metadata. */
+  subtitle?: string;
   icon?: React.ReactNode;
   variant?: ActionSheetVariant;
   disabled?: boolean;
@@ -260,16 +262,23 @@ function ActionRow({ action, onPress }: ActionRowProps) {
             {action.icon}
           </View>
         )}
-        <Text
-          className={`flex-1 text-base ${
-            isDanger
-              ? "text-danger font-semibold"
-              : "text-zinc-100 font-medium"
-          }`}
-          numberOfLines={1}
-        >
-          {action.label}
-        </Text>
+        <View className="flex-1">
+          <Text
+            className={`text-base ${
+              isDanger
+                ? "text-danger font-semibold"
+                : "text-zinc-100 font-medium"
+            }`}
+            numberOfLines={1}
+          >
+            {action.label}
+          </Text>
+          {action.subtitle && (
+            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
+              {action.subtitle}
+            </Text>
+          )}
+        </View>
       </Pressable>
     </Animated.View>
   );

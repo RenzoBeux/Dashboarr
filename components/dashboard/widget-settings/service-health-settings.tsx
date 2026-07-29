@@ -9,6 +9,7 @@ import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { lightHaptic, mediumHaptic } from "@/lib/haptics";
 import type { WidgetSettingsComponentProps } from "@/components/dashboard/widget-registry";
+import { AutoHideToggle } from "@/components/dashboard/widget-settings/widget-settings-blocks";
 import {
   InstancePickerRow,
   INSTANCE_BINDING_ALL,
@@ -37,6 +38,12 @@ export interface ServiceHealthSettingsValue extends Record<string, unknown> {
   // (away from home, or a workspace pinned to always-remote) while it has only a
   // local URL — the #168 case. Defaults on; merged for legacy slots like above.
   showAwayBadge: boolean;
+  // This widget's take on "hide when empty" (#303). The grid is never empty
+  // while services are configured, so the useful signal is "nothing is wrong":
+  // hide while every tile is online, reappear the moment one isn't. Away-blocked
+  // instances (#168) don't count as wrong — they're offline by configuration, so
+  // they'd otherwise pin the widget open for the whole time the user is away.
+  hideWhenAllHealthy: boolean;
 }
 
 export const SERVICE_HEALTH_DEFAULT_SETTINGS: ServiceHealthSettingsValue = {
@@ -44,6 +51,7 @@ export const SERVICE_HEALTH_DEFAULT_SETTINGS: ServiceHealthSettingsValue = {
   instances: {},
   showUrlBadge: true,
   showAwayBadge: true,
+  hideWhenAllHealthy: false,
 };
 
 export function ServiceHealthSettings({
@@ -226,6 +234,14 @@ export function ServiceHealthSettings({
       ) : (
         renderRow(configuredKinds[0])
       )}
+      {/* Last section, like every other widget's Visibility block — only the
+          wording differs, since this grid is never literally empty (#303). */}
+      <AutoHideToggle
+        label="Hide when all healthy"
+        description="Hide this widget from the dashboard when every service shown is online"
+        value={settings.hideWhenAllHealthy}
+        onChange={(hideWhenAllHealthy) => update({ hideWhenAllHealthy })}
+      />
     </View>
   );
 }

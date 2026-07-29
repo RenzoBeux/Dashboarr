@@ -90,7 +90,9 @@ export function useSonarrQueue(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "queue"],
-    queryFn: () => getQueue(1, 20, true, true, id ?? undefined),
+    // Args must stay identical to sonarrArrQueueAdapter.fetchQueue — the
+    // dashboard widget and the queue-issues banner share this cache entry.
+    queryFn: () => getQueue(1, 100, true, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });

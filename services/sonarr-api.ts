@@ -12,6 +12,7 @@ import type {
   SonarrImage,
   SonarrRelease,
   SonarrWantedMissing,
+  ArrQueueRemoveOptions,
 } from "@/lib/types";
 
 const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
@@ -143,15 +144,46 @@ export function getWantedMissing(
 
 // --- Queue ---
 
+// `includeUnknownSeriesItems` matters for the queue-issues banner (#285): a
+// grab whose series was deleted from the library is exactly the kind that gets
+// stuck, and Sonarr hides those by default. The page size is generous for the
+// same reason — blocked items have no `timeleft` and sort last under the
+// default sort, so a small page would clip them off.
 export function getQueue(
   page = 1,
-  pageSize = 20,
+  pageSize = 100,
   includeSeries = true,
   includeEpisode = true,
   instanceId?: string,
 ): Promise<SonarrQueue> {
   return serviceRequest<SonarrQueue>("sonarr", "/queue", {
-    params: { page, pageSize, includeSeries, includeEpisode },
+    params: {
+      page,
+      pageSize,
+      includeSeries,
+      includeEpisode,
+      includeUnknownSeriesItems: true,
+    },
+    instanceId,
+  });
+}
+
+/**
+ * Removes a queue item. See ArrQueueRemoveOptions for what the flags do; the
+ * defaults match Sonarr's own (`removeFromClient=true`, no blocklist).
+ */
+export function removeFromQueue(
+  queueId: number,
+  opts: ArrQueueRemoveOptions = {},
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", `/queue/${queueId}`, {
+    method: "DELETE",
+    params: {
+      removeFromClient: opts.removeFromClient ?? true,
+      blocklist: opts.blocklist ?? false,
+      skipRedownload: opts.skipRedownload ?? false,
+    },
     instanceId,
   });
 }

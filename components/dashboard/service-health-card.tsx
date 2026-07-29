@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useServiceTileLayout } from "@/hooks/use-service-tile-cell";
 import { useManualRefresh } from "@/store/manual-refresh-store";
 import { ICON, type ServiceId } from "@/lib/constants";
@@ -186,6 +187,31 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
       });
     }
   }
+
+  // Away-blocked instances are offline by configuration (remote-only with no
+  // remote URL, #168), not by failure, so they don't count as "something is
+  // wrong". auth_failed does — a rejected key is actionable, keep the card up.
+  const allHealthy = entries.every((e) => e.awayBlocked || e.status === "ok");
+  // Must run before the early return below — rules of hooks.
+  //
+  // `isEmpty: allHealthy || isPending` with no isLoading gate, which inverts the
+  // usual useHideWhenEmpty contract on purpose. That contract ("never report
+  // empty while loading") exists so an emptiness-driven widget shows its
+  // skeleton instead of flashing hidden. Here the signal is inverted: until the
+  // first probe returns, `status` falls back to "offline" for every entry, so
+  // gating on isPending would render a full card of pulsing tiles on every cold
+  // start and collapse it a second later — layout shift on every launch, for a
+  // card the user asked to see only when something breaks. Nothing is known to
+  // be wrong yet, so start hidden and appear when a probe says otherwise.
+  //
+  // isPending specifically, not `determining`: the latter also flips on
+  // pull-to-refresh and re-keyed refetches, which would hide an already-visible
+  // card mid-refresh and pop it back.
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenAllHealthy,
+    isEmpty: allHealthy || isPending,
+    isLoading: false,
+  });
 
   if (entries.length === 0) return null;
 

@@ -80,7 +80,9 @@ export function useLidarrQueue(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("lidarr", instanceId);
   return useQuery({
     queryKey: ["lidarr", id, "queue"],
-    queryFn: () => getQueue(1, 20, id ?? undefined),
+    // Args must stay identical to lidarrArrQueueAdapter.fetchQueue — the
+    // dashboard widget and the queue-issues banner share this cache entry.
+    queryFn: () => getQueue(1, 100, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });

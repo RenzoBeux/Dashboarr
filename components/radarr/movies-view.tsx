@@ -13,6 +13,8 @@ import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
+import { QueueIssuesBanner } from "@/components/services/queue-issues-banner";
+import { radarrArrQueueAdapter } from "@/lib/arr-queue-adapters/radarr";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -325,6 +327,7 @@ export const MoviesView = memo(function MoviesView({
       </View>
 
       <HealthIssuesBanner serviceId="radarr" className="mb-4" />
+      <QueueIssuesBanner adapter={radarrArrQueueAdapter} className="mb-4" />
 
       <ScrollView
         horizontal
