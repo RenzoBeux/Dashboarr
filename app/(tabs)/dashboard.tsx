@@ -12,7 +12,8 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
-  Sparkles,
+  Magnet,
+  LayoutGrid,
   X,
   Plus,
   ChevronsUpDown,
@@ -267,7 +268,7 @@ export default function DashboardScreen() {
             backgroundColor: `${dashboardColor}14`,
           }}
         >
-          <Icon icon={Sparkles} size={ICON.SM} color={dashboardColor} />
+          <Icon icon={Magnet} size={ICON.SM} color={dashboardColor} />
           <View className="flex-1">
             <Text className="text-zinc-100 text-xs font-semibold">
               Auto-attach mode
@@ -307,7 +308,7 @@ export default function DashboardScreen() {
             style={{ backgroundColor: `${dashboardColor}26` }}
           >
             <Icon
-              icon={attachedKinds.size === 0 ? SlidersHorizontal : Sparkles}
+              icon={attachedKinds.size === 0 ? SlidersHorizontal : LayoutGrid}
               size={28}
               color={dashboardColor}
             />
