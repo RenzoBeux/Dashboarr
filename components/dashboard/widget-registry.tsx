@@ -167,6 +167,11 @@ import {
   DISK_SPACE_DEFAULT_SETTINGS,
   type DiskSpaceSettingsValue,
 } from "@/components/dashboard/widget-settings/disk-space-settings";
+import {
+  ArrHealthSettings,
+  ARR_HEALTH_DEFAULT_SETTINGS,
+  type ArrHealthSettingsValue,
+} from "@/components/dashboard/widget-settings/arr-health-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -488,6 +493,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     icon: ShieldAlert,
     service: ["radarr", "sonarr", "prowlarr", "lidarr"],
     component: ArrHealthCard,
+    settingsComponent: ArrHealthSettings,
+    defaultSettings: ARR_HEALTH_DEFAULT_SETTINGS,
   },
   "unraid-array": {
     id: "unraid-array",
@@ -531,4 +538,5 @@ export type {
   JackettIndexersSettingsValue,
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
+  ArrHealthSettingsValue,
 };
