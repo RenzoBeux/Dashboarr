@@ -3,7 +3,6 @@ import {
   getIndexers,
   getIndexerStatuses,
   getIndexerStats,
-  searchAll,
   toggleIndexer,
   grabRelease,
 } from "@/services/prowlarr-api";
@@ -40,18 +39,8 @@ export function useProwlarrStats(instanceId?: string) {
   });
 }
 
-export function useProwlarrSearch(
-  query: string,
-  indexerIds?: number[],
-  instanceId?: string,
-) {
-  const { instanceId: id, enabled } = useInstanceTarget("prowlarr", instanceId);
-  return useQuery({
-    queryKey: ["prowlarr", id, "search", query, indexerIds],
-    queryFn: () => searchAll(query, indexerIds, undefined, id ?? undefined),
-    enabled: enabled && query.length >= 2 && !!id,
-  });
-}
+// Release search lives in lib/indexer-adapters/prowlarr.ts, not here — it needs
+// the abort/retry/timeout contract the shared ReleaseSearch view relies on.
 
 export function useToggleIndexer(instanceId?: string) {
   const queryClient = useQueryClient();

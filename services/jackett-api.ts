@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
 
 // Jackett API notes:
@@ -20,14 +21,46 @@ import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
 
 // JSON manual-search endpoint (the one Jackett's own web UI uses). Returns
 // releases across every configured indexer plus per-indexer status rows.
-export function searchAll(
+// Jackett queries every tracker synchronously before responding, which blows
+// past the 15s default on any real setup — hence the interactive-search
+// timeout. `signal` is the caller's cancel channel: without it a hung fetch
+// outlives the search that started it and later searches dedupe onto the
+// zombie, the "stuck on Searching... forever" report in #314.
+export async function searchAll(
   query: string,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<JackettResultsResponse> {
-  return serviceRequest<JackettResultsResponse>("jackett", "/indexers/all/results", {
-    params: { Query: query },
-    instanceId,
-  });
+  const resp = await serviceRequest<JackettResultsResponse>(
+    "jackett",
+    "/indexers/all/results",
+    {
+      params: { Query: query },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId,
+      signal,
+    },
+  );
+  assertIndexersUsable(resp);
+  return resp;
+}
+
+// Jackett answers 200 with `Results: []` whether nothing matched or every
+// tracker blew up, so a broken setup is indistinguishable from a bad query and
+// renders as a bare "No results" (#314). Promote its own per-indexer Error
+// strings to a thrown error the UI can show. Only when there is nothing at all
+// to display: a partial failure still renders what the working trackers
+// returned. Exported for tests.
+export function assertIndexersUsable(resp: JackettResultsResponse): void {
+  if (resp.Results.length > 0) return;
+  const indexers = resp.Indexers ?? [];
+  const failed = indexers.filter((i) => !!i.Error);
+  if (failed.length === 0) return;
+  throw new Error(
+    `${failed.length} of ${indexers.length} indexer` +
+      `${indexers.length === 1 ? "" : "s"} failed. ` +
+      `${failed[0].Name}: ${failed[0].Error}`,
+  );
 }
 
 // --- Indexers ---

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getIndexers, searchAll } from "@/services/jackett-api";
+import { getIndexers } from "@/services/jackett-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 export function useJackettIndexers(instanceId?: string) {
@@ -15,11 +15,5 @@ export function useJackettIndexers(instanceId?: string) {
   });
 }
 
-export function useJackettSearch(query: string, instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("jackett", instanceId);
-  return useQuery({
-    queryKey: ["jackett", id, "search", query],
-    queryFn: () => searchAll(query, id ?? undefined),
-    enabled: enabled && query.length >= 2 && !!id,
-  });
-}
+// Release search lives in lib/indexer-adapters/jackett.ts, not here — it needs
+// the abort/retry/timeout contract the shared ReleaseSearch view relies on.

@@ -1,4 +1,5 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   SonarrSeries,
   SonarrEpisode,
@@ -14,8 +15,6 @@ import type {
   SonarrWantedMissing,
   ArrQueueRemoveOptions,
 } from "@/lib/types";
-
-const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 // --- Image helpers ---
 

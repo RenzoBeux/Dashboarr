@@ -2,7 +2,9 @@ import { useState } from "react";
 import { View, Text } from "react-native";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { ReleaseCard } from "@/components/indexers/release-card";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import type { IndexerSearchAdapter, UnifiedRelease } from "@/lib/indexer-adapter";
 
 // Shared release-search sub-tab of the Indexers screen. The adapter supplies
@@ -11,7 +13,12 @@ import type { IndexerSearchAdapter, UnifiedRelease } from "@/lib/indexer-adapter
 export function ReleaseSearch({ adapter }: { adapter: IndexerSearchAdapter }) {
   const [query, setQuery] = useState("");
   const [pendingGrab, setPendingGrab] = useState<UnifiedRelease | null>(null);
-  const { data: results, isLoading } = adapter.useSearch(query);
+  // Un-debounced, every keystroke started a fresh all-indexers fan-out under its
+  // own queryKey, so nothing deduped or cancelled and the slowest one won — the
+  // "searches as soon as you type, then sits on Searching..." report in #314.
+  // 300ms matches global search (app/search.tsx).
+  const debounced = useDebouncedValue(query.trim(), 300);
+  const { data: results, isLoading, isError, error } = adapter.useSearch(debounced);
 
   return (
     <View>
@@ -25,7 +32,14 @@ export function ReleaseSearch({ adapter }: { adapter: IndexerSearchAdapter }) {
 
       {isLoading && <Text className="text-zinc-500">Searching...</Text>}
 
-      {results && results.length === 0 && query.length >= 2 && (
+      {isError && (
+        <ErrorBanner
+          error={error}
+          title={`Couldn't search ${adapter.displayName}`}
+        />
+      )}
+
+      {!isError && results && results.length === 0 && debounced.length >= 2 && (
         <EmptyState title="No results" />
       )}
 

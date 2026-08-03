@@ -130,6 +130,12 @@ export const POLLING_INTERVALS = {
   diskSpace: 60000,
 } as const;
 
+// Live indexer searches (Sonarr/Radarr interactive search, Prowlarr and Jackett
+// all-indexer fan-outs) query every configured tracker synchronously and often
+// run past 30s. They need a far longer ceiling than http-client's 15s default,
+// which otherwise aborts a search that was going to succeed.
+export const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
+
 export const DASHBOARD_WIDGET_IDS = [
   "server-stats",
   "speed-stats",
