@@ -21,21 +21,8 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 9. Bazarr — subtitle management
 10. Glances — system/server monitoring
 
-## Tech Stack
-- **Framework:** Expo SDK 54 (React Native 0.81) — managed workflow
-- **Routing:** Expo Router v6 (file-based, built on React Navigation)
-- **Styling:** NativeWind v4 (Tailwind CSS for React Native)
-- **Data Fetching:** TanStack Query v5 (polling, caching, mutations)
-- **State:** Zustand v5 (lightweight local state)
-- **Storage:** AsyncStorage (config, cached in-memory), expo-secure-store (API keys)
-- **Icons:** lucide-react-native
-- **Notifications:** expo-notifications + optional backend push relay
-- **Language:** TypeScript (strict)
-- **Package Manager:** pnpm
-- **Build:** EAS Build + local Android signing via custom Expo plugin
-- **Architecture:** Primarily client-side — app talks directly to service APIs. Optional self-hosted backend for push notifications relay.
-
 ## Architecture Rules
+- Primarily client-side: the app talks directly to service APIs, with no server in the request path
 - Each service is its own isolated module/integration
 - All service credentials and URLs live in a single config file (never hardcoded)
 - Local/remote URL switching per service (WiFi-based auto-detection via expo-location, or manual toggle)
@@ -44,28 +31,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - Optional backend (`backend/dashboarr-backend`) is a standalone Node.js service for push notification relay — not required for core functionality
 
 ## Service API Documentation (sources of truth)
-When implementing or debugging a service integration, consult the upstream API docs below — these are the authoritative references. Prefer fetching the relevant doc page over guessing endpoint shapes.
-
-| Service | API doc URL | Notes |
-| --- | --- | --- |
-| qBittorrent | https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0) | WebUI API v2; cookie-session auth via `/api/v2/auth/login`. We target qBittorrent 5.0+. The 4.1 wiki page exists for older builds but is not our target. |
-| rtorrent / ruTorrent | https://github.com/rakshasa/rtorrent/wiki/RPC-Setup-XMLRPC + https://docs.rtorrent.org/ | XML-RPC over the SCGI HTTP mount (conventionally `/RPC2`, works for bare rtorrent and ruTorrent); HTTP Basic auth. We use `d.multicall2` to list, `system.multicall` to batch actions/global stats, `load.start` (empty first target arg!) to add. Request XML is built by string concat; responses parsed with `fast-xml-parser` in `lib/xmlrpc.ts`. Status derived from `d.state`/`d.is_active`/`d.complete`/`d.hashing`/`d.message`; `d.ratio` is per-mille. Delete-with-data needs ruTorrent's erasedata plugin. |
-| NZBGet | https://nzbget.com/documentation/api/ | JSON-RPC 2.0 over `POST /jsonrpc`; positional params only. HTTP Basic Auth using ControlUsername/ControlPassword from `nzbget.conf`. 64-bit byte counts split into Lo/Hi pairs — recombine via `combineHiLo()` in `lib/utils.ts`. |
-| Radarr | https://radarr.video/docs/api/ | OpenAPI/Swagger; live spec also served by each instance at `/api/v3/openapi.json`. We use the `v3` API. |
-| Sonarr | https://sonarr.tv/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v3/openapi.json`. We use the `v3` API. |
-| Prowlarr | https://prowlarr.com/docs/api/ | OpenAPI/Swagger; live spec also at `/api/v1/openapi.json`. We use the `v1` API. |
-| Seerr (Overseerr) | https://api-docs.overseerr.dev/ | Same API for Jellyseerr forks. Schema validated by `express-openapi-validator` — unknown query params return 500 (see comment in `services/overseerr-api.ts`). |
-| Jackett | https://github.com/Jackett/Jackett (no official API docs; controllers in `src/Jackett.Server/Controllers/`) | Auth is an `apikey` QUERY PARAM (not a header) and only the results/Torznab routes validate it — the admin REST API (`/api/v2.0/indexers`, `/server/config`, per-indexer config/test) requires the admin-password cookie and is off limits. Search via JSON `GET /api/v2.0/indexers/all/results?apikey&Query=` (fields are PascalCase); indexer list + ping via Torznab `GET /api/v2.0/indexers/all/results/torznab/api?t=indexers&configured=true` (XML, parsed with `fast-xml-parser` in `services/jackett-api.ts`). No server-side grab — the app hands MagnetUri/Link to a torrent client via the unified torrent adapter. |
-| Tautulli | https://github.com/Tautulli/Tautulli/wiki/Tautulli-API-Reference | Single endpoint: `/api/v2?apikey=…&cmd=…`. Not REST-shaped — see `tautulliRequest` in `services/tautulli-api.ts`. |
-| Plex | https://plexapi.dev/ (community) + https://www.plexopedia.com/plex-media-server/api/ | Plex has no official public API docs; the community references above are the de facto sources. Auth via `X-Plex-Token`. |
-| Bazarr | https://wiki.bazarr.media/ + live Swagger at `<bazarr>/api/swagger` | Each running instance exposes its own Swagger UI; the wiki covers setup, the Swagger UI is the authoritative endpoint reference. |
-| Glances | https://glances.readthedocs.io/en/latest/api.html | REST API exposed when Glances runs in webserver mode (`-w`). We use API v4. |
-| Jellyfin | https://api.jellyfin.org/ | OpenAPI; live spec also at `/api-docs/openapi.json`. Auth via `MediaBrowser Token="…"` header. |
-| JellyStat | https://github.com/CyferShepard/Jellystat (live Swagger at `<host>/swagger`) | Jellyfin stats server (Tautulli-analog). Root-mounted REST (`/stats`, `/api`, `/proxy`); auth via `x-api-token` header. Postgres `bigint` columns (Count/Plays/PlaybackDuration) serialize as strings — coerce. Live sessions via `/proxy/getSessions` pass the raw Jellyfin payload through. See `services/jellystat-api.ts`. |
-
-Notes:
-- The `backend/dashboarr-backend/` Node.js service is in-tree and not a third-party API — its surface is whatever we define there.
-- Where an instance hosts its own OpenAPI/Swagger (Radarr, Sonarr, Prowlarr, Bazarr, Jellyfin), prefer fetching the live spec from a real instance over the public docs when verifying field types or new endpoints — the live spec matches the running version exactly.
+Upstream API docs and per-service gotchas live in the `service-apis` skill (`.claude/skills/service-apis/SKILL.md`). Load it before implementing or debugging any service integration, and prefer fetching the relevant doc page over guessing endpoint shapes.
 
 ## UI/UX Rules
 - Dark mode only (forced via userInterfaceStyle: "dark")
@@ -142,23 +108,8 @@ Why not "just reposition the modal manually on `keyboardWillShow`": Android has 
 
 When adding a new `Modal`, sheet, or screen with a text input, decide which of the four patterns above applies *before* writing the layout, and copy the reference file's wiring. Don't ship a sheet with a `TextInput` and a plain `ScrollView` — the keyboard will obscure the input.
 
-### Phase 5 — Usenet ✅
-- [x] SABnzbd: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications
-- [x] NZBGet: queue, history, pause/resume/delete, add NZB by URL, dashboard widget, backend push notifications. Both clients render through a shared adapter (`lib/usenet-adapter.ts` + `lib/usenet-adapters/`) so the downloads view, queue widget, settings sheet, and backend completion-diff are one source of truth for both.
-
 ## File Structure Conventions
-- Expo Router file-based routing in `app/` directory
-- `services/` — raw API call functions (fetch to service REST APIs)
-- `hooks/` — TanStack Query wrappers around services (caching, polling, mutations)
-- `components/ui/` — reusable UI primitives
-- `components/dashboard/` — dashboard card components
-- `components/common/` — shared layout components
 - `components/overseerr/` — Seerr-specific components (posters, media detail; folder name kept for back-compat)
-- `store/` — Zustand stores + AsyncStorage/SecureStore helpers
-- `lib/` — types, utils, constants, HTTP client, notifications, haptics, Wake-on-LAN
-- `plugins/` — custom Expo config plugins (e.g. Android signing)
-- `scripts/` — icon generation scripts
-- `backend/dashboarr-backend/` — optional Node.js push notification relay (Docker-based)
 - No index files — import directly from source files
 
 ## Config Export/Import & Versioned Migrations
@@ -167,24 +118,13 @@ When adding a new `Modal`, sheet, or screen with a text input, decide which of t
 - Export always writes `CURRENT_CONFIG_VERSION`; import detects the version and chains migrations up
 - Migration functions live in a `migrations` record keyed by source version: `N: (payload) => ({ ...transformed, version: N+1 })`
 - After migration, import merges services over `defaultServices()` so newly added services get defaults instead of `undefined`
-- **When changing the export schema** (new field, renamed field, new service, etc.):
-  1. Bump `CURRENT_CONFIG_VERSION`
-  2. Add a migration entry for the old version
-  3. Update `ExportPayload` interface in `config-store.ts`
-  4. Update `exportConfig` / `importConfig` to handle the new data
-- Version history: v0 (pre-versioning) → v1 (first versioned) → v2 (backend pairing + notification settings)
+- **When changing the export schema** (new field, renamed field, new service, etc.), the two steps the source comment in `config-migrations.ts` does *not* cover:
+  1. Update `ExportPayload` interface in `config-store.ts`
+  2. Update `exportConfig` / `importConfig` to handle the new data
 
 ## GitHub Pages Site
-- Served from `docs/` on the `main` branch: https://renzobeux.github.io/Dashboarr/
-- `docs/index.html` — landing page (hero + store links, features, supported services with icons, FAQ)
-- `docs/guide.html` — user documentation (install, adding services, local/remote URLs, per-service reference table, dashboards & widgets, tabs, notifications & backend, backup, troubleshooting)
-- `docs/privacy-policy.html` — privacy policy (required for Play Store and App Store)
-- `docs/assets/style.css` — shared base styles (tokens, nav, buttons, cards, tables, callouts, footer). Page-specific rules stay in a `<style>` block in that page.
-- `docs/assets/services/*` — service logos, copied from `assets/services/` and downscaled to 160px. **When adding a service, copy its icon here too** and add a `.service-card` to the services grid.
-- `docs/assets/icon.png` — app icon (favicon + hero), downscaled from `assets/icon.png`
-- **Keep the site in sync** when adding/removing a service, changing major features, or updating download links. The landing page states counts ("19 services", "25 widgets") — update them alongside `SERVICE_IDS` and `DASHBOARD_WIDGET_IDS` in `lib/constants.ts`.
-- Plain HTML + CSS, no build step and no external requests (no CDNs, no web fonts). Icons are inline SVG.
-- The guide documents real UI labels and navigation paths. Verify against the code before changing a documented label, and update the guide when a flow it describes changes.
+- The site lives in `docs/` and has its own `docs/CLAUDE.md` with the full file-by-file reference.
+- **Cross-cutting rule:** when adding or removing a service (or a dashboard widget) in `lib/constants.ts`, update `docs/` in the same change: copy the service icon to `docs/assets/services/`, add its `.service-card`, and fix the service/widget counts stated on the landing page.
 
 ## What NOT to Build
 - No user accounts or authentication beyond service API keys
