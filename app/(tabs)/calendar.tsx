@@ -28,6 +28,13 @@ import {
   getCalendar as getRadarrCalendar,
   getQueue as getRadarrQueue,
 } from "@/services/radarr-api";
+import {
+  getCalendarGrid,
+  getFetchRange,
+  orderedWeekdays,
+} from "@/lib/calendar-grid";
+import { resolveWeekStartDow } from "@/lib/week-start";
+import { useConfigStore } from "@/store/config-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
@@ -74,62 +81,10 @@ type CalendarItem =
       instanceId: string;
     };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
-
-// Fetch the full visible grid (incl. prev/next-month padding cells) padded
-// ±1 day, mirroring Sonarr's web UI. The padding keeps boundary episodes
-// whose UTC day differs from the local day inside the server-side range
-// filter; the extra day on `end` also matters because the *arr APIs treat a
-// date-only end as midnight (exclusive of that day's airings).
-function getFetchRange(year: number, month: number) {
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const start = new Date(year, month, 1 - first.getDay() - 1);
-  const end = new Date(year, month, last.getDate() + (6 - last.getDay()) + 1);
-  return {
-    start: localDateKey(start),
-    end: localDateKey(end),
-  };
-}
-
-function getCalendarGrid(year: number, month: number) {
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startDow = firstDay.getDay();
-  const daysInMonth = lastDay.getDate();
-
-  const cells: { day: number; dateKey: string; inMonth: boolean }[] = [];
-
-  // Previous month padding
-  const prevLast = new Date(year, month, 0).getDate();
-  for (let i = startDow - 1; i >= 0; i--) {
-    const d = prevLast - i;
-    const date = new Date(year, month - 1, d);
-    cells.push({ day: d, dateKey: localDateKey(date), inMonth: false });
-  }
-
-  // Current month
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month, d);
-    cells.push({ day: d, dateKey: localDateKey(date), inMonth: true });
-  }
-
-  // Next month padding
-  const remaining = 7 - (cells.length % 7);
-  if (remaining < 7) {
-    for (let d = 1; d <= remaining; d++) {
-      const date = new Date(year, month + 1, d);
-      cells.push({ day: d, dateKey: localDateKey(date), inMonth: false });
-    }
-  }
-
-  return cells;
-}
 
 export default function CalendarScreen() {
   const today = new Date();
@@ -145,6 +100,12 @@ export default function CalendarScreen() {
     setIncludeUnmonitoredState(value);
     setBoolean(INCLUDE_UNMONITORED_KEY, value);
   };
+
+  // First day of week (0 = Sunday … 6 = Saturday): device-derived by default,
+  // overridable in Settings > Appearance (#320).
+  const weekStart = useConfigStore((s) => s.weekStart);
+  const firstDow = useMemo(() => resolveWeekStartDow(weekStart), [weekStart]);
+  const weekdays = useMemo(() => orderedWeekdays(firstDow), [firstDow]);
 
   const attachedInstances = useAttachedInstances();
   const sonarrAllRaw = useEnabledInstances("sonarr");
@@ -199,7 +160,7 @@ export default function CalendarScreen() {
     [radarrAll, radarrFilter],
   );
 
-  const { start, end } = getFetchRange(year, month);
+  const { start, end } = getFetchRange(year, month, firstDow);
 
   // Fan out the calendar query across every selected Sonarr/Radarr instance.
   // Each instance contributes its own slice of dates; we flatten and dedupe
@@ -383,7 +344,10 @@ export default function CalendarScreen() {
     return { itemsByDate: map, allItems: all };
   }, [taggedEpisodes, taggedMovies, filter]);
 
-  const grid = useMemo(() => getCalendarGrid(year, month), [year, month]);
+  const grid = useMemo(
+    () => getCalendarGrid(year, month, firstDow),
+    [year, month, firstDow],
+  );
   const todayKey = localDateKey(today);
   const selectedItems = itemsByDate.get(selectedDate) ?? [];
 
@@ -549,7 +513,7 @@ export default function CalendarScreen() {
       <Card>
         {/* Weekday headers */}
         <View className="flex-row">
-          {WEEKDAYS.map((d) => (
+          {weekdays.map((d) => (
             <View key={d} className="flex-1 items-center pb-2">
               <Text className="text-zinc-500 text-xs font-medium">{d}</Text>
             </View>

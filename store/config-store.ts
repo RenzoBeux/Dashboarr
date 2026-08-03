@@ -37,6 +37,11 @@ import {
   type AppThemeId,
 } from "@/lib/app-themes";
 import {
+  DEFAULT_WEEK_START,
+  isValidWeekStart,
+  type WeekStart,
+} from "@/lib/week-start";
+import {
   DEFAULT_DASHBOARD_ICON,
   type DashboardIconName,
 } from "@/lib/dashboard-icons";
@@ -375,6 +380,8 @@ interface ConfigState {
   uiScale: UiScale;
   // Global chrome tint preset applied via NativeWind CSS vars (ThemeRoot).
   appTheme: AppThemeId;
+  // Calendar first day of week: follow the device or force Sunday/Monday.
+  weekStart: WeekStart;
   notificationSettings: NotificationSettings;
 }
 
@@ -410,6 +417,8 @@ export interface ExportPayload {
   treatVpnAsHome?: boolean;
   // v38 — global app theme preset.
   appTheme?: AppThemeId;
+  // v40 — calendar first-day-of-week preference (#320).
+  weekStart?: WeekStart;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -529,6 +538,7 @@ interface ConfigActions {
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
   setAppTheme: (theme: AppThemeId) => void;
+  setWeekStart: (weekStart: WeekStart) => void;
   setNotificationSetting: <K extends keyof NotificationSettings>(
     key: K,
     value: NotificationSettings[K],
@@ -996,6 +1006,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   globalCustomHeaders: {},
   uiScale: DEFAULT_UI_SCALE,
   appTheme: DEFAULT_APP_THEME,
+  weekStart: DEFAULT_WEEK_START,
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 
   hydrate: async () => {
@@ -1456,6 +1467,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ? storedAppTheme
       : DEFAULT_APP_THEME;
 
+    const storedWeekStart = getString(STORAGE_KEYS.weekStart);
+    const weekStart: WeekStart = isValidWeekStart(storedWeekStart)
+      ? storedWeekStart
+      : DEFAULT_WEEK_START;
+
     // Notification settings persisted under their own AsyncStorage key since
     // v2 (originally owned by a standalone notifications-store). Merge over
     // defaults so a partially-stored payload (older app picking up newer
@@ -1551,6 +1567,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders,
       uiScale,
       appTheme,
+      weekStart,
       notificationSettings,
       hydrated: true,
     });
@@ -2460,6 +2477,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ appTheme: theme });
   },
 
+  setWeekStart: (weekStart) => {
+    if (!isValidWeekStart(weekStart)) return;
+    setString(STORAGE_KEYS.weekStart, weekStart);
+    set({ weekStart });
+  },
+
   setNotificationSetting: (key, value) => {
     const next = { ...get().notificationSettings, [key]: value };
     setJSON(STORAGE_KEYS.notificationSettings, next);
@@ -2668,6 +2691,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders,
       uiScale,
       appTheme,
+      weekStart,
       notificationSettings: notifSettings,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
@@ -2692,6 +2716,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders,
       uiScale,
       appTheme,
+      weekStart,
     };
 
     onStage?.("encrypting");
@@ -2867,6 +2892,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ? payload.appTheme
       : DEFAULT_APP_THEME;
     setString(STORAGE_KEYS.appTheme, importedAppTheme);
+    const importedWeekStart: WeekStart = isValidWeekStart(payload.weekStart)
+      ? payload.weekStart
+      : DEFAULT_WEEK_START;
+    setString(STORAGE_KEYS.weekStart, importedWeekStart);
     const importedServicesOrder = sanitizeServicesOrder(payload.servicesOrder);
     setJSON(STORAGE_KEYS.servicesOrder, importedServicesOrder);
 
@@ -2922,6 +2951,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders: importedGlobalCustomHeaders,
       uiScale: importedUiScale,
       appTheme: importedAppTheme,
+      weekStart: importedWeekStart,
       notificationSettings: importedNotificationSettings,
     });
 

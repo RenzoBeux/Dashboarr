@@ -3,6 +3,7 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { Select } from "@/components/ui/select";
 import { APP_THEMES, type AppThemeId } from "@/lib/app-themes";
+import { type WeekStart } from "@/lib/week-start";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { useConfigStore } from "@/store/config-store";
@@ -15,6 +16,8 @@ export default function AppearanceSettingsScreen() {
   const setAppTheme = useConfigStore((s) => s.setAppTheme);
   const hapticsEnabled = useConfigStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useConfigStore((s) => s.setHapticsEnabled);
+  const weekStart = useConfigStore((s) => s.weekStart);
+  const setWeekStart = useConfigStore((s) => s.setWeekStart);
 
   return (
     <ScreenWrapper>
@@ -43,6 +46,22 @@ export default function AppearanceSettingsScreen() {
               description: t.description,
             }))}
             onChange={setAppTheme}
+          />
+        </View>
+        <View className="px-4 py-3">
+          <Select<WeekStart>
+            label="First day of week"
+            value={weekStart}
+            options={[
+              {
+                value: "auto",
+                label: "Auto",
+                description: "Match the device's week start",
+              },
+              { value: "sunday", label: "Sunday" },
+              { value: "monday", label: "Monday" },
+            ]}
+            onChange={setWeekStart}
           />
         </View>
         <SettingsToggleRow
