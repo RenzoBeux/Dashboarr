@@ -26,15 +26,25 @@ export const prowlarrIndexerAdapter: IndexerSearchAdapter = {
   serviceId: "prowlarr",
   displayName: "Prowlarr",
 
-  // Same queryKey shape as useProwlarrSearch (trailing undefined = no indexer
-  // filter) so both surfaces share one cache entry; `select` maps to the
-  // unified shape without touching the cached raw results.
+  // The trailing `undefined` in the queryKey is the indexer filter, kept so a
+  // filtered search can never collide with this unfiltered one; `select` maps
+  // to the unified shape without touching the cached raw results.
+  //
+  // Interactive indexer searches are slow and expensive: don't auto-retry a
+  // transient failure (it multiplies a 90s timeout by three before the user
+  // sees anything), consume the queryFn signal so backing out aborts the
+  // in-flight fetch, and cache a completed search long enough that returning
+  // to the tab doesn't re-run it. Same contract as useRadarrReleases (#290).
   useSearch: (query: string, instanceId?: string) => {
     const { instanceId: id, enabled } = useInstanceTarget("prowlarr", instanceId);
     return useQuery({
       queryKey: ["prowlarr", id, "search", query, undefined],
-      queryFn: () => searchAll(query, undefined, undefined, id ?? undefined),
+      queryFn: ({ signal }) =>
+        searchAll(query, undefined, undefined, id ?? undefined, signal),
       enabled: enabled && query.length >= 2 && !!id,
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      retry: false,
       select: (results: ProwlarrSearchResult[]) => results.map(prowlarrToUnified),
     });
   },

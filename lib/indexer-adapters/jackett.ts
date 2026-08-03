@@ -27,12 +27,20 @@ export const jackettIndexerAdapter: IndexerSearchAdapter = {
   serviceId: "jackett",
   displayName: "Jackett",
 
+  // Interactive indexer searches are slow and expensive: don't auto-retry a
+  // transient failure (it multiplies a 90s timeout by three before the user
+  // sees anything), consume the queryFn signal so backing out aborts the
+  // in-flight fetch, and cache a completed search long enough that returning
+  // to the tab doesn't re-run it. Same contract as useRadarrReleases (#290).
   useSearch: (query: string, instanceId?: string) => {
     const { instanceId: id, enabled } = useInstanceTarget("jackett", instanceId);
     return useQuery({
       queryKey: ["jackett", id, "search", query],
-      queryFn: () => searchAll(query, id ?? undefined),
+      queryFn: ({ signal }) => searchAll(query, id ?? undefined, signal),
       enabled: enabled && query.length >= 2 && !!id,
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      retry: false,
       // Jackett returns results in per-tracker arrival order and the UI slices
       // the top of the list, so sorting by seeders is load-bearing.
       select: (resp: JackettResultsResponse) =>

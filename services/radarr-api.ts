@@ -1,4 +1,5 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   RadarrMovie,
   RadarrQueue,
@@ -11,11 +12,6 @@ import type {
   RadarrCollection,
   ArrQueueRemoveOptions,
 } from "@/lib/types";
-
-// Interactive search hits indexers live and frequently exceeds the 15s
-// default timeout. Bump per-call to keep slow indexers from short-circuiting
-// the whole search.
-const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 // --- Image helpers ---
 
