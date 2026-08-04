@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import {
   getArtists,
   getArtist,
@@ -108,6 +113,8 @@ export function useLidarrSearch(term: string, instanceId?: string) {
     queryKey: ["lidarr", id, "search", term],
     queryFn: () => searchArtists(term, id ?? undefined),
     enabled: enabled && term.length >= 2 && !!id,
+    // See useRadarrSearch: hold the last results while the next term loads (#304).
+    placeholderData: keepPreviousData,
   });
 }
 

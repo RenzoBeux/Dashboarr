@@ -69,23 +69,30 @@ export function SearchSection({
         <Text className="text-zinc-600 text-xs">{serviceLabel}</Text>
       </Pressable>
 
-      {expanded &&
-        (isError ? (
-          <ErrorBanner error={error} title={`Couldn't search ${serviceLabel}`} />
-        ) : settledEmpty ? (
-          <Text className="text-zinc-600 text-xs px-1 pb-1">No matches</Text>
-        ) : (
-          <View className="gap-2">
-            {children}
-            {hasMore && onShowAll && (
-              <Pressable onPress={onShowAll} className="py-1.5 active:opacity-70" hitSlop={4}>
-                <Text className="text-primary text-sm font-medium">
-                  Show all {total} →
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        ))}
+      {expanded && (
+        <View className="gap-2">
+          {/* The banner sits above the results rather than replacing them: the
+              *arr sections can match your library locally even when the remote
+              lookup fails, and those rows must stay reachable (#304). */}
+          {isError && (
+            <ErrorBanner error={error} title={`Couldn't search ${serviceLabel}`} />
+          )}
+          {settledEmpty ? (
+            <Text className="text-zinc-600 text-xs px-1 pb-1">No matches</Text>
+          ) : (
+            <>
+              {children}
+              {hasMore && onShowAll && (
+                <Pressable onPress={onShowAll} className="py-1.5 active:opacity-70" hitSlop={4}>
+                  <Text className="text-primary text-sm font-medium">
+                    Show all {total} →
+                  </Text>
+                </Pressable>
+              )}
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 }

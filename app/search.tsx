@@ -26,7 +26,8 @@ const MIN_QUERY = 2;
  */
 export default function GlobalSearchScreen() {
   const [query, setQuery] = useState("");
-  const debounced = useDebouncedValue(query.trim(), 300);
+  const trimmed = query.trim();
+  const debounced = useDebouncedValue(trimmed, 300);
   const attachedKinds = useAttachedKinds();
 
   const hasRadarr = attachedKinds.has("radarr");
@@ -65,9 +66,11 @@ export default function GlobalSearchScreen() {
         />
       ) : (
         <>
-          {hasRadarr && <RadarrSearchSection query={debounced} />}
-          {hasSonarr && <SonarrSearchSection query={debounced} />}
-          {hasLidarr && <LidarrSearchSection query={debounced} />}
+          {/* The *arr sections take the raw query: their library half matches on
+              the keystroke and they debounce their own lookup (#304). */}
+          {hasRadarr && <RadarrSearchSection query={trimmed} />}
+          {hasSonarr && <SonarrSearchSection query={trimmed} />}
+          {hasLidarr && <LidarrSearchSection query={trimmed} />}
           {hasOverseerr && <OverseerrSearchSection query={debounced} />}
           {hasProwlarr && (
             <ReleaseSearchSection adapter={prowlarrIndexerAdapter} query={debounced} />
