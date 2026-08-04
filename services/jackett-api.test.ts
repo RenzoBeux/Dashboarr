@@ -12,8 +12,9 @@ import {
   getIndexers,
   parseIndexersXml,
   searchAll,
+  testIndexer,
 } from "@/services/jackett-api";
-import type { JackettResultsResponse } from "@/lib/types";
+import type { JackettIndexerResult, JackettResultsResponse } from "@/lib/types";
 
 const mockRequest = serviceRequest as jest.Mock;
 
@@ -138,6 +139,81 @@ describe("searchAll", () => {
     await expect(searchAll("ubuntu")).rejects.toThrow(
       "1 of 1 indexer failed. 1337x: boom",
     );
+  });
+
+  // The tracker is a path segment, not a query param — "all" is just Jackett's
+  // meta-indexer id for the same route.
+  it("scopes to one tracker when given an indexerId", async () => {
+    mockRequest.mockResolvedValue({ Results: [], Indexers: [] });
+    await searchAll("ubuntu", "inst-2", undefined, "1337x");
+    expect(mockRequest.mock.calls[0][1]).toBe("/indexers/1337x/results");
+  });
+});
+
+describe("testIndexer", () => {
+  const row = (over: Partial<JackettIndexerResult> = {}): JackettIndexerResult => ({
+    ID: "1337x",
+    Name: "1337x",
+    Status: 0,
+    Results: 12,
+    Error: null,
+    ElapsedTime: 340,
+    ...over,
+  });
+
+  // Mirrors IndexerManagerService.TestIndexer: empty SearchTerm, one indexer.
+  it("browses the single indexer with an empty query", async () => {
+    mockRequest.mockResolvedValue({ Results: [], Indexers: [row()] });
+    await expect(testIndexer("1337x", "inst-3")).resolves.toEqual({
+      ok: true,
+      results: 12,
+      elapsedMs: 340,
+    });
+    expect(mockRequest).toHaveBeenCalledWith("jackett", "/indexers/1337x/results", {
+      params: { Query: "" },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "inst-3",
+      signal: undefined,
+    });
+  });
+
+  // A failing tracker answers 200 with Results: [] and its message on the row —
+  // and must resolve as a verdict here, not throw the way a user search does.
+  it("reports the tracker's own error instead of throwing", async () => {
+    mockRequest.mockResolvedValue({
+      Results: [],
+      Indexers: [row({ Results: 0, Error: "Login failed: invalid cookie" })],
+    });
+    await expect(testIndexer("1337x")).resolves.toEqual({
+      ok: false,
+      results: 0,
+      elapsedMs: 340,
+      error: "Login failed: invalid cookie",
+    });
+  });
+
+  // Jackett's own test throws on an empty browse, so a clean-but-empty response
+  // is a failure, not a pass.
+  it("fails a browse that came back with nothing", async () => {
+    mockRequest.mockResolvedValue({
+      Results: [],
+      Indexers: [row({ Results: 0 })],
+    });
+    await expect(testIndexer("1337x")).resolves.toMatchObject({
+      ok: false,
+      results: 0,
+      error: "Found no results while browsing this tracker",
+    });
+  });
+
+  // Older builds echo the row under a differently-cased id; the sole row is
+  // still the one that was queried.
+  it("falls back to the only row when the id doesn't match", async () => {
+    mockRequest.mockResolvedValue({
+      Results: [],
+      Indexers: [row({ ID: "1337X" })],
+    });
+    await expect(testIndexer("1337x")).resolves.toMatchObject({ ok: true, results: 12 });
   });
 });
 

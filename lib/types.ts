@@ -1598,6 +1598,17 @@ export interface JackettIndexerResult {
   Status: number;
   Results: number;
   Error: string | null;
+  // Milliseconds the tracker took to answer. Present on modern Jackett builds.
+  ElapsedTime?: number;
+}
+
+// Outcome of the per-indexer test in services/jackett-api.ts — an empty-term
+// browse, mirroring what Jackett's own (cookie-authed) test endpoint runs.
+export interface JackettIndexerTestResult {
+  ok: boolean;
+  results: number;
+  elapsedMs?: number;
+  error?: string;
 }
 
 export interface JackettResultsResponse {

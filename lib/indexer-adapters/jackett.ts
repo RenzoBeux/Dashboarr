@@ -3,7 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { searchAll } from "@/services/jackett-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { JackettGrabFlow } from "@/components/indexers/jackett-grab-flow";
-import type { IndexerSearchAdapter, UnifiedRelease } from "@/lib/indexer-adapter";
+import type {
+  IndexerSearchAdapter,
+  IndexerSearchOptions,
+  UnifiedRelease,
+} from "@/lib/indexer-adapter";
 import type { JackettRelease, JackettResultsResponse } from "@/lib/types";
 
 function jackettToUnified(r: JackettRelease): UnifiedRelease {
@@ -32,11 +36,14 @@ export const jackettIndexerAdapter: IndexerSearchAdapter = {
   // sees anything), consume the queryFn signal so backing out aborts the
   // in-flight fetch, and cache a completed search long enough that returning
   // to the tab doesn't re-run it. Same contract as useRadarrReleases (#290).
-  useSearch: (query: string, instanceId?: string) => {
-    const { instanceId: id, enabled } = useInstanceTarget("jackett", instanceId);
+  useSearch: (query: string, opts?: IndexerSearchOptions) => {
+    const { instanceId: id, enabled } = useInstanceTarget("jackett", opts?.instanceId);
+    const indexerId = opts?.indexerId;
     return useQuery({
-      queryKey: ["jackett", id, "search", query],
-      queryFn: ({ signal }) => searchAll(query, id ?? undefined, signal),
+      // `indexerId` is part of the key so a tracker-scoped search can never be
+      // served the cached all-indexers result (or vice versa).
+      queryKey: ["jackett", id, "search", query, indexerId],
+      queryFn: ({ signal }) => searchAll(query, id ?? undefined, signal, indexerId),
       enabled: enabled && query.length >= 2 && !!id,
       staleTime: 60_000,
       gcTime: 5 * 60_000,

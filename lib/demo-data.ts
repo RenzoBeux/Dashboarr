@@ -1855,11 +1855,21 @@ export function getDemoResponse(
     }
     case "jackett": {
       // The Torznab meta endpoint answers with XML; the JSON results endpoint
-      // handles both live search and the indexer-status sidebar.
+      // handles live search, the per-indexer search and the per-indexer test.
       if (normalized.startsWith("/indexers/all/results/torznab"))
         return DEMO_JACKETT_INDEXERS_XML;
-      if (normalized.startsWith("/indexers/all/results")) return DEMO_JACKETT_RESULTS;
-      return undefined;
+      const match = normalized.match(/^\/indexers\/([^/]+)\/results$/);
+      if (!match) return undefined;
+      const indexerId = decodeURIComponent(match[1]!);
+      if (indexerId === "all") return DEMO_JACKETT_RESULTS;
+      // Tracker-scoped: same payload narrowed to that tracker, so a demo test
+      // of an unknown id lands on the real "no results" failure path.
+      return {
+        Results: DEMO_JACKETT_RESULTS.Results.filter(
+          (r) => r.TrackerId === indexerId,
+        ),
+        Indexers: DEMO_JACKETT_RESULTS.Indexers.filter((i) => i.ID === indexerId),
+      };
     }
     case "bazarr": {
       if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;
