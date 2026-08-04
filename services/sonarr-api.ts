@@ -99,6 +99,23 @@ export function deleteEpisodeFile(
   });
 }
 
+// Bulk file delete — the endpoint behind Sonarr's own "delete selected files",
+// used here to clear a whole season in one request instead of N per-file
+// DELETEs. Present since Sonarr v3 (Sonarr.Api.V3 EpisodeFileModule:
+// `Delete("/bulk")` reading an EpisodeFileListResource).
+// Never call with an empty list: Sonarr resolves the series from
+// `episodeFiles.First()` and throws on an empty match.
+export function deleteEpisodeFiles(
+  episodeFileIds: number[],
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", "/episodefile/bulk", {
+    method: "DELETE",
+    body: JSON.stringify({ episodeFileIds }),
+    instanceId,
+  });
+}
+
 // --- Calendar ---
 
 export function getCalendar(

@@ -9,6 +9,7 @@ import {
   UserSearch,
   Trash2,
   Bookmark,
+  BookmarkX,
   MoreHorizontal,
   Award,
   Tv,
@@ -44,7 +45,9 @@ import {
   useSonarrEpisodeFiles,
   useSonarrQueue,
   useToggleEpisodeMonitored,
+  useToggleSeasonMonitored,
   useDeleteEpisodeFile,
+  useDeleteEpisodeFiles,
   useSearchForEpisodes,
   useSearchForSeason,
   useSearchForSeries,
@@ -739,8 +742,10 @@ function SeasonAccordion({
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
-  const flow = useModalFlow<{ menu: void }>();
+  const flow = useModalFlow<{ menu: void; confirmDeleteFiles: void }>();
   const searchSeason = useSearchForSeason(instanceId);
+  const toggleSeason = useToggleSeasonMonitored(instanceId);
+  const deleteSeasonFiles = useDeleteEpisodeFiles(instanceId);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
   // Any episode of this season currently grabbing turns the season bar purple.
@@ -754,6 +759,13 @@ function SeasonAccordion({
   const releasesQuery = `seasonNumber=${season.seasonNumber}${
     instanceId ? `&instanceId=${instanceId}` : ""
   }`;
+
+  // Every downloaded file in this season — what "Delete Files" removes in one
+  // bulk request. Empty while the episode list is still loading, which also
+  // keeps us from sending Sonarr an empty id list (it throws on that).
+  const seasonFileIds = (episodes ?? [])
+    .map((ep) => ep.episodeFileId)
+    .filter((fileId): fileId is number => !!fileId);
 
   // Mirrors the episode "⋯" menu: automatic vs interactive search read clearly
   // as labeled rows instead of a bare magnifier icon.
@@ -772,6 +784,39 @@ function SeasonAccordion({
           router.push(`/series/releases/${seriesId}?${releasesQuery}`),
         ),
     },
+    {
+      label: season.monitored ? "Unmonitor Season" : "Monitor Season",
+      // Sonarr cascades a season's monitored flag onto its episodes server-side
+      // — worth saying, since the episode rows below carry their own toggles.
+      subtitle: "Includes all episodes",
+      icon: (
+        <Icon
+          icon={season.monitored ? BookmarkX : Bookmark}
+          size={20}
+          color={season.monitored ? "#a1a1aa" : "#3b82f6"}
+        />
+      ),
+      disabled: toggleSeason.isPending,
+      onPress: () =>
+        toggleSeason.mutate({
+          seriesId,
+          seasonNumber: season.seasonNumber,
+          monitored: !season.monitored,
+        }),
+    },
+    ...(seasonFileIds.length > 0
+      ? [
+          {
+            label: "Delete Files",
+            subtitle: `${seasonFileIds.length} file${
+              seasonFileIds.length !== 1 ? "s" : ""
+            }${stats?.sizeOnDisk ? ` · ${formatBytes(stats.sizeOnDisk)}` : ""}`,
+            icon: <Icon icon={Trash2} size={20} color="#ef4444" />,
+            variant: "danger" as const,
+            onPress: () => flow.open("confirmDeleteFiles"),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -797,15 +842,47 @@ function SeasonAccordion({
               {stats.episodeFileCount}/{stats.episodeCount}
             </Text>
           )}
-          <Pressable
-            onPress={() => flow.open("menu")}
-            hitSlop={8}
-            className="p-1 active:opacity-70"
-            accessibilityRole="button"
-            accessibilityLabel={`${seasonLabel} actions`}
-          >
-            <Icon icon={MoreHorizontal} size={16} color="#a1a1aa" />
-          </Pressable>
+          <View className="flex-row items-center gap-1">
+            {/* Mirrors the per-episode bookmark: without it the menu's
+                Monitor/Unmonitor row would be the only way to see — or notice a
+                change in — the season's monitored state. */}
+            <Pressable
+              onPress={() =>
+                toggleSeason.mutate({
+                  seriesId,
+                  seasonNumber: season.seasonNumber,
+                  monitored: !season.monitored,
+                })
+              }
+              disabled={toggleSeason.isPending}
+              hitSlop={8}
+              className={`p-1 active:opacity-70 ${
+                toggleSeason.isPending ? "opacity-50" : ""
+              }`}
+              accessibilityRole="button"
+              accessibilityLabel={
+                season.monitored
+                  ? `${seasonLabel} monitored — tap to unmonitor`
+                  : `${seasonLabel} not monitored — tap to monitor`
+              }
+            >
+              <Icon
+                icon={Bookmark}
+                size={16}
+                color={season.monitored ? "#3b82f6" : "#52525b"}
+                fill={season.monitored ? "#3b82f6" : "transparent"}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => flow.open("menu")}
+              hitSlop={8}
+              className="p-1 active:opacity-70"
+              accessibilityRole="button"
+              accessibilityLabel={`${seasonLabel} actions`}
+            >
+              <Icon icon={MoreHorizontal} size={16} color="#a1a1aa" />
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -843,6 +920,21 @@ function SeasonAccordion({
         {...flow.bind("menu")}
         title={seasonLabel}
         actions={seasonActions}
+      />
+
+      <ConfirmModal
+        {...flow.bind("confirmDeleteFiles")}
+        title="Delete Season Files"
+        message={`Delete ${seasonFileIds.length} episode file${
+          seasonFileIds.length !== 1 ? "s" : ""
+        } for ${seasonLabel}? The episodes stay in the library but will be marked missing.`}
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          flow.close();
+          if (seasonFileIds.length > 0) deleteSeasonFiles.mutate(seasonFileIds);
+        }}
       />
     </Card>
   );
