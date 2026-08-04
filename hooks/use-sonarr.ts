@@ -5,6 +5,7 @@ import {
   getEpisodes,
   getEpisodeFiles,
   deleteEpisodeFile,
+  deleteEpisodeFiles,
   getCalendar,
   getQueue,
   getHistory,
@@ -183,16 +184,42 @@ export function useDeleteEpisodeFile(instanceId?: string) {
     mutationFn: (episodeFileId: number) =>
       deleteEpisodeFile(episodeFileId, id ?? undefined),
     onSuccess: () => {
-      // Refresh the episode list, file map, and series stats (file counts).
-      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "episodes"] });
-      queryClient.invalidateQueries({
-        queryKey: ["sonarr", id, "episodeFiles"],
-      });
-      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
+      invalidateAfterFileDelete(queryClient, id);
       toast("Episode file deleted");
     },
     onError: (err) => toastError("Delete failed", err),
   });
+}
+
+// Season-level "delete files": one bulk request for every file in the season.
+// The episodes stay in the library and flip back to missing, same as the
+// single-file delete.
+export function useDeleteEpisodeFiles(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: (episodeFileIds: number[]) =>
+      deleteEpisodeFiles(episodeFileIds, id ?? undefined),
+    onSuccess: (_data, episodeFileIds) => {
+      invalidateAfterFileDelete(queryClient, id);
+      toast(
+        `${episodeFileIds.length} episode file${
+          episodeFileIds.length !== 1 ? "s" : ""
+        } deleted`,
+      );
+    },
+    onError: (err) => toastError("Delete failed", err),
+  });
+}
+
+// Refresh the episode list, file map, and series stats (file counts).
+function invalidateAfterFileDelete(
+  queryClient: ReturnType<typeof useQueryClient>,
+  id: string | null,
+) {
+  queryClient.invalidateQueries({ queryKey: ["sonarr", id, "episodes"] });
+  queryClient.invalidateQueries({ queryKey: ["sonarr", id, "episodeFiles"] });
+  queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
 }
 
 export function useSearchForSeries(instanceId?: string) {
@@ -380,6 +407,58 @@ export function useUpdateSeriesFields(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
     },
   });
+}
+
+/**
+ * Season monitoring lives on the series resource, so the toggle is the same
+ * full series PUT as any other field edit — Sonarr's own web UI flips
+ * `seasons[n].monitored` and PUTs /series/{id}. Server-side,
+ * `SeriesService.UpdateSeries` notices the changed season and calls
+ * `SetEpisodeMonitoredBySeason`, so every episode in that season follows and
+ * the episode list has to be refetched on top of the usual series caches.
+ */
+export function useToggleSeasonMonitored(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  const update = useUpdateSeriesFields(instanceId);
+
+  return {
+    isPending: update.isPending,
+    mutate: ({
+      seriesId,
+      seasonNumber,
+      monitored,
+    }: {
+      seriesId: number;
+      seasonNumber: number;
+      monitored: boolean;
+    }) => {
+      const cached = queryClient.getQueryData<SonarrSeries>([
+        "sonarr",
+        id,
+        "series",
+        seriesId,
+      ]);
+      if (!cached) return;
+      update.mutate(
+        {
+          seriesId,
+          fields: {
+            seasons: cached.seasons.map((s) =>
+              s.seasonNumber === seasonNumber ? { ...s, monitored } : s,
+            ),
+          },
+          errorLabel: "Failed to update monitoring",
+        },
+        {
+          onSettled: () =>
+            queryClient.invalidateQueries({
+              queryKey: ["sonarr", id, "episodes", seriesId],
+            }),
+        },
+      );
+    },
+  };
 }
 
 export function useUpdateSeriesRootFolder(instanceId?: string) {
