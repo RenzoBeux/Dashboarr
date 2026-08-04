@@ -10,6 +10,7 @@ import { ProwlarrIndexerList } from "@/components/indexers/prowlarr-indexer-list
 import { ProwlarrStats } from "@/components/indexers/prowlarr-stats";
 import { JackettIndexerList } from "@/components/indexers/jackett-indexer-list";
 import { ReleaseSearch } from "@/components/indexers/release-search";
+import type { SearchScope } from "@/components/indexers/release-search";
 import { prowlarrIndexerAdapter } from "@/lib/indexer-adapters/prowlarr";
 import { jackettIndexerAdapter } from "@/lib/indexer-adapters/jackett";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -55,12 +56,17 @@ function IndexersScreenInner() {
     paramSource && sources.includes(paramSource) ? paramSource : sources[0] ?? "prowlarr",
   );
   const [tab, setTab] = useState<Tab>("indexers");
+  // Set by the per-indexer Search button in the indexer list (#315): pins the
+  // Search sub-tab to that one tracker until the user clears the pill.
+  const [searchScope, setSearchScope] = useState<SearchScope | null>(null);
 
   // Re-select when the deep-link param changes (e.g. user is already on this
   // tab and taps the other indexer tile in the Services tab).
   useEffect(() => {
     if (paramSource && sources.includes(paramSource) && paramSource !== source) {
       setSource(paramSource);
+      // An indexer id only means something to the source it came from.
+      setSearchScope(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramSource]);
@@ -95,7 +101,10 @@ function IndexersScreenInner() {
               key={s}
               label={SERVICE_DEFAULTS[s].name}
               selected={activeSource === s}
-              onPress={() => setSource(s)}
+              onPress={() => {
+                setSource(s);
+                setSearchScope(null);
+              }}
             />
           ))}
         </ScrollView>
@@ -122,13 +131,24 @@ function IndexersScreenInner() {
       </ScrollView>
 
       {activeTab === "indexers" &&
-        (activeSource === "prowlarr" ? <ProwlarrIndexerList /> : <JackettIndexerList />)}
+        (activeSource === "prowlarr" ? (
+          <ProwlarrIndexerList />
+        ) : (
+          <JackettIndexerList
+            onSearch={(indexer) => {
+              setSearchScope({ id: indexer.id, name: indexer.name });
+              setTab("search");
+            }}
+          />
+        ))}
       {activeTab === "search" && (
         <ReleaseSearch
           key={activeSource}
           adapter={
             activeSource === "prowlarr" ? prowlarrIndexerAdapter : jackettIndexerAdapter
           }
+          scope={searchScope}
+          onClearScope={() => setSearchScope(null)}
         />
       )}
       {activeTab === "stats" && activeSource === "prowlarr" && <ProwlarrStats />}

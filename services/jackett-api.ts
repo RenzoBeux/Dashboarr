@@ -2,7 +2,11 @@ import { XMLParser } from "fast-xml-parser";
 
 import { serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
-import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
+import type {
+  JackettIndexer,
+  JackettIndexerTestResult,
+  JackettResultsResponse,
+} from "@/lib/types";
 
 // Jackett API notes:
 //   - The apikey travels as a QUERY PARAM, injected centrally by
@@ -11,9 +15,10 @@ import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
 //     (/indexers, /server/config, per-indexer config/test) requires the
 //     admin-password COOKIE, so indexer management is out of reach and the
 //     indexer list comes from the Torznab meta endpoint instead.
-//   - v1 has no Tracker[]/Category[] filtering: RequestOptions.params cannot
-//     emit repeated query keys, and searching "all" matches what the Prowlarr
-//     surface does today anyway.
+//   - No Category[] filtering: RequestOptions.params cannot emit repeated query
+//     keys. Single-tracker filtering does not need one — the tracker is a PATH
+//     segment (`/indexers/{id}/results`), and "all" is just Jackett's own
+//     meta-indexer id for that same route.
 // Per-instance routing: every function takes an optional `instanceId`. When
 // omitted, the user's active Jackett is used.
 
@@ -26,14 +31,29 @@ import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
 // timeout. `signal` is the caller's cancel channel: without it a hung fetch
 // outlives the search that started it and later searches dedupe onto the
 // zombie, the "stuck on Searching... forever" report in #314.
+// `indexerId` scopes the search to a single tracker (the per-indexer Search
+// button in the Jackett indexer list, #315); omitted, it fans out to every
+// configured one.
 export async function searchAll(
   query: string,
   instanceId?: string,
   signal?: AbortSignal,
+  indexerId?: string,
 ): Promise<JackettResultsResponse> {
-  const resp = await serviceRequest<JackettResultsResponse>(
+  const resp = await runSearch(query, indexerId ?? "all", instanceId, signal);
+  assertIndexersUsable(resp);
+  return resp;
+}
+
+function runSearch(
+  query: string,
+  indexerId: string,
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<JackettResultsResponse> {
+  return serviceRequest<JackettResultsResponse>(
     "jackett",
-    "/indexers/all/results",
+    `/indexers/${encodeURIComponent(indexerId)}/results`,
     {
       params: { Query: query },
       timeout: INTERACTIVE_SEARCH_TIMEOUT,
@@ -41,8 +61,6 @@ export async function searchAll(
       signal,
     },
   );
-  assertIndexersUsable(resp);
-  return resp;
 }
 
 // Jackett answers 200 with `Results: []` whether nothing matched or every
@@ -61,6 +79,43 @@ export function assertIndexersUsable(resp: JackettResultsResponse): void {
       `${indexers.length === 1 ? "" : "s"} failed. ` +
       `${failed[0].Name}: ${failed[0].Error}`,
   );
+}
+
+// --- Test ---
+
+// Per-indexer connectivity check (#315).
+//
+// Jackett's own Test button POSTs to /api/v2.0/indexers/{id}/test, which carries
+// no apikey filter and therefore falls under the global
+// `AuthorizeFilter(RequireAuthenticatedUser)` in Jackett's Startup.cs — i.e. the
+// admin-password cookie, out of reach here. So reproduce what that endpoint does
+// over the apikey-validated results route instead: IndexerManagerService
+// .TestIndexer builds a TorznabQuery with an EMPTY SearchTerm, runs it against
+// the one indexer, and throws when it comes back with zero releases. Same query,
+// same pass/fail rule — the per-indexer row in the JSON response carries the
+// tracker's own error string and result count.
+export async function testIndexer(
+  indexerId: string,
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<JackettIndexerTestResult> {
+  const resp = await runSearch("", indexerId, instanceId, signal);
+  // Jackett echoes one row per queried indexer; match by id and fall back to the
+  // sole row, since a tracker whose id differs in case still reports here.
+  const row =
+    resp.Indexers?.find((i) => i.ID === indexerId) ?? resp.Indexers?.[0];
+  const results = row?.Results ?? resp.Results.length;
+  const elapsedMs = row?.ElapsedTime;
+  if (row?.Error) return { ok: false, results, elapsedMs, error: row.Error };
+  if (results === 0) {
+    return {
+      ok: false,
+      results,
+      elapsedMs,
+      error: "Found no results while browsing this tracker",
+    };
+  }
+  return { ok: true, results, elapsedMs };
 }
 
 // --- Indexers ---

@@ -37,10 +37,21 @@ export interface GrabFlowProps {
 
 // Self-contained grab affordance: owns its own modals/mutations so the shared
 // views never branch on kind (same trick as TorrentAdapter.SpeedLimitsControl).
+export interface IndexerSearchOptions {
+  instanceId?: string;
+  // Restrict the search to one indexer, as a string on both sides (Jackett's
+  // tracker slug, Prowlarr's numeric id) so the shared views stay kind-blind.
+  // Undefined searches every configured indexer.
+  indexerId?: string;
+}
+
 export interface IndexerSearchAdapter {
   serviceId: ServiceId;
   displayName: string;
   // Wraps the kind-specific search hook and maps results to UnifiedRelease[].
-  useSearch: (query: string, instanceId?: string) => UseQueryResult<UnifiedRelease[]>;
+  useSearch: (
+    query: string,
+    opts?: IndexerSearchOptions,
+  ) => UseQueryResult<UnifiedRelease[]>;
   GrabFlow: ComponentType<GrabFlowProps>;
 }
