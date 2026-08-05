@@ -1,31 +1,30 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "expo-router";
 import { Tv } from "lucide-react-native";
 import { SearchSection } from "@/components/search/search-section";
+import { ArrLibraryRow } from "@/components/search/arr-library-row";
 import { SonarrSearchRow } from "@/components/search/sonarr-search-row";
 import { AddSeriesSheet } from "@/components/sonarr/add-series-sheet";
-import { useSonarrSearch, useSonarrSeries } from "@/hooks/use-sonarr";
+import { useSonarrSearchRows } from "@/hooks/use-arr-search-rows";
 import type { SonarrSearchResult } from "@/lib/types";
 
 const PREVIEW_LIMIT = 5;
+// See radarr-search-section.tsx for why library rows are capped in the preview.
+const LIBRARY_PREVIEW_LIMIT = 3;
 
-/** TV section of global search — Sonarr lookup, library dedup by tvdbId. */
+/**
+ * TV section of global search — library matches first, then the Sonarr lookup
+ * deduped against them (#304).
+ */
 export function SonarrSearchSection({ query }: { query: string }) {
   const router = useRouter();
-  const { data: results, isLoading, isError, error } = useSonarrSearch(query);
-  const { data: existing } = useSonarrSeries();
+  const { rows, total, isLoading, isError, error } = useSonarrSearchRows(
+    query,
+    LIBRARY_PREVIEW_LIMIT,
+  );
   const [advancedTarget, setAdvancedTarget] = useState<SonarrSearchResult | null>(null);
 
-  const existingByTvdbId = useMemo(() => {
-    const map = new Map<number, number>();
-    for (const s of existing ?? []) {
-      map.set(s.tvdbId, s.id);
-    }
-    return map;
-  }, [existing]);
-
-  const all = results ?? [];
-  const preview = all.slice(0, PREVIEW_LIMIT);
+  const preview = rows.slice(0, PREVIEW_LIMIT);
 
   return (
     <>
@@ -33,27 +32,34 @@ export function SonarrSearchSection({ query }: { query: string }) {
         title="TV Shows"
         icon={Tv}
         serviceLabel="Sonarr"
-        total={all.length}
+        total={total}
         isLoading={isLoading}
         isError={isError}
         error={error}
-        hasMore={all.length > preview.length}
+        hasMore={total > preview.length}
         onShowAll={() => router.push({ pathname: "/series/search", params: { q: query } })}
       >
-        {preview.map((result) => {
-          const existingId = existingByTvdbId.get(result.tvdbId);
-          return (
+        {preview.map((row) =>
+          row.kind === "library" ? (
+            <ArrLibraryRow
+              key={row.key}
+              serviceId="sonarr"
+              fallbackIcon={Tv}
+              display={row.display}
+              onOpen={() => router.push(`/series/${row.id}`)}
+            />
+          ) : (
             <SonarrSearchRow
-              key={result.tvdbId}
-              result={result}
-              existingSeriesId={existingId}
-              onAdvanced={() => setAdvancedTarget(result)}
+              key={row.key}
+              result={row.result}
+              existingSeriesId={row.existingId}
+              onAdvanced={() => setAdvancedTarget(row.result)}
               onOpenExisting={() =>
-                existingId !== undefined && router.push(`/series/${existingId}`)
+                row.existingId !== undefined && router.push(`/series/${row.existingId}`)
               }
             />
-          );
-        })}
+          ),
+        )}
       </SearchSection>
 
       <AddSeriesSheet

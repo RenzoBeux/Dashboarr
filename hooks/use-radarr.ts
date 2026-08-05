@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import {
   getMovies,
   getMovie,
@@ -138,6 +143,9 @@ export function useRadarrSearch(term: string, instanceId?: string) {
     queryKey: ["radarr", id, "search", term],
     queryFn: () => searchMovies(term, id ?? undefined),
     enabled: enabled && term.length >= 2 && !!id,
+    // The key changes on every debounced term, so without this the list blanks
+    // between searches instead of holding the last results (#304).
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import {
   getSeries,
   getSeriesById,
@@ -128,6 +133,8 @@ export function useSonarrSearch(term: string, instanceId?: string) {
     queryKey: ["sonarr", id, "search", term],
     queryFn: () => searchSeries(term, id ?? undefined),
     enabled: enabled && term.length >= 2 && !!id,
+    // See useRadarrSearch: hold the last results while the next term loads (#304).
+    placeholderData: keepPreviousData,
   });
 }
 
