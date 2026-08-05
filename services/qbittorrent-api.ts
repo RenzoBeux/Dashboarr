@@ -487,13 +487,16 @@ export function deleteTorrents(
 export function addTorrentMagnet(
   magnetUri: string,
   instanceId?: string,
+  category?: string,
 ): Promise<void> {
+  const params = new URLSearchParams({ urls: magnetUri });
+  if (category) params.set("category", category);
   return qbRequest(
     "/torrents/add",
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `urls=${encodeURIComponent(magnetUri)}`,
+      body: params.toString(),
     },
     instanceId,
   );

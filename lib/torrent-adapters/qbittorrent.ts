@@ -213,11 +213,11 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
   useAddTorrent: (instanceId?: string) => {
     const queryClient = useQueryClient();
     const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
-    // qBittorrent's add takes a bare magnet/URL; the unified surface adds
-    // optional label/savePath which qBittorrent ignores for v1.
+    // The unified surface's `label` maps to qBittorrent's category on add;
+    // savePath is ignored (qBittorrent derives it from the category).
     return useMutation({
-      mutationFn: ({ uri }: { uri: string; label?: string; savePath?: string }) =>
-        addTorrentMagnet(uri, id ?? undefined),
+      mutationFn: ({ uri, label }: { uri: string; label?: string; savePath?: string }) =>
+        addTorrentMagnet(uri, id ?? undefined, label),
       onSuccess: () =>
         queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] }),
     });

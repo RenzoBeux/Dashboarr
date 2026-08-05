@@ -37,6 +37,7 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { ActionSheet } from "@/components/ui/action-sheet";
+import { Select } from "@/components/ui/select";
 import { CategorySheet } from "@/components/qbittorrent/category-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
@@ -120,6 +121,8 @@ export function TorrentDownloadsView({
   const [categoryBulkOpen, setCategoryBulkOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
+  // "" = no category (qBittorrent-only; other clients never show the picker).
+  const [addCategory, setAddCategory] = useState("");
 
   // Runs on mount too (segment switches remount this view per client), so a
   // pending magnet re-prefills whichever client the user lands on.
@@ -214,10 +217,11 @@ export function TorrentDownloadsView({
   const handleAdd = () => {
     if (!magnetUri.trim()) return;
     addTorrent.mutate(
-      { uri: magnetUri.trim() },
+      { uri: magnetUri.trim(), label: addCategory || undefined },
       {
         onSuccess: () => {
           setMagnetUri("");
+          setAddCategory("");
           setShowAddModal(false);
           onMagnetConsumed?.();
           toast("Torrent added");
@@ -384,6 +388,17 @@ export function TorrentDownloadsView({
             // just cover the Add button.
             autoFocus={!incomingMagnet}
           />
+          {adapter.capabilities.categories && categories.length > 0 ? (
+            <Select
+              label="Category"
+              value={addCategory}
+              options={[
+                { value: "", label: "None" },
+                ...categories.map((c) => ({ value: c, label: c })),
+              ]}
+              onChange={setAddCategory}
+            />
+          ) : null}
           <View className="flex-row gap-2">
             <Button
               label="Cancel"
@@ -392,6 +407,7 @@ export function TorrentDownloadsView({
               onPress={() => {
                 setShowAddModal(false);
                 setMagnetUri("");
+                setAddCategory("");
                 onMagnetConsumed?.();
               }}
               className="flex-1"
