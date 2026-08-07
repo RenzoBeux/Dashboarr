@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Dashboarr" width="120" height="120" style="border-radius: 20px;" />
+  <img src="assets/logo-animated.svg" alt="Dashboarr" width="120" height="120" />
 </p>
 
 <h1 align="center">Dashboarr</h1>

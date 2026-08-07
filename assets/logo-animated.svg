@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">Dashboarr</title>
+  <defs>
+    
+    <linearGradient id="brand" x1="0%" y1="70%" x2="100%" y2="30%">
+      <stop offset="0%" stop-color="#06d6a0"/>
+      <stop offset="50%" stop-color="#3a86ff"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="#101528"/>
+
+  <!-- Unlit gauge track, so the badge never reads as empty mid-sweep -->
+  <path d="M 347 797.8 A 330 330 0 1 1 677 797.8" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="60" stroke-linecap="round"/>
+
+  <!-- Bloom trailing the lit arc, brightest while the gauge sits full -->
+  <path d="M 347 797.8 A 330 330 0 1 1 677 797.8" fill="none" stroke="url(#brand)" stroke-width="60" stroke-linecap="round"
+        filter="url(#glow)" opacity="0" stroke-dasharray="1727.9" stroke-dashoffset="0">
+      <animate attributeName="stroke-dashoffset" values="1727.9;0;0;-1727.9"
+               keyTimes="0;0.3;0.68;1" calcMode="spline" keySplines="0.22 0.7 0.25 1; 0 0 1 1; 0.65 0 0.8 0.35"
+               dur="4.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0.5;0.5;0"
+               keyTimes="0;0.3;0.68;1" calcMode="spline" keySplines="0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1"
+               dur="4.6s" repeatCount="indefinite"/>
+  </path>
+
+  <path d="M 347 797.8 A 330 330 0 1 1 677 797.8" fill="none" stroke="url(#brand)" stroke-width="60" stroke-linecap="round"
+        stroke-dasharray="1727.9" stroke-dashoffset="0">
+      <animate attributeName="stroke-dashoffset" values="1727.9;0;0;-1727.9"
+               keyTimes="0;0.3;0.68;1" calcMode="spline" keySplines="0.22 0.7 0.25 1; 0 0 1 1; 0.65 0 0.8 0.35"
+               dur="4.6s" repeatCount="indefinite"/>
+  </path>
+
+  <g transform="translate(512 512) scale(0.6) translate(-487 -512)" opacity="1">
+    <!-- Held at 0 for the first 0.3 of the run rather than begin="0.35s", which
+         would flash the resting opacity="1" before the animation takes over. -->
+    <animate attributeName="opacity" values="0;0;1" dur="1.15s" fill="freeze"
+             calcMode="spline" keyTimes="0;0.3;1" keySplines="0 0 1 1; 0.2 0.8 0.3 1"/>
+    <path d="
+    M 282 232
+    L 500 232
+    C 662 232 782 356 782 512
+    C 782 668 662 792 500 792
+    L 282 792
+    C 258 792 242 776 242 752
+    L 242 272
+    C 242 248 258 232 282 232
+    Z
+    M 392 372
+    L 490 372
+    C 576 372 636 432 636 512
+    C 636 592 576 652 490 652
+    L 392 652
+    Z
+" fill="#f2f4fc" fill-rule="evenodd"/>
+  </g>
+</svg>

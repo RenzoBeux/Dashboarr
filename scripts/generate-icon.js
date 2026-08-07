@@ -1,4 +1,5 @@
 const sharp = require("sharp");
+const fs = require("fs");
 const path = require("path");
 
 const ICON_SIZE = 1024;
@@ -103,6 +104,80 @@ const splashSvg = `
 </svg>
 `;
 
+// ── Animated README logo (1024x1024 SVG) ─────────────────────────────────────
+// GitHub serves README images through camo untouched, so this file animates in
+// place of the static PNG. Geometry, colors and glyph come from the constants
+// above, so the animated logo can never drift from the shipped app icon.
+//
+// SMIL (<animate>), not CSS keyframes: an SVG referenced by <img> gets its own
+// animation timeline, and Chrome does not drive CSS animations inside it — a
+// CSS version renders frozen at t=0, i.e. an empty badge. SMIL is what actually
+// runs in that context (and it is what every animated README SVG uses).
+//
+// Every animated attribute is also written as a presentation attribute at its
+// resting value, so a renderer that ignores animation still shows the exact
+// static badge instead of a blank one.
+//
+// The ring is a single dash the length of the whole arc: offset L -> 0 draws it
+// in from the teal cap, then 0 -> -L retracts the tail toward the violet cap,
+// so the loop reads as a gauge filling and emptying rather than a rewind.
+const RING_RADIUS = 330; // matches the `A 330 330` radius in RING_ARC
+const RING_SWEEP_DEG = 300; // 360 minus the 60deg gauge gap at the bottom
+const RING_LENGTH = ((2 * Math.PI * RING_RADIUS * RING_SWEEP_DEG) / 360).toFixed(1);
+
+const SWEEP_DUR = "4.6s";
+const SWEEP_KEYTIMES = "0;0.3;0.68;1"; // draw in / hold / sweep out
+// ease-out on the draw, linear through the hold, ease-in on the sweep out
+const SWEEP_SPLINES = "0.22 0.7 0.25 1; 0 0 1 1; 0.65 0 0.8 0.35";
+
+const sweepAnimation = (values, splines = SWEEP_SPLINES) => `
+      <animate attributeName="${values.attr}" values="${values.list}"
+               keyTimes="${SWEEP_KEYTIMES}" calcMode="spline" keySplines="${splines}"
+               dur="${SWEEP_DUR}" repeatCount="indefinite"/>`;
+
+const animatedLogoSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">Dashboarr</title>
+  <defs>
+    ${BRAND_GRAD}
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="${BG_COLOR}"/>
+
+  <!-- Unlit gauge track, so the badge never reads as empty mid-sweep -->
+  <path d="${RING_ARC}" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="60" stroke-linecap="round"/>
+
+  <!-- Bloom trailing the lit arc, brightest while the gauge sits full -->
+  <path d="${RING_ARC}" fill="none" stroke="url(#brand)" stroke-width="60" stroke-linecap="round"
+        filter="url(#glow)" opacity="0" stroke-dasharray="${RING_LENGTH}" stroke-dashoffset="0">${sweepAnimation({
+          attr: "stroke-dashoffset",
+          list: `${RING_LENGTH};0;0;-${RING_LENGTH}`,
+        })}${sweepAnimation(
+          { attr: "opacity", list: "0;0.5;0.5;0" },
+          "0.4 0 0.6 1; 0 0 1 1; 0.4 0 0.6 1"
+        )}
+  </path>
+
+  <path d="${RING_ARC}" fill="none" stroke="url(#brand)" stroke-width="60" stroke-linecap="round"
+        stroke-dasharray="${RING_LENGTH}" stroke-dashoffset="0">${sweepAnimation({
+          attr: "stroke-dashoffset",
+          list: `${RING_LENGTH};0;0;-${RING_LENGTH}`,
+        })}
+  </path>
+
+  <g transform="translate(512 512) scale(0.6) translate(-487 -512)" opacity="1">
+    <!-- Held at 0 for the first 0.3 of the run rather than begin="0.35s", which
+         would flash the resting opacity="1" before the animation takes over. -->
+    <animate attributeName="opacity" values="0;0;1" dur="1.15s" fill="freeze"
+             calcMode="spline" keyTimes="0;0.3;1" keySplines="0 0 1 1; 0.2 0.8 0.3 1"/>
+    <path d="${D_PATH}" fill="${D_COLOR}" fill-rule="evenodd"/>
+  </g>
+</svg>
+`;
+
 // Android 12+ system splash shows a small centered icon drawable (288dp), not
 // the full splash image. Prebuild derives these from android.splash.image
 // (the adaptive icon art); we also write them directly so a regenerate doesn't
@@ -118,6 +193,9 @@ const ANDROID_SPLASH_DENSITIES = {
 async function generate() {
   const assetsDir = path.join(__dirname, "..", "assets");
   const androidRes = path.join(__dirname, "..", "android", "app", "src", "main", "res");
+
+  fs.writeFileSync(path.join(assetsDir, "logo-animated.svg"), animatedLogoSvg.trim() + "\n");
+  console.log("Generated logo-animated.svg (README)");
 
   await Promise.all([
     sharp(Buffer.from(iconSvg))
