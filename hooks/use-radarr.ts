@@ -32,6 +32,7 @@ import type { RadarrMovie } from "@/lib/types";
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { describeGrabFailure } from "@/lib/download-client-error";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
@@ -477,7 +478,9 @@ export function useGrabRadarrRelease(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "queue"] });
     },
     onError: (err) => {
-      toastError("Failed to grab release", err);
+      toastError("Failed to grab release", err, (msg) =>
+        describeGrabFailure(msg, "Radarr"),
+      );
     },
   });
 }

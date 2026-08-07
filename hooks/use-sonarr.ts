@@ -36,6 +36,7 @@ import {
 import { toast, toastError } from "@/components/ui/toast";
 import type { SonarrSeries } from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { describeGrabFailure } from "@/lib/download-client-error";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
@@ -613,7 +614,9 @@ export function useGrabSonarrRelease(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["sonarr", id, "queue"] });
     },
     onError: (err) => {
-      toastError("Failed to grab release", err);
+      toastError("Failed to grab release", err, (msg) =>
+        describeGrabFailure(msg, "Sonarr"),
+      );
     },
   });
 }
