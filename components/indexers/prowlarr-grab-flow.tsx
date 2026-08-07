@@ -1,6 +1,7 @@
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { toast, toastError } from "@/components/ui/toast";
 import { useGrabRelease } from "@/hooks/use-prowlarr";
+import { describeGrabFailure } from "@/lib/download-client-error";
 import type { GrabFlowProps } from "@/lib/indexer-adapter";
 
 // Prowlarr grab: server-side — POST /search {guid, indexerId} and Prowlarr
@@ -12,7 +13,10 @@ export function ProwlarrGrabFlow({ release, onClose, instanceId }: GrabFlowProps
     if (!release?.grab) return;
     grabRelease.mutate(release.grab, {
       onSuccess: () => toast("Sent to download client"),
-      onError: (err) => toastError("Failed to grab release", err),
+      onError: (err) =>
+        toastError("Failed to grab release", err, (msg) =>
+          describeGrabFailure(msg, "Prowlarr"),
+        ),
     });
     onClose();
   };

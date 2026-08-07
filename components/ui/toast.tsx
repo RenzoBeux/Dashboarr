@@ -56,13 +56,22 @@ export function toast(
 // whenever the caller has the original error in scope.
 //   - Display: server's `{ message }` body → err.message → fallback string
 //   - Copy:    HTTP status + URL + body, or Error.name/message/stack
-export function toastError(fallback: string, err?: unknown) {
+//
+// `refine` gets the message we were about to show and may replace it, for the
+// cases where a server's own wording is actively wrong (see
+// lib/download-client-error.ts). Returning undefined keeps the original. The
+// Copy button always carries the untouched error either way.
+export function toastError(
+  fallback: string,
+  err?: unknown,
+  refine?: (message: string) => string | undefined,
+) {
   const serverMsg = err ? getHttpErrorMessage(err) : undefined;
   const errorMsg =
     err instanceof Error && err.message ? err.message : undefined;
   const message = serverMsg ?? errorMsg ?? fallback;
   const copyText = err !== undefined ? formatErrorForCopy(err) : undefined;
-  toast(message, "error", copyText);
+  toast(refine?.(message) ?? message, "error", copyText);
 }
 
 const ICON_MAP: Record<ToastType, React.ComponentType<any>> = {

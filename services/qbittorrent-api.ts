@@ -4,6 +4,7 @@ import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
+import { QB_ADD_REFUSED_MESSAGE } from "@/lib/download-client-error";
 import type {
   QBTransferInfo,
   QBServerState,
@@ -161,6 +162,17 @@ async function ensureAuth(instanceId: string): Promise<void> {
   }
 }
 
+// Carries the HTTP status alongside the message so callers can branch on it
+// (e.g. 409 from /torrents/add) without parsing the string. The message text is
+// unchanged from what qbRequest threw before, because qbHealthCheck below and
+// callers in the wild match on ": 403".
+export class QbHttpError extends Error {
+  constructor(public status: number) {
+    super(`qBittorrent request failed: ${status}`);
+    this.name = "QbHttpError";
+  }
+}
+
 async function parseQbResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type");
   if (contentType?.includes("application/json")) {
@@ -226,11 +238,11 @@ async function qbRequest<T>(
       ...options,
       headers,
     });
-    if (!retry.ok) throw new Error(`qBittorrent request failed: ${retry.status}`);
+    if (!retry.ok) throw new QbHttpError(retry.status);
     return parseQbResponse<T>(retry);
   }
 
-  if (!response.ok) throw new Error(`qBittorrent request failed: ${response.status}`);
+  if (!response.ok) throw new QbHttpError(response.status);
   return parseQbResponse<T>(response);
 }
 
@@ -484,22 +496,38 @@ export function deleteTorrents(
   );
 }
 
-export function addTorrentMagnet(
+export async function addTorrentMagnet(
   magnetUri: string,
   instanceId?: string,
   category?: string,
 ): Promise<void> {
   const params = new URLSearchParams({ urls: magnetUri });
   if (category) params.set("category", category);
-  return qbRequest(
-    "/torrents/add",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    },
-    instanceId,
-  );
+  let result: unknown;
+  try {
+    result = await qbRequest<unknown>(
+      "/torrents/add",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      },
+      instanceId,
+    );
+  } catch (err) {
+    // qBittorrent 5.1+ reports "added nothing" as 409 Conflict with an empty
+    // body, which surfaced as a bare "qBittorrent request failed: 409" (#329).
+    if (err instanceof QbHttpError && err.status === 409) {
+      throw new Error(QB_ADD_REFUSED_MESSAGE);
+    }
+    throw err;
+  }
+  // qBittorrent 5.0 and older report the same thing as 200 with the body
+  // "Fails.", which used to resolve as a success and show "Torrent added"
+  // while nothing had been queued.
+  if (typeof result === "string" && result.trim() === "Fails.") {
+    throw new Error(QB_ADD_REFUSED_MESSAGE);
+  }
 }
 
 // --- Speed Limits ---
