@@ -156,8 +156,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v40 — optional `weekStart` calendar first-day-of-week preference (#320).
  *         Pure version stamp — absence means "auto" (follow the device), and
  *         importConfig whitelists the value.
+ *   v41 — optional per-instance `tagAddedTorrents` on ServiceConfig
+ *         (qBittorrent add-flow "Dashboarr" tag, #289). Pure version stamp —
+ *         absence means off.
  */
-export const CURRENT_CONFIG_VERSION = 40;
+export const CURRENT_CONFIG_VERSION = 41;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -673,6 +676,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v39 → v40: optional `weekStart` first-day-of-week preference (#320).
   // Pure version stamp — absence means "auto" (follow the device).
   39: (payload) => ({ ...payload, version: 40 }),
+  // v40 → v41: optional per-instance `tagAddedTorrents` (qBittorrent add-flow
+  // "Dashboarr" tag, #289). Pure version stamp — absence means off.
+  40: (payload) => ({ ...payload, version: 41 }),
 };
 
 /**

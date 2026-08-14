@@ -109,6 +109,11 @@ export interface ServiceConfig {
   defaultQualityProfileId?: number;
   defaultRootFolderPath?: string;
   defaultMetadataProfileId?: number;
+  // v41 (#289): qBittorrent-only — tag torrents added manually from the app
+  // with "Dashboarr" so server-side scripts/filters can identify their origin.
+  // Off by default (absent/undefined behaves like false) because enabling it
+  // writes a tag into the user's qBittorrent config on first use.
+  tagAddedTorrents?: boolean;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that

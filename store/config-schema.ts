@@ -100,6 +100,11 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   ) {
     out.defaultRootFolderPath = v.defaultRootFolderPath;
   }
+  // v41 (#289): optional qBittorrent-only add-flow tagging. Only persisted
+  // when explicitly enabled — absence (or garbage) means off.
+  if (v.tagAddedTorrents === true) {
+    out.tagAddedTorrents = true;
+  }
   return out;
 }
 

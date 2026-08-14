@@ -303,6 +303,28 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.radarr[0].defaultRootFolderPath).toBeUndefined();
     expect(result.services.radarr[0].defaultMetadataProfileId).toBeUndefined();
   });
+
+  it("round-trips tagAddedTorrents=true (v41)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { qbittorrent: [validInstance({ tagAddedTorrents: true })] },
+    });
+    expect(result.services.qbittorrent[0].tagAddedTorrents).toBe(true);
+  });
+
+  it("drops tagAddedTorrents when absent or non-true", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        qbittorrent: [
+          validInstance(),
+          validInstance({ id: "uuid-2", tagAddedTorrents: "yes" }),
+        ],
+      },
+    });
+    expect(result.services.qbittorrent[0].tagAddedTorrents).toBeUndefined();
+    expect(result.services.qbittorrent[1].tagAddedTorrents).toBeUndefined();
+  });
 });
 
 describe("validateExportPayload — service IDs (forward-compat silent drop)", () => {
