@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { Select } from "@/components/ui/select";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
-import { useConfigStore } from "@/store/config-store";
+import { useConfigStore, type ServiceConfig } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { BackHeader } from "@/components/common/back-header";
 import { testServiceConnection } from "@/lib/http-client";
@@ -83,7 +83,7 @@ export function ServiceEditor({
   // (or skipped) the sheet.
   const [promptShown, setPromptShown] = useState(false);
 
-  const config = inst ?? {
+  const config: ServiceConfig = inst ?? {
     enabled: false,
     name: SERVICE_DEFAULTS_KIND_LABEL[serviceId],
     localUrl: "",
@@ -584,6 +584,22 @@ export function ServiceEditor({
           helperText="Sent on every request to this instance. Combined with the global headers (Settings → Network → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
         />
       </Card>
+
+      {serviceId === "qbittorrent" ? (
+        <Card className="gap-4 mb-4">
+          <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+            Torrents
+          </Text>
+          <Toggle
+            label='Tag added torrents with "Dashboarr"'
+            description="Adds a Dashboarr tag to torrents you add from the app, so server-side scripts and filters can tell where they came from. The tag is created in qBittorrent on first use."
+            value={config.tagAddedTorrents ?? false}
+            onValueChange={(v) =>
+              updateInstance(serviceId, instanceId, { tagAddedTorrents: v })
+            }
+          />
+        </Card>
+      ) : null}
 
       <ArrDefaultsCard serviceId={serviceId} instanceId={instanceId} />
 

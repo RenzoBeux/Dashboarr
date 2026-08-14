@@ -496,13 +496,21 @@ export function deleteTorrents(
   );
 }
 
+// Tag applied on add when the instance's `tagAddedTorrents` setting is on, so
+// server-side scripts/filters can tell app-added torrents apart (#289).
+export const DASHBOARR_TAG = "Dashboarr";
+
 export async function addTorrentMagnet(
   magnetUri: string,
   instanceId?: string,
   category?: string,
+  tags?: string[],
 ): Promise<void> {
   const params = new URLSearchParams({ urls: magnetUri });
+  // Both category and tags are auto-created server-side when they don't exist
+  // yet (unlike /torrents/setCategory, which 409s on unknown names).
   if (category) params.set("category", category);
+  if (tags?.length) params.set("tags", tags.join(","));
   let result: unknown;
   try {
     result = await qbRequest<unknown>(
