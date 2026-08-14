@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import type { UseQueryResult } from "@tanstack/react-query";
 import type { ServiceId } from "@/lib/constants";
 
 // Shared release-search surface for indexer proxies (Prowlarr, Jackett). The
@@ -45,6 +44,16 @@ export interface IndexerSearchOptions {
   indexerId?: string;
 }
 
+// Minimal query-state surface the shared search views consume. A plain
+// UseQueryResult satisfies it structurally (Prowlarr); Jackett synthesizes it
+// from one query per indexer (lib/indexer-adapters/jackett-fanout.ts).
+export interface IndexerSearchState {
+  data: UnifiedRelease[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+}
+
 export interface IndexerSearchAdapter {
   serviceId: ServiceId;
   displayName: string;
@@ -52,6 +61,6 @@ export interface IndexerSearchAdapter {
   useSearch: (
     query: string,
     opts?: IndexerSearchOptions,
-  ) => UseQueryResult<UnifiedRelease[]>;
+  ) => IndexerSearchState;
   GrabFlow: ComponentType<GrabFlowProps>;
 }
