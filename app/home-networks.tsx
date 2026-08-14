@@ -21,7 +21,11 @@ import {
   type WifiPermissionState,
 } from "@/lib/wifi";
 import { evaluateHomeNetwork } from "@/lib/network";
-import { detectVpnActive, isVpnModuleAvailable } from "@/lib/vpn";
+import {
+  detectVpnActive,
+  getActiveTunnelInterfaces,
+  isVpnModuleAvailable,
+} from "@/lib/vpn";
 import type { HomeNetwork } from "@/store/config-store";
 import { MAX_HOME_NETWORKS } from "@/lib/constants";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
@@ -70,6 +74,7 @@ export default function HomeNetworksScreen() {
   // disagree, the store just hasn't re-evaluated yet.
   const liveVpn = detectVpnActive();
   const vpnModule = isVpnModuleAvailable();
+  const tunnelInterfaces = getActiveTunnelInterfaces();
   const [diagOpen, setDiagOpen] = useState(false);
 
   // Read-only cross-reference: which workspaces use each network (#148). A
@@ -393,6 +398,14 @@ export default function HomeNetworksScreen() {
               bad={!liveVpn}
             />
             <DiagRow label="VPN flag (store)" value={isVpnActive ? "yes" : "no"} />
+            {/* iOS-only evidence for the interface-sweep signal (#340); Android's
+                TRANSPORT_VPN check has no interface list to show. */}
+            {Platform.OS === "ios" ? (
+              <DiagRow
+                label="Tunnel interfaces"
+                value={tunnelInterfaces.length ? tunnelInterfaces.join(", ") : "none"}
+              />
+            ) : null}
             <DiagRow
               label="On WiFi"
               value={isOnWifi === null ? "unknown" : isOnWifi ? "yes" : "no"}

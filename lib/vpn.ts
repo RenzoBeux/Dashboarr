@@ -11,15 +11,31 @@ import { requireOptionalNativeModule } from "expo";
  * land on them) resolve to null and `detectVpnActive` reports false, which is
  * exactly the pre-VPN-awareness behavior.
  */
-const VpnStatus = requireOptionalNativeModule<{ isVpnActive(): boolean }>(
-  "VpnStatus",
-);
+const VpnStatus = requireOptionalNativeModule<{
+  isVpnActive(): boolean;
+  // iOS-only, and absent from binaries built before it existed — always call
+  // through optional chaining.
+  activeTunnelInterfaces?(): string[];
+}>("VpnStatus");
 
 export function detectVpnActive(): boolean {
   try {
     return VpnStatus?.isVpnActive() === true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * iOS diagnostics: the tunnel interface names (utun4, ...) behind the
+ * interface-sweep half of `isVpnActive` (#340). Empty on Android (its
+ * TRANSPORT_VPN check needs no interface evidence) and on stale binaries.
+ */
+export function getActiveTunnelInterfaces(): string[] {
+  try {
+    return VpnStatus?.activeTunnelInterfaces?.() ?? [];
+  } catch {
+    return [];
   }
 }
 
