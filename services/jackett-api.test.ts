@@ -8,10 +8,9 @@ jest.mock("@/lib/http-client", () => ({
 import { serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import {
-  assertIndexersUsable,
   getIndexers,
   parseIndexersXml,
-  searchAll,
+  searchIndexer,
   testIndexer,
 } from "@/services/jackett-api";
 import type { JackettIndexerResult, JackettResultsResponse } from "@/lib/types";
@@ -110,12 +109,13 @@ describe("getIndexers", () => {
   });
 });
 
-describe("searchAll", () => {
-  it("GETs the JSON results endpoint with the query", async () => {
+describe("searchIndexer", () => {
+  // The tracker is a path segment, not a query param.
+  it("GETs the tracker-scoped JSON results endpoint with the query", async () => {
     const payload = { Results: [], Indexers: [] };
     mockRequest.mockResolvedValue(payload);
-    await expect(searchAll("ubuntu", "inst-2")).resolves.toBe(payload);
-    expect(mockRequest).toHaveBeenCalledWith("jackett", "/indexers/all/results", {
+    await expect(searchIndexer("ubuntu", "1337x", "inst-2")).resolves.toBe(payload);
+    expect(mockRequest).toHaveBeenCalledWith("jackett", "/indexers/1337x/results", {
       params: { Query: "ubuntu" },
       timeout: INTERACTIVE_SEARCH_TIMEOUT,
       instanceId: "inst-2",
@@ -123,30 +123,42 @@ describe("searchAll", () => {
     });
   });
 
-  // The 15s default aborts a fan-out that was going to succeed (#314), and
+  // The 15s default aborts a search that was going to succeed (#314), and
   // without the signal a hung fetch outlives the search that started it.
   it("uses the interactive-search timeout and forwards the abort signal", async () => {
     mockRequest.mockResolvedValue({ Results: [], Indexers: [] });
     const controller = new AbortController();
-    await searchAll("ubuntu", "inst-2", controller.signal);
+    await searchIndexer("ubuntu", "1337x", "inst-2", controller.signal);
     const opts = mockRequest.mock.calls[0][2];
     expect(opts.timeout).toBe(INTERACTIVE_SEARCH_TIMEOUT);
     expect(opts.signal).toBe(controller.signal);
   });
 
-  it("rejects when the 200 body says every indexer failed", async () => {
+  // A failing tracker answers 200 with Results: [] and its message on the row,
+  // indistinguishable from a genuine no-match without the promotion (#314).
+  it("rejects with the tracker's own error when it failed with no results", async () => {
     mockRequest.mockResolvedValue(response(0, [{ Name: "1337x", Error: "boom" }]));
-    await expect(searchAll("ubuntu")).rejects.toThrow(
-      "1 of 1 indexer failed. 1337x: boom",
-    );
+    await expect(searchIndexer("ubuntu", "id0")).rejects.toThrow("boom");
   });
 
-  // The tracker is a path segment, not a query param — "all" is just Jackett's
-  // meta-indexer id for the same route.
-  it("scopes to one tracker when given an indexerId", async () => {
-    mockRequest.mockResolvedValue({ Results: [], Indexers: [] });
-    await searchAll("ubuntu", "inst-2", undefined, "1337x");
-    expect(mockRequest.mock.calls[0][1]).toBe("/indexers/1337x/results");
+  // Older builds echo the row under a differently-cased id; the sole row is
+  // still the one that was queried.
+  it("matches the row by id with a sole-row fallback", async () => {
+    mockRequest.mockResolvedValue(response(0, [{ Name: "1337x", Error: "cookie expired" }]));
+    await expect(searchIndexer("ubuntu", "1337X")).rejects.toThrow("cookie expired");
+  });
+
+  it("stays silent on a genuine no-match", async () => {
+    mockRequest.mockResolvedValue(response(0, [{ Name: "1337x", Error: null }]));
+    await expect(searchIndexer("ubuntu", "id0")).resolves.toMatchObject({
+      Results: [],
+    });
+  });
+
+  it("returns results even when the row also reports an error", async () => {
+    const payload = response(2, [{ Name: "1337x", Error: "flaky mirror" }]);
+    mockRequest.mockResolvedValue(payload);
+    await expect(searchIndexer("ubuntu", "id0")).resolves.toBe(payload);
   });
 });
 
@@ -247,40 +259,5 @@ function response(
   };
 }
 
-describe("assertIndexersUsable", () => {
-  // A search where every tracker errored decodes as `Results: []`, which the UI
-  // otherwise renders as a plain "No results" (#314).
-  it("throws when there are no results and every indexer errored", () => {
-    const resp = response(0, [
-      { Name: "1337x", Error: "Connection timed out" },
-      { Name: "Nyaa", Error: "403 Forbidden" },
-    ]);
-    expect(() => assertIndexersUsable(resp)).toThrow(
-      "2 of 2 indexers failed. 1337x: Connection timed out",
-    );
-  });
-
-  // A partial failure still has something to show, so it must not become an
-  // error banner that hides the working trackers' releases.
-  it("stays silent when some indexers errored but results came back", () => {
-    const resp = response(3, [
-      { Name: "1337x", Error: null },
-      { Name: "Nyaa", Error: "403 Forbidden" },
-    ]);
-    expect(() => assertIndexersUsable(resp)).not.toThrow();
-  });
-
-  it("stays silent on a genuine no-match", () => {
-    const resp = response(0, [
-      { Name: "1337x", Error: null },
-      { Name: "Nyaa", Error: null },
-    ]);
-    expect(() => assertIndexersUsable(resp)).not.toThrow();
-  });
-
-  it("tolerates a response with no Indexers array", () => {
-    expect(() =>
-      assertIndexersUsable({ Results: [] } as unknown as JackettResultsResponse),
-    ).not.toThrow();
-  });
-});
+// The all-indexers pending/partial/error merge rules live in
+// lib/indexer-adapters/jackett-fanout.test.ts.
