@@ -97,6 +97,20 @@ export function queueStatusLabel(item: ArrQueueIssueRecord): string {
 }
 
 /**
+ * A completed grab stuck on *arr's import decision — the only stuck state a
+ * force import can resolve (#325). Matches exactly the records
+ * `queueStatusLabel` calls "Import blocked": `importBlocked`, plus
+ * `importPending` when it carries a warning/error (the pre-v4 spelling of the
+ * same situation). A failed or stalled *download* is not importable, so it
+ * stays out.
+ */
+export function queueImportBlocked(item: ArrQueueIssueRecord): boolean {
+  const state = (item.trackedDownloadState ?? "").toLowerCase();
+  if (state === "importblocked") return true;
+  return state === "importpending" && queueIssueSeverity(item) !== null;
+}
+
+/**
  * Every reason *arr gives, flattened and deduped, most important first.
  *
  * A `statusMessages` entry normally names the release in `title` and lists the

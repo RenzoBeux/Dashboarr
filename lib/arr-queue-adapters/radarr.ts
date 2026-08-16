@@ -3,10 +3,12 @@ import {
   getWantedMissing,
   getRadarrPoster,
   removeFromQueue,
+  forceImportQueueItem,
 } from "@/services/radarr-api";
 import type { RadarrQueue, RadarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
 import {
+  queueImportBlocked,
   queueIssueMessages,
   queueIssueSeverity,
   queueStatusLabel,
@@ -46,6 +48,8 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
         severity: queueIssueSeverity(item),
         statusLabel: queueStatusLabel(item),
         messages: queueIssueMessages(item),
+        downloadId: item.downloadId,
+        canForceImport: queueImportBlocked(item) && !!item.downloadId,
       };
     }),
 
@@ -54,4 +58,7 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
 
   removeFromQueue: (instanceId, queueId, opts) =>
     removeFromQueue(queueId, opts, instanceId),
+
+  forceImport: (instanceId, downloadId) =>
+    forceImportQueueItem(downloadId, instanceId),
 };

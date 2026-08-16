@@ -3,10 +3,12 @@ import {
   getWantedMissing,
   getSonarrPoster,
   removeFromQueue,
+  forceImportQueueItem,
 } from "@/services/sonarr-api";
 import type { SonarrQueue, SonarrQueueItem, SonarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
 import {
+  queueImportBlocked,
   queueIssueMessages,
   queueIssueSeverity,
   queueStatusLabel,
@@ -58,6 +60,8 @@ export const sonarrArrQueueAdapter: ArrQueueAdapter = {
         severity: queueIssueSeverity(item),
         statusLabel: queueStatusLabel(item),
         messages: queueIssueMessages(item),
+        downloadId: item.downloadId,
+        canForceImport: queueImportBlocked(item) && !!item.downloadId,
       };
     }),
 
@@ -66,4 +70,7 @@ export const sonarrArrQueueAdapter: ArrQueueAdapter = {
 
   removeFromQueue: (instanceId, queueId, opts) =>
     removeFromQueue(queueId, opts, instanceId),
+
+  forceImport: (instanceId, downloadId) =>
+    forceImportQueueItem(downloadId, instanceId),
 };

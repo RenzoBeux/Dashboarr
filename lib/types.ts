@@ -418,6 +418,26 @@ export interface ArrQualityModel {
   revision?: { version?: number; real?: number; isRepack?: boolean };
 }
 
+// A candidate file from `GET /manualimport?downloadId=` — the list Radarr's own
+// Manual Import screen shows for a completed download (#325). `quality` and
+// `languages` round-trip verbatim into the ManualImport command, so only the
+// fields the force-import flow reads are typed.
+export interface RadarrManualImportItem {
+  id: number;
+  path?: string;
+  relativePath?: string;
+  folderName?: string;
+  name?: string;
+  size?: number;
+  movie?: { id: number; title?: string };
+  quality?: ArrQualityModel;
+  languages?: { id: number; name: string }[];
+  releaseGroup?: string;
+  downloadId?: string;
+  indexerFlags?: number;
+  rejections?: { reason: string }[];
+}
+
 // The `data` bag on a history record. The *arr API types it as
 // Dictionary<string,string>, so every value is a string (or absent). These are
 // the keys populated for grab/import/failed events; the index signature keeps
@@ -724,6 +744,29 @@ export interface SonarrQueue {
   pageSize: number;
   totalRecords: number;
   records: SonarrQueueItem[];
+}
+
+// Sonarr's counterpart of RadarrManualImportItem: file→episode mapping instead
+// of a movie, plus `releaseType`/`episodeFileId` which its ManualImport command
+// accepts and Radarr's does not.
+export interface SonarrManualImportItem {
+  id: number;
+  path?: string;
+  relativePath?: string;
+  folderName?: string;
+  name?: string;
+  size?: number;
+  series?: { id: number; title?: string };
+  seasonNumber?: number;
+  episodes?: { id: number }[];
+  episodeFileId?: number;
+  releaseType?: string;
+  quality?: ArrQualityModel;
+  languages?: { id: number; name: string }[];
+  releaseGroup?: string;
+  downloadId?: string;
+  indexerFlags?: number;
+  rejections?: { reason: string }[];
 }
 
 // Paged /wanted/missing response — aired, monitored episodes without a file.

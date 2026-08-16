@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { View, Text, Pressable } from "react-native";
-import { AlertTriangle, ChevronRight, Ban, Search, Trash2 } from "lucide-react-native";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Ban,
+  FolderInput,
+  Search,
+  Trash2,
+} from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
-import { ConfirmModal } from "@/components/common/confirm-modal";
+import { ConfirmModal, type ConfirmTone } from "@/components/common/confirm-modal";
 import { QueueIssuesSheet } from "@/components/services/queue-issues-sheet";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   useArrQueueIssues,
+  useForceImportArrQueue,
   useRemoveFromArrQueue,
   type ArrQueueRemoveMode,
 } from "@/hooks/use-arr-queue-issues";
@@ -22,33 +30,57 @@ interface QueueIssuesBannerProps {
   className?: string;
 }
 
-interface PendingRemoval {
+// Everything a stuck grab can have done to it: the three removal modes (#285)
+// plus importing it anyway (#325).
+type QueueActionMode = ArrQueueRemoveMode | "forceImport";
+
+interface PendingAction {
   item: ArrQueueItem;
-  mode: ArrQueueRemoveMode;
+  mode: QueueActionMode;
 }
 
-// Copy per removal mode. "Blocklist" here means *arr marks the grab as failed so
-// the release is never picked up again; the search variant additionally kicks
-// off a hunt for a replacement (issue #285).
-const REMOVAL_COPY: Record<
-  ArrQueueRemoveMode,
-  { title: string; confirmLabel: string; describe: (service: string) => string }
+// Confirm-dialog copy per action. "Blocklist" here means *arr marks the grab as
+// failed so the release is never picked up again; the search variant
+// additionally kicks off a hunt for a replacement (issue #285).
+const ACTION_COPY: Record<
+  QueueActionMode,
+  {
+    title: string;
+    confirmLabel: string;
+    tone: ConfirmTone;
+    icon: ComponentType<any>;
+    describe: (service: string) => string;
+  }
 > = {
+  forceImport: {
+    title: "Force import?",
+    confirmLabel: "Force Import",
+    tone: "default",
+    icon: FolderInput,
+    describe: (service) =>
+      `${service} imports the downloaded files even though it blocked them, replacing the current file if one exists.`,
+  },
   remove: {
     title: "Remove from queue?",
     confirmLabel: "Remove",
+    tone: "danger",
+    icon: Trash2,
     describe: (service) =>
       `${service} drops this grab and deletes it from the download client. The release stays eligible, so it can be grabbed again.`,
   },
   blocklistAndSearch: {
     title: "Blocklist and search?",
     confirmLabel: "Blocklist & Search",
+    tone: "danger",
+    icon: Ban,
     describe: (service) =>
       `${service} removes this grab, blocks the release so it is never grabbed again, and starts searching for a replacement.`,
   },
   blocklist: {
     title: "Blocklist release?",
     confirmLabel: "Blocklist",
+    tone: "danger",
+    icon: Ban,
     describe: (service) =>
       `${service} removes this grab and blocks the release so it is never grabbed again. No replacement search runs.`,
   },
@@ -58,7 +90,8 @@ const REMOVAL_COPY: Record<
  * Top-of-screen banner for an *arr view: when the active instance has grabs
  * stuck with a warning or error (a blocked import, a stalled or failed
  * download), it shows a tappable summary that opens the issue list, where each
- * item can be removed or blocklisted (#285). Renders null when the queue is
+ * item can be removed or blocklisted (#285), and a blocked import can be
+ * forced through (#325). Renders null when the queue is
  * healthy. See lib/arr-queue-issues.ts for why the copy says "queue issues"
  * rather than "import issues" — the detection is deliberately broader.
  *
@@ -72,6 +105,7 @@ export function QueueIssuesBanner({
 }: QueueIssuesBannerProps) {
   const { issues: fetched } = useArrQueueIssues(adapter, instanceId);
   const removeMutation = useRemoveFromArrQueue(adapter, instanceId);
+  const forceImportMutation = useForceImportArrQueue(adapter, instanceId);
 
   // Queue ids already removed on the service but still in the cached response
   // until the invalidated refetch lands. Without this the list reopens with the
@@ -97,26 +131,42 @@ export function QueueIssuesBanner({
   const flow = useModalFlow<{
     issues: void;
     itemActions: ArrQueueItem;
-    confirmRemove: PendingRemoval;
+    confirmAction: PendingAction;
   }>();
 
   const sheetItem = flow.payload("itemActions");
-  const pending = flow.payload("confirmRemove");
+  const pending = flow.payload("confirmAction");
 
   const actions: ActionSheetAction[] = sheetItem
     ? [
+        // The constructive fix comes first: import the blocked download anyway
+        // (#325). Only offered where it can work — an import-blocked grab on a
+        // service whose adapter implements forceImport.
+        ...(sheetItem.canForceImport && adapter.forceImport
+          ? [
+              {
+                label: "Force import",
+                icon: <Icon icon={FolderInput} size={18} color="#34d399" />,
+                onPress: () =>
+                  flow.open("confirmAction", {
+                    item: sheetItem,
+                    mode: "forceImport" as const,
+                  }),
+              },
+            ]
+          : []),
         {
           label: "Remove from queue",
           icon: <Icon icon={Trash2} size={18} color="#a1a1aa" />,
           onPress: () =>
-            flow.open("confirmRemove", { item: sheetItem, mode: "remove" }),
+            flow.open("confirmAction", { item: sheetItem, mode: "remove" }),
         },
         {
           label: "Blocklist & Search",
           icon: <Icon icon={Search} size={18} color="#ef4444" />,
           variant: "danger",
           onPress: () =>
-            flow.open("confirmRemove", {
+            flow.open("confirmAction", {
               item: sheetItem,
               mode: "blocklistAndSearch",
             }),
@@ -126,24 +176,45 @@ export function QueueIssuesBanner({
           icon: <Icon icon={Ban} size={18} color="#ef4444" />,
           variant: "danger",
           onPress: () =>
-            flow.open("confirmRemove", { item: sheetItem, mode: "blocklist" }),
+            flow.open("confirmAction", { item: sheetItem, mode: "blocklist" }),
         },
       ]
     : [];
 
-  const confirmRemove = () => {
+  const confirmAction = () => {
     if (!pending) return;
-    const { id } = pending.item;
+    const { item, mode } = pending;
     flow.close();
+
+    if (mode === "forceImport") {
+      if (!item.downloadId) return;
+      forceImportMutation.mutate(
+        { downloadId: item.downloadId },
+        {
+          // Unlike a removal the row is NOT hidden: the import runs async on
+          // the server, and hiding it via removedIds would also hide an import
+          // that fails and stays blocked — permanently, since the prune effect
+          // only forgets ids that leave the queue. The invalidated refetch
+          // clears the row as soon as *arr moves it out of the blocked state.
+          onSuccess: () => {
+            if (issues.some((i) => i.id !== item.id)) flow.open("issues");
+          },
+        },
+      );
+      return;
+    }
+
     removeMutation.mutate(
-      { queueId: id, mode: pending.mode },
+      { queueId: item.id, mode },
       {
         // Back to the list so several stuck grabs can be cleared in a row. The
         // just-handled item is hidden immediately; when it was the last one the
         // list is empty and there is nothing to return to.
         onSuccess: () => {
-          setRemovedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-          if (issues.some((i) => i.id !== id)) flow.open("issues");
+          setRemovedIds((prev) =>
+            prev.includes(item.id) ? prev : [...prev, item.id],
+          );
+          if (issues.some((i) => i.id !== item.id)) flow.open("issues");
         },
       },
     );
@@ -218,17 +289,17 @@ export function QueueIssuesBanner({
       />
 
       <ConfirmModal
-        {...flow.bind("confirmRemove")}
-        title={pending ? REMOVAL_COPY[pending.mode].title : ""}
+        {...flow.bind("confirmAction")}
+        title={pending ? ACTION_COPY[pending.mode].title : ""}
         message={
           pending
-            ? `${REMOVAL_COPY[pending.mode].describe(adapter.displayName)}\n\n${pending.item.releaseTitle}`
+            ? `${ACTION_COPY[pending.mode].describe(adapter.displayName)}\n\n${pending.item.releaseTitle}`
             : ""
         }
-        icon={pending?.mode === "remove" ? Trash2 : Ban}
-        tone="danger"
-        confirmLabel={pending ? REMOVAL_COPY[pending.mode].confirmLabel : undefined}
-        onConfirm={confirmRemove}
+        icon={pending ? ACTION_COPY[pending.mode].icon : Trash2}
+        tone={pending ? ACTION_COPY[pending.mode].tone : "danger"}
+        confirmLabel={pending ? ACTION_COPY[pending.mode].confirmLabel : undefined}
+        onConfirm={confirmAction}
       />
     </>
   );

@@ -30,6 +30,16 @@ export interface ArrQueueItem {
   statusLabel: string;
   // Every reason *arr gave, deduped. Empty when it gave none.
   messages: string[];
+
+  // --- Blocked-import override (#325) ---
+  // Download-client id (torrent hash / nzo id) — the `/manualimport` lookup
+  // key. *arr omits it on some records, so force import is only offered when
+  // it is present.
+  downloadId?: string;
+  // True when this grab is stuck on the import decision with a downloadId to
+  // act on — the one stuck state `forceImport` can resolve. Left unset by
+  // adapters without a forceImport (Lidarr).
+  canForceImport?: boolean;
 }
 
 // Shared adapter: every *arr service that exposes a download queue implements
@@ -76,4 +86,9 @@ export interface ArrQueueAdapter {
     queueId: number,
     opts: ArrQueueRemoveOptions,
   ) => Promise<void>;
+
+  // Imports a blocked download anyway, replacing the existing file — desktop
+  // Manual Import from the phone (#325). Optional: Lidarr's manualimport
+  // payload is track-level and unverified, so it doesn't implement this.
+  forceImport?: (instanceId: string, downloadId: string) => Promise<void>;
 }
