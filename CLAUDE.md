@@ -41,6 +41,7 @@ Upstream API docs and per-service gotchas live in the `service-apis` skill (`.cl
 - Unified dashboard is the home screen
 - Pull-to-refresh on all screens
 - Haptic feedback on key interactions
+- **Top-of-screen header rows must clear the iPadOS 26 window-control cluster** (the macOS-style close/minimize pill overlaying the window's top-left corner in windowed mode — it covered the back arrow, #342). Any row rendered at the top of a screen inside ScreenWrapper's px-4 spreads `useWindowControlsContentPadding()` (from `hooks/use-window-controls-inset.ts`) into its `style`; edge-to-edge overlays (hero back button) use `Math.max(ownLeftOffset, useWindowControlsInset().left)` instead. `BackHeader`, `ServiceHeader`, the media hero/skeleton back buttons, and the dashboard/settings/services title rows already do this — copy the pattern for new custom headers. Values come from the `modules/window-controls` native module (iOS 26 corner-adapted layout margins) and are 0 on iPhone/Android/fullscreen, so applying them unconditionally is safe.
 
 ## Confirmations & Dialogs — MUST follow
 

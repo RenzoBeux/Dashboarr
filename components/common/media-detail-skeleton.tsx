@@ -6,13 +6,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Icon } from "@/components/ui/icon";
-import { useUiScale } from "@/hooks/use-ui-scale";
+import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
+import { useWindowControlsInset } from "@/hooks/use-window-controls-inset";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Match `media-detail-hero.tsx` so the skeleton settles into the same shape
 // the real hero will occupy — minimizes visual jump on data resolution.
 const BACKDROP_HEIGHT = Math.round(SCREEN_WIDTH * 0.55);
-const REM_BASE = 14;
 
 interface MediaDetailSkeletonProps {
   // Shorter accordion list shown for series; movie body has none.
@@ -25,7 +25,10 @@ export function MediaDetailSkeleton({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scale = useUiScale();
-  const rem = REM_BASE * scale;
+  const rem = BASE_REM * scale;
+  // Same clearance as the real hero's back button (#342).
+  const windowControls = useWindowControlsInset();
+  const backLeft = Math.max(0.75 * rem, windowControls.left);
 
   const posterW = 9 * rem;
   const posterH = 13.5 * rem;
@@ -54,8 +57,8 @@ export function MediaDetailSkeleton({
           <Pressable
             onPress={() => router.back()}
             hitSlop={12}
-            className="absolute left-3 bg-black/50 rounded-full p-2 active:opacity-70"
-            style={{ top: insets.top + 8 }}
+            className="absolute bg-black/50 rounded-full p-2 active:opacity-70"
+            style={{ top: insets.top + 8, left: backLeft }}
           >
             <Icon icon={ArrowLeft} size={22} color="#fff" />
           </Pressable>

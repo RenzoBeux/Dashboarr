@@ -38,6 +38,7 @@ import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-shee
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { hasSearchableKind } from "@/lib/global-search";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
@@ -196,9 +197,16 @@ export default function DashboardScreen() {
 
   const dashboardName = activeDashboard?.name ?? "Dashboarr";
 
+  // Keeps the dashboard-picker title clear of the iPadOS 26 window-control
+  // cluster (#342).
+  const windowControlsPadding = useWindowControlsContentPadding();
+
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <View className="flex-row items-center justify-between mt-2 mb-4">
+      <View
+        className="flex-row items-center justify-between mt-2 mb-4"
+        style={windowControlsPadding}
+      >
         <TouchableOpacity
           onPress={openDashboardPicker}
           className="flex-row items-center gap-1.5"

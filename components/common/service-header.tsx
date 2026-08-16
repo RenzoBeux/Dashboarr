@@ -6,6 +6,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { useActiveInstance } from "@/hooks/use-active-instance";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { lightHaptic } from "@/lib/haptics";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
@@ -30,8 +31,14 @@ export function ServiceHeader({
   className = "",
   serviceId,
 }: ServiceHeaderProps) {
+  // Keeps the title clear of the iPadOS 26 window-control cluster (#342).
+  const windowControlsPadding = useWindowControlsContentPadding();
+
   return (
-    <View className={`flex-row items-center gap-2 mb-4 mt-2 ${className}`}>
+    <View
+      className={`flex-row items-center gap-2 mb-4 mt-2 ${className}`}
+      style={windowControlsPadding}
+    >
       <Text className="text-zinc-100 text-2xl font-bold">{name}</Text>
       {serviceId ? <InstancePickerInline serviceId={serviceId} /> : null}
       {serviceId ? (

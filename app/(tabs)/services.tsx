@@ -16,6 +16,7 @@ import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useAttachedKinds, useActiveDashboard } from "@/hooks/use-active-dashboard";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { lightHaptic, mediumHaptic } from "@/lib/haptics";
 import type { ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
@@ -45,6 +46,8 @@ export default function ServicesScreen() {
   const uiScale = useUiScale();
   // Grid gap scales with the UI scale setting so spacing tracks the tiles.
   const tileGap = 12 * uiScale;
+  // Keeps the title clear of the iPadOS 26 window-control cluster (#342).
+  const windowControlsPadding = useWindowControlsContentPadding();
   // Animated ref to our own scroll view so Sortable.Grid can auto-scroll the
   // grid when a tile is dragged to the top/bottom edge.
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
@@ -165,7 +168,10 @@ export default function ServicesScreen() {
 
   return (
     <ScreenWrapper scrollable={false}>
-      <View className="flex-row items-center justify-between mb-4 pt-2">
+      <View
+        className="flex-row items-center justify-between mb-4 pt-2"
+        style={windowControlsPadding}
+      >
         <View className="flex-1 pr-3">
           <View className="flex-row items-center gap-2">
             <Text className="text-zinc-100 text-2xl font-bold">Services</Text>
