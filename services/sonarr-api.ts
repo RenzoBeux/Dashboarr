@@ -6,6 +6,7 @@ import type {
   SonarrEpisodeFile,
   SonarrCalendarEntry,
   SonarrQueue,
+  SonarrManualImportItem,
   SonarrHistory,
   SonarrHistoryRecord,
   SonarrSearchResult,
@@ -200,6 +201,65 @@ export function removeFromQueue(
       blocklist: opts.blocklist ?? false,
       skipRedownload: opts.skipRedownload ?? false,
     },
+    instanceId,
+  });
+}
+
+// --- Force import (#325) ---
+
+// The import candidates Sonarr matched for a completed download — the same
+// list its own Manual Import screen shows. `filterExistingFiles: false` so
+// nothing the scan found is hidden from the eligibility check below.
+function getManualImportItems(
+  downloadId: string,
+  instanceId?: string,
+): Promise<SonarrManualImportItem[]> {
+  return serviceRequest<SonarrManualImportItem[]>("sonarr", "/manualimport", {
+    params: { downloadId, filterExistingFiles: false },
+    instanceId,
+  });
+}
+
+/**
+ * Imports a completed download Sonarr refused to import ("Import blocked",
+ * typically a grab-anyway release that isn't a quality upgrade), replacing the
+ * existing episode files. The app-side equivalent of desktop Manual Import:
+ * fetch Sonarr's own candidates for the download, then issue a ManualImport
+ * command for every file it identified — the command imports regardless of
+ * rejections, which is the "force". File payload mirrors Sonarr's web UI
+ * (InteractiveImportModalContent). Only files Sonarr mapped to episodes with a
+ * parsed quality qualify; anything unidentified needs the desktop screen's
+ * manual mapping, so with no qualifying file this rejects instead of silently
+ * importing nothing.
+ */
+export async function forceImportQueueItem(
+  downloadId: string,
+  instanceId?: string,
+): Promise<void> {
+  const candidates = await getManualImportItems(downloadId, instanceId);
+  const files = candidates
+    .filter((c) => c.path && c.series && c.episodes?.length && c.quality)
+    .map((c) => ({
+      path: c.path,
+      folderName: c.folderName,
+      seriesId: c.series!.id,
+      episodeIds: c.episodes!.map((e) => e.id),
+      quality: c.quality,
+      languages: c.languages ?? [],
+      releaseGroup: c.releaseGroup,
+      indexerFlags: c.indexerFlags ?? 0,
+      releaseType: c.releaseType,
+      episodeFileId: c.episodeFileId,
+      downloadId,
+    }));
+  if (files.length === 0) {
+    throw new Error(
+      "Sonarr couldn't match this download to any episode. Use Manual Import in Sonarr to map it.",
+    );
+  }
+  return serviceRequest<void>("sonarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "ManualImport", files, importMode: "auto" }),
     instanceId,
   });
 }

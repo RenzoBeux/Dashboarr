@@ -84,3 +84,28 @@ export function useRemoveFromArrQueue(
     onError: (err) => toastError("Failed to update queue", err),
   });
 }
+
+/**
+ * Imports a blocked grab anyway via the adapter's forceImport (#325). Success
+ * only means *arr accepted the ManualImport command — the import itself runs
+ * async on the server, so the toast says "started" and the invalidated refetch
+ * (plus the regular queue poll) is what clears the row.
+ */
+export function useForceImportArrQueue(
+  adapter: ArrQueueAdapter,
+  instanceId?: string,
+) {
+  const { instanceId: id } = useInstanceTarget(adapter.serviceId, instanceId);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ downloadId }: { downloadId: string }) =>
+      adapter.forceImport!(id!, downloadId),
+    onSuccess: () => {
+      toast(`Import started, ${adapter.displayName} is processing it`);
+      if (!id) return;
+      queryClient.invalidateQueries({ queryKey: adapter.queueQueryKey(id) });
+    },
+    onError: (err) => toastError("Force import failed", err),
+  });
+}

@@ -466,7 +466,9 @@ const DEMO_RADARR_QUEUE = {
       movie: makeMovie(8, "Kingdom of the Planet of the Apes", 2024, 653346, false),
     },
     // Finished downloading but Radarr refuses to import it — drives the import
-    // issues banner (#285).
+    // issues banner (#285) and its Force import action (#325). The "not an
+    // upgrade" message is the exact scenario force import resolves, and the
+    // downloadId links it to DEMO_RADARR_MANUAL_IMPORT below.
     {
       id: 103,
       movieId: 11,
@@ -478,7 +480,7 @@ const DEMO_RADARR_QUEUE = {
         {
           title: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
           messages: [
-            "No files found are eligible for import in /downloads/complete/Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+            "Not an upgrade for existing movie file(s). Existing quality: Bluray-1080p",
           ],
         },
       ],
@@ -487,11 +489,31 @@ const DEMO_RADARR_QUEUE = {
       timeleft: null,
       protocol: "torrent",
       downloadClient: "qBittorrent",
+      downloadId: "DEMO-FURIOSA-2160P",
       quality: { quality: { name: "Bluray-2160p" } },
       movie: makeMovie(11, "Furiosa: A Mad Max Saga", 2024, 786892, false),
     },
   ],
 };
+
+// GET /manualimport candidates for the blocked grab above — lets demo mode
+// exercise the whole force-import flow (#325).
+const DEMO_RADARR_MANUAL_IMPORT = [
+  {
+    id: 1,
+    path: "/downloads/complete/Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP/furiosa.a.mad.max.saga.2024.2160p.mkv",
+    relativePath: "furiosa.a.mad.max.saga.2024.2160p.mkv",
+    folderName: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+    size: 62277025792,
+    movie: makeMovie(11, "Furiosa: A Mad Max Saga", 2024, 786892, false),
+    quality: { quality: { id: 19, name: "Bluray-2160p" } },
+    languages: [{ id: 1, name: "English" }],
+    releaseGroup: "GROUP",
+    downloadId: "DEMO-FURIOSA-2160P",
+    indexerFlags: 0,
+    rejections: [{ reason: "Not an upgrade for existing movie file(s)" }],
+  },
+];
 
 const DEMO_RADARR_WANTED = {
   page: 1,
@@ -619,7 +641,8 @@ const DEMO_SONARR_QUEUE = {
       series: makeSeries(3, "Fallout", 2024, 456789),
     },
     // Finished downloading but Sonarr refuses to import it — drives the import
-    // issues banner (#285).
+    // issues banner (#285) and its Force import action (#325); the downloadId
+    // links it to DEMO_SONARR_MANUAL_IMPORT below.
     {
       id: 302,
       seriesId: 3,
@@ -640,11 +663,40 @@ const DEMO_SONARR_QUEUE = {
       sizeleft: 0,
       timeleft: null,
       protocol: "torrent",
+      downloadId: "DEMO-FALLOUT-S01E07",
       quality: { quality: { name: "WEBDL-1080p" } },
       series: makeSeries(3, "Fallout", 2024, 456789),
     },
   ],
 };
+
+// GET /manualimport candidates for the blocked grab above — lets demo mode
+// exercise the whole force-import flow (#325).
+const DEMO_SONARR_MANUAL_IMPORT = [
+  {
+    id: 1,
+    path: "/downloads/complete/Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb/fallout.s01e07.1080p.mkv",
+    relativePath: "fallout.s01e07.1080p.mkv",
+    folderName: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+    size: 2952790016,
+    series: makeSeries(3, "Fallout", 2024, 456789),
+    seasonNumber: 1,
+    episodes: [{ id: 204 }],
+    episodeFileId: 0,
+    releaseType: "singleEpisode",
+    quality: { quality: { id: 3, name: "WEBDL-1080p" } },
+    languages: [{ id: 1, name: "English" }],
+    releaseGroup: "NTb",
+    downloadId: "DEMO-FALLOUT-S01E07",
+    indexerFlags: 0,
+    rejections: [
+      {
+        reason:
+          "One or more episodes expected in this release were not imported or missing",
+      },
+    ],
+  },
+];
 
 // --- Lidarr ---
 
@@ -1771,6 +1823,7 @@ export function getDemoResponse(
       if (normalized === "/movie") return DEMO_RADARR_MOVIES;
       if (normalized === "/movie/:id") return DEMO_RADARR_MOVIES[0];
       if (normalized.startsWith("/queue")) return DEMO_RADARR_QUEUE;
+      if (normalized.startsWith("/manualimport")) return DEMO_RADARR_MANUAL_IMPORT;
       if (normalized.startsWith("/wanted/missing")) return DEMO_RADARR_WANTED;
       if (normalized.startsWith("/calendar")) return DEMO_RADARR_CALENDAR;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
@@ -1788,6 +1841,7 @@ export function getDemoResponse(
       if (normalized === "/series/:id") return DEMO_SONARR_SERIES[0];
       if (normalized.startsWith("/calendar")) return DEMO_SONARR_CALENDAR;
       if (normalized.startsWith("/queue")) return DEMO_SONARR_QUEUE;
+      if (normalized.startsWith("/manualimport")) return DEMO_SONARR_MANUAL_IMPORT;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;

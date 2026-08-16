@@ -1,4 +1,5 @@
 import {
+  queueImportBlocked,
   queueIssueSeverity,
   queueIssueMessages,
   queueStatusLabel,
@@ -136,6 +137,65 @@ describe("queueStatusLabel", () => {
       "Download failed",
     );
     expect(queueStatusLabel({})).toBe("Downloading");
+  });
+});
+
+describe("queueImportBlocked", () => {
+  it("matches importBlocked regardless of severity", () => {
+    expect(
+      queueImportBlocked(record({ trackedDownloadState: "importBlocked" })),
+    ).toBe(true);
+    expect(
+      queueImportBlocked(
+        record({
+          trackedDownloadState: "importBlocked",
+          trackedDownloadStatus: "warning",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("matches importPending only when it carries an issue", () => {
+    expect(
+      queueImportBlocked(record({ trackedDownloadState: "importPending" })),
+    ).toBe(false);
+    expect(
+      queueImportBlocked(
+        record({
+          trackedDownloadState: "importPending",
+          trackedDownloadStatus: "warning",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(
+      queueImportBlocked(record({ trackedDownloadState: "ImportBlocked" })),
+    ).toBe(true);
+  });
+
+  // A failed or in-flight download has nothing on disk to import, however
+  // loudly the record is flagged.
+  it("rejects the non-import stuck states", () => {
+    expect(
+      queueImportBlocked(
+        record({
+          trackedDownloadState: "failed",
+          trackedDownloadStatus: "error",
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      queueImportBlocked(
+        record({
+          trackedDownloadState: "downloading",
+          trackedDownloadStatus: "warning",
+        }),
+      ),
+    ).toBe(false);
+    expect(queueImportBlocked(record())).toBe(false);
+    expect(queueImportBlocked({})).toBe(false);
   });
 });
 
