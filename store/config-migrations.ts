@@ -159,8 +159,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v41 — optional per-instance `tagAddedTorrents` on ServiceConfig
  *         (qBittorrent add-flow "Dashboarr" tag, #289). Pure version stamp —
  *         absence means off.
+ *   v42 — optional `qbtMutedCategories` on notificationSettings (#310). Pure
+ *         version stamp — absence means no muting; coerceNotificationSettings
+ *         validates the map on import.
  */
-export const CURRENT_CONFIG_VERSION = 41;
+export const CURRENT_CONFIG_VERSION = 42;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -679,6 +682,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v40 → v41: optional per-instance `tagAddedTorrents` (qBittorrent add-flow
   // "Dashboarr" tag, #289). Pure version stamp — absence means off.
   40: (payload) => ({ ...payload, version: 41 }),
+  // v41 → v42: optional `qbtMutedCategories` on notificationSettings (#310).
+  // Pure version stamp — absence means no muting.
+  41: (payload) => ({ ...payload, version: 42 }),
 };
 
 /**

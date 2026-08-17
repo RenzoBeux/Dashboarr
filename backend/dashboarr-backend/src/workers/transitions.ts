@@ -1,11 +1,12 @@
 import { getState, setState } from "../db/repos/seen-state.js";
+import { loadNotificationSettings } from "../db/repos/config.js";
 import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
 import type { TransmissionTorrent } from "../services/transmission.js";
 import type { SabHistorySlot } from "../services/sabnzbd.js";
 import type { NzbgetHistoryItem } from "../services/nzbget.js";
-import type { NotificationCategory } from "../types.js";
+import type { NotificationCategory, QbtMutedCategories } from "../types.js";
 import type { RadarrHistoryRecord } from "../services/radarr.js";
 import type { SonarrHistoryRecord } from "../services/sonarr.js";
 import type { OverseerrRequest } from "../services/overseerr.js";
@@ -74,6 +75,22 @@ function isManagedByArr(category: string): boolean {
   return MANAGED_CATEGORIES.has(category.toLowerCase());
 }
 
+/**
+ * Issue #310: user-configured mute list, per qBittorrent instance. Matching is
+ * exact and case-sensitive (names are picked from the server's own category
+ * list; qBittorrent treats "Movies" and "movies" as distinct). "" mutes
+ * uncategorized torrents.
+ */
+export function isQbtCategoryMuted(
+  map: QbtMutedCategories | undefined,
+  instanceId: string,
+  category: string | undefined,
+): boolean {
+  const muted = map?.[instanceId];
+  if (!muted || muted.length === 0) return false;
+  return muted.includes(category ?? "");
+}
+
 interface QbtSnapshot {
   [hash: string]: { name: string; state: TorrentState };
 }
@@ -98,12 +115,23 @@ export async function diffQbTorrents(
 
   const prefix = instancePrefix(instanceName, multipleOfKind);
 
+  // Lazily loaded on the first completion so the common no-transition poll
+  // never touches notification settings.
+  let mutedMap: QbtMutedCategories | undefined | null = null;
+
   for (const t of torrents) {
     const before = prev[t.hash];
     if (before && isDownloading(before.state) && isCompleted(t.state)) {
       // Skip notification for torrents managed by Radarr/Sonarr — those
       // services send their own, more informative notifications.
       if (isManagedByArr(t.category)) continue;
+
+      // User-muted categories skip before dispatchPush so the dedupe key is
+      // never claimed for a suppressed event.
+      if (mutedMap === null) {
+        mutedMap = loadNotificationSettings().qbtMutedCategories;
+      }
+      if (isQbtCategoryMuted(mutedMap, instanceId, t.category)) continue;
 
       await dispatchPush({
         category: "torrentCompleted",

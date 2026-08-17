@@ -1,5 +1,11 @@
 import { getDb } from "../client.js";
-import type { ServiceId, NotificationSettings, NotifCategory, AppriseConfig } from "../../types.js";
+import type {
+  ServiceId,
+  NotificationSettings,
+  NotifCategory,
+  AppriseConfig,
+  QbtMutedCategories,
+} from "../../types.js";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "../../types.js";
 import type { StoredServiceInstance } from "./service-instance.js";
 
@@ -12,6 +18,7 @@ import type { StoredServiceInstance } from "./service-instance.js";
 
 const PER_INSTANCE_KV_KEY = "notification.perInstance";
 const APPRISE_KV_KEY = "notification.apprise";
+const QBT_MUTED_KV_KEY = "notification.qbtMutedCategories";
 
 export function saveNotificationSettings(settings: NotificationSettings): void {
   const db = getDb();
@@ -22,7 +29,7 @@ export function saveNotificationSettings(settings: NotificationSettings): void {
     for (const [k, v] of Object.entries(settings)) {
       // Non-boolean fields are stored as JSON blobs in `kv` below, not as
       // key→boolean rows here.
-      if (k === "perInstance" || k === "apprise") continue;
+      if (k === "perInstance" || k === "apprise" || k === "qbtMutedCategories") continue;
       stmt.run(k, v ? 1 : 0);
     }
 
@@ -44,6 +51,18 @@ export function saveNotificationSettings(settings: NotificationSettings): void {
       );
     } else {
       db.prepare("DELETE FROM kv WHERE key = ?").run(APPRISE_KV_KEY);
+    }
+
+    if (
+      settings.qbtMutedCategories &&
+      Object.keys(settings.qbtMutedCategories).length > 0
+    ) {
+      db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)").run(
+        QBT_MUTED_KV_KEY,
+        JSON.stringify(settings.qbtMutedCategories),
+      );
+    } else {
+      db.prepare("DELETE FROM kv WHERE key = ?").run(QBT_MUTED_KV_KEY);
     }
   });
   tx();
@@ -86,6 +105,20 @@ export function loadNotificationSettings(): NotificationSettings {
       const parsed = JSON.parse(appriseRow.value);
       if (parsed && typeof parsed === "object") {
         result.apprise = parsed as AppriseConfig;
+      }
+    } catch {
+      // Malformed JSON — drop silently, same rationale as perInstance above.
+    }
+  }
+
+  const qbtMutedRow = getDb()
+    .prepare<[string], { value: string }>("SELECT value FROM kv WHERE key = ?")
+    .get(QBT_MUTED_KV_KEY);
+  if (qbtMutedRow?.value) {
+    try {
+      const parsed = JSON.parse(qbtMutedRow.value);
+      if (parsed && typeof parsed === "object") {
+        result.qbtMutedCategories = parsed as QbtMutedCategories;
       }
     } catch {
       // Malformed JSON — drop silently, same rationale as perInstance above.
