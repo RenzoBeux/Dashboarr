@@ -19,6 +19,7 @@ import {
   type ArrHealthSettingsValue,
 } from "@/components/dashboard/widget-settings/arr-health-settings";
 import { useManualRefresh } from "@/store/manual-refresh-store";
+import type { ArrHealthServiceId } from "@/services/arr-health";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { lightHaptic } from "@/lib/haptics";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
@@ -39,6 +40,7 @@ export function ArrHealthCard({ slotId }: WidgetComponentProps) {
   const manualRefreshing = useManualRefresh((s) => s.count > 0);
   const determining = isLoading || (manualRefreshing && isFetching);
   const [sheet, setSheet] = useState<{
+    serviceId: ArrHealthServiceId;
     serviceName: string;
     instances: ArrInstanceHealth[];
   } | null>(null);
@@ -97,7 +99,11 @@ export function ArrHealthCard({ slotId }: WidgetComponentProps) {
                 key={section.serviceId}
                 onPress={() => {
                   lightHaptic();
-                  setSheet({ serviceName, instances: section.instances });
+                  setSheet({
+                    serviceId: section.serviceId,
+                    serviceName,
+                    instances: section.instances,
+                  });
                 }}
                 className="flex-row items-center gap-3 rounded-xl bg-surface-light px-3 py-2.5 active:opacity-70"
               >
@@ -132,6 +138,7 @@ export function ArrHealthCard({ slotId }: WidgetComponentProps) {
 
       <HealthIssuesSheet
         visible={!!sheet}
+        serviceId={sheet?.serviceId ?? null}
         serviceName={sheet?.serviceName ?? ""}
         instances={sheet?.instances ?? null}
         onClose={() => setSheet(null)}

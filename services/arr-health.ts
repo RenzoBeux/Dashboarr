@@ -32,6 +32,58 @@ export function getArrHealth(
   return serviceRequest<ArrHealthIssue[]>(serviceId, "/health", { instanceId });
 }
 
+// Upstream parity (issue #268): the *arr Health pages render a test-tube
+// "Test All" button only for these health sources. Radarr/Sonarr (/api/v3) and
+// Prowlarr/Lidarr (/api/v1) all expose indexer/testall and
+// downloadclient/testall; applications/testall (note the plural) is
+// Prowlarr-only.
+const TEST_ALL_BY_SOURCE: Record<string, { path: string; prowlarrOnly?: true }> = {
+  IndexerStatusCheck: { path: "/indexer/testall" },
+  IndexerLongTermStatusCheck: { path: "/indexer/testall" },
+  DownloadClientStatusCheck: { path: "/downloadclient/testall" },
+  ApplicationStatusCheck: { path: "/applications/testall", prowlarrOnly: true },
+  ApplicationLongTermStatusCheck: { path: "/applications/testall", prowlarrOnly: true },
+};
+
+// null → this source has no test action; render nothing, matching upstream.
+export function testAllPathForHealthSource(
+  serviceId: ArrHealthServiceId,
+  source: string,
+): string | null {
+  const entry = TEST_ALL_BY_SOURCE[source];
+  if (!entry) return null;
+  if (entry.prowlarrOnly && serviceId !== "prowlarr") return null;
+  return entry.path;
+}
+
+// testall runs synchronously server-side — the response doesn't arrive until
+// every provider has been probed, and an instance with dozens of indexers can
+// take well over a minute. The 15s serviceRequest default would abort mid-run
+// and misreport failure while the server keeps testing.
+const TEST_ALL_TIMEOUT_MS = 120_000;
+
+// Newer *arr builds answer with a per-provider result list, older ones with an
+// empty body; callers ignore both — a 2xx means the tests ran.
+export function testAllForHealthSource(
+  serviceId: ArrHealthServiceId,
+  source: string,
+  instanceId?: string,
+): Promise<unknown> {
+  const path = testAllPathForHealthSource(serviceId, source);
+  if (!path) {
+    return Promise.reject(
+      new Error(`No test action for health source ${source}`),
+    );
+  }
+  return serviceRequest<unknown>(serviceId, path, {
+    method: "POST",
+    // Empty body: serviceRequest only infers Content-Type when a body exists.
+    headers: { "Content-Type": "application/json" },
+    instanceId,
+    timeout: TEST_ALL_TIMEOUT_MS,
+  });
+}
+
 // Worst severity across a set of issues, used to colour the alert badge.
 // "notice" is folded into "warning" (amber); only "error" escalates to red.
 // Returns null when there's nothing to flag.
