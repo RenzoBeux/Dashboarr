@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronRight } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { HealthIssuesSheet } from "@/components/services/health-issues-sheet";
 import { useArrInstanceHealth } from "@/hooks/use-arr-health";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { worstSeverity, type ArrHealthServiceId } from "@/services/arr-health";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { lightHaptic } from "@/lib/haptics";
@@ -25,6 +26,10 @@ export function HealthIssuesBanner({
   className = "",
 }: HealthIssuesBannerProps) {
   const { data } = useArrInstanceHealth(serviceId, instanceId);
+  // The real store-resolved instance id — the same one the query hook folded
+  // into its cache key — so the sheet's "Test all" action posts to the right
+  // instance and its invalidation hits this banner's query (#268).
+  const { instanceId: resolvedId } = useInstanceTarget(serviceId, instanceId);
   const [open, setOpen] = useState(false);
 
   const issues = (data ?? []).filter((i) => i.type !== "ok");
@@ -84,8 +89,13 @@ export function HealthIssuesBanner({
 
       <HealthIssuesSheet
         visible={open}
+        serviceId={serviceId}
         serviceName={serviceName}
-        instances={[{ instanceId: serviceId, instanceName: serviceName, issues }]}
+        instances={
+          resolvedId
+            ? [{ instanceId: resolvedId, instanceName: serviceName, issues }]
+            : null
+        }
         onClose={() => setOpen(false)}
       />
     </>

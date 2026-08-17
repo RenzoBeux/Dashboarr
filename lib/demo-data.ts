@@ -1820,6 +1820,9 @@ export function getDemoResponse(
 
   switch (serviceId) {
     case "radarr": {
+      // Health "Test all" (#268): the real endpoint answers with a per-provider
+      // result list; empty = tests ran, nothing to report.
+      if (normalized === "/indexer/testall" || normalized === "/downloadclient/testall") return [];
       if (normalized === "/movie") return DEMO_RADARR_MOVIES;
       if (normalized === "/movie/:id") return DEMO_RADARR_MOVIES[0];
       if (normalized.startsWith("/queue")) return DEMO_RADARR_QUEUE;
@@ -1837,6 +1840,8 @@ export function getDemoResponse(
       return undefined;
     }
     case "sonarr": {
+      // Health "Test all" (#268), as in the radarr case above.
+      if (normalized === "/indexer/testall" || normalized === "/downloadclient/testall") return [];
       if (normalized === "/series") return DEMO_SONARR_SERIES;
       if (normalized === "/series/:id") return DEMO_SONARR_SERIES[0];
       if (normalized.startsWith("/calendar")) return DEMO_SONARR_CALENDAR;
@@ -1854,6 +1859,8 @@ export function getDemoResponse(
       return undefined;
     }
     case "lidarr": {
+      // Health "Test all" (#268), as in the radarr case above.
+      if (normalized === "/indexer/testall" || normalized === "/downloadclient/testall") return [];
       if (normalized === "/artist") return DEMO_LIDARR_ARTISTS;
       if (normalized === "/artist/lookup") return [];
       if (normalized === "/artist/:id") {
@@ -1899,6 +1906,14 @@ export function getDemoResponse(
       return undefined;
     }
     case "prowlarr": {
+      // Health "Test all" (#268), as in the radarr case above; Prowlarr also
+      // tests its synced applications.
+      if (
+        normalized === "/indexer/testall" ||
+        normalized === "/downloadclient/testall" ||
+        normalized === "/applications/testall"
+      )
+        return [];
       if (normalized === "/indexer") return DEMO_PROWLARR_INDEXERS;
       if (normalized.startsWith("/indexerstatus")) return DEMO_PROWLARR_INDEXER_STATUSES;
       if (normalized.startsWith("/indexerstats")) return DEMO_PROWLARR_STATS;
