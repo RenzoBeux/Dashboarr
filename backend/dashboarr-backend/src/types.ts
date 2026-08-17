@@ -146,6 +146,17 @@ export const appriseConfigSchema = z
 
 export type AppriseConfig = NonNullable<z.infer<typeof appriseConfigSchema>>;
 
+// Issue #310: per-qBittorrent-instance category mute list for torrentCompleted.
+// Keyed by instance UUID; values are exact qBittorrent category names ("" means
+// uncategorized, hence no .min(1) on the element). Absent/empty = notify for
+// everything. Persisted as a JSON blob in `kv` (key
+// "notification.qbtMutedCategories"), like perInstance and apprise.
+export const qbtMutedCategoriesSchema = z
+  .record(z.string().min(1).max(128), z.array(z.string().max(256)).max(200))
+  .optional();
+
+export type QbtMutedCategories = NonNullable<z.infer<typeof qbtMutedCategoriesSchema>>;
+
 export const notificationSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   torrentCompleted: z.boolean().default(true),
@@ -165,6 +176,7 @@ export const notificationSettingsSchema = z.object({
   tracearrStreamStopped: z.boolean().default(false),
   perInstance: perInstanceOverridesSchema,
   apprise: appriseConfigSchema,
+  qbtMutedCategories: qbtMutedCategoriesSchema,
 });
 
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;

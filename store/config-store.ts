@@ -283,6 +283,11 @@ export interface NotificationSettings {
   perInstance?: Record<string, Partial<Record<NotifCategory, boolean>>>;
   // v34: Apprise notification sink (additive to Expo push). undefined = unset.
   apprise?: AppriseConfig;
+  // v42 (issue #310): per-qBittorrent-instance muted category names for the
+  // torrentCompleted notification (e.g. cross-seed's injection category).
+  // Keyed by instance UUID; "" mutes uncategorized torrents. Matching is exact
+  // and case-sensitive. Absent/empty = notify for everything.
+  qbtMutedCategories?: Record<string, string[]>;
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -556,6 +561,9 @@ interface ConfigActions {
     category: NotifCategory,
     value: boolean | "inherit",
   ) => void;
+  // v42: replace the muted-category list for one qBittorrent instance. An
+  // empty list deletes the entry; an empty map is stored as undefined.
+  setQbtMutedCategories: (instanceId: string, categories: string[]) => void;
 
   // Lookup helpers. instanceId is optional — when omitted, the active instance
   // for that kind is used (legacy single-instance behavior).
@@ -1653,6 +1661,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
       // v21: drop any per-instance notification overrides keyed to the
       // deleted instance so orphan keys don't accumulate in storage.
+      // v42: same for the muted-category map.
       let notificationSettings = state.notificationSettings;
       if (notificationSettings.perInstance?.[instanceId] !== undefined) {
         const { [instanceId]: _drop, ...rest } = notificationSettings.perInstance;
@@ -1660,6 +1669,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           ...notificationSettings,
           perInstance: Object.keys(rest).length === 0 ? undefined : rest,
         };
+      }
+      if (notificationSettings.qbtMutedCategories?.[instanceId] !== undefined) {
+        const { [instanceId]: _drop, ...rest } = notificationSettings.qbtMutedCategories;
+        notificationSettings = {
+          ...notificationSettings,
+          qbtMutedCategories: Object.keys(rest).length === 0 ? undefined : rest,
+        };
+      }
+      if (notificationSettings !== state.notificationSettings) {
         setJSON(STORAGE_KEYS.notificationSettings, notificationSettings);
       }
 
@@ -2511,6 +2529,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const next: NotificationSettings = {
       ...current,
       perInstance: Object.keys(map).length === 0 ? undefined : map,
+    };
+    setJSON(STORAGE_KEYS.notificationSettings, next);
+    set({ notificationSettings: next });
+  },
+
+  setQbtMutedCategories: (instanceId, categories) => {
+    const current = get().notificationSettings;
+    const map = { ...(current.qbtMutedCategories ?? {}) };
+    const deduped = [...new Set(categories)];
+    if (deduped.length === 0) {
+      delete map[instanceId];
+    } else {
+      map[instanceId] = deduped;
+    }
+    const next: NotificationSettings = {
+      ...current,
+      qbtMutedCategories: Object.keys(map).length === 0 ? undefined : map,
     };
     setJSON(STORAGE_KEYS.notificationSettings, next);
     set({ notificationSettings: next });

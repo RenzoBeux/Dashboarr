@@ -38,6 +38,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { ArrDefaultsCard } from "@/components/settings/arr-defaults-card";
+import { QbtMutedCategories } from "@/components/settings/qbt-muted-categories";
 import {
   SERVICE_DEFAULTS_KIND_LABEL,
   EMPTY_INSTANCES,
@@ -767,6 +768,9 @@ function InstanceNotificationsCard({
           />
         );
       })}
+      {serviceId === "qbittorrent" ? (
+        <QbtMutedCategories instanceId={instanceId} disabled={masterOff} />
+      ) : null}
     </Card>
   );
 }

@@ -222,6 +222,7 @@ export function pushConfigSnapshot(): Promise<void> {
     overseerrNewRequest,
     perInstance,
     apprise,
+    qbtMutedCategories,
   } = configState.notificationSettings;
 
   return request<void>("/config", {
@@ -243,6 +244,9 @@ export function pushConfigSnapshot(): Promise<void> {
         // v34: Apprise sink config. Sent as `undefined` when unset so older
         // backends ignore it.
         apprise,
+        // v42: per-qbt-instance muted categories (#310). Sent as `undefined`
+        // when unset; older backends strip the unknown key (zod v3).
+        qbtMutedCategories,
       },
     }),
   });
