@@ -5,6 +5,7 @@ import type {
 } from "@tanstack/react-query";
 import type { ComponentType } from "react";
 import type { ServiceId } from "@/lib/constants";
+import type { DownloadBadgeVariant } from "@/lib/download-status";
 import type { DownloadsSortKey } from "@/store/sort-store";
 
 // Normalized status surface shared by every torrent component (the downloads
@@ -43,7 +44,7 @@ export interface UnifiedTorrent {
   // otherwise it falls back to torrentBadgeVariant(status). qBittorrent sets
   // this to preserve its exact per-state colors (e.g. stalledUP stays green);
   // rtorrent omits it and uses the normalized default.
-  badgeVariant?: "downloading" | "seeding" | "paused" | "error" | "default";
+  badgeVariant?: DownloadBadgeVariant;
   // Category (qBittorrent) / custom1 label (rtorrent). Single string.
   label: string;
   tags: string; // qBittorrent comma tags; rtorrent ""
@@ -187,9 +188,7 @@ export interface TorrentAdapter {
 
 // Maps a normalized status to the shared Badge component's variant vocabulary —
 // mirrors usenetBadgeVariant.
-export function torrentBadgeVariant(
-  status: TorrentStatus,
-): "downloading" | "seeding" | "paused" | "error" | "default" {
+export function torrentBadgeVariant(status: TorrentStatus): DownloadBadgeVariant {
   switch (status) {
     case "downloading":
       return "downloading";

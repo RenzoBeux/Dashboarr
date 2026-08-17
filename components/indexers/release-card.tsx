@@ -36,7 +36,7 @@ export function ReleaseCard({
           )}
           <Badge
             label={release.protocol}
-            variant={release.protocol === "torrent" ? "downloading" : "default"}
+            variant={release.protocol === "torrent" ? "info" : "default"}
           />
         </View>
       </Pressable>

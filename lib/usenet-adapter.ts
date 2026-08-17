@@ -5,6 +5,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type { ServiceId } from "@/lib/constants";
+import type { DownloadBadgeVariant } from "@/lib/download-status";
 
 // Normalized status surface used by every shared Usenet component (downloads
 // view, dashboard widget, settings sheet). Adapters map their service-specific
@@ -110,9 +111,7 @@ export interface UsenetAdapter {
   SpeedLimitsControl?: ComponentType;
 }
 
-export function usenetBadgeVariant(
-  status: UsenetStatus,
-): "downloading" | "seeding" | "paused" | "error" | "default" {
+export function usenetBadgeVariant(status: UsenetStatus): DownloadBadgeVariant {
   switch (status) {
     case "paused":
       return "paused";

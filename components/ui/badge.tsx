@@ -4,10 +4,13 @@ type BadgeVariant = "default" | "downloading" | "grabbing" | "seeding" | "paused
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   default: "bg-zinc-700",
-  downloading: "bg-blue-600",
-  // `grabbing` = an *arr item currently in the download queue. Purple mirrors
-  // Sonarr/Radarr (and the poster grid's purple bar); distinct from the
-  // blue `downloading` used for qBittorrent/indexer protocol chips.
+  // Purple = "this is being downloaded right now", everywhere in the app
+  // (issue #249). `downloading` is the download client's own state (qBittorrent,
+  // SABnzbd, ...) and `grabbing` is an *arr item sitting in the download queue —
+  // two vocabularies for the same idea, so they deliberately share one color,
+  // the purple Sonarr/Radarr use for their queue (and the poster grid's bar).
+  // A blue chip that just means "torrent protocol" wants `info`, not this.
+  downloading: "bg-purple-600",
   grabbing: "bg-purple-600",
   seeding: "bg-green-600",
   paused: "bg-yellow-600",

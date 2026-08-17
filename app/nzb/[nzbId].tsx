@@ -21,6 +21,7 @@ import {
 } from "@/hooks/use-nzbget";
 import { combineHiLo, formatBytes, formatEta, formatSpeed } from "@/lib/utils";
 import { usenetBadgeVariant } from "@/lib/usenet-adapter";
+import { downloadBadgeColor } from "@/lib/download-status";
 import type { UsenetStatus } from "@/lib/usenet-adapter";
 import type { NzbgetGroupStatus } from "@/lib/types";
 
@@ -129,6 +130,7 @@ export default function NzbgetSlotDetailScreen() {
       ? 1
       : 0;
   const isPaused = normalizedStatus === "paused";
+  const badgeVariant = usenetBadgeVariant(normalizedStatus);
   const overallSpeed = status?.DownloadRate ?? 0;
   const eta =
     inQueue && overallSpeed > 0 && remainingBytes > 0
@@ -148,15 +150,16 @@ export default function NzbgetSlotDetailScreen() {
   return (
     <ScreenWrapper>
       <Text className="text-zinc-100 text-lg font-bold mt-2 mb-1">{name}</Text>
-      <Badge
-        label={rawStatus}
-        variant={usenetBadgeVariant(normalizedStatus)}
-        className="self-start mb-4"
-      />
+      <Badge label={rawStatus} variant={badgeVariant} className="self-start mb-4" />
 
       {/* Progress / Speed */}
       <Card className="mb-4">
-        <ProgressBar progress={progress} showLabel className="mb-3" />
+        <ProgressBar
+          progress={progress}
+          fillColor={downloadBadgeColor(badgeVariant)}
+          showLabel
+          className="mb-3"
+        />
         <View className="flex-row justify-between">
           {inQueue && overallSpeed > 0 && (
             <View className="flex-row items-center gap-1">

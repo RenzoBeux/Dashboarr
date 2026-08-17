@@ -19,10 +19,12 @@ import {
   useDeleteSabHistorySlot,
 } from "@/hooks/use-sabnzbd";
 import type { SabSlotStatus } from "@/lib/types";
+import {
+  downloadBadgeColor,
+  type DownloadBadgeVariant,
+} from "@/lib/download-status";
 
-function getBadgeVariant(
-  status: SabSlotStatus,
-): "downloading" | "seeding" | "paused" | "error" | "default" {
+function getBadgeVariant(status: SabSlotStatus): DownloadBadgeVariant {
   if (status === "Paused") return "paused";
   if (status === "Failed") return "error";
   if (status === "Completed") return "seeding";
@@ -94,6 +96,7 @@ export default function SabSlotDetailScreen() {
     ? 1
     : 0;
   const isPaused = status === "Paused";
+  const badgeVariant = getBadgeVariant(status);
 
   const runDelete = (deleteFiles: boolean) => {
     if (inQueue) {
@@ -108,11 +111,16 @@ export default function SabSlotDetailScreen() {
   return (
     <ScreenWrapper>
       <Text className="text-zinc-100 text-lg font-bold mt-2 mb-1">{name}</Text>
-      <Badge label={status} variant={getBadgeVariant(status)} className="self-start mb-4" />
+      <Badge label={status} variant={badgeVariant} className="self-start mb-4" />
 
       {/* Progress / Speed */}
       <Card className="mb-4">
-        <ProgressBar progress={progress} showLabel className="mb-3" />
+        <ProgressBar
+          progress={progress}
+          fillColor={downloadBadgeColor(badgeVariant)}
+          showLabel
+          className="mb-3"
+        />
         <View className="flex-row justify-between">
           {inQueue && queue?.speed?.trim() && (
             <View className="flex-row items-center gap-1">

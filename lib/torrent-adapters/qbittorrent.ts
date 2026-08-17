@@ -35,6 +35,7 @@ import type {
   TorrentStatus,
   UnifiedTorrent,
 } from "@/lib/torrent-adapter";
+import type { DownloadBadgeVariant } from "@/lib/download-status";
 import type { DownloadsSortKey } from "@/store/sort-store";
 
 // "all" omits the qBittorrent `filter` param rather than sending `filter=all`
@@ -82,9 +83,9 @@ function qbStatusToUnified(state: TorrentState): TorrentStatus {
 // Preserves qBittorrent's exact per-state badge colors (the legacy
 // getTorrentBadgeVariant): paused/error checked first, then the DL/UP suffix
 // tests so stalled/checking/queued keep their downloading/seeding hues.
-function qbBadgeVariant(
-  state: TorrentState,
-): "downloading" | "seeding" | "paused" | "error" | "default" {
+// Exported for the detail screen, which reads the raw QBTorrent instead of a
+// UnifiedTorrent and so can't pick up the precomputed `badgeVariant`.
+export function qbBadgeVariant(state: TorrentState): DownloadBadgeVariant {
   if (state === "error" || state === "missingFiles") return "error";
   if (isTorrentPaused(state)) return "paused";
   if (state.includes("DL") || state === "downloading" || state === "metaDL")
