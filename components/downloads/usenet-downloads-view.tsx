@@ -17,6 +17,7 @@ import { ServiceHeader } from "@/components/common/service-header";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Badge } from "@/components/ui/badge";
+import { downloadBadgeColor } from "@/lib/download-status";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -530,7 +531,12 @@ function SlotListItem({
       </View>
 
       {showProgress && (
-        <ProgressBar progress={item.progress} showLabel className="my-2" />
+        <ProgressBar
+          progress={item.progress}
+          fillColor={downloadBadgeColor(badgeVariant)}
+          showLabel
+          className="my-2"
+        />
       )}
 
       <View className="flex-row items-center justify-between">

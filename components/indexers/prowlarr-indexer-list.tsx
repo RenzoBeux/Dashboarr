@@ -71,7 +71,7 @@ export function ProwlarrIndexerList() {
                 )}
                 <Badge
                   label={indexer.protocol}
-                  variant={indexer.protocol === "torrent" ? "downloading" : "default"}
+                  variant={indexer.protocol === "torrent" ? "info" : "default"}
                 />
                 <Pressable
                   onPress={() =>
