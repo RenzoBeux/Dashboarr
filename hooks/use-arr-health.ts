@@ -7,7 +7,6 @@ import {
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
-import { toast, toastError } from "@/components/ui/toast";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   getArrHealth,
@@ -130,20 +129,27 @@ export interface TestAllHealthVars {
 // button on the *arr Health pages. One mutation instance serves every row in
 // the issues sheet; callers match `isPending && variables` against their own
 // (instanceId, source) for the per-row spinner, same trick as the Jackett
-// indexer list. Success only means the tests ran — the health item clears on
-// the next /health read, so refetch and let the copy stay honest about it.
+// indexer list.
+//
+// The result is NOT reported here: a run produces a per-provider report that a
+// toast can't hold, so the caller renders `data`/`error` in its own results
+// view (components/services/test-all-results-panel.tsx). Note that a resolved
+// mutation doesn't mean the providers passed — upstream answers per-provider
+// failures with a 400 carrying the result list, which testAllForHealthSource
+// unpacks into an outcome. Only a transport/auth error takes onError.
+//
+// The health list is refetched either way: it's the /health read that decides
+// whether the alert actually clears.
 export function useTestAllForHealth() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ serviceId, instanceId, source }: TestAllHealthVars) =>
       testAllForHealthSource(serviceId, source, instanceId),
-    onSuccess: (_data, { serviceId, instanceId }) => {
-      toast("Tests finished, refreshing health status");
+    onSuccess: (_outcome, { serviceId, instanceId }) => {
       queryClient.invalidateQueries({
         queryKey: [serviceId, instanceId, "health"],
       });
     },
-    onError: (err) => toastError("Couldn't run tests", err),
   });
 }
 

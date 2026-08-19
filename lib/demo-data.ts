@@ -1182,6 +1182,26 @@ const DEMO_PROWLARR_INDEXERS = [
   { id: 6, name: "EZTV", protocol: "torrent", enable: true, priority: 25, added: daysFromNowFull(-75), fields: [], tags: [], appProfileId: 1 },
 ];
 
+// Health "Test all" (#268). Mirrors the real ProviderControllerBase.TestAll
+// shape and covers only the ENABLED indexers above (the server skips disabled
+// ones), with 1337x failing so it lines up with DEMO_PROWLARR_HEALTH's message.
+const DEMO_PROWLARR_TESTALL = [
+  { id: 1, isValid: true, validationFailures: [] },
+  {
+    id: 2,
+    isValid: false,
+    validationFailures: [
+      {
+        propertyName: "",
+        errorMessage: "Unable to connect to indexer, please check your DNS settings",
+      },
+    ],
+  },
+  { id: 3, isValid: true, validationFailures: [] },
+  { id: 5, isValid: true, validationFailures: [] },
+  { id: 6, isValid: true, validationFailures: [] },
+];
+
 const DEMO_PROWLARR_INDEXER_STATUSES = [
   { indexerId: 4, disabledTill: daysFromNowFull(2), mostRecentFailure: daysFromNowFull(-1), initialFailure: daysFromNowFull(-3) },
 ];
@@ -1907,9 +1927,10 @@ export function getDemoResponse(
     }
     case "prowlarr": {
       // Health "Test all" (#268), as in the radarr case above; Prowlarr also
-      // tests its synced applications.
+      // tests its synced applications. Its demo health flags a failing indexer,
+      // so that run answers with a real per-provider report.
+      if (normalized === "/indexer/testall") return DEMO_PROWLARR_TESTALL;
       if (
-        normalized === "/indexer/testall" ||
         normalized === "/downloadclient/testall" ||
         normalized === "/applications/testall"
       )

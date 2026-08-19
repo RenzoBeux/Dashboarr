@@ -23,13 +23,23 @@ interface Toast {
 interface ToastStore {
   toasts: Toast[];
   nextId: number;
+  // Stack of mounted <ToastOverlay> hosts (one per open Modal). The root
+  // <ToastContainer> lives in the app's view hierarchy, which every RN Modal
+  // covers — a separate UIViewController on iOS, a separate Dialog window on
+  // Android — so a toast fired from inside a sheet renders *behind* it and is
+  // never seen. Toasts therefore render in the topmost host, falling back to
+  // the root when none is mounted.
+  hosts: number[];
   addToast: (message: string, type?: ToastType, copyText?: string) => void;
   removeToast: (id: number) => void;
+  pushHost: (id: number) => void;
+  popHost: (id: number) => void;
 }
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   nextId: 1,
+  hosts: [],
   addToast: (message, type = "success", copyText) =>
     set((state) => ({
       toasts: [...state.toasts, { id: state.nextId, message, type, copyText }],
@@ -39,6 +49,12 @@ export const useToastStore = create<ToastStore>((set) => ({
     set((state) => ({
       toasts: state.toasts.filter((t) => t.id !== id),
     })),
+  pushHost: (id) =>
+    set((state) =>
+      state.hosts.includes(id) ? state : { hosts: [...state.hosts, id] },
+    ),
+  popHost: (id) =>
+    set((state) => ({ hosts: state.hosts.filter((h) => h !== id) })),
 }));
 
 export function toast(
@@ -201,12 +217,29 @@ function ToastItem({ toast: t, onDismiss }: { toast: Toast; onDismiss: () => voi
   );
 }
 
-export function ToastContainer() {
-  const insets = useSafeAreaInsets();
+// The (up to three) most recent toasts. Shared by both hosts so they render
+// identically wherever they land.
+function ToastStack() {
   const toasts = useToastStore((s) => s.toasts);
   const removeToast = useToastStore((s) => s.removeToast);
+  return (
+    <>
+      {toasts.slice(-3).map((t) => (
+        <ToastItem key={t.id} toast={t} onDismiss={() => removeToast(t.id)} />
+      ))}
+    </>
+  );
+}
 
-  if (toasts.length === 0) return null;
+// Root host, mounted once in app/_layout.tsx. Stands down while a modal host is
+// mounted, since the modal covers it and would show a clipped duplicate through
+// the strip an iOS pageSheet leaves uncovered.
+export function ToastContainer() {
+  const insets = useSafeAreaInsets();
+  const hasModalHost = useToastStore((s) => s.hosts.length > 0);
+  const isEmpty = useToastStore((s) => s.toasts.length === 0);
+
+  if (hasModalHost || isEmpty) return null;
 
   return (
     <View
@@ -214,9 +247,50 @@ export function ToastContainer() {
       className="absolute left-0 right-0 z-50"
       pointerEvents="box-none"
     >
-      {toasts.slice(-3).map((t) => (
-        <ToastItem key={t.id} toast={t} onDismiss={() => removeToast(t.id)} />
-      ))}
+      <ToastStack />
+    </View>
+  );
+}
+
+let nextHostId = 1;
+
+/**
+ * In-modal toast host. Drop it inside any `Modal` whose content can fire a
+ * toast — without it the toast renders behind the modal and the user never
+ * sees the result of what they just did (#268 on the *arr health sheet).
+ *
+ * Position it relative to a container *below* the sheet header (a `flex-1`
+ * wrapper around the sheet's scroll view is the usual spot); it deliberately
+ * ignores safe-area insets because the header already consumed them, and an
+ * iOS pageSheet starts below the unsafe region anyway.
+ *
+ * Registers itself as the topmost host while mounted. RN's `Modal` unmounts its
+ * children once hidden (on iOS, after the dismissal completes), so the handoff
+ * back to the root container needs no extra plumbing.
+ */
+export function ToastOverlay() {
+  const idRef = useRef(0);
+  if (idRef.current === 0) idRef.current = nextHostId++;
+  const id = idRef.current;
+
+  const pushHost = useToastStore((s) => s.pushHost);
+  const popHost = useToastStore((s) => s.popHost);
+  useEffect(() => {
+    pushHost(id);
+    return () => popHost(id);
+  }, [id, pushHost, popHost]);
+
+  const isTopHost = useToastStore((s) => s.hosts[s.hosts.length - 1] === id);
+  const isEmpty = useToastStore((s) => s.toasts.length === 0);
+
+  if (!isTopHost || isEmpty) return null;
+
+  return (
+    <View
+      className="absolute left-0 right-0 top-2 z-50"
+      pointerEvents="box-none"
+    >
+      <ToastStack />
     </View>
   );
 }
