@@ -970,7 +970,15 @@ async function runConnectionProbe(
             message: `Server requires ${schemes.join(" or ")} authentication, but Dashboarr only supports HTTP Basic authentication`,
           };
         }
-        return { kind: "auth_failed", message: "Wrong username or password" };
+        // Same as the glances probe: with both fields empty there is no
+        // password to be wrong, the server is simply asking for one.
+        return {
+          kind: "auth_failed",
+          message:
+            username || password
+              ? "Wrong username or password"
+              : "Server requires credentials",
+        };
       }
       if (res.status === 403) {
         return {

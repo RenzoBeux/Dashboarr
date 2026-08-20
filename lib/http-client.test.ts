@@ -591,6 +591,47 @@ describe("testServiceConnection — rTorrent authentication diagnostics (#352)",
     });
   });
 
+  it("asks for credentials instead of blaming them when none were entered", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers({ "www-authenticate": 'Basic realm="rTorrent"' }),
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", { url: "http://seedbox.local" }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message: "Server requires credentials",
+    });
+  });
+
+  it("falls back to a credential failure when no challenge header is sent", async () => {
+    // Reverse proxies routinely strip WWW-Authenticate from the response.
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://seedbox.local",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message: "Wrong username or password",
+    });
+  });
+
   it("treats multiple challenges containing Basic as supported", async () => {
     fetchSpy.mockResolvedValueOnce(
       respond({
