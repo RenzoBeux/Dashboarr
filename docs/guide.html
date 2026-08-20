@@ -506,7 +506,7 @@
             </thead>
             <tbody>
               <tr><td><strong>qBittorrent</strong></td><td>8080</td><td>User + password</td><td>WebUI must be enabled. qBittorrent 5.2.0 changed the login response, so you need app v1.6.3+ (and backend v1.2.5+) or valid credentials are rejected.</td></tr>
-              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>HTTP Basic user + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. Digest authentication is not supported; use an HTTPS endpoint before changing the web-server authentication scheme to Basic. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
+              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>HTTP Basic user + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. HTTP Basic and Digest authentication are both supported, and Dashboarr picks whichever the server asks for. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
               <tr><td><strong>Transmission</strong></td><td>9091</td><td>User + password (both optional)</td><td>The RPC server must be enabled and its host whitelist must allow your phone. A blocked host answers 403, which looks like a credentials error.</td></tr>
               <tr><td><strong>SABnzbd</strong></td><td>8080</td><td>API key</td><td>The key travels in the URL query string, so a reverse proxy that strips or logs query params will break or leak it.</td></tr>
               <tr><td><strong>NZBGet</strong></td><td>6789</td><td>User + password</td><td>These are <code>ControlUsername</code> and <code>ControlPassword</code> from <code>nzbget.conf</code>, not a separate web login.</td></tr>
@@ -1063,15 +1063,24 @@
           or newer. Also check the URL is the bare origin with no <code>/api/v2</code> suffix.
         </p>
 
-        <h3>rTorrent requires Digest authentication or forbids RPC access.</h3>
+        <h3>rTorrent says wrong username or password, but the credentials work elsewhere.</h3>
         <p>
-          Dashboarr can authenticate to the rTorrent <code>/RPC2</code> mount with HTTP Basic only.
-          If the server advertises Digest, first configure an HTTPS endpoint, then change the
-          authentication scheme in the web server or reverse proxy in front of rTorrent. Do not use
-          Basic authentication over plain HTTP, because it exposes reusable credentials to network
-          observers. Changing the Dashboarr username or password will not help. For a 403 response,
-          check that the same server or proxy allows the Dashboarr client to access the
-          <code>/RPC2</code> location.
+          Dashboarr authenticates to the rTorrent <code>/RPC2</code> mount with HTTP Basic or
+          Digest, whichever the web server in front of rTorrent asks for, so a Digest realm
+          (lighttpd <code>auth.backend.htdigest</code>, Apache <code>AuthType Digest</code>) works
+          without changing the server. Two things still fail with that message. If the server
+          front-ends the mount with SSO such as Authelia or Authentik, the toast names the scheme it
+          asked for: Dashboarr has no session with the proxy and cannot get one. If the credentials
+          differ between the web UI and XML-RPC, use the XML-RPC pair; the popular
+          <code>crazy-max/rtorrent-rutorrent</code> image keeps them apart, with the UI on port 8080
+          and XML-RPC on port 8000 with its own <code>rpc.htpasswd</code>.
+        </p>
+        <p>
+          A rare Digest variant Dashboarr cannot compute, <code>qop=auth-int</code> or an algorithm
+          other than MD5 or SHA-256, is reported by name; switch that realm to plain
+          <code>qop=auth</code>. If the message mentions forbidden RPC access instead, the server
+          answered 403: check that it allows this client to reach the <code>/RPC2</code> location,
+          which many ruTorrent guides restrict to localhost.
         </p>
 
         <h3>Radarr or Sonarr behind Authentik or Authelia will not connect.</h3>

@@ -4,6 +4,14 @@ import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl } from "@/lib/url-validation";
+import {
+  buildDigestAuthorization,
+  listAuthSchemes,
+  parseDigestChallenge,
+  type DigestChallenge,
+} from "@/lib/http-auth";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import * as Crypto from "expo-crypto";
 
 export { buildUrl };
 
@@ -185,6 +193,122 @@ export function formatErrorForCopy(err: unknown): string {
   }
 }
 
+/**
+ * Services whose API sits behind an HTTP auth mount rather than an API key.
+ * These send Basic by default and upgrade to Digest when the server asks.
+ */
+const HTTP_AUTH_SERVICES: ServiceId[] = ["rtorrent"];
+
+interface DigestSession {
+  challenge: DigestChallenge;
+  cnonce: string;
+  /** Requests sent against this nonce so far. */
+  nc: number;
+}
+
+// One entry per instance + URL. Reusing the server's nonce with an
+// incrementing count is what RFC 7616 expects, and it saves a 401 round trip
+// on every request: the torrent list polls every few seconds, so re-doing the
+// challenge each time would double rtorrent's traffic.
+const digestSessions = new Map<string, DigestSession>();
+
+function makeCnonce(): string {
+  try {
+    const bytes = Crypto.getRandomBytes(8);
+    if (bytes?.length === 8) return bytesToHex(bytes);
+  } catch {
+    // expo-crypto's native module isn't available under Jest — fall through.
+  }
+  let out = "";
+  for (let i = 0; i < 8; i += 1) {
+    out += ((Math.random() * 256) | 0).toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+/** Path plus query exactly as sent on the wire, which is what Digest hashes. */
+function requestTarget(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * fetch() that can answer an HTTP Digest challenge (#352).
+ *
+ * Dashboarr sends Basic. A server configured for Digest (lighttpd
+ * auth.backend.htdigest, nginx auth_digest, Apache AuthType Digest) rejects
+ * that with 401 plus a challenge; we compute the response and retry once.
+ * Everything we cannot answer — no credentials, a Basic-only challenge, an
+ * unsupported algorithm or qop, a body we cannot replay — returns the original
+ * response so the caller's existing error classification still runs.
+ */
+async function fetchWithDigestRetry(
+  url: string,
+  init: RequestInit,
+  headers: Headers,
+  username: string | undefined,
+  password: string | undefined,
+  cacheKey: string,
+): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const uri = requestTarget(url);
+  // The retry re-sends the body: a string replays safely, FormData and streams
+  // do not.
+  const replayable = init.body === undefined || typeof init.body === "string";
+  const haveCredentials = Boolean(username || password);
+
+  // Each attempt gets its own Headers copy: mutating one shared instance would
+  // rewrite the header of a request that has already gone out.
+  const authorized = (session: DigestSession): Headers => {
+    const copy = new Headers(headers);
+    copy.set(
+      "Authorization",
+      buildDigestAuthorization({
+        challenge: session.challenge,
+        username: username ?? "",
+        password: password ?? "",
+        method,
+        uri,
+        cnonce: session.cnonce,
+        nc: session.nc,
+      }),
+    );
+    return copy;
+  };
+
+  const cached = haveCredentials ? digestSessions.get(cacheKey) : undefined;
+  if (cached) cached.nc += 1;
+
+  const response = await fetch(url, {
+    ...init,
+    headers: cached ? authorized(cached) : new Headers(headers),
+  });
+  if (response.status !== 401 || !haveCredentials || !replayable) {
+    return response;
+  }
+
+  const challenge = parseDigestChallenge(
+    response.headers.get("www-authenticate") ?? "",
+  );
+  if (!challenge || challenge.unsupported) {
+    digestSessions.delete(cacheKey);
+    return response;
+  }
+
+  const session: DigestSession = { challenge, cnonce: makeCnonce(), nc: 1 };
+  const retried = await fetch(url, { ...init, headers: authorized(session) });
+  // Only keep a nonce that actually worked. Caching one after a rejection
+  // would send a doomed Authorization header on every later request and hide
+  // the real 401 challenge.
+  if (retried.status === 401) digestSessions.delete(cacheKey);
+  else digestSessions.set(cacheKey, session);
+  return retried;
+}
+
 export async function serviceRequest<T>(
   serviceId: ServiceId,
   path: string,
@@ -279,10 +403,14 @@ export async function serviceRequest<T>(
     }
     headers.set("Content-Type", "application/json");
   } else if (serviceId === "rtorrent") {
-    // rtorrent/ruTorrent: HTTP Basic auth in front of the XML-RPC mount. The
-    // api module (services/rtorrent-api.ts) sets Content-Type: text/xml on the
-    // body itself, so don't force JSON here.
-    if (secrets.username && secrets.password) {
+    // rtorrent/ruTorrent: HTTP auth in front of the XML-RPC mount. The api
+    // module (services/rtorrent-api.ts) sets Content-Type: text/xml on the
+    // body itself, so don't force JSON here. Send Basic if EITHER field is set,
+    // matching the probe: a token-in-password / empty-username setup is valid,
+    // and requiring both made Test Connection pass while every real request
+    // 401'd. A Digest server rejects this and fetchWithDigestRetry answers the
+    // challenge below.
+    if (secrets.username || secrets.password) {
       const encoded = btoa(`${secrets.username}:${secrets.password}`);
       headers.set("Authorization", `Basic ${encoded}`);
     }
@@ -333,11 +461,17 @@ export async function serviceRequest<T>(
   }
 
   try {
-    const response = await fetch(url, {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    });
+    const fetchInit = { ...fetchOptions, signal: controller.signal };
+    const response = HTTP_AUTH_SERVICES.includes(serviceId)
+      ? await fetchWithDigestRetry(
+          url,
+          fetchInit,
+          headers,
+          secrets.username,
+          secrets.password,
+          `${targetId}|${baseUrl}`,
+        )
+      : await fetch(url, { ...fetchInit, headers });
 
     const contentType = response.headers.get("content-type");
 
@@ -654,45 +788,6 @@ type ProbeOutcome =
   | { kind: "auth_failed"; message: string }
   | { kind: "unreachable"; message: string };
 
-function parseAuthenticationSchemes(header: string): string[] {
-  const segments: string[] = [];
-  let start = 0;
-  let quoted = false;
-  let escaped = false;
-
-  for (let i = 0; i < header.length; i += 1) {
-    const char = header[i];
-    if (escaped) {
-      escaped = false;
-    } else if (quoted && char === "\\") {
-      escaped = true;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === "," && !quoted) {
-      segments.push(header.slice(start, i));
-      start = i + 1;
-    }
-  }
-  segments.push(header.slice(start));
-
-  const schemes: string[] = [];
-  for (const segment of segments) {
-    const trimmed = segment.trim();
-    // Auth parameters permit whitespace around `=`; challenges start with a
-    // scheme token followed by whitespace (or nothing, such as Negotiate).
-    if (/^[A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*\s*=/.test(trimmed)) continue;
-    const match = trimmed
-      .match(/^([A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*)(?:\s|$)/);
-    if (
-      match &&
-      !schemes.some((scheme) => scheme.toLowerCase() === match[1].toLowerCase())
-    ) {
-      schemes.push(match[1]);
-    }
-  }
-  return schemes;
-}
-
 async function runConnectionProbe(
   serviceId: ServiceId,
   baseUrl: string,
@@ -947,27 +1042,52 @@ async function runConnectionProbe(
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
       const extra: Record<string, string> = { "Content-Type": "text/xml" };
       // Match the nzbget/glances probes: send Basic auth if EITHER field is set
-      // (a token-in-password / empty-username setup is valid).
+      // (a token-in-password / empty-username setup is valid). A Digest server
+      // rejects Basic, and the helper answers the challenge.
       if (username || password) {
         extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
       }
-      const res = await fetch(url, {
-        method: "POST",
-        headers: makeHeaders(extra),
-        body: '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>',
-        signal,
-      });
+      const res = await fetchWithDigestRetry(
+        url,
+        {
+          method: "POST",
+          body: '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>',
+          signal,
+        },
+        makeHeaders(extra),
+        username,
+        password,
+        `probe|${url}`,
+      );
       if (res.status === 401) {
-        const schemes = parseAuthenticationSchemes(
-          res.headers.get("www-authenticate") ?? "",
-        );
+        const challenge = res.headers.get("www-authenticate") ?? "";
+        // A supported Digest challenge was already answered above, so reaching
+        // here means the credentials themselves were rejected. Only a
+        // challenge we cannot compute is worth explaining.
+        const digest = parseDigestChallenge(challenge);
+        const schemes = listAuthSchemes(challenge);
+        // Only complain about an unanswerable Digest challenge when Digest was
+        // the server's only offer. A server advertising Basic alongside it
+        // already got a Basic attempt from us, so a 401 means the credentials
+        // are what failed.
         if (
-          schemes.length > 0 &&
+          digest?.unsupported &&
           !schemes.some((scheme) => scheme.toLowerCase() === "basic")
         ) {
           return {
             kind: "auth_failed",
-            message: `Server requires ${schemes.join(" or ")} authentication, but Dashboarr only supports HTTP Basic authentication`,
+            message: `Server requires a Digest variant Dashboarr cannot answer: ${digest.unsupported}`,
+          };
+        }
+        if (
+          schemes.length > 0 &&
+          !schemes.some((scheme) =>
+            ["basic", "digest"].includes(scheme.toLowerCase()),
+          )
+        ) {
+          return {
+            kind: "auth_failed",
+            message: `Server requires ${schemes.join(" or ")} authentication, but Dashboarr only supports HTTP Basic and Digest authentication`,
           };
         }
         // Same as the glances probe: with both fields empty there is no

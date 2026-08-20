@@ -543,30 +543,105 @@ describe("testServiceConnection — rTorrent authentication diagnostics (#352)",
     ).resolves.toMatchObject({ kind: "ok" });
   });
 
-  it("explains that a Digest challenge is unsupported", async () => {
-    fetchSpy.mockResolvedValueOnce(
+  // Each Digest test uses its own host: a successful handshake caches the
+  // server nonce per URL, and a shared host would leak that into the next test.
+  function digestChallenge(over: Record<string, string> = {}) {
+    const params = {
+      realm: "rtorrent",
+      nonce: "6a86bf8d:bd53276335efdadd3e6bf5bc9b3a2584",
+      algorithm: "MD5",
+      qop: "auth",
+      ...over,
+    };
+    return respond({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: new Headers({
+        "www-authenticate": `Digest realm="${params.realm}", charset="UTF-8", algorithm=${params.algorithm}, nonce="${params.nonce}", qop="${params.qop}"`,
+      }),
+    });
+  }
+
+  // The reported lighttpd setup (#352): Basic is refused, Digest succeeds.
+  it("answers a Digest challenge and retries the request", async () => {
+    fetchSpy.mockResolvedValueOnce(digestChallenge()).mockResolvedValueOnce(
       respond({
-        ok: false,
-        status: 401,
-        statusText: "Unauthorized",
-        headers: new Headers({
-          "www-authenticate":
-            'Digest realm="rTorrent, private", charset = "UTF-8", qop="auth"',
-        }),
+        text: async () =>
+          '<?xml version="1.0"?><methodResponse><params></params></methodResponse>',
       }),
     );
 
     await expect(
       testServiceConnection("rtorrent", {
-        url: "http://seedbox.local",
+        url: "http://digest-ok.local",
         username: "u",
         password: "p",
       }),
+    ).resolves.toMatchObject({ kind: "ok" });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const [, retry] = fetchSpy.mock.calls;
+    const auth = (retry[1].headers as Headers).get("authorization") ?? "";
+    expect(auth).toMatch(/^Digest /);
+    expect(auth).toContain('username="u"');
+    expect(auth).toContain('realm="rtorrent"');
+    // The digested uri must be the request target actually sent, and the first
+    // use of a nonce is count 1.
+    expect(auth).toContain('uri="/RPC2"');
+    expect(auth).toContain("qop=auth");
+    expect(auth).toContain("nc=00000001");
+    expect(auth).toMatch(/response="[0-9a-f]{32}"/);
+    // The retry has to replay the XML-RPC body, not send an empty POST.
+    expect(retry[1].method).toBe("POST");
+    expect(retry[1].body).toContain("system.listMethods");
+  });
+
+  it("blames the credentials when the Digest answer is also rejected", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(digestChallenge())
+      .mockResolvedValueOnce(digestChallenge({ nonce: "second" }));
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://digest-bad.local",
+        username: "u",
+        password: "wrong",
+      }),
     ).resolves.toEqual({
       kind: "auth_failed",
-      message:
-        "Server requires Digest authentication, but Dashboarr only supports HTTP Basic authentication",
+      message: "Wrong username or password",
     });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("explains a Digest variant it cannot compute instead of retrying", async () => {
+    fetchSpy.mockResolvedValueOnce(digestChallenge({ qop: "auth-int" }));
+
+    const result = await testServiceConnection("rtorrent", {
+      url: "http://digest-authint.local",
+      username: "u",
+      password: "p",
+    });
+
+    expect(result).toMatchObject({
+      kind: "auth_failed",
+      message: expect.stringContaining("auth-int"),
+    });
+    // No point re-sending a challenge we cannot answer.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not attempt Digest without credentials", async () => {
+    fetchSpy.mockResolvedValueOnce(digestChallenge());
+
+    await expect(
+      testServiceConnection("rtorrent", { url: "http://digest-anon.local" }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message: "Server requires credentials",
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("reports rejected credentials for a Basic challenge", async () => {
@@ -777,5 +852,102 @@ describe("isAbortError", () => {
     );
     expect(isAbortError("AbortError")).toBe(false);
     expect(isAbortError(undefined)).toBe(false);
+  });
+});
+
+// Placed last: a successful handshake caches the server nonce for the
+// instance + URL, and that cache is module state shared by the whole file.
+describe("serviceRequest — Digest nonce reuse (#352)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  const XML = '<?xml version="1.0"?><methodResponse><params></params></methodResponse>';
+
+  function xmlOk() {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "text/xml" }),
+      text: async () => XML,
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function challenge() {
+    return {
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: new Headers({
+        "www-authenticate":
+          'Digest realm="rtorrent", algorithm=MD5, nonce="abc123", qop="auth"',
+      }),
+      json: async () => {
+        throw new Error("not json");
+      },
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function authOf(call: any[]): string {
+    return (call[1].headers as Headers).get("authorization") ?? "";
+  }
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("reuses the server nonce with an incrementing count instead of re-challenging", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(challenge())
+      .mockResolvedValueOnce(xmlOk())
+      .mockResolvedValueOnce(xmlOk());
+
+    const call = () =>
+      serviceRequest<string>("rtorrent", "", {
+        method: "POST",
+        headers: { "Content-Type": "text/xml" },
+        body: "<methodCall/>",
+      });
+
+    await expect(call()).resolves.toBe(XML);
+    // First request: Basic, refused, answered with Digest.
+    expect(authOf(fetchSpy.mock.calls[0])).toMatch(/^Basic /);
+    expect(authOf(fetchSpy.mock.calls[1])).toContain("nc=00000001");
+
+    await expect(call()).resolves.toBe(XML);
+    // Second request goes straight out authenticated: no second 401 round trip.
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    const third = authOf(fetchSpy.mock.calls[2]);
+    expect(third).toMatch(/^Digest /);
+    expect(third).toContain('nonce="abc123"');
+    expect(third).toContain("nc=00000002");
+  });
+
+  it("drops the cached nonce when the credentials stop working", async () => {
+    // A rejected retry must not leave a session behind, or every later request
+    // would ship a doomed Authorization header and hide the real challenge.
+    fetchSpy.mockResolvedValueOnce(challenge()).mockResolvedValueOnce(challenge());
+
+    await expect(
+      serviceRequest<string>("rtorrent", "", { method: "POST", body: "<methodCall/>" }),
+    ).rejects.toThrow(HttpError);
+
+    fetchSpy.mockResolvedValueOnce(xmlOk());
+    await serviceRequest<string>("rtorrent", "", { method: "POST", body: "<methodCall/>" });
+    expect(authOf(fetchSpy.mock.calls[2])).toMatch(/^Basic /);
   });
 });
