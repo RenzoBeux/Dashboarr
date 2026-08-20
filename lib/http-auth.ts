@@ -1,11 +1,12 @@
 import { md5 } from "@noble/hashes/legacy.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
-import * as Crypto from "expo-crypto";
+
+import { randomHex } from "@/lib/random";
 
 /**
- * HTTP authentication challenge parsing (RFC 7235) and Digest response
- * building (RFC 7616 / RFC 2617).
+ * HTTP authentication: Basic header construction, challenge parsing (RFC 7235)
+ * and Digest response building (RFC 7616 / RFC 2617).
  *
  * Pure and synchronous: hashing comes from @noble/hashes, which is already a
  * dependency and runs in JS on Hermes, so there is no native module to mock
@@ -13,20 +14,47 @@ import * as Crypto from "expo-crypto";
  * bytes of MD5/SHA-256), so JS hashing costs nothing measurable here.
  */
 
+/**
+ * The `Authorization: Basic …` value for a credential pair, or undefined when
+ * there is nothing to send.
+ *
+ * Every HTTP-auth service goes through this instead of inlining the btoa: the
+ * fields are optional on ServiceSecrets and updateInstanceSecrets deletes an
+ * empty one, so an inline `btoa(\`${username}:${password}\`)` encodes the
+ * literal text "undefined" for a token-in-password setup after the next app
+ * launch. Either field alone is enough to send — requiring both made Test
+ * Connection pass while every real request 401'd.
+ */
+export function basicAuthHeader(
+  username: string | undefined,
+  password: string | undefined,
+): string | undefined {
+  const user = username ?? "";
+  const pass = password ?? "";
+  if (!user && !pass) return undefined;
+  return `Basic ${btoa(`${user}:${pass}`)}`;
+}
+
 export interface AuthChallenge {
   scheme: string;
   params: Record<string, string>;
+  /** The opaque blob of a token68 challenge (`Negotiate YII…`), if any. */
+  token68?: string;
 }
 
-// Schemes we are willing to name in a user-facing message. A WWW-Authenticate
-// value with an unquoted comma inside an auth-param (seen from hand-rolled
-// servers) splits into fragments that look like bare scheme tokens; without
-// this allowlist we would tell the user their server "requires def
-// authentication". Anything unrecognised is dropped and the caller falls back
-// to generic wording.
+// Schemes we phrase well in a user-facing message. Anything else is echoed
+// back only when it looks like a real challenge — see listAuthSchemes.
 const KNOWN_SCHEMES = ["basic", "digest", "bearer", "negotiate", "ntlm"];
 
 const TOKEN = "[A-Za-z0-9!#$%&'*+.^_`|~-]";
+const PARAM_ONLY = new RegExp(`^(${TOKEN}+)\\s*=\\s*([\\s\\S]*)$`);
+const SCHEME_LED = new RegExp(`^(${TOKEN}+)(?:\\s+([\\s\\S]*))?$`);
+// RFC 7235 token68: `1*(ALPHA / DIGIT / "-" / "." / "_" / "~" / "+" / "/") *"="`.
+// The trailing padding is part of the blob, which is why `Negotiate YII0BQ==`
+// must not be shredded into a `yii0bq` auth-param.
+const TOKEN68 = /^[A-Za-z0-9\-._~+/]+=*$/;
+// Shape an unrecognised scheme name must have before we repeat it to the user.
+const SCHEME_NAME = /^[A-Za-z][A-Za-z0-9._-]{0,31}$/;
 
 /**
  * Split a WWW-Authenticate value on commas that are not inside a quoted
@@ -78,31 +106,34 @@ function quote(value: string): string {
  * else starts a new one.
  */
 export function parseAuthChallenges(header: string): AuthChallenge[] {
-  const paramOnly = new RegExp(`^(${TOKEN}+)\\s*=\\s*([\\s\\S]*)$`);
-  const schemeLed = new RegExp(`^(${TOKEN}+)(?:\\s+([\\s\\S]*))?$`);
   const challenges: AuthChallenge[] = [];
 
   for (const segment of splitSegments(header)) {
     const trimmed = segment.trim();
     if (!trimmed) continue;
 
-    const param = trimmed.match(paramOnly);
+    const param = trimmed.match(PARAM_ONLY);
     if (param && challenges.length > 0) {
       challenges[challenges.length - 1].params[param[1].toLowerCase()] =
         unquote(param[2]);
       continue;
     }
 
-    const match = trimmed.match(schemeLed);
+    const match = trimmed.match(SCHEME_LED);
     if (!match) continue;
     const challenge: AuthChallenge = { scheme: match[1], params: {} };
     // A scheme may carry its first auth-param on the same segment
-    // (`Digest realm="x"`) or a token68 blob (`Negotiate YII...`), which has
-    // no `=` and is not a param.
+    // (`Digest realm="x"`) or a token68 blob (`Negotiate YII0BQ==`). Test for
+    // token68 first: its base64 padding is `=`, so the param regex would
+    // otherwise split the blob into a bogus key/value pair.
     const rest = match[2]?.trim();
     if (rest) {
-      const first = rest.match(paramOnly);
-      if (first) challenge.params[first[1].toLowerCase()] = unquote(first[2]);
+      if (TOKEN68.test(rest)) {
+        challenge.token68 = rest;
+      } else {
+        const first = rest.match(PARAM_ONLY);
+        if (first) challenge.params[first[1].toLowerCase()] = unquote(first[2]);
+      }
     }
     challenges.push(challenge);
   }
@@ -111,15 +142,26 @@ export function parseAuthChallenges(header: string): AuthChallenge[] {
 }
 
 /**
- * Recognised scheme names offered by a WWW-Authenticate value, de-duplicated
- * and in the order the server listed them. Used for user-facing messages, so
- * unrecognised tokens are dropped rather than echoed back.
+ * Scheme names offered by a WWW-Authenticate value, de-duplicated and in the
+ * order the server listed them. Used for user-facing messages.
+ *
+ * An unrecognised scheme is still named — telling a user their SSO proxy
+ * "requires SSO authentication" is the whole point of the message — but only
+ * when it looks like a scheme token AND the challenge carries something of its
+ * own. A value with an unquoted comma inside an auth-param (seen from
+ * hand-rolled servers) splits into bare fragments that look like scheme
+ * tokens, and those carry nothing; without the guard we would report that the
+ * server "requires def authentication".
  */
-export function listAuthSchemes(header: string): string[] {
+export function listAuthSchemes(header: string | AuthChallenge[]): string[] {
+  const parsed = typeof header === "string" ? parseAuthChallenges(header) : header;
   const schemes: string[] = [];
-  for (const { scheme } of parseAuthChallenges(header)) {
+  for (const { scheme, params, token68 } of parsed) {
     const lower = scheme.toLowerCase();
-    if (!KNOWN_SCHEMES.includes(lower)) continue;
+    if (!KNOWN_SCHEMES.includes(lower)) {
+      if (!SCHEME_NAME.test(scheme)) continue;
+      if (Object.keys(params).length === 0 && !token68) continue;
+    }
     if (schemes.some((s) => s.toLowerCase() === lower)) continue;
     schemes.push(scheme);
   }
@@ -142,18 +184,7 @@ export interface DigestChallenge {
 
 const SUPPORTED_ALGORITHMS = ["md5", "md5-sess", "sha-256", "sha-256-sess"];
 
-/**
- * Parse the Digest challenge out of a WWW-Authenticate value, or null when the
- * server did not offer Digest. A returned challenge carrying `unsupported`
- * means Digest was offered in a form we cannot answer.
- */
-export function parseDigestChallenge(header: string): DigestChallenge | null {
-  const found = parseAuthChallenges(header).find(
-    (c) => c.scheme.toLowerCase() === "digest",
-  );
-  if (!found) return null;
-
-  const { params } = found;
+function toDigestChallenge({ params }: AuthChallenge): DigestChallenge {
   const algorithm = params.algorithm;
   const effectiveAlgorithm = algorithm ?? "MD5";
   // An absent qop is RFC 2069, which we answer without cnonce/nc. A present
@@ -182,6 +213,28 @@ export function parseDigestChallenge(header: string): DigestChallenge | null {
   }
 
   return challenge;
+}
+
+/**
+ * Parse the Digest challenge out of a WWW-Authenticate value, or null when the
+ * server did not offer Digest. A returned challenge carrying `unsupported`
+ * means Digest was offered only in forms we cannot answer.
+ *
+ * RFC 7616 section 3.7 has servers offer several Digest challenges in one
+ * header, most-secure-first — its own example is SHA-512-256, then SHA-256,
+ * then MD5. Taking the first one blindly would refuse a header we can in fact
+ * answer, so pick the strongest supported challenge and only report
+ * `unsupported` when none qualify.
+ */
+export function parseDigestChallenge(
+  header: string | AuthChallenge[],
+): DigestChallenge | null {
+  const parsed = typeof header === "string" ? parseAuthChallenges(header) : header;
+  const offered = parsed
+    .filter((c) => c.scheme.toLowerCase() === "digest")
+    .map(toDigestChallenge);
+  if (offered.length === 0) return null;
+  return offered.find((c) => !c.unsupported) ?? offered[0];
 }
 
 function hashHex(algorithm: string, input: string): string {
@@ -264,20 +317,49 @@ interface DigestSession {
 // incrementing count is what RFC 7616 expects, and it saves a 401 round trip
 // on every request: the torrent list polls every few seconds, so re-doing the
 // challenge each time would double rtorrent's traffic.
+//
+// A session holds no credentials — the Authorization value is recomputed from
+// the caller's username/password every time — so editing a password does not
+// invalidate an entry, and a nonce issued to the old password keeps working
+// with the new one. Only instance deletion leaves an entry with no owner,
+// which config-store clears through clearDigestSessions.
 const digestSessions = new Map<string, DigestSession>();
+// A handful of instances is the realistic ceiling; the cap only exists so a
+// long-lived process cannot accumulate entries for URLs it no longer uses.
+const MAX_DIGEST_SESSIONS = 32;
 
-function makeCnonce(): string {
-  try {
-    const bytes = Crypto.getRandomBytes(8);
-    if (bytes?.length === 8) return bytesToHex(bytes);
-  } catch {
-    // expo-crypto's native module isn't available under Jest — fall through.
+/** Cache key for a Digest session. Probes pass the instance they belong to so
+ * a successful Test Connection spares the first real request its 401. */
+export function digestSessionKey(
+  instanceId: string | undefined,
+  baseUrl: string,
+): string {
+  return `${instanceId ?? "probe"}|${baseUrl}`;
+}
+
+/** Forget every session for an instance (called when the instance is deleted). */
+export function clearDigestSessions(instanceId: string): void {
+  const prefix = `${instanceId}|`;
+  for (const key of Array.from(digestSessions.keys())) {
+    if (key.startsWith(prefix)) digestSessions.delete(key);
   }
-  let out = "";
-  for (let i = 0; i < 8; i += 1) {
-    out += ((Math.random() * 256) | 0).toString(16).padStart(2, "0");
+}
+
+/** Drop the whole cache. Exported for tests, which share module state. */
+export function resetDigestSessions(): void {
+  digestSessions.clear();
+}
+
+function rememberSession(key: string, session: DigestSession): void {
+  digestSessions.delete(key);
+  digestSessions.set(key, session);
+  while (digestSessions.size > MAX_DIGEST_SESSIONS) {
+    // Map iterates in insertion order, so the first key is the least recently
+    // established session.
+    const oldest = digestSessions.keys().next();
+    if (oldest.done) break;
+    digestSessions.delete(oldest.value);
   }
-  return out;
 }
 
 /** Path plus query exactly as sent on the wire, which is what Digest hashes. */
@@ -299,6 +381,15 @@ function requestTarget(url: string): string {
  * Everything we cannot answer — no credentials, a Basic-only challenge, an
  * unsupported algorithm or qop, a body we cannot replay — returns the original
  * response so the caller's existing error classification still runs.
+ *
+ * The first request of a cold session still carries the caller's Basic header,
+ * which over plain HTTP puts reusable credentials on the wire before we know
+ * the server wants Digest. Withholding it would mean an unauthenticated probe
+ * per launch and would make every Basic setup depend on the platform surfacing
+ * `www-authenticate` on a 401 — a hard dependency this transport deliberately
+ * does not take. docs/guide.html keeps the matching warning about Basic over
+ * plain HTTP; once a session is established the header is replaced with the
+ * Digest response and Basic stops going out.
  */
 export async function fetchWithDigestRetry(
   url: string,
@@ -353,12 +444,28 @@ export async function fetchWithDigestRetry(
     return response;
   }
 
-  const session: DigestSession = { challenge, cnonce: makeCnonce(), nc: 1 };
+  const sameNonce = cached?.challenge.nonce === challenge.nonce;
+  // Same nonce, no `stale` flag: the server rejected the credentials, not the
+  // nonce. Recomputing against the identical nonce would produce the identical
+  // verdict, so hand the real challenge back instead of burning a round trip.
+  if (cached && sameNonce && !challenge.stale) {
+    digestSessions.delete(cacheKey);
+    return response;
+  }
+
+  // Carry the running count forward when the server handed back the nonce we
+  // were already using (a bare `stale=true`). Apache's AuthDigestNcCheck and
+  // nginx auth_digest's replay window reject a nonce-count that does not
+  // increase, so restarting at 1 would fail the retry outright.
+  const session: DigestSession =
+    cached && sameNonce
+      ? { challenge, cnonce: cached.cnonce, nc: cached.nc + 1 }
+      : { challenge, cnonce: randomHex(8), nc: 1 };
   const retried = await fetch(url, { ...init, headers: authorized(session) });
   // Only keep a nonce that actually worked. Caching one after a rejection
   // would send a doomed Authorization header on every later request and hide
   // the real 401 challenge.
   if (retried.status === 401) digestSessions.delete(cacheKey);
-  else digestSessions.set(cacheKey, session);
+  else rememberSession(cacheKey, session);
   return retried;
 }

@@ -46,6 +46,7 @@ import {
   type DashboardIconName,
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
+import { clearDigestSessions } from "@/lib/http-auth";
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
@@ -1610,6 +1611,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeInstance: async (id, instanceId) => {
+    // The cached HTTP Digest nonce is keyed by instance, so drop it with the
+    // instance rather than leaving it in the map for the process lifetime.
+    clearDigestSessions(instanceId);
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);

@@ -19,6 +19,7 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(async () => {}),
 }));
 
+import { resetDigestSessions } from "@/lib/http-auth";
 import { useConfigStore } from "@/store/config-store";
 import {
   getTransmissionTorrents,
@@ -157,8 +158,19 @@ describe("transmission-api (Digest + CSRF)", () => {
   const headerOf = (call: any[], name: string) =>
     (call[1].headers as Headers).get(name) ?? "";
 
+  let restore: Record<string, unknown>;
+
   beforeAll(() => {
     const state = useConfigStore.getState();
+    // Capture what we are about to overwrite: this block installs a real
+    // (non-demo) instance into the shared Zustand store, and without the
+    // matching afterAll any test appended after it would inherit one.
+    restore = {
+      demoMode: state.demoMode,
+      serviceInstances: state.serviceInstances,
+      instanceSecrets: state.instanceSecrets,
+      activeInstance: state.activeInstance,
+    };
     useConfigStore.setState({
       demoMode: false,
       serviceInstances: {
@@ -182,10 +194,16 @@ describe("transmission-api (Digest + CSRF)", () => {
     } as any);
   });
 
+  afterAll(() => {
+    useConfigStore.setState(restore as any);
+  });
+
   beforeEach(() => {
     originalFetch = global.fetch;
     fetchSpy = jest.fn();
     global.fetch = fetchSpy as any;
+    // Module state shared with every other suite in the process.
+    resetDigestSessions();
   });
 
   afterEach(() => {

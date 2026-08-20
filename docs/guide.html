@@ -506,7 +506,7 @@
             </thead>
             <tbody>
               <tr><td><strong>qBittorrent</strong></td><td>8080</td><td>User + password</td><td>WebUI must be enabled. qBittorrent 5.2.0 changed the login response, so you need app v1.6.3+ (and backend v1.2.5+) or valid credentials are rejected.</td></tr>
-              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>HTTP Basic user + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. HTTP Basic and Digest authentication are both supported, and Dashboarr picks whichever the server asks for. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
+              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>HTTP Basic or Digest user + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. HTTP Basic and Digest authentication are both supported, and Dashboarr picks whichever the server asks for. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
               <tr><td><strong>Transmission</strong></td><td>9091</td><td>User + password (both optional)</td><td>The RPC server must be enabled and its host whitelist must allow your phone. A blocked host answers 403, which looks like a credentials error. HTTP Basic and Digest are both supported, including behind a reverse proxy that adds its own realm.</td></tr>
               <tr><td><strong>SABnzbd</strong></td><td>8080</td><td>API key</td><td>The key travels in the URL query string, so a reverse proxy that strips or logs query params will break or leak it.</td></tr>
               <tr><td><strong>NZBGet</strong></td><td>6789</td><td>User + password</td><td>These are <code>ControlUsername</code> and <code>ControlPassword</code> from <code>nzbget.conf</code>, not a separate web login. HTTP Basic and Digest are both supported, including behind a reverse proxy that adds its own realm.</td></tr>
@@ -1077,10 +1077,17 @@
         </p>
         <p>
           A rare Digest variant Dashboarr cannot compute, <code>qop=auth-int</code> or an algorithm
-          other than MD5 or SHA-256, is reported by name; switch that realm to plain
-          <code>qop=auth</code>. If the message mentions forbidden RPC access instead, the server
-          answered 403: check that it allows this client to reach the <code>/RPC2</code> location,
-          which many ruTorrent guides restrict to localhost.
+          other than MD5, SHA-256 or one of their <code>-sess</code> forms, is reported by name;
+          switch that realm to plain <code>qop=auth</code>. If the message mentions forbidden RPC
+          access instead, the server answered 403: check that it allows this client to reach the
+          <code>/RPC2</code> location, which many ruTorrent guides restrict to localhost.
+        </p>
+        <p>
+          Digest never puts your password on the wire, but Dashboarr only learns the server wants
+          Digest from the first rejected request, and that request carries Basic. Over plain HTTP
+          that one exchange per app launch exposes reusable credentials to network observers, as
+          does every request to a Basic-only server. Put these services behind HTTPS, or keep them
+          on a network you trust.
         </p>
 
         <h3>Radarr or Sonarr behind Authentik or Authelia will not connect.</h3>

@@ -1,3 +1,4 @@
+import { resetDigestSessions } from "@/lib/http-auth";
 import {
   serviceRequest,
   pingService,
@@ -16,6 +17,13 @@ jest.mock("@/store/config-store", () => ({
     getState: () => mockStateRef.current,
   },
 }));
+
+// fetchWithDigestRetry caches the server nonce in module state shared by every
+// suite in this file. Clear it between tests so no suite inherits another's
+// session (and so ordering stops being load-bearing).
+beforeEach(() => {
+  resetDigestSessions();
+});
 
 interface FakeInstance {
   id: string;
@@ -985,10 +993,117 @@ describe("Digest across the HTTP-auth services (#352)", () => {
       expect(authOf(fetchSpy.mock.calls[0])).toBe(`Basic ${btoa(":token")}`);
     },
   );
+
+  it.each(["glances", "nzbget", "rtorrent"])(
+    "sends %s Basic auth for a stored token whose username field is absent",
+    async (serviceId) => {
+      // updateInstanceSecrets deletes an empty field from SecureStore, so the
+      // instance reloads with username === undefined, not "". Encoding that
+      // straight into a template literal sends the text "undefined" as the
+      // username and the setup breaks on the first restart after being saved.
+      delete mockStateRef.current.secrets[serviceId].username;
+      mockStateRef.current.secrets[serviceId].password = "token";
+      fetchSpy.mockResolvedValueOnce(ok());
+
+      await serviceRequest(serviceId as any, "/x");
+      expect(authOf(fetchSpy.mock.calls[0])).toBe(`Basic ${btoa(":token")}`);
+    },
+  );
+
+  it.each(["glances", "nzbget", "rtorrent", "transmission"])(
+    "pings %s with the same credential rule as its real requests",
+    async (serviceId) => {
+      // pingService kept the old `username && password` guard, so the same
+      // token-in-password instance was pinged completely unauthenticated —
+      // and a permanently-401ing server still read as reachable.
+      mockStateRef.current.serviceInstances[serviceId] = [
+        {
+          id: `${serviceId}-ping-uuid`,
+          enabled: true,
+          name: serviceId,
+          localUrl: `http://${serviceId}-ping.local`,
+          remoteUrl: "",
+          useRemote: false,
+        },
+      ];
+      mockStateRef.current.instanceSecrets[`${serviceId}-ping-uuid`] = {
+        password: "token",
+      };
+      mockStateRef.current.activeInstance[serviceId] = `${serviceId}-ping-uuid`;
+      fetchSpy.mockResolvedValueOnce(ok());
+
+      await pingService(serviceId as any);
+      expect(authOf(fetchSpy.mock.calls[0])).toBe(`Basic ${btoa(":token")}`);
+    },
+  );
+
+  it("carries the nonce count forward when the server re-issues a stale nonce", async () => {
+    // Apache's AuthDigestNcCheck and nginx auth_digest's replay window reject
+    // a count that does not increase, so a re-challenge on the SAME nonce must
+    // not restart at 00000001.
+    const staleSameNonce = {
+      ...challenge(),
+      headers: new Headers({
+        "www-authenticate":
+          'Digest realm="svc", algorithm=MD5, nonce="n1", qop="auth", stale=true',
+      }),
+    };
+    fetchSpy
+      .mockResolvedValueOnce(challenge())
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(staleSameNonce)
+      .mockResolvedValueOnce(ok());
+
+    await serviceRequest("glances", "/x");
+    expect(authOf(fetchSpy.mock.calls[1])).toContain("nc=00000001");
+
+    await serviceRequest("glances", "/x");
+    // Third call reuses the cached session at nc=2, is told the nonce is
+    // stale, and the retry must go out at nc=3 rather than back to 1.
+    expect(authOf(fetchSpy.mock.calls[2])).toContain("nc=00000002");
+    expect(authOf(fetchSpy.mock.calls[3])).toContain("nc=00000003");
+  });
+
+  it("stops retrying when the same nonce comes back without a stale flag", async () => {
+    // Same nonce, no `stale`: the credentials were refused, and recomputing
+    // against an identical nonce can only produce an identical verdict.
+    fetchSpy
+      .mockResolvedValueOnce(challenge())
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(challenge());
+
+    await serviceRequest("glances", "/x");
+    await expect(serviceRequest("glances", "/x")).rejects.toThrow(HttpError);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("shares one session between a health check and the requests that follow", async () => {
+    // The probe used to key its cache by full probe URL while serviceRequest
+    // keyed by instance + base URL, so a successful Test Connection never
+    // spared the first real request its 401.
+    fetchSpy
+      .mockResolvedValueOnce(challenge())
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok());
+
+    await expect(
+      testServiceConnection("glances", {
+        url: "http://glances.local:61208",
+        username: "u",
+        password: "p",
+        instanceId: "glances-uuid",
+      }),
+    ).resolves.toMatchObject({ kind: "ok" });
+
+    await serviceRequest("glances", "/x");
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(authOf(fetchSpy.mock.calls[2])).toMatch(/^Digest /);
+    expect(authOf(fetchSpy.mock.calls[2])).toContain("nc=00000002");
+  });
 });
 
-// Placed last: a successful handshake caches the server nonce for the
-// instance + URL, and that cache is module state shared by the whole file.
+// A successful handshake caches the server nonce for the instance + URL. The
+// file-level beforeEach clears that cache, so these can sit anywhere.
 describe("serviceRequest — Digest nonce reuse (#352)", () => {
   let originalFetch: typeof global.fetch;
   let fetchSpy: jest.Mock;

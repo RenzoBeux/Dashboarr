@@ -1,4 +1,5 @@
 import {
+  basicAuthHeader,
   buildDigestAuthorization,
   listAuthSchemes,
   parseAuthChallenges,
@@ -10,6 +11,29 @@ function param(header: string, name: string): string | undefined {
   const match = header.match(new RegExp(`(?:^|[ ,])${name}=("([^"]*)"|[^,]*)`));
   return match ? (match[2] ?? match[1]) : undefined;
 }
+
+describe("basicAuthHeader", () => {
+  it("encodes a full credential pair", () => {
+    expect(basicAuthHeader("u", "p")).toBe(`Basic ${btoa("u:p")}`);
+  });
+
+  it("treats an absent username as empty rather than the text 'undefined'", () => {
+    // updateInstanceSecrets deletes an empty field from SecureStore, so a
+    // token-in-password instance reloads with username === undefined. An
+    // inline template literal would send `Basic ` + btoa("undefined:token").
+    expect(basicAuthHeader(undefined, "token")).toBe(`Basic ${btoa(":token")}`);
+    expect(basicAuthHeader("", "token")).toBe(`Basic ${btoa(":token")}`);
+  });
+
+  it("still sends with only a username set", () => {
+    expect(basicAuthHeader("u", undefined)).toBe(`Basic ${btoa("u:")}`);
+  });
+
+  it("sends nothing when there are no credentials", () => {
+    expect(basicAuthHeader(undefined, undefined)).toBeUndefined();
+    expect(basicAuthHeader("", "")).toBeUndefined();
+  });
+});
 
 describe("parseAuthChallenges", () => {
   it("keeps commas that live inside a quoted realm", () => {
@@ -46,6 +70,14 @@ describe("parseAuthChallenges", () => {
       { scheme: "Negotiate", params: {} },
     ]);
   });
+
+  it("keeps a token68 blob whole instead of splitting it on its padding", () => {
+    // RFC 7235 token68 ends in optional `=` padding, so the auth-param regex
+    // would otherwise turn `YII0BQ==` into a `yii0bq` parameter.
+    expect(parseAuthChallenges("Negotiate YII0BQ==")).toEqual([
+      { scheme: "Negotiate", params: {}, token68: "YII0BQ==" },
+    ]);
+  });
 });
 
 describe("listAuthSchemes", () => {
@@ -69,8 +101,24 @@ describe("listAuthSchemes", () => {
     expect(listAuthSchemes("Digest realm=x, nonce=abc,def")).toEqual(["Digest"]);
   });
 
+  it("names an unrecognised scheme that carries auth-params", () => {
+    // An SSO proxy in front of the mount is exactly the case the message
+    // exists for — dropping the token would leave the user blaming their
+    // password (#352).
+    expect(listAuthSchemes('SSO realm="authelia"')).toEqual(["SSO"]);
+  });
+
+  it("names an unrecognised scheme that carries a token68 blob", () => {
+    expect(listAuthSchemes("Mutual YII0BQ==")).toEqual(["Mutual"]);
+  });
+
   it("returns nothing for an empty header", () => {
     expect(listAuthSchemes("")).toEqual([]);
+  });
+
+  it("accepts a pre-parsed challenge list", () => {
+    const parsed = parseAuthChallenges('Digest realm="a", Basic realm="b"');
+    expect(listAuthSchemes(parsed)).toEqual(["Digest", "Basic"]);
   });
 });
 
@@ -125,6 +173,33 @@ describe("parseDigestChallenge", () => {
     expect(parseDigestChallenge('Digest realm="a"')?.unsupported).toMatch(
       /realm or nonce/,
     );
+  });
+
+  it("answers the strongest supported challenge when the server offers several", () => {
+    // RFC 7616 section 3.7's own example: most-secure-first, and only the
+    // first of the three is one we cannot compute.
+    const challenge = parseDigestChallenge(
+      'Digest realm="http-auth@example.org", qop="auth", algorithm=SHA-512-256, nonce="n512", opaque="o512", ' +
+        'Digest realm="http-auth@example.org", qop="auth", algorithm=SHA-256, nonce="n256", opaque="o256", ' +
+        'Digest realm="http-auth@example.org", qop="auth", algorithm=MD5, nonce="nmd5", opaque="omd5"',
+    );
+    expect(challenge?.unsupported).toBeUndefined();
+    expect(challenge?.algorithm).toBe("SHA-256");
+    expect(challenge?.nonce).toBe("n256");
+  });
+
+  it("reports unsupported only when no offered Digest challenge qualifies", () => {
+    expect(
+      parseDigestChallenge(
+        'Digest realm="a", nonce="b", algorithm=SHA-512-256, ' +
+          'Digest realm="a", nonce="c", algorithm=SHA-512',
+      )?.unsupported,
+    ).toMatch(/SHA-512-256/);
+  });
+
+  it("accepts a pre-parsed challenge list", () => {
+    const parsed = parseAuthChallenges('Basic realm="x", Digest realm="y", nonce="z"');
+    expect(parseDigestChallenge(parsed)).toMatchObject({ realm: "y", nonce: "z" });
   });
 });
 

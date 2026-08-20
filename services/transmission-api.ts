@@ -1,5 +1,5 @@
 import { buildUrl, HttpError } from "@/lib/http-client";
-import { fetchWithDigestRetry } from "@/lib/http-auth";
+import { basicAuthHeader, digestSessionKey, fetchWithDigestRetry } from "@/lib/http-auth";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
@@ -215,10 +215,8 @@ async function transmissionRpc<T>(
     const customHeaders = store.getMergedHeaders("transmission", id);
     for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
     headers.set("Content-Type", "application/json");
-    if (secrets.username || secrets.password) {
-      const encoded = btoa(`${secrets.username ?? ""}:${secrets.password ?? ""}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
+    const basic = basicAuthHeader(secrets.username, secrets.password);
+    if (basic) headers.set("Authorization", basic);
     const sid = sessionIds.get(id);
     if (sid) headers.set("X-Transmission-Session-Id", sid);
     // Basic by default, upgrading to Digest if the server in front of
@@ -231,7 +229,7 @@ async function transmissionRpc<T>(
       headers,
       secrets.username,
       secrets.password,
-      `${id}|${baseUrl}`,
+      digestSessionKey(id, baseUrl),
     );
   };
 
