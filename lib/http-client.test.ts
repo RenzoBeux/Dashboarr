@@ -67,6 +67,7 @@ const FIXTURE_KINDS = [
   { id: "emby", url: "http://emby.local:8096", secrets: { apiKey: "emby-token" } },
   { id: "glances", url: "http://glances.local:61208", secrets: { username: "u", password: "p" } },
   { id: "rtorrent", url: "http://seedbox.local/RPC2", secrets: { username: "u", password: "p" } },
+  { id: "nzbget", url: "http://nzbget.local:6789", secrets: { username: "u", password: "p" } },
 ];
 
 function makeState(overrides: Partial<FakeState> = {}): FakeState {
@@ -853,6 +854,137 @@ describe("isAbortError", () => {
     expect(isAbortError("AbortError")).toBe(false);
     expect(isAbortError(undefined)).toBe(false);
   });
+});
+
+// Digest is not an rTorrent quirk: every service Dashboarr fronts with HTTP
+// auth can sit behind the same realm (#352).
+describe("Digest across the HTTP-auth services (#352)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  function challenge() {
+    return {
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: new Headers({
+        "www-authenticate":
+          'Digest realm="svc", algorithm=MD5, nonce="n1", qop="auth"',
+      }),
+      json: async () => {
+        throw new Error("not json");
+      },
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function ok(over: Record<string, any> = {}) {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ result: "ok" }),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+      ...over,
+    };
+  }
+
+  function authOf(call: any[]): string {
+    return (call[1].headers as Headers).get("authorization") ?? "";
+  }
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("authenticates the NZBGet probe with Digest", async () => {
+    fetchSpy.mockResolvedValueOnce(challenge()).mockResolvedValueOnce(ok());
+
+    await expect(
+      testServiceConnection("nzbget", {
+        url: "http://nzbget-digest.local:6789",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toMatchObject({ kind: "ok" });
+    expect(authOf(fetchSpy.mock.calls[1])).toMatch(/^Digest /);
+  });
+
+  it("authenticates the Glances probe with Digest", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(challenge())
+      .mockResolvedValueOnce(ok({ json: async () => ({}) }));
+
+    await expect(
+      testServiceConnection("glances", {
+        url: "http://glances-digest.local:61208",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toMatchObject({ kind: "ok" });
+    expect(authOf(fetchSpy.mock.calls[1])).toMatch(/^Digest /);
+  });
+
+  it("authenticates the Transmission probe with Digest before the CSRF challenge", async () => {
+    fetchSpy.mockResolvedValueOnce(challenge()).mockResolvedValueOnce(
+      ok({
+        ok: false,
+        status: 409,
+        headers: new Headers({ "x-transmission-session-id": "sid-1" }),
+      }),
+    );
+
+    await expect(
+      testServiceConnection("transmission", {
+        url: "http://transmission-digest.local:9091",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toMatchObject({ kind: "ok" });
+    expect(authOf(fetchSpy.mock.calls[1])).toMatch(/^Digest /);
+  });
+
+  it("asks NZBGet users for credentials rather than blaming them", async () => {
+    fetchSpy.mockResolvedValueOnce(challenge());
+
+    await expect(
+      testServiceConnection("nzbget", { url: "http://nzbget-anon.local:6789" }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message: "Server requires credentials",
+    });
+  });
+
+  it.each([
+    ["glances", "http://glances.local:61208"],
+    ["nzbget", "http://nzbget.local:6789"],
+  ])(
+    "sends %s Basic auth with only a password set, matching its probe",
+    async (serviceId) => {
+      // Requiring BOTH fields made Test Connection pass while every real
+      // request went out unauthenticated and 401'd.
+      mockStateRef.current.secrets[serviceId].username = "";
+      mockStateRef.current.secrets[serviceId].password = "token";
+      fetchSpy.mockResolvedValueOnce(ok());
+
+      await serviceRequest(serviceId as any, "/x");
+      expect(authOf(fetchSpy.mock.calls[0])).toBe(`Basic ${btoa(":token")}`);
+    },
+  );
 });
 
 // Placed last: a successful handshake caches the server nonce for the

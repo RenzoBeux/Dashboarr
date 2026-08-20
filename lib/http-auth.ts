@@ -1,6 +1,7 @@
 import { md5 } from "@noble/hashes/legacy.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import * as Crypto from "expo-crypto";
 
 /**
  * HTTP authentication challenge parsing (RFC 7235) and Digest response
@@ -250,4 +251,114 @@ export function buildDigestAuthorization({
   if (opaque !== undefined) parts.push(`opaque=${quote(opaque)}`);
 
   return `Digest ${parts.join(", ")}`;
+}
+
+interface DigestSession {
+  challenge: DigestChallenge;
+  cnonce: string;
+  /** Requests sent against this nonce so far. */
+  nc: number;
+}
+
+// One entry per instance + URL. Reusing the server's nonce with an
+// incrementing count is what RFC 7616 expects, and it saves a 401 round trip
+// on every request: the torrent list polls every few seconds, so re-doing the
+// challenge each time would double rtorrent's traffic.
+const digestSessions = new Map<string, DigestSession>();
+
+function makeCnonce(): string {
+  try {
+    const bytes = Crypto.getRandomBytes(8);
+    if (bytes?.length === 8) return bytesToHex(bytes);
+  } catch {
+    // expo-crypto's native module isn't available under Jest — fall through.
+  }
+  let out = "";
+  for (let i = 0; i < 8; i += 1) {
+    out += ((Math.random() * 256) | 0).toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+/** Path plus query exactly as sent on the wire, which is what Digest hashes. */
+function requestTarget(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * fetch() that can answer an HTTP Digest challenge (#352).
+ *
+ * Dashboarr sends Basic. A server configured for Digest (lighttpd
+ * auth.backend.htdigest, nginx auth_digest, Apache AuthType Digest) rejects
+ * that with 401 plus a challenge; we compute the response and retry once.
+ * Everything we cannot answer — no credentials, a Basic-only challenge, an
+ * unsupported algorithm or qop, a body we cannot replay — returns the original
+ * response so the caller's existing error classification still runs.
+ */
+export async function fetchWithDigestRetry(
+  url: string,
+  init: RequestInit,
+  headers: Headers,
+  username: string | undefined,
+  password: string | undefined,
+  cacheKey: string,
+): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const uri = requestTarget(url);
+  // The retry re-sends the body: a string replays safely, FormData and streams
+  // do not.
+  const replayable = init.body === undefined || typeof init.body === "string";
+  const haveCredentials = Boolean(username || password);
+
+  // Each attempt gets its own Headers copy: mutating one shared instance would
+  // rewrite the header of a request that has already gone out.
+  const authorized = (session: DigestSession): Headers => {
+    const copy = new Headers(headers);
+    copy.set(
+      "Authorization",
+      buildDigestAuthorization({
+        challenge: session.challenge,
+        username: username ?? "",
+        password: password ?? "",
+        method,
+        uri,
+        cnonce: session.cnonce,
+        nc: session.nc,
+      }),
+    );
+    return copy;
+  };
+
+  const cached = haveCredentials ? digestSessions.get(cacheKey) : undefined;
+  if (cached) cached.nc += 1;
+
+  const response = await fetch(url, {
+    ...init,
+    headers: cached ? authorized(cached) : new Headers(headers),
+  });
+  if (response.status !== 401 || !haveCredentials || !replayable) {
+    return response;
+  }
+
+  const challenge = parseDigestChallenge(
+    response.headers.get("www-authenticate") ?? "",
+  );
+  if (!challenge || challenge.unsupported) {
+    digestSessions.delete(cacheKey);
+    return response;
+  }
+
+  const session: DigestSession = { challenge, cnonce: makeCnonce(), nc: 1 };
+  const retried = await fetch(url, { ...init, headers: authorized(session) });
+  // Only keep a nonce that actually worked. Caching one after a rejection
+  // would send a doomed Authorization header on every later request and hide
+  // the real 401 challenge.
+  if (retried.status === 401) digestSessions.delete(cacheKey);
+  else digestSessions.set(cacheKey, session);
+  return retried;
 }
