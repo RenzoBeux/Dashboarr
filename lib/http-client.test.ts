@@ -497,6 +497,148 @@ describe("testServiceConnection — auth-proxy detection (#239)", () => {
   });
 });
 
+describe("testServiceConnection — rTorrent authentication diagnostics (#352)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  function respond(overrides: Record<string, any>) {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "text/xml" }),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("accepts a successful XML-RPC response", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        text: async () =>
+          '<?xml version="1.0"?><methodResponse><params></params></methodResponse>',
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://seedbox.local",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toMatchObject({ kind: "ok" });
+  });
+
+  it("explains that a Digest challenge is unsupported", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers({
+          "www-authenticate":
+            'Digest realm="rTorrent, private", charset = "UTF-8", qop="auth"',
+        }),
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://seedbox.local",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message:
+        "Server requires Digest authentication, but Dashboarr only supports HTTP Basic authentication",
+    });
+  });
+
+  it("reports rejected credentials for a Basic challenge", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers({ "www-authenticate": 'Basic realm="rTorrent"' }),
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://seedbox.local",
+        username: "u",
+        password: "wrong",
+      }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message: "Wrong username or password",
+    });
+  });
+
+  it("treats multiple challenges containing Basic as supported", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers({
+          "www-authenticate":
+            'Digest realm="rTorrent", qop="auth", Basic realm="rTorrent"',
+        }),
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://seedbox.local",
+        username: "u",
+        password: "wrong",
+      }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message: "Wrong username or password",
+    });
+  });
+
+  it("reports forbidden RPC access without blaming credentials", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      respond({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+      }),
+    );
+
+    await expect(
+      testServiceConnection("rtorrent", {
+        url: "http://seedbox.local",
+        username: "u",
+        password: "p",
+      }),
+    ).resolves.toEqual({
+      kind: "auth_failed",
+      message:
+        "RPC access forbidden — check /RPC2 server or reverse-proxy access rules",
+    });
+  });
+});
+
 // External signal (TanStack Query's queryFn signal) composed with the internal
 // timeout controller — either firing must abort the fetch (#290).
 describe("serviceRequest — signal composition (#290)", () => {

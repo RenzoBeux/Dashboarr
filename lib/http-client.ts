@@ -654,6 +654,45 @@ type ProbeOutcome =
   | { kind: "auth_failed"; message: string }
   | { kind: "unreachable"; message: string };
 
+function parseAuthenticationSchemes(header: string): string[] {
+  const segments: string[] = [];
+  let start = 0;
+  let quoted = false;
+  let escaped = false;
+
+  for (let i = 0; i < header.length; i += 1) {
+    const char = header[i];
+    if (escaped) {
+      escaped = false;
+    } else if (quoted && char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      segments.push(header.slice(start, i));
+      start = i + 1;
+    }
+  }
+  segments.push(header.slice(start));
+
+  const schemes: string[] = [];
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    // Auth parameters permit whitespace around `=`; challenges start with a
+    // scheme token followed by whitespace (or nothing, such as Negotiate).
+    if (/^[A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*\s*=/.test(trimmed)) continue;
+    const match = trimmed
+      .match(/^([A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*)(?:\s|$)/);
+    if (
+      match &&
+      !schemes.some((scheme) => scheme.toLowerCase() === match[1].toLowerCase())
+    ) {
+      schemes.push(match[1]);
+    }
+  }
+  return schemes;
+}
+
 async function runConnectionProbe(
   serviceId: ServiceId,
   baseUrl: string,
@@ -900,10 +939,11 @@ async function runConnectionProbe(
 
     case "rtorrent": {
       // rtorrent has no GET endpoint — POST a tiny XML-RPC system.listMethods
-      // to the /RPC2 mount. Basic auth guards it: 401/403 → bad creds. A
-      // well-formed <methodResponse> (even a <fault>) means we reached an
-      // XML-RPC endpoint and authenticated; an HTML body (e.g. the ruTorrent
-      // UI) means the URL points somewhere other than the RPC mount.
+      // to the /RPC2 mount. Dashboarr supports Basic auth only, so inspect a
+      // 401 challenge before deciding whether credentials or the server's auth
+      // scheme need attention. A well-formed <methodResponse> (even a <fault>)
+      // means we reached an XML-RPC endpoint and authenticated; an HTML body
+      // (e.g. the ruTorrent UI) means the URL points somewhere else.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
       const extra: Record<string, string> = { "Content-Type": "text/xml" };
       // Match the nzbget/glances probes: send Basic auth if EITHER field is set
@@ -917,8 +957,28 @@ async function runConnectionProbe(
         body: '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>',
         signal,
       });
-      if (res.status === 401 || res.status === 403)
+      if (res.status === 401) {
+        const schemes = parseAuthenticationSchemes(
+          res.headers.get("www-authenticate") ?? "",
+        );
+        if (
+          schemes.length > 0 &&
+          !schemes.some((scheme) => scheme.toLowerCase() === "basic")
+        ) {
+          return {
+            kind: "auth_failed",
+            message: `Server requires ${schemes.join(" or ")} authentication, but Dashboarr only supports HTTP Basic authentication`,
+          };
+        }
         return { kind: "auth_failed", message: "Wrong username or password" };
+      }
+      if (res.status === 403) {
+        return {
+          kind: "auth_failed",
+          message:
+            "RPC access forbidden — check /RPC2 server or reverse-proxy access rules",
+        };
+      }
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (!res.ok)
