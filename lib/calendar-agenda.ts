@@ -11,6 +11,11 @@ import {
   radarrBarKind,
   sonarrEpisodeBarKind,
 } from "@/lib/arr-poster-status";
+import {
+  pickRadarrReleaseDate,
+  RADARR_RELEASE_KINDS,
+  type RadarrReleaseKind,
+} from "@/lib/radarr-release-date";
 import type {
   RadarrImage,
   RadarrMovie,
@@ -28,31 +33,23 @@ import type {
 // This module must stay pure (no React, no react-query, no native imports) so
 // the widget's headless task can import it cheaply.
 
-export type RadarrReleaseType = "cinemas" | "digital" | "physical" | "any";
+export type RadarrReleaseType = RadarrReleaseKind | "any";
 
 /**
  * Which Radarr release date a movie lands on, honoring the user's preference.
  * "any" mirrors the Calendar tab's waterfall (digital → physical → cinemas) so
- * the same movie buckets onto the same day in every surface.
+ * the same movie buckets onto the same day in every surface. Shares the
+ * waterfall with the Still Pending widget's multi-select (issue #355) so a
+ * movie is dated the same way on both cards.
  */
 export function pickRadarrDate(
   movie: RadarrMovie,
   type: RadarrReleaseType,
 ): string | null {
-  const cinemas = movie.inCinemas;
-  const digital = movie.digitalRelease;
-  const physical = movie.physicalRelease;
-  switch (type) {
-    case "cinemas":
-      return cinemas ?? null;
-    case "digital":
-      return digital ?? null;
-    case "physical":
-      return physical ?? null;
-    case "any":
-    default:
-      return digital ?? physical ?? cinemas ?? null;
-  }
+  return pickRadarrReleaseDate(
+    movie,
+    type === "any" ? RADARR_RELEASE_KINDS : [type],
+  );
 }
 
 /**
