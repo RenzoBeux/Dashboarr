@@ -19,6 +19,7 @@ import {
   PlayCircle,
   Power,
   Radar,
+  RefreshCw,
   Server,
   ShieldAlert,
   Tv,
@@ -52,6 +53,7 @@ import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
+import { TdarrQueueCard } from "@/components/dashboard/tdarr-queue-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -167,6 +169,11 @@ import {
   DISK_SPACE_DEFAULT_SETTINGS,
   type DiskSpaceSettingsValue,
 } from "@/components/dashboard/widget-settings/disk-space-settings";
+import {
+  TdarrQueueSettings,
+  TDARR_QUEUE_DEFAULT_SETTINGS,
+  type TdarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/tdarr-queue-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -497,6 +504,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     service: "unraid",
     component: UnraidCard,
   },
+  "tdarr-queue": {
+    id: "tdarr-queue",
+    label: "Tdarr",
+    description: "Transcode/health-check stats and space saved",
+    icon: RefreshCw,
+    service: "tdarr",
+    component: TdarrQueueCard,
+    settingsComponent: TdarrQueueSettings,
+    defaultSettings: TDARR_QUEUE_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -531,4 +548,5 @@ export type {
   JackettIndexersSettingsValue,
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
+  TdarrQueueSettingsValue,
 };

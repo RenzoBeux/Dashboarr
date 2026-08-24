@@ -49,6 +49,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   jellyfin:    ["serviceOffline"],
   emby:        ["serviceOffline"],
   unraid:      ["serviceOffline"],
+  // No completion-watcher/backend poller in v1 — a future "transcode
+  // completed" push could reuse the Statistics collection's sizeDiff delta,
+  // mirroring how SABnzbd/NZBGet detect completion.
+  tdarr:       ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

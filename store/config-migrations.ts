@@ -153,8 +153,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         jackett instance at import time, so older exports just need the
  *         version field bumped.
+ *   v40 — added the tdarr service entry. Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         tdarr instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 39;
+export const CURRENT_CONFIG_VERSION = 40;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -667,6 +671,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v38 → v39: added the jackett service entry (#300). Pure version stamp —
   // defaultInstances() backfills a disabled jackett instance at import.
   38: (payload) => ({ ...payload, version: 39 }),
+  // v39 → v40: added the tdarr service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled tdarr instance at import.
+  39: (payload) => ({ ...payload, version: 40 }),
 };
 
 /**

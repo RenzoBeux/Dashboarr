@@ -525,6 +525,7 @@
               <tr><td><strong>Bazarr</strong></td><td>6767</td><td>API key</td><td>Webhooks are ingested but do not raise a push yet.</td></tr>
               <tr><td><strong>Glances</strong></td><td>61208</td><td>User + password (optional)</td><td>Glances must run in web server mode. A Dockerized Glances reports no disks unless the host root is bind-mounted read-only (<code>/:/rootfs:ro</code>); CPU and RAM still work, which makes it look like an app bug.</td></tr>
               <tr><td><strong>unRAID</strong></td><td>80</td><td>API key</td><td>The GraphQL API must be enabled first (native on unRAID 7.2+ under Settings, Management Access). The key also needs array-read permission. The API is GraphQL only, so opening the URL in a browser looks broken even when it is correct.</td></tr>
+              <tr><td><strong>Tdarr</strong></td><td>8266</td><td>API key (optional)</td><td>Point Dashboarr at the server process (port 8266), not the web UI (8265). Auth is off by default in Tdarr, so most installs need no key at all.</td></tr>
             </tbody>
           </table>
         </div>
@@ -610,13 +611,13 @@
         </p>
 
         <h3>The widget catalogue</h3>
-        <p>Twenty-six widgets are available:</p>
+        <p>Twenty-seven widgets are available:</p>
         <p style="color:var(--muted)">
           Service Health, Server Stats, Speed Stats, Downloads, SABnzbd Queue, NZBGet Queue,
           Radarr Queue, Sonarr Queue, Lidarr Queue, Recently Downloaded, Calendar, Still Pending,
           Stream Activity, Streaming Bandwidth, Seerr Requests, Now Playing (All Servers),
           Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats,
-          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array.
+          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array, Tdarr.
         </p>
         <p>
           The same widget can be placed more than once on one dashboard, each copy with its own
@@ -675,10 +676,10 @@
           chevrons to reorder, the red X to unpin, and tap a pinned tab's small icon chip to change
           which icon represents it in the bar.
         </p>
-        <p>The sixteen pinnable tabs are:</p>
+        <p>The seventeen pinnable tabs are:</p>
         <p style="color:var(--muted)">
           Downloads, Calendar, Services, Movies, TV, Library, Music, Requests, Activity, Indexers,
-          Plex, Jellyfin, Emby, Glances, Bazarr, unRAID.
+          Plex, Jellyfin, Emby, Glances, Bazarr, unRAID, Tdarr.
         </p>
         <p>
           A tab becomes pickable when the workspace has at least one <strong>attached</strong> instance
@@ -709,6 +710,7 @@
           <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
           <li><strong>Glances</strong> (headed "Server"): CPU, Memory, GPU, Disks, Disk I/O, Network and Containers cards. Containers are read-only here.</li>
           <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container.</li>
+          <li><strong>Tdarr</strong>: Server status, Library stats (Tdarr score, health-check score, space saved), Nodes with per-node pause/resume and per-worker Cancel/Kill, and a read-only Libraries list.</li>
           <li><strong>Bazarr</strong>: Movies, Episodes, History, with a per-item search button for missing subtitles.</li>
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>

@@ -302,9 +302,10 @@ export async function serviceRequest<T>(
       headers.set("Authorization", `Bearer ${secrets.apiKey}`);
     }
   } else {
-    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID use
-    // X-Api-Key (unRAID documents lowercase x-api-key; header names are
-    // case-insensitive so this one branch covers it).
+    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
+    // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
+    // case-insensitive so this one branch covers it). Tdarr's auth is
+    // optional server-side — an empty header value is harmless when unset.
     if (secrets.apiKey) {
       headers.set("X-Api-Key", secrets.apiKey);
     }
@@ -1085,6 +1086,35 @@ async function runConnectionProbe(
       } catch {
         return { kind: "unreachable", message: "Invalid JSON response" };
       }
+    }
+
+    case "tdarr": {
+      // Tdarr auth is optional server-side (set via the server's `auth` config
+      // var) — a bad/missing key when auth is required surfaces as 401/403; a
+      // server with auth disabled just ignores X-Api-Key entirely, so an empty
+      // key still probes "ok". /status is a cheap, always-available GET.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403) {
+        return {
+          kind: "auth_failed",
+          message: apiKey ? "Invalid API key" : "Server requires an API key",
+        };
+      }
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) {
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude its API path from the proxy.",
+        };
+      }
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 
     default: {

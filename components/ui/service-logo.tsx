@@ -41,6 +41,9 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   jellystat: require("@/assets/services/jellystat.png"),
   bazarr: require("@/assets/services/bazarr.png"),
   glances: require("@/assets/services/glances.png"),
+  // Official Tdarr mark. Kept as PNG (not the source SVG) because that SVG
+  // uses filter-based glow/shadow effects react-native-svg doesn't support.
+  tdarr: require("@/assets/services/tdarr.png"),
 };
 
 export function hasServiceLogo(id: ServiceId): boolean {

@@ -22,6 +22,7 @@ export const PICKABLE_SERVICE_TABS = [
   "glances",
   "bazarr",
   "unraid",
+  "tdarr",
 ] as const;
 export type PickableServiceTab = (typeof PICKABLE_SERVICE_TABS)[number];
 
@@ -58,6 +59,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   glances: "glances",
   bazarr: "bazarr",
   unraid: "unraid",
+  tdarr: "tdarr",
 };
 
 // Inverse — the service kind(s) that back each tab. Used to decide pickability
@@ -86,6 +88,7 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   glances: ["glances"],
   bazarr: ["bazarr"],
   unraid: ["unraid"],
+  tdarr: ["tdarr"],
 };
 
 export function tabForServiceId(id: ServiceId): PickableServiceTab | null {
