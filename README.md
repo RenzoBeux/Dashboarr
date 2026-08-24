@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Dashboarr" width="120" height="120" style="border-radius: 20px;" />
+  <img src="assets/logo-animated.svg" alt="Dashboarr" width="120" height="120" />
 </p>
 
 <h1 align="center">Dashboarr</h1>
@@ -56,7 +56,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Tracearr** | Live streams with codec/quality details, bandwidth, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
-| **Jackett** | Search across all indexers, send releases to your torrent client, indexer list |
+| **Jackett** | Search across all indexers, send releases to your torrent client, indexer list with per-indexer search and test |
 | **Plex** | Now playing, recently added, on deck, library browsing |
 | **Jellyfin** | Now playing, recently added, continue watching, library browsing |
 | **Emby** | Now playing, recently added, continue watching, library browsing |
@@ -259,10 +259,12 @@ This project is open source. See the [LICENSE](LICENSE) file for details.
 
 ## Star History
 
-<a href="https://www.star-history.com/?type=date&repos=RenzoBeux%2FDashboarr">
+## Star History
+
+<a href="https://www.star-history.com/?repos=RenzoBeux%2FDashboarr&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&theme=dark&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&legend=top-left&sealed_token=jumzMt8zSTqeLdMxu1jp6qJxEY3Q-4DG1G8ViPi2MhW2s6W-Kf6WEVp1bx4xPaoAEbcGXEHcNHgzXbsmTcUOTa81eG3YMErJOCCxzDzQk_QqnZsASw6JJlil7SP342jKwJRlJVGYhASz8dmYJncOIpwy-5TV2JSoglnLhfmHi1AkYz1fAwIdnbIHReYs" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&theme=dark&legend=top-left&sealed_token=ZIfgnllGY4yeDsb1cDFycEpMO5nFNBI_eLAcK2EDqR6EivlmYeIx7FpalXh8SNActjSVVSpzWb5y6KuIcMkHNiY19o4P7Kc-YSYJiLNDIIOU533y6v9UniPtCNzELbUHfSTjMkp3Kiuk0VmjT2Wv5qoIKyanGwBN9-xL2qyj4OhqBgsE8nfb2HwRaRmb" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&legend=top-left&sealed_token=ZIfgnllGY4yeDsb1cDFycEpMO5nFNBI_eLAcK2EDqR6EivlmYeIx7FpalXh8SNActjSVVSpzWb5y6KuIcMkHNiY19o4P7Kc-YSYJiLNDIIOU533y6v9UniPtCNzELbUHfSTjMkp3Kiuk0VmjT2Wv5qoIKyanGwBN9-xL2qyj4OhqBgsE8nfb2HwRaRmb" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RenzoBeux/Dashboarr&type=date&legend=top-left&sealed_token=ZIfgnllGY4yeDsb1cDFycEpMO5nFNBI_eLAcK2EDqR6EivlmYeIx7FpalXh8SNActjSVVSpzWb5y6KuIcMkHNiY19o4P7Kc-YSYJiLNDIIOU533y6v9UniPtCNzELbUHfSTjMkp3Kiuk0VmjT2Wv5qoIKyanGwBN9-xL2qyj4OhqBgsE8nfb2HwRaRmb" />
  </picture>
 </a>

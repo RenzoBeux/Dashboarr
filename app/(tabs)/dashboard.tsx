@@ -12,7 +12,8 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
-  Sparkles,
+  Magnet,
+  LayoutGrid,
   X,
   Plus,
   ChevronsUpDown,
@@ -31,11 +32,13 @@ import {
   isWidgetServiceAttached,
   isWidgetServiceEnabled,
 } from "@/components/dashboard/widget-registry";
+import { slotAutoHides } from "@/components/dashboard/widget-settings/widget-settings-blocks";
 import { AddWidgetSheet } from "@/components/dashboard/add-widget-sheet";
 import { WidgetSettingsSheet } from "@/components/dashboard/widget-settings-sheet";
 import { DashboardPickerSheet } from "@/components/dashboard/dashboard-picker-sheet";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { hasSearchableKind } from "@/lib/global-search";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
@@ -194,9 +197,16 @@ export default function DashboardScreen() {
 
   const dashboardName = activeDashboard?.name ?? "Dashboarr";
 
+  // Keeps the dashboard-picker title clear of the iPadOS 26 window-control
+  // cluster (#342).
+  const windowControlsPadding = useWindowControlsContentPadding();
+
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
-      <View className="flex-row items-center justify-between mt-2 mb-4">
+      <View
+        className="flex-row items-center justify-between mt-2 mb-4"
+        style={windowControlsPadding}
+      >
         <TouchableOpacity
           onPress={openDashboardPicker}
           className="flex-row items-center gap-1.5"
@@ -266,7 +276,7 @@ export default function DashboardScreen() {
             backgroundColor: `${dashboardColor}14`,
           }}
         >
-          <Icon icon={Sparkles} size={ICON.SM} color={dashboardColor} />
+          <Icon icon={Magnet} size={ICON.SM} color={dashboardColor} />
           <View className="flex-1">
             <Text className="text-zinc-100 text-xs font-semibold">
               Auto-attach mode
@@ -306,7 +316,7 @@ export default function DashboardScreen() {
             style={{ backgroundColor: `${dashboardColor}26` }}
           >
             <Icon
-              icon={attachedKinds.size === 0 ? SlidersHorizontal : Sparkles}
+              icon={attachedKinds.size === 0 ? SlidersHorizontal : LayoutGrid}
               size={28}
               color={dashboardColor}
             />
@@ -370,7 +380,10 @@ export default function DashboardScreen() {
             const { label, settingsComponent } = widget;
             const isFirst = visibleIndex === 0;
             const isLast = visibleIndex === visibleSlots.length - 1;
-            const hidesWhenEmpty = slot.settings?.hideWhenEmpty === true;
+            // Only drives the edit-mode EyeOff marker — the collapse itself is
+            // widget-agnostic via the visibility store. The key list lives next
+            // to AutoHideToggle so the two can't drift.
+            const autoHides = slotAutoHides(slot.settings);
             // display:none (not unmount) so the widget's queries keep polling
             // and it reappears the moment content shows up. Edit mode always
             // shows the card so the toggle stays reachable. Yoga excludes
@@ -393,7 +406,7 @@ export default function DashboardScreen() {
                       <Text className="text-zinc-500 text-xs font-medium" numberOfLines={1}>
                         {label}
                       </Text>
-                      {hidesWhenEmpty && (
+                      {autoHides && (
                         <Icon icon={EyeOff} size={ICON.SM} color="#52525b" />
                       )}
                     </View>

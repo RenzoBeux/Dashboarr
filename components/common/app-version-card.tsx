@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, Text, Linking } from "react-native";
-import { Sparkles } from "lucide-react-native";
+import { ArrowDownToLine, Smartphone } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -94,7 +94,7 @@ export function AppVersionCard() {
   return (
     <Card className="gap-3 mb-4">
       <View className="flex-row items-center gap-2">
-        <Icon icon={Sparkles} size={16} color="#a1a1aa" />
+        <Icon icon={Smartphone} size={16} color="#a1a1aa" />
         <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
           App version
         </Text>
@@ -118,7 +118,7 @@ export function AppVersionCard() {
         visible={storeUpdate !== null}
         title="Update available"
         message={storeUpdate?.message ?? ""}
-        icon={Sparkles}
+        icon={ArrowDownToLine}
         confirmLabel={storeUpdate?.confirmLabel ?? "Open"}
         cancelLabel="Later"
         onConfirm={() => {
@@ -132,7 +132,7 @@ export function AppVersionCard() {
         visible={otaUpdate}
         title="Update available"
         message="A new over-the-air update is available. Install and restart now?"
-        icon={Sparkles}
+        icon={ArrowDownToLine}
         confirmLabel="Install"
         cancelLabel="Later"
         onConfirm={async () => {

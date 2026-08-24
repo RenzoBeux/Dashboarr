@@ -37,6 +37,8 @@ import {
 } from "@/hooks/use-qbittorrent";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
 import { isTorrentPaused } from "@/lib/types";
+import { qbBadgeVariant } from "@/lib/torrent-adapters/qbittorrent";
+import { downloadBadgeColor } from "@/lib/download-status";
 
 export default function TorrentDetailScreen() {
   const { hash } = useLocalSearchParams<{ hash: string }>();
@@ -77,6 +79,9 @@ export default function TorrentDetailScreen() {
   }
 
   const isPaused = isTorrentPaused(torrent.state);
+  // Same per-state mapping the Downloads tab row uses, so the badge and the
+  // progress bar here read exactly like the row the user tapped.
+  const badgeVariant = qbBadgeVariant(torrent.state);
 
   const handleReannounce = () => {
     reannounceMutation.mutate([hash], {
@@ -114,13 +119,18 @@ export default function TorrentDetailScreen() {
         </Text>
         <Badge
           label={torrent.state}
-          variant={isPaused ? "paused" : "downloading"}
+          variant={badgeVariant}
           className="self-start mb-4"
         />
 
         {/* Progress */}
         <Card className="mb-4">
-          <ProgressBar progress={torrent.progress} showLabel className="mb-3" />
+          <ProgressBar
+            progress={torrent.progress}
+            fillColor={downloadBadgeColor(badgeVariant)}
+            showLabel
+            className="mb-3"
+          />
           <View className="flex-row justify-between">
             <View className="flex-row items-center gap-1">
               <Icon icon={ArrowDown} size={14} color="#3b82f6" />

@@ -19,9 +19,13 @@ export function ReleaseCard({
         <Text className="text-zinc-200 text-sm" numberOfLines={2}>
           {release.title}
         </Text>
-        <View className="flex-row items-center gap-3 mt-1.5">
+        {/* Yoga defaults flexShrink to 0 (web CSS defaults it to 1), so without a
+            flexible child the indexer name lays out at full intrinsic width and shoves
+            the stats + protocol pill past the card's content box — #314. Making the
+            indexer the one `flex-1` element is the same fix ReleaseListItem uses. */}
+        <View className="flex-row items-center gap-2 mt-1.5">
           <Text className="text-zinc-500 text-xs">{formatBytes(release.sizeBytes)}</Text>
-          <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+          <Text className="text-zinc-500 text-xs flex-1 min-w-0" numberOfLines={1}>
             {release.indexer}
           </Text>
           {release.seeders !== undefined && (
@@ -32,7 +36,7 @@ export function ReleaseCard({
           )}
           <Badge
             label={release.protocol}
-            variant={release.protocol === "torrent" ? "downloading" : "default"}
+            variant={release.protocol === "torrent" ? "info" : "default"}
           />
         </View>
       </Pressable>

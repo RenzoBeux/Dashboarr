@@ -17,9 +17,11 @@ import {
   getTransferInfo,
   getTorrents,
   addTorrentMagnet,
+  DASHBOARR_TAG,
   type QBTorrentFilter,
 } from "@/services/qbittorrent-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { isTorrentPaused } from "@/lib/types";
 import type { QBTorrent, QBServerState, TorrentState } from "@/lib/types";
@@ -33,6 +35,7 @@ import type {
   TorrentStatus,
   UnifiedTorrent,
 } from "@/lib/torrent-adapter";
+import type { DownloadBadgeVariant } from "@/lib/download-status";
 import type { DownloadsSortKey } from "@/store/sort-store";
 
 // "all" omits the qBittorrent `filter` param rather than sending `filter=all`
@@ -80,9 +83,9 @@ function qbStatusToUnified(state: TorrentState): TorrentStatus {
 // Preserves qBittorrent's exact per-state badge colors (the legacy
 // getTorrentBadgeVariant): paused/error checked first, then the DL/UP suffix
 // tests so stalled/checking/queued keep their downloading/seeding hues.
-function qbBadgeVariant(
-  state: TorrentState,
-): "downloading" | "seeding" | "paused" | "error" | "default" {
+// Exported for the detail screen, which reads the raw QBTorrent instead of a
+// UnifiedTorrent and so can't pick up the precomputed `badgeVariant`.
+export function qbBadgeVariant(state: TorrentState): DownloadBadgeVariant {
   if (state === "error" || state === "missingFiles") return "error";
   if (isTorrentPaused(state)) return "paused";
   if (state.includes("DL") || state === "downloading" || state === "metaDL")
@@ -213,13 +216,25 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
   useAddTorrent: (instanceId?: string) => {
     const queryClient = useQueryClient();
     const { instanceId: id } = useInstanceTarget("qbittorrent", instanceId);
-    // qBittorrent's add takes a bare magnet/URL; the unified surface adds
-    // optional label/savePath which qBittorrent ignores for v1.
+    // The unified surface's `label` maps to qBittorrent's category on add;
+    // savePath is ignored (qBittorrent derives it from the category). The
+    // per-instance `tagAddedTorrents` setting is read at mutate time so a
+    // settings change applies without remounting the view (#289).
     return useMutation({
-      mutationFn: ({ uri }: { uri: string; label?: string; savePath?: string }) =>
-        addTorrentMagnet(uri, id ?? undefined),
-      onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] }),
+      mutationFn: ({ uri, label }: { uri: string; label?: string; savePath?: string }) => {
+        const inst = id
+          ? useConfigStore.getState().getInstance("qbittorrent", id)
+          : undefined;
+        const tags = inst?.tagAddedTorrents ? [DASHBOARR_TAG] : undefined;
+        return addTorrentMagnet(uri, id ?? undefined, label, tags);
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "torrents"] });
+        // A custom category is created server-side by the add itself, so the
+        // cached list is stale — refetch it or the new name is missing from
+        // the picker and the category filter until the screen remounts (#289).
+        queryClient.invalidateQueries({ queryKey: ["qbittorrent", id, "categories"] });
+      },
     });
   },
 

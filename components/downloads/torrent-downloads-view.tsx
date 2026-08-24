@@ -30,6 +30,7 @@ import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Badge } from "@/components/ui/badge";
+import { downloadBadgeColor } from "@/lib/download-status";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -37,6 +38,7 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { ActionSheet } from "@/components/ui/action-sheet";
+import { Select } from "@/components/ui/select";
 import { CategorySheet } from "@/components/qbittorrent/category-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
@@ -62,6 +64,7 @@ import {
   type UnifiedTorrent,
 } from "@/lib/torrent-adapter";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { isValidQbCategoryName } from "@/lib/qbittorrent-category";
 
 const FILTER_OPTIONS: { key: TorrentFilterType; label: string }[] = [
   { key: "all", label: "All" },
@@ -75,6 +78,11 @@ const FILTER_OPTIONS: { key: TorrentFilterType; label: string }[] = [
 // omitted `category` param as all and an empty string as uncategorized, so we
 // can't reuse "" for "all" — this maps to "omit the param" before the request.
 const ALL_CATEGORIES = "__all__";
+
+// Sentinel for the add form's "Custom…" category choice (#289). A backslash is
+// invalid in qBittorrent category names, so this can never collide with a real
+// category the server reports.
+const CUSTOM_CATEGORY = "\\custom";
 
 const SORT_OPTIONS: { key: DownloadsSortKey; label: string }[] = [
   { key: "progress-desc", label: "Progress: High → Low" },
@@ -120,6 +128,10 @@ export function TorrentDownloadsView({
   const [categoryBulkOpen, setCategoryBulkOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
+  // "" = no category, CUSTOM_CATEGORY = free-text entry below the picker
+  // (qBittorrent-only; other clients never show the picker).
+  const [addCategory, setAddCategory] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
 
   // Runs on mount too (segment switches remount this view per client), so a
   // pending magnet re-prefills whichever client the user lands on.
@@ -211,13 +223,25 @@ export function TorrentDownloadsView({
   // user sees what they're adding (covers pasted and incoming magnets alike).
   const magnetName = magnetDisplayName(magnetUri.trim());
 
+  // Custom entry resolves to its trimmed text; an empty custom field falls
+  // back to "no category". Invalid names must be blocked client-side because
+  // /torrents/add doesn't reject them — it silently adds uncategorized.
+  const resolvedAddCategory =
+    addCategory === CUSTOM_CATEGORY ? customCategory.trim() : addCategory;
+  const customCategoryInvalid =
+    addCategory === CUSTOM_CATEGORY &&
+    customCategory.trim().length > 0 &&
+    !isValidQbCategoryName(customCategory.trim());
+
   const handleAdd = () => {
-    if (!magnetUri.trim()) return;
+    if (!magnetUri.trim() || customCategoryInvalid) return;
     addTorrent.mutate(
-      { uri: magnetUri.trim() },
+      { uri: magnetUri.trim(), label: resolvedAddCategory || undefined },
       {
         onSuccess: () => {
           setMagnetUri("");
+          setAddCategory("");
+          setCustomCategory("");
           setShowAddModal(false);
           onMagnetConsumed?.();
           toast("Torrent added");
@@ -384,6 +408,41 @@ export function TorrentDownloadsView({
             // just cover the Add button.
             autoFocus={!incomingMagnet}
           />
+          {adapter.capabilities.categories ? (
+            <>
+              <Select
+                label="Category"
+                value={addCategory}
+                options={[
+                  { value: "", label: "None" },
+                  ...categories.map((c) => ({ value: c, label: c })),
+                  {
+                    value: CUSTOM_CATEGORY,
+                    label: "Custom…",
+                    description: "Type a new category name",
+                  },
+                ]}
+                onChange={setAddCategory}
+              />
+              {addCategory === CUSTOM_CATEGORY ? (
+                <View>
+                  <TextInput
+                    placeholder="New category name"
+                    value={customCategory}
+                    onChangeText={setCustomCategory}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {customCategoryInvalid ? (
+                    <Text className="text-red-400 text-xs mt-1">
+                      Names can&apos;t contain &quot;\&quot; or start/end with
+                      &quot;/&quot; (use &quot;a/b&quot; for a subcategory).
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </>
+          ) : null}
           <View className="flex-row gap-2">
             <Button
               label="Cancel"
@@ -392,6 +451,8 @@ export function TorrentDownloadsView({
               onPress={() => {
                 setShowAddModal(false);
                 setMagnetUri("");
+                setAddCategory("");
+                setCustomCategory("");
                 onMagnetConsumed?.();
               }}
               className="flex-1"
@@ -401,6 +462,7 @@ export function TorrentDownloadsView({
               size="sm"
               onPress={handleAdd}
               loading={addTorrent.isPending}
+              disabled={customCategoryInvalid}
               className="flex-1"
             />
           </View>
@@ -708,7 +770,12 @@ function TorrentListItem({
         </View>
       ) : null}
 
-      <ProgressBar progress={torrent.progress} showLabel className="my-2" />
+      <ProgressBar
+        progress={torrent.progress}
+        fillColor={downloadBadgeColor(badgeVariant)}
+        showLabel
+        className="my-2"
+      />
 
       <View className="flex-row items-center justify-between">
         <View className="flex-row gap-3">

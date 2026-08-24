@@ -1,4 +1,5 @@
 import { buildUrl, HttpError } from "@/lib/http-client";
+import { basicAuthHeader, digestSessionKey, fetchWithDigestRetry } from "@/lib/http-auth";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
@@ -214,13 +215,22 @@ async function transmissionRpc<T>(
     const customHeaders = store.getMergedHeaders("transmission", id);
     for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
     headers.set("Content-Type", "application/json");
-    if (secrets.username || secrets.password) {
-      const encoded = btoa(`${secrets.username ?? ""}:${secrets.password ?? ""}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
+    const basic = basicAuthHeader(secrets.username, secrets.password);
+    if (basic) headers.set("Authorization", basic);
     const sid = sessionIds.get(id);
     if (sid) headers.set("X-Transmission-Session-Id", sid);
-    return fetch(url, { method: "POST", headers, body: requestBody, signal });
+    // Basic by default, upgrading to Digest if the server in front of
+    // Transmission asks for it (#352). Transmission checks HTTP auth before the
+    // CSRF layer, so the 401 is answered here and the 409 replay below still
+    // works unchanged.
+    return fetchWithDigestRetry(
+      url,
+      { method: "POST", body: requestBody, signal },
+      headers,
+      secrets.username,
+      secrets.password,
+      digestSessionKey(id, baseUrl),
+    );
   };
 
   const controller = new AbortController();

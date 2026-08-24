@@ -26,7 +26,19 @@ export type ServiceId = (typeof SERVICE_IDS)[number];
 
 export const SERVICE_DEFAULTS: Record<
   ServiceId,
-  { name: string; defaultPort: number; apiBasePath: string; pingPath: string }
+  {
+    name: string;
+    defaultPort: number;
+    apiBasePath: string;
+    pingPath: string;
+    /**
+     * The service authenticates with an HTTP auth mount (Basic, upgrading to
+     * Digest when the server asks) rather than an API key or a cookie session.
+     * lib/http-client.ts derives its credential handling from this flag, so a
+     * new HTTP-auth service only has to set it here.
+     */
+    httpAuth?: true;
+  }
 > = {
   qbittorrent: {
     name: "qBittorrent",
@@ -46,6 +58,7 @@ export const SERVICE_DEFAULTS: Record<
     defaultPort: 8080,
     apiBasePath: "/RPC2",
     pingPath: "",
+    httpAuth: true,
   },
   // Transmission speaks JSON-RPC over a single POST /transmission/rpc endpoint.
   // Default web/RPC port is 9091. Auth is optional HTTP Basic; every request
@@ -58,6 +71,7 @@ export const SERVICE_DEFAULTS: Record<
     defaultPort: 9091,
     apiBasePath: "/transmission/rpc",
     pingPath: "",
+    httpAuth: true,
   },
   // SAB has no REST routes — every call is /api?mode=<command>. The empty
   // pingPath combined with mode=version (injected as a param in pingService)
@@ -66,7 +80,13 @@ export const SERVICE_DEFAULTS: Record<
   // NZBGet is JSON-RPC: every method is POST /jsonrpc with a JSON body. The
   // empty pingPath combined with the version method (issued as a POST in
   // pingService) gives /jsonrpc at request time.
-  nzbget: { name: "NZBGet", defaultPort: 6789, apiBasePath: "/jsonrpc", pingPath: "" },
+  nzbget: {
+    name: "NZBGet",
+    defaultPort: 6789,
+    apiBasePath: "/jsonrpc",
+    pingPath: "",
+    httpAuth: true,
+  },
   radarr: { name: "Radarr", defaultPort: 7878, apiBasePath: "/api/v3", pingPath: "/system/status" },
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
   // Lidarr is an *arr sibling but on the v1 API (not v3 like Radarr/Sonarr).
@@ -111,7 +131,13 @@ export const SERVICE_DEFAULTS: Record<
   // Emby shares Jellyfin's API surface (same default port, root API path, and
   // public System/Info endpoint). See lib/media-server-config.ts.
   emby: { name: "Emby", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
-  glances: { name: "Glances", defaultPort: 61208, apiBasePath: "/api/4", pingPath: "/cpu" },
+  glances: {
+    name: "Glances",
+    defaultPort: 61208,
+    apiBasePath: "/api/4",
+    pingPath: "/cpu",
+    httpAuth: true,
+  },
   bazarr: { name: "Bazarr", defaultPort: 6767, apiBasePath: "/api", pingPath: "/system/status" },
   // unRAID's official GraphQL API — native in unRAID 7.2+ (Settings →
   // Management Access), provided by the Unraid Connect plugin on older
@@ -135,6 +161,12 @@ export const POLLING_INTERVALS = {
   calendar: 60000,
   diskSpace: 60000,
 } as const;
+
+// Live indexer searches (Sonarr/Radarr interactive search, Prowlarr and Jackett
+// all-indexer fan-outs) query every configured tracker synchronously and often
+// run past 30s. They need a far longer ceiling than http-client's 15s default,
+// which otherwise aborts a search that was going to succeed.
+export const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 export const DASHBOARD_WIDGET_IDS = [
   "server-stats",
@@ -220,6 +252,7 @@ export const STORAGE_KEYS = {
   globalCustomHeaders: "app.globalCustomHeaders",
   uiScale: "app.uiScale",
   appTheme: "app.appTheme",
+  weekStart: "app.weekStart",
   // v17: user-defined display order for the Services tab tiles. Stored as a
   // ServiceId[]; unknown ids in this list are ignored at render time, and
   // any SERVICE_IDS missing from the list are appended in their canonical

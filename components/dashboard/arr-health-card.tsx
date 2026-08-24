@@ -12,7 +12,14 @@ import {
   useArrHealthSections,
   type ArrInstanceHealth,
 } from "@/hooks/use-arr-health";
+import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
+import { useWidgetSettings } from "@/hooks/use-widget-settings";
+import {
+  ARR_HEALTH_DEFAULT_SETTINGS,
+  type ArrHealthSettingsValue,
+} from "@/components/dashboard/widget-settings/arr-health-settings";
 import { useManualRefresh } from "@/store/manual-refresh-store";
+import type { ArrHealthServiceId } from "@/services/arr-health";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { lightHaptic } from "@/lib/haptics";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
@@ -23,18 +30,35 @@ import type { WidgetComponentProps } from "@/components/dashboard/widget-registr
 // healthy" state otherwise so the widget is reassuring, not just an alarm.
 export function ArrHealthCard({ slotId }: WidgetComponentProps) {
   const { sections, isLoading, isFetching } = useArrHealthSections();
+  const { settings } = useWidgetSettings<ArrHealthSettingsValue>(
+    slotId,
+    ARR_HEALTH_DEFAULT_SETTINGS,
+  );
   // Mirror the Services widget: show the "Checking…" indicator on the first
   // load and during a user pull-to-refresh, but stay silent on the routine 30s
   // background poll (which also flips isFetching) so the header doesn't blink (#196).
   const manualRefreshing = useManualRefresh((s) => s.count > 0);
   const determining = isLoading || (manualRefreshing && isFetching);
   const [sheet, setSheet] = useState<{
+    serviceId: ArrHealthServiceId;
     serviceName: string;
     instances: ArrInstanceHealth[];
   } | null>(null);
 
   const totalIssues = sections.reduce((acc, s) => acc + s.count, 0);
   const anyError = sections.some((s) => s.severity === "error");
+
+  // Inverted signal, so `isLoading: false` on purpose — same reasoning as the
+  // Services widget (#303). useHideWhenEmpty's usual "never report empty while
+  // loading" rule protects emptiness-driven widgets from flashing hidden before
+  // their first fetch; here it would do the opposite, rendering the skeleton on
+  // every cold start and collapsing it a second later. No alerts are known yet,
+  // so start hidden and appear when a /health response says otherwise.
+  useHideWhenEmpty(slotId, {
+    enabled: settings.hideWhenAllHealthy,
+    isEmpty: sections.length === 0,
+    isLoading: false,
+  });
 
   return (
     <Card>
@@ -75,7 +99,11 @@ export function ArrHealthCard({ slotId }: WidgetComponentProps) {
                 key={section.serviceId}
                 onPress={() => {
                   lightHaptic();
-                  setSheet({ serviceName, instances: section.instances });
+                  setSheet({
+                    serviceId: section.serviceId,
+                    serviceName,
+                    instances: section.instances,
+                  });
                 }}
                 className="flex-row items-center gap-3 rounded-xl bg-surface-light px-3 py-2.5 active:opacity-70"
               >
@@ -110,6 +138,7 @@ export function ArrHealthCard({ slotId }: WidgetComponentProps) {
 
       <HealthIssuesSheet
         visible={!!sheet}
+        serviceId={sheet?.serviceId ?? null}
         serviceName={sheet?.serviceName ?? ""}
         instances={sheet?.instances ?? null}
         onClose={() => setSheet(null)}

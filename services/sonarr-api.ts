@@ -1,10 +1,12 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   SonarrSeries,
   SonarrEpisode,
   SonarrEpisodeFile,
   SonarrCalendarEntry,
   SonarrQueue,
+  SonarrManualImportItem,
   SonarrHistory,
   SonarrHistoryRecord,
   SonarrSearchResult,
@@ -12,9 +14,8 @@ import type {
   SonarrImage,
   SonarrRelease,
   SonarrWantedMissing,
+  ArrQueueRemoveOptions,
 } from "@/lib/types";
-
-const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 // --- Image helpers ---
 
@@ -99,6 +100,23 @@ export function deleteEpisodeFile(
   });
 }
 
+// Bulk file delete — the endpoint behind Sonarr's own "delete selected files",
+// used here to clear a whole season in one request instead of N per-file
+// DELETEs. Present since Sonarr v3 (Sonarr.Api.V3 EpisodeFileModule:
+// `Delete("/bulk")` reading an EpisodeFileListResource).
+// Never call with an empty list: Sonarr resolves the series from
+// `episodeFiles.First()` and throws on an empty match.
+export function deleteEpisodeFiles(
+  episodeFileIds: number[],
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", "/episodefile/bulk", {
+    method: "DELETE",
+    body: JSON.stringify({ episodeFileIds }),
+    instanceId,
+  });
+}
+
 // --- Calendar ---
 
 export function getCalendar(
@@ -143,15 +161,105 @@ export function getWantedMissing(
 
 // --- Queue ---
 
+// `includeUnknownSeriesItems` matters for the queue-issues banner (#285): a
+// grab whose series was deleted from the library is exactly the kind that gets
+// stuck, and Sonarr hides those by default. The page size is generous for the
+// same reason — blocked items have no `timeleft` and sort last under the
+// default sort, so a small page would clip them off.
 export function getQueue(
   page = 1,
-  pageSize = 20,
+  pageSize = 100,
   includeSeries = true,
   includeEpisode = true,
   instanceId?: string,
 ): Promise<SonarrQueue> {
   return serviceRequest<SonarrQueue>("sonarr", "/queue", {
-    params: { page, pageSize, includeSeries, includeEpisode },
+    params: {
+      page,
+      pageSize,
+      includeSeries,
+      includeEpisode,
+      includeUnknownSeriesItems: true,
+    },
+    instanceId,
+  });
+}
+
+/**
+ * Removes a queue item. See ArrQueueRemoveOptions for what the flags do; the
+ * defaults match Sonarr's own (`removeFromClient=true`, no blocklist).
+ */
+export function removeFromQueue(
+  queueId: number,
+  opts: ArrQueueRemoveOptions = {},
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("sonarr", `/queue/${queueId}`, {
+    method: "DELETE",
+    params: {
+      removeFromClient: opts.removeFromClient ?? true,
+      blocklist: opts.blocklist ?? false,
+      skipRedownload: opts.skipRedownload ?? false,
+    },
+    instanceId,
+  });
+}
+
+// --- Force import (#325) ---
+
+// The import candidates Sonarr matched for a completed download — the same
+// list its own Manual Import screen shows. `filterExistingFiles: false` so
+// nothing the scan found is hidden from the eligibility check below.
+function getManualImportItems(
+  downloadId: string,
+  instanceId?: string,
+): Promise<SonarrManualImportItem[]> {
+  return serviceRequest<SonarrManualImportItem[]>("sonarr", "/manualimport", {
+    params: { downloadId, filterExistingFiles: false },
+    instanceId,
+  });
+}
+
+/**
+ * Imports a completed download Sonarr refused to import ("Import blocked",
+ * typically a grab-anyway release that isn't a quality upgrade), replacing the
+ * existing episode files. The app-side equivalent of desktop Manual Import:
+ * fetch Sonarr's own candidates for the download, then issue a ManualImport
+ * command for every file it identified — the command imports regardless of
+ * rejections, which is the "force". File payload mirrors Sonarr's web UI
+ * (InteractiveImportModalContent). Only files Sonarr mapped to episodes with a
+ * parsed quality qualify; anything unidentified needs the desktop screen's
+ * manual mapping, so with no qualifying file this rejects instead of silently
+ * importing nothing.
+ */
+export async function forceImportQueueItem(
+  downloadId: string,
+  instanceId?: string,
+): Promise<void> {
+  const candidates = await getManualImportItems(downloadId, instanceId);
+  const files = candidates
+    .filter((c) => c.path && c.series && c.episodes?.length && c.quality)
+    .map((c) => ({
+      path: c.path,
+      folderName: c.folderName,
+      seriesId: c.series!.id,
+      episodeIds: c.episodes!.map((e) => e.id),
+      quality: c.quality,
+      languages: c.languages ?? [],
+      releaseGroup: c.releaseGroup,
+      indexerFlags: c.indexerFlags ?? 0,
+      releaseType: c.releaseType,
+      episodeFileId: c.episodeFileId,
+      downloadId,
+    }));
+  if (files.length === 0) {
+    throw new Error(
+      "Sonarr couldn't match this download to any episode. Use Manual Import in Sonarr to map it.",
+    );
+  }
+  return serviceRequest<void>("sonarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "ManualImport", files, importMode: "auto" }),
     instanceId,
   });
 }

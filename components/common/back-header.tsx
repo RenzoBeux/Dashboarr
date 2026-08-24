@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 
 interface BackHeaderProps {
   title?: string;
@@ -13,9 +14,14 @@ interface BackHeaderProps {
 export function BackHeader({ title, right, onBack }: BackHeaderProps) {
   const router = useRouter();
   const handlePress = onBack ?? (() => router.back());
+  // Keeps the arrow clear of the iPadOS 26 window-control cluster (#342).
+  const windowControlsPadding = useWindowControlsContentPadding();
 
   return (
-    <View className="flex-row items-center mb-4 mt-2">
+    <View
+      className="flex-row items-center mb-4 mt-2"
+      style={windowControlsPadding}
+    >
       <Pressable
         onPress={handlePress}
         className="mr-3 active:opacity-70 p-1"

@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
-import { getIndexers, searchAll } from "@/services/jackett-api";
+import { getIndexers, testIndexer } from "@/services/jackett-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 export function useJackettIndexers(instanceId?: string) {
@@ -15,11 +15,15 @@ export function useJackettIndexers(instanceId?: string) {
   });
 }
 
-export function useJackettSearch(query: string, instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("jackett", instanceId);
-  return useQuery({
-    queryKey: ["jackett", id, "search", query],
-    queryFn: () => searchAll(query, id ?? undefined),
-    enabled: enabled && query.length >= 2 && !!id,
+// Per-indexer test (#315). Nothing is cached or invalidated: a test is a probe
+// the user explicitly asked for, and its result is transient row state in the
+// list. `variables` tells the caller which row is currently in flight.
+export function useTestJackettIndexer(instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("jackett", instanceId);
+  return useMutation({
+    mutationFn: (indexerId: string) => testIndexer(indexerId, id ?? undefined),
   });
 }
+
+// Release search lives in lib/indexer-adapters/jackett.ts, not here — it needs
+// the abort/retry/timeout contract the shared ReleaseSearch view relies on.

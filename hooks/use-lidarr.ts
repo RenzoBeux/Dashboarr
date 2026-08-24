@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import {
   getArtists,
   getArtist,
@@ -80,7 +85,9 @@ export function useLidarrQueue(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("lidarr", instanceId);
   return useQuery({
     queryKey: ["lidarr", id, "queue"],
-    queryFn: () => getQueue(1, 20, id ?? undefined),
+    // Args must stay identical to lidarrArrQueueAdapter.fetchQueue — the
+    // dashboard widget and the queue-issues banner share this cache entry.
+    queryFn: () => getQueue(1, 100, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });
@@ -106,6 +113,8 @@ export function useLidarrSearch(term: string, instanceId?: string) {
     queryKey: ["lidarr", id, "search", term],
     queryFn: () => searchArtists(term, id ?? undefined),
     enabled: enabled && term.length >= 2 && !!id,
+    // See useRadarrSearch: hold the last results while the next term loads (#304).
+    placeholderData: keepPreviousData,
   });
 }
 

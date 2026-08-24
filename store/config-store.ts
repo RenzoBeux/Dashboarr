@@ -37,10 +37,16 @@ import {
   type AppThemeId,
 } from "@/lib/app-themes";
 import {
+  DEFAULT_WEEK_START,
+  isValidWeekStart,
+  type WeekStart,
+} from "@/lib/week-start";
+import {
   DEFAULT_DASHBOARD_ICON,
   type DashboardIconName,
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
+import { clearDigestSessions } from "@/lib/http-auth";
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
@@ -104,6 +110,11 @@ export interface ServiceConfig {
   defaultQualityProfileId?: number;
   defaultRootFolderPath?: string;
   defaultMetadataProfileId?: number;
+  // v41 (#289): qBittorrent-only — tag torrents added manually from the app
+  // with "Dashboarr" so server-side scripts/filters can identify their origin.
+  // Off by default (absent/undefined behaves like false) because enabling it
+  // writes a tag into the user's qBittorrent config on first use.
+  tagAddedTorrents?: boolean;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
@@ -273,6 +284,11 @@ export interface NotificationSettings {
   perInstance?: Record<string, Partial<Record<NotifCategory, boolean>>>;
   // v34: Apprise notification sink (additive to Expo push). undefined = unset.
   apprise?: AppriseConfig;
+  // v42 (issue #310): per-qBittorrent-instance muted category names for the
+  // torrentCompleted notification (e.g. cross-seed's injection category).
+  // Keyed by instance UUID; "" mutes uncategorized torrents. Matching is exact
+  // and case-sensitive. Absent/empty = notify for everything.
+  qbtMutedCategories?: Record<string, string[]>;
 }
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -375,6 +391,8 @@ interface ConfigState {
   uiScale: UiScale;
   // Global chrome tint preset applied via NativeWind CSS vars (ThemeRoot).
   appTheme: AppThemeId;
+  // Calendar first day of week: follow the device or force Sunday/Monday.
+  weekStart: WeekStart;
   notificationSettings: NotificationSettings;
 }
 
@@ -410,6 +428,8 @@ export interface ExportPayload {
   treatVpnAsHome?: boolean;
   // v38 — global app theme preset.
   appTheme?: AppThemeId;
+  // v40 — calendar first-day-of-week preference (#320).
+  weekStart?: WeekStart;
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
@@ -529,6 +549,7 @@ interface ConfigActions {
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
   setAppTheme: (theme: AppThemeId) => void;
+  setWeekStart: (weekStart: WeekStart) => void;
   setNotificationSetting: <K extends keyof NotificationSettings>(
     key: K,
     value: NotificationSettings[K],
@@ -541,6 +562,9 @@ interface ConfigActions {
     category: NotifCategory,
     value: boolean | "inherit",
   ) => void;
+  // v42: replace the muted-category list for one qBittorrent instance. An
+  // empty list deletes the entry; an empty map is stored as undefined.
+  setQbtMutedCategories: (instanceId: string, categories: string[]) => void;
 
   // Lookup helpers. instanceId is optional — when omitted, the active instance
   // for that kind is used (legacy single-instance behavior).
@@ -996,6 +1020,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   globalCustomHeaders: {},
   uiScale: DEFAULT_UI_SCALE,
   appTheme: DEFAULT_APP_THEME,
+  weekStart: DEFAULT_WEEK_START,
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 
   hydrate: async () => {
@@ -1456,6 +1481,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ? storedAppTheme
       : DEFAULT_APP_THEME;
 
+    const storedWeekStart = getString(STORAGE_KEYS.weekStart);
+    const weekStart: WeekStart = isValidWeekStart(storedWeekStart)
+      ? storedWeekStart
+      : DEFAULT_WEEK_START;
+
     // Notification settings persisted under their own AsyncStorage key since
     // v2 (originally owned by a standalone notifications-store). Merge over
     // defaults so a partially-stored payload (older app picking up newer
@@ -1551,6 +1581,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders,
       uiScale,
       appTheme,
+      weekStart,
       notificationSettings,
       hydrated: true,
     });
@@ -1580,6 +1611,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeInstance: async (id, instanceId) => {
+    // The cached HTTP Digest nonce is keyed by instance, so drop it with the
+    // instance rather than leaving it in the map for the process lifetime.
+    clearDigestSessions(instanceId);
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
@@ -1631,6 +1665,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
       // v21: drop any per-instance notification overrides keyed to the
       // deleted instance so orphan keys don't accumulate in storage.
+      // v42: same for the muted-category map.
       let notificationSettings = state.notificationSettings;
       if (notificationSettings.perInstance?.[instanceId] !== undefined) {
         const { [instanceId]: _drop, ...rest } = notificationSettings.perInstance;
@@ -1638,6 +1673,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           ...notificationSettings,
           perInstance: Object.keys(rest).length === 0 ? undefined : rest,
         };
+      }
+      if (notificationSettings.qbtMutedCategories?.[instanceId] !== undefined) {
+        const { [instanceId]: _drop, ...rest } = notificationSettings.qbtMutedCategories;
+        notificationSettings = {
+          ...notificationSettings,
+          qbtMutedCategories: Object.keys(rest).length === 0 ? undefined : rest,
+        };
+      }
+      if (notificationSettings !== state.notificationSettings) {
         setJSON(STORAGE_KEYS.notificationSettings, notificationSettings);
       }
 
@@ -2460,6 +2504,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ appTheme: theme });
   },
 
+  setWeekStart: (weekStart) => {
+    if (!isValidWeekStart(weekStart)) return;
+    setString(STORAGE_KEYS.weekStart, weekStart);
+    set({ weekStart });
+  },
+
   setNotificationSetting: (key, value) => {
     const next = { ...get().notificationSettings, [key]: value };
     setJSON(STORAGE_KEYS.notificationSettings, next);
@@ -2483,6 +2533,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const next: NotificationSettings = {
       ...current,
       perInstance: Object.keys(map).length === 0 ? undefined : map,
+    };
+    setJSON(STORAGE_KEYS.notificationSettings, next);
+    set({ notificationSettings: next });
+  },
+
+  setQbtMutedCategories: (instanceId, categories) => {
+    const current = get().notificationSettings;
+    const map = { ...(current.qbtMutedCategories ?? {}) };
+    const deduped = [...new Set(categories)];
+    if (deduped.length === 0) {
+      delete map[instanceId];
+    } else {
+      map[instanceId] = deduped;
+    }
+    const next: NotificationSettings = {
+      ...current,
+      qbtMutedCategories: Object.keys(map).length === 0 ? undefined : map,
     };
     setJSON(STORAGE_KEYS.notificationSettings, next);
     set({ notificationSettings: next });
@@ -2668,6 +2735,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders,
       uiScale,
       appTheme,
+      weekStart,
       notificationSettings: notifSettings,
     } = get();
     const { url, sharedSecret, deviceId } = useBackendStore.getState();
@@ -2692,6 +2760,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders,
       uiScale,
       appTheme,
+      weekStart,
     };
 
     onStage?.("encrypting");
@@ -2867,6 +2936,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ? payload.appTheme
       : DEFAULT_APP_THEME;
     setString(STORAGE_KEYS.appTheme, importedAppTheme);
+    const importedWeekStart: WeekStart = isValidWeekStart(payload.weekStart)
+      ? payload.weekStart
+      : DEFAULT_WEEK_START;
+    setString(STORAGE_KEYS.weekStart, importedWeekStart);
     const importedServicesOrder = sanitizeServicesOrder(payload.servicesOrder);
     setJSON(STORAGE_KEYS.servicesOrder, importedServicesOrder);
 
@@ -2922,6 +2995,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       globalCustomHeaders: importedGlobalCustomHeaders,
       uiScale: importedUiScale,
       appTheme: importedAppTheme,
+      weekStart: importedWeekStart,
       notificationSettings: importedNotificationSettings,
     });
 

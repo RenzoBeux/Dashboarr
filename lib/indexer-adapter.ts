@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import type { UseQueryResult } from "@tanstack/react-query";
 import type { ServiceId } from "@/lib/constants";
 
 // Shared release-search surface for indexer proxies (Prowlarr, Jackett). The
@@ -37,10 +36,31 @@ export interface GrabFlowProps {
 
 // Self-contained grab affordance: owns its own modals/mutations so the shared
 // views never branch on kind (same trick as TorrentAdapter.SpeedLimitsControl).
+export interface IndexerSearchOptions {
+  instanceId?: string;
+  // Restrict the search to one indexer, as a string on both sides (Jackett's
+  // tracker slug, Prowlarr's numeric id) so the shared views stay kind-blind.
+  // Undefined searches every configured indexer.
+  indexerId?: string;
+}
+
+// Minimal query-state surface the shared search views consume. A plain
+// UseQueryResult satisfies it structurally (Prowlarr); Jackett synthesizes it
+// from one query per indexer (lib/indexer-adapters/jackett-fanout.ts).
+export interface IndexerSearchState {
+  data: UnifiedRelease[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+}
+
 export interface IndexerSearchAdapter {
   serviceId: ServiceId;
   displayName: string;
   // Wraps the kind-specific search hook and maps results to UnifiedRelease[].
-  useSearch: (query: string, instanceId?: string) => UseQueryResult<UnifiedRelease[]>;
+  useSearch: (
+    query: string,
+    opts?: IndexerSearchOptions,
+  ) => IndexerSearchState;
   GrabFlow: ComponentType<GrabFlowProps>;
 }

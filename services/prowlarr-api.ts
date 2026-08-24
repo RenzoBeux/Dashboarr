@@ -1,4 +1,5 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   ProwlarrIndexer,
   ProwlarrIndexerStatus,
@@ -49,11 +50,16 @@ export function toggleIndexer(
 
 // --- Search ---
 
+// Fans out to every configured indexer, so it gets the interactive-search
+// timeout rather than the 15s default. `signal` is the caller's (TanStack
+// Query's) cancel channel — without it a hung fetch outlives the search that
+// started it and later searches dedupe onto the zombie (#290, #314).
 export function searchAll(
   query: string,
   indexerIds?: number[],
   categories?: number[],
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<ProwlarrSearchResult[]> {
   const params: Record<string, string | number | boolean> = {
     query,
@@ -67,7 +73,9 @@ export function searchAll(
   }
   return serviceRequest<ProwlarrSearchResult[]>("prowlarr", "/search", {
     params,
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
+    signal,
   });
 }
 

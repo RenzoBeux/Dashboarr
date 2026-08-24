@@ -19,6 +19,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import type { RatingsBundle } from "@/lib/types";
+import { useWindowControlsInset } from "@/hooks/use-window-controls-inset";
+import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Backdrop is shallower than the side-by-side variant: the focal point shifts
@@ -54,6 +56,11 @@ export function MediaDetailHero({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const handleBack = onBack ?? (() => router.back());
+  // The hero is edge-to-edge, so the button's default offset (left-3, 0.75rem)
+  // is measured from the window edge — same origin as the iPadOS 26
+  // window-control inset. Whichever is larger keeps the button clear (#342).
+  const windowControls = useWindowControlsInset();
+  const backLeft = Math.max(0.75 * BASE_REM * useUiScale(), windowControls.left);
 
   const backdropOpacity = useSharedValue(0);
   const posterOpacity = useSharedValue(0);
@@ -133,8 +140,8 @@ export function MediaDetailHero({
         <Pressable
           onPress={handleBack}
           hitSlop={12}
-          className="absolute left-3 bg-black/50 rounded-full p-2 active:opacity-70"
-          style={{ top: insets.top + 8 }}
+          className="absolute bg-black/50 rounded-full p-2 active:opacity-70"
+          style={{ top: insets.top + 8, left: backLeft }}
         >
           <Icon icon={ArrowLeft} size={22} color="#fff" />
         </Pressable>

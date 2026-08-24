@@ -1,7 +1,9 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   RadarrMovie,
   RadarrQueue,
+  RadarrManualImportItem,
   RadarrHistory,
   RadarrHistoryRecord,
   RadarrWantedMissing,
@@ -9,12 +11,8 @@ import type {
   RadarrImage,
   RadarrRelease,
   RadarrCollection,
+  ArrQueueRemoveOptions,
 } from "@/lib/types";
-
-// Interactive search hits indexers live and frequently exceeds the 15s
-// default timeout. Bump per-call to keep slow indexers from short-circuiting
-// the whole search.
-const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
 // --- Image helpers ---
 
@@ -70,14 +68,95 @@ export function getCollectionByTmdbId(
 
 // --- Queue ---
 
+// `includeUnknownMovieItems` matters for the queue-issues banner (#285): a
+// grab whose movie was deleted from the library is exactly the kind that gets
+// stuck, and Radarr hides those by default. The page size is generous for the
+// same reason — blocked items have no `timeleft` and sort last under the
+// default sort, so a small page would clip them off.
 export function getQueue(
   page = 1,
-  pageSize = 20,
+  pageSize = 100,
   includeMovie = true,
   instanceId?: string,
 ): Promise<RadarrQueue> {
   return serviceRequest<RadarrQueue>("radarr", "/queue", {
-    params: { page, pageSize, includeMovie },
+    params: { page, pageSize, includeMovie, includeUnknownMovieItems: true },
+    instanceId,
+  });
+}
+
+/**
+ * Removes a queue item. See ArrQueueRemoveOptions for what the flags do; the
+ * defaults match Radarr's own (`removeFromClient=true`, no blocklist).
+ */
+export function removeFromQueue(
+  queueId: number,
+  opts: ArrQueueRemoveOptions = {},
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("radarr", `/queue/${queueId}`, {
+    method: "DELETE",
+    params: {
+      removeFromClient: opts.removeFromClient ?? true,
+      blocklist: opts.blocklist ?? false,
+      skipRedownload: opts.skipRedownload ?? false,
+    },
+    instanceId,
+  });
+}
+
+// --- Force import (#325) ---
+
+// The import candidates Radarr matched for a completed download — the same
+// list its own Manual Import screen shows. `filterExistingFiles: false` so
+// nothing the scan found is hidden from the eligibility check below.
+function getManualImportItems(
+  downloadId: string,
+  instanceId?: string,
+): Promise<RadarrManualImportItem[]> {
+  return serviceRequest<RadarrManualImportItem[]>("radarr", "/manualimport", {
+    params: { downloadId, filterExistingFiles: false },
+    instanceId,
+  });
+}
+
+/**
+ * Imports a completed download Radarr refused to import ("Import blocked",
+ * typically a grab-anyway release that isn't a quality upgrade), replacing the
+ * existing movie file. The app-side equivalent of desktop Manual Import: fetch
+ * Radarr's own candidates for the download, then issue a ManualImport command
+ * for every file it identified — the command imports regardless of rejections,
+ * which is the "force". File payload mirrors Radarr's web UI
+ * (InteractiveImportModalContent). Only files Radarr matched to a movie with a
+ * parsed quality qualify; anything unidentified needs the desktop screen's
+ * manual mapping, so with no qualifying file this rejects instead of silently
+ * importing nothing.
+ */
+export async function forceImportQueueItem(
+  downloadId: string,
+  instanceId?: string,
+): Promise<void> {
+  const candidates = await getManualImportItems(downloadId, instanceId);
+  const files = candidates
+    .filter((c) => c.path && c.movie && c.quality)
+    .map((c) => ({
+      path: c.path,
+      folderName: c.folderName,
+      movieId: c.movie!.id,
+      quality: c.quality,
+      languages: c.languages ?? [],
+      releaseGroup: c.releaseGroup,
+      indexerFlags: c.indexerFlags ?? 0,
+      downloadId,
+    }));
+  if (files.length === 0) {
+    throw new Error(
+      "Radarr couldn't match this download to a movie. Use Manual Import in Radarr to map it.",
+    );
+  }
+  return serviceRequest<void>("radarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "ManualImport", files, importMode: "auto" }),
     instanceId,
   });
 }

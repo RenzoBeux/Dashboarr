@@ -214,7 +214,9 @@ const STATE_BADGE: Record<
   StateGroup,
   { color: string; icon: typeof Download } | null
 > = {
-  downloading: { color: "rgba(59, 130, 246, 0.9)", icon: Download },
+  // Purple matches the tile's own progress strip (downloadStatusColor) and the
+  // Downloads tab — the corner icon was the last blue "downloading" cue left.
+  downloading: { color: "rgba(168, 85, 247, 0.9)", icon: Download },
   seeding: { color: "rgba(34, 197, 94, 0.9)", icon: Upload },
   paused: { color: "rgba(245, 158, 11, 0.9)", icon: Pause },
   errored: { color: "rgba(239, 68, 68, 0.9)", icon: CircleAlert },

@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react-native";
+import { ArrowDownToLine } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { ICON } from "@/lib/constants";
@@ -31,7 +31,9 @@ export function AppUpdateChecker() {
           ? [
               {
                 label: "Update now",
-                icon: <Icon icon={Sparkles} size={ICON.MD} color="#3b82f6" />,
+                icon: (
+                  <Icon icon={ArrowDownToLine} size={ICON.MD} color="#3b82f6" />
+                ),
                 onPress: () => openStore(pending.storeUrl),
               },
               {

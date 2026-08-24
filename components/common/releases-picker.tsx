@@ -464,8 +464,11 @@ export function ReleasesPicker({
         </View>
       )}
 
-      {/* Auto-flip notice */}
-      {autoFlippedRejected && (
+      {/* Auto-flip notice. Only when the flip actually made rows visible — if a
+          custom filter still hides everything, "showing them so you can review"
+          would be false and the "No releases match filters" empty state is the
+          accurate message (#331). */}
+      {autoFlippedRejected && filtered.length > 0 && (
         <View className="bg-amber-950/60 border border-amber-900/60 rounded-xl px-3 py-2 mb-3 flex-row items-center justify-between">
           <Text className="text-amber-100 text-xs flex-1 leading-4">
             All releases were rejected — showing them so you can review.

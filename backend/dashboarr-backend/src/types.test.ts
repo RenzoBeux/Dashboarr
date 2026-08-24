@@ -5,6 +5,7 @@ import {
   notificationSettingsSchema,
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./types.js";
+import { isQbtCategoryMuted } from "./workers/transitions.js";
 
 /**
  * Regression guard for the bug where the app sends a config entry for a service
@@ -92,4 +93,36 @@ test("apprise sub-fields default when partially provided", () => {
   if (!result.success) return;
   assert.equal(result.data.apprise?.enabled, false);
   assert.equal(result.data.apprise?.tags, "");
+});
+
+// qbtMutedCategories (issue #310) — optional per-instance category mute list.
+
+test("notifications without qbtMutedCategories still parse (back-compat)", () => {
+  const result = notificationSettingsSchema.safeParse(DEFAULT_NOTIFICATION_SETTINGS);
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.qbtMutedCategories, undefined);
+});
+
+test("qbtMutedCategories round-trips, including the uncategorized \"\" entry", () => {
+  const map = { "uuid-1": ["cross-seed-link", ""] };
+  const result = notificationSettingsSchema.safeParse({
+    ...DEFAULT_NOTIFICATION_SETTINGS,
+    qbtMutedCategories: map,
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.data.qbtMutedCategories, map);
+});
+
+test("isQbtCategoryMuted matches exactly and treats missing category as uncategorized", () => {
+  const map = { "uuid-1": ["cross-seed-link", ""] };
+  assert.equal(isQbtCategoryMuted(map, "uuid-1", "cross-seed-link"), true);
+  assert.equal(isQbtCategoryMuted(map, "uuid-1", "Cross-Seed-Link"), false);
+  assert.equal(isQbtCategoryMuted(map, "uuid-1", ""), true);
+  assert.equal(isQbtCategoryMuted(map, "uuid-1", undefined), true);
+  assert.equal(isQbtCategoryMuted(map, "uuid-1", "movies"), false);
+  assert.equal(isQbtCategoryMuted(map, "uuid-2", "cross-seed-link"), false);
+  assert.equal(isQbtCategoryMuted(undefined, "uuid-1", "cross-seed-link"), false);
+  assert.equal(isQbtCategoryMuted({ "uuid-1": [] }, "uuid-1", "cross-seed-link"), false);
 });

@@ -4,6 +4,14 @@ import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl } from "@/lib/url-validation";
+import {
+  basicAuthHeader,
+  digestSessionKey,
+  fetchWithDigestRetry,
+  listAuthSchemes,
+  parseAuthChallenges,
+  parseDigestChallenge,
+} from "@/lib/http-auth";
 
 export { buildUrl };
 
@@ -185,6 +193,18 @@ export function formatErrorForCopy(err: unknown): string {
   }
 }
 
+/**
+ * Services whose API sits behind an HTTP auth mount rather than an API key.
+ * These send Basic by default and upgrade to Digest when the server asks.
+ * Derived from the `httpAuth` flag on SERVICE_DEFAULTS so the list cannot
+ * drift from the per-service branches below. Transmission carries the flag too
+ * but has its own transport in services/transmission-api.ts, which calls
+ * fetchWithDigestRetry directly.
+ */
+function usesHttpAuth(serviceId: ServiceId): boolean {
+  return SERVICE_DEFAULTS[serviceId].httpAuth === true;
+}
+
 export async function serviceRequest<T>(
   serviceId: ServiceId,
   path: string,
@@ -205,7 +225,8 @@ export async function serviceRequest<T>(
     // the path or query params — pass body through so the demo router can read
     // it. Other services ignore the third arg.
     const body = typeof fetchOptions.body === "string" ? fetchOptions.body : undefined;
-    return (getDemoResponse(serviceId, path, params, body) ?? undefined) as T;
+    return (getDemoResponse(serviceId, path, params, body, fetchOptions.method) ??
+      undefined) as T;
   }
 
   const targetId = instanceId ?? store.getActiveInstanceId(serviceId);
@@ -263,28 +284,18 @@ export async function serviceRequest<T>(
     // The login function must be called first to establish the session
   } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
     // apikey is injected as a query param above — no header needed
-  } else if (serviceId === "glances") {
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
-  } else if (serviceId === "nzbget") {
-    // NZBGet uses HTTP Basic Auth with the Control username/password from
-    // nzbget.conf. Every method call is JSON-RPC over POST, so default the
-    // content type here and let services/nzbget-api.ts pass the JSON body.
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
-    headers.set("Content-Type", "application/json");
-  } else if (serviceId === "rtorrent") {
-    // rtorrent/ruTorrent: HTTP Basic auth in front of the XML-RPC mount. The
-    // api module (services/rtorrent-api.ts) sets Content-Type: text/xml on the
-    // body itself, so don't force JSON here.
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
+  } else if (usesHttpAuth(serviceId)) {
+    // HTTP auth mount in front of the API: NZBGet's ControlUsername/Password,
+    // Glances' optional server auth, the web server in front of rtorrent's
+    // XML-RPC mount. basicAuthHeader sends on EITHER field, matching the probe
+    // (a token-in-password setup is valid), and a Digest server rejects Basic
+    // so fetchWithDigestRetry answers the challenge below.
+    const basic = basicAuthHeader(secrets.username, secrets.password);
+    if (basic) headers.set("Authorization", basic);
+    // NZBGet is JSON-RPC over POST, so default the content type here and let
+    // services/nzbget-api.ts pass the body. rtorrent must NOT get this:
+    // services/rtorrent-api.ts sets Content-Type: text/xml itself.
+    if (serviceId === "nzbget") headers.set("Content-Type", "application/json");
   } else if (serviceId === "plex") {
     if (secrets.apiKey) {
       headers.set("X-Plex-Token", secrets.apiKey);
@@ -333,11 +344,17 @@ export async function serviceRequest<T>(
   }
 
   try {
-    const response = await fetch(url, {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    });
+    const fetchInit = { ...fetchOptions, signal: controller.signal };
+    const response = usesHttpAuth(serviceId)
+      ? await fetchWithDigestRetry(
+          url,
+          fetchInit,
+          headers,
+          secrets.username,
+          secrets.password,
+          digestSessionKey(targetId, baseUrl),
+        )
+      : await fetch(url, { ...fetchInit, headers });
 
     const contentType = response.headers.get("content-type");
 
@@ -438,30 +455,18 @@ export async function pingService(
     headers.set("Accept", "application/json");
   } else if (serviceId === "jellyfin" || serviceId === "emby") {
     if (secrets.apiKey) headers.set("X-Emby-Token", secrets.apiKey);
-  } else if (serviceId === "glances") {
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
+  } else if (usesHttpAuth(serviceId)) {
+    // Same credential rule as serviceRequest — the `&&` this used to require
+    // left a token-in-password instance pinged anonymously. No Digest retry
+    // here on purpose: a ping only asks "is anything answering", and 401 is
+    // already < 500 (reachable), so answering the challenge would cost a round
+    // trip without changing the verdict. Credential validity is checkInstance-
+    // Health's job, and that goes through the full probe.
+    const basic = basicAuthHeader(secrets.username, secrets.password);
+    if (basic) headers.set("Authorization", basic);
+    if (serviceId === "nzbget" || serviceId === "transmission") {
+      headers.set("Content-Type", "application/json");
     }
-  } else if (serviceId === "nzbget") {
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
-    headers.set("Content-Type", "application/json");
-  } else if (serviceId === "rtorrent") {
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
-  } else if (serviceId === "transmission") {
-    // Transmission: optional HTTP Basic auth in front of the JSON-RPC mount.
-    // The ping POSTs session-get; the CSRF 409 still counts as reachable.
-    if (secrets.username && secrets.password) {
-      const encoded = btoa(`${secrets.username}:${secrets.password}`);
-      headers.set("Authorization", `Basic ${encoded}`);
-    }
-    headers.set("Content-Type", "application/json");
   } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
     // apikey already in query params
   } else if (serviceId === "tracearr") {
@@ -553,6 +558,11 @@ export interface ConnectionTestInput {
   // probe matches the wire shape of real requests (reverse-proxy headers,
   // overrides, etc.).
   customHeaders?: Record<string, string>;
+  // The instance these values belong to, when they came from storage rather
+  // than an unsaved form. Only used to key the Digest session cache the same
+  // way serviceRequest does, so a health check and the real requests that
+  // follow it share one server nonce instead of each paying a 401.
+  instanceId?: string;
 }
 
 export async function testServiceConnection(
@@ -646,6 +656,7 @@ export async function checkInstanceHealth(
     username: secrets.username,
     password: secrets.password,
     customHeaders: secrets.customHeaders,
+    instanceId,
   });
 }
 
@@ -653,6 +664,56 @@ type ProbeOutcome =
   | { kind: "ok" }
   | { kind: "auth_failed"; message: string }
   | { kind: "unreachable"; message: string };
+
+/**
+ * Turn a 401 into an auth_failed outcome that names the real problem instead of
+ * always blaming the password (#352). A Digest challenge we can compute has
+ * already been answered and retried by fetchWithDigestRetry before this runs,
+ * so anything arriving here is unanswerable, unsupported, or a genuine
+ * credential rejection.
+ */
+function classifyUnauthorized(
+  res: Response,
+  username: string,
+  password: string,
+): ProbeOutcome {
+  // One parse feeding both views: the header is walked once per 401 instead
+  // of once for the Digest challenge and again for the scheme list.
+  const challenges = parseAuthChallenges(res.headers.get("www-authenticate") ?? "");
+  const digest = parseDigestChallenge(challenges);
+  const schemes = listAuthSchemes(challenges);
+
+  // Only complain about an unanswerable Digest challenge when Digest was the
+  // server's only offer. A server advertising Basic alongside it already got a
+  // Basic attempt from us, so a 401 means the credentials are what failed.
+  if (
+    digest?.unsupported &&
+    !schemes.some((scheme) => scheme.toLowerCase() === "basic")
+  ) {
+    return {
+      kind: "auth_failed",
+      message: `Server requires a Digest variant Dashboarr cannot answer: ${digest.unsupported}`,
+    };
+  }
+  if (
+    schemes.length > 0 &&
+    !schemes.some((scheme) => ["basic", "digest"].includes(scheme.toLowerCase()))
+  ) {
+    return {
+      kind: "auth_failed",
+      message: `Server requires ${schemes.join(" or ")} authentication, but Dashboarr only supports HTTP Basic and Digest authentication`,
+    };
+  }
+  // With both fields empty there is no password to be wrong: the server is
+  // simply asking for one.
+  return {
+    kind: "auth_failed",
+    message:
+      username || password
+        ? "Wrong username or password"
+        : "Server requires credentials",
+  };
+}
 
 async function runConnectionProbe(
   serviceId: ServiceId,
@@ -729,16 +790,22 @@ async function runConnectionProbe(
       // JSON-RPC POST with Basic auth. Bad creds → 401.
       const url = buildUrl(baseUrl, defaults.apiBasePath, "");
       const extra: Record<string, string> = { "Content-Type": "application/json" };
-      if (username || password) {
-        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
-      }
-      const res = await fetch(url, {
-        method: "POST",
-        headers: makeHeaders(extra),
-        body: JSON.stringify({ version: "1.1", method: "version", params: [] }),
-        signal,
-      });
-      if (res.status === 401 || res.status === 403)
+      const basic = basicAuthHeader(username, password);
+      if (basic) extra["Authorization"] = basic;
+      const res = await fetchWithDigestRetry(
+        url,
+        {
+          method: "POST",
+          body: JSON.stringify({ version: "1.1", method: "version", params: [] }),
+          signal,
+        },
+        makeHeaders(extra),
+        username,
+        password,
+        digestSessionKey(input.instanceId, baseUrl),
+      );
+      if (res.status === 401) return classifyUnauthorized(res, username, password);
+      if (res.status === 403)
         return { kind: "auth_failed", message: "Wrong username or password" };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
@@ -842,18 +909,18 @@ async function runConnectionProbe(
       // more helpful "server requires credentials" message instead.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
       const extra: Record<string, string> = {};
-      if (username || password) {
-        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
-      }
-      const res = await fetch(url, { method: "GET", headers: makeHeaders(extra), signal });
+      const basic = basicAuthHeader(username, password);
+      if (basic) extra["Authorization"] = basic;
+      const res = await fetchWithDigestRetry(
+        url,
+        { method: "GET", signal },
+        makeHeaders(extra),
+        username,
+        password,
+        digestSessionKey(input.instanceId, baseUrl),
+      );
       if (res.status === 401 || res.status === 403) {
-        return {
-          kind: "auth_failed",
-          message:
-            username || password
-              ? "Wrong username or password"
-              : "Server requires credentials",
-        };
+        return classifyUnauthorized(res, username, password);
       }
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
@@ -900,25 +967,40 @@ async function runConnectionProbe(
 
     case "rtorrent": {
       // rtorrent has no GET endpoint — POST a tiny XML-RPC system.listMethods
-      // to the /RPC2 mount. Basic auth guards it: 401/403 → bad creds. A
-      // well-formed <methodResponse> (even a <fault>) means we reached an
-      // XML-RPC endpoint and authenticated; an HTML body (e.g. the ruTorrent
-      // UI) means the URL points somewhere other than the RPC mount.
+      // to the /RPC2 mount. Basic and Digest are both answered, so a 401 that
+      // survives the retry gets its challenge inspected before deciding whether
+      // credentials or the server's auth scheme need attention. A well-formed
+      // <methodResponse> (even a <fault>) means we reached an XML-RPC endpoint
+      // and authenticated; an HTML body (e.g. the ruTorrent UI) means the URL
+      // points somewhere else.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
       const extra: Record<string, string> = { "Content-Type": "text/xml" };
-      // Match the nzbget/glances probes: send Basic auth if EITHER field is set
-      // (a token-in-password / empty-username setup is valid).
-      if (username || password) {
-        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
+      // basicAuthHeader sends if EITHER field is set (a token-in-password /
+      // empty-username setup is valid). A Digest server rejects Basic, and
+      // fetchWithDigestRetry answers the challenge.
+      const basic = basicAuthHeader(username, password);
+      if (basic) extra["Authorization"] = basic;
+      const res = await fetchWithDigestRetry(
+        url,
+        {
+          method: "POST",
+          body: '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>',
+          signal,
+        },
+        makeHeaders(extra),
+        username,
+        password,
+        digestSessionKey(input.instanceId, baseUrl),
+      );
+      if (res.status === 401)
+        return classifyUnauthorized(res, username, password);
+      if (res.status === 403) {
+        return {
+          kind: "auth_failed",
+          message:
+            "RPC access forbidden — check /RPC2 server or reverse-proxy access rules",
+        };
       }
-      const res = await fetch(url, {
-        method: "POST",
-        headers: makeHeaders(extra),
-        body: '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>',
-        signal,
-      });
-      if (res.status === 401 || res.status === 403)
-        return { kind: "auth_failed", message: "Wrong username or password" };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (!res.ok)
@@ -940,16 +1022,22 @@ async function runConnectionProbe(
       // 200 with result:"success" (server not enforcing CSRF) is also ok.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
       const extra: Record<string, string> = { "Content-Type": "application/json" };
-      if (username || password) {
-        extra["Authorization"] = `Basic ${btoa(`${username}:${password}`)}`;
-      }
-      const res = await fetch(url, {
-        method: "POST",
-        headers: makeHeaders(extra),
-        body: JSON.stringify({ method: "session-get" }),
-        signal,
-      });
-      if (res.status === 401 || res.status === 403)
+      const basic = basicAuthHeader(username, password);
+      if (basic) extra["Authorization"] = basic;
+      const res = await fetchWithDigestRetry(
+        url,
+        {
+          method: "POST",
+          body: JSON.stringify({ method: "session-get" }),
+          signal,
+        },
+        makeHeaders(extra),
+        username,
+        password,
+        digestSessionKey(input.instanceId, baseUrl),
+      );
+      if (res.status === 401) return classifyUnauthorized(res, username, password);
+      if (res.status === 403)
         return { kind: "auth_failed", message: "Wrong username or password" };
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };

@@ -361,6 +361,26 @@ export interface RadarrImage {
   remoteUrl: string;
 }
 
+// A single queue status message as *arr reports it: `title` is usually the
+// release/file it applies to and `messages` the reasons, but a bare reason
+// arrives as a title with an empty `messages` array. Shared by every *arr queue.
+export interface ArrQueueStatusMessage {
+  title: string;
+  messages?: string[];
+}
+
+/**
+ * Query params for `DELETE /queue/{id}`, identical across Radarr v3, Sonarr v3
+ * and Lidarr v1. `blocklist` marks the grab as failed so the release is never
+ * picked up again; `skipRedownload` then suppresses the replacement search that
+ * failure would otherwise trigger (it has no effect without `blocklist`).
+ */
+export interface ArrQueueRemoveOptions {
+  removeFromClient?: boolean;
+  blocklist?: boolean;
+  skipRedownload?: boolean;
+}
+
 export interface RadarrQueueItem {
   id: number;
   movieId: number;
@@ -368,7 +388,10 @@ export interface RadarrQueueItem {
   status: string;
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
-  statusMessages: { title: string; messages: string[] }[];
+  // Why the grab is stuck, when it is. Radarr omits both on a healthy record
+  // and `statusMessages` entirely on some responses, so both are optional.
+  statusMessages?: ArrQueueStatusMessage[];
+  errorMessage?: string;
   size: number;
   sizeleft: number;
   timeleft?: string;
@@ -376,6 +399,8 @@ export interface RadarrQueueItem {
   protocol: string;
   downloadId?: string;
   downloadClient?: string;
+  indexer?: string;
+  added?: string;
   quality: { quality: { name: string } };
   movie?: RadarrMovie;
 }
@@ -391,6 +416,26 @@ export interface RadarrQueue {
 export interface ArrQualityModel {
   quality: { id: number; name: string; source?: string; resolution?: number };
   revision?: { version?: number; real?: number; isRepack?: boolean };
+}
+
+// A candidate file from `GET /manualimport?downloadId=` — the list Radarr's own
+// Manual Import screen shows for a completed download (#325). `quality` and
+// `languages` round-trip verbatim into the ManualImport command, so only the
+// fields the force-import flow reads are typed.
+export interface RadarrManualImportItem {
+  id: number;
+  path?: string;
+  relativePath?: string;
+  folderName?: string;
+  name?: string;
+  size?: number;
+  movie?: { id: number; title?: string };
+  quality?: ArrQualityModel;
+  languages?: { id: number; name: string }[];
+  releaseGroup?: string;
+  downloadId?: string;
+  indexerFlags?: number;
+  rejections?: { reason: string }[];
 }
 
 // The `data` bag on a history record. The *arr API types it as
@@ -678,12 +723,17 @@ export interface SonarrQueueItem {
   status: string;
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
+  statusMessages?: ArrQueueStatusMessage[];
+  errorMessage?: string;
   size: number;
   sizeleft: number;
   timeleft?: string;
   estimatedCompletionTime?: string;
   protocol: string;
   downloadId?: string;
+  downloadClient?: string;
+  indexer?: string;
+  added?: string;
   quality: { quality: { name: string } };
   series?: SonarrSeries;
   episode?: SonarrEpisode;
@@ -694,6 +744,29 @@ export interface SonarrQueue {
   pageSize: number;
   totalRecords: number;
   records: SonarrQueueItem[];
+}
+
+// Sonarr's counterpart of RadarrManualImportItem: file→episode mapping instead
+// of a movie, plus `releaseType`/`episodeFileId` which its ManualImport command
+// accepts and Radarr's does not.
+export interface SonarrManualImportItem {
+  id: number;
+  path?: string;
+  relativePath?: string;
+  folderName?: string;
+  name?: string;
+  size?: number;
+  series?: { id: number; title?: string };
+  seasonNumber?: number;
+  episodes?: { id: number }[];
+  episodeFileId?: number;
+  releaseType?: string;
+  quality?: ArrQualityModel;
+  languages?: { id: number; name: string }[];
+  releaseGroup?: string;
+  downloadId?: string;
+  indexerFlags?: number;
+  rejections?: { reason: string }[];
 }
 
 // Paged /wanted/missing response — aired, monitored episodes without a file.
@@ -841,7 +914,8 @@ export interface LidarrQueueItem {
   status: string;
   trackedDownloadStatus?: string;
   trackedDownloadState?: string;
-  statusMessages?: { title: string; messages: string[] }[];
+  statusMessages?: ArrQueueStatusMessage[];
+  errorMessage?: string;
   size: number;
   sizeleft: number;
   timeleft?: string;
@@ -849,6 +923,8 @@ export interface LidarrQueueItem {
   protocol: string;
   downloadId?: string;
   downloadClient?: string;
+  indexer?: string;
+  added?: string;
   quality: { quality: { name: string } };
   artist?: LidarrArtist;
   album?: LidarrAlbum;
@@ -1565,6 +1641,17 @@ export interface JackettIndexerResult {
   Status: number;
   Results: number;
   Error: string | null;
+  // Milliseconds the tracker took to answer. Present on modern Jackett builds.
+  ElapsedTime?: number;
+}
+
+// Outcome of the per-indexer test in services/jackett-api.ts — an empty-term
+// browse, mirroring what Jackett's own (cookie-authed) test endpoint runs.
+export interface JackettIndexerTestResult {
+  ok: boolean;
+  results: number;
+  elapsedMs?: number;
+  error?: string;
 }
 
 export interface JackettResultsResponse {

@@ -175,6 +175,11 @@ function QbDownloadWatcher({
 }) {
   const { data: downloading } = useDownloadingTorrentsForWatcher(active, instanceId);
   const prevDownloading = useRef<Map<string, QBTorrent>>(new Map());
+  // v42 (#310): user-muted categories for this instance. Exact, case-sensitive
+  // names; "" mutes uncategorized torrents.
+  const mutedList = useConfigStore(
+    (s) => s.notificationSettings.qbtMutedCategories?.[instanceId],
+  );
 
   // Reset the baseline whenever the watcher goes inactive so the next active
   // poll doesn't compare against a stale snapshot from before the gap.
@@ -205,10 +210,14 @@ function QbDownloadWatcher({
           { hashes: departed.map((t) => t.hash) },
           instanceId,
         );
-        const stateByHash = new Map(list.map((t) => [t.hash, t.state]));
+        const freshByHash = new Map(list.map((t) => [t.hash, t]));
+        const muted = new Set(mutedList ?? []);
         for (const t of departed) {
-          const newState = stateByHash.get(t.hash);
-          if (newState && isCompletedState(newState)) {
+          const fresh = freshByHash.get(t.hash);
+          if (fresh && isCompletedState(fresh.state)) {
+            // Prefer the fresh fetch's category (it may have changed since the
+            // torrent entered the downloading snapshot).
+            if (muted.has(fresh.category ?? t.category ?? "")) continue;
             sendLocalNotification({
               title: "Download complete",
               body: t.name,
@@ -221,7 +230,7 @@ function QbDownloadWatcher({
         // than risk a false positive.
       }
     })();
-  }, [downloading, active, instanceId]);
+  }, [downloading, active, instanceId, mutedList]);
 
   return null;
 }

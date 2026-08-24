@@ -1,32 +1,31 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "expo-router";
-import { Music } from "lucide-react-native";
+import { Music, Mic2 } from "lucide-react-native";
 import { SearchSection } from "@/components/search/search-section";
+import { ArrLibraryRow } from "@/components/search/arr-library-row";
 import { LidarrSearchRow } from "@/components/search/lidarr-search-row";
 import { AddArtistSheet } from "@/components/lidarr/add-artist-sheet";
-import { useLidarrSearch, useLidarrArtists } from "@/hooks/use-lidarr";
+import { useLidarrSearchRows } from "@/hooks/use-arr-search-rows";
 import type { LidarrArtistSearchResult } from "@/lib/types";
 
 const PREVIEW_LIMIT = 5;
+// See radarr-search-section.tsx for why library rows are capped in the preview.
+const LIBRARY_PREVIEW_LIMIT = 3;
 
-/** Music section of global search — Lidarr artist lookup, dedup by foreignArtistId. */
+/**
+ * Music section of global search — library matches first, then the Lidarr artist
+ * lookup deduped against them (#304).
+ */
 export function LidarrSearchSection({ query }: { query: string }) {
   const router = useRouter();
-  const { data: results, isLoading, isError, error } = useLidarrSearch(query);
-  const { data: existing } = useLidarrArtists();
+  const { rows, total, isLoading, isError, error } = useLidarrSearchRows(
+    query,
+    LIBRARY_PREVIEW_LIMIT,
+  );
   const [advancedTarget, setAdvancedTarget] =
     useState<LidarrArtistSearchResult | null>(null);
 
-  const existingByForeignId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const a of existing ?? []) {
-      map.set(a.foreignArtistId, a.id);
-    }
-    return map;
-  }, [existing]);
-
-  const all = results ?? [];
-  const preview = all.slice(0, PREVIEW_LIMIT);
+  const preview = rows.slice(0, PREVIEW_LIMIT);
 
   return (
     <>
@@ -34,27 +33,34 @@ export function LidarrSearchSection({ query }: { query: string }) {
         title="Music"
         icon={Music}
         serviceLabel="Lidarr"
-        total={all.length}
+        total={total}
         isLoading={isLoading}
         isError={isError}
         error={error}
-        hasMore={all.length > preview.length}
+        hasMore={total > preview.length}
         onShowAll={() => router.push({ pathname: "/artist/search", params: { q: query } })}
       >
-        {preview.map((result) => {
-          const existingId = existingByForeignId.get(result.foreignArtistId);
-          return (
+        {preview.map((row) =>
+          row.kind === "library" ? (
+            <ArrLibraryRow
+              key={row.key}
+              serviceId="lidarr"
+              fallbackIcon={Mic2}
+              display={row.display}
+              onOpen={() => router.push(`/artist/${row.id}`)}
+            />
+          ) : (
             <LidarrSearchRow
-              key={result.foreignArtistId}
-              result={result}
-              existingArtistId={existingId}
-              onAdvanced={() => setAdvancedTarget(result)}
+              key={row.key}
+              result={row.result}
+              existingArtistId={row.existingId}
+              onAdvanced={() => setAdvancedTarget(row.result)}
               onOpenExisting={() =>
-                existingId !== undefined && router.push(`/artist/${existingId}`)
+                row.existingId !== undefined && router.push(`/artist/${row.existingId}`)
               }
             />
-          );
-        })}
+          ),
+        )}
       </SearchSection>
 
       <AddArtistSheet

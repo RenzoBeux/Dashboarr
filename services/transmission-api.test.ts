@@ -19,6 +19,7 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(async () => {}),
 }));
 
+import { resetDigestSessions } from "@/lib/http-auth";
 import { useConfigStore } from "@/store/config-store";
 import {
   getTransmissionTorrents,
@@ -95,5 +96,139 @@ describe("transmission-api (demo mode)", () => {
     expect(detail?.trackers[0]?.seederCount).toBe(1240);
     // global seed-ratio mode in the fixture
     expect(detail?.seedRatioMode).toBe(0);
+  });
+});
+
+// The one interaction the http-client tests cannot cover: Transmission checks
+// HTTP auth before its CSRF layer, so a Digest realm in front of it means the
+// 401 handshake and the 409 session-id replay have to compose (#352).
+describe("transmission-api (Digest + CSRF)", () => {
+  const ID = "transmission-digest-uuid";
+  const URL = "http://tr-digest.local:9091";
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  function challenge() {
+    return {
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: new Headers({
+        "www-authenticate":
+          'Digest realm="transmission", algorithm=MD5, nonce="n1", qop="auth"',
+      }),
+      json: async () => {
+        throw new Error("not json");
+      },
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function csrf() {
+    return {
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      headers: new Headers({ "x-transmission-session-id": "sid-1" }),
+      json: async () => ({}),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function sessionOk() {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ result: "success", arguments: {} }),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  const headerOf = (call: any[], name: string) =>
+    (call[1].headers as Headers).get(name) ?? "";
+
+  let restore: Record<string, unknown>;
+
+  beforeAll(() => {
+    const state = useConfigStore.getState();
+    // Capture what we are about to overwrite: this block installs a real
+    // (non-demo) instance into the shared Zustand store, and without the
+    // matching afterAll any test appended after it would inherit one.
+    restore = {
+      demoMode: state.demoMode,
+      serviceInstances: state.serviceInstances,
+      instanceSecrets: state.instanceSecrets,
+      activeInstance: state.activeInstance,
+    };
+    useConfigStore.setState({
+      demoMode: false,
+      serviceInstances: {
+        ...state.serviceInstances,
+        transmission: [
+          {
+            id: ID,
+            enabled: true,
+            name: "Transmission",
+            localUrl: URL,
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      instanceSecrets: {
+        ...state.instanceSecrets,
+        [ID]: { username: "u", password: "p" },
+      },
+      activeInstance: { ...state.activeInstance, transmission: ID },
+    } as any);
+  });
+
+  afterAll(() => {
+    useConfigStore.setState(restore as any);
+  });
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    // Module state shared with every other suite in the process.
+    resetDigestSessions();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("answers the Digest challenge, then replays with the CSRF session id", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(challenge())
+      .mockResolvedValueOnce(csrf())
+      .mockResolvedValueOnce(sessionOk());
+
+    await expect(getTransmissionSession()).resolves.toBeDefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+    // 1: Basic, refused. 2: Digest answer, met with the CSRF challenge.
+    expect(headerOf(fetchSpy.mock.calls[0], "authorization")).toMatch(/^Basic /);
+    expect(headerOf(fetchSpy.mock.calls[1], "authorization")).toContain("nc=00000001");
+    expect(headerOf(fetchSpy.mock.calls[1], "x-transmission-session-id")).toBe("");
+
+    // 3: the replay keeps the authentication AND carries the session id, with
+    // the nonce reused rather than re-challenged.
+    const replay = fetchSpy.mock.calls[2];
+    expect(headerOf(replay, "authorization")).toMatch(/^Digest /);
+    expect(headerOf(replay, "authorization")).toContain("nc=00000002");
+    expect(headerOf(replay, "x-transmission-session-id")).toBe("sid-1");
   });
 });

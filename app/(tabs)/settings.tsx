@@ -5,6 +5,7 @@ import { Wifi, Bell, Palette, HardDrive, Info } from "lucide-react-native";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { StatusDot } from "@/components/ui/status-dot";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
+import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { APP_THEMES } from "@/lib/app-themes";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -57,6 +58,9 @@ export default function SettingsScreen() {
   // reflect ok/auth_failed/offline instead of just "any instance enabled".
   // Cached + polled by the shared hook — no extra requests fired here.
   const { data: healthData } = useServiceHealth();
+
+  // Keeps the title clear of the iPadOS 26 window-control cluster (#342).
+  const windowControlsPadding = useWindowControlsContentPadding();
 
   if (editingInstance) {
     return (
@@ -151,7 +155,7 @@ export default function SettingsScreen() {
 
   return (
     <ScreenWrapper>
-      <View className="mt-2 mb-4">
+      <View className="mt-2 mb-4" style={windowControlsPadding}>
         <Text className="text-zinc-100 text-2xl font-bold">Settings</Text>
         <Text className="text-zinc-500 text-xs mt-0.5">
           Applies to all dashboards

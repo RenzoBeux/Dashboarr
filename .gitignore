@@ -23,7 +23,10 @@ ios/
 modules/*/android/build/
 .env
 .env.local
-.claude/
+# Ignore local Claude Code state (settings.local.json, etc.)...
+.claude/*
+# ...but share the checked-in skills, which hold project guidance.
+!.claude/skills/
 google-services.json
 *-firebase-adminsdk-*.json
 play-service-account.json

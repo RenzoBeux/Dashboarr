@@ -24,6 +24,8 @@ import {
 } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
+import { QueueIssuesBanner } from "@/components/services/queue-issues-banner";
+import { sonarrArrQueueAdapter } from "@/lib/arr-queue-adapters/sonarr";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -348,6 +350,7 @@ export const TvView = memo(function TvView({
       </View>
 
       <HealthIssuesBanner serviceId="sonarr" className="mb-4" />
+      <QueueIssuesBanner adapter={sonarrArrQueueAdapter} className="mb-4" />
 
       <ScrollView
         horizontal

@@ -303,6 +303,28 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.radarr[0].defaultRootFolderPath).toBeUndefined();
     expect(result.services.radarr[0].defaultMetadataProfileId).toBeUndefined();
   });
+
+  it("round-trips tagAddedTorrents=true (v41)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { qbittorrent: [validInstance({ tagAddedTorrents: true })] },
+    });
+    expect(result.services.qbittorrent[0].tagAddedTorrents).toBe(true);
+  });
+
+  it("drops tagAddedTorrents when absent or non-true", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        qbittorrent: [
+          validInstance(),
+          validInstance({ id: "uuid-2", tagAddedTorrents: "yes" }),
+        ],
+      },
+    });
+    expect(result.services.qbittorrent[0].tagAddedTorrents).toBeUndefined();
+    expect(result.services.qbittorrent[1].tagAddedTorrents).toBeUndefined();
+  });
 });
 
 describe("validateExportPayload — service IDs (forward-compat silent drop)", () => {
@@ -945,6 +967,43 @@ describe("validateExportPayload — notification settings", () => {
         } as any,
       }),
     ).toThrow(/notificationSettings/);
+  });
+
+  it("round-trips qbtMutedCategories including the uncategorized \"\" entry (v42)", () => {
+    const qbtMutedCategories = { "inst-qbt-1": ["cross-seed-link", ""] };
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: { ...fullSettings, qbtMutedCategories },
+    });
+    expect(result.notificationSettings?.qbtMutedCategories).toEqual(qbtMutedCategories);
+  });
+
+  it("silently drops malformed qbtMutedCategories values instead of failing the import", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: {
+        ...fullSettings,
+        qbtMutedCategories: {
+          "inst-1": ["movies", 42, null],
+          "inst-2": "not-an-array",
+          "": ["orphan"],
+        },
+      } as any,
+    });
+    expect(result.notificationSettings?.qbtMutedCategories).toEqual({
+      "inst-1": ["movies"],
+    });
+  });
+
+  it("omits qbtMutedCategories entirely when nothing valid survives", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: {
+        ...fullSettings,
+        qbtMutedCategories: { "inst-1": [42] },
+      } as any,
+    });
+    expect(result.notificationSettings?.qbtMutedCategories).toBeUndefined();
   });
 });
 

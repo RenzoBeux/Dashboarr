@@ -1,6 +1,18 @@
-import { getQueue, getWantedMissing, getRadarrPoster } from "@/services/radarr-api";
+import {
+  getQueue,
+  getWantedMissing,
+  getRadarrPoster,
+  removeFromQueue,
+  forceImportQueueItem,
+} from "@/services/radarr-api";
 import type { RadarrQueue, RadarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
+import {
+  queueImportBlocked,
+  queueIssueMessages,
+  queueIssueSeverity,
+  queueStatusLabel,
+} from "@/lib/arr-queue-issues";
 
 export const radarrArrQueueAdapter: ArrQueueAdapter = {
   serviceId: "radarr",
@@ -14,7 +26,7 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
   wantedQueryKey: (instanceId) => ["radarr", instanceId, "wanted"] as const,
 
   // Same key + args as useRadarrQueue, so the widget shares its cache entry.
-  fetchQueue: (instanceId) => getQueue(1, 20, true, instanceId),
+  fetchQueue: (instanceId) => getQueue(1, 100, true, instanceId),
 
   toItems: (data, instanceId) =>
     ((data as RadarrQueue).records ?? []).map((item) => {
@@ -32,9 +44,21 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
         detailPath: movieId
           ? `/movie/${movieId}?instanceId=${instanceId}`
           : null,
+        releaseTitle: item.title,
+        severity: queueIssueSeverity(item),
+        statusLabel: queueStatusLabel(item),
+        messages: queueIssueMessages(item),
+        downloadId: item.downloadId,
+        canForceImport: queueImportBlocked(item) && !!item.downloadId,
       };
     }),
 
   fetchWanted: (instanceId) => getWantedMissing(1, 1, instanceId),
   wantedCount: (data) => (data as RadarrWantedMissing).totalRecords ?? 0,
+
+  removeFromQueue: (instanceId, queueId, opts) =>
+    removeFromQueue(queueId, opts, instanceId),
+
+  forceImport: (instanceId, downloadId) =>
+    forceImportQueueItem(downloadId, instanceId),
 };

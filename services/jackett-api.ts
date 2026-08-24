@@ -1,7 +1,12 @@
 import { XMLParser } from "fast-xml-parser";
 
 import { serviceRequest } from "@/lib/http-client";
-import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
+import type {
+  JackettIndexer,
+  JackettIndexerTestResult,
+  JackettResultsResponse,
+} from "@/lib/types";
 
 // Jackett API notes:
 //   - The apikey travels as a QUERY PARAM, injected centrally by
@@ -10,24 +15,97 @@ import type { JackettIndexer, JackettResultsResponse } from "@/lib/types";
 //     (/indexers, /server/config, per-indexer config/test) requires the
 //     admin-password COOKIE, so indexer management is out of reach and the
 //     indexer list comes from the Torznab meta endpoint instead.
-//   - v1 has no Tracker[]/Category[] filtering: RequestOptions.params cannot
-//     emit repeated query keys, and searching "all" matches what the Prowlarr
-//     surface does today anyway.
+//   - No Category[] filtering: RequestOptions.params cannot emit repeated query
+//     keys. Single-tracker filtering does not need one — the tracker is a PATH
+//     segment (`/indexers/{id}/results`).
 // Per-instance routing: every function takes an optional `instanceId`. When
 // omitted, the user's active Jackett is used.
 
 // --- Search ---
 
-// JSON manual-search endpoint (the one Jackett's own web UI uses). Returns
-// releases across every configured indexer plus per-indexer status rows.
-export function searchAll(
+// JSON manual-search endpoint (the one Jackett's own web UI uses), always
+// scoped to ONE tracker. Deliberately no all-indexers call: Jackett's `all`
+// meta-indexer answers only after EVERY configured tracker finishes
+// (Task.WhenAll in ResultsController, no server-side timeout), so a single
+// hung tracker stalls the aggregate past any client timeout — the "Aborted"
+// report in #314. The all-indexers search fans out one request per configured
+// indexer instead (lib/indexer-adapters/jackett.ts), so a stalled tracker
+// only loses its own rows. `signal` is the caller's cancel channel: without
+// it a hung fetch outlives the search that started it and later searches
+// dedupe onto the zombie.
+export async function searchIndexer(
   query: string,
+  indexerId: string,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<JackettResultsResponse> {
-  return serviceRequest<JackettResultsResponse>("jackett", "/indexers/all/results", {
-    params: { Query: query },
-    instanceId,
-  });
+  const resp = await runSearch(query, indexerId, instanceId, signal);
+  // Jackett answers 200 with `Results: []` whether nothing matched or the
+  // tracker blew up, which renders as a bare "No results" (#314). Promote the
+  // row's own Error string to a thrown error so the UI can tell them apart.
+  if (resp.Results.length === 0) {
+    const row = findIndexerRow(resp, indexerId);
+    if (row?.Error) throw new Error(row.Error);
+  }
+  return resp;
+}
+
+function runSearch(
+  query: string,
+  indexerId: string,
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<JackettResultsResponse> {
+  return serviceRequest<JackettResultsResponse>(
+    "jackett",
+    `/indexers/${encodeURIComponent(indexerId)}/results`,
+    {
+      params: { Query: query },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId,
+      signal,
+    },
+  );
+}
+
+// Jackett echoes one status row per queried indexer; match by id and fall back
+// to the sole row, since a tracker whose id differs in case still reports here.
+function findIndexerRow(resp: JackettResultsResponse, indexerId: string) {
+  return resp.Indexers?.find((i) => i.ID === indexerId) ?? resp.Indexers?.[0];
+}
+
+// --- Test ---
+
+// Per-indexer connectivity check (#315).
+//
+// Jackett's own Test button POSTs to /api/v2.0/indexers/{id}/test, which carries
+// no apikey filter and therefore falls under the global
+// `AuthorizeFilter(RequireAuthenticatedUser)` in Jackett's Startup.cs — i.e. the
+// admin-password cookie, out of reach here. So reproduce what that endpoint does
+// over the apikey-validated results route instead: IndexerManagerService
+// .TestIndexer builds a TorznabQuery with an EMPTY SearchTerm, runs it against
+// the one indexer, and throws when it comes back with zero releases. Same query,
+// same pass/fail rule — the per-indexer row in the JSON response carries the
+// tracker's own error string and result count.
+export async function testIndexer(
+  indexerId: string,
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<JackettIndexerTestResult> {
+  const resp = await runSearch("", indexerId, instanceId, signal);
+  const row = findIndexerRow(resp, indexerId);
+  const results = row?.Results ?? resp.Results.length;
+  const elapsedMs = row?.ElapsedTime;
+  if (row?.Error) return { ok: false, results, elapsedMs, error: row.Error };
+  if (results === 0) {
+    return {
+      ok: false,
+      results,
+      elapsedMs,
+      error: "Found no results while browsing this tracker",
+    };
+  }
+  return { ok: true, results, elapsedMs };
 }
 
 // --- Indexers ---

@@ -1706,3 +1706,63 @@ describe("v37 → v38 (appTheme stamp)", () => {
     expect(result.appTheme).toBeUndefined();
   });
 });
+
+describe("v39 → v40 (weekStart stamp)", () => {
+  it("just stamps the version and preserves an already-set weekStart", () => {
+    const result: any = migrateConfig({
+      version: 39,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      weekStart: "monday",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.weekStart).toBe("monday");
+  });
+
+  it("leaves weekStart absent when the source payload omitted it", () => {
+    const result: any = migrateConfig({
+      version: 39,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.weekStart).toBeUndefined();
+  });
+});
+
+describe("v41 → v42 (qbtMutedCategories stamp)", () => {
+  it("just stamps the version and preserves an already-set muted map", () => {
+    const result: any = migrateConfig({
+      version: 41,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: {
+        enabled: true,
+        qbtMutedCategories: { "inst-1": ["cross-seed-link", ""] },
+      },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings.qbtMutedCategories).toEqual({
+      "inst-1": ["cross-seed-link", ""],
+    });
+  });
+
+  it("leaves the muted map absent when the source payload omitted it", () => {
+    const result: any = migrateConfig({
+      version: 41,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings.qbtMutedCategories).toBeUndefined();
+  });
+});

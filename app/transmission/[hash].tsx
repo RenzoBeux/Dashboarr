@@ -28,6 +28,7 @@ import {
 } from "@/hooks/use-transmission";
 import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
 import { torrentBadgeVariant } from "@/lib/torrent-adapter";
+import { downloadBadgeColor } from "@/lib/download-status";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
 
 const ETA_UNKNOWN = 8640000;
@@ -61,6 +62,7 @@ export default function TransmissionDetailScreen() {
 
   const { torrent, files, trackers } = detail;
   const isPaused = torrent.status === "paused";
+  const badgeVariant = torrentBadgeVariant(torrent.status);
 
   const handleReannounce = () => {
     reannounceMutation.mutate([hash], {
@@ -83,13 +85,18 @@ export default function TransmissionDetailScreen() {
         <Text className="text-zinc-100 text-lg font-bold mb-1">{torrent.name}</Text>
         <Badge
           label={torrent.statusLabel}
-          variant={torrentBadgeVariant(torrent.status)}
+          variant={badgeVariant}
           className="self-start mb-4"
         />
 
         {/* Progress */}
         <Card className="mb-4">
-          <ProgressBar progress={torrent.progress} showLabel className="mb-3" />
+          <ProgressBar
+            progress={torrent.progress}
+            fillColor={downloadBadgeColor(badgeVariant)}
+            showLabel
+            className="mb-3"
+          />
           <View className="flex-row justify-between">
             <View className="flex-row items-center gap-1">
               <Icon icon={ArrowDown} size={14} color="#3b82f6" />

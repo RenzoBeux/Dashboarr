@@ -1,10 +1,16 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   getArrHealth,
+  testAllForHealthSource,
   worstSeverity,
   ARR_HEALTH_SERVICE_IDS,
   type ArrHealthIssue,
@@ -111,6 +117,40 @@ export function useArrHealthSections(): {
   });
 
   return { sections, isLoading: isInitialLoading, isFetching };
+}
+
+export interface TestAllHealthVars {
+  serviceId: ArrHealthServiceId;
+  instanceId: string;
+  source: string;
+}
+
+// "Test all" retry for a health item (issue #268), mirroring the test-tube
+// button on the *arr Health pages. One mutation instance serves every row in
+// the issues sheet; callers match `isPending && variables` against their own
+// (instanceId, source) for the per-row spinner, same trick as the Jackett
+// indexer list.
+//
+// The result is NOT reported here: a run produces a per-provider report that a
+// toast can't hold, so the caller renders `data`/`error` in its own results
+// view (components/services/test-all-results-panel.tsx). Note that a resolved
+// mutation doesn't mean the providers passed — upstream answers per-provider
+// failures with a 400 carrying the result list, which testAllForHealthSource
+// unpacks into an outcome. Only a transport/auth error takes onError.
+//
+// The health list is refetched either way: it's the /health read that decides
+// whether the alert actually clears.
+export function useTestAllForHealth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, instanceId, source }: TestAllHealthVars) =>
+      testAllForHealthSource(serviceId, source, instanceId),
+    onSuccess: (_outcome, { serviceId, instanceId }) => {
+      queryClient.invalidateQueries({
+        queryKey: [serviceId, instanceId, "health"],
+      });
+    },
+  });
 }
 
 // Single-instance variant for a service screen's health banner: follows the

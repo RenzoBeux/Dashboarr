@@ -7,6 +7,7 @@ import type {
   LidarrWantedMissing,
   LidarrImage,
   LidarrArtistSearchResult,
+  ArrQueueRemoveOptions,
 } from "@/lib/types";
 
 // --- Image helpers ---
@@ -82,13 +83,44 @@ export function getTracks(
 
 // --- Queue ---
 
+// `includeUnknownArtistItems` matters for the queue-issues banner (#285): a
+// grab whose artist was deleted from the library is exactly the kind that gets
+// stuck, and Lidarr hides those by default. The page size is generous for the
+// same reason — blocked items have no `timeleft` and sort last under the
+// default sort, so a small page would clip them off.
 export function getQueue(
   page = 1,
-  pageSize = 20,
+  pageSize = 100,
   instanceId?: string,
 ): Promise<LidarrQueue> {
   return serviceRequest<LidarrQueue>("lidarr", "/queue", {
-    params: { page, pageSize, includeArtist: true, includeAlbum: true },
+    params: {
+      page,
+      pageSize,
+      includeArtist: true,
+      includeAlbum: true,
+      includeUnknownArtistItems: true,
+    },
+    instanceId,
+  });
+}
+
+/**
+ * Removes a queue item. See ArrQueueRemoveOptions for what the flags do; the
+ * defaults match Lidarr's own (`removeFromClient=true`, no blocklist).
+ */
+export function removeFromQueue(
+  queueId: number,
+  opts: ArrQueueRemoveOptions = {},
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("lidarr", `/queue/${queueId}`, {
+    method: "DELETE",
+    params: {
+      removeFromClient: opts.removeFromClient ?? true,
+      blocklist: opts.blocklist ?? false,
+      skipRedownload: opts.skipRedownload ?? false,
+    },
     instanceId,
   });
 }

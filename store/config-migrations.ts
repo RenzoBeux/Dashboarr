@@ -153,12 +153,21 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         jackett instance at import time, so older exports just need the
  *         version field bumped.
- *   v40 — added the tdarr service entry. Pure version stamp —
+ *   v40 — optional `weekStart` calendar first-day-of-week preference (#320).
+ *         Pure version stamp — absence means "auto" (follow the device), and
+ *         importConfig whitelists the value.
+ *   v41 — optional per-instance `tagAddedTorrents` on ServiceConfig
+ *         (qBittorrent add-flow "Dashboarr" tag, #289). Pure version stamp —
+ *         absence means off.
+ *   v42 — optional `qbtMutedCategories` on notificationSettings (#310). Pure
+ *         version stamp — absence means no muting; coerceNotificationSettings
+ *         validates the map on import.
+ *   v43 — added the tdarr service entry. Pure version stamp —
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         tdarr instance at import time, so older exports just need the
  *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 40;
+export const CURRENT_CONFIG_VERSION = 43;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -671,9 +680,18 @@ const migrations: Record<number, (payload: any) => any> = {
   // v38 → v39: added the jackett service entry (#300). Pure version stamp —
   // defaultInstances() backfills a disabled jackett instance at import.
   38: (payload) => ({ ...payload, version: 39 }),
-  // v39 → v40: added the tdarr service entry. Pure version stamp —
-  // defaultInstances() backfills a disabled tdarr instance at import.
+  // v39 → v40: optional `weekStart` first-day-of-week preference (#320).
+  // Pure version stamp — absence means "auto" (follow the device).
   39: (payload) => ({ ...payload, version: 40 }),
+  // v40 → v41: optional per-instance `tagAddedTorrents` (qBittorrent add-flow
+  // "Dashboarr" tag, #289). Pure version stamp — absence means off.
+  40: (payload) => ({ ...payload, version: 41 }),
+  // v41 → v42: optional `qbtMutedCategories` on notificationSettings (#310).
+  // Pure version stamp — absence means no muting.
+  41: (payload) => ({ ...payload, version: 42 }),
+  // v42 → v43: added the tdarr service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled tdarr instance at import.
+  42: (payload) => ({ ...payload, version: 43 }),
 };
 
 /**

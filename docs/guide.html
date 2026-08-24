@@ -506,15 +506,15 @@
             </thead>
             <tbody>
               <tr><td><strong>qBittorrent</strong></td><td>8080</td><td>User + password</td><td>WebUI must be enabled. qBittorrent 5.2.0 changed the login response, so you need app v1.6.3+ (and backend v1.2.5+) or valid credentials are rejected.</td></tr>
-              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>User + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
-              <tr><td><strong>Transmission</strong></td><td>9091</td><td>User + password (both optional)</td><td>The RPC server must be enabled and its host whitelist must allow your phone. A blocked host answers 403, which looks like a credentials error.</td></tr>
+              <tr><td><strong>rTorrent / ruTorrent</strong></td><td>8080</td><td>HTTP Basic or Digest user + password</td><td>Enter the bare origin of the web server in front of rtorrent, not rtorrent's SCGI port. Dashboarr appends the conventional <code>/RPC2</code> XML-RPC mount itself, so only add a prefix if your mount is nested. HTTP Basic and Digest authentication are both supported, and Dashboarr picks whichever the server asks for. Deleting a torrent with its files needs ruTorrent's erasedata plugin.</td></tr>
+              <tr><td><strong>Transmission</strong></td><td>9091</td><td>User + password (both optional)</td><td>The RPC server must be enabled and its host whitelist must allow your phone. A blocked host answers 403, which looks like a credentials error. HTTP Basic and Digest are both supported, including behind a reverse proxy that adds its own realm.</td></tr>
               <tr><td><strong>SABnzbd</strong></td><td>8080</td><td>API key</td><td>The key travels in the URL query string, so a reverse proxy that strips or logs query params will break or leak it.</td></tr>
-              <tr><td><strong>NZBGet</strong></td><td>6789</td><td>User + password</td><td>These are <code>ControlUsername</code> and <code>ControlPassword</code> from <code>nzbget.conf</code>, not a separate web login.</td></tr>
+              <tr><td><strong>NZBGet</strong></td><td>6789</td><td>User + password</td><td>These are <code>ControlUsername</code> and <code>ControlPassword</code> from <code>nzbget.conf</code>, not a separate web login. HTTP Basic and Digest are both supported, including behind a reverse proxy that adds its own realm.</td></tr>
               <tr><td><strong>Radarr</strong></td><td>7878</td><td>API key</td><td>Test Connection sends your API key to <code>/api/v3/system/status</code> and only accepts a JSON 200, so a wrong port fails the test rather than passing silently. Enter the bare origin with no <code>/api/v3</code> suffix.</td></tr>
               <tr><td><strong>Sonarr</strong></td><td>8989</td><td>API key</td><td>Same v3 API and the same authenticated <code>/api/v3/system/status</code> probe as Radarr.</td></tr>
               <tr><td><strong>Lidarr</strong></td><td>8686</td><td>API key</td><td>Uses the v1 API, not v3. Only matters if you hand-write proxy path rules.</td></tr>
               <tr><td><strong>Prowlarr</strong></td><td>9696</td><td>API key</td><td>No webhook integration, so it is poll-only on the backend.</td></tr>
-              <tr><td><strong>Jackett</strong></td><td>9117</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Jackett's admin password protects its indexer management endpoints, so the app shows a read-only indexer list; search and grab work with just the API key.</td></tr>
+              <tr><td><strong>Jackett</strong></td><td>9117</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Jackett's admin password protects its indexer management endpoints, so the app cannot add, configure or disable indexers; listing them, per-indexer Search and Test, search and grab all work with just the API key.</td></tr>
               <tr><td><strong>Seerr</strong></td><td>5055</td><td>API key</td><td>If CSRF protection is enabled in Seerr, the API is read-only and submitting a request fails with 403 "invalid csrf token". Turn CSRF protection off.</td></tr>
               <tr><td><strong>Tautulli</strong></td><td>8181</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Webhooks are ingested but do not raise a push yet.</td></tr>
               <tr><td><strong>Tracearr</strong></td><td>3000</td><td>API key (<code>trr_pub_</code> token)</td><td>Webhook-only for notifications, and its webhook URL must carry <code>?instance=&lt;id&gt;</code> or its per-instance toggles are ignored.</td></tr>
@@ -523,7 +523,7 @@
               <tr><td><strong>Jellyfin</strong></td><td>8096</td><td>API key</td><td>A server-wide API key or a user token both work.</td></tr>
               <tr><td><strong>Emby</strong></td><td>8096</td><td>API key</td><td>Same default port as Jellyfin. If you run both on one host, re-port one of them.</td></tr>
               <tr><td><strong>Bazarr</strong></td><td>6767</td><td>API key</td><td>Webhooks are ingested but do not raise a push yet.</td></tr>
-              <tr><td><strong>Glances</strong></td><td>61208</td><td>User + password (optional)</td><td>Glances must run in web server mode. A Dockerized Glances reports no disks unless the host root is bind-mounted read-only (<code>/:/rootfs:ro</code>); CPU and RAM still work, which makes it look like an app bug.</td></tr>
+              <tr><td><strong>Glances</strong></td><td>61208</td><td>User + password (optional)</td><td>Glances must run in web server mode. A Dockerized Glances reports no disks unless the host root is bind-mounted read-only (<code>/:/rootfs:ro</code>); CPU and RAM still work, which makes it look like an app bug. HTTP Basic and Digest are both supported, including behind a reverse proxy that adds its own realm.</td></tr>
               <tr><td><strong>unRAID</strong></td><td>80</td><td>API key</td><td>The GraphQL API must be enabled first (native on unRAID 7.2+ under Settings, Management Access). The key also needs array-read permission. The API is GraphQL only, so opening the URL in a browser looks broken even when it is correct.</td></tr>
               <tr><td><strong>Tdarr</strong></td><td>8266</td><td>API key (optional)</td><td>Point Dashboarr at the server process (port 8266), not the web UI (8265). Auth is off by default in Tdarr, so most installs need no key at all.</td></tr>
             </tbody>
@@ -620,15 +620,26 @@
           Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array, Tdarr.
         </p>
         <p>
+          <strong>Recently Downloaded</strong> collapses episodes of the same series into one tile,
+          badged with how many arrived, so a batch of episodes cannot push everything else out of the
+          row. Tapping that tile lists the individual episodes with their quality, size and import
+          date, and any of them opens the series. Turn it off with
+          <strong>Episodes, "Group by series"</strong> in the widget settings.
+        </p>
+        <p>
           The same widget can be placed more than once on one dashboard, each copy with its own
-          settings, which is how you show two download clients or two Radarrs side by side. Three
-          widgets have no options and therefore no gear: Wake-on-LAN, Health Alerts and unRAID Array.
+          settings, which is how you show two download clients or two Radarrs side by side. Two
+          widgets have no options and therefore no gear: Wake-on-LAN and unRAID Array.
         </p>
         <p>
           Most settings sheets include a <strong>Visibility, "Hide when empty"</strong> toggle. Cards
           hidden that way still appear in edit mode, marked with a crossed-out-eye icon, so a
-          "vanished" widget is easy to find. Widgets for services that support several instances also
-          expose an instance chip row with an <strong>All instances</strong> chip.
+          "vanished" widget is easy to find. Service Health and Health Alerts have the same toggle
+          worded <strong>"Hide when all healthy"</strong>, since neither is ever literally empty:
+          Service Health hides while every service it shows is online, Health Alerts hides while
+          Sonarr, Radarr, Prowlarr and Lidarr report no health issues, and both come back the moment
+          something goes wrong. Widgets for services that support several instances also expose an
+          instance chip row with an <strong>All instances</strong> chip.
         </p>
 
         <h3>Attached instances and auto-attach</h3>
@@ -706,7 +717,7 @@
           <li><strong>TV</strong> (Sonarr): Library and Calendar, with filter and sort and a "Search Missing Episodes" confirmation.</li>
           <li><strong>Music</strong> (Lidarr): Library, Queue, Wanted.</li>
           <li><strong>Requests</strong> (Seerr): Discover, Search, Requests, with per-row approve and decline, and a Customize link to reorder your Discover sliders.</li>
-          <li><strong>Indexers</strong> (Prowlarr and Jackett, with a source switcher when both are attached): Indexers, Search, and (Prowlarr only) Stats. Prowlarr indexers toggle with a power button and grabbing a release confirms first; Jackett's list is read-only and grabbing opens a sheet to send the release to one of your torrent clients or open its details page.</li>
+          <li><strong>Indexers</strong> (Prowlarr and Jackett, with a source switcher when both are attached): Indexers, Search, and (Prowlarr only) Stats. Prowlarr indexers toggle with a power button and grabbing a release confirms first; each Jackett indexer has a <strong>Search</strong> button that opens the Search tab pinned to that one tracker (tap the pill to unpin) and a <strong>Test</strong> button that browses it and reports back, and grabbing opens a sheet to send the release to one of your torrent clients or open its details page.</li>
           <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
           <li><strong>Glances</strong> (headed "Server"): CPU, Memory, GPU, Disks, Disk I/O, Network and Containers cards. Containers are read-only here.</li>
           <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container.</li>
@@ -715,6 +726,30 @@
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>
 
+        <h3>Queue issues (Radarr, Sonarr, Lidarr)</h3>
+        <p>
+          Sometimes a grab gets stuck. Most often it finished downloading but the *arr refuses to
+          import it: non-media files in the release, a sample-only folder, episodes missing from the
+          pack, no matching movie or series. It can also be the download itself going wrong, such as
+          a torrent stalled with no connections. When that happens the Movies, TV and Music screens
+          show a <strong>queue issues</strong> banner above the chip row. Amber means a warning, red
+          means the download failed outright. It only appears when something is actually stuck, and
+          it follows the instance you currently have selected.
+        </p>
+        <p>
+          Tapping it lists every stuck grab with the reason the service gave and the release name.
+          Tap one for three actions:
+        </p>
+        <ul>
+          <li><strong>Remove from queue</strong>: drops the grab and deletes it from the download client. The release stays eligible, so the same copy can be grabbed again.</li>
+          <li><strong>Blocklist &amp; Search</strong>: also blocks the release so it is never grabbed again, then starts a search for a replacement. This is the one you want for a bad copy.</li>
+          <li><strong>Blocklist only</strong>: blocks the release with no replacement search.</li>
+        </ul>
+        <p>
+          All three ask for confirmation first, and blocklisted releases show up under
+          <em>System &rarr; Blocklist</em> in Radarr, Sonarr or Lidarr itself.
+        </p>
+
         <h3>Global search</h3>
         <p>
           The magnifier in the Dashboard header opens <strong>Search</strong>. It needs two characters
@@ -722,6 +757,14 @@
           Movies, TV Shows, Music, Requests and Releases. Each section loads independently, so a slow
           indexer search never blocks the rest. Plex, Jellyfin and Emby library search is not included,
           and the magnifier is hidden entirely when none of those six services is attached.
+        </p>
+        <p>
+          Movies, shows and artists you <strong>already have appear first</strong>. They are matched
+          against the library the app has already loaded, so they show up as you type instead of
+          waiting on the Radarr, Sonarr or Lidarr metadata lookup. Those rows carry an
+          <em>In library</em> badge and open the item's own screen instead of the add flow. The same
+          ordering applies on the dedicated search screens behind the magnifier in the Movies, TV and
+          Music tabs.
         </p>
 
         <h3>Magnet links</h3>
@@ -1011,14 +1054,42 @@
         <h3>A widget disappeared from the dashboard.</h3>
         <p>
           Either its service was disabled or un-attached (it is hidden, not deleted, and returns when
-          you restore it), or it has "Hide when empty" on. Enter widget edit mode to see hidden cards,
-          marked with a crossed-out-eye icon.
+          you restore it), or it has "Hide when empty" on, or, for Service Health and Health Alerts,
+          "Hide when all healthy". Enter widget edit mode to see hidden cards, marked with a
+          crossed-out-eye icon.
         </p>
 
         <h3>qBittorrent says wrong username or password.</h3>
         <p>
           qBittorrent 5.2.0 changed its login API. Update to app v1.6.3 or newer, and backend v1.2.5
           or newer. Also check the URL is the bare origin with no <code>/api/v2</code> suffix.
+        </p>
+
+        <h3>rTorrent says wrong username or password, but the credentials work elsewhere.</h3>
+        <p>
+          Dashboarr authenticates to the rTorrent <code>/RPC2</code> mount with HTTP Basic or
+          Digest, whichever the web server in front of rTorrent asks for, so a Digest realm
+          (lighttpd <code>auth.backend.htdigest</code>, Apache <code>AuthType Digest</code>) works
+          without changing the server. Two things still fail with that message. If the server
+          front-ends the mount with SSO such as Authelia or Authentik, the toast names the scheme it
+          asked for: Dashboarr has no session with the proxy and cannot get one. If the credentials
+          differ between the web UI and XML-RPC, use the XML-RPC pair; the popular
+          <code>crazy-max/rtorrent-rutorrent</code> image keeps them apart, with the UI on port 8080
+          and XML-RPC on port 8000 with its own <code>rpc.htpasswd</code>.
+        </p>
+        <p>
+          A rare Digest variant Dashboarr cannot compute, <code>qop=auth-int</code> or an algorithm
+          other than MD5, SHA-256 or one of their <code>-sess</code> forms, is reported by name;
+          switch that realm to plain <code>qop=auth</code>. If the message mentions forbidden RPC
+          access instead, the server answered 403: check that it allows this client to reach the
+          <code>/RPC2</code> location, which many ruTorrent guides restrict to localhost.
+        </p>
+        <p>
+          Digest never puts your password on the wire, but Dashboarr only learns the server wants
+          Digest from the first rejected request, and that request carries Basic. Over plain HTTP
+          that one exchange per app launch exposes reusable credentials to network observers, as
+          does every request to a Basic-only server. Put these services behind HTTPS, or keep them
+          on a network you trust.
         </p>
 
         <h3>Radarr or Sonarr behind Authentik or Authelia will not connect.</h3>
@@ -1055,7 +1126,11 @@
         </p>
 
         <h3>The Health Alerts widget is empty.</h3>
-        <p>That is correct. It only renders when there is a problem to report.</p>
+        <p>
+          That is correct. With nothing wrong it shows "All services healthy". To drop the card off
+          the dashboard entirely while everything is clean, turn on
+          <strong>Visibility, "Hide when all healthy"</strong> in its widget settings.
+        </p>
 
         <h3>Filing a bug.</h3>
         <p>

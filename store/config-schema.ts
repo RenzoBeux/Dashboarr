@@ -100,6 +100,11 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   ) {
     out.defaultRootFolderPath = v.defaultRootFolderPath;
   }
+  // v41 (#289): optional qBittorrent-only add-flow tagging. Only persisted
+  // when explicitly enabled — absence (or garbage) means off.
+  if (v.tagAddedTorrents === true) {
+    out.tagAddedTorrents = true;
+  }
   return out;
 }
 
@@ -365,6 +370,25 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     ) {
       const apprise: AppriseConfig = { enabled: a.enabled, url: a.url, tags: a.tags };
       out.apprise = apprise;
+    }
+  }
+  // v42 (issue #310): per-qBittorrent-instance muted categories. Same
+  // silent-drop philosophy as apprise — never strand a whole restore on one
+  // optional field. "" is a valid entry (uncategorized torrents).
+  if (isPlainObject(v.qbtMutedCategories)) {
+    const qbtMutedCategories: Record<string, string[]> = {};
+    for (const [instanceId, list] of Object.entries(v.qbtMutedCategories)) {
+      if (instanceId.length === 0 || instanceId.length > 128) continue;
+      if (!Array.isArray(list)) continue;
+      const cleaned = [
+        ...new Set(list.filter((c): c is string => typeof c === "string" && c.length <= 256)),
+      ];
+      if (cleaned.length > 0) {
+        qbtMutedCategories[instanceId] = cleaned;
+      }
+    }
+    if (Object.keys(qbtMutedCategories).length > 0) {
+      out.qbtMutedCategories = qbtMutedCategories;
     }
   }
   return out as NotificationSettings;

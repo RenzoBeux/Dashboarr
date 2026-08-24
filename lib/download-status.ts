@@ -27,3 +27,34 @@ export function downloadStatusColor(status: string): string {
       return "#3b82f6"; // blue (neutral)
   }
 }
+
+/**
+ * The Badge variants a download-client row can carry. Declared once here (next
+ * to the color table) instead of being re-typed inline by every adapter.
+ */
+export type DownloadBadgeVariant =
+  | "downloading"
+  | "seeding"
+  | "paused"
+  | "error"
+  | "default";
+
+/** Badge variant → the status key downloadStatusColor already understands. */
+const BADGE_VARIANT_STATUS: Record<DownloadBadgeVariant, string> = {
+  downloading: "downloading",
+  seeding: "seeding",
+  paused: "paused",
+  error: "errored",
+  default: "other",
+};
+
+/**
+ * Progress-bar fill for a download row, derived from the SAME badge variant the
+ * row already shows (issue #249). Going through the badge rather than the
+ * normalized status is deliberate: qBittorrent overrides the variant to keep its
+ * exact per-state hues (stalledDL reads as downloading, stalledUP as seeding),
+ * so a row's bar and its status pill can never disagree.
+ */
+export function downloadBadgeColor(variant: DownloadBadgeVariant): string {
+  return downloadStatusColor(BADGE_VARIANT_STATUS[variant]);
+}

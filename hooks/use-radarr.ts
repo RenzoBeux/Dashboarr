@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import {
   getMovies,
   getMovie,
@@ -27,6 +32,7 @@ import type { RadarrMovie } from "@/lib/types";
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { describeGrabFailure } from "@/lib/download-client-error";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
@@ -83,7 +89,9 @@ export function useRadarrQueue(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
     queryKey: ["radarr", id, "queue"],
-    queryFn: () => getQueue(1, 20, true, id ?? undefined),
+    // Args must stay identical to radarrArrQueueAdapter.fetchQueue — the
+    // dashboard widget and the queue-issues banner share this cache entry.
+    queryFn: () => getQueue(1, 100, true, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id,
   });
@@ -136,6 +144,9 @@ export function useRadarrSearch(term: string, instanceId?: string) {
     queryKey: ["radarr", id, "search", term],
     queryFn: () => searchMovies(term, id ?? undefined),
     enabled: enabled && term.length >= 2 && !!id,
+    // The key changes on every debounced term, so without this the list blanks
+    // between searches instead of holding the last results (#304).
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -467,7 +478,9 @@ export function useGrabRadarrRelease(instanceId?: string) {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "queue"] });
     },
     onError: (err) => {
-      toastError("Failed to grab release", err);
+      toastError("Failed to grab release", err, (msg) =>
+        describeGrabFailure(msg, "Radarr"),
+      );
     },
   });
 }

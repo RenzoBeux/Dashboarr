@@ -1,8 +1,9 @@
 import type { ComponentType } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Image } from "expo-image";
-import { Plus, Check, SlidersHorizontal } from "lucide-react-native";
+import { Plus, ChevronRight, SlidersHorizontal } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useServiceImage } from "@/hooks/use-service-image";
 import type { ServiceId } from "@/lib/constants";
@@ -25,12 +26,18 @@ interface MediaSearchResultCardProps {
   /** Single metadata line (year, or year · network · seasons, or type · disambiguation). */
   metaLine?: string;
   overview?: string;
-  /** When true, shows the green Check + makes the card tap-to-open-existing. */
+  /**
+   * When true, swaps the add buttons for an "In library" badge + chevron and
+   * makes the whole card tap-to-open-existing. Set both for a lookup result that
+   * is already added and for a library row promoted above the lookup (#304), so
+   * the two are indistinguishable in the merged list.
+   */
   alreadyAdded: boolean;
   /** Disables the quick-add button while the add mutation is in flight. */
   addPending?: boolean;
-  onQuickAdd: () => void;
-  onAdvanced: () => void;
+  /** Unused when `alreadyAdded` — library rows have nothing to add. */
+  onQuickAdd?: () => void;
+  onAdvanced?: () => void;
   onOpenExisting: () => void;
 }
 
@@ -83,8 +90,15 @@ export function MediaSearchResultCard({
         <Text className="text-zinc-200 text-sm font-medium" numberOfLines={1}>
           {title}
         </Text>
-        {metaLine ? (
-          <Text className="text-zinc-500 text-xs">{metaLine}</Text>
+        {metaLine || alreadyAdded ? (
+          <View className="flex-row items-center gap-2">
+            {metaLine ? (
+              <Text className="text-zinc-500 text-xs shrink" numberOfLines={1}>
+                {metaLine}
+              </Text>
+            ) : null}
+            {alreadyAdded ? <Badge label="In library" variant="success" /> : null}
+          </View>
         ) : null}
         {overview ? (
           <Text className="text-zinc-500 text-xs mt-1" numberOfLines={2}>
@@ -94,7 +108,7 @@ export function MediaSearchResultCard({
       </View>
       {alreadyAdded ? (
         <View className="self-center p-2">
-          <Icon icon={Check} size={20} color="#22c55e" />
+          <Icon icon={ChevronRight} size={20} color="#71717a" />
         </View>
       ) : (
         <View className="flex-row items-center self-center">

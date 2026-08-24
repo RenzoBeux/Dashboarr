@@ -429,8 +429,8 @@ const DEMO_RADARR_MOVIES = [
 
 const DEMO_RADARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 2,
+  pageSize: 100,
+  totalRecords: 3,
   records: [
     {
       id: 101,
@@ -465,8 +465,55 @@ const DEMO_RADARR_QUEUE = {
       quality: { quality: { name: "WEBDL-1080p" } },
       movie: makeMovie(8, "Kingdom of the Planet of the Apes", 2024, 653346, false),
     },
+    // Finished downloading but Radarr refuses to import it — drives the import
+    // issues banner (#285) and its Force import action (#325). The "not an
+    // upgrade" message is the exact scenario force import resolves, and the
+    // downloadId links it to DEMO_RADARR_MANUAL_IMPORT below.
+    {
+      id: 103,
+      movieId: 11,
+      title: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importPending",
+      statusMessages: [
+        {
+          title: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+          messages: [
+            "Not an upgrade for existing movie file(s). Existing quality: Bluray-1080p",
+          ],
+        },
+      ],
+      size: 62277025792,
+      sizeleft: 0,
+      timeleft: null,
+      protocol: "torrent",
+      downloadClient: "qBittorrent",
+      downloadId: "DEMO-FURIOSA-2160P",
+      quality: { quality: { name: "Bluray-2160p" } },
+      movie: makeMovie(11, "Furiosa: A Mad Max Saga", 2024, 786892, false),
+    },
   ],
 };
+
+// GET /manualimport candidates for the blocked grab above — lets demo mode
+// exercise the whole force-import flow (#325).
+const DEMO_RADARR_MANUAL_IMPORT = [
+  {
+    id: 1,
+    path: "/downloads/complete/Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP/furiosa.a.mad.max.saga.2024.2160p.mkv",
+    relativePath: "furiosa.a.mad.max.saga.2024.2160p.mkv",
+    folderName: "Furiosa.A.Mad.Max.Saga.2024.2160p.UHD.BluRay.x265-GROUP",
+    size: 62277025792,
+    movie: makeMovie(11, "Furiosa: A Mad Max Saga", 2024, 786892, false),
+    quality: { quality: { id: 19, name: "Bluray-2160p" } },
+    languages: [{ id: 1, name: "English" }],
+    releaseGroup: "GROUP",
+    downloadId: "DEMO-FURIOSA-2160P",
+    indexerFlags: 0,
+    rejections: [{ reason: "Not an upgrade for existing movie file(s)" }],
+  },
+];
 
 const DEMO_RADARR_WANTED = {
   page: 1,
@@ -574,8 +621,8 @@ const DEMO_SONARR_CALENDAR = [
 
 const DEMO_SONARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 1,
+  pageSize: 100,
+  totalRecords: 2,
   records: [
     {
       id: 301,
@@ -593,8 +640,63 @@ const DEMO_SONARR_QUEUE = {
       quality: { quality: { name: "WEBDL-1080p" } },
       series: makeSeries(3, "Fallout", 2024, 456789),
     },
+    // Finished downloading but Sonarr refuses to import it — drives the import
+    // issues banner (#285) and its Force import action (#325); the downloadId
+    // links it to DEMO_SONARR_MANUAL_IMPORT below.
+    {
+      id: 302,
+      seriesId: 3,
+      episodeId: 204,
+      title: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importBlocked",
+      statusMessages: [
+        {
+          title: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+          messages: [
+            "One or more episodes expected in this release were not imported or missing",
+          ],
+        },
+      ],
+      size: 2952790016,
+      sizeleft: 0,
+      timeleft: null,
+      protocol: "torrent",
+      downloadId: "DEMO-FALLOUT-S01E07",
+      quality: { quality: { name: "WEBDL-1080p" } },
+      series: makeSeries(3, "Fallout", 2024, 456789),
+    },
   ],
 };
+
+// GET /manualimport candidates for the blocked grab above — lets demo mode
+// exercise the whole force-import flow (#325).
+const DEMO_SONARR_MANUAL_IMPORT = [
+  {
+    id: 1,
+    path: "/downloads/complete/Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb/fallout.s01e07.1080p.mkv",
+    relativePath: "fallout.s01e07.1080p.mkv",
+    folderName: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+    size: 2952790016,
+    series: makeSeries(3, "Fallout", 2024, 456789),
+    seasonNumber: 1,
+    episodes: [{ id: 204 }],
+    episodeFileId: 0,
+    releaseType: "singleEpisode",
+    quality: { quality: { id: 3, name: "WEBDL-1080p" } },
+    languages: [{ id: 1, name: "English" }],
+    releaseGroup: "NTb",
+    downloadId: "DEMO-FALLOUT-S01E07",
+    indexerFlags: 0,
+    rejections: [
+      {
+        reason:
+          "One or more episodes expected in this release were not imported or missing",
+      },
+    ],
+  },
+];
 
 // --- Lidarr ---
 
@@ -689,8 +791,8 @@ const DEMO_LIDARR_TRACKS = [
 
 const DEMO_LIDARR_QUEUE = {
   page: 1,
-  pageSize: 20,
-  totalRecords: 1,
+  pageSize: 100,
+  totalRecords: 2,
   records: [
     {
       id: 401,
@@ -710,6 +812,33 @@ const DEMO_LIDARR_QUEUE = {
       quality: { quality: { name: "FLAC" } },
       artist: DEMO_LIDARR_ARTISTS[1],
       album: DEMO_LIDARR_ALBUMS[3],
+    },
+    // Finished downloading but Lidarr refuses to import it — drives the queue
+    // issues banner (#285) on the Music screen, matching Radarr and Sonarr.
+    {
+      id: 402,
+      artistId: 1,
+      albumId: 11,
+      title: "Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+      status: "completed",
+      trackedDownloadStatus: "warning",
+      trackedDownloadState: "importPending",
+      statusMessages: [
+        {
+          title: "Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+          messages: [
+            "No files found are eligible for import in /downloads/complete/Radiohead.OK.Computer.1997.24bit.96kHz.FLAC",
+          ],
+        },
+      ],
+      size: 1_073_741_824,
+      sizeleft: 0,
+      timeleft: null,
+      protocol: "torrent",
+      downloadClient: "qBittorrent",
+      quality: { quality: { name: "FLAC 24bit" } },
+      artist: DEMO_LIDARR_ARTISTS[0],
+      album: DEMO_LIDARR_ALBUMS[0],
     },
   ],
 };
@@ -1051,6 +1180,26 @@ const DEMO_PROWLARR_INDEXERS = [
   { id: 4, name: "The Pirate Bay", protocol: "torrent", enable: false, priority: 50, added: daysFromNowFull(-120), fields: [], tags: [], appProfileId: 1 },
   { id: 5, name: "NZBHydra2", protocol: "usenet", enable: true, priority: 25, added: daysFromNowFull(-45), fields: [], tags: [], appProfileId: 1 },
   { id: 6, name: "EZTV", protocol: "torrent", enable: true, priority: 25, added: daysFromNowFull(-75), fields: [], tags: [], appProfileId: 1 },
+];
+
+// Health "Test all" (#268). Mirrors the real ProviderControllerBase.TestAll
+// shape and covers only the ENABLED indexers above (the server skips disabled
+// ones), with 1337x failing so it lines up with DEMO_PROWLARR_HEALTH's message.
+const DEMO_PROWLARR_TESTALL = [
+  { id: 1, isValid: true, validationFailures: [] },
+  {
+    id: 2,
+    isValid: false,
+    validationFailures: [
+      {
+        propertyName: "",
+        errorMessage: "Unable to connect to indexer, please check your DNS settings",
+      },
+    ],
+  },
+  { id: 3, isValid: true, validationFailures: [] },
+  { id: 5, isValid: true, validationFailures: [] },
+  { id: 6, isValid: true, validationFailures: [] },
 ];
 
 const DEMO_PROWLARR_INDEXER_STATUSES = [
@@ -1802,15 +1951,28 @@ export function getDemoResponse(
   path: string,
   params?: Record<string, string | number | boolean>,
   body?: string,
+  method?: string,
 ): unknown {
   const basePath = path.split("?")[0]!;
   const normalized = basePath.replace(/\/\d+(\.\d+)*$/, "/:id");
 
+  // Demo fixtures are static, so every mutation is a no-op — but a DELETE must
+  // not fall through to the read route for the same path. `DELETE /queue/103`
+  // would match `startsWith("/queue")` and hand the caller the whole queue back
+  // as its "void" result. Return nothing instead, so a demo delete resolves the
+  // way the real one does. POST/PUT are deliberately excluded: NZBGet,
+  // Transmission and rtorrent dispatch their reads off a POST body.
+  if (method === "DELETE") return undefined;
+
   switch (serviceId) {
     case "radarr": {
+      // Health "Test all" (#268): the real endpoint answers with a per-provider
+      // result list; empty = tests ran, nothing to report.
+      if (normalized === "/indexer/testall" || normalized === "/downloadclient/testall") return [];
       if (normalized === "/movie") return DEMO_RADARR_MOVIES;
       if (normalized === "/movie/:id") return DEMO_RADARR_MOVIES[0];
       if (normalized.startsWith("/queue")) return DEMO_RADARR_QUEUE;
+      if (normalized.startsWith("/manualimport")) return DEMO_RADARR_MANUAL_IMPORT;
       if (normalized.startsWith("/wanted/missing")) return DEMO_RADARR_WANTED;
       if (normalized.startsWith("/calendar")) return DEMO_RADARR_CALENDAR;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
@@ -1824,10 +1986,13 @@ export function getDemoResponse(
       return undefined;
     }
     case "sonarr": {
+      // Health "Test all" (#268), as in the radarr case above.
+      if (normalized === "/indexer/testall" || normalized === "/downloadclient/testall") return [];
       if (normalized === "/series") return DEMO_SONARR_SERIES;
       if (normalized === "/series/:id") return DEMO_SONARR_SERIES[0];
       if (normalized.startsWith("/calendar")) return DEMO_SONARR_CALENDAR;
       if (normalized.startsWith("/queue")) return DEMO_SONARR_QUEUE;
+      if (normalized.startsWith("/manualimport")) return DEMO_SONARR_MANUAL_IMPORT;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
@@ -1840,6 +2005,8 @@ export function getDemoResponse(
       return undefined;
     }
     case "lidarr": {
+      // Health "Test all" (#268), as in the radarr case above.
+      if (normalized === "/indexer/testall" || normalized === "/downloadclient/testall") return [];
       if (normalized === "/artist") return DEMO_LIDARR_ARTISTS;
       if (normalized === "/artist/lookup") return [];
       if (normalized === "/artist/:id") {
@@ -1885,6 +2052,15 @@ export function getDemoResponse(
       return undefined;
     }
     case "prowlarr": {
+      // Health "Test all" (#268), as in the radarr case above; Prowlarr also
+      // tests its synced applications. Its demo health flags a failing indexer,
+      // so that run answers with a real per-provider report.
+      if (normalized === "/indexer/testall") return DEMO_PROWLARR_TESTALL;
+      if (
+        normalized === "/downloadclient/testall" ||
+        normalized === "/applications/testall"
+      )
+        return [];
       if (normalized === "/indexer") return DEMO_PROWLARR_INDEXERS;
       if (normalized.startsWith("/indexerstatus")) return DEMO_PROWLARR_INDEXER_STATUSES;
       if (normalized.startsWith("/indexerstats")) return DEMO_PROWLARR_STATS;
@@ -1895,11 +2071,21 @@ export function getDemoResponse(
     }
     case "jackett": {
       // The Torznab meta endpoint answers with XML; the JSON results endpoint
-      // handles both live search and the indexer-status sidebar.
+      // handles live search, the per-indexer search and the per-indexer test.
       if (normalized.startsWith("/indexers/all/results/torznab"))
         return DEMO_JACKETT_INDEXERS_XML;
-      if (normalized.startsWith("/indexers/all/results")) return DEMO_JACKETT_RESULTS;
-      return undefined;
+      const match = normalized.match(/^\/indexers\/([^/]+)\/results$/);
+      if (!match) return undefined;
+      const indexerId = decodeURIComponent(match[1]!);
+      if (indexerId === "all") return DEMO_JACKETT_RESULTS;
+      // Tracker-scoped: same payload narrowed to that tracker, so a demo test
+      // of an unknown id lands on the real "no results" failure path.
+      return {
+        Results: DEMO_JACKETT_RESULTS.Results.filter(
+          (r) => r.TrackerId === indexerId,
+        ),
+        Indexers: DEMO_JACKETT_RESULTS.Indexers.filter((i) => i.ID === indexerId),
+      };
     }
     case "bazarr": {
       if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;

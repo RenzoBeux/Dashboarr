@@ -12,6 +12,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { rem, vars } from "nativewind";
 import { hexToRgbChannels } from "@/lib/app-themes";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { BASE_REM } from "@/hooks/use-ui-scale";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
@@ -202,7 +203,7 @@ const CONFIG_SYNC_DEBOUNCE_MS = 2000;
 function UiScaleBridge() {
   const uiScale = useConfigStore((s) => s.uiScale);
   useEffect(() => {
-    rem.set(14 * uiScale);
+    rem.set(BASE_REM * uiScale);
   }, [uiScale]);
   return null;
 }
