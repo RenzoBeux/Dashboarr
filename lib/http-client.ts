@@ -3,7 +3,7 @@ import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
-import { isPrivateUrl } from "@/lib/url-validation";
+import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
 import {
   basicAuthHeader,
   digestSessionKey,
@@ -30,23 +30,62 @@ const DEFAULT_TIMEOUT = 15000;
  * existing away→remote URL resolution already keeps the LAN URL out of those
  * requests when auto-switch is on.
  *
- * An active VPN the user opted to trust as home (`treatVpnAsHome`) voids the
- * premise: WireGuard/OpenVPN/Tailscale subnet routes carry the private ranges
- * into the tunnel, so the LAN URL may be reachable from anywhere (#185). Stand
- * down for that case and let the bounded timeout handle a genuinely-unreachable
- * server. A VPN WITHOUT the opt-in is NOT trusted to reach home, so the guard
- * stays up — otherwise any tunnel (even to a hostile network) would silently
- * make the private URL "work" off Wi-Fi, contradicting the opt-in. This keeps
- * the guard aligned with `getActiveUrl`/`evaluateHomeNetwork`, which only treat
- * a VPN as home when `treatVpnAsHome` is on.
+ * Two things void the "private ⇒ unreachable" premise, both requiring a LIVE
+ * tunnel (`isVpnActive`); without one the guard always stands, so the #106
+ * fail-fast is untouched:
+ *
+ *  1. The user opted to trust the VPN as home (`treatVpnAsHome`): WireGuard/
+ *     OpenVPN/Tailscale subnet routes carry the private ranges into the tunnel,
+ *     so the LAN URL may be reachable from anywhere (#185).
+ *  2. The URL being requested is the instance's **Remote URL** (#356). That
+ *     slot is the address the user declared for "when I'm away", so a private
+ *     one there is a deliberate statement that it is reachable through their
+ *     tunnel — a ZeroTier/WireGuard-assigned 10.x, or a LAN address the tunnel
+ *     routes. Blocking it made the health dots red while Test Connection (which
+ *     skips this guard) reported the very same URL as connected, and it forced
+ *     users onto the global `treatVpnAsHome` opt-in — which then resolves to the
+ *     LOCAL URL, the one their tunnel can't reach.
+ *
+ * A VPN without either condition is NOT trusted to reach the LOCAL URL, so the
+ * guard stays up for that slot — otherwise any tunnel (even to a hostile
+ * network) would silently make the private local URL "work" off Wi-Fi,
+ * contradicting the opt-in. This keeps the local-slot guard aligned with
+ * `getActiveUrl`/`evaluateHomeNetwork`, which only treat a VPN as home when
+ * `treatVpnAsHome` is on.
  */
-function lanUnreachableOffWifi(url: string): boolean {
+function lanUnreachableOffWifi(
+  url: string,
+  inst?: { remoteUrl: string },
+): boolean {
   const store = useConfigStore.getState();
   // Demo mode never hits the network (probes return canned data), so don't let
   // the guard short-circuit demo services to offline when testing on cellular.
   if (store.demoMode) return false;
   if (store.isVpnActive && store.treatVpnAsHome) return false;
+  if (store.isVpnActive && isRemoteSlotUrl(url, inst)) return false;
   return store.isOnWifi === false && isPrivateUrl(url);
+}
+
+/**
+ * Whether `url` is the one `getActiveUrl` took from the instance's Remote URL
+ * field. Compared post-`normalizeServiceUrl` because that's what `getActiveUrl`
+ * returns; an empty Remote URL never matches.
+ */
+function isRemoteSlotUrl(url: string, inst?: { remoteUrl: string }): boolean {
+  const remote = normalizeServiceUrl(inst?.remoteUrl ?? "");
+  return remote !== "" && remote === url;
+}
+
+/**
+ * Why the guard tripped, appended to both the thrown error and the health-grid
+ * message. "(no VPN detected)" was previously printed unconditionally, which
+ * read as a lie to the one group most likely to see it — users with a tunnel up
+ * whose local URL it can't route (#356). Name the actual setting instead.
+ */
+function lanGuardReason(): string {
+  return useConfigStore.getState().isVpnActive
+    ? "VPN detected, but Treat VPN as home is off"
+    : "no VPN detected";
 }
 
 interface RequestOptions extends Omit<RequestInit, "signal"> {
@@ -249,11 +288,11 @@ export async function serviceRequest<T>(
     throw new Error(`No URL configured for ${serviceId}`);
   }
   // Fail fast instead of hanging on an unreachable LAN address off WiFi.
-  // Slot-neutral wording: the guard keys on the URL's host, so a private
-  // address in the Remote URL slot trips it too (#185).
-  if (lanUnreachableOffWifi(baseUrl)) {
+  // Slot-neutral wording: with no VPN up the guard keys on the URL's host, so a
+  // private address in the Remote URL slot trips it too (#185).
+  if (lanUnreachableOffWifi(baseUrl, inst)) {
     throw new Error(
-      `${serviceId}: private LAN address not reachable off Wi-Fi (no VPN detected)`,
+      `${serviceId}: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`,
     );
   }
 
@@ -426,7 +465,7 @@ export async function pingService(
   // Don't hang pinging a LAN address off WiFi. Skipped only for the stored URL;
   // an explicit urlOverride (form "Test" value) is always attempted so the user
   // can validate a local URL even while away.
-  if (!urlOverride && lanUnreachableOffWifi(baseUrl)) return null;
+  if (!urlOverride && lanUnreachableOffWifi(baseUrl, inst)) return null;
 
   // SAB has no /system endpoint to GET — it advertises version through the
   // single /api?mode=version handler, so we synthesize the ping URL from the
@@ -642,10 +681,10 @@ export async function checkInstanceHealth(
   // A LAN URL can't be reached off WiFi — short-circuit instead of probing it.
   // This is the core of the Glances/#106 fix: without it the doomed connect
   // hangs and stalls every other probe in the batch.
-  if (lanUnreachableOffWifi(url)) {
+  if (lanUnreachableOffWifi(url, inst)) {
     return {
       kind: "unreachable",
-      message: "Private LAN address not reachable off Wi-Fi (no VPN detected)",
+      message: `Private LAN address not reachable off Wi-Fi (${lanGuardReason()})`,
     };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};

@@ -344,6 +344,56 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("attempts a private REMOTE URL off WiFi on a live VPN without the opt-in (#356)", async () => {
+    // The ZimaOS-VPN setup: the Remote URL is the tunnel-side address (10.x /
+    // routed LAN), reachable only while the VPN is up. The user declared it as
+    // their away address, so a live tunnel voids the "private ⇒ unreachable"
+    // premise for that slot — no `treatVpnAsHome` needed (which would resolve to
+    // the LOCAL URL instead, the one the tunnel can't reach).
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.remoteUrl = "http://10.147.20.4:7878";
+    inst.useRemote = true;
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = false;
+
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(await pingService("radarr")).not.toBeNull();
+  });
+
+  it("keeps blocking the private LOCAL URL on a live VPN without the opt-in (#356)", async () => {
+    // Same live tunnel, but the resolved URL came from the Local slot — that one
+    // still needs the explicit "Treat VPN as home" trust (#185).
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.remoteUrl = "http://10.147.20.4:7878";
+    inst.useRemote = false;
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = false;
+
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "private LAN address not reachable off Wi-Fi",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("names the real reason when a VPN is up but not trusted (#356)", async () => {
+    // "(no VPN detected)" used to print unconditionally — the exact opposite of
+    // what the user sees in Network diagnostics.
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "Treat VPN as home is off",
+    );
+
+    mockStateRef.current.isVpnActive = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "(no VPN detected)",
+    );
+  });
+
   it("never short-circuits while WiFi state is still unknown (cold start)", async () => {
     mockStateRef.current.isOnWifi = null;
     mockStateRef.current.isVpnActive = false;
