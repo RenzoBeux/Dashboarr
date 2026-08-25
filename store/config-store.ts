@@ -67,7 +67,10 @@ import { useBackendStore } from "@/store/backend-store";
 import { queryClient } from "@/lib/query-client";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
-import { normalizeServiceUrl } from "@/lib/url-validation";
+import {
+  normalizeServiceUrl,
+  workspaceForcesRemote,
+} from "@/lib/url-validation";
 import { generateInstanceId } from "@/lib/uuid";
 
 export interface WakeOnLanDevice {
@@ -2617,10 +2620,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const activeDash = state.dashboards.find(
       (d) => d.id === state.activeDashboardId,
     );
-    if (
-      Array.isArray(activeDash?.homeNetworkIds) &&
-      effectiveHomeNetworkIdSet(activeDash, state.homeNetworks).size === 0
-    ) {
+    if (workspaceForcesRemote(activeDash, state.homeNetworks)) {
       return remote;
     }
     // 3. Auto-switch off → user opted out of switching; use local (or remote if
