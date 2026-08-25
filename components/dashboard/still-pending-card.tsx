@@ -32,7 +32,7 @@ import {
   getAllWantedMissing as getRadarrWantedMissing,
   getQueue as getRadarrQueue,
 } from "@/services/radarr-api";
-import { radarrReleaseTime } from "@/lib/radarr-release-date";
+import { radarrPendingTime } from "@/lib/radarr-release-date";
 import { useSearchForMovie } from "@/hooks/use-radarr";
 import { useSearchForEpisodes } from "@/hooks/use-sonarr";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
@@ -178,8 +178,10 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
       if (!instanceId) return;
       for (const movie of q.data?.records ?? []) {
         // wanted/missing records are monitored + missing by contract; the
-        // effective release date replicates Radarr's own computation (#135).
-        const t = radarrReleaseTime(movie);
+        // effective release date replicates Radarr's own computation (#135),
+        // narrowed to the release types the user picked (#355). A movie with
+        // none of those dates yields null and drops off the card.
+        const t = radarrPendingTime(movie, settings.radarrReleaseTypes);
         if (t === null) continue;
         const date = localDateKey(new Date(t));
         if (date < cutoffIso || date > todayIso) continue;

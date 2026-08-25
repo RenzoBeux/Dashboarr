@@ -69,6 +69,59 @@ export function ChipGroup<T extends string | number>({
   );
 }
 
+/**
+ * Multi-select chip row. Pressing a chip toggles it; the last selected chip is
+ * a no-op, since an empty selection would leave the widget filtering everything
+ * out with nothing on screen explaining why. Pass `caption` for a line of help
+ * text under the chips.
+ */
+export function MultiChipGroup<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  caption,
+}: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: readonly T[];
+  onChange: (value: T[]) => void;
+  caption?: string;
+}) {
+  return (
+    <SettingsSection label={label}>
+      <View className="flex-row flex-wrap gap-2">
+        {options.map((option) => {
+          const selected = value.includes(option.value);
+          return (
+            <FilterChip
+              key={option.value}
+              label={option.label}
+              selected={selected}
+              onPress={() => {
+                if (!selected) {
+                  // Keep the caller's option order so the stored value doesn't
+                  // depend on the order the user tapped the chips.
+                  onChange(
+                    options
+                      .map((o) => o.value)
+                      .filter((v) => v === option.value || value.includes(v)),
+                  );
+                } else if (value.length > 1) {
+                  onChange(value.filter((v) => v !== option.value));
+                }
+              }}
+            />
+          );
+        })}
+      </View>
+      {caption ? (
+        <Text className="text-zinc-500 text-xs mt-2">{caption}</Text>
+      ) : null}
+    </SettingsSection>
+  );
+}
+
 const DEFAULT_MAX_OPTIONS: readonly { value: number; label: string }[] = [
   { value: 3, label: "3" },
   { value: 5, label: "5" },
