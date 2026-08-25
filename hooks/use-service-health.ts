@@ -29,7 +29,8 @@ export interface HealthProbeInputs {
   // VPN up/down also flips that guard (a VPN makes LAN URLs reachable off
   // WiFi, #185) — re-key so toggling the tunnel re-probes immediately.
   isVpnActive: boolean;
-  // The opt-in gates BOTH the LAN guard's VPN stand-down (checkInstanceHealth)
+  // The opt-in gates BOTH the LAN guard's VPN stand-down for the LOCAL URL
+  // (checkInstanceHealth — the Remote URL stands down on a live VPN alone, #356)
   // and what `resolveUrl` returns under a VPN, so toggling it changes verdicts
   // even when isVpnActive/networkAwayFromHome haven't settled yet — re-key on it.
   treatVpnAsHome: boolean;
