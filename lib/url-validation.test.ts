@@ -5,6 +5,7 @@ import {
   isRemoteOnlyOffline,
   isPrivateHost,
   isPrivateUrl,
+  workspaceForcesRemote,
 } from "./url-validation";
 
 describe("validateServiceUrl", () => {
@@ -190,6 +191,29 @@ describe("resolveActiveUrlKind", () => {
 
   it("falls back to remote at home when no local is configured", () => {
     expect(resolveActiveUrlKind(inst({ localUrl: "" }), true, false)).toBe("remote");
+  });
+});
+
+describe("workspaceForcesRemote (#148)", () => {
+  const nets = [{ id: "n1" }, { id: "n2" }];
+
+  it("is false for auto-attach (undefined = every home network)", () => {
+    expect(workspaceForcesRemote({}, nets)).toBe(false);
+    expect(workspaceForcesRemote(undefined, nets)).toBe(false);
+  });
+
+  it("is true for an explicit empty selection", () => {
+    expect(workspaceForcesRemote({ homeNetworkIds: [] }, nets)).toBe(true);
+  });
+
+  it("is true when every selected id is stale", () => {
+    expect(workspaceForcesRemote({ homeNetworkIds: ["gone"] }, nets)).toBe(true);
+  });
+
+  it("is false when at least one selected id is still live", () => {
+    expect(workspaceForcesRemote({ homeNetworkIds: ["gone", "n2"] }, nets)).toBe(
+      false,
+    );
   });
 });
 

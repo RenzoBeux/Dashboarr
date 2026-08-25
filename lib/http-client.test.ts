@@ -2,6 +2,7 @@ import { resetDigestSessions } from "@/lib/http-auth";
 import {
   serviceRequest,
   pingService,
+  lanGuardBlockReason,
   testServiceConnection,
   AuthProxyResponseError,
   HttpError,
@@ -392,6 +393,30 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "(no VPN detected)",
     );
+  });
+
+  it("reports the guard verdict to the UI via lanGuardBlockReason (#356)", async () => {
+    // Test Connection skips the guard, so the settings screen asks for the
+    // verdict separately to explain a green toast sitting next to a red dot.
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = false;
+    expect(lanGuardBlockReason("http://192.168.1.50:7878")).toBe(
+      "no VPN detected",
+    );
+
+    mockStateRef.current.isVpnActive = true;
+    expect(lanGuardBlockReason("http://192.168.1.50:7878")).toBe(
+      "VPN detected, but Treat VPN as home is off",
+    );
+
+    // Judged against the IN-PROGRESS remote URL from the form, not the saved
+    // one, and a public host is never blocked.
+    expect(
+      lanGuardBlockReason("http://192.168.1.50:7878", {
+        remoteUrl: "192.168.1.50:7878",
+      }),
+    ).toBeNull();
+    expect(lanGuardBlockReason("https://media.example.com")).toBeNull();
   });
 
   it("never short-circuits while WiFi state is still unknown (cold start)", async () => {

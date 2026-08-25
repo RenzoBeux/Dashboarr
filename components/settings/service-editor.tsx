@@ -16,7 +16,7 @@ import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore, type ServiceConfig } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { BackHeader } from "@/components/common/back-header";
-import { testServiceConnection } from "@/lib/http-client";
+import { testServiceConnection, lanGuardBlockReason } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { getPlexClientId } from "@/lib/plex-client-id";
 import {
@@ -32,7 +32,12 @@ import {
   CATEGORY_LABELS,
   type NotifCategory,
 } from "@/lib/notification-categories";
-import { validateServiceUrl, normalizeServiceUrl } from "@/lib/url-validation";
+import {
+  validateServiceUrl,
+  normalizeServiceUrl,
+  resolveActiveUrlKind,
+  workspaceForcesRemote,
+} from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useModalFlow } from "@/hooks/use-modal-flow";
@@ -274,15 +279,36 @@ export function ServiceEditor({
 
   const handleTest = async () => {
     setTesting(true);
-    // Resolve which URL the app will actually use right now, mirroring
-    // getActiveUrl: the per-instance "always remote" override OR auto-switch
-    // deciding we're away from home (in which case the app uses remote only and
-    // never the local URL). We test the in-progress form values, not the saved
-    // ones, so Test validates what the user typed before they Save.
-    const { autoSwitchNetwork, networkAwayFromHome } = useConfigStore.getState();
-    const useRemote =
-      config.useRemote || (autoSwitchNetwork && networkAwayFromHome);
-    const which = useRemote ? "remote" : "local";
+    // Resolve which URL the app will actually use right now through the SAME
+    // helper the health grid's L/R badge uses, so Test can never probe a
+    // different slot than the dots (it used to re-derive the decision by hand
+    // and missed both the workspace "always remote" pin and getActiveUrl's
+    // remote→local fallback). We feed it the in-progress form values, not the
+    // saved ones, so Test validates what the user typed before they Save.
+    const {
+      autoSwitchNetwork,
+      networkAwayFromHome,
+      dashboards,
+      activeDashboardId,
+      homeNetworks,
+    } = useConfigStore.getState();
+    const forcesRemote = workspaceForcesRemote(
+      dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0],
+      homeNetworks,
+    );
+    const which =
+      resolveActiveUrlKind(
+        { localUrl, remoteUrl, useRemote: config.useRemote },
+        autoSwitchNetwork,
+        networkAwayFromHome,
+        forcesRemote,
+      ) ??
+      // Neither URL is set: nothing to resolve, so pick the slot whose
+      // "you haven't configured this" message fits the current mode.
+      (config.useRemote || forcesRemote || (autoSwitchNetwork && networkAwayFromHome)
+        ? "remote"
+        : "local");
+    const useRemote = which === "remote";
     const rawTestUrl = useRemote ? remoteUrl : localUrl;
     const testUrl = normalizeServiceUrl(rawTestUrl);
     if (testUrl !== rawTestUrl) {
@@ -295,7 +321,17 @@ export function ServiceEditor({
     // no remote URL is set for this service.
     if (!testUrl) {
       setTesting(false);
-      if (useRemote && !config.useRemote && autoSwitchNetwork && networkAwayFromHome) {
+      if (useRemote && !config.useRemote && forcesRemote) {
+        toast(
+          "This dashboard uses remote URLs only (its Home networks selection is empty), but none is set here. Add a remote URL, or pick its home networks in the dashboard's settings.",
+          "error",
+        );
+      } else if (
+        useRemote &&
+        !config.useRemote &&
+        autoSwitchNetwork &&
+        networkAwayFromHome
+      ) {
         toast(
           "Away from home: Dashboarr is using remote URLs only, but none is set here. Add a remote URL, or turn off Auto-switch network if this device stays on your home WiFi.",
           "error",
@@ -315,7 +351,17 @@ export function ServiceEditor({
     setTesting(false);
 
     if (result.kind === "ok") {
-      toast(`Connected via ${which} URL in ${result.responseTime}ms`, "success");
+      // The URL answered, but the health probes may still be short-circuiting
+      // it: Test always fires at what you typed, while the dots run the off-WiFi
+      // LAN guard (#356). Say so, otherwise a green toast next to a red dot
+      // reads as a contradiction with no explanation anywhere.
+      const blocked = lanGuardBlockReason(testUrl, { remoteUrl });
+      toast(
+        blocked
+          ? `Connected via ${which} URL in ${result.responseTime}ms. Dashboarr still shows it offline on this network: private LAN address off Wi-Fi (${blocked}).`
+          : `Connected via ${which} URL in ${result.responseTime}ms`,
+        blocked ? "info" : "success",
+      );
     } else if (result.kind === "auth_failed") {
       toast(`Auth failed (${which} URL): ${result.message}`, "error");
     } else {

@@ -88,6 +88,23 @@ function lanGuardReason(): string {
     : "no VPN detected";
 }
 
+/**
+ * The guard's verdict for UI that has to explain a disagreement (#356): the
+ * settings "Test" button fires at the URL you typed and deliberately skips the
+ * guard, so a URL can answer there while the health probes short-circuit it.
+ * Returns null when nothing is being blocked, otherwise the reason to show.
+ *
+ * `inst` carries the IN-PROGRESS Remote URL from the form, not the saved one,
+ * so the remote-slot stand-down is judged against what the user is about to
+ * save.
+ */
+export function lanGuardBlockReason(
+  url: string,
+  inst?: { remoteUrl: string },
+): string | null {
+  return lanUnreachableOffWifi(url, inst) ? lanGuardReason() : null;
+}
+
 interface RequestOptions extends Omit<RequestInit, "signal"> {
   timeout?: number;
   params?: Record<string, string | number | boolean>;
