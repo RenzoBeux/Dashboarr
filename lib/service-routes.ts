@@ -20,6 +20,7 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   radarr: "/(tabs)/movies",
   sonarr: "/(tabs)/tv",
   lidarr: "/(tabs)/music",
+  bindery: "/(tabs)/books",
   overseerr: "/(tabs)/requests",
   tautulli: "/(tabs)/activity",
   tracearr: "/(tabs)/activity",

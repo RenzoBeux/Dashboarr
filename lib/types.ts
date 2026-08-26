@@ -957,6 +957,287 @@ export interface LidarrArtistSearchResult {
   remotePoster?: string;
 }
 
+// --- Bindery Types ---
+// Bindery is the Go successor to Readarr (books + audiobooks). Its route names
+// echo the *arr family but the payloads are its own, so none of the Lidarr /
+// Radarr / Sonarr types apply. Four divergences drive most of the code below:
+//
+//   1. Envelopes are inconsistent. /author, /book and /history return
+//      { items, total, limit, offset } (offset-paginated, NOT page); /queue
+//      returns { items, partial?, staleClients? }; several others return a
+//      bare array. lib/bindery-normalize.ts unwraps all of them.
+//   2. Cover art is a single `imageUrl` string, not an images[] array, and it
+//      is a RELATIVE proxy path (/api/v1/images?url=<encoded remote>) rather
+//      than a URL. binderyImageSource() turns it into the { url, remoteUrl }
+//      pair hooks/use-service-image.ts expects.
+//   3. Progress is a STRING percentage ("42.5", sometimes "42.5%"), not the
+//      size/sizeleft pair every *arr queue uses.
+//   4. Author.statistics carries only bookCount. See BinderyAuthorStatistics.
+
+// Offset-paginated envelope shared by /author, /book and /history.
+// `limit` echoes what the server actually applied: values above 500 are
+// silently clamped, so paging must advance by the echoed limit, not the
+// requested one.
+export interface BinderyListEnvelope<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Only `bookCount` is real. Upstream declares availableBookCount and
+// wantedBookCount but never assigns them anywhere in its codebase (the struct
+// is built in exactly one place, internal/db/authors.go, which sets BookCount
+// alone), so both always serialize as 0. Deriving a progress bar from them
+// renders 0% or 100% for every author forever — see components/bindery/
+// books-view.tsx, which counts real statuses on the detail screen instead.
+// `statistics` is also present ONLY on the /author list response; GET
+// /author/{id} omits the key entirely.
+export interface BinderyAuthorStatistics {
+  bookCount: number;
+  availableBookCount?: number;
+  wantedBookCount?: number;
+}
+
+export type BinderyMediaType = "ebook" | "audiobook" | "both";
+export type BinderyAuthorMonitorMode =
+  | "all"
+  | "future"
+  | "latest"
+  | "none"
+  | "series";
+export type BinderyBookStatus =
+  | "wanted"
+  | "downloading"
+  | "downloaded"
+  | "imported"
+  | "skipped";
+
+// The eleven states a download row can be in.
+export type BinderyDownloadState =
+  | "grabbed"
+  | "downloading"
+  | "completed"
+  | "importPending"
+  | "importing"
+  | "imported"
+  | "failed"
+  | "importFailed"
+  | "importBlocked"
+  | "importExternal"
+  | "importHeld";
+
+export interface BinderyAuthor {
+  id: number;
+  foreignAuthorId: string;
+  authorName: string;
+  sortName?: string;
+  description?: string;
+  // Relative proxy path, not a URL. Run it through binderyImageSource().
+  imageUrl?: string;
+  disambiguation?: string;
+  ratingsCount?: number;
+  averageRating?: number;
+  monitored: boolean;
+  monitorMode?: BinderyAuthorMonitorMode;
+  monitorLatestCount?: number;
+  monitorNewItems?: "all" | "none";
+  qualityProfileId?: number | null;
+  metadataProfileId?: number | null;
+  rootFolderId?: number | null;
+  audiobookRootFolderId?: number | null;
+  metadataProvider?: string;
+  lastMetadataRefreshAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  // Populated on GET /author/{id} only, and image-proxied like the parent.
+  // This is where real per-status counts come from; the list response has no
+  // usable progress data.
+  books?: BinderyBook[];
+  statistics?: BinderyAuthorStatistics;
+}
+
+export interface BinderyBookFile {
+  id: number;
+  bookId: number;
+  format: "ebook" | "audiobook";
+  path: string;
+  sizeBytes: number;
+  createdAt?: string;
+}
+
+// The provider identity map, attached to GET /book/{id} only.
+export interface BinderyBookIdentifier {
+  id?: number;
+  bookId?: number;
+  provider?: string;
+  identifier?: string;
+  value?: string;
+}
+
+export interface BinderyBook {
+  id: number;
+  foreignBookId: string;
+  authorId: number;
+  title: string;
+  sortTitle?: string;
+  originalTitle?: string;
+  description?: string;
+  imageUrl?: string;
+  releaseDate?: string | null;
+  genres?: string[];
+  averageRating?: number;
+  ratingsCount?: number;
+  monitored: boolean;
+  status: BinderyBookStatus | string;
+  filePath?: string;
+  language?: string;
+  mediaType?: BinderyMediaType | string;
+  narrator?: string;
+  durationSeconds?: number;
+  asin?: string;
+  // The one snake_case field in the whole API.
+  calibre_id?: number | null;
+  metadataProvider?: string;
+  lastMetadataRefreshAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lockedFields?: string[];
+  excluded?: boolean;
+  ebookFilePath?: string;
+  audiobookFilePath?: string;
+  author?: BinderyAuthor;
+  // Attached on GET /book/{id} only.
+  bookFiles?: BinderyBookFile[];
+  identifiers?: BinderyBookIdentifier[];
+  // NOTE: models.Book also declares `editions[]`, but no Bindery handler ever
+  // populates it (GET /book/{id} attaches files and identifiers and nothing
+  // else) and there is no /book/{id}/editions route. Deliberately not typed
+  // here so no screen is tempted to render it.
+}
+
+export interface BinderyQueueItem {
+  id: number;
+  guid?: string;
+  title: string;
+  status: BinderyDownloadState | string;
+  size: number;
+  protocol?: string;
+  errorMessage?: string;
+  addedAt?: string;
+  grabbedAt?: string;
+  completedAt?: string;
+  importedAt?: string;
+  bookId?: number | null;
+  // Live overlay from the download client — present only while it is
+  // reporting. Percentage is 0-100 as a string, occasionally with a "%".
+  percentage?: string;
+  timeLeft?: string;
+  speed?: string;
+  // Minimal projection so a row can name the book and its author without a
+  // second fetch. Carries no artwork.
+  book?: {
+    id: number;
+    title: string;
+    authorId: number;
+    authorName: string;
+  };
+}
+
+export interface BinderyQueueResponse {
+  items: BinderyQueueItem[];
+  // True when a download client did not answer inside its deadline; the items
+  // are still valid, just possibly missing live progress.
+  partial?: boolean;
+  staleClients?: { clientId: number; name?: string; message?: string }[];
+}
+
+export interface BinderyRootFolder {
+  id: number;
+  path: string;
+  // Bavail * Bsize. There is no total/capacity field anywhere in the API, and
+  // the Windows implementation returns 0 — so no free-vs-total disk widget.
+  freeSpace: number;
+  createdAt?: string;
+}
+
+export interface BinderyMetadataProfile {
+  id: number;
+  name: string;
+  minPopularity?: number;
+  minPages?: number;
+  skipMissingDate?: boolean;
+  skipMissingIsbn?: boolean;
+  skipPartBooks?: boolean;
+  allowedLanguages?: string;
+  unknownLanguageBehavior?: "pass" | "fail";
+}
+
+// Response of GET /api/v1/system/status. That is the service's ping path (see
+// SERVICE_DEFAULTS) rather than a screen's data source, so it is exercised by
+// lib/http-client.ts's probe rather than by services/bindery-api.ts.
+export interface BinderySystemStatus {
+  version: string;
+  commit?: string;
+  buildDate?: string;
+  latestVersion?: string;
+  imageCacheBytes?: number;
+}
+
+// Stub record returned by /search/author. `id` is 0 (these are not in the
+// library yet) and `imageUrl` is a RAW remote URL or empty — unlike library
+// records it is never proxied, so it must not go through useServiceImage.
+export interface BinderyAuthorSearchResult {
+  id?: number;
+  foreignAuthorId: string;
+  authorName: string;
+  description?: string;
+  disambiguation?: string;
+  imageUrl?: string;
+  averageRating?: number;
+  ratingsCount?: number;
+  statistics?: BinderyAuthorStatistics;
+}
+
+export interface BinderyAddAuthorPayload {
+  foreignAuthorId: string;
+  authorName: string;
+  monitored: boolean;
+  searchOnAdd: boolean;
+  mediaType?: BinderyMediaType;
+  rootFolderId?: number;
+  metadataProfileId?: number;
+  monitorMode?: BinderyAuthorMonitorMode;
+  monitorLatestCount?: number;
+}
+
+// Partial patch for PUT /author/{id}. Every field the server decodes is a
+// pointer, so omitting one leaves it alone — send ONLY what changed. JSON null
+// is indistinguishable from omission server-side, so a profile cannot be
+// cleared this way; only the audiobook root folder has an explicit clear flag.
+export interface BinderyUpdateAuthorPayload {
+  monitored?: boolean;
+  monitorMode?: BinderyAuthorMonitorMode;
+  monitorLatestCount?: number;
+  monitorNewItems?: "all" | "none";
+  qualityProfileId?: number;
+  metadataProfileId?: number;
+  rootFolderId?: number;
+  audiobookRootFolderId?: number;
+  clearAudiobookRootFolder?: boolean;
+  applyMonitorModeToExisting?: boolean;
+}
+
+// Partial patch for PUT /book/{id}. Same pointer semantics as the author
+// patch. Do NOT include title/description/genres/language/releaseDate on a
+// monitor toggle: setting any of them also LOCKS that field against future
+// metadata refreshes.
+export interface BinderyUpdateBookPayload {
+  monitored?: boolean;
+  status?: BinderyBookStatus;
+  mediaType?: BinderyMediaType;
+}
+
 // --- Overseerr Types ---
 
 export type OverseerrMediaType = "movie" | "tv";

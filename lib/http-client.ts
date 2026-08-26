@@ -1116,6 +1116,13 @@ async function runConnectionProbe(
     case "sonarr":
     case "lidarr":
     case "prowlarr":
+    // Bindery is not an *arr, but /api/v1/system/status behaves identically:
+    // 200 JSON with a valid X-Api-Key, 401 without. (Its /api/v1/health is on
+    // the server's unauthenticated allowlist, which is why SERVICE_DEFAULTS
+    // points the probe at /system/status instead.) An install running in
+    // "disabled" or "local only" auth mode answers 200 with no key at all;
+    // that is a reachable server by any measure, so "ok" is the right verdict.
+    case "bindery":
     case "bazarr": {
       // *arr family: /system/status returns 200 with X-Api-Key, 401 without.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);

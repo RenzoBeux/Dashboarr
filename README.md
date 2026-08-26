@@ -52,6 +52,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **NZBGet** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |
 | **Sonarr** | Search & add shows, episode monitoring, airing calendar/schedule |
+| **Bindery** | Book library, search & add authors, monitor books, queue, wanted. The Readarr successor |
 | **Seerr** | Browse & search media, request movies/shows, approve/decline requests |
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Tracearr** | Live streams with codec/quality details, bandwidth, playback history |

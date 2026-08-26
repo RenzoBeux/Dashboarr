@@ -28,6 +28,23 @@ export type ArtistsSortKey =
   | "title-desc"
   | "size-desc";
 
+// Bindery authors sort SERVER-side: the stored key is passed straight through
+// as ?sort=, so every value here must be one the server whitelists (see
+// internal/db/authors.go authorSortOrder). An unrecognised value is silently
+// ignored upstream and falls back to A-Z, which would look like a broken
+// control. "az"/"za" order by sort name ("Weir, Andy"); "name-az"/"name-za"
+// order by display name ("Andy Weir"). There is no size axis: Bindery tracks
+// no per-author disk usage.
+export type BinderyAuthorsSortKey =
+  | "az"
+  | "za"
+  | "name-az"
+  | "name-za"
+  | "recent"
+  | "books-desc"
+  | "books-asc"
+  | "rating-desc";
+
 export type PlexRecentSortKey =
   | "added-desc"
   | "title-asc"
@@ -64,6 +81,7 @@ interface SortPreferences {
   movies: MoviesSortKey;
   series: SeriesSortKey;
   music: ArtistsSortKey;
+  books: BinderyAuthorsSortKey;
   plexRecent: PlexRecentSortKey;
   jellyfinRecent: JellyfinRecentSortKey;
   embyRecent: JellyfinRecentSortKey;
@@ -76,6 +94,7 @@ export const SORT_DEFAULTS: SortPreferences = {
   movies: "added-desc",
   series: "added-desc",
   music: "added-desc",
+  books: "az",
   plexRecent: "added-desc",
   jellyfinRecent: "added-desc",
   embyRecent: "added-desc",
@@ -89,6 +108,7 @@ interface SortStore extends SortPreferences {
   setMovies: (v: MoviesSortKey) => void;
   setSeries: (v: SeriesSortKey) => void;
   setMusic: (v: ArtistsSortKey) => void;
+  setBooks: (v: BinderyAuthorsSortKey) => void;
   setPlexRecent: (v: PlexRecentSortKey) => void;
   setJellyfinRecent: (v: JellyfinRecentSortKey) => void;
   setEmbyRecent: (v: JellyfinRecentSortKey) => void;
@@ -102,6 +122,7 @@ function snapshot(state: SortPreferences): SortPreferences {
     movies: state.movies,
     series: state.series,
     music: state.music,
+    books: state.books,
     plexRecent: state.plexRecent,
     jellyfinRecent: state.jellyfinRecent,
     embyRecent: state.embyRecent,
@@ -133,6 +154,10 @@ export const useSortStore = create<SortStore>((set, get) => ({
   setMusic: (music) => {
     set({ music });
     setJSON(STORAGE_KEY, snapshot({ ...get(), music }));
+  },
+  setBooks: (books) => {
+    set({ books });
+    setJSON(STORAGE_KEY, snapshot({ ...get(), books }));
   },
   setPlexRecent: (plexRecent) => {
     set({ plexRecent });

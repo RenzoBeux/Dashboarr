@@ -1,5 +1,6 @@
 import {
   Activity,
+  BookOpen,
   CalendarDays,
   Captions,
   Cast,
@@ -35,6 +36,7 @@ import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { SonarrQueueCard } from "@/components/dashboard/sonarr-queue-card";
 import { LidarrQueueCard } from "@/components/dashboard/lidarr-queue-card";
+import { BinderyQueueCard } from "@/components/dashboard/bindery-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { StillPendingCard } from "@/components/dashboard/still-pending-card";
@@ -142,6 +144,10 @@ import {
   LIDARR_QUEUE_DEFAULT_SETTINGS,
   type LidarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/lidarr-queue-settings";
+import {
+  BinderyQueueSettings,
+  BINDERY_QUEUE_DEFAULT_SETTINGS,
+} from "@/components/dashboard/widget-settings/bindery-queue-settings";
 import {
   RecentlyDownloadedSettings,
   RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
@@ -338,6 +344,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: LidarrQueueSettings,
     defaultSettings: LIDARR_QUEUE_DEFAULT_SETTINGS,
   },
+  "bindery-queue": {
+    id: "bindery-queue",
+    label: "Bindery Queue",
+    description: "Books currently downloading or grabbed",
+    icon: BookOpen,
+    service: "bindery",
+    component: BinderyQueueCard,
+    settingsComponent: BinderyQueueSettings,
+    defaultSettings: BINDERY_QUEUE_DEFAULT_SETTINGS,
+  },
   "recently-downloaded": {
     id: "recently-downloaded",
     label: "Recently Downloaded",
@@ -481,6 +497,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Disk Space",
     description: "Mount usage from Radarr, Sonarr or Lidarr — no Glances needed",
     icon: HardDrive,
+    // Bindery is deliberately absent: its /rootfolder reports freeSpace but no
+    // total, and the usage bar needs both. Nothing to add here for it.
     service: ["radarr", "sonarr", "lidarr"],
     component: DiskSpaceCard,
     settingsComponent: DiskSpaceSettings,
@@ -491,6 +509,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Health Alerts",
     description: "System Health warnings and errors from Sonarr, Radarr, Prowlarr and Lidarr",
     icon: ShieldAlert,
+    // Bindery is deliberately absent: it exposes no *arr-style health-check
+    // array (its /health is a liveness probe returning {status, version}).
     service: ["radarr", "sonarr", "prowlarr", "lidarr"],
     component: ArrHealthCard,
     settingsComponent: ArrHealthSettings,

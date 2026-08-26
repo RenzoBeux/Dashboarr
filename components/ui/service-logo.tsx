@@ -32,6 +32,9 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   radarr: require("@/assets/services/radarr.png"),
   sonarr: require("@/assets/services/sonarr.png"),
   lidarr: require("@/assets/services/lidarr.png"),
+  // Bindery's official mark (MIT, vavallee/bindery .github/assets/logo.png),
+  // downscaled to 256px to match its siblings.
+  bindery: require("@/assets/services/bindery.png"),
   prowlarr: require("@/assets/services/prowlarr.png"),
   // Official Jackett jacket glyph, recolored white for the dark UI (upstream
   // ships it black-on-transparent).

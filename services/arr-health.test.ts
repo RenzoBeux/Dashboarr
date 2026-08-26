@@ -28,6 +28,7 @@ jest.mock("@/lib/http-client", () => ({
 
 import { HttpError, serviceRequest } from "@/lib/http-client";
 import {
+  ARR_HEALTH_SERVICE_IDS,
   describeTestAllOutcome,
   formatTestAllReport,
   testAllForHealthSource,
@@ -250,5 +251,24 @@ describe("formatTestAllReport", () => {
         "\n",
       ),
     );
+  });
+});
+
+describe("ARR_HEALTH_SERVICE_IDS", () => {
+  it("covers exactly the four *arr kinds with an issue-array /health", () => {
+    expect([...ARR_HEALTH_SERVICE_IDS].sort()).toEqual([
+      "lidarr",
+      "prowlarr",
+      "radarr",
+      "sonarr",
+    ]);
+  });
+
+  it("omits bindery on purpose", () => {
+    // Bindery's /health is a liveness probe ({status, version}), not an *arr
+    // health-issue array, and it answers without an API key. Adding it here
+    // would hand the Health Alerts card a shape it cannot render. This
+    // assertion exists so the omission reads as deliberate rather than missed.
+    expect(ARR_HEALTH_SERVICE_IDS).not.toContain("bindery" as never);
   });
 });
