@@ -1,6 +1,6 @@
 ---
 name: service-apis
-description: Upstream API reference and hard-won gotchas for every service Dashboarr integrates with (qBittorrent, rtorrent, NZBGet, SABnzbd, Radarr, Sonarr, Bindery, Prowlarr, Seerr/Overseerr, Jackett, Tautulli, Plex, Bazarr, Glances, Jellyfin, JellyStat). Use when implementing, debugging, or extending any service integration in services/ or hooks/, or when verifying an endpoint shape, auth scheme, or field type.
+description: Upstream API reference and hard-won gotchas for every service Dashboarr integrates with (qBittorrent, rtorrent, NZBGet, SABnzbd, Radarr, Sonarr, Bindery, Prowlarr, Seerr/Overseerr, Jackett, Tautulli, Plex, Bazarr, Glances, Jellyfin, JellyStat, Autobrr). Use when implementing, debugging, or extending any service integration in services/ or hooks/, or when verifying an endpoint shape, auth scheme, or field type.
 ---
 
 # Service API Documentation (sources of truth)
@@ -24,6 +24,7 @@ When implementing or debugging a service integration, consult the upstream API d
 | Glances | https://glances.readthedocs.io/en/latest/api.html | REST API exposed when Glances runs in webserver mode (`-w`). We use API v4. |
 | Jellyfin | https://api.jellyfin.org/ | OpenAPI; live spec also at `/api-docs/openapi.json`. Auth via `MediaBrowser Token="…"` header. |
 | JellyStat | https://github.com/CyferShepard/Jellystat (live Swagger at `<host>/swagger`) | Jellyfin stats server (Tautulli-analog). Root-mounted REST (`/stats`, `/api`, `/proxy`); auth via `x-api-token` header. Postgres `bigint` columns (Count/Plays/PlaybackDuration) serialize as strings — coerce. Live sessions via `/proxy/getSessions` pass the raw Jellyfin payload through. See `services/jellystat-api.ts`. |
+| Autobrr | https://autobrr.com/api + route handlers in `internal/http/` and TS shapes in `web/src/types/*.d.ts` of autobrr/autobrr | Auth via `X-API-Token` header (`?apikey=` also accepted; we send the header). JSON is snake_case. `GET /api/healthz/liveness` is **anonymous** — it answers 200 with a wrong key, so the connection probe validates against `GET /api/release/stats` instead. Release search: `GET /api/release?limit&offset&q&push_status` (`PUSH_APPROVED`/`PUSH_REJECTED`/`PUSH_ERROR`; an invalid value 400s, so omit when unfiltered). **`GET /api/irc/network/{id}/restart` is a GET that mutates** — keep it in a mutation, never a query. Filter toggle: `PUT /api/filters/{id}/enabled` body `{enabled}`. See `services/autobrr-api.ts`. |
 
 Notes:
 - **Bindery diverges from the *arr family in ways that bite.** All verified against `vavallee/bindery@main`:

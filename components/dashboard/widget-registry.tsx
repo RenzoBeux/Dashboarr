@@ -23,6 +23,7 @@ import {
   Server,
   ShieldAlert,
   Tv,
+  Zap,
   type LucideIcon,
 } from "lucide-react-native";
 import type Animated from "react-native-reanimated";
@@ -54,6 +55,7 @@ import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
+import { AutobrrCard } from "@/components/dashboard/autobrr-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -178,6 +180,11 @@ import {
   ARR_HEALTH_DEFAULT_SETTINGS,
   type ArrHealthSettingsValue,
 } from "@/components/dashboard/widget-settings/arr-health-settings";
+import {
+  AutobrrStatsSettings,
+  AUTOBRR_STATS_DEFAULT_SETTINGS,
+  type AutobrrStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/autobrr-stats-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -524,6 +531,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     service: "unraid",
     component: UnraidCard,
   },
+  "autobrr-stats": {
+    id: "autobrr-stats",
+    label: "Autobrr Activity",
+    description: "Approved, rejected and errored pushes from Autobrr",
+    icon: Zap,
+    service: "autobrr",
+    component: AutobrrCard,
+    settingsComponent: AutobrrStatsSettings,
+    defaultSettings: AUTOBRR_STATS_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -559,4 +576,5 @@ export type {
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
   ArrHealthSettingsValue,
+  AutobrrStatsSettingsValue,
 };

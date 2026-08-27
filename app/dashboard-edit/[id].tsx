@@ -70,6 +70,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   glances: "Glances",
   bazarr: "Bazarr",
   unraid: "unRAID",
+  autobrr: "Autobrr",
 };
 
 export default function DashboardEditScreen() {

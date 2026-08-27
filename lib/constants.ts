@@ -20,6 +20,7 @@ export const SERVICE_IDS = [
   "glances",
   "bazarr",
   "unraid",
+  "autobrr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -153,6 +154,16 @@ export const SERVICE_DEFAULTS: Record<
   // pingService and the connection probe POST a minimal query instead
   // (mirrors nzbget/rtorrent/transmission). defaultPort is the webgui port.
   unraid: { name: "unRAID", defaultPort: 80, apiBasePath: "", pingPath: "/graphql" },
+  // Autobrr's REST API authenticates with an X-API-Token header (not the
+  // default X-Api-Key — see the branch in lib/http-client.ts). pingPath is the
+  // anonymous liveness probe; the connection probe uses /release/stats instead
+  // because liveness answers 200 regardless of the API key.
+  autobrr: {
+    name: "Autobrr",
+    defaultPort: 7474,
+    apiBasePath: "/api",
+    pingPath: "/healthz/liveness",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -198,6 +209,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "disk-space",
   "arr-health",
   "unraid-array",
+  "autobrr-stats",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

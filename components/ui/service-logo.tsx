@@ -44,6 +44,9 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   jellystat: require("@/assets/services/jellystat.png"),
   bazarr: require("@/assets/services/bazarr.png"),
   glances: require("@/assets/services/glances.png"),
+  // Official autobrr rabbit (GPL-2.0, autobrr/autobrr web/public/logo192.png).
+  // Blue-on-transparent, so it reads fine on the dark UI as shipped.
+  autobrr: require("@/assets/services/autobrr.png"),
 };
 
 export function hasServiceLogo(id: ServiceId): boolean {
