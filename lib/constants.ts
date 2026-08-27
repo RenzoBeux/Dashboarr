@@ -7,6 +7,7 @@ export const SERVICE_IDS = [
   "radarr",
   "sonarr",
   "lidarr",
+  "bindery",
   "overseerr",
   "tautulli",
   "tracearr",
@@ -90,6 +91,13 @@ export const SERVICE_DEFAULTS: Record<
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
   // Lidarr is an *arr sibling but on the v1 API (not v3 like Radarr/Sonarr).
   lidarr: { name: "Lidarr", defaultPort: 8686, apiBasePath: "/api/v1", pingPath: "/system/status" },
+  // Bindery is the Go rewrite that replaces the archived Readarr (books and
+  // audiobooks). Despite the *arr-looking route names it is NOT an *arr fork
+  // and has no /api/v3 — /api/v1 is its own native API. Note the probe path:
+  // /api/v1/health is on the server's unauthenticated allowlist and answers
+  // 200 without a key, so it would light the health dot green for a wrong API
+  // key; /system/status is the cheapest endpoint that actually validates it.
+  bindery: { name: "Bindery", defaultPort: 8787, apiBasePath: "/api/v1", pingPath: "/system/status" },
   overseerr: { name: "Seerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
   tautulli: { name: "Tautulli", defaultPort: 8181, apiBasePath: "/api/v2", pingPath: "/home" },
   // Tracearr's read-only public API lives under /api/v1/public with Bearer-token
@@ -172,6 +180,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "radarr-queue",
   "sonarr-queue",
   "lidarr-queue",
+  "bindery-queue",
   "recently-downloaded",
   "calendar",
   "still-pending",

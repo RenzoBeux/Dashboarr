@@ -18,6 +18,7 @@ import { useServiceImage } from "@/hooks/use-service-image";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { BAR_TRACK_COLOR } from "@/lib/arr-poster-status";
+import type { ServiceId } from "@/lib/constants";
 
 /** Sonarr/Radarr-style poster overlay: bottom status bar + top-right corner triangle. */
 export interface PosterStatus {
@@ -73,7 +74,10 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
   extraFilter?: (item: T) => boolean;
   sort: S;
   compare: (a: T, b: T, sort: S) => number;
-  serviceId: "radarr" | "sonarr" | "lidarr";
+  // Widened from the three *arr literals so Bindery can reuse the grid. Its
+  // items carry a single imageUrl string rather than an images[] array, so the
+  // Books screen projects one into the shape below before passing it in.
+  serviceId: ServiceId;
   placeholderIcon: LucideIcon;
   /** Plural noun used in empty state titles, e.g. "movies" / "shows". */
   nounPlural: string;
@@ -233,7 +237,7 @@ function LibraryPoster<T extends MonitoredItem>({
   onLongPress,
 }: {
   item: T;
-  serviceId: "radarr" | "sonarr" | "lidarr";
+  serviceId: ServiceId;
   posterCoverType: string;
   placeholderIcon: LucideIcon;
   footer: string;

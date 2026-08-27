@@ -513,6 +513,7 @@
               <tr><td><strong>Radarr</strong></td><td>7878</td><td>API key</td><td>Test Connection sends your API key to <code>/api/v3/system/status</code> and only accepts a JSON 200, so a wrong port fails the test rather than passing silently. Enter the bare origin with no <code>/api/v3</code> suffix.</td></tr>
               <tr><td><strong>Sonarr</strong></td><td>8989</td><td>API key</td><td>Same v3 API and the same authenticated <code>/api/v3/system/status</code> probe as Radarr.</td></tr>
               <tr><td><strong>Lidarr</strong></td><td>8686</td><td>API key</td><td>Uses the v1 API, not v3. Only matters if you hand-write proxy path rules.</td></tr>
+              <tr><td><strong>Bindery</strong></td><td>8787</td><td>API key</td><td>The Readarr successor, rewritten in Go. Find the key under Settings &rarr; General &rarr; Security in Bindery. It is not an *arr fork: no calendar, no disk-space reporting and no health alerts, so those widgets skip it. If you serve it under a subpath, put the full path in the URL field.</td></tr>
               <tr><td><strong>Prowlarr</strong></td><td>9696</td><td>API key</td><td>No webhook integration, so it is poll-only on the backend.</td></tr>
               <tr><td><strong>Jackett</strong></td><td>9117</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Jackett's admin password protects its indexer management endpoints, so the app cannot add, configure or disable indexers; listing them, per-indexer Search and Test, search and grab all work with just the API key.</td></tr>
               <tr><td><strong>Seerr</strong></td><td>5055</td><td>API key</td><td>If CSRF protection is enabled in Seerr, the API is read-only and submitting a request fails with 403 "invalid csrf token". Turn CSRF protection off.</td></tr>
@@ -610,10 +611,10 @@
         </p>
 
         <h3>The widget catalogue</h3>
-        <p>Twenty-six widgets are available:</p>
+        <p>Twenty-seven widgets are available:</p>
         <p style="color:var(--muted)">
           Service Health, Server Stats, Speed Stats, Downloads, SABnzbd Queue, NZBGet Queue,
-          Radarr Queue, Sonarr Queue, Lidarr Queue, Recently Downloaded, Calendar, Still Pending,
+          Radarr Queue, Sonarr Queue, Lidarr Queue, Bindery Queue, Recently Downloaded, Calendar, Still Pending,
           Stream Activity, Streaming Bandwidth, Seerr Requests, Now Playing (All Servers),
           Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats,
           Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array.
@@ -693,7 +694,7 @@
         </p>
         <p>
           A tab becomes pickable when the workspace has at least one <strong>attached</strong> instance
-          of a backing service. Movies needs Radarr, TV needs Sonarr, Music needs Lidarr, Requests
+          of a backing service. Movies needs Radarr, TV needs Sonarr, Music needs Lidarr, Books needs Bindery, Requests
           needs Seerr, Indexers needs Prowlarr or Jackett, Downloads needs any download client, Calendar needs
           Sonarr or Radarr, Library needs Radarr or Sonarr, and Activity needs any of Tautulli,
           Tracearr, Jellystat, Jellyfin or Emby. <strong>Services</strong> is always pickable.
@@ -715,6 +716,7 @@
           <li><strong>Movies</strong> (Radarr): Library, Queue, Wanted, with a filter and sort sheet and long-press action sheets.</li>
           <li><strong>TV</strong> (Sonarr): Library and Calendar, with filter and sort and a "Search Missing Episodes" confirmation.</li>
           <li><strong>Music</strong> (Lidarr): Library, Queue, Wanted.</li>
+          <li><strong>Books</strong> (Bindery): Library, Queue, Wanted, with a media-type filter for ebooks, audiobooks and dual-format titles. Authors show a book count rather than a completion bar, because Bindery does not report per-author progress; the author screen computes real counts from its own book list.</li>
           <li><strong>Requests</strong> (Seerr): Discover, Search, Requests, with per-row approve and decline, and a Customize link to reorder your Discover sliders.</li>
           <li><strong>Indexers</strong> (Prowlarr and Jackett, with a source switcher when both are attached): Indexers, Search, and (Prowlarr only) Stats. Prowlarr indexers toggle with a power button and grabbing a release confirms first; each Jackett indexer has a <strong>Search</strong> button that opens the Search tab pinned to that one tracker (tap the pill to unpin) and a <strong>Test</strong> button that browses it and reports back, and grabbing opens a sheet to send the release to one of your torrent clients or open its details page.</li>
           <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
@@ -724,12 +726,12 @@
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>
 
-        <h3>Queue issues (Radarr, Sonarr, Lidarr)</h3>
+        <h3>Queue issues (Radarr, Sonarr, Lidarr, Bindery)</h3>
         <p>
           Sometimes a grab gets stuck. Most often it finished downloading but the *arr refuses to
           import it: non-media files in the release, a sample-only folder, episodes missing from the
           pack, no matching movie or series. It can also be the download itself going wrong, such as
-          a torrent stalled with no connections. When that happens the Movies, TV and Music screens
+          a torrent stalled with no connections. When that happens the Movies, TV, Music and Books screens
           show a <strong>queue issues</strong> banner above the chip row. Amber means a warning, red
           means the download failed outright. It only appears when something is actually stuck, and
           it follows the instance you currently have selected.

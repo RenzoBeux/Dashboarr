@@ -1,4 +1,10 @@
-import type { RadarrMovie, SonarrSeries, LidarrArtist, LidarrAlbum } from "@/lib/types";
+import type {
+  RadarrMovie,
+  SonarrSeries,
+  LidarrArtist,
+  LidarrAlbum,
+  BinderyBook,
+} from "@/lib/types";
 
 /**
  * Sonarr/Radarr-style poster status indicators (issue #47).
@@ -191,6 +197,28 @@ export function lidarrAlbumBarKind(
 }
 
 /**
+ * Bindery books. Deliberately NOT paired with an author-level bar: Bindery's
+ * AuthorStats declares availableBookCount and wantedBookCount but never
+ * assigns either (upstream builds the struct in one place and sets bookCount
+ * alone), so an author progress bar computed from them would read 0% or 100%
+ * for every author forever. The Books grid shows the real book count instead,
+ * and the author screen derives true counts from its embedded books[].
+ *
+ * Books themselves carry a real per-item status, so their bar is honest:
+ * downloaded or imported reads green, a monitored book still wanted reads red,
+ * unmonitored reads amber.
+ */
+export function binderyBookBarKind(
+  book: BinderyBook,
+  isDownloading: boolean,
+): PosterBarKind {
+  if (isDownloading) return "purple";
+  if (book.status === "downloaded" || book.status === "imported") return "success";
+  if (book.monitored) return "danger";
+  return "warning";
+}
+
+/**
  * "Missing" predicates for the library filter (issue #265): released/aired but
  * not downloaded, monitored only. Each mirrors its service's danger-bar branch
  * above so the filter and the red poster bar select the same items.
@@ -211,6 +239,11 @@ export function lidarrAlbumIsMissing(album: LidarrAlbum): boolean {
   const trackCount = album.statistics?.trackCount ?? 0;
   const fileCount = album.statistics?.trackFileCount ?? 0;
   return album.monitored && trackCount > 0 && fileCount < trackCount;
+}
+
+// Mirrors binderyBookBarKind's danger branch.
+export function binderyBookIsMissing(book: BinderyBook): boolean {
+  return book.monitored && book.status !== "downloaded" && book.status !== "imported";
 }
 
 /**

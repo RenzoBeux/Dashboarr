@@ -1820,6 +1820,134 @@ const DEMO_UNRAID_DISKS = [
   { id: "disk-sdi", device: "sdi", name: "Kingston A400 240GB (sdi)", vendor: "Kingston", size: 240057409536, serialNum: "50026B7682D8E5F1", temperature: 27, smartStatus: "OK", isSpinning: true, interfaceType: "SATA" },
 ];
 
+
+// --- Bindery demo fixtures ---
+//
+// Deliberately reproduces Bindery's real envelope shapes rather than flattening
+// them: the /author and /book routes are offset-paginated objects while /queue
+// is its own {items, partial} shape. Demo mode is the only place outside unit
+// tests where unwrapBinderyList() sees all of them.
+
+function makeBinderyAuthor(
+  id: number,
+  authorName: string,
+  foreignAuthorId: string,
+  bookCount: number,
+  monitored = true,
+) {
+  return {
+    id,
+    foreignAuthorId,
+    authorName,
+    sortName: authorName.split(" ").slice(-1)[0] + ", " + authorName.split(" ")[0],
+    description: `${authorName} is a demo author used to preview the Books tab.`,
+    // Matches the real shape: a relative image-proxy path, not a URL.
+    imageUrl: `/api/v1/images?url=${encodeURIComponent(`https://covers.example/${id}.jpg`)}`,
+    monitored,
+    monitorMode: "all",
+    metadataProvider: "openlibrary",
+    averageRating: 4.2,
+    ratingsCount: 1840,
+    createdAt: "2026-02-11T09:00:00Z",
+    // Only bookCount is ever populated upstream; the other two are always 0.
+    statistics: { bookCount, availableBookCount: 0, wantedBookCount: 0 },
+  };
+}
+
+function makeBinderyBook(
+  id: number,
+  title: string,
+  authorId: number,
+  year: number,
+  status: string,
+  mediaType = "ebook",
+) {
+  return {
+    id,
+    foreignBookId: `OL${id}W`,
+    authorId,
+    title,
+    description: `${title} is a demo book used to preview the Books tab.`,
+    imageUrl: `/api/v1/images?url=${encodeURIComponent(`https://covers.example/b${id}.jpg`)}`,
+    releaseDate: `${year}-06-01T00:00:00Z`,
+    genres: ["Science Fiction"],
+    averageRating: 4.4,
+    ratingsCount: 920,
+    monitored: true,
+    status,
+    mediaType,
+    language: "eng",
+    createdAt: "2026-02-11T09:00:00Z",
+  };
+}
+
+const DEMO_BINDERY_AUTHORS = [
+  makeBinderyAuthor(1, "Andy Weir", "/authors/OL7115219A", 4),
+  makeBinderyAuthor(2, "Becky Chambers", "/authors/OL7360590A", 6),
+  makeBinderyAuthor(3, "Ursula K. Le Guin", "/authors/OL22242A", 22, false),
+];
+
+const DEMO_BINDERY_BOOKS = [
+  makeBinderyBook(101, "Project Hail Mary", 1, 2021, "imported"),
+  makeBinderyBook(102, "The Martian", 1, 2011, "imported", "both"),
+  makeBinderyBook(103, "Artemis", 1, 2017, "wanted"),
+  makeBinderyBook(201, "A Psalm for the Wild-Built", 2, 2021, "imported", "audiobook"),
+  makeBinderyBook(202, "The Long Way to a Small, Angry Planet", 2, 2014, "downloading"),
+  makeBinderyBook(301, "The Left Hand of Darkness", 3, 1969, "wanted"),
+];
+
+// The offset envelope /author, /book and /history all use.
+function binderyPage<T>(items: T[]) {
+  return { items, total: items.length, limit: 500, offset: 0 };
+}
+
+const DEMO_BINDERY_QUEUE = {
+  items: [
+    {
+      id: 901,
+      guid: "demo-guid-901",
+      title: "Becky.Chambers.The.Long.Way.To.A.Small.Angry.Planet.epub",
+      status: "downloading",
+      size: 4_194_304,
+      protocol: "usenet",
+      addedAt: "2026-02-18T18:20:00Z",
+      bookId: 202,
+      percentage: "64.5",
+      timeLeft: "00:02:11",
+      speed: "3.1 MB/s",
+      book: {
+        id: 202,
+        title: "The Long Way to a Small, Angry Planet",
+        authorId: 2,
+        authorName: "Becky Chambers",
+      },
+    },
+    {
+      id: 902,
+      guid: "demo-guid-902",
+      title: "Andy.Weir.Artemis.Audiobook.m4b",
+      status: "importFailed",
+      size: 512_000_000,
+      protocol: "usenet",
+      errorMessage: "No files found are eligible for import",
+      addedAt: "2026-02-18T15:02:00Z",
+      bookId: 103,
+      book: {
+        id: 103,
+        title: "Artemis",
+        authorId: 1,
+        authorName: "Andy Weir",
+      },
+    },
+  ],
+};
+
+const DEMO_BINDERY_STATUS = {
+  version: "1.32.2",
+  commit: "demo",
+  buildDate: "2026-08-25T00:00:00Z",
+};
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -1913,6 +2041,65 @@ export function getDemoResponse(
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       // Lidarr intentionally healthy — exercises the no-badge path.
       if (normalized.startsWith("/health")) return [];
+      return undefined;
+    }
+    case "bindery": {
+      if (normalized === "/system/status") return DEMO_BINDERY_STATUS;
+      if (normalized === "/health") return { status: "ok", version: "1.32.2" };
+      if (normalized === "/author") return binderyPage(DEMO_BINDERY_AUTHORS);
+      if (normalized === "/author/:id") {
+        const authorId = Number(basePath.split("/").pop());
+        const author =
+          DEMO_BINDERY_AUTHORS.find((a) => a.id === authorId) ?? DEMO_BINDERY_AUTHORS[0]!;
+        // Detail responses embed books[] and, unlike the list, omit statistics
+        // entirely — the app derives its counts from the books.
+        const { statistics: _statistics, ...rest } = author;
+        return {
+          ...rest,
+          books: DEMO_BINDERY_BOOKS.filter((b) => b.authorId === author.id),
+        };
+      }
+      if (normalized === "/book/:id") {
+        const bookId = Number(basePath.split("/").pop());
+        const book = DEMO_BINDERY_BOOKS.find((b) => b.id === bookId) ?? DEMO_BINDERY_BOOKS[0]!;
+        const author = DEMO_BINDERY_AUTHORS.find((a) => a.id === book.authorId);
+        return {
+          ...book,
+          author,
+          // bookFiles and identifiers are attached to single-book reads only.
+          bookFiles:
+            book.status === "imported"
+              ? [
+                  {
+                    id: book.id * 10,
+                    bookId: book.id,
+                    format: book.mediaType === "audiobook" ? "audiobook" : "ebook",
+                    path: `/books/${book.title}.epub`,
+                    sizeBytes: 3_145_728,
+                  },
+                ]
+              : [],
+          identifiers: [{ provider: "openlibrary", identifier: book.foreignBookId }],
+        };
+      }
+      if (normalized === "/book") {
+        const authorId = params?.authorId != null ? Number(params.authorId) : null;
+        const status = params?.status != null ? String(params.status) : null;
+        let books = DEMO_BINDERY_BOOKS;
+        if (authorId != null) books = books.filter((b) => b.authorId === authorId);
+        if (status != null) books = books.filter((b) => b.status === status);
+        return binderyPage(books);
+      }
+      if (normalized.startsWith("/queue")) return DEMO_BINDERY_QUEUE;
+      // Bare arrays, matching the real routes.
+      if (normalized.startsWith("/wanted/missing")) {
+        return DEMO_BINDERY_BOOKS.filter((b) => b.status === "wanted");
+      }
+      if (normalized.startsWith("/rootfolder")) {
+        return [{ id: 1, path: "/books", freeSpace: 2199023255552 }];
+      }
+      if (normalized.startsWith("/metadataprofile")) return [{ id: 1, name: "Standard" }];
+      if (normalized.startsWith("/search/author")) return [];
       return undefined;
     }
     case "overseerr": {

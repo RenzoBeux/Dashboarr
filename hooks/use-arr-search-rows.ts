@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useLidarrArtists, useLidarrSearch } from "@/hooks/use-lidarr";
+import { useBinderyAuthors, useBinderyAuthorSearch } from "@/hooks/use-bindery";
 import { useRadarrMovies, useRadarrSearch } from "@/hooks/use-radarr";
 import { useSonarrSearch, useSonarrSeries } from "@/hooks/use-sonarr";
 import {
@@ -10,7 +11,10 @@ import {
   mergeLibraryFirst,
   type LibraryMatchFields,
 } from "@/lib/library-search";
+import { binderyImageSource } from "@/lib/bindery-normalize";
 import type {
+  BinderyAuthor,
+  BinderyAuthorSearchResult,
   LidarrArtist,
   LidarrArtistSearchResult,
   RadarrMovie,
@@ -280,4 +284,36 @@ export function useLidarrSearchRows(
   const lookup = useLidarrSearch(debounced);
   const { data: library } = useLidarrArtists();
   return useArrSearchRows(query, debounced, library, lookup, LIDARR_SEARCH_ADAPTER, limit);
+}
+
+// Bindery's library entity is an author, like Lidarr's artist. Two differences
+// it has to absorb: the poster is a single relative proxy path rather than an
+// images[] array, and search stubs carry no usable artwork at all (they are the
+// one payload Bindery never image-proxies), so the lookup half renders on its
+// fallback icon by design.
+export const BINDERY_SEARCH_ADAPTER: ArrSearchAdapter<
+  BinderyAuthor,
+  BinderyAuthorSearchResult,
+  string
+> = {
+  fields: (a) => ({ title: a.authorName, sortTitle: a.sortName }),
+  libraryKey: (a) => a.foreignAuthorId,
+  lookupKey: (r) => r.foreignAuthorId,
+  libraryId: (a) => a.id,
+  display: (a) => ({
+    poster: binderyImageSource(a.imageUrl),
+    title: a.authorName,
+    metaLine: a.disambiguation || undefined,
+    overview: a.description,
+  }),
+};
+
+export function useBinderySearchRows(
+  query: string,
+  limit: number = DEFAULT_LIBRARY_MATCH_LIMIT,
+): ArrSearchRowsResult<BinderyAuthorSearchResult> {
+  const debounced = useDebouncedValue(query.trim(), DEBOUNCE_MS);
+  const lookup = useBinderyAuthorSearch(debounced);
+  const { data: library } = useBinderyAuthors();
+  return useArrSearchRows(query, debounced, library, lookup, BINDERY_SEARCH_ADAPTER, limit);
 }

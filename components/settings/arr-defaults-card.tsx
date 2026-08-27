@@ -54,6 +54,11 @@ export function ArrDefaultsCard({
       return <SonarrDefaults instanceId={instanceId} />;
     case "lidarr":
       return <LidarrDefaults instanceId={instanceId} />;
+    // Bindery is deliberately absent. This card stores a default quality
+    // profile and a root folder PATH on the instance; Bindery has no quality
+    // profile worth choosing (its "qualities" are file extensions and the
+    // seeded profiles ship empty) and addresses root folders by id, not path.
+    // Its add sheet takes its own defaults from the server instead.
     default:
       return null;
   }

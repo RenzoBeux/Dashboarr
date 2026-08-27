@@ -21,6 +21,7 @@ jest.mock("expo-secure-store", () => ({
 
 import {
   LIDARR_SEARCH_ADAPTER,
+  BINDERY_SEARCH_ADAPTER,
   RADARR_SEARCH_ADAPTER,
   SONARR_SEARCH_ADAPTER,
   buildSearchRows,
@@ -28,6 +29,7 @@ import {
 } from "./use-arr-search-rows";
 import type {
   LidarrArtist,
+  BinderyAuthor,
   RadarrMovie,
   RadarrSearchResult,
   SonarrSeries,
@@ -154,6 +156,59 @@ describe("LIDARR_SEARCH_ADAPTER", () => {
       ).metaLine,
     ).toBe("Group · UK rock band");
     expect(LIDARR_SEARCH_ADAPTER.display(artist({})).metaLine).toBeUndefined();
+  });
+});
+
+function binderyAuthor(over: Partial<BinderyAuthor>): BinderyAuthor {
+  return {
+    id: 1,
+    foreignAuthorId: "/authors/OL1A",
+    authorName: "Andy Weir",
+    monitored: true,
+    ...over,
+  } as BinderyAuthor;
+}
+
+describe("BINDERY_SEARCH_ADAPTER", () => {
+  it("maps authorName/sortName onto the shared title fields", () => {
+    expect(
+      BINDERY_SEARCH_ADAPTER.fields(
+        binderyAuthor({ authorName: "Ursula K. Le Guin", sortName: "Le Guin, Ursula K." }),
+      ),
+    ).toEqual({ title: "Ursula K. Le Guin", sortTitle: "Le Guin, Ursula K." });
+  });
+
+  it("keys the library by foreignAuthorId (a path-shaped string)", () => {
+    const a = binderyAuthor({ id: 7, foreignAuthorId: "/authors/OL7115219A" });
+    expect(BINDERY_SEARCH_ADAPTER.libraryKey(a)).toBe("/authors/OL7115219A");
+    expect(BINDERY_SEARCH_ADAPTER.libraryId(a)).toBe(7);
+  });
+
+  it("resolves the single relative imageUrl into a poster pair", () => {
+    // Bindery has no images[] array — the poster comes from one proxy path,
+    // rebuilt so a subpath deploy is not double-prefixed.
+    const remote = "https://covers.example/1.jpg";
+    const display = BINDERY_SEARCH_ADAPTER.display(
+      binderyAuthor({
+        imageUrl: `/bindery/api/v1/images?url=${encodeURIComponent(remote)}`,
+      }),
+    );
+    expect(display.poster).toEqual({
+      url: `/api/v1/images?url=${encodeURIComponent(remote)}`,
+      remoteUrl: remote,
+    });
+  });
+
+  it("leaves the poster undefined when the author has no image", () => {
+    expect(BINDERY_SEARCH_ADAPTER.display(binderyAuthor({})).poster).toBeUndefined();
+  });
+
+  it("uses disambiguation alone as the meta line (there is no author type)", () => {
+    expect(
+      BINDERY_SEARCH_ADAPTER.display(binderyAuthor({ disambiguation: "novelist" }))
+        .metaLine,
+    ).toBe("novelist");
+    expect(BINDERY_SEARCH_ADAPTER.display(binderyAuthor({})).metaLine).toBeUndefined();
   });
 });
 

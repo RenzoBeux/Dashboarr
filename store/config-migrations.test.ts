@@ -1766,3 +1766,38 @@ describe("v41 → v42 (qbtMutedCategories stamp)", () => {
     expect(result.notificationSettings.qbtMutedCategories).toBeUndefined();
   });
 });
+
+describe("v42 → v43 (bindery service stamp)", () => {
+  it("stamps a v42 payload up to the current version", () => {
+    const result: any = migrateConfig({
+      version: 42,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+  });
+
+  it("carries a v42 payload through without inventing a bindery entry", () => {
+    // The migration is a pure version stamp: defaultInstances() backfills the
+    // disabled bindery instance at import time, so the payload itself must be
+    // left alone rather than gaining a half-built service here.
+    const result: any = migrateConfig({
+      version: 42,
+      services: { radarr: { enabled: true, name: "Radarr", localUrl: "http://r" } },
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.bindery).toBeUndefined();
+    expect(result.services.radarr).toEqual({
+      enabled: true,
+      name: "Radarr",
+      localUrl: "http://r",
+    });
+  });
+});

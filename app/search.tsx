@@ -11,6 +11,7 @@ import { hasSearchableKind } from "@/lib/global-search";
 import { RadarrSearchSection } from "@/components/search/radarr-search-section";
 import { SonarrSearchSection } from "@/components/search/sonarr-search-section";
 import { LidarrSearchSection } from "@/components/search/lidarr-search-section";
+import { BinderySearchSection } from "@/components/search/bindery-search-section";
 import { OverseerrSearchSection } from "@/components/search/overseerr-search-section";
 import { ReleaseSearchSection } from "@/components/search/release-search-section";
 import { prowlarrIndexerAdapter } from "@/lib/indexer-adapters/prowlarr";
@@ -33,6 +34,7 @@ export default function GlobalSearchScreen() {
   const hasRadarr = attachedKinds.has("radarr");
   const hasSonarr = attachedKinds.has("sonarr");
   const hasLidarr = attachedKinds.has("lidarr");
+  const hasBindery = attachedKinds.has("bindery");
   const hasOverseerr = attachedKinds.has("overseerr");
   const hasProwlarr = attachedKinds.has("prowlarr");
   const hasJackett = attachedKinds.has("jackett");
@@ -56,13 +58,13 @@ export default function GlobalSearchScreen() {
         <EmptyState
           icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="No searchable services"
-          message="Attach Radarr, Sonarr, Lidarr, Seerr, Prowlarr, or Jackett to this dashboard to search them here."
+          message="Attach Radarr, Sonarr, Lidarr, Bindery, Seerr, Prowlarr, or Jackett to this dashboard to search them here."
         />
       ) : !active ? (
         <EmptyState
           icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="Search across your services"
-          message="Type at least 2 characters to search Movies, TV, Music, Requests, and Releases."
+          message="Type at least 2 characters to search Movies, TV, Music, Books, Requests, and Releases."
         />
       ) : (
         <>
@@ -71,6 +73,7 @@ export default function GlobalSearchScreen() {
           {hasRadarr && <RadarrSearchSection query={trimmed} />}
           {hasSonarr && <SonarrSearchSection query={trimmed} />}
           {hasLidarr && <LidarrSearchSection query={trimmed} />}
+          {hasBindery && <BinderySearchSection query={trimmed} />}
           {hasOverseerr && <OverseerrSearchSection query={debounced} />}
           {hasProwlarr && (
             <ReleaseSearchSection adapter={prowlarrIndexerAdapter} query={debounced} />

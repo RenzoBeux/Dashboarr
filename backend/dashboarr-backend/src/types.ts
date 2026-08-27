@@ -15,6 +15,7 @@ export const SERVICE_IDS = [
   "radarr",
   "sonarr",
   "lidarr",
+  "bindery",
   "overseerr",
   "tautulli",
   "tracearr",
@@ -265,6 +266,9 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   radarr: "/api/v3",
   sonarr: "/api/v3",
   lidarr: "/api/v1",
+  // Bindery is the Go successor to Readarr, not an *arr fork — /api/v1 is its
+  // own native API and there is no v3.
+  bindery: "/api/v1",
   overseerr: "/api/v1",
   tautulli: "/api/v2",
   tracearr: "/api/v1/public",
@@ -296,6 +300,10 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   sonarr: "/system/status",
   // Lidarr is an *arr sibling on the v1 API; same status ping as Radarr/Sonarr.
   lidarr: "/system/status",
+  // Bindery's /health is on its unauthenticated allowlist and answers 200
+  // without a key, so it would report a wrong API key as healthy.
+  // /system/status is the cheapest endpoint that actually validates it.
+  bindery: "/system/status",
   overseerr: "/status",
   tautulli: "/home",
   // Tracearr's /health is Bearer-authed, so it doubles as a reachability +

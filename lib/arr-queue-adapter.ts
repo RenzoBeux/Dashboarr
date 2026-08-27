@@ -91,4 +91,12 @@ export interface ArrQueueAdapter {
   // Manual Import from the phone (#325). Optional: Lidarr's manualimport
   // payload is track-level and unverified, so it doesn't implement this.
   forceImport?: (instanceId: string, downloadId: string) => Promise<void>;
+
+  // Whether the service can blocklist a release as part of a queue removal.
+  // Defaults to true — every *arr can, via the `blocklist` DELETE param. Set
+  // false when it can't (Bindery: its removal routes take no blocklist flag,
+  // and blocklisting there needs a history id the queue row doesn't expose).
+  // The queue-issues sheet drops its two blocklist actions when this is false,
+  // so the user isn't offered a button that would quietly just remove.
+  supportsBlocklist?: boolean;
 }

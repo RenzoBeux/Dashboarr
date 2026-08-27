@@ -16,6 +16,7 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   tv: "Tv",
   library: "Library",
   music: "Music",
+  books: "BookOpen",
   requests: "Inbox",
   activity: "Activity",
   indexers: "Radar",

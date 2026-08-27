@@ -24,6 +24,11 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // the offline category is surfaced (an "album downloaded" toggle would be a
   // dead switch nothing emits yet). Mirrors rtorrent's offline-only stance.
   lidarr:      ["serviceOffline"],
+  // Bindery mirrors the Lidarr/rtorrent stance: no book-import watcher in the
+  // app and no backend poller, and Bindery exposes no webhook receiver we could
+  // subscribe to, so a "book downloaded" toggle would be a switch nothing
+  // emits. Offline is the only category with a real source.
+  bindery:     ["serviceOffline"],
   overseerr:   ["overseerrNewRequest", "serviceOffline"],
   prowlarr:    ["serviceOffline"],
   jackett:     ["serviceOffline"],

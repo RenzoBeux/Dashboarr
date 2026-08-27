@@ -162,8 +162,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v42 — optional `qbtMutedCategories` on notificationSettings (#310). Pure
  *         version stamp — absence means no muting; coerceNotificationSettings
  *         validates the map on import.
+ *   v43 — added the bindery service entry (#308). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         bindery instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 42;
+export const CURRENT_CONFIG_VERSION = 43;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -685,6 +689,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v41 → v42: optional `qbtMutedCategories` on notificationSettings (#310).
   // Pure version stamp — absence means no muting.
   41: (payload) => ({ ...payload, version: 42 }),
+  // v42 → v43: added the bindery service entry (#308). Pure version stamp —
+  // defaultInstances() backfills a disabled bindery instance at import.
+  42: (payload) => ({ ...payload, version: 43 }),
 };
 
 /**

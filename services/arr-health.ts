@@ -16,6 +16,11 @@ export interface ArrHealthIssue {
 }
 
 // The *arr kinds that expose a /health endpoint.
+//
+// Bindery is deliberately NOT here despite sitting alongside them in the app.
+// Its /api/v1/health is a liveness probe returning {status, version} — not an
+// issue array — and it is on the server's unauthenticated allowlist, so adding
+// it would feed the Health Alerts card an object it cannot render.
 export type ArrHealthServiceId = "radarr" | "sonarr" | "prowlarr" | "lidarr";
 
 export const ARR_HEALTH_SERVICE_IDS: readonly ArrHealthServiceId[] = [
