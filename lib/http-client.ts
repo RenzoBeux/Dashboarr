@@ -556,6 +556,7 @@ export async function pingService(
     const isRtorrent = serviceId === "rtorrent";
     const isTransmission = serviceId === "transmission";
     const isUnraid = serviceId === "unraid";
+    const isDeluge = serviceId === "deluge";
     let method = "GET";
     let body: string | undefined;
     if (isNzbget) {
@@ -571,6 +572,15 @@ export async function pingService(
       // still reads as reachable.
       method = "POST";
       body = JSON.stringify({ method: "session-get" });
+      headers.set("Content-Type", "application/json");
+    } else if (isDeluge) {
+      // GET /json answers 405, so POST. auth.check_session is the cheapest
+      // method Deluge has that needs no session (AUTH_LEVEL_NONE): it answers
+      // 200 with `false` rather than an error when unauthenticated, which is
+      // exactly what a reachability ping wants.
+      method = "POST";
+      body = JSON.stringify({ method: "auth.check_session", params: [], id: 1 });
+      // Bare value — Deluge <= 2.0.5 string-compares this header.
       headers.set("Content-Type", "application/json");
     } else if (isUnraid) {
       // unRAID's /graphql rejects GET — POST the cheapest valid document.
@@ -1120,6 +1130,84 @@ async function runConnectionProbe(
         kind: "unreachable",
         message: "Not a Transmission RPC endpoint — check the URL points at /transmission/rpc",
       };
+    }
+
+    case "deluge": {
+      // Deluge answers EVERYTHING with HTTP 200 — a wrong password is
+      // `{result: false, error: null}`, not a 401 — so this probe reads the
+      // body, the way the qBittorrent case reads "Ok."/"Fails.".
+      //
+      // It then asks one extra question, because Deluge's most common real
+      // failure is not credentials: deluge-web is a proxy to a separate
+      // deluged daemon, and while it is detached every core.* call answers
+      // "Unknown method" and the Downloads screen is silently empty. Reporting
+      // "ok" there would be a false green of exactly the kind the Bindery
+      // /health note warns about, so a detached daemon is surfaced instead.
+      //
+      // Deliberately read-only: it does NOT run web.connect. Attaching the
+      // shared deluge-web process to a daemon is a side effect no health poll
+      // should have — the API layer does that on the first real request
+      // (services/deluge-api.ts), and the next poll then sees it connected.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const rpc = (method: string, id: number) =>
+        fetch(url, {
+          method: "POST",
+          // Bare content type: Deluge <= 2.0.5 string-compares this header and
+          // rejects the `; charset=utf-8` most HTTP stacks would append.
+          headers: makeHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ method, params: method === "auth.login" ? [password] : [], id }),
+          signal,
+        });
+
+      const res = await rpc("auth.login", 1);
+      // A proxy in front of Deluge can still produce real status codes.
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      // GET /json is 405 and a wrong base path is 404 — we POST, so a 405 here
+      // means something other than Deluge is answering.
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+
+      let login: { result?: unknown; error?: { message?: string } | null };
+      try {
+        login = (await res.json()) as typeof login;
+      } catch {
+        return {
+          kind: "unreachable",
+          message: "Not a Deluge JSON-RPC endpoint — check the URL points at the Web UI",
+        };
+      }
+      if (login.error) {
+        return {
+          kind: "unreachable",
+          message: `Deluge rejected the request: ${login.error.message ?? "unknown error"}`,
+        };
+      }
+      if (login.result !== true) {
+        return { kind: "auth_failed", message: "Wrong password" };
+      }
+
+      // Authenticated. Now the daemon question. The session cookie rides along
+      // in the platform jar for this second call on the same connection.
+      try {
+        const connRes = await rpc("web.connected", 2);
+        if (connRes.ok) {
+          const conn = (await connRes.json()) as { result?: unknown };
+          if (conn.result === false) {
+            return {
+              kind: "unreachable",
+              message:
+                "Signed in, but Deluge's Web UI is not connected to the deluged daemon — connect it in the Deluge Web UI",
+            };
+          }
+        }
+      } catch {
+        // The daemon question is a bonus; a failure to ask it must not turn a
+        // good credential into a bad verdict.
+      }
+      return { kind: "ok" };
     }
 
     case "radarr":

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, ScrollView } from "react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
@@ -10,6 +10,7 @@ import { nzbgetAdapter } from "@/lib/usenet-adapters/nzbget";
 import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
 import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
 import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
+import { delugeTorrentAdapter } from "@/lib/torrent-adapters/deluge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { toastError } from "@/components/ui/toast";
@@ -21,6 +22,7 @@ type DownloadClient =
   | "qbittorrent"
   | "rtorrent"
   | "transmission"
+  | "deluge"
   | "sabnzbd"
   | "nzbget";
 
@@ -33,6 +35,7 @@ export default function DownloadsScreen() {
   const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
   const rtEnabled = useConfigStore((s) => s.services.rtorrent?.enabled ?? false);
   const transEnabled = useConfigStore((s) => s.services.transmission?.enabled ?? false);
+  const delugeEnabled = useConfigStore((s) => s.services.deluge?.enabled ?? false);
   const sabEnabled = useConfigStore((s) => s.services.sabnzbd?.enabled ?? false);
   const nzbgetEnabled = useConfigStore((s) => s.services.nzbget?.enabled ?? false);
   const attachedKinds = useAttachedKinds();
@@ -48,6 +51,7 @@ export default function DownloadsScreen() {
   if (rtEnabled && attachedKinds.has("rtorrent")) enabledClients.push("rtorrent");
   if (transEnabled && attachedKinds.has("transmission"))
     enabledClients.push("transmission");
+  if (delugeEnabled && attachedKinds.has("deluge")) enabledClients.push("deluge");
   if (sabEnabled && attachedKinds.has("sabnzbd")) enabledClients.push("sabnzbd");
   if (nzbgetEnabled && attachedKinds.has("nzbget")) enabledClients.push("nzbget");
 
@@ -63,6 +67,7 @@ export default function DownloadsScreen() {
     clientParam === "qbittorrent" ||
     clientParam === "rtorrent" ||
     clientParam === "transmission" ||
+    clientParam === "deluge" ||
     clientParam === "sabnzbd" ||
     clientParam === "nzbget"
       ? clientParam
@@ -146,7 +151,7 @@ export default function DownloadsScreen() {
       <ScreenWrapper>
         <EmptyState
           title="No download client configured"
-          message="Enable qBittorrent, rTorrent, Transmission, SABnzbd, or NZBGet in Settings to manage downloads."
+          message="Enable qBittorrent, rTorrent, Transmission, Deluge, SABnzbd, or NZBGet in Settings to manage downloads."
         />
       </ScreenWrapper>
     );
@@ -193,16 +198,18 @@ export default function DownloadsScreen() {
     );
   }
 
-  // qBittorrent, rtorrent, and Transmission all render through the shared
-  // TorrentDownloadsView. Key by client so switching between torrent clients
-  // remounts (resets the local filter state and keeps hook usage stable across
-  // adapters).
+  // qBittorrent, rtorrent, Transmission and Deluge all render through the
+  // shared TorrentDownloadsView. Key by client so switching between torrent
+  // clients remounts (resets the local filter state and keeps hook usage stable
+  // across adapters).
   const torrentAdapter =
     activeClient === "rtorrent"
       ? rtorrentTorrentAdapter
       : activeClient === "transmission"
         ? transmissionTorrentAdapter
-        : qbittorrentTorrentAdapter;
+        : activeClient === "deluge"
+          ? delugeTorrentAdapter
+          : qbittorrentTorrentAdapter;
   return (
     <>
       <TorrentDownloadsView
@@ -221,9 +228,18 @@ const SEGMENT_LABELS: Record<DownloadClient, string> = {
   qbittorrent: "qBittorrent",
   rtorrent: "rTorrent",
   transmission: "Transmission",
+  deluge: "Deluge",
   sabnzbd: "SABnzbd",
   nzbget: "NZBGet",
 };
+
+// Above this many clients the equal-width segments get too narrow for their
+// labels ("Transmission" at text-sm already fills a quarter-width slot on a
+// 390pt screen, and every label grows with uiScale). Past the threshold the row
+// becomes a horizontal ScrollView of intrinsically-sized segments so nothing
+// clips and every client stays reachable — the same rule the FilterChip rows
+// follow. At or below it the control keeps its full-width look unchanged.
+const MAX_FIXED_SEGMENTS = 3;
 
 function DownloadsSegmentedControl({
   value,
@@ -234,17 +250,33 @@ function DownloadsSegmentedControl({
   enabled: DownloadClient[];
   onChange: (next: DownloadClient) => void;
 }) {
+  const segments = enabled.map((c) => (
+    <Segment
+      key={c}
+      label={SEGMENT_LABELS[c]}
+      active={value === c}
+      onPress={() => onChange(c)}
+      fill={enabled.length <= MAX_FIXED_SEGMENTS}
+    />
+  ));
+
+  if (enabled.length <= MAX_FIXED_SEGMENTS) {
+    return (
+      <View className="flex-row bg-surface-light rounded-2xl p-1 mb-4 mt-2 mx-4">
+        {segments}
+      </View>
+    );
+  }
+
   return (
-    <View className="flex-row bg-surface-light rounded-2xl p-1 mb-4 mt-2 mx-4">
-      {enabled.map((c) => (
-        <Segment
-          key={c}
-          label={SEGMENT_LABELS[c]}
-          active={value === c}
-          onPress={() => onChange(c)}
-        />
-      ))}
-    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      className="mb-4 mt-2"
+      contentContainerClassName="px-4"
+    >
+      <View className="flex-row bg-surface-light rounded-2xl p-1">{segments}</View>
+    </ScrollView>
   );
 }
 
@@ -252,15 +284,18 @@ function Segment({
   label,
   active,
   onPress,
+  fill,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
+  // Split the row evenly (few clients) vs size to the label (scrolling row).
+  fill: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      className={`flex-1 py-2 rounded-xl items-center active:opacity-70 ${active ? "bg-surface" : ""}`}
+      className={`py-2 rounded-xl items-center active:opacity-70 ${fill ? "flex-1" : "px-4"} ${active ? "bg-surface" : ""}`}
     >
       <Text className={`text-sm font-semibold ${active ? "text-zinc-100" : "text-zinc-400"}`}>
         {label}

@@ -2,6 +2,7 @@ export const SERVICE_IDS = [
   "qbittorrent",
   "rtorrent",
   "transmission",
+  "deluge",
   "sabnzbd",
   "nzbget",
   "radarr",
@@ -74,6 +75,19 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/transmission/rpc",
     pingPath: "",
     httpAuth: true,
+  },
+  // Deluge's Web UI speaks JSON-RPC over a single POST /json endpoint. Default
+  // web port is 8112. Auth is a WebUI *password* (no username) exchanged for a
+  // `_session_id` cookie via the auth.login method — the qBittorrent model, not
+  // an HTTP auth mount, so no httpAuth flag. There is no GET ping endpoint
+  // (GET /json is not a JSON-RPC call), so pingPath is empty and both
+  // pingService and the connection probe POST a method instead — mirrors
+  // nzbget/rtorrent/transmission/unraid.
+  deluge: {
+    name: "Deluge",
+    defaultPort: 8112,
+    apiBasePath: "/json",
+    pingPath: "",
   },
   // SAB has no REST routes — every call is /api?mode=<command>. The empty
   // pingPath combined with mode=version (injected as a param in pingService)

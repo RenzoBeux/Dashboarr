@@ -1717,6 +1717,129 @@ const DEMO_TRANSMISSION_SESSION = {
   "alt-speed-enabled": false,
 };
 
+// --- Deluge (JSON-RPC) demo fixtures ---
+// delugeRpc returns getDemoResponse() verbatim as the JSON-RPC `result`, so
+// these are the raw payloads the service maps. core.get_torrents_status answers
+// with a dict KEYED BY INFO HASH (lowercase hex), `progress` is 0-100 and
+// `file_progress` is 0-1 — the three shapes most easily got wrong.
+const DEMO_DELUGE_TORRENTS: Record<string, Record<string, unknown>> = {
+  "00000000000000000000000000000000000d0a01": {
+    name: "Ubuntu 24.04.1 LTS Desktop amd64",
+    state: "Downloading",
+    progress: 40,
+    total_size: 5_400_000_000,
+    total_wanted: 5_400_000_000,
+    total_done: 2_160_000_000,
+    total_remaining: 3_240_000_000,
+    download_payload_rate: 5_400_000,
+    upload_payload_rate: 180_000,
+    eta: 600,
+    ratio: 0.12,
+    all_time_download: 2_160_000_000,
+    total_uploaded: 259_000_000,
+    time_added: 1_716_800_000,
+    completed_time: 0,
+    save_path: "/downloads",
+    message: "OK",
+    label: "linux-isos",
+    files: [
+      { index: 0, path: "ubuntu-24.04.1-desktop-amd64.iso", size: 5_400_000_000, offset: 0 },
+    ],
+    file_progress: [0.4],
+    trackers: [{ url: "https://torrent.ubuntu.com/announce", tier: 0 }],
+    tracker_host: "ubuntu.com",
+    tracker_status: "Announce OK",
+    num_seeds: 42,
+    total_seeds: 1240,
+    num_peers: 8,
+    total_peers: 86,
+    stop_at_ratio: false,
+    stop_ratio: 2,
+    remove_at_ratio: false,
+  },
+  "00000000000000000000000000000000000d0b02": {
+    name: "Debian 12.5.0 amd64 netinst",
+    state: "Seeding",
+    progress: 100,
+    total_size: 3_900_000_000,
+    total_wanted: 3_900_000_000,
+    total_done: 3_900_000_000,
+    total_remaining: 0,
+    download_payload_rate: 0,
+    upload_payload_rate: 920_000,
+    eta: 0,
+    ratio: 1.34,
+    all_time_download: 3_900_000_000,
+    total_uploaded: 5_226_000_000,
+    time_added: 1_716_600_000,
+    completed_time: 1_716_690_000,
+    save_path: "/downloads",
+    message: "OK",
+    label: "linux-isos",
+    files: [
+      { index: 0, path: "debian-12.5.0-amd64-netinst.iso", size: 3_900_000_000, offset: 0 },
+    ],
+    file_progress: [1],
+    trackers: [{ url: "https://bttracker.debian.org:6969/announce", tier: 0 }],
+    tracker_host: "debian.org",
+    tracker_status: "Announce OK",
+    num_seeds: 12,
+    total_seeds: 870,
+    num_peers: 3,
+    total_peers: 14,
+    stop_at_ratio: true,
+    stop_ratio: 2,
+    remove_at_ratio: false,
+  },
+  "00000000000000000000000000000000000d0c03": {
+    name: "Arch Linux 2024.05.01 x86_64",
+    state: "Paused",
+    progress: 50,
+    total_size: 1_050_000_000,
+    total_wanted: 1_050_000_000,
+    total_done: 525_000_000,
+    total_remaining: 525_000_000,
+    download_payload_rate: 0,
+    upload_payload_rate: 0,
+    eta: 0,
+    ratio: 0.4,
+    all_time_download: 525_000_000,
+    total_uploaded: 210_000_000,
+    time_added: 1_716_500_000,
+    completed_time: 0,
+    save_path: "/downloads",
+    message: "OK",
+    label: "",
+    files: [
+      { index: 0, path: "archlinux-2024.05.01-x86_64.iso", size: 1_050_000_000, offset: 0 },
+    ],
+    file_progress: [0.5],
+    trackers: [],
+    tracker_host: "",
+    tracker_status: "",
+    num_seeds: 0,
+    total_seeds: 0,
+    num_peers: 0,
+    total_peers: 0,
+    stop_at_ratio: false,
+    stop_ratio: 2,
+    remove_at_ratio: false,
+  },
+};
+// Legacy libtorrent session-status names, the ones Deluge 2.x back-compat-maps
+// and the only ones 1.3 knows.
+const DEMO_DELUGE_SESSION_STATUS = {
+  payload_download_rate: 5_400_000,
+  payload_upload_rate: 1_100_000,
+  total_payload_download: 850_000_000_000,
+  total_payload_upload: 420_000_000_000,
+};
+// KiB/s, negative = unlimited (0 would throttle to a standstill).
+const DEMO_DELUGE_CONFIG_VALUES = {
+  max_download_speed: -1,
+  max_upload_speed: 500,
+};
+
 // Shared across radarr/sonarr/lidarr — the /diskspace payload is identical on
 // all three. Percentages chosen to exercise the amber (≥70%) and red (≥85%)
 // bar thresholds in demo screenshots.
@@ -2219,7 +2342,7 @@ export function getDemoResponse(
   // would match `startsWith("/queue")` and hand the caller the whole queue back
   // as its "void" result. Return nothing instead, so a demo delete resolves the
   // way the real one does. POST/PUT are deliberately excluded: NZBGet,
-  // Transmission and rtorrent dispatch their reads off a POST body.
+  // Transmission, Deluge and rtorrent dispatch their reads off a POST body.
   if (method === "DELETE") return undefined;
 
   switch (serviceId) {
@@ -2529,6 +2652,43 @@ export function getDemoResponse(
       // session-set / torrent-start / torrent-stop / torrent-remove /
       // torrent-add / torrent-set / torrent-reannounce → empty success ack.
       return {};
+    }
+    case "deluge": {
+      // Deluge dispatches off the JSON-RPC method name in the request body and
+      // the api returns getDemoResponse() verbatim as the `result`. Note
+      // core.get_torrents_status answers with a hash-keyed DICT, while the
+      // singular core.get_torrent_status answers with a bare status object.
+      let method = "";
+      let params: unknown[] = [];
+      try {
+        const parsed = body
+          ? (JSON.parse(body) as { method?: string; params?: unknown[] })
+          : undefined;
+        method = parsed?.method ?? "";
+        params = Array.isArray(parsed?.params) ? parsed.params : [];
+      } catch {
+        return undefined;
+      }
+      // The session + daemon handshake always succeeds in demo mode.
+      if (method === "auth.login" || method === "web.connected") return true;
+      if (method === "web.get_hosts") return [["demo-host", "127.0.0.1", 58846, "localuser"]];
+      if (method === "web.connect") return ["core.get_torrents_status"];
+      if (method === "core.get_torrents_status") return DEMO_DELUGE_TORRENTS;
+      if (method === "core.get_torrent_status") {
+        const id = String(params[0] ?? "").toLowerCase();
+        return DEMO_DELUGE_TORRENTS[id] ?? null;
+      }
+      if (method === "core.get_session_status") return DEMO_DELUGE_SESSION_STATUS;
+      if (method === "core.get_config_values") return DEMO_DELUGE_CONFIG_VALUES;
+      // core.remove_torrents answers with a list of per-id failures — an empty
+      // list is the success shape, so a demo delete must not return null here.
+      if (method === "core.remove_torrents") return [];
+      if (method === "core.add_torrent_magnet" || method === "core.add_torrent_url") {
+        return "00000000000000000000000000000000000d0d04";
+      }
+      // core.pause_torrents / resume_torrents / set_config / force_reannounce /
+      // set_torrent_options / label.* all answer null.
+      return null;
     }
     case "unraid": {
       // unRAID is GraphQL — dispatch off the operation name in the POSTed

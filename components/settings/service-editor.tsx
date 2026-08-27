@@ -18,6 +18,7 @@ import { useBackendStore } from "@/store/backend-store";
 import { BackHeader } from "@/components/common/back-header";
 import { testServiceConnection, lanGuardBlockReason } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
+import { delugeClearSession } from "@/services/deluge-api";
 import { getPlexClientId } from "@/lib/plex-client-id";
 import {
   requestPin,
@@ -127,7 +128,11 @@ export function ServiceEditor({
     serverPicker: PlexServer[];
   }>();
 
+  // Deluge's Web UI has a single password and no username at all, so it takes
+  // the username/password secrets shape (below) but hides the username field.
+  const usesPasswordOnly = serviceId === "deluge";
   const usesBasicAuth =
+    usesPasswordOnly ||
     serviceId === "qbittorrent" ||
     serviceId === "rtorrent" ||
     serviceId === "transmission" ||
@@ -247,11 +252,15 @@ export function ServiceEditor({
     } else {
       await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
     }
-    // Drop the cached qBittorrent SID so the next request re-logs in with the
-    // new URL or credentials. (glances and nzbget reuse the basic-auth form
-    // but have no session to clear.)
+    // Drop the cached session so the next request re-logs in with the new URL
+    // or credentials. Only the two cookie-session clients have one: glances,
+    // nzbget, rtorrent and transmission reuse the same credential form but
+    // authenticate per-request.
     if (serviceId === "qbittorrent") {
       await qbClearSession(instanceId);
+    }
+    if (serviceId === "deluge") {
+      delugeClearSession(instanceId);
     }
 
     // First-save dashboard prompt. Fires once per editor session when the
@@ -596,12 +605,14 @@ export function ServiceEditor({
         ) : null}
         {usesBasicAuth ? (
           <>
-            <TextInput
-              label="Username"
-              placeholder="admin"
-              value={username}
-              onChangeText={setUsername}
-            />
+            {usesPasswordOnly ? null : (
+              <TextInput
+                label="Username"
+                placeholder="admin"
+                value={username}
+                onChangeText={setUsername}
+              />
+            )}
             <TextInput
               label="Password"
               placeholder="••••••••"

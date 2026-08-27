@@ -29,6 +29,12 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   // Official ruTorrent mark (the rtorrent/ruTorrent stack has no public vector).
   rtorrent: require("@/assets/services/rtorrent.png"),
+  // Official Deluge droplet (GPL-3.0, deluge-torrent/deluge
+  // deluge/ui/data/icons/hicolor/256x256/apps/deluge.png). Upstream ships a
+  // vector too, but it is a 21 KB Inkscape file with 53 gradients — the raster
+  // is the cheaper mark to render. Blue-on-transparent, so it reads on the dark
+  // UI as shipped.
+  deluge: require("@/assets/services/deluge.png"),
   radarr: require("@/assets/services/radarr.png"),
   sonarr: require("@/assets/services/sonarr.png"),
   lidarr: require("@/assets/services/lidarr.png"),

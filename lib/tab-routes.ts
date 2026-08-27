@@ -109,6 +109,7 @@ const DOWNLOAD_KINDS: ServiceId[] = [
   "qbittorrent",
   "rtorrent",
   "transmission",
+  "deluge",
   "sabnzbd",
   "nzbget",
 ];

@@ -16,6 +16,9 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // watcher (app) + poller (backend) emit "Download complete" just like
   // qBittorrent, so no new category is needed.
   transmission: ["torrentCompleted", "serviceOffline"],
+  // Deluge reuses the shared "torrentCompleted" category for the same reason
+  // Transmission does — one toggle covers every torrent client.
+  deluge: ["torrentCompleted", "serviceOffline"],
   sabnzbd:     ["sabnzbdCompleted", "serviceOffline"],
   nzbget:      ["nzbgetCompleted",  "serviceOffline"],
   radarr:      ["radarrDownloaded", "serviceOffline"],

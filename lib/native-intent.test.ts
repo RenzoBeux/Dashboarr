@@ -22,5 +22,8 @@ describe("redirectSystemPath", () => {
     expect(
       redirectSystemPath({ path: "dashboarr://downloads?client=rtorrent", initial: true }),
     ).toBe("dashboarr://downloads?client=rtorrent");
+    expect(
+      redirectSystemPath({ path: "dashboarr://downloads?client=deluge", initial: true }),
+    ).toBe("dashboarr://downloads?client=deluge");
   });
 });

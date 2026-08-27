@@ -129,6 +129,11 @@ function NotificationRouter() {
           if (hash) router.push(`/transmission/${hash}`);
           break;
         }
+        case "deluge": {
+          const hash = asTorrentHash(data.hash);
+          if (hash) router.push(`/deluge/${hash}`);
+          break;
+        }
         case "sabnzbd": {
           const nzoId = asSabNzoId(data.nzoId);
           if (nzoId) router.push(`/sab/${nzoId}`);
