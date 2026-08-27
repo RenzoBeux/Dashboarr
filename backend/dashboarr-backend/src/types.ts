@@ -28,6 +28,7 @@ export const SERVICE_IDS = [
   "glances",
   "bazarr",
   "unraid",
+  "autobrr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -282,6 +283,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   bazarr: "/api",
   // unRAID's official API is GraphQL-only at the webgui root (POST /graphql).
   unraid: "",
+  autobrr: "/api",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -325,6 +327,9 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // unRAID's /graphql rejects GET — pingService POSTs a minimal GraphQL query
   // to this path (mirrors the nzbget/transmission POST pings).
   unraid: "/graphql",
+  // Autobrr's liveness probe is anonymous (auth for real calls is the
+  // X-API-Token header — see applyAuth in services/http.ts).
+  autobrr: "/healthz/liveness",
 };
 
 // Notification category labels sent to the device as `data.type`

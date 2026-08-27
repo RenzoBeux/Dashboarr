@@ -368,6 +368,12 @@ export async function serviceRequest<T>(
     if (secrets.apiKey) {
       headers.set("Authorization", `Bearer ${secrets.apiKey}`);
     }
+  } else if (serviceId === "autobrr") {
+    // Autobrr authenticates with X-API-Token (a ?apikey= query param also
+    // works, but the header keeps the key out of logs).
+    if (secrets.apiKey) {
+      headers.set("X-API-Token", secrets.apiKey);
+    }
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID use
     // X-Api-Key (unRAID documents lowercase x-api-key; header names are
@@ -528,6 +534,10 @@ export async function pingService(
     if (secrets.apiKey) headers.set("Authorization", `Bearer ${secrets.apiKey}`);
   } else if (serviceId === "jellystat") {
     if (secrets.apiKey) headers.set("x-api-token", secrets.apiKey);
+  } else if (serviceId === "autobrr") {
+    // /healthz/liveness is anonymous, but send the real header anyway so the
+    // ping's wire shape matches serviceRequest (and survives auth proxies).
+    if (secrets.apiKey) headers.set("X-API-Token", secrets.apiKey);
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -1236,6 +1246,32 @@ async function runConnectionProbe(
       } catch {
         return { kind: "unreachable", message: "Invalid JSON response" };
       }
+    }
+
+    case "autobrr": {
+      // /healthz/liveness is anonymous (it answers 200 with or without a key),
+      // so the probe hits /release/stats instead — the cheapest X-API-Token-
+      // validated GET: 200 JSON with a valid key, 401 without.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/release/stats");
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-API-Token", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) {
+        // Same auth-proxy guard as the *arr case (issue #239): a 200 that
+        // isn't JSON is a login page standing in for the API.
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude its API path from the proxy.",
+        };
+      }
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 
     default: {

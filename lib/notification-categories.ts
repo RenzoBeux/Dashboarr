@@ -54,6 +54,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   jellyfin:    ["serviceOffline"],
   emby:        ["serviceOffline"],
   unraid:      ["serviceOffline"],
+  autobrr:     ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

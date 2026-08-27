@@ -1948,6 +1948,113 @@ const DEMO_BINDERY_STATUS = {
   buildDate: "2026-08-25T00:00:00Z",
 };
 
+// --- Autobrr demo fixtures ---
+
+const DEMO_AUTOBRR_STATS = {
+  total_count: 18432,
+  filtered_count: 1843,
+  filter_rejected_count: 16589,
+  push_approved_count: 312,
+  push_rejected_count: 84,
+  push_error_count: 3,
+};
+
+// Compact factory — a full Release literal is ~20 lines and the feed needs
+// eight of them. `minsAgo` keeps the timestamps fresh on every launch.
+function autobrrDemoRelease(
+  id: number,
+  name: string,
+  indexer: string,
+  filter: string,
+  status: "PUSH_APPROVED" | "PUSH_REJECTED" | "PUSH_ERROR" | null,
+  size: number,
+  minsAgo: number,
+) {
+  const timestamp = new Date(Date.now() - minsAgo * 60000).toISOString();
+  return {
+    id,
+    filter_status: "FILTER_APPROVED",
+    rejections: [] as string[],
+    indexer: { id: 1, name: indexer, identifier: indexer.toLowerCase() },
+    filter,
+    protocol: "torrent",
+    name,
+    title: name.split(".")[0]!.replace(/\./g, " "),
+    size,
+    info_url: "",
+    timestamp,
+    action_status:
+      status === null
+        ? []
+        : [
+            {
+              id: id * 10,
+              status,
+              action: "qBittorrent",
+              action_id: 1,
+              type: "QBITTORRENT",
+              client: "qBittorrent",
+              filter,
+              rejections:
+                status === "PUSH_REJECTED" ? ["max active downloads reached"] : [],
+              timestamp,
+            },
+          ],
+  };
+}
+
+const DEMO_AUTOBRR_RELEASES = [
+  autobrrDemoRelease(101, "The.Quiet.Signal.2026.1080p.BluRay.x264-DEMO", "AlphaBits", "Movies 1080p", "PUSH_APPROVED", 9_663_676_416, 4),
+  autobrrDemoRelease(100, "Orbital.Decay.S02E05.2160p.WEB-DL.DDP5.1-DEMO", "BetaHD", "TV 4K", "PUSH_APPROVED", 5_368_709_120, 21),
+  autobrrDemoRelease(99, "Midnight.Harbor.S01.Complete.1080p.WEB.h264-DEMO", "AlphaBits", "TV Packs", "PUSH_REJECTED", 32_212_254_720, 47),
+  autobrrDemoRelease(98, "Static.Bloom.2025.REMUX.2160p.HDR-DEMO", "GammaCove", "Movies Remux", "PUSH_ERROR", 58_982_400_000, 93),
+  autobrrDemoRelease(97, "Glass.Meridian.S03E01.1080p.WEB.h264-DEMO", "BetaHD", "TV 1080p", "PUSH_APPROVED", 3_221_225_472, 128),
+  autobrrDemoRelease(96, "Paper.Lanterns.2026.720p.WEB.h264-DEMO", "AlphaBits", "Movies 1080p", null, 2_147_483_648, 166),
+  autobrrDemoRelease(95, "Iron.Estuary.S01E08.2160p.WEB-DL-DEMO", "GammaCove", "TV 4K", "PUSH_APPROVED", 6_442_450_944, 204),
+  autobrrDemoRelease(94, "Salt.and.Circuitry.2024.1080p.BluRay-DEMO", "BetaHD", "Movies 1080p", "PUSH_REJECTED", 10_737_418_240, 251),
+];
+
+const DEMO_AUTOBRR_FILTERS = [
+  { id: 1, name: "Movies 1080p", enabled: true },
+  { id: 2, name: "Movies Remux", enabled: true },
+  { id: 3, name: "TV 1080p", enabled: true },
+  { id: 4, name: "TV 4K", enabled: true },
+  { id: 5, name: "Music FLAC", enabled: false },
+];
+
+const DEMO_AUTOBRR_IRC = [
+  {
+    id: 1,
+    name: "AlphaBits IRC",
+    enabled: true,
+    server: "irc.alphabits.demo",
+    port: 6697,
+    nick: "dashboarr",
+    connected: true,
+    connected_since: new Date(Date.now() - 86_400_000 * 3).toISOString(),
+    channels: [
+      { id: 1, enabled: true, name: "#announces", monitoring: true, state: "Monitoring" },
+    ],
+    connection_errors: [] as string[],
+    healthy: true,
+  },
+  {
+    id: 2,
+    name: "BetaHD IRC",
+    enabled: true,
+    server: "irc.betahd.demo",
+    port: 6697,
+    nick: "dashboarr",
+    connected: false,
+    connected_since: "",
+    channels: [
+      { id: 2, enabled: true, name: "#beta-announce", monitoring: false, state: "Error" },
+    ],
+    connection_errors: ["dial tcp: connection refused"],
+    healthy: false,
+  },
+];
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -2301,6 +2408,30 @@ export function getDemoResponse(
           return { data: { docker: { [field]: { id: "c1", state, status } } } };
         }
       }
+      return undefined;
+    }
+    case "autobrr": {
+      // Mutations first, so they can't fall through to a read route: the
+      // retry POST, the filter-enabled PUT, and the (GET!) IRC restart all
+      // resolve as no-ops like the real endpoints do.
+      if (normalized.endsWith("/retry")) return undefined;
+      if (normalized.endsWith("/enabled")) return undefined;
+      if (normalized.startsWith("/irc/network/")) return undefined;
+      // /release/stats before the /release list (exact-match discipline).
+      if (normalized === "/release/stats") return DEMO_AUTOBRR_STATS;
+      if (normalized === "/release") {
+        // Respect the server-side filters so the chips and search work in demo.
+        const status = params?.push_status;
+        const q = typeof params?.q === "string" ? params.q.toLowerCase() : "";
+        const data = DEMO_AUTOBRR_RELEASES.filter((r) => {
+          if (status && r.action_status[0]?.status !== status) return false;
+          if (q && !r.name.toLowerCase().includes(q)) return false;
+          return true;
+        });
+        return { data, next_cursor: 0, count: data.length };
+      }
+      if (normalized === "/filters") return DEMO_AUTOBRR_FILTERS;
+      if (normalized === "/irc") return DEMO_AUTOBRR_IRC;
       return undefined;
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.

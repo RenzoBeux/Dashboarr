@@ -2437,6 +2437,83 @@ export interface UnraidStorage {
   unassigned: UnraidPhysicalDisk[];
 }
 
+// --- Autobrr Types ---
+// Wire shapes verified against autobrr's web/src/types/*.d.ts (snake_case JSON).
+
+export interface AutobrrReleaseStats {
+  total_count: number;
+  filtered_count: number;
+  filter_rejected_count: number;
+  push_approved_count: number;
+  push_rejected_count: number;
+  push_error_count: number;
+}
+
+// ReleaseActionStatus.status values (domain.ReleasePushStatus).
+export type AutobrrPushStatus = "PUSH_APPROVED" | "PUSH_REJECTED" | "PUSH_ERROR" | "PENDING";
+
+export interface AutobrrActionStatus {
+  id: number;
+  status: AutobrrPushStatus | string;
+  action: string;
+  action_id: number;
+  type: string;
+  client: string;
+  filter: string;
+  rejections: string[];
+  timestamp: string;
+}
+
+export interface AutobrrRelease {
+  id: number;
+  filter_status: string;
+  rejections: string[];
+  indexer: { id: number; name: string; identifier: string };
+  filter: string;
+  protocol: string;
+  name: string;
+  title: string;
+  size: number;
+  info_url: string;
+  timestamp: string;
+  // Empty when the release matched no filter action (filtered-only entry).
+  action_status: AutobrrActionStatus[];
+}
+
+export interface AutobrrFindReleasesResponse {
+  data: AutobrrRelease[];
+  next_cursor: number;
+  count: number;
+}
+
+export interface AutobrrFilter {
+  id: number;
+  name: string;
+  enabled: boolean;
+}
+
+export interface AutobrrIrcChannel {
+  id: number;
+  enabled: boolean;
+  name: string;
+  monitoring: boolean;
+  state?: string;
+}
+
+export interface AutobrrIrcNetwork {
+  id: number;
+  name: string;
+  enabled: boolean;
+  server: string;
+  port: number;
+  nick: string;
+  connected: boolean;
+  connected_since: string;
+  channels: AutobrrIrcChannel[];
+  connection_errors: string[];
+  healthy: boolean;
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:

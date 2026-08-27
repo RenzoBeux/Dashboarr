@@ -26,6 +26,7 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   glances: "Cpu",
   bazarr: "Captions",
   unraid: "Server",
+  autobrr: "Zap",
 };
 
 // Resolve the icon component for a tab, honoring a per-workspace override

@@ -112,6 +112,15 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
+  if (id === "autobrr") {
+    // Autobrr authenticates with X-API-Token, mirroring the app's http-client.
+    // (The health poller's liveness ping is anonymous, but keep the wire shape
+    // consistent for any future authenticated call.)
+    if (config.apiKey) {
+      headers.set("X-API-Token", config.apiKey);
+    }
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }
