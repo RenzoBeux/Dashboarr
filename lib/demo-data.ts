@@ -2055,6 +2055,155 @@ const DEMO_AUTOBRR_IRC = [
   },
 ];
 
+// --- Cleanuparr demo fixtures ---
+
+// Static 7-day numbers — the `hours` param is ignored in demo (same stance as
+// Tautulli's time_range). Breakdown keys are PascalCase enum names and only
+// active ones are present, mirroring the real API.
+const DEMO_CLEANUPARR_STATS = {
+  events: {
+    total: 58,
+    byType: {
+      StalledStrike: 14,
+      SlowSpeedStrike: 6,
+      FailedImportStrike: 4,
+      QueueItemDeleted: 9,
+      DownloadCleaned: 11,
+      SearchTriggered: 8,
+      StrikeReset: 6,
+    },
+    bySeverity: { Information: 34, Warning: 16, Important: 6, Error: 2 },
+  },
+  strikes: {
+    total: 24,
+    byType: { Stalled: 14, SlowSpeed: 6, FailedImport: 4 },
+    recovered: 6,
+  },
+  removals: {
+    total: 9,
+    byReason: { Stalled: 5, SlowSpeed: 2, AllFilesBlocked: 2 },
+  },
+  cleaned: {
+    total: 11,
+    byReason: { MaxRatioReached: 8, MaxSeedTimeReached: 3 },
+  },
+  searches: {
+    total: 8,
+    completed: 7,
+    failed: 1,
+    grabbed: 5,
+    byReason: { Missing: 5, Replacement: 2, QualityCutoffNotMet: 1 },
+  },
+  jobs: {
+    total: 168,
+    completed: 166,
+    failed: 2,
+    byType: {
+      QueueCleaner: {
+        total: 84,
+        completed: 83,
+        failed: 1,
+        lastRunAt: new Date(Date.now() - 9 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 21 * 60000).toISOString(),
+      },
+      MalwareBlocker: {
+        total: 48,
+        completed: 48,
+        failed: 0,
+        lastRunAt: new Date(Date.now() - 14 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 16 * 60000).toISOString(),
+      },
+      DownloadCleaner: {
+        total: 24,
+        completed: 23,
+        failed: 1,
+        lastRunAt: new Date(Date.now() - 32 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 28 * 60000).toISOString(),
+      },
+      Seeker: {
+        total: 12,
+        completed: 12,
+        failed: 0,
+        lastRunAt: new Date(Date.now() - 55 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 65 * 60000).toISOString(),
+      },
+    },
+  },
+  health: {
+    downloadClients: [
+      {
+        id: "dc-1",
+        name: "qBittorrent",
+        type: "qBittorrent",
+        isHealthy: true,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        responseTimeMs: 38.4,
+        errorMessage: null,
+      },
+      {
+        id: "dc-2",
+        name: "SABnzbd",
+        type: "Sabnzbd",
+        isHealthy: false,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        responseTimeMs: undefined,
+        errorMessage: "Connection refused",
+      },
+    ],
+    arrInstances: [
+      {
+        id: "arr-1",
+        name: "Radarr",
+        type: "Radarr",
+        isHealthy: true,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        errorMessage: null,
+      },
+      {
+        id: "arr-2",
+        name: "Sonarr",
+        type: "Sonarr",
+        isHealthy: true,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        errorMessage: null,
+      },
+    ],
+  },
+  timeframeHours: 168,
+  generatedAt: new Date().toISOString(),
+};
+
+const DEMO_CLEANUPARR_JOBS = [
+  { name: "Queue Cleaner", status: "Normal", schedule: "Every 30 minutes", nextRunTime: new Date(Date.now() + 21 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 9 * 60000).toISOString(), jobType: "QueueCleaner" },
+  { name: "Malware Blocker", status: "Normal", schedule: "Every 30 minutes", nextRunTime: new Date(Date.now() + 16 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 14 * 60000).toISOString(), jobType: "MalwareBlocker" },
+  { name: "Download Cleaner", status: "Normal", schedule: "Every hour", nextRunTime: new Date(Date.now() + 28 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 32 * 60000).toISOString(), jobType: "DownloadCleaner" },
+  { name: "Seeker", status: "Normal", schedule: "Every 2 hours", nextRunTime: new Date(Date.now() + 65 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 55 * 60000).toISOString(), jobType: "Seeker" },
+];
+
+// 32 rows across severities/types so the events feed pages twice in demo
+// (pageSize 25). Deterministic pattern — no RNG, identical every launch.
+const DEMO_CLEANUPARR_EVENTS = (() => {
+  const templates = [
+    { eventType: "StalledStrike", severity: "Warning", message: "Strike 2/3: download stalled", itemTitle: "Orbital.Decay.S02E05.2160p.WEB-DL", strikeCount: 2 },
+    { eventType: "QueueItemDeleted", severity: "Important", message: "Removed stalled download after 3 strikes", itemTitle: "Midnight.Harbor.S01E03.1080p.WEB", strikeCount: 3 },
+    { eventType: "DownloadCleaned", severity: "Information", message: "Cleaned after reaching max ratio", itemTitle: "The.Quiet.Signal.2026.1080p.BluRay", strikeCount: null },
+    { eventType: "SearchTriggered", severity: "Information", message: "Search started for missing item", itemTitle: "Glass Meridian S03E02", strikeCount: null },
+    { eventType: "SlowSpeedStrike", severity: "Warning", message: "Strike 1/3: below minimum speed", itemTitle: "Static.Bloom.2025.REMUX.2160p", strikeCount: 1 },
+    { eventType: "StrikeReset", severity: "Information", message: "Download recovered, strikes reset", itemTitle: "Iron.Estuary.S01E08.2160p.WEB-DL", strikeCount: null },
+    { eventType: "QueueItemDeleted", severity: "Error", message: "Removed: every file matched the malware blocklist", itemTitle: "Paper.Lanterns.2026.720p.WEB", strikeCount: null },
+    { eventType: "FailedImportStrike", severity: "Warning", message: "Strike 1/3: failed to import", itemTitle: "Salt.and.Circuitry.2024.1080p.BluRay", strikeCount: 1 },
+  ];
+  return Array.from({ length: 32 }, (_, i) => {
+    const t = templates[i % templates.length]!;
+    return {
+      id: `demo-event-${i + 1}`,
+      timestamp: new Date(Date.now() - (i + 1) * 47 * 60000).toISOString(),
+      isDryRun: i % 11 === 0,
+      ...t,
+    };
+  });
+})();
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -2432,6 +2581,30 @@ export function getDemoResponse(
       }
       if (normalized === "/filters") return DEMO_AUTOBRR_FILTERS;
       if (normalized === "/irc") return DEMO_AUTOBRR_IRC;
+      return undefined;
+    }
+    case "cleanuparr": {
+      // The trigger POST must not fall through to the jobs list read.
+      if (normalized.endsWith("/trigger")) return undefined;
+      if (normalized === "/api/jobs") return DEMO_CLEANUPARR_JOBS;
+      if (normalized === "/api/v2/stats") return DEMO_CLEANUPARR_STATS;
+      if (normalized === "/api/events") {
+        // Respect severity + paging so the chips and Load More work in demo.
+        const severity = params?.severity;
+        const page = params?.page != null ? Number(params.page) : 1;
+        const pageSize = params?.pageSize != null ? Number(params.pageSize) : 25;
+        const filtered = severity
+          ? DEMO_CLEANUPARR_EVENTS.filter((e) => e.severity === severity)
+          : DEMO_CLEANUPARR_EVENTS;
+        const start = (page - 1) * pageSize;
+        return {
+          items: filtered.slice(start, start + pageSize),
+          page,
+          pageSize,
+          totalCount: filtered.length,
+          totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+        };
+      }
       return undefined;
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.

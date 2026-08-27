@@ -55,6 +55,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   emby:        ["serviceOffline"],
   unraid:      ["serviceOffline"],
   autobrr:     ["serviceOffline"],
+  cleanuparr:  ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

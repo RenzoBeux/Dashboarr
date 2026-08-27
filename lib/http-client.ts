@@ -1274,6 +1274,32 @@ async function runConnectionProbe(
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 
+    case "cleanuparr": {
+      // The anonymous /health ping can't validate the key, so the probe hits
+      // /api/jobs — a tiny (≤6 rows) [Authorize]-guarded GET: 200 JSON with a
+      // valid X-Api-Key, 401 without. apiBasePath is empty (root-mounted
+      // /health), so the /api prefix is spelled here.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/api/jobs");
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) {
+        // Same auth-proxy guard as the *arr case (issue #239).
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+        };
+      }
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
     default: {
       // Exhaustiveness check — a new ServiceId without a probe case fails here.
       const _exhaustive: never = serviceId;

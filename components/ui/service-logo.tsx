@@ -47,6 +47,10 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   // Official autobrr rabbit (GPL-2.0, autobrr/autobrr web/public/logo192.png).
   // Blue-on-transparent, so it reads fine on the dark UI as shipped.
   autobrr: require("@/assets/services/autobrr.png"),
+  // Official Cleanuparr mark (MPL-2.0, Cleanuparr/Cleanuparr
+  // code/frontend/public/icons/icon-192x192.png). Purple-on-transparent with
+  // black cutouts that blend into the dark UI, as on Cleanuparr's own UI.
+  cleanuparr: require("@/assets/services/cleanuparr.png"),
 };
 
 export function hasServiceLogo(id: ServiceId): boolean {

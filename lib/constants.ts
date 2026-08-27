@@ -21,6 +21,7 @@ export const SERVICE_IDS = [
   "bazarr",
   "unraid",
   "autobrr",
+  "cleanuparr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -164,6 +165,16 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/api",
     pingPath: "/healthz/liveness",
   },
+  // Cleanuparr's anonymous /health probe is ROOT-mounted while the REST API
+  // lives under /api — so apiBasePath is empty and every path in
+  // services/cleanuparr-api.ts carries its own /api prefix (the JellyStat
+  // pattern). Auth is the default X-Api-Key header.
+  cleanuparr: {
+    name: "Cleanuparr",
+    defaultPort: 11011,
+    apiBasePath: "",
+    pingPath: "/health",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -210,6 +221,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "arr-health",
   "unraid-array",
   "autobrr-stats",
+  "cleanuparr-stats",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

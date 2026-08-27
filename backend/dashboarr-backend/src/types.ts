@@ -29,6 +29,7 @@ export const SERVICE_IDS = [
   "bazarr",
   "unraid",
   "autobrr",
+  "cleanuparr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -284,6 +285,8 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   // unRAID's official API is GraphQL-only at the webgui root (POST /graphql).
   unraid: "",
   autobrr: "/api",
+  // Cleanuparr's anonymous /health is root-mounted; API paths self-prefix /api.
+  cleanuparr: "",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -330,6 +333,8 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // Autobrr's liveness probe is anonymous (auth for real calls is the
   // X-API-Token header — see applyAuth in services/http.ts).
   autobrr: "/healthz/liveness",
+  // Cleanuparr's /health is anonymous and root-mounted (api base is "").
+  cleanuparr: "/health",
 };
 
 // Notification category labels sent to the device as `data.type`
