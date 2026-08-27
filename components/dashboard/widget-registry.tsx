@@ -22,6 +22,7 @@ import {
   Radar,
   Server,
   ShieldAlert,
+  Sparkles,
   Tv,
   Zap,
   type LucideIcon,
@@ -56,6 +57,7 @@ import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
 import { AutobrrCard } from "@/components/dashboard/autobrr-card";
+import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -185,6 +187,11 @@ import {
   AUTOBRR_STATS_DEFAULT_SETTINGS,
   type AutobrrStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/autobrr-stats-settings";
+import {
+  CleanuparrStatsSettings,
+  CLEANUPARR_STATS_DEFAULT_SETTINGS,
+  type CleanuparrStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/cleanuparr-stats-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -541,6 +548,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: AutobrrStatsSettings,
     defaultSettings: AUTOBRR_STATS_DEFAULT_SETTINGS,
   },
+  "cleanuparr-stats": {
+    id: "cleanuparr-stats",
+    label: "Cleanuparr Stats",
+    description: "Strikes, removals and client health from Cleanuparr",
+    icon: Sparkles,
+    service: "cleanuparr",
+    component: CleanuparrCard,
+    settingsComponent: CleanuparrStatsSettings,
+    defaultSettings: CLEANUPARR_STATS_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -577,4 +594,5 @@ export type {
   DiskSpaceSettingsValue,
   ArrHealthSettingsValue,
   AutobrrStatsSettingsValue,
+  CleanuparrStatsSettingsValue,
 };

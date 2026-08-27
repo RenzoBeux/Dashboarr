@@ -65,6 +65,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Glances** | Server CPU, RAM, disk, and network stats |
 | **unRAID** | Start/stop/restart Docker containers, array status, disks grouped by Array / Pools / Unassigned |
 | **Autobrr** | Push stats, release feed with retry, filter toggles, IRC network health & restart |
+| **Cleanuparr** | Strike/removal/cleanup stats, scheduled jobs with run-now, client health, event feed |
 
 ## Features
 

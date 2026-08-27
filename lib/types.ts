@@ -2514,6 +2514,110 @@ export interface AutobrrIrcNetwork {
   healthy: boolean;
 }
 
+// --- Cleanuparr Types ---
+// Wire shapes verified against Cleanuparr's C# DTOs. MVC serializes camelCase
+// property names but PascalCase enum STRING values (JsonStringEnumConverter
+// with no naming policy) — so breakdown keys and enum-typed fields arrive as
+// "StalledStrike" / "Warning" style names. Zero-activity breakdown keys are
+// omitted entirely, never sent as 0.
+
+export interface CleanuparrJobTypeStats {
+  total: number;
+  completed: number;
+  failed: number;
+  lastRunAt?: string;
+  nextRunAt?: string;
+}
+
+export interface CleanuparrClientHealth {
+  id: string;
+  name: string;
+  type: string;
+  isHealthy: boolean;
+  lastChecked: string;
+  responseTimeMs?: number;
+  errorMessage?: string | null;
+}
+
+export interface CleanuparrStats {
+  events: {
+    total: number;
+    byType: Record<string, number>;
+    bySeverity: Record<string, number>;
+  };
+  strikes: {
+    total: number;
+    byType: Record<string, number>;
+    recovered: number;
+  };
+  removals: {
+    total: number;
+    byReason: Record<string, number>;
+  };
+  cleaned: {
+    total: number;
+    byReason: Record<string, number>;
+  };
+  searches: {
+    total: number;
+    completed: number;
+    failed: number;
+    grabbed: number;
+    byReason: Record<string, number>;
+  };
+  jobs: {
+    total: number;
+    completed: number;
+    failed: number;
+    byType: Record<string, CleanuparrJobTypeStats>;
+  };
+  health: {
+    downloadClients: CleanuparrClientHealth[];
+    arrInstances: CleanuparrClientHealth[];
+  };
+  timeframeHours: number;
+  generatedAt: string;
+}
+
+// JobType enum names — also the path segment for POST /api/jobs/{jobType}/trigger.
+export type CleanuparrJobType =
+  | "QueueCleaner"
+  | "MalwareBlocker"
+  | "DownloadCleaner"
+  | "BlacklistSynchronizer"
+  | "Seeker"
+  | "CustomFormatScoreSyncer";
+
+export interface CleanuparrJob {
+  name: string;
+  status: string;
+  schedule: string;
+  nextRunTime?: string | null;
+  previousRunTime?: string | null;
+  jobType: CleanuparrJobType | string;
+}
+
+export type CleanuparrEventSeverity = "Test" | "Information" | "Warning" | "Important" | "Error";
+
+export interface CleanuparrEvent {
+  id: string;
+  timestamp: string;
+  eventType: string;
+  message: string;
+  severity: CleanuparrEventSeverity | string;
+  isDryRun: boolean;
+  itemTitle?: string | null;
+  strikeCount?: number | null;
+}
+
+export interface CleanuparrPaginatedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:
