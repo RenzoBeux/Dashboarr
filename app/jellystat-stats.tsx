@@ -117,7 +117,7 @@ export default function JellystatStatsScreen() {
         <BackHeader title="JellyStat Stats" />
         <EmptyState
           title="No JellyStat configured"
-          message="Enable JellyStat in Settings to see stats"
+          message="Enable JellyStat in Settings → Integrations to see stats"
         />
       </ScreenWrapper>
     );

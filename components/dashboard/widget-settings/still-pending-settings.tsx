@@ -84,7 +84,7 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
             description={
               sonarrEnabled
                 ? "Show aired episodes that haven't downloaded"
-                : "Enable Sonarr in Settings to use this source"
+                : "Enable Sonarr in Settings → Integrations"
             }
             value={settings.includeSonarr && sonarrEnabled}
             onValueChange={(includeSonarr) => update({ includeSonarr })}
@@ -95,7 +95,7 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
             description={
               radarrEnabled
                 ? "Show released movies that haven't downloaded"
-                : "Enable Radarr in Settings to use this source"
+                : "Enable Radarr in Settings → Integrations"
             }
             value={settings.includeRadarr && radarrEnabled}
             onValueChange={(includeRadarr) => update({ includeRadarr })}

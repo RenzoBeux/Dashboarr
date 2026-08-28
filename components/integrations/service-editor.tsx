@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, BackHandler, Pressable, Linking, Platform } from "react-native";
+import { View, Text, Pressable, Linking, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
-import { useFocusEffect } from "expo-router";
+import { useNavigation, usePreventRemove } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import { toast, toastError } from "@/components/ui/toast";
-import { Trash2, Copy, LogIn } from "lucide-react-native";
+import { Trash2, Copy, Layers } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
@@ -27,7 +28,9 @@ import {
   discoverServers,
   type PlexServer,
 } from "@/services/plex-auth";
-import type { ServiceId } from "@/lib/constants";
+import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
+import { SERVICE_CATALOG, secretsShapeFor } from "@/lib/service-catalog";
+import { kindListRoute } from "@/lib/integration-status";
 import {
   CATEGORIES_FOR_KIND,
   CATEGORY_LABELS,
@@ -45,6 +48,9 @@ import { useModalFlow } from "@/hooks/use-modal-flow";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { ArrDefaultsCard } from "@/components/settings/arr-defaults-card";
 import { QbtMutedCategories } from "@/components/settings/qbt-muted-categories";
+import { SettingsGroup } from "@/components/settings/settings-group";
+import { SettingsRow } from "@/components/settings/settings-row";
+import { AuthCard } from "@/components/integrations/auth-card";
 import {
   SERVICE_DEFAULTS_KIND_LABEL,
   EMPTY_INSTANCES,
@@ -120,6 +126,17 @@ export function ServiceEditor({
   // hooks/use-modal-flow.ts. The HTTP-warning promise resolves only once the
   // confirm is fully dismissed, so handleSave's continuation (AddToDashboards
   // sheet or onBack's unmount) never runs mid-dismiss.
+  const navigation = useNavigation();
+  const allowRemoveRef = useRef(false);
+  // The navigation action usePreventRemove intercepted, replayed verbatim once
+  // the user resolves the unsaved sheet. Consumed once by leave(), so a sheet
+  // the user cancelled can never replay its action on a later, unrelated save.
+  // A ref, not state: Save flips the bypass and navigates in the same tick, and
+  // a state flip would land after the navigation had already tripped the guard.
+  const leaveActionRef = useRef<Parameters<
+    typeof navigation.dispatch
+  >[0] | null>(null);
+
   const flow = useModalFlow<{
     unsaved: void;
     confirmDelete: void;
@@ -128,16 +145,19 @@ export function ServiceEditor({
     serverPicker: PlexServer[];
   }>();
 
-  // Deluge's Web UI has a single password and no username at all, so it takes
-  // the username/password secrets shape (below) but hides the username field.
-  const usesPasswordOnly = serviceId === "deluge";
-  const usesBasicAuth =
-    usesPasswordOnly ||
-    serviceId === "qbittorrent" ||
-    serviceId === "rtorrent" ||
-    serviceId === "transmission" ||
-    serviceId === "glances" ||
-    serviceId === "nzbget";
+  // The credential form shape comes from the catalog rather than a chain of
+  // `serviceId === "..."` comparisons, so a new service is a data entry.
+  //
+  // NOTE: this is the FORM shape, not SERVICE_DEFAULTS[id].httpAuth. qBittorrent
+  // and Deluge take a username/password pair but authenticate against a login
+  // endpoint and carry a session cookie rather than sending HTTP Basic, so the
+  // two sets differ. See the warning on ServiceAuthShape in lib/service-catalog.ts.
+  const catalogEntry = SERVICE_CATALOG[serviceId];
+  const usesUserPass = secretsShapeFor(catalogEntry.authShape) === "userPass";
+  // AuthCard owns the username/password vs API-key split; this component still
+  // needs the shape for the dirty check, the configured snapshot and the write.
+  const defaultPort = SERVICE_DEFAULTS[serviceId].defaultPort;
+  const router = useRouter();
 
   // Snapshot at mount whether this instance has never been configured before
   // (no URL, no creds). Covers two flows that should both surface the prompt:
@@ -154,7 +174,7 @@ export function ServiceEditor({
     () =>
       config.localUrl.length === 0 &&
       config.remoteUrl.length === 0 &&
-      (usesBasicAuth
+      (usesUserPass
         ? !secrets.username && !secrets.password
         : !secrets.apiKey),
   );
@@ -167,41 +187,62 @@ export function ServiceEditor({
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
-    (usesBasicAuth
+    (usesUserPass
       ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
       : apiKey !== (secrets.apiKey ?? ""));
 
-  const handleBack = () => {
-    if (!isDirty) {
-      onBack();
-      return;
-    }
-    flow.open("unsaved");
-  };
-
-  // Intercept Android hardware back / swipe-back so it closes the editor
-  // (with the unsaved-changes guard) instead of popping the Settings tab.
-  useFocusEffect(
-    useCallback(() => {
-      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-        handleBack();
-        return true;
-      });
-      return () => sub.remove();
-    }, [handleBack]),
+  // Unsaved-changes guard. usePreventRemove intercepts the Android hardware
+  // back, the iOS edge swipe and our own header arrow through ONE code path,
+  // and hands us the navigation action the user actually asked for so we can
+  // replay it verbatim after they choose. This is the pattern already used by
+  // app/dashboard-edit/[id].tsx and app/overseerr/customize-discover.tsx;
+  // `beforeRemove` is not fully supported on native-stack.
+  usePreventRemove(
+    isDirty,
+    useCallback(
+      ({ data }) => {
+        if (allowRemoveRef.current) {
+          allowRemoveRef.current = false;
+          navigation.dispatch(data.action);
+          return;
+        }
+        leaveActionRef.current = data.action;
+        flow.open("unsaved");
+      },
+      [navigation, flow],
+    ),
   );
+
+  // Leave the editor, replaying the gesture the user actually made when there
+  // was one. Callers that did not come from the guard (the Save button) null
+  // the ref first, so they get a plain back instead of a stale action.
+  const leave = () => {
+    const action = leaveActionRef.current;
+    leaveActionRef.current = null;
+    allowRemoveRef.current = true;
+    if (action) navigation.dispatch(action);
+    else onBack();
+  };
 
   const confirmHttpWarning = (message: string) =>
     new Promise<boolean>((resolve) => {
       flow.open("httpWarning", { message, resolve });
     });
 
-  const handleSave = async () => {
-    if (!inst) return;
+  /**
+   * "saved"    — persisted, caller should leave.
+   * "prompted" — persisted, but the first-save AddToDashboards sheet is now
+   *              queued. The caller must NOT queue a leave: a whenClear
+   *              continuation supersedes a pending open, so doing so would
+   *              silently swallow the sheet (lib/modal-flow.ts).
+   * "aborted"  — validation failed or the user backed out; stay put.
+   */
+  const handleSave = async (): Promise<"saved" | "prompted" | "aborted"> => {
+    if (!inst) return "aborted";
     const trimmedName = name.trim();
     if (!trimmedName) {
       toast("Name cannot be empty", "error");
-      return;
+      return "aborted";
     }
 
     const normLocal = normalizeServiceUrl(localUrl);
@@ -212,16 +253,16 @@ export function ServiceEditor({
     const localResult = validateServiceUrl(normLocal, "local");
     if (localResult.kind === "invalid") {
       toast(localResult.message, "error");
-      return;
+      return "aborted";
     }
     const remoteResult = validateServiceUrl(normRemote, "remote");
     if (remoteResult.kind === "invalid") {
       toast(remoteResult.message, "error");
-      return;
+      return "aborted";
     }
     if (remoteResult.kind === "warn") {
       const confirmed = await confirmHttpWarning(remoteResult.message);
-      if (!confirmed) return;
+      if (!confirmed) return "aborted";
     }
 
     // Mirror the schema validator so the user can't save an invalid header
@@ -230,11 +271,11 @@ export function ServiceEditor({
     for (const [name, val] of Object.entries(customHeaders)) {
       if (!headerNameRe.test(name)) {
         toast(`Invalid header name: "${name}"`, "error");
-        return;
+        return "aborted";
       }
       if (/[\r\n]/.test(val)) {
         toast(`Header "${name}" value contains newlines`, "error");
-        return;
+        return "aborted";
       }
     }
 
@@ -243,7 +284,7 @@ export function ServiceEditor({
       localUrl: normLocal,
       remoteUrl: normRemote,
     });
-    if (usesBasicAuth) {
+    if (usesUserPass) {
       await updateInstanceSecrets(instanceId, {
         username,
         password,
@@ -273,17 +314,17 @@ export function ServiceEditor({
     // and the hint that widgets are added separately.
     if ((isNew || wasInitiallyUnconfigured) && !promptShown) {
       const hasUrl = normLocal.length > 0 || normRemote.length > 0;
-      const hasCreds = usesBasicAuth
+      const hasCreds = usesUserPass
         ? username.length > 0 || password.length > 0
         : apiKey.length > 0;
       if (hasUrl && hasCreds) {
         setPromptShown(true);
         flow.open("addToDashboards");
-        return;
+        return "prompted";
       }
     }
 
-    onBack();
+    return "saved";
   };
 
   const handleTest = async () => {
@@ -499,15 +540,22 @@ export function ServiceEditor({
 
   const performDelete = () => {
     flow.close();
-    // The store write swaps this editor for the "not found" branch and
-    // onDeleted unmounts it — both only after the confirm is fully gone.
+    // Only after the confirm is fully gone (issue #83). Pop FIRST, then tear
+    // down: removeInstance flips `inst` to undefined, so awaiting it before
+    // leaving would flash the "Not found" branch under the pop animation.
+    // The store action is not tied to this component and completes fine after
+    // the unmount.
     flow.whenClear(() => {
+      // The guard must not challenge a deletion — the instance is going away,
+      // so there is nothing left to save.
+      leaveActionRef.current = null;
+      allowRemoveRef.current = true;
+      onDeleted();
       void (async () => {
         if (serviceId === "qbittorrent") {
           await qbClearSession(instanceId);
         }
         await removeInstance(serviceId, instanceId);
-        onDeleted();
       })();
     });
   };
@@ -528,13 +576,33 @@ export function ServiceEditor({
     <ScreenWrapper>
       <BackHeader
         title={config.name}
-        onBack={handleBack}
+        // No dirty check here on purpose: usePreventRemove intercepts this
+        // pop exactly like the hardware back and the edge swipe.
+        onBack={onBack}
         right={
           isDirty ? (
             <Text className="text-amber-400 text-xs">• unsaved</Text>
           ) : null
         }
       />
+
+      {/* Enabled sits alone above everything, because it is the one switch in
+          this screen that is neither a connection field nor a preference. */}
+      <Card className="gap-4 mb-4">
+        <Toggle
+          label="Enabled"
+          description="Show this instance in tabs and on dashboards."
+          value={config.enabled}
+          onValueChange={() => toggleInstance(serviceId, instanceId)}
+        />
+      </Card>
+
+      {/* Everything from here to the Save button is deferred; everything after
+          it writes immediately. The two labels make that rule visible instead
+          of leaving the user to discover it one toggle at a time. */}
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-2 ml-1">
+        Connection
+      </Text>
 
       <Card className="gap-4 mb-4">
         <TextInput
@@ -543,30 +611,98 @@ export function ServiceEditor({
           value={name}
           onChangeText={setName}
         />
-        <Toggle
-          label="Enabled"
-          value={config.enabled}
-          onValueChange={() => toggleInstance(serviceId, instanceId)}
-        />
       </Card>
 
       <Card className="gap-4 mb-4">
         <TextInput
           label="Local URL"
-          placeholder="http://192.168.1.100:8080"
+          placeholder={`http://192.168.1.100:${defaultPort}`}
           value={localUrl}
           onChangeText={setLocalUrl}
           onBlur={() => setLocalUrl(normalizeServiceUrl(localUrl))}
           keyboardType="url"
         />
-        <TextInput
-          label="Remote URL"
-          placeholder="https://service.mydomain.com"
-          value={remoteUrl}
-          onChangeText={setRemoteUrl}
-          onBlur={() => setRemoteUrl(normalizeServiceUrl(remoteUrl))}
-          keyboardType="url"
+        <View className="gap-1.5">
+          <TextInput
+            label="Remote URL"
+            placeholder="https://service.mydomain.com"
+            value={remoteUrl}
+            onChangeText={setRemoteUrl}
+            onBlur={() => setRemoteUrl(normalizeServiceUrl(remoteUrl))}
+            keyboardType="url"
+          />
+          <Text className="text-zinc-600 text-xs">
+            {SERVICE_DEFAULTS_KIND_LABEL[serviceId]} usually listens on port{" "}
+            {defaultPort}.
+          </Text>
+        </View>
+      </Card>
+
+      <AuthCard
+        entry={catalogEntry}
+        apiKey={apiKey}
+        onApiKeyChange={setApiKey}
+        username={username}
+        onUsernameChange={setUsername}
+        password={password}
+        onPasswordChange={setPassword}
+        onConnectPlex={() => void handleConnectPlex()}
+        connecting={connecting}
+      />
+
+      <Card className="gap-4 mb-4">
+        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+          Custom Headers
+        </Text>
+        <HeaderListEditor
+          value={customHeaders}
+          onChange={setCustomHeaders}
+          helperText="Sent on every request to this instance. Combined with the global headers (Settings → Network → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
         />
+      </Card>
+
+      <View className="flex-row gap-3 mb-4">
+        <Button
+          label="Test Connection"
+          onPress={handleTest}
+          variant="outline"
+          loading={testing}
+          className="flex-1"
+        />
+        <Button
+          label="Save"
+          onPress={() => {
+            // Not a guard-intercepted gesture, so drop any action a cancelled
+            // unsaved sheet left behind and just go back.
+            leaveActionRef.current = null;
+            void handleSave().then((outcome) => {
+              // "prompted" leaves via the AddToDashboards sheet's onClose.
+              if (outcome === "saved") leave();
+            });
+          }}
+          className="flex-1"
+        />
+      </View>
+
+      <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider mb-1 ml-1">
+        Preferences
+      </Text>
+      <Text className="text-zinc-600 text-xs mb-2 ml-1">
+        Saved as you change them.
+      </Text>
+
+      {/* "Always use Remote URL" and "Allow invalid certificates" live BELOW
+          the Save row rather than up with the URL fields, so the deferred /
+          instant split is literally true. Deferring them is not an option:
+          handleTest reads config.useRemote to pick which slot to probe (the
+          #356 green-toast-next-to-red-dot contradiction), and ignoreCertErrors
+          programs a native host allowlist derived from the SAVED instances
+          (lib/insecure-tls.ts), so a deferred toggle would appear to do
+          nothing until Save. */}
+      <Card className="gap-4 mb-4">
+        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+          Routing and security
+        </Text>
         <Toggle
           label="Always use Remote URL"
           description="Force the remote URL even when on a configured home network. Leave off to let auto-switch use the local URL at home."
@@ -582,64 +718,6 @@ export function ServiceEditor({
           onValueChange={(v) =>
             updateInstance(serviceId, instanceId, { ignoreCertErrors: v })
           }
-        />
-      </Card>
-
-      <Card className="gap-4 mb-4">
-        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-          Authentication
-        </Text>
-        {serviceId === "plex" ? (
-          <View className="gap-2">
-            <Button
-              label="Connect with Plex"
-              onPress={() => void handleConnectPlex()}
-              loading={connecting}
-              icon={<Icon icon={LogIn} size={18} color="#fff" />}
-            />
-            <Text className="text-zinc-500 text-xs">
-              Sign in to auto-fill this server&apos;s URLs and token, or enter a
-              token manually below.
-            </Text>
-          </View>
-        ) : null}
-        {usesBasicAuth ? (
-          <>
-            {usesPasswordOnly ? null : (
-              <TextInput
-                label="Username"
-                placeholder="admin"
-                value={username}
-                onChangeText={setUsername}
-              />
-            )}
-            <TextInput
-              label="Password"
-              placeholder="••••••••"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </>
-        ) : (
-          <TextInput
-            label="API Key"
-            placeholder="Enter API key"
-            value={apiKey}
-            onChangeText={setApiKey}
-            secureTextEntry
-          />
-        )}
-      </Card>
-
-      <Card className="gap-4 mb-4">
-        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
-          Custom Headers
-        </Text>
-        <HeaderListEditor
-          value={customHeaders}
-          onChange={setCustomHeaders}
-          helperText="Sent on every request to this instance. Combined with the global headers (Settings → Network → Custom Headers). The service's own auth (API Key, Plex Token, etc.) always wins on collision."
         />
       </Card>
 
@@ -665,16 +743,22 @@ export function ServiceEditor({
 
       <WebhookInstanceIdCard serviceId={serviceId} instanceId={instanceId} />
 
-      <View className="flex-row gap-3 mb-4">
-        <Button
-          label="Test Connection"
-          onPress={handleTest}
-          variant="outline"
-          loading={testing}
-          className="flex-1"
+      {/* Always shown, including at one instance. A single-instance kind is
+          routed straight here from the hub and from Browse, so this row is the
+          only way to reach the list — and therefore the only way to add a
+          second server of this kind. */}
+      <SettingsGroup>
+        <SettingsRow
+          icon={Layers}
+          label="Instances"
+          subtitle={
+            instancesForKind.length === 1
+              ? `1 ${SERVICE_DEFAULTS_KIND_LABEL[serviceId]} server · add another`
+              : `${instancesForKind.length} ${SERVICE_DEFAULTS_KIND_LABEL[serviceId]} servers`
+          }
+          onPress={() => router.push(kindListRoute(serviceId) as never)}
         />
-        <Button label="Save" onPress={handleSave} className="flex-1" />
-      </View>
+      </SettingsGroup>
 
       {/* Delete is only offered when the user has more than one instance of this
           kind — kinds always carry at least one slot, so removing the only
@@ -706,7 +790,7 @@ export function ServiceEditor({
           flow.close();
           // Unmounting the editor while the sheet is still tearing down is
           // the issue-#83 race — leave only once it reports fully gone.
-          flow.whenClear(() => onBack());
+          flow.whenClear(leave);
         }}
         onClosed={flow.onClosed}
       />
@@ -719,14 +803,21 @@ export function ServiceEditor({
           {
             label: "Save",
             // "Save" can open the HTTP-warning modal — run it only once the
-            // sheet has fully closed.
-            onPress: () => flow.whenClear(() => void handleSave()),
+            // sheet has fully closed. Only queue the leave when the save did
+            // not open the first-save sheet, or the continuation would
+            // supersede that pending open and the sheet would never show.
+            onPress: () =>
+              flow.whenClear(() => {
+                void handleSave().then((outcome) => {
+                  if (outcome === "saved") flow.whenClear(leave);
+                });
+              }),
           },
           {
             label: "Discard",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => flow.whenClear(() => onBack()),
+            onPress: () => flow.whenClear(leave),
           },
         ]}
       />

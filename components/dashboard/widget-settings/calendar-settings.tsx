@@ -74,7 +74,7 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
             description={
               sonarrEnabled
                 ? "Show upcoming episodes from monitored series"
-                : "Enable Sonarr in Settings to use this source"
+                : "Enable Sonarr in Settings → Integrations"
             }
             value={settings.includeSonarr && sonarrEnabled}
             onValueChange={(includeSonarr) => update({ includeSonarr })}
@@ -85,7 +85,7 @@ export function CalendarSettings({ slotId }: WidgetSettingsComponentProps) {
             description={
               radarrEnabled
                 ? "Show upcoming movies on the Radarr calendar"
-                : "Enable Radarr in Settings to use this source"
+                : "Enable Radarr in Settings → Integrations"
             }
             value={settings.includeRadarr && radarrEnabled}
             onValueChange={(includeRadarr) => update({ includeRadarr })}

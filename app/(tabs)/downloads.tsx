@@ -151,7 +151,7 @@ export default function DownloadsScreen() {
       <ScreenWrapper>
         <EmptyState
           title="No download client configured"
-          message="Enable qBittorrent, rTorrent, Transmission, Deluge, SABnzbd, or NZBGet in Settings to manage downloads."
+          message="Enable a download client in Settings → Integrations to manage downloads."
         />
       </ScreenWrapper>
     );

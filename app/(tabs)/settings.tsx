@@ -1,22 +1,23 @@
-import { useState } from "react";
+import { useMemo } from "react";
 import { View, Text } from "react-native";
 import { router } from "expo-router";
-import { Wifi, Bell, Palette, HardDrive, Info } from "lucide-react-native";
-import { ServiceLogo } from "@/components/ui/service-logo";
+import { Wifi, Bell, Palette, HardDrive, Info, Plug } from "lucide-react-native";
 import { StatusDot } from "@/components/ui/status-dot";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { APP_THEMES } from "@/lib/app-themes";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { lanGuardBlockReason } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
-import type { ServiceId } from "@/lib/constants";
+import {
+  buildIntegrationRows,
+  summarizeIntegrations,
+  type InstanceProbeContext,
+} from "@/lib/integration-status";
 import { NATIVE_VERSION } from "@/lib/app-version";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
-import { SERVICE_DEFAULTS_KIND_LABEL } from "@/components/settings/service-kind-shared";
-import { InstanceList } from "@/components/settings/instance-list";
-import { ServiceEditor } from "@/components/settings/service-editor";
 
 // The 7 per-category notification toggles, for the hub row's "On · X of 7
 // alerts" subtitle. Must mirror the toggles on /settings/notifications.
@@ -31,18 +32,10 @@ const NOTIF_CATEGORY_KEYS = [
 ] as const;
 
 export default function SettingsScreen() {
-  // Multi-instance settings has three views:
-  //   • main: hub with the Services list + category rows
-  //   • viewingService: list of instances for one kind (with add/edit/delete)
-  //   • editingInstance: per-instance editor (URL/auth/name/delete)
-  const [viewingService, setViewingService] = useState<ServiceId | null>(null);
-  const [editingInstance, setEditingInstance] = useState<{
-    serviceId: ServiceId;
-    instanceId: string;
-    isNew?: boolean;
-  } | null>(null);
-
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
+  const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
+  const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
+  const isOnWifi = useConfigStore((s) => s.isOnWifi);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
   const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
@@ -54,91 +47,43 @@ export default function SettingsScreen() {
     NOTIF_CATEGORY_KEYS.filter((k) => s.notificationSettings[k]).length,
   );
 
-  // Pull live health for every (kind, instance) pair so the kind-row dots can
-  // reflect ok/auth_failed/offline instead of just "any instance enabled".
-  // Cached + polled by the shared hook — no extra requests fired here.
-  const { data: healthData } = useServiceHealth();
+  // Pull live health for every (kind, instance) pair so the Integrations row
+  // can summarise it. Cached + polled by the shared hook — no extra requests.
+  const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
+  const determining = isPending || isPlaceholderData;
+
+  // The exact same projection the Integrations hub renders, so the row's count
+  // and the hub's summary line can never disagree.
+  const summary = useMemo(() => {
+    const context: Record<string, InstanceProbeContext> = {};
+    for (const kind of SERVICE_IDS) {
+      for (const inst of serviceInstances[kind] ?? []) {
+        const activeUrl = getActiveUrl(kind, inst.id);
+        context[inst.id] = {
+          activeUrl,
+          lanBlocked: lanGuardBlockReason(activeUrl, inst) !== null,
+        };
+      }
+    }
+    return summarizeIntegrations(
+      buildIntegrationRows(
+        serviceInstances,
+        determining ? undefined : healthData,
+        context,
+      ),
+    );
+    // networkAwayFromHome / isOnWifi feed lanGuardBlockReason indirectly.
+  }, [
+    serviceInstances,
+    healthData,
+    determining,
+    getActiveUrl,
+    networkAwayFromHome,
+    isOnWifi,
+  ]);
 
   // Keeps the title clear of the iPadOS 26 window-control cluster (#342).
   const windowControlsPadding = useWindowControlsContentPadding();
-
-  if (editingInstance) {
-    return (
-      // Key by instance id so the editor fully remounts when switching between
-      // instances. The form seeds its URL/credential fields from `inst` via
-      // useState initializers (which run once per mount); without a per-instance
-      // key those fields would keep a previous instance's values — the "remote
-      // URL shows blank until you tap it" symptom — and a Save could then
-      // persist the stale/empty value over a good stored URL (#106).
-      <ServiceEditor
-        key={editingInstance.instanceId}
-        serviceId={editingInstance.serviceId}
-        instanceId={editingInstance.instanceId}
-        isNew={editingInstance.isNew ?? false}
-        onBack={() => setEditingInstance(null)}
-        onDeleted={() => setEditingInstance(null)}
-      />
-    );
-  }
-
-  if (viewingService) {
-    return (
-      <InstanceList
-        serviceId={viewingService}
-        onBack={() => setViewingService(null)}
-        onEditInstance={(instanceId, options) =>
-          setEditingInstance({
-            serviceId: viewingService,
-            instanceId,
-            isNew: options?.isNew,
-          })
-        }
-      />
-    );
-  }
-
-  const renderKindRow = (id: ServiceId) => {
-    const list = serviceInstances[id] ?? [];
-    const enabledCount = list.filter((i) => i.enabled).length;
-    const subtitle =
-      list.length === 0
-        ? "Tap to add"
-        : list.length === 1
-          ? list[0].enabled
-            ? list[0].useRemote
-              ? list[0].remoteUrl || "No remote URL set"
-              : list[0].localUrl || list[0].remoteUrl || "No URL set"
-            : "Tap to configure"
-          : `${list.length} instances · ${enabledCount} enabled`;
-    // Only show the dot when the kind has at least one enabled instance —
-    // disabled kinds have nothing to be healthy about. Use the aggregated
-    // kind status from the health hook (best of any instance: ok >
-    // auth_failed > offline) so a healthy primary masks a broken secondary.
-    const kindHealth = enabledCount > 0
-      ? healthData?.find((h) => h.id === id)?.status
-      : undefined;
-    return (
-      <SettingsRow
-        key={id}
-        leading={<ServiceLogo id={id} size={20} />}
-        label={SERVICE_DEFAULTS_KIND_LABEL[id]}
-        subtitle={subtitle}
-        onPress={() => setViewingService(id)}
-        right={
-          kindHealth ? <StatusDot state={kindHealth} size="sm" /> : null
-        }
-      />
-    );
-  };
-
-  // Determine ordering: kinds with at least one enabled instance come first,
-  // matching the v12 "configured at top" UX.
-  const enabledKinds = SERVICE_IDS.filter((id) =>
-    (serviceInstances[id] ?? []).some((i) => i.enabled),
-  );
-  const disabledKinds = SERVICE_IDS.filter(
-    (id) => !(serviceInstances[id] ?? []).some((i) => i.enabled),
-  );
 
   const networkNeedsHomeNetwork =
     autoSwitchNetwork && homeNetworksCount === 0 && !treatVpnAsHome;
@@ -162,19 +107,20 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
-      <SettingsGroup
-        title="Services"
-        footer="Instances are shared across dashboards. Attach them to a workspace in its settings."
-      >
-        {enabledKinds.map(renderKindRow)}
-        {disabledKinds.length > 0 && enabledKinds.length > 0 ? (
-          <View className="px-4 py-2 bg-surface-light/30">
-            <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
-              Not configured
-            </Text>
-          </View>
-        ) : null}
-        {disabledKinds.map(renderKindRow)}
+      {/* One row, no section header: "Services" above a row called
+          "Integrations" next to a tab called Services is three names for the
+          same thing. The full list lives at /settings/integrations. */}
+      <SettingsGroup>
+        <SettingsRow
+          icon={Plug}
+          label="Integrations"
+          subtitle={summary.line}
+          subtitleTone={summary.attention > 0 ? "warn" : "default"}
+          right={
+            summary.worst ? <StatusDot state={summary.worst} size="sm" /> : null
+          }
+          onPress={() => router.push("/settings/integrations")}
+        />
       </SettingsGroup>
 
       <SettingsGroup title="App">

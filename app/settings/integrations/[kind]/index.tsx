@@ -1,9 +1,12 @@
-import { useCallback, useState } from "react";
-import { View, Text, BackHandler, Pressable } from "react-native";
-import { useFocusEffect } from "expo-router";
-import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react-native";
+import { useState } from "react";
+import { View, Text, Pressable, Linking } from "react-native";
+import { useLocalSearchParams, useRouter, Redirect } from "expo-router";
+import { Plus, Trash2, ArrowUp, ArrowDown, ExternalLink } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
+import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { ConfirmModal } from "@/components/common/confirm-modal";
@@ -15,35 +18,51 @@ import {
 } from "@/components/settings/service-kind-shared";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import type { HealthStatusKind } from "@/lib/types";
 import { qbClearSession } from "@/services/qbittorrent-api";
-import type { ServiceId } from "@/lib/constants";
+import { SERVICE_IDS, type ServiceId } from "@/lib/constants";
 
-export function InstanceList({
-  serviceId,
-  onBack,
-  onEditInstance,
+/**
+ * Instance list for one service kind.
+ *
+ * Absorbs the old components/settings/instance-list.tsx. The BackHandler
+ * interception that file carried is gone: this is a real route now, so the
+ * hardware back and the edge swipe pop it for free.
+ */
+export default function KindInstancesRoute() {
+  const router = useRouter();
+  const { kind } = useLocalSearchParams<{ kind: string }>();
+  const validKind = SERVICE_IDS.includes(kind as ServiceId)
+    ? (kind as ServiceId)
+    : null;
+
+  if (!validKind) return <Redirect href="/settings/integrations" />;
+  return <KindInstances kind={validKind} router={router} />;
+}
+
+function KindInstances({
+  kind,
+  router,
 }: {
-  serviceId: ServiceId;
-  onBack: () => void;
-  onEditInstance: (
-    instanceId: string,
-    options?: { isNew?: boolean },
-  ) => void;
+  kind: ServiceId;
+  router: ReturnType<typeof useRouter>;
 }) {
   const instances = useConfigStore(
-    (s) => s.serviceInstances[serviceId] ?? EMPTY_INSTANCES,
+    (s) => s.serviceInstances[kind] ?? EMPTY_INSTANCES,
   );
   const addInstance = useConfigStore((s) => s.addInstance);
   const removeInstance = useConfigStore((s) => s.removeInstance);
   const moveInstance = useConfigStore((s) => s.moveInstance);
   const dashboards = useConfigStore((s) => s.dashboards);
-  const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
+  const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[kind];
+  const catalog = SERVICE_CATALOG[kind];
+
   // Per-instance tri-state health for the row dot. The shared hook is already
   // polling, so this is a pure index by instance UUID.
   const { data: healthData } = useServiceHealth();
   const healthByInstance = new Map<string, HealthStatusKind>();
-  for (const inst of healthData?.find((h) => h.id === serviceId)?.instances ?? []) {
+  for (const inst of healthData?.find((h) => h.id === kind)?.instances ?? []) {
     healthByInstance.set(inst.instanceId, inst.status);
   }
 
@@ -54,27 +73,24 @@ export function InstanceList({
   const countAttached = (instanceId: string): number => {
     let n = 0;
     for (const d of dashboards) {
-      if (d.attachedInstances === undefined || d.attachedInstances.includes(instanceId)) {
+      if (
+        d.attachedInstances === undefined ||
+        d.attachedInstances.includes(instanceId)
+      ) {
         n++;
       }
     }
     return n;
   };
 
+  // Plain useState, not a flow step: this confirm chains into nothing.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  // Intercept Android hardware back / swipe-back so it returns to the main
-  // settings list instead of popping the Settings tab (which would land on
-  // the dashboard).
-  useFocusEffect(
-    useCallback(() => {
-      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-        onBack();
-        return true;
-      });
-      return () => sub.remove();
-    }, [onBack]),
-  );
+  const openInstance = (instanceId: string, opts?: { isNew?: boolean }) => {
+    router.push(
+      `/settings/integrations/${kind}/${instanceId}${opts?.isNew ? "?new=1" : ""}` as never,
+    );
+  };
 
   const handleAdd = () => {
     // First instance for a kind takes the kind's default name; subsequent ones
@@ -83,23 +99,47 @@ export function InstanceList({
     const existing = instances.length;
     const defaultName =
       existing === 0 ? kindLabel : `${kindLabel} ${existing + 1}`;
-    const inst = addInstance(serviceId, { name: defaultName });
-    onEditInstance(inst.id, { isNew: true });
+    const inst = addInstance(kind, { name: defaultName });
+    openInstance(inst.id, { isNew: true });
   };
 
   const performDelete = async (instanceId: string) => {
     setConfirmDelete(null);
-    if (serviceId === "qbittorrent") {
+    if (kind === "qbittorrent") {
       // Drop any cached qBit session for the deleted instance before its
       // SecureStore row goes away.
       await qbClearSession(instanceId);
     }
-    await removeInstance(serviceId, instanceId);
+    await removeInstance(kind, instanceId);
   };
 
   return (
     <ScreenWrapper>
-      <BackHeader title={kindLabel} onBack={onBack} />
+      <BackHeader title={kindLabel} />
+
+      <Card className="gap-3 mb-4">
+        <View className="flex-row items-center gap-3">
+          <View className="w-12 h-12 rounded-2xl bg-surface-light items-center justify-center">
+            <ServiceLogo id={kind} size={28} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-zinc-100 text-lg font-bold">{kindLabel}</Text>
+            <Text className="text-zinc-400 text-sm mt-0.5">
+              {catalog.tagline}
+            </Text>
+          </View>
+        </View>
+        {catalog.docsUrl ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            label="Open docs"
+            className="self-start"
+            icon={<Icon icon={ExternalLink} size={14} color="#a1a1aa" />}
+            onPress={() => void Linking.openURL(catalog.docsUrl!)}
+          />
+        ) : null}
+      </Card>
 
       <SettingsGroup
         title={instances.length === 1 ? "Instance" : "Instances"}
@@ -127,7 +167,7 @@ export function InstanceList({
               className="flex-row items-center border-b border-surface-light last:border-b-0"
             >
               <Pressable
-                onPress={() => onEditInstance(inst.id)}
+                onPress={() => openInstance(inst.id)}
                 className="flex-1 flex-row items-center px-4 py-3 active:opacity-70"
               >
                 <View className="flex-1">
@@ -157,7 +197,7 @@ export function InstanceList({
               {instances.length > 1 ? (
                 <View className="flex-row items-center pr-2">
                   <Pressable
-                    onPress={() => moveInstance(serviceId, inst.id, "up")}
+                    onPress={() => moveInstance(kind, inst.id, "up")}
                     disabled={idx === 0}
                     hitSlop={6}
                     className="p-2 active:opacity-60"
@@ -166,7 +206,7 @@ export function InstanceList({
                     <Icon icon={ArrowUp} size={16} color="#a1a1aa" />
                   </Pressable>
                   <Pressable
-                    onPress={() => moveInstance(serviceId, inst.id, "down")}
+                    onPress={() => moveInstance(kind, inst.id, "down")}
                     disabled={idx === instances.length - 1}
                     hitSlop={6}
                     className="p-2 active:opacity-60"
@@ -188,7 +228,9 @@ export function InstanceList({
         })}
         <SettingsRow
           icon={Plus}
-          label={instances.length === 0 ? `Add ${kindLabel}` : `Add another instance`}
+          label={
+            instances.length === 0 ? `Add ${kindLabel}` : "Add another instance"
+          }
           subtitle={
             instances.length > 0
               ? "Configure a second server of this kind"
@@ -204,7 +246,8 @@ export function InstanceList({
         message={
           confirmDelete
             ? `This will remove "${
-                instances.find((i) => i.id === confirmDelete)?.name ?? "this instance"
+                instances.find((i) => i.id === confirmDelete)?.name ??
+                "this instance"
               }" and its credentials. This cannot be undone.`
             : ""
         }
