@@ -10,6 +10,7 @@ import {
 import { getServerState } from "@/services/qbittorrent-api";
 import { getRtorrentGlobalStats } from "@/services/rtorrent-api";
 import { getTransmissionGlobalStats } from "@/services/transmission-api";
+import { getDelugeGlobalStats } from "@/services/deluge-api";
 import { getSabQueue } from "@/services/sabnzbd-api";
 import { getNzbgetStatus } from "@/services/nzbget-api";
 import { getNet, selectInterfaces } from "@/services/glances-api";
@@ -39,6 +40,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const allNzbgetInstances = useEnabledInstances("nzbget");
   const allRtInstances = useEnabledInstances("rtorrent");
   const allTransInstances = useEnabledInstances("transmission");
+  const allDelugeInstances = useEnabledInstances("deluge");
   const allGlancesInstances = useEnabledInstances("glances");
 
   // Scope each kind to the active workspace up front so the source / "is
@@ -49,6 +51,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   const wsNzbget = scopeInstancesToWorkspace(allNzbgetInstances, undefined, attached);
   const wsRt = scopeInstancesToWorkspace(allRtInstances, undefined, attached);
   const wsTrans = scopeInstancesToWorkspace(allTransInstances, undefined, attached);
+  const wsDeluge = scopeInstancesToWorkspace(allDelugeInstances, undefined, attached);
   const wsGlances = scopeInstancesToWorkspace(allGlancesInstances, undefined, attached);
 
   // A widget shows exactly one source — download clients OR server network —
@@ -56,7 +59,12 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // NIC Glances reports. The selection is forced when only one kind is
   // configured (see resolveSpeedStatsSource).
   const hasClients =
-    wsQbit.length + wsSab.length + wsNzbget.length + wsRt.length + wsTrans.length >
+    wsQbit.length +
+      wsSab.length +
+      wsNzbget.length +
+      wsRt.length +
+      wsTrans.length +
+      wsDeluge.length >
     0;
   const source = resolveSpeedStatsSource(
     settings.source,
@@ -100,6 +108,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     : [];
   const rtInstances = useClients ? wsRt : [];
   const transInstances = useClients ? wsTrans : [];
+  const delugeInstances = useClients ? wsDeluge : [];
   // Glances interfaces: received bytes → down pill, sent bytes → up pill.
   const glancesInstances = useNetwork
     ? scopeInstancesToWorkspace(
@@ -164,6 +173,17 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
+  // Deluge mirrors Transmission: current dl/up rate plus lifetime totals, keyed
+  // ["deluge", id, "globalStats"] so the cache is shared with the adapter and
+  // the Downloads tab header.
+  const delugeQueries = useQueries({
+    queries: delugeInstances.map((inst) => ({
+      queryKey: ["deluge", inst.id, "globalStats"] as const,
+      queryFn: () => getDelugeGlobalStats(inst.id),
+      refetchInterval: POLLING_INTERVALS.transferSpeed,
+    })),
+  });
+
   // Shares the ["glances", id, "net"] key with the Server Stats widget and the
   // Glances screen, so the cache is reused across all three.
   const glancesQueries = useQueries({
@@ -185,6 +205,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     ...nzbgetQueries,
     ...rtQueries,
     ...transQueries,
+    ...delugeQueries,
     ...glancesQueries,
   ]);
 
@@ -194,6 +215,7 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
       nzbgetInstances.length +
       rtInstances.length +
       transInstances.length +
+      delugeInstances.length +
       glancesInstances.length >
     0;
 
@@ -288,6 +310,15 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
     upSpeed += q.data.upSpeed;
     // Transmission's cumulative-stats totals persist across restarts, so they
     // belong in the same "total" (alltime) bucket as qBit/rtorrent.
+    dlAlltime += q.data.dlTotalLifetime;
+    upAlltime += q.data.upTotalLifetime;
+  }
+  for (const q of delugeQueries) {
+    if (!q.data) continue;
+    dlSpeed += q.data.dlSpeed;
+    upSpeed += q.data.upSpeed;
+    // Deluge's session totals reset when deluged restarts, but so do
+    // rtorrent's, and both land in the same "total" bucket for consistency.
     dlAlltime += q.data.dlTotalLifetime;
     upAlltime += q.data.upTotalLifetime;
   }

@@ -4,6 +4,7 @@ import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
 import type { TransmissionTorrent } from "../services/transmission.js";
+import type { DelugeTorrent } from "../services/deluge.js";
 import type { SabHistorySlot } from "../services/sabnzbd.js";
 import type { NzbgetHistoryItem } from "../services/nzbget.js";
 import type { NotificationCategory, QbtMutedCategories } from "../types.js";
@@ -192,6 +193,67 @@ export async function diffTransmissionTorrents(
         body: t.name,
         data: { type: "transmission", hash: t.hash, instanceId },
         dedupeKey: `transmission:${instanceId}:completed:${t.hash}`,
+      });
+    }
+  }
+}
+
+// ---------------- Deluge ----------------
+
+// Deluge `progress` is 0-100, NOT a 0-1 fraction — the single easiest thing to
+// get wrong when mirroring the Transmission block above. `state` is a
+// capitalised string from a fixed vocabulary; "Downloading" covers both a live
+// transfer and a stalled one (Deluge has no Stalled state), and a torrent that
+// finishes and immediately stops becomes "Paused", so progress is the
+// authoritative completion signal.
+const DELUGE_PROGRESS_COMPLETE = 100;
+
+function isDelugeDownloading(t: { state: string; progress: number }): boolean {
+  return t.progress < DELUGE_PROGRESS_COMPLETE && t.state === "Downloading";
+}
+function isDelugeCompleted(t: { state: string; progress: number }): boolean {
+  // Deluge forces progress to 100 whenever the state is Error, so an errored
+  // torrent would otherwise read as a completed download and push a false
+  // "Download complete".
+  return t.state !== "Error" && t.progress >= DELUGE_PROGRESS_COMPLETE;
+}
+
+interface DelugeSnapshot {
+  [hash: string]: { name: string; state: string; progress: number };
+}
+
+export async function diffDelugeTorrents(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  torrents: DelugeTorrent[],
+): Promise<void> {
+  const key = `deluge:${instanceId}:hashes:downloading`;
+  const prev = getState<DelugeSnapshot>(key);
+  const next: DelugeSnapshot = {};
+  for (const t of torrents) {
+    next[t.hash] = { name: t.name, state: t.state, progress: t.progress };
+  }
+
+  // Persist first, dispatch after.
+  setState(key, next);
+  if (!prev) return;
+
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+
+  for (const t of torrents) {
+    const before = prev[t.hash];
+    if (before && isDelugeDownloading(before) && isDelugeCompleted(t)) {
+      // Skip torrents managed by Radarr/Sonarr — those services notify
+      // themselves. Deluge carries the *arr name as a Label-plugin label.
+      if (isManagedByArr(t.label)) continue;
+
+      await dispatchPush({
+        category: "torrentCompleted",
+        title: `${prefix}Download complete`,
+        body: t.name,
+        data: { type: "deluge", hash: t.hash, instanceId },
+        dedupeKey: `deluge:${instanceId}:completed:${t.hash}`,
       });
     }
   }

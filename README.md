@@ -48,6 +48,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 |---|---|
 | **qBittorrent** | View queue, pause/resume/delete torrents, speed stats, transfer progress |
 | **rTorrent / ruTorrent** | View queue, pause/resume/delete torrents, global speed stats, transfer progress |
+| **Deluge** | View queue, pause/resume/delete torrents, files & trackers, labels, global speed limits |
 | **SABnzbd** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **NZBGet** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |

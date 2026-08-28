@@ -65,6 +65,7 @@ const POSITIVE_INT = /^\d+$/;
 const TORRENT_HASH = /^[a-f0-9]{40}$/i;
 // SABnzbd nzo_id format: "SABnzbd_nzo_<random>", letters/digits/underscores only.
 const SAB_NZO_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const INSTANCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function asPositiveIntId(value: unknown): string | null {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
@@ -82,6 +83,12 @@ function asTorrentHash(value: unknown): string | null {
 
 function asSabNzoId(value: unknown): string | null {
   return typeof value === "string" && SAB_NZO_ID.test(value) ? value : null;
+}
+
+// Instance ids are UUIDs we generated (lib/uuid.ts). Validated for the same
+// reason the other ids are: this one reaches router.push as a query param.
+function asInstanceId(value: unknown): string | null {
+  return typeof value === "string" && INSTANCE_ID.test(value) ? value : null;
 }
 
 // NZBGet's NZBID is a positive integer; accept either number or string forms
@@ -127,6 +134,22 @@ function NotificationRouter() {
         case "transmission": {
           const hash = asTorrentHash(data.hash);
           if (hash) router.push(`/transmission/${hash}`);
+          break;
+        }
+        case "deluge": {
+          const hash = asTorrentHash(data.hash);
+          // The payload names the source instance, so pin it rather than
+          // letting the screen fall back to whichever Deluge is active —
+          // activateDashboardForInstance above only switches workspace, and a
+          // workspace can hold several Deluge servers.
+          const source = asInstanceId(data.instanceId);
+          if (hash) {
+            router.push(
+              source
+                ? `/deluge/${hash}?instanceId=${encodeURIComponent(source)}`
+                : `/deluge/${hash}`,
+            );
+          }
           break;
         }
         case "sabnzbd": {

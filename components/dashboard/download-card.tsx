@@ -34,9 +34,11 @@ import {
 } from "@/services/qbittorrent-api";
 import { getRtorrentTorrents } from "@/services/rtorrent-api";
 import { getTransmissionTorrents } from "@/services/transmission-api";
+import { getDelugeTorrents } from "@/services/deluge-api";
 import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
 import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
 import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
+import { delugeTorrentAdapter } from "@/lib/torrent-adapters/deluge";
 import type { TorrentStatus, UnifiedTorrent } from "@/lib/torrent-adapter";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -53,7 +55,7 @@ const ETA_UNKNOWN = 8640000;
 // native classifier (so qBittorrent's exact grouping is preserved) and the rest
 // of the card operates uniformly on these rows.
 interface DownloadRow {
-  serviceId: "qbittorrent" | "rtorrent" | "transmission";
+  serviceId: "qbittorrent" | "rtorrent" | "transmission" | "deluge";
   instanceId: string;
   hash: string;
   name: string;
@@ -168,6 +170,25 @@ function transRow(t: UnifiedTorrent, instanceId: string): DownloadRow {
   };
 }
 
+// Deluge normalizes to the same UnifiedTorrent shape as rtorrent/Transmission
+// and, like Transmission, has a detail screen — so rows drill in.
+function delugeRow(t: UnifiedTorrent, instanceId: string): DownloadRow {
+  return {
+    serviceId: "deluge",
+    instanceId,
+    hash: t.hash,
+    name: t.name,
+    progress: t.progress,
+    dlSpeed: t.dlSpeed,
+    upSpeed: t.upSpeed,
+    eta: t.eta,
+    addedOn: t.addedOn,
+    isPaused: t.status === "paused",
+    group: classifyRtStatus(t.status, t.progress),
+    canDrillIn: true,
+  };
+}
+
 function compareRows(a: DownloadRow, b: DownloadRow, sortBy: DownloadsSortBy): number {
   switch (sortBy) {
     case "speed":
@@ -249,6 +270,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
   // Transmission, like rtorrent, has no per-widget instance binding yet and
   // returns the whole library in one torrent-get call.
   const transInstances = useWorkspaceScopedInstances("transmission", undefined);
+  // Deluge, like rtorrent and Transmission, has no per-widget instance binding
+  // yet and returns the whole library in one core.get_torrents_status call.
+  const delugeInstances = useWorkspaceScopedInstances("deluge", undefined);
 
   const qbQueries = useQueries({
     queries: qbInstances.map((inst) => ({
@@ -274,6 +298,14 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
       enabled: true,
     })),
   });
+  const delugeQueries = useQueries({
+    queries: delugeInstances.map((inst) => ({
+      queryKey: ["deluge", inst.id, "torrents", "all"] as const,
+      queryFn: () => getDelugeTorrents(inst.id),
+      refetchInterval: POLLING_INTERVALS.activeTorrents,
+      enabled: true,
+    })),
+  });
   const posterMap = useTorrentPosterMap();
   const router = useRouter();
 
@@ -290,10 +322,14 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
     ...qbQueries,
     ...rtQueries,
     ...transQueries,
+    ...delugeQueries,
   ]);
 
   const totalInstances =
-    qbInstances.length + rtInstances.length + transInstances.length;
+    qbInstances.length +
+    rtInstances.length +
+    transInstances.length +
+    delugeInstances.length;
 
   // Tag each torrent with its source so per-tile actions hit the right client.
   const rows: DownloadRow[] = [
@@ -305,6 +341,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
     ),
     ...transQueries.flatMap((q, i) =>
       (q.data ?? []).map((t) => transRow(t, transInstances[i].id)),
+    ),
+    ...delugeQueries.flatMap((q, i) =>
+      (q.data ?? []).map((t) => delugeRow(t, delugeInstances[i].id)),
     ),
   ];
 
@@ -399,7 +438,9 @@ function TorrentTile({
       ? rtorrentTorrentAdapter
       : row.serviceId === "transmission"
         ? transmissionTorrentAdapter
-        : qbittorrentTorrentAdapter;
+        : row.serviceId === "deluge"
+          ? delugeTorrentAdapter
+          : qbittorrentTorrentAdapter;
   // Mutations are scoped to the source instance so a Pause tap on a tile from
   // instance A doesn't pause a same-hash torrent on instance B.
   const pauseMutation = adapter.usePauseTorrent(row.instanceId);
@@ -451,7 +492,9 @@ function TorrentTile({
       mediaType={posterEntry?.mediaType}
       fallbackIcon={!posterEntry ? Download : undefined}
       onPress={
-        row.canDrillIn ? () => router.push(adapter.detailRoute(row.hash)) : undefined
+        row.canDrillIn
+          ? () => router.push(adapter.detailRoute(row.hash, row.instanceId))
+          : undefined
       }
     />
   );

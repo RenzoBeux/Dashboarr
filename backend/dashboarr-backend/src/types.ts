@@ -10,6 +10,7 @@ export const SERVICE_IDS = [
   "qbittorrent",
   "rtorrent",
   "transmission",
+  "deluge",
   "sabnzbd",
   "nzbget",
   "radarr",
@@ -263,6 +264,8 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   qbittorrent: "/api/v2",
   rtorrent: "/RPC2",
   transmission: "/transmission/rpc",
+  // Deluge's Web UI is JSON-RPC over a single POST /json endpoint.
+  deluge: "/json",
   sabnzbd: "/api",
   nzbget: "/jsonrpc",
   radarr: "/api/v3",
@@ -297,6 +300,9 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // Transmission is JSON-RPC over /transmission/rpc; the ping POSTs session-get
   // (see pingService), so there is no GET ping path.
   transmission: "",
+  // Deluge is JSON-RPC over /json and has no GET ping path; the ping POSTs
+  // auth.check_session (see pingService).
+  deluge: "",
   // SAB has no path-based ping endpoint — pingService synthesises ?mode=version.
   sabnzbd: "",
   // NZBGet uses JSON-RPC POST to /jsonrpc; ping logic POSTs the version method.

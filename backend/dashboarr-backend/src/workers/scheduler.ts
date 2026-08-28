@@ -5,6 +5,7 @@ import {
 import type { ServiceId } from "../types.js";
 import { pollQbittorrent } from "./pollers/qbittorrent.js";
 import { pollTransmission } from "./pollers/transmission.js";
+import { pollDeluge } from "./pollers/deluge.js";
 import { pollSabnzbd } from "./pollers/sabnzbd.js";
 import { pollNzbget } from "./pollers/nzbget.js";
 import { pollRadarr } from "./pollers/radarr.js";
@@ -26,6 +27,9 @@ const POLLERS: PollerDef[] = [
   { kind: "qbittorrent", defaultIntervalMs: 15_000, run: pollQbittorrent },
   // Transmission completion poller — same cadence as qBittorrent.
   { kind: "transmission", defaultIntervalMs: 15_000, run: pollTransmission },
+  // Deluge completion poller — same cadence again. Deluge caches torrent
+  // status for 1.5s server-side, so 15s is comfortably above the floor.
+  { kind: "deluge", defaultIntervalMs: 15_000, run: pollDeluge },
   // SAB only needs to poll history fast enough to feel snappy on completion.
   // 30s matches Radarr/Sonarr's queue cadence and is well under the typical
   // post-processing time of any meaningful NZB.

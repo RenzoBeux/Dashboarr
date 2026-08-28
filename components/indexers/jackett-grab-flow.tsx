@@ -7,6 +7,7 @@ import { toast, toastError } from "@/components/ui/toast";
 import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
 import { rtorrentTorrentAdapter } from "@/lib/torrent-adapters/rtorrent";
 import { transmissionTorrentAdapter } from "@/lib/torrent-adapters/transmission";
+import { delugeTorrentAdapter } from "@/lib/torrent-adapters/deluge";
 import {
   useTorrentTargets,
   TORRENT_CLIENT_LABELS,
@@ -34,7 +35,7 @@ export function JackettGrabFlow({ release, onClose }: GrabFlowProps) {
   const targets = useTorrentTargets();
   const [pending, setPending] = useState<PendingSend | null>(null);
 
-  // All three add-torrent hooks are called unconditionally in fixed order
+  // All the add-torrent hooks are called unconditionally in fixed order
   // (rules of hooks); each binds the picked instance only when its kind is the
   // selected destination. The mutation fires from the effect AFTER the render
   // that re-bound the instanceId, so it always targets the picked instance —
@@ -48,6 +49,9 @@ export function JackettGrabFlow({ release, onClose }: GrabFlowProps) {
   const trAdd = transmissionTorrentAdapter.useAddTorrent(
     pending?.client === "transmission" ? pending.instanceId : undefined,
   );
+  const dgAdd = delugeTorrentAdapter.useAddTorrent(
+    pending?.client === "deluge" ? pending.instanceId : undefined,
+  );
 
   useEffect(() => {
     if (!pending) return;
@@ -56,7 +60,9 @@ export function JackettGrabFlow({ release, onClose }: GrabFlowProps) {
         ? qbAdd
         : pending.client === "rtorrent"
           ? rtAdd
-          : trAdd;
+          : pending.client === "transmission"
+            ? trAdd
+            : dgAdd;
     const label = TORRENT_CLIENT_LABELS[pending.client];
     mutation.mutate(
       { uri: pending.uri },
