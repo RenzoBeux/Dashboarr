@@ -1262,14 +1262,14 @@ function hydraSeconds(days: number): number {
 
 const DEMO_NZBHYDRA2_CAPS = {
   server: {
-    "@attributes": {
+    attributes: {
       appversion: "8.9.0",
       version: "0.1",
       title: "NZBHydra 2",
       url: "https://github.com/theotherp/nzbhydra2",
     },
   },
-  limits: { "@attributes": { max: "100", default: "100" } },
+  limits: { attributes: { max: "100", default: "100" } },
   searching: {},
   categories: { category: [] },
 };
@@ -1431,13 +1431,16 @@ const DEMO_NZBHYDRA2_DOWNLOAD_HISTORY = hydraPage([
   },
 ]);
 
-// Newznab JSON as NewznabJsonTransformer emits it — note the "@attributes"
-// holders, which is the shape the mapper actually has to read.
+// Newznab JSON as NewznabJsonTransformer emits it. The attribute holders use
+// the bare `attributes` key, which is what a real server sends: upstream
+// declares @JsonProperty("@attributes"), but the GraalVM native build that both
+// mainstream Docker images ship loses that rename (measured against 8.9.0). The
+// mapper accepts either spelling; the "@attributes" one is covered in unit tests.
 const DEMO_NZBHYDRA2_SEARCH = {
   channel: {
     title: "NZBHydra 2",
     generator: "NZBHydra2",
-    response: { "@attributes": { offset: 0, total: 3 } },
+    response: { attributes: { offset: 0, total: 3 } },
     item: [
       {
         title: "Demo.Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP",
@@ -1448,15 +1451,15 @@ const DEMO_NZBHYDRA2_SEARCH = {
         comments: "https://demo-indexer.example/details/88231",
         category: "Movies HD",
         enclosure: {
-          "@attributes": {
+          attributes: {
             url: "http://127.0.0.1:5076/getnzb/api/88231?apikey=demo",
             length: "9663676416",
             type: "application/x-nzb",
           },
         },
         attr: [
-          { "@attributes": { name: "size", value: "9663676416" } },
-          { "@attributes": { name: "hydraIndexerName", value: "DemoNZB" } },
+          { attributes: { name: "size", value: "9663676416" } },
+          { attributes: { name: "hydraIndexerName", value: "DemoNZB" } },
         ],
       },
       {
@@ -1467,15 +1470,15 @@ const DEMO_NZBHYDRA2_SEARCH = {
         pubDate: daysFromNowFull(-5),
         category: "Movies UHD",
         enclosure: {
-          "@attributes": {
+          attributes: {
             url: "http://127.0.0.1:5076/getnzb/api/88232?apikey=demo",
             length: "48318382080",
             type: "application/x-nzb",
           },
         },
         attr: [
-          { "@attributes": { name: "size", value: "48318382080" } },
-          { "@attributes": { name: "hydraIndexerName", value: "DemoUsenet" } },
+          { attributes: { name: "size", value: "48318382080" } },
+          { attributes: { name: "hydraIndexerName", value: "DemoUsenet" } },
         ],
       },
       {
@@ -1486,15 +1489,15 @@ const DEMO_NZBHYDRA2_SEARCH = {
         pubDate: daysFromNowFull(-1),
         category: "TV HD",
         enclosure: {
-          "@attributes": {
+          attributes: {
             url: "http://127.0.0.1:5076/getnzb/api/88233?apikey=demo",
             length: "2147483648",
             type: "application/x-nzb",
           },
         },
         attr: [
-          { "@attributes": { name: "size", value: "2147483648" } },
-          { "@attributes": { name: "hydraIndexerName", value: "DemoNZB" } },
+          { attributes: { name: "size", value: "2147483648" } },
+          { attributes: { name: "hydraIndexerName", value: "DemoNZB" } },
         ],
       },
     ],

@@ -2632,13 +2632,19 @@ export interface CleanuparrPaginatedResult<T> {
 // lib/nzbhydra2-normalize.ts.
 export type Nzbhydra2Timestamp = number | string | null;
 
+// Every newznab JSON attribute holder upstream is declared
+// @JsonProperty("@attributes"), but the GraalVM native build (which BOTH
+// mainstream Docker images ship) loses that rename and emits the bare field
+// name `attributes`. Both spellings are live in the wild, so every holder is
+// typed with both and read through hydraHolder() in lib/nzbhydra2-normalize.ts.
+export interface Nzbhydra2AttrHolder<T> {
+  "@attributes"?: T;
+  attributes?: T;
+}
+
 // GET /api?t=caps&o=json. Only the parts we render are typed.
-// NOTE the "@attributes" key: every newznab JSON attribute holder upstream
-// carries @JsonProperty("@attributes"), NOT "attributes". Reading `.attributes`
-// type-checks against a hand-written interface and fails silently at runtime.
 export interface Nzbhydra2Caps {
-  server?: {
-    "@attributes"?: {
+  server?: Nzbhydra2AttrHolder<{
       // The NZBHydra2 version string (UpdateManager.getCurrentVersionString()).
       appversion?: string;
       // The newznab API version, not the app version.
@@ -2647,9 +2653,8 @@ export interface Nzbhydra2Caps {
       url?: string;
       image?: string;
       email?: string;
-    };
-  };
-  limits?: { "@attributes"?: Record<string, string> };
+    }>;
+  limits?: Nzbhydra2AttrHolder<Record<string, string>>;
   searching?: Record<string, unknown>;
   categories?: { category?: unknown[] };
 }
@@ -2860,9 +2865,10 @@ export interface Nzbhydra2DownloadHistoryRow {
 // by Hydra — so every field is optional and a missing enclosure or attr array
 // must degrade to a row rather than crash the list.
 
-export interface Nzbhydra2SearchItemAttr {
-  "@attributes"?: { name?: string; value?: string | number };
-}
+export type Nzbhydra2SearchItemAttr = Nzbhydra2AttrHolder<{
+  name?: string;
+  value?: string | number;
+}>;
 
 export interface Nzbhydra2SearchItem {
   title?: string;
@@ -2875,9 +2881,11 @@ export interface Nzbhydra2SearchItem {
   comments?: string;
   description?: string;
   category?: string;
-  enclosure?: {
-    "@attributes"?: { url?: string; length?: string | number; type?: string };
-  };
+  enclosure?: Nzbhydra2AttrHolder<{
+    url?: string;
+    length?: string | number;
+    type?: string;
+  }>;
   // The upstream indexer's newznab attributes plus Hydra's own
   // hydraIndexerName / hydraIndexerHost / hydraIndexerScore.
   attr?: Nzbhydra2SearchItemAttr[];
@@ -2887,7 +2895,10 @@ export interface Nzbhydra2SearchResponse {
   channel?: {
     title?: string;
     generator?: string;
-    response?: { "@attributes"?: { offset?: string | number; total?: string | number } };
+    response?: Nzbhydra2AttrHolder<{
+      offset?: string | number;
+      total?: string | number;
+    }>;
     // Jackson can collapse a single-element list to a bare object.
     item?: Nzbhydra2SearchItem[] | Nzbhydra2SearchItem;
   };

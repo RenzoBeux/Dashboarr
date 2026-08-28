@@ -104,6 +104,23 @@ describe("nzbhydra2ToUnified", () => {
     );
   });
 
+  it("maps a native-build item, whose holders use the bare `attributes` key", () => {
+    // What a containerised NZBHydra2 actually sends. Reading only "@attributes"
+    // silently produced "NZBHydra2" / 0 bytes for every row.
+    const nativeItem: Nzbhydra2SearchItem = {
+      title: "Demo.Movie.2024.1080p-GRP",
+      guid: "88231",
+      link: "http://hydra:5076/getnzb/api/88231?apikey=abc",
+      enclosure: { attributes: { url: "http://hydra:5076/x", length: "9663676416" } },
+      attr: [{ attributes: { name: "hydraIndexerName", value: "DemoNZB" } }],
+    };
+    expect(nzbhydra2ToUnified(nativeItem)).toMatchObject({
+      indexer: "DemoNZB",
+      sizeBytes: 9663676416,
+      id: "DemoNZB:88231",
+    });
+  });
+
   it("degrades a bare item to a renderable row instead of throwing", () => {
     expect(nzbhydra2ToUnified({})).toMatchObject({
       title: "Unknown release",

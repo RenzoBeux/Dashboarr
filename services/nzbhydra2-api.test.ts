@@ -65,8 +65,10 @@ describe("getCaps", () => {
 });
 
 describe("parseCapsResponse", () => {
-  it("returns caps when `server` is present", () => {
-    const caps = { server: { "@attributes": { appversion: "8.9.0" } } };
+  it.each([
+    ["the JVM build's @attributes", { server: { "@attributes": { appversion: "8.9.0" } } }],
+    ["the native build's attributes", { server: { attributes: { appversion: "8.9.0" } } }],
+  ])("returns caps when `server` is present, with %s", (_label, caps) => {
     expect(parseCapsResponse(caps)).toBe(caps);
   });
 

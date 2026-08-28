@@ -10,7 +10,7 @@ import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { StatItem } from "@/components/indexers/stat-item";
 import { Nzbhydra2ApiGate } from "@/components/indexers/nzbhydra2-api-gate";
 import { useNzbhydra2Caps, useNzbhydra2Stats } from "@/hooks/use-nzbhydra2";
-import { isStatsApiGated } from "@/lib/nzbhydra2-normalize";
+import { hydraCapsVersion, isStatsApiGated } from "@/lib/nzbhydra2-normalize";
 import { lightHaptic } from "@/lib/haptics";
 
 const WINDOWS = [
@@ -31,7 +31,7 @@ export function Nzbhydra2Stats() {
   const [days, setDays] = useState<number>(30);
   const { data, isLoading, error } = useNzbhydra2Stats(days);
   const caps = useNzbhydra2Caps();
-  const appVersion = caps.data?.server?.["@attributes"]?.appversion;
+  const appVersion = hydraCapsVersion(caps.data);
 
   const shares = data?.indexerDownloadShares ?? [];
   const success = data?.successfulDownloadsPerIndexer ?? [];

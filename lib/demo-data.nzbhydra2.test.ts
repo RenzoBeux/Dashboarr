@@ -14,7 +14,11 @@ jest.mock("@/store/config-store", () => ({
 import { getDemoResponse } from "@/lib/demo-data";
 import { parseCapsResponse, parseSearchResponse } from "@/services/nzbhydra2-api";
 import { nzbhydra2ToUnified } from "@/lib/indexer-adapters/nzbhydra2";
-import { hydraStateMeta, parseHydraTimestamp } from "@/lib/nzbhydra2-normalize";
+import {
+  hydraCapsVersion,
+  hydraStateMeta,
+  parseHydraTimestamp,
+} from "@/lib/nzbhydra2-normalize";
 import type {
   Nzbhydra2DownloadHistoryRow,
   Nzbhydra2HistoryPage,
@@ -40,7 +44,9 @@ describe("nzbhydra2 demo fixtures", () => {
       q: "demo",
     });
     expect(caps).not.toEqual(search);
-    expect(parseCapsResponse(caps).server?.["@attributes"]?.appversion).toBe("8.9.0");
+    // Read through the accessor, since the fixture uses the bare `attributes`
+    // spelling a real (native-build) server sends.
+    expect(hydraCapsVersion(parseCapsResponse(caps))).toBe("8.9.0");
     expect(parseSearchResponse(search).length).toBeGreaterThan(0);
   });
 

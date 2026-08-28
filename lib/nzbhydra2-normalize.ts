@@ -15,6 +15,7 @@ import { formatEta, formatTimeAgo } from "@/lib/utils";
 import type { HistoryTone } from "@/lib/arr-history";
 import type {
   Nzbhydra2ApiError,
+  Nzbhydra2Caps,
   Nzbhydra2DownloadStatus,
   Nzbhydra2IndexerState,
   Nzbhydra2SearchItem,
@@ -283,37 +284,70 @@ export const NZBHYDRA2_DOWNLOAD_SORT_COLUMNS = [
  * means "the user turned the stats API off", not "wrong API key", and the UI
  * must say so rather than sending them off to re-paste a good key.
  *
+ * **It comes back as HTTP 500, not a 4xx.** Unlike `/api`, `ExternalApiStats`
+ * is a separate @RestController and does NOT inherit ExternalApi's
+ * @ExceptionHandler, so the IllegalAccessException it throws reaches no handler
+ * at all (the one @ControllerAdvice in the project lists only Spring's own
+ * exception types) and Tomcat renders its stock 500 HTML page. Measured against
+ * 8.9.0: both `allowApiStats: false` AND a wrong key answer
+ * `500 text/html`, which is also why serviceRequest surfaces them as an
+ * AuthProxyResponseError — the body really is an HTML document.
+ *
+ * A genuine internal error is therefore indistinguishable from the gate. That
+ * is acceptable only because the caller pairs this with a caps query it knows
+ * succeeded: a wrong key fails caps too, so by the time this is consulted the
+ * credentials are already proven good and the gate is by far the likeliest
+ * explanation. 401/403 stay in the set for a reverse proxy that answers ahead
+ * of NZBHydra2.
+ *
  * Read structurally rather than with `instanceof HttpError`: importing
  * lib/http-client here would drag the config store, demo data and url-builder
  * into what is meant to stay a pure, trivially-testable module.
  */
 export function isStatsApiGated(err: unknown): boolean {
   const status = (err as { status?: unknown } | null | undefined)?.status;
-  return status === 401 || status === 403 || status === 404;
+  return status === 500 || status === 401 || status === 403;
 }
 
 // --- Newznab search results ---------------------------------------------
 
 /**
- * Pull one newznab <attr name= value=> out of a search item.
+ * Every newznab JSON attribute holder upstream is declared
+ * `@JsonProperty("@attributes")` — but the GraalVM **native** build loses that
+ * rename and serializes the bare field name `attributes` instead. Measured
+ * against nzbhydra2 8.9.0: `t=caps` answers `server.attributes.appversion` and
+ * a search answers `channel.response.attributes`, and BOTH mainstream Docker
+ * images (hotio and linuxserver) ship that native binary. A JVM build still
+ * emits `@attributes`, so both spellings are live in the wild.
  *
- * The holder key is "@attributes", NOT "attributes" — every newznab JSON DTO
- * upstream carries @JsonProperty("@attributes"). Reading `.attributes` instead
- * type-checks fine and fails silently, leaving every indexer name and size
- * blank, so this lookup lives in one tested place.
+ * Reading only one of them type-checks fine against a hand-written interface
+ * and fails **silently**: every row falls back to the "NZBHydra2" indexer name
+ * with a zero size. Hence one tested accessor that accepts either.
  */
+export function hydraHolder<T>(
+  node: { "@attributes"?: T; attributes?: T } | null | undefined,
+): T | undefined {
+  return node?.["@attributes"] ?? node?.attributes;
+}
+
+/** Pull one newznab `<attr name= value=>` out of a search item. */
 export function hydraAttr(
   item: Nzbhydra2SearchItem,
   name: string,
 ): string | undefined {
   for (const entry of item.attr ?? []) {
-    const attrs = entry?.["@attributes"];
+    const attrs = hydraHolder(entry);
     if (!attrs || attrs.name !== name) continue;
     const value = attrs.value;
     if (typeof value === "number") return String(value);
     if (typeof value === "string" && value.length > 0) return value;
   }
   return undefined;
+}
+
+/** The NZBHydra2 version string from a caps response, either spelling. */
+export function hydraCapsVersion(caps: Nzbhydra2Caps | undefined): string | undefined {
+  return hydraHolder(caps?.server)?.appversion;
 }
 
 /** Coerce a newznab size (string or number) to bytes; 0 when unusable. */

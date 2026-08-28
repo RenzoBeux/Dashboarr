@@ -1,6 +1,7 @@
 import {
   formatHydraCountdown,
   hydraAttr,
+  hydraCapsVersion,
   hydraBytes,
   hydraDownloadStatusMeta,
   hydraStateMeta,
@@ -145,9 +146,10 @@ describe("hydraDownloadStatusMeta", () => {
 });
 
 describe("hydraAttr", () => {
-  // The holder key is "@attributes", not "attributes" — reading the latter
-  // type-checks against a hand-written interface and fails silently, leaving
-  // every row labelled "NZBHydra2" with a zero size.
+  // Upstream declares @JsonProperty("@attributes"), but the GraalVM native
+  // build that both mainstream Docker images ship loses the rename and emits
+  // the bare `attributes` (measured against 8.9.0). Reading only one spelling
+  // fails SILENTLY: every row falls back to "NZBHydra2" with a zero size.
   const item: Nzbhydra2SearchItem = {
     title: "Some.Release-GRP",
     attr: [
@@ -156,6 +158,20 @@ describe("hydraAttr", () => {
       { "@attributes": { name: "hydraIndexerScore", value: 25 } },
     ],
   };
+
+  // The exact shape a containerised NZBHydra2 answers with.
+  const nativeBuildItem: Nzbhydra2SearchItem = {
+    title: "Some.Release-GRP",
+    attr: [
+      { attributes: { name: "size", value: "1610612736" } },
+      { attributes: { name: "hydraIndexerName", value: "NZBGeek" } },
+    ],
+  };
+
+  it("reads the bare `attributes` spelling a native build emits", () => {
+    expect(hydraAttr(nativeBuildItem, "hydraIndexerName")).toBe("NZBGeek");
+    expect(hydraAttr(nativeBuildItem, "size")).toBe("1610612736");
+  });
 
   it("reads a string attribute out of the @attributes holder", () => {
     expect(hydraAttr(item, "hydraIndexerName")).toBe("NZBGeek");
@@ -173,11 +189,24 @@ describe("hydraAttr", () => {
     expect(hydraAttr({ title: "x" }, "hydraIndexerName")).toBeUndefined();
   });
 
-  it("ignores an entry keyed 'attributes' instead of '@attributes'", () => {
+  it("ignores a holder that is neither spelling", () => {
     const wrong = {
-      attr: [{ attributes: { name: "hydraIndexerName", value: "NZBGeek" } }],
+      attr: [{ attrs: { name: "hydraIndexerName", value: "NZBGeek" } }],
     } as unknown as Nzbhydra2SearchItem;
     expect(hydraAttr(wrong, "hydraIndexerName")).toBeUndefined();
+  });
+});
+
+describe("hydraCapsVersion", () => {
+  it.each([
+    ["the JVM build's @attributes", { server: { "@attributes": { appversion: "8.9.0" } } }],
+    ["the native build's attributes", { server: { attributes: { appversion: "8.9.0" } } }],
+  ])("reads the version from %s", (_label, caps) => {
+    expect(hydraCapsVersion(caps)).toBe("8.9.0");
+  });
+
+  it("returns undefined when caps has not loaded", () => {
+    expect(hydraCapsVersion(undefined)).toBeUndefined();
   });
 });
 
@@ -232,12 +261,25 @@ describe("readHydraXmlError", () => {
 });
 
 describe("isStatsApiGated", () => {
-  it.each([401, 403, 404])("treats HTTP %s as the allowApiStats gate", (status) => {
+  // Measured against 8.9.0: with allowApiStats off (and with a wrong key),
+  // /api/stats/indexers answers 500 text/html, because ExternalApiStats is a
+  // separate controller that inherits no @ExceptionHandler. A 4xx would only
+  // come from a reverse proxy answering ahead of NZBHydra2.
+  it.each([500, 401, 403])("treats HTTP %s as the allowApiStats gate", (status) => {
     expect(isStatsApiGated({ status })).toBe(true);
   });
 
-  it.each([500, 502, undefined])("does not claim the gate for %s", (status) => {
+  it.each([502, 404, undefined])("does not claim the gate for %s", (status) => {
     expect(isStatsApiGated({ status })).toBe(false);
+  });
+
+  it("classifies the AuthProxyResponseError the HTML 500 actually produces", () => {
+    // The gate answers 500 text/html, so serviceRequest sniffs the HTML body
+    // and throws AuthProxyResponseError rather than a plain HttpError. It
+    // extends HttpError, so `.status` still reads 500 and this must catch it —
+    // otherwise the user sees "behind an authentication proxy" for a setting
+    // they turned off themselves.
+    expect(isStatsApiGated({ name: "AuthProxyResponseError", status: 500 })).toBe(true);
   });
 
   it("tolerates a non-HttpError throwable", () => {

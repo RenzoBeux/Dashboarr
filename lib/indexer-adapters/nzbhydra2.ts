@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { searchNzbhydra2 } from "@/services/nzbhydra2-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
-import { hydraAttr, hydraBytes } from "@/lib/nzbhydra2-normalize";
+import { hydraAttr, hydraBytes, hydraHolder } from "@/lib/nzbhydra2-normalize";
 import { Nzbhydra2GrabFlow } from "@/components/indexers/nzbhydra2-grab-flow";
 import type {
   IndexerSearchAdapter,
@@ -20,7 +20,7 @@ export function nzbhydra2ToUnified(item: Nzbhydra2SearchItem): UnifiedRelease {
 
   // Self-authenticating: <hydraBaseUrl>/getnzb/api/<id>?apikey=<install key>.
   const downloadUrl =
-    item.link || item.enclosure?.["@attributes"]?.url || undefined;
+    item.link || hydraHolder(item.enclosure)?.url || undefined;
 
   // guid alone isn't safe as a list key: Hydra fans out across indexers and
   // some newznab indexers emit bare hashes, so pair it with the indexer name
@@ -41,7 +41,7 @@ export function nzbhydra2ToUnified(item: Nzbhydra2SearchItem): UnifiedRelease {
     // Newznab carries the size in the enclosure's `length` attribute; most
     // indexers also repeat it as a `size` attr.
     sizeBytes:
-      hydraBytes(item.enclosure?.["@attributes"]?.length) ||
+      hydraBytes(hydraHolder(item.enclosure)?.length) ||
       hydraBytes(hydraAttr(item, "size")),
     // Usenet has no swarm. Leaving seeders/leechers undefined is load-bearing:
     // ReleaseCard renders the S:/L: columns whenever they are defined, so a 0
