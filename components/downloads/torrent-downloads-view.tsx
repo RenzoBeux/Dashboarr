@@ -39,6 +39,7 @@ import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { Select } from "@/components/ui/select";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { CategorySheet } from "@/components/qbittorrent/category-sheet";
 import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { HAS_GLASS_TAB_BAR } from "@/lib/glass";
@@ -155,6 +156,9 @@ export function TorrentDownloadsView({
     refetch,
   } = adapter.useTorrents({ filter, sort, category: categoryParam });
   const categories = adapter.useCategories();
+  // The instance this view is showing. Passed to the detail route so the drill-in
+  // stays pinned to it even if the user switches instance while navigating.
+  const { instanceId: targetInstanceId } = useInstanceTarget(adapter.serviceId);
   const statsResult = adapter.useGlobalStats();
   const stats = statsResult.data;
   const { data: healthData } = useServiceHealth();
@@ -304,7 +308,7 @@ export function TorrentDownloadsView({
     if (multiSelect.isActive) {
       multiSelect.toggle(torrent);
     } else if (adapter.capabilities.perTorrentFiles) {
-      router.push(adapter.detailRoute(torrent.hash));
+      router.push(adapter.detailRoute(torrent.hash, targetInstanceId));
     }
   };
 

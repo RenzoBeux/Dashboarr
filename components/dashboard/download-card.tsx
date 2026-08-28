@@ -492,7 +492,9 @@ function TorrentTile({
       mediaType={posterEntry?.mediaType}
       fallbackIcon={!posterEntry ? Download : undefined}
       onPress={
-        row.canDrillIn ? () => router.push(adapter.detailRoute(row.hash)) : undefined
+        row.canDrillIn
+          ? () => router.push(adapter.detailRoute(row.hash, row.instanceId))
+          : undefined
       }
     />
   );

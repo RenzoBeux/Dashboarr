@@ -22,6 +22,10 @@ interface ShareLimitsSheetProps {
   visible: boolean;
   onClose: () => void;
   hash: string;
+  // Server the torrent came from. Threaded from the detail route so a torrent
+  // opened from the multi-instance dashboard widget writes its limits to that
+  // server rather than the active one.
+  instanceId?: string;
   // Current per-torrent seed limits. Unlike Transmission's tri-state modes,
   // Deluge has no "inherit global" sentinel: these three values are copied from
   // the global defaults when the torrent is added and are plain per-torrent
@@ -44,11 +48,12 @@ export function DelugeShareLimitsSheet({
   visible,
   onClose,
   hash,
+  instanceId,
   stopAtRatio,
   stopRatio,
   removeAtRatio,
 }: ShareLimitsSheetProps) {
-  const setShare = useSetDelugeShareLimits();
+  const setShare = useSetDelugeShareLimits(instanceId);
 
   const [stop, setStop] = useState(false);
   const [ratio, setRatio] = useState("");

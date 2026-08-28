@@ -29,12 +29,21 @@ import { downloadBadgeColor } from "@/lib/download-status";
 import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
 
 export default function DelugeDetailScreen() {
-  const { hash } = useLocalSearchParams<{ hash: string }>();
-  const { data: detail, isLoading, error } = useDelugeTorrent(hash);
-  const pauseMutation = delugeTorrentAdapter.usePauseTorrent();
-  const resumeMutation = delugeTorrentAdapter.useResumeTorrent();
-  const deleteMutation = delugeTorrentAdapter.useDeleteTorrent();
-  const reannounceMutation = useReannounceDelugeTorrent();
+  // `instanceId` is set when the row was opened from the dashboard Downloads
+  // widget (which aggregates every Deluge instance) or from a completion
+  // notification. Every query and mutation below is bound to it, so a torrent
+  // from a non-active server still loads and its actions hit that server.
+  // Absent — e.g. the Downloads tab, where the list already follows the active
+  // instance — the hooks fall back to the active one as before.
+  const { hash, instanceId } = useLocalSearchParams<{
+    hash: string;
+    instanceId?: string;
+  }>();
+  const { data: detail, isLoading, error } = useDelugeTorrent(hash, instanceId);
+  const pauseMutation = delugeTorrentAdapter.usePauseTorrent(instanceId);
+  const resumeMutation = delugeTorrentAdapter.useResumeTorrent(instanceId);
+  const deleteMutation = delugeTorrentAdapter.useDeleteTorrent(instanceId);
+  const reannounceMutation = useReannounceDelugeTorrent(instanceId);
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
   const flow = useModalFlow<{ deleteSheet: void }>();
 
@@ -223,6 +232,7 @@ export default function DelugeDetailScreen() {
         visible={shareLimitsOpen}
         onClose={() => setShareLimitsOpen(false)}
         hash={hash}
+        instanceId={instanceId}
         stopAtRatio={detail.stopAtRatio}
         stopRatio={detail.stopRatio}
         removeAtRatio={detail.removeAtRatio}

@@ -137,7 +137,16 @@ export interface TorrentAdapter {
 
   // Detail-screen deep-link for a single torrent (only used when
   // capabilities.perTorrentFiles is true).
-  detailRoute: (hash: string) => string;
+  //
+  // `instanceId` is the server the row came from. It matters on the dashboard
+  // Downloads widget, which aggregates every configured instance of a kind
+  // without changing the active one: a route carrying only the hash lands the
+  // detail screen on whatever instance happens to be active, so a torrent from
+  // a second server reads as "not found" — or, when the same hash exists on
+  // both, pause/delete hits the wrong server. Adapters that pin the instance
+  // encode it in the route; the rest ignore the argument and keep following
+  // the active instance.
+  detailRoute: (hash: string, instanceId?: string | null) => string;
 
   // The list hook — abstracts server-vs-client pagination (see TorrentListResult).
   useTorrents: (opts: TorrentListFilter, instanceId?: string) => TorrentListResult;

@@ -45,7 +45,13 @@ export const delugeTorrentAdapter: TorrentAdapter = {
     categories: false, // labels are an optional plugin, not categories
   },
 
-  detailRoute: (hash) => `/deluge/${hash}`,
+  // Pin the source instance in the route so a row opened from the multi-
+  // instance dashboard widget queries and mutates the server it came from,
+  // not whichever Deluge is currently active.
+  detailRoute: (hash, instanceId) =>
+    instanceId
+      ? `/deluge/${hash}?instanceId=${encodeURIComponent(instanceId)}`
+      : `/deluge/${hash}`,
 
   useTorrents: (opts: TorrentListFilter, instanceId?: string): TorrentListResult => {
     const { instanceId: id, enabled } = useInstanceTarget("deluge", instanceId);
