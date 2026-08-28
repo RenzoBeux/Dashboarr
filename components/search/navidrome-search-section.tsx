@@ -48,7 +48,12 @@ export function NavidromeSearchSection({ query }: { query: string }) {
       isError={isError}
       error={error}
       hasMore={total > rows.length}
-      onShowAll={() => router.push("/(tabs)/navidrome")}
+      onShowAll={() =>
+        // Carry the query through: the tab opens on Overview by default and
+        // Browse starts empty, so pushing the bare route would drop both the
+        // search and its results. Mirrors the ?source= deep link on Indexers.
+        router.push({ pathname: "/(tabs)/navidrome", params: { q: query } })
+      }
     >
       {rows.map((row) =>
         row.kind === "album" ? (

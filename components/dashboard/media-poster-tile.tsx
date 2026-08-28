@@ -31,6 +31,18 @@ interface MediaPosterTileProps {
   onLongPress?: () => void;
   width?: number;
   height?: number;
+  /**
+   * Treat `width`/`height` as FINAL device pixels and do not apply useUiScale()
+   * to them again.
+   *
+   * The default (false) is right for the fixed design sizes every horizontal
+   * row passes: they are authored at scale 1.0 and should grow with the user's
+   * UI scale. It is wrong for a size that came from `usePosterCellLayout()`,
+   * which already folds the scale into its column maths — scaling that a second
+   * time makes each tile wider than its own column, so at scale >= 1.15 the
+   * two-column grid wraps to one tile per row.
+   */
+  prescaled?: boolean;
 }
 
 export function MediaPosterTile({
@@ -47,12 +59,14 @@ export function MediaPosterTile({
   onLongPress,
   width = POSTER_TILE_WIDTH,
   height = POSTER_TILE_HEIGHT,
+  prescaled = false,
 }: MediaPosterTileProps) {
   const FallbackIcon =
     fallbackIcon ?? (mediaType === "music" ? Music : mediaType === "tv" ? Tv : Film);
   const scale = useUiScale();
-  const scaledWidth = Math.round(width * scale);
-  const scaledHeight = Math.round(height * scale);
+  const sizeScale = prescaled ? 1 : scale;
+  const scaledWidth = Math.round(width * sizeScale);
+  const scaledHeight = Math.round(height * sizeScale);
 
   const source: ImageSource | null =
     typeof posterUrl === "string"

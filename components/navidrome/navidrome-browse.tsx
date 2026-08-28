@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Disc, Search, User } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -26,15 +25,22 @@ const MIN_QUERY = 2;
  * Album art is square, so the tiles are square rather than the 2:3 poster shape
  * the movie/TV grids use.
  */
-export function NavidromeBrowse({ instanceId }: { instanceId?: string }) {
-  const [query, setQuery] = useState("");
+export function NavidromeBrowse({
+  query,
+  onQueryChange,
+  instanceId,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  instanceId?: string;
+}) {
   const debounced = useDebouncedValue(query.trim(), 300);
   const searching = debounced.length >= MIN_QUERY;
 
   const { instanceId: resolvedInstanceId } = useInstanceTarget("navidrome", instanceId);
   const albums = useNavidromeAlbums("newest", 24, instanceId);
   const search = useNavidromeSearch(debounced, instanceId);
-  const { width: cellWidth } = usePosterCellLayout();
+  const { width: cellWidth, gap } = usePosterCellLayout();
 
   const results = search.data;
   const error = searching ? search.error : albums.error;
@@ -44,7 +50,7 @@ export function NavidromeBrowse({ instanceId }: { instanceId?: string }) {
     <View className="gap-4">
       <TextInput
         value={query}
-        onChangeText={setQuery}
+        onChangeText={onQueryChange}
         placeholder="Search artists, albums and tracks"
         autoCorrect={false}
         autoCapitalize="none"
@@ -60,6 +66,7 @@ export function NavidromeBrowse({ instanceId }: { instanceId?: string }) {
         <SearchResults
           results={results}
           cellWidth={cellWidth}
+          gap={gap}
           instanceId={resolvedInstanceId ?? ""}
         />
       ) : (
@@ -67,6 +74,7 @@ export function NavidromeBrowse({ instanceId }: { instanceId?: string }) {
           title="Recently added"
           albums={albums.data ?? []}
           cellWidth={cellWidth}
+          gap={gap}
           instanceId={resolvedInstanceId ?? ""}
         />
       )}
@@ -77,10 +85,12 @@ export function NavidromeBrowse({ instanceId }: { instanceId?: string }) {
 function SearchResults({
   results,
   cellWidth,
+  gap,
   instanceId,
 }: {
   results: { artist?: NavidromeArtist[]; album?: NavidromeAlbum[]; song?: NavidromeSong[] } | undefined;
   cellWidth: number;
+  gap: number;
   instanceId: string;
 }) {
   const artists = results?.artist ?? [];
@@ -100,7 +110,13 @@ function SearchResults({
   return (
     <View className="gap-5">
       {albums.length > 0 && (
-        <AlbumGrid title="Albums" albums={albums} cellWidth={cellWidth} instanceId={instanceId} />
+        <AlbumGrid
+          title="Albums"
+          albums={albums}
+          cellWidth={cellWidth}
+          gap={gap}
+          instanceId={instanceId}
+        />
       )}
       {artists.length > 0 && (
         <View className="gap-2">
@@ -142,11 +158,13 @@ function AlbumGrid({
   title,
   albums,
   cellWidth,
+  gap,
   instanceId,
 }: {
   title: string;
   albums: NavidromeAlbum[];
   cellWidth: number;
+  gap: number;
   instanceId: string;
 }) {
   if (albums.length === 0) {
@@ -155,13 +173,17 @@ function AlbumGrid({
   return (
     <View className="gap-2">
       <SectionTitle title={title} count={albums.length} />
-      <View className="flex-row flex-wrap gap-3">
+      <View className="flex-row flex-wrap" style={{ gap }}>
         {albums.map((album) => (
           <MediaPosterTile
             key={album.id}
             // Square: album art is 1:1, unlike the 2:3 movie/TV posters.
+            // prescaled because usePosterCellLayout already folded useUiScale
+            // into this width; scaling it again overflows the row and collapses
+            // the grid to one column at scale >= 1.15.
             width={cellWidth}
             height={cellWidth}
+            prescaled
             posterUrl={getCoverArtSource(album.coverArt, 300, instanceId)}
             title={album.name}
             subtitle={album.artist}

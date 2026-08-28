@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Pressable, ScrollView } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { ExternalLink } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -35,7 +36,25 @@ export default function NavidromeScreen() {
 function NavidromeScreenInner() {
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["navidrome"]]);
-  const [tab, setTab] = useState<Tab>("overview");
+
+  // `?q=` lets global search's "Show all" land on Browse with the term already
+  // typed in, the way ?source= deep-links the Indexers tab.
+  const { q: queryParam } = useLocalSearchParams<{ q?: string }>();
+  const initialQuery = typeof queryParam === "string" ? queryParam : "";
+
+  const [tab, setTab] = useState<Tab>(initialQuery ? "browse" : "overview");
+  // Owned here rather than inside NavidromeBrowse so switching to Overview and
+  // back doesn't discard what the user typed (Browse is unmounted while hidden).
+  const [browseQuery, setBrowseQuery] = useState(initialQuery);
+
+  // Re-target when the param changes while this tab is already mounted, e.g.
+  // the user searches again and taps "Show all" a second time.
+  useEffect(() => {
+    if (!initialQuery) return;
+    setBrowseQuery(initialQuery);
+    setTab("browse");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
@@ -78,7 +97,9 @@ function NavidromeScreenInner() {
       </ScrollView>
 
       {tab === "overview" && <NavidromeOverview />}
-      {tab === "browse" && <NavidromeBrowse />}
+      {tab === "browse" && (
+        <NavidromeBrowse query={browseQuery} onQueryChange={setBrowseQuery} />
+      )}
       {tab === "playlists" && <NavidromePlaylists />}
     </ScreenWrapper>
   );
