@@ -29,8 +29,8 @@ test("unknown service kind is dropped, not fatal to the whole payload", () => {
   assert.equal(result.data.instances?.[0]?.kind, "sonarr");
 });
 
-test("rtorrent, transmission, deluge, lidarr, bindery, jellystat, unraid, jackett, autobrr and cleanuparr are accepted kinds", () => {
-  for (const kind of ["rtorrent", "transmission", "deluge", "lidarr", "bindery", "jellystat", "unraid", "jackett", "autobrr", "cleanuparr"]) {
+test("rtorrent, transmission, deluge, lidarr, bindery, jellystat, unraid, jackett, autobrr, cleanuparr and nzbhydra2 are accepted kinds", () => {
+  for (const kind of ["rtorrent", "transmission", "deluge", "lidarr", "bindery", "jellystat", "unraid", "jackett", "autobrr", "cleanuparr", "nzbhydra2"]) {
     const result = configPayloadSchema.safeParse({
       instances: [{ id: "x", kind, enabled: false, name: kind, localUrl: "" }],
       notifications: DEFAULT_NOTIFICATION_SETTINGS,

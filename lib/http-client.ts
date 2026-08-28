@@ -4,6 +4,10 @@ import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+// The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
+// service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
+// the same envelope the same way. Pure string/object helpers — no cycle.
+import { readHydraJsonError, readHydraXmlError } from "@/lib/nzbhydra2-normalize";
 import {
   basicAuthHeader,
   digestSessionKey,
@@ -313,13 +317,17 @@ export async function serviceRequest<T>(
     );
   }
 
-  // SABnzbd and Jackett auth live in the query string (?apikey=…), not
-  // headers. Merge defaults into the caller-supplied params so service
-  // modules don't have to know about either of those parameters.
+  // SABnzbd, Jackett and NZBHydra2 auth live in the query string (?apikey=…),
+  // not headers. Merge defaults into the caller-supplied params so service
+  // modules don't have to know about either of those parameters. NZBHydra2's
+  // stats/history endpoints ALSO need the key in their JSON body (they bind
+  // @RequestBody since v7.15.3, which ignores query params) — that copy is
+  // added by services/nzbhydra2-api.ts, and sending both keeps older installs,
+  // which only read the query param, working too.
   const finalParams =
     serviceId === "sabnzbd"
       ? { ...(params ?? {}), apikey: secrets.apiKey ?? "", output: "json" }
-      : serviceId === "jackett"
+      : serviceId === "jackett" || serviceId === "nzbhydra2"
         ? { ...(params ?? {}), apikey: secrets.apiKey ?? "" }
         : params;
 
@@ -338,7 +346,11 @@ export async function serviceRequest<T>(
   if (serviceId === "qbittorrent") {
     // qBittorrent uses cookie-based auth — handled by the cookie jar
     // The login function must be called first to establish the session
-  } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
+  } else if (
+    serviceId === "sabnzbd" ||
+    serviceId === "jackett" ||
+    serviceId === "nzbhydra2"
+  ) {
     // apikey is injected as a query param above — no header needed
   } else if (usesHttpAuth(serviceId)) {
     // HTTP auth mount in front of the API: NZBGet's ControlUsername/Password,
@@ -528,7 +540,11 @@ export async function pingService(
     if (serviceId === "nzbget" || serviceId === "transmission") {
       headers.set("Content-Type", "application/json");
     }
-  } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
+  } else if (
+    serviceId === "sabnzbd" ||
+    serviceId === "jackett" ||
+    serviceId === "nzbhydra2"
+  ) {
     // apikey already in query params
   } else if (serviceId === "tracearr") {
     if (secrets.apiKey) headers.set("Authorization", `Bearer ${secrets.apiKey}`);
@@ -1386,6 +1402,58 @@ async function runConnectionProbe(
         };
       }
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "nzbhydra2": {
+      // NZBHydra2 answers HTTP 200 for EVERYTHING, errors included: its
+      // ExternalApi @ExceptionHandler returns a newznab <error code="100"/>
+      // document with the default 200 status, so a wrong key never surfaces as
+      // a 401 and the body is the only signal.
+      //
+      // The pingPath (/actuator/health/ping) is anonymous — it answers 200 with
+      // or without a key — so the probe uses the newznab caps endpoint instead.
+      // caps is also the only endpoint we call that is NOT behind NZBHydra2's
+      // auth.allowApiStats flag, so a user who turned that off still gets a
+      // green dot and a working search rather than a bogus "invalid key".
+      // apiBasePath is empty, so /api is spelled here.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/api", {
+        t: "caps",
+        o: "json",
+        apikey: apiKey,
+      });
+      const headers = makeHeaders({ Accept: "application/json" });
+      const res = await fetch(url, { method: "GET", headers, signal });
+      // Not reachable on a stock install, but a reverse proxy in front of
+      // NZBHydra2 may answer these itself.
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const text = await res.text();
+      // Auth-proxy guard (#239): a 200 that is really an HTML login page.
+      if (/^\s*<(!doctype\s+html|html)/i.test(text))
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+        };
+      // o=json fixes the format of the SUCCESS path only; the error path still
+      // content-negotiates, so a rejected key can come back as XML either way.
+      const xmlError = readHydraXmlError(text);
+      if (xmlError) return { kind: "auth_failed", message: xmlError };
+      try {
+        const body = JSON.parse(text);
+        // `server` present means real caps — checked before the error probe so
+        // a future field named `code` on a good response can't read as failure.
+        if (body?.server) return { kind: "ok" };
+        const jsonError = readHydraJsonError(body);
+        if (jsonError) return { kind: "auth_failed", message: jsonError };
+        return { kind: "unreachable", message: "Unrecognized caps response" };
+      } catch {
+        return { kind: "unreachable", message: "Invalid JSON response" };
+      }
     }
 
     default: {

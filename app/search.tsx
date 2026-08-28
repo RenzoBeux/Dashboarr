@@ -16,6 +16,7 @@ import { OverseerrSearchSection } from "@/components/search/overseerr-search-sec
 import { ReleaseSearchSection } from "@/components/search/release-search-section";
 import { prowlarrIndexerAdapter } from "@/lib/indexer-adapters/prowlarr";
 import { jackettIndexerAdapter } from "@/lib/indexer-adapters/jackett";
+import { nzbhydra2IndexerAdapter } from "@/lib/indexer-adapters/nzbhydra2";
 
 const MIN_QUERY = 2;
 
@@ -38,6 +39,7 @@ export default function GlobalSearchScreen() {
   const hasOverseerr = attachedKinds.has("overseerr");
   const hasProwlarr = attachedKinds.has("prowlarr");
   const hasJackett = attachedKinds.has("jackett");
+  const hasNzbhydra2 = attachedKinds.has("nzbhydra2");
   const anySearchable = hasSearchableKind(attachedKinds);
 
   const active = debounced.length >= MIN_QUERY;
@@ -58,7 +60,7 @@ export default function GlobalSearchScreen() {
         <EmptyState
           icon={<Icon icon={Search} size={32} color="#71717a" />}
           title="No searchable services"
-          message="Attach Radarr, Sonarr, Lidarr, Bindery, Seerr, Prowlarr, or Jackett to this dashboard to search them here."
+          message="Attach Radarr, Sonarr, Lidarr, Bindery, Seerr, Prowlarr, Jackett, or NZBHydra2 to this dashboard to search them here."
         />
       ) : !active ? (
         <EmptyState
@@ -80,6 +82,9 @@ export default function GlobalSearchScreen() {
           )}
           {hasJackett && (
             <ReleaseSearchSection adapter={jackettIndexerAdapter} query={debounced} />
+          )}
+          {hasNzbhydra2 && (
+            <ReleaseSearchSection adapter={nzbhydra2IndexerAdapter} query={debounced} />
           )}
         </>
       )}

@@ -28,6 +28,7 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   jellystat: "/(tabs)/activity",
   prowlarr: "/(tabs)/indexers?source=prowlarr",
   jackett: "/(tabs)/indexers?source=jackett",
+  nzbhydra2: "/(tabs)/indexers?source=nzbhydra2",
   plex: "/(tabs)/plex",
   jellyfin: "/(tabs)/jellyfin",
   emby: "/(tabs)/emby",

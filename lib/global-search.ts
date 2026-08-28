@@ -14,6 +14,7 @@ export const GLOBAL_SEARCH_KINDS = [
   "overseerr",
   "prowlarr",
   "jackett",
+  "nzbhydra2",
 ] as const satisfies readonly ServiceId[];
 
 /** True when at least one searchable kind is attached to the active workspace. */
