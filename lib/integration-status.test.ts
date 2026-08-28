@@ -233,6 +233,87 @@ describe("buildIntegrationRows", () => {
     expect(rows.find((r) => r.kind === "radarr")!.state).toBe("unconfigured");
   });
 
+  // hooks/use-service-health.ts turns a kind whose probe body threw into
+  // { status: "offline", instances: [] } via its allSettled fallback. Treating
+  // the missing per-instance row as "not probed yet" hid that failure behind a
+  // permanent "Checking..." dot.
+  it("treats a settled kind with no instance rows as a real verdict", () => {
+    const a = inst({ id: "a" });
+    const map = emptyInstances();
+    map.radarr = [a];
+
+    const rows = buildIntegrationRows(
+      map,
+      [
+        {
+          id: "radarr",
+          name: "Radarr",
+          online: false,
+          status: "offline",
+          instances: [],
+        },
+      ],
+      ctxFor([a]),
+    );
+
+    const radarr = rows.find((r) => r.kind === "radarr")!;
+    expect(radarr.state).toBe("attention");
+    expect(radarr.rows[0].state).toBe("attention");
+    expect(radarr.rows[0].reason).toBe("Unreachable · 192.168.1.5:7878");
+    expect(summarizeIntegrations(rows).attention).toBe(1);
+  });
+
+  it("still reports checking when the kind has not been probed at all", () => {
+    const a = inst({ id: "a" });
+    const map = emptyInstances();
+    map.radarr = [a];
+    // Health for other kinds resolved, this one is absent entirely.
+    const rows = buildIntegrationRows(map, [], ctxFor([a]));
+    expect(rows.find((r) => r.kind === "radarr")!.state).toBe("checking");
+  });
+
+  it("still reports checking for an instance added after the probe was keyed", () => {
+    const a = inst({ id: "a" });
+    const b = inst({ id: "b", name: "Radarr Cabin" });
+    const map = emptyInstances();
+    map.radarr = [a, b];
+
+    // Non-empty instances list that simply predates `b`.
+    const rows = buildIntegrationRows(
+      map,
+      health("radarr", [{ instanceId: "a", status: "ok" }]),
+      ctxFor([a, b]),
+    );
+
+    const radarr = rows.find((r) => r.kind === "radarr")!;
+    expect(radarr.rows.map((r) => r.state)).toEqual(["ok", "checking"]);
+  });
+
+  it("does not let the settled fallback override away or disabled", () => {
+    const a = inst({ id: "a" });
+    const b = inst({ id: "b", enabled: false });
+    const map = emptyInstances();
+    map.radarr = [a];
+    map.sonarr = [b];
+
+    const thrown = (kind: ServiceId): ServiceHealthStatus => ({
+      id: kind,
+      name: kind,
+      online: false,
+      status: "offline",
+      instances: [],
+    });
+
+    const rows = buildIntegrationRows(
+      map,
+      [thrown("radarr"), thrown("sonarr")],
+      { ...ctxFor([a], { lanBlocked: true }), ...ctxFor([b]) },
+    );
+
+    expect(rows.find((r) => r.kind === "radarr")!.state).toBe("away");
+    expect(rows.find((r) => r.kind === "sonarr")!.state).toBe("off");
+  });
+
   it("returns one row per kind in canonical order", () => {
     const rows = buildIntegrationRows(emptyInstances(), undefined, {});
     expect(rows.map((r) => r.kind)).toEqual([...SERVICE_IDS]);

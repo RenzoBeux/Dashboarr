@@ -176,10 +176,27 @@ export function buildIntegrationRows(
       const health = healthForKind?.instances.find(
         (i) => i.instanceId === inst.id,
       );
+
+      // A kind whose probe body threw settles as
+      // { status: "offline", instances: [] } — see the allSettled fallback in
+      // hooks/use-service-health.ts. That is a real verdict, not a pending one,
+      // so fall back to the kind status instead of reporting "checking"
+      // forever and hiding the failure from "Needs attention".
+      //
+      // Scoped to the empty-instances shape on purpose: a NON-empty list that
+      // simply lacks this instance means the row was added after the probe was
+      // keyed, which is genuinely still pending.
+      const settledKindFallback =
+        healthForKind && healthForKind.instances.length === 0
+          ? { status: healthForKind.status }
+          : undefined;
+
       const row = classifyInstance(
         kind,
         inst,
-        health ? { status: health.status, message: health.message } : undefined,
+        health
+          ? { status: health.status, message: health.message }
+          : settledKindFallback,
         ctx?.lanBlocked ?? false,
         ctx?.activeUrl ?? "",
       );
