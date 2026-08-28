@@ -45,7 +45,13 @@ export const transmissionTorrentAdapter: TorrentAdapter = {
     categories: false, // Transmission uses free-form labels, not categories
   },
 
-  detailRoute: (hash) => `/transmission/${hash}`,
+  // Pin the source instance in the route so a row opened from the multi-
+  // instance dashboard widget queries and mutates the server it came from,
+  // not whichever Transmission is currently active.
+  detailRoute: (hash, instanceId) =>
+    instanceId
+      ? `/transmission/${hash}?instanceId=${encodeURIComponent(instanceId)}`
+      : `/transmission/${hash}`,
 
   useTorrents: (opts: TorrentListFilter, instanceId?: string): TorrentListResult => {
     const { instanceId: id, enabled } = useInstanceTarget("transmission", instanceId);
