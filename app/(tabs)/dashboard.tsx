@@ -300,7 +300,7 @@ export default function DashboardScreen() {
             No services configured yet.
           </Text>
           <Text className="text-zinc-500 text-sm text-center mt-1">
-            Go to Settings to add your first service.
+            Add your first service in Settings → Integrations.
           </Text>
         </View>
       ) : visibleSlots.length === 0 && !editMode && activeDashboard ? (

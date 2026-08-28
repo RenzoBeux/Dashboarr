@@ -1050,7 +1050,7 @@ const InstanceKindCard = memo(function InstanceKindCard({
           </Text>
           {!inst.enabled && (
             <Text className="text-zinc-600 text-xs mt-0.5">
-              Enable in Settings to attach
+              Enable in Settings → Integrations to attach
             </Text>
           )}
         </View>
@@ -1087,7 +1087,7 @@ const InstanceKindCard = memo(function InstanceKindCard({
             numberOfLines={1}
           >
             {kindUntouchable
-              ? "All instances disabled — enable in Settings"
+              ? "All instances disabled — enable in Settings → Integrations"
               : `${attachedCount} of ${list.length} attached`}
           </Text>
         </View>

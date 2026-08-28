@@ -368,7 +368,7 @@ export default function CalendarScreen() {
           <Text className="text-zinc-500 text-sm text-center">
             {hasAnyAttached
               ? "Open the dashboard switcher and attach Sonarr or Radarr to this workspace."
-              : "Enable Sonarr or Radarr in Settings to populate the calendar."}
+              : "Enable Sonarr or Radarr in Settings → Integrations to populate the calendar."}
           </Text>
         </View>
       </ScreenWrapper>

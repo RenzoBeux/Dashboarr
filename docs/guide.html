@@ -241,7 +241,7 @@
         <p>On a fresh install the Dashboard tab shows:</p>
         <div class="quote">
           <strong>No services configured yet.</strong><br>
-          Go to Settings to add your first service.
+          Add your first service in Settings &rarr; Integrations.
         </div>
         <p>
           A three-step intro carousel explains the workspace concept. You can skip it and replay
@@ -251,7 +251,7 @@
         <ul>
           <li>One dashboard named <strong>Default</strong>, holding three widget cards: Service Health, Radarr Queue and Calendar.</li>
           <li>Three pinned bottom tabs: <strong>Downloads</strong>, <strong>Calendar</strong> and <strong>Services</strong>. Together with Dashboard and Settings, that is the five-icon bar you see on day one.</li>
-          <li>One placeholder instance for every supported service, all disabled with blank URLs. That is why you normally tap an existing row in Settings rather than creating anything new.</li>
+          <li>One placeholder instance for every supported service, all disabled with blank URLs. That is why you normally tap an existing row in Integrations rather than creating anything new.</li>
         </ul>
 
         <h3>Want to look around first?</h3>
@@ -272,28 +272,42 @@
       <section id="add-service">
         <h2>3. Add your first service <a class="anchor" href="#add-service" aria-label="Permalink to Add your first service">#</a></h2>
         <p>
-          Everything lives on the <strong>Settings</strong> tab, subtitled "Applies to all dashboards".
-          It has two groups:
+          Services live behind the <strong>Integrations</strong> row on the <strong>Settings</strong>
+          tab, subtitled "Applies to all dashboards". The row itself summarises the state of
+          everything you have connected, for example
+          <strong>"7 connected, 1 needs attention"</strong>.
         </p>
+        <p>Tapping it opens <strong>Integrations</strong>, which has up to three parts:</p>
         <ul>
-          <li><strong>Services</strong>, one row per service kind. Configured kinds sort first, the rest sit under a <strong>Not configured</strong> divider.</li>
-          <li><strong>App</strong>: Network, Notifications, Appearance, Backup &amp; Storage, About.</li>
+          <li><strong>Needs attention</strong>, one row per instance that is enabled but failing, with the reason ("Authentication failed", "Unreachable", "Enabled but no URL set"). Tapping a row opens that instance's editor directly. Instances that are only out of reach because you are away from your home network are listed separately as <strong>away</strong>, not as failures.</li>
+          <li><strong>Your services</strong>, one row per service kind you have set up.</li>
+          <li><strong>Add a service</strong>, which opens the searchable catalogue of everything Dashboarr supports, grouped into Download clients, Media automation, Indexers, Media servers, Requests and automation, and Monitoring. Search matches old names and abbreviations too, so "readarr" finds Bindery and "qbit" finds qBittorrent.</li>
         </ul>
-        <p>Tap a service kind to open its instance list, then tap the instance to open the editor.</p>
+        <p>
+          On a brand-new install Integrations opens on a <strong>"No services yet"</strong> card with
+          a <strong>Browse services</strong> button and a short list of popular starting points.
+        </p>
+        <p>
+          Picking a service opens its editor. A kind that has more than one instance shows its
+          instance list first.
+        </p>
 
         <h3>The instance editor, top to bottom</h3>
         <div class="table-scroll">
           <table>
             <thead><tr><th>Card</th><th>What is in it</th></tr></thead>
             <tbody>
-              <tr><td>(first card)</td><td><strong>Name</strong> and an <strong>Enabled</strong> toggle</td></tr>
-              <tr><td>(second card)</td><td><strong>Local URL</strong>, <strong>Remote URL</strong>, <strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong></td></tr>
-              <tr><td>Authentication</td><td>Either <strong>Username</strong> and <strong>Password</strong>, or a single <strong>API Key</strong>. Plex also gets a <strong>Connect with Plex</strong> button.</td></tr>
-              <tr><td>Custom Headers</td><td>Optional per-instance headers for reverse-proxy auth</td></tr>
-              <tr><td>Add Defaults</td><td>Radarr, Sonarr and Lidarr only: Quality Profile, Root Folder, and Metadata Profile for Lidarr</td></tr>
-              <tr><td>Notifications</td><td>Per-instance overrides for each notification category</td></tr>
-              <tr><td>Webhook Attribution</td><td>Only when a backend is paired, and only for Radarr, Sonarr, Tautulli, Seerr, Bazarr and Tracearr</td></tr>
-              <tr><td>(buttons)</td><td><strong>Test Connection</strong> and <strong>Save</strong>, side by side</td></tr>
+              <tr><td>(top card)</td><td>The <strong>Enabled</strong> toggle, on its own</td></tr>
+              <tr><td>Connection: Name</td><td><strong>Name</strong> for this instance</td></tr>
+              <tr><td>Connection: URLs</td><td><strong>Local URL</strong> and <strong>Remote URL</strong>, with the service's usual port as a hint</td></tr>
+              <tr><td>Connection: Authentication</td><td>Either <strong>Username</strong> and <strong>Password</strong>, or a single <strong>API Key</strong> with a hint about where to find it. Plex also gets a <strong>Connect with Plex</strong> button.</td></tr>
+              <tr><td>Connection: Custom Headers</td><td>Optional per-instance headers for reverse-proxy auth</td></tr>
+              <tr><td>(buttons)</td><td><strong>Test Connection</strong> and <strong>Save</strong>, side by side. Everything above them is saved by the Save button.</td></tr>
+              <tr><td>Preferences: Routing and security</td><td><strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong></td></tr>
+              <tr><td>Preferences: Torrents</td><td>qBittorrent only: tag added torrents with "Dashboarr"</td></tr>
+              <tr><td>Preferences: Add Defaults</td><td>Radarr, Sonarr and Lidarr only: Quality Profile, Root Folder, and Metadata Profile for Lidarr</td></tr>
+              <tr><td>Preferences: Notifications</td><td>Per-instance overrides for each notification category</td></tr>
+              <tr><td>Preferences: Webhook Attribution</td><td>Only when a backend is paired, and only for Radarr, Sonarr, Tautulli, Seerr, Bazarr and Tracearr</td></tr>
             </tbody>
           </table>
         </div>
@@ -309,11 +323,16 @@
 
         <h3>What saves instantly, and what does not</h3>
         <p>
-          <strong>Enabled</strong>, <strong>Always use Remote URL</strong>,
-          <strong>Allow invalid certificates</strong> and the Add Defaults pickers apply the moment
-          you flip them. <strong>Name</strong>, both URLs, credentials and Custom Headers only
-          persist when you press <strong>Save</strong>. While changes are pending the editor title
-          shows <strong>"unsaved"</strong> in amber, and backing out offers Save or Discard.
+          The editor is split by that rule, so you can read it off the screen. Everything under
+          <strong>Connection</strong>, above the Save button, only persists when you press
+          <strong>Save</strong>: Name, both URLs, credentials and Custom Headers. Everything under
+          <strong>Preferences</strong>, below it, applies the moment you change it, and the section
+          says so. The <strong>Enabled</strong> toggle sits above both and is also instant.
+        </p>
+        <p>
+          While changes are pending the editor title shows <strong>"unsaved"</strong> in amber.
+          Leaving with unsaved changes offers Save or Discard, whether you use the back arrow, the
+          Android back gesture or the iOS edge swipe.
         </p>
 
         <h3>Test Connection</h3>
@@ -343,11 +362,13 @@
 
         <h3>Status dots</h3>
         <p>
-          Once a kind has at least one enabled instance, its Settings row shows a coloured dot:
+          Once a kind has at least one enabled instance, its Integrations row shows a coloured dot:
           <strong>green</strong> for reachable, <strong>amber</strong> for reachable but credentials
-          rejected, <strong>red</strong> for unreachable. While the first health check is running
-          there is no dot at all. Health polls every 30 seconds, so Settings can lag a config change
-          by up to half a minute. Test Connection is the only immediate probe.
+          rejected, <strong>red</strong> for unreachable. While the first health check is running the
+          dot pulses grey. Unlike the dashboard's Service Health widget, this list reports the
+          <em>worst</em> instance of a kind, so a broken second server is never hidden behind a
+          healthy first one. Health polls every 30 seconds, so the list can lag a config change by up
+          to half a minute. Test Connection is the only immediate probe.
         </p>
 
         <h3>Multiple instances</h3>
@@ -356,8 +377,14 @@
           household. Use <strong>"Add another instance"</strong> at the bottom of the instance list.
           New instances auto-name themselves (<code>Radarr</code>, then <code>Radarr 2</code>). With
           two or more, each row gains reorder arrows and a delete button, and that order is the order
-          shown in the per-screen instance switcher. You cannot delete the last remaining instance of
-          a kind, so disable it instead.
+          shown in the per-screen instance switcher. Reach the list from the
+          <strong>Instances</strong> row at the bottom of any instance editor.
+        </p>
+        <p>
+          To take a service back out of your setup entirely, open its last remaining instance and use
+          <strong>"Remove &lt;service&gt;"</strong>. That clears its URLs and credentials, drops it from
+          <strong>Your services</strong>, and returns it to <strong>Add a service</strong> as an empty
+          slot ready to set up again.
         </p>
         <p>
           When a kind has two or more enabled instances attached to the current dashboard, its screen
@@ -609,7 +636,7 @@
         <p>
           <strong>Add widget</strong> at the bottom opens a sheet grouped into <strong>Available</strong>
           and <strong>Requires setup</strong>. "Requires setup" items are widgets whose service is
-          attached to this dashboard but currently disabled in Settings. Widgets for services that are
+          attached to this dashboard but currently disabled in Integrations. Widgets for services that are
           not attached at all are hidden entirely, so if a widget you expect is missing, attach its
           service first.
         </p>
@@ -666,8 +693,8 @@
           save without touching a checkbox.
         </div>
         <p>
-          Instances that are disabled in Settings cannot be newly attached. Their rows are dimmed and
-          read "Enable in Settings to attach".
+          Instances that are disabled cannot be newly attached. Their rows are dimmed and
+          read "Enable in Settings &rarr; Integrations to attach".
         </p>
 
         <h3>Appearance</h3>
@@ -1046,7 +1073,7 @@
           service you think it does.
         </p>
 
-        <h3>A service is green in Settings but missing from the Services tab.</h3>
+        <h3>A service is green in Integrations but missing from the Services tab.</h3>
         <p>
           The Services tab only shows services attached to the dashboard you are on. Attach it via
           Dashboard, sliders icon, Attached instances.
@@ -1055,7 +1082,7 @@
         <h3>A widget I expect is not in the Add widget sheet.</h3>
         <p>
           Its service is not attached to this dashboard. Attach it first. If it appears greyed out
-          under "Requires setup", the service is attached but disabled in Settings.
+          under "Requires setup", the service is attached but disabled in Integrations.
         </p>
 
         <h3>A widget disappeared from the dashboard.</h3>

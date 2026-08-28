@@ -8,6 +8,7 @@ import Sortable, {
 import { useRouter } from "expo-router";
 import { Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
 import { CheckingIndicator } from "@/components/ui/checking-indicator";
 import { StatusDot } from "@/components/ui/status-dot";
 import { ServiceLogo } from "@/components/ui/service-logo";
@@ -110,8 +111,15 @@ export default function ServicesScreen() {
           <Text className="text-zinc-500 text-sm text-center">
             {anyEnabledGlobally
               ? "Open the dashboard switcher and attach services to this workspace."
-              : "Go to Settings to configure your services."}
+              : "Connect a service to see it here."}
           </Text>
+          {anyEnabledGlobally ? null : (
+            <Button
+              label="Open Integrations"
+              className="mt-2"
+              onPress={() => router.push("/settings/integrations")}
+            />
+          )}
         </View>
       </ScreenWrapper>
     );

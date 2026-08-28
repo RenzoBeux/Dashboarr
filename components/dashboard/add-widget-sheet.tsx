@@ -307,7 +307,7 @@ function LockedRow({ widget, index }: LockedRowProps) {
             className="text-zinc-600 text-xs mt-0.5"
             numberOfLines={1}
           >
-            Enable {serviceName} in Settings
+            Enable {serviceName} in Settings → Integrations
           </Text>
         </View>
         <View className="w-7 h-7 rounded-full bg-surface-light items-center justify-center border border-border">

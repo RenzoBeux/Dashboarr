@@ -89,7 +89,7 @@ export default function TautulliStatsScreen() {
         <BackHeader title="Tautulli Stats" />
         <EmptyState
           title="No Tautulli configured"
-          message="Enable Tautulli in Settings to see stats"
+          message="Enable Tautulli in Settings → Integrations to see stats"
         />
       </ScreenWrapper>
     );
