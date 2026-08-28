@@ -4,10 +4,11 @@ import { buildUrl } from "@/lib/url-builder";
 import { useConfigStore } from "@/store/config-store";
 import {
   PIHOLE_SID_HEADER,
+  dedupedPiholeLogin,
   dropPiholeSession,
   forgetPiholeSession,
   getPiholeSid,
-  piholeSessionEntry,
+  invalidatePiholeSid,
   piholeSessionIds,
 } from "@/lib/pihole-session";
 import {
@@ -112,24 +113,12 @@ async function login(instanceId: string): Promise<string> {
  * screen fires roughly six queries in one tick, which without it is six of the
  * sixteen available seats spent on a single render.
  */
-async function ensureSession(instanceId: string): Promise<string> {
-  const entry = piholeSessionEntry(instanceId);
-  if (entry.sid !== null) return entry.sid;
-  if (entry.loginPromise) return entry.loginPromise;
-
-  const generation = entry.generation;
-  const attempt = login(instanceId)
-    .then((sid) => {
-      // Only publish if nothing invalidated the session while we were in
-      // flight; otherwise this SID belongs to a superseded generation.
-      if (entry.generation === generation) entry.sid = sid;
-      return sid;
-    })
-    .finally(() => {
-      if (entry.loginPromise === attempt) entry.loginPromise = null;
-    });
-  entry.loginPromise = attempt;
-  return attempt;
+function ensureSession(instanceId: string): Promise<string> {
+  // The de-duplication lives in lib/pihole-session.ts rather than here so the
+  // connection probe shares it — the probe cannot import this module without a
+  // cycle, and a cold start where it races the screen's first query would
+  // otherwise burn two seats and orphan one.
+  return dedupedPiholeLogin(instanceId, () => login(instanceId));
 }
 
 interface PiholeRequestOptions {
@@ -173,7 +162,11 @@ async function piholeRequest<T>(
       // Exactly ONE retry: a second 401 is a real rejection, and looping would
       // spend a seat per attempt.
       if (!retried && err instanceof HttpError && err.status === 401) {
-        dropPiholeSession(id);
+        // Pass the SID that actually failed. Several requests share one
+        // session, so they 401 together — invalidating unconditionally would
+        // let the second caller wipe the replacement login the first just
+        // started, spawning another login and orphaning a seat.
+        invalidatePiholeSid(id, sid);
         return attempt(true);
       }
       throw err;

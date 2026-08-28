@@ -28,7 +28,12 @@ jest.mock("@/store/config-store", () => ({
 
 import { HttpError, serviceRequest } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
-import { resetPiholeSessions } from "@/lib/pihole-session";
+import {
+  getPiholeSid,
+  invalidatePiholeSid,
+  resetPiholeSessions,
+  setPiholeSid,
+} from "@/lib/pihole-session";
 import { parseCnameRecord } from "@/lib/pihole-normalize";
 import {
   addCnameRecord,
@@ -147,6 +152,57 @@ describe("session handling", () => {
     await expect(getSummary()).resolves.toEqual({ ok: true });
     expect(authCalls()).toHaveLength(2);
     expect(dataAttempts).toBe(2);
+  });
+
+  // Regression: N concurrent 401s must produce ONE replacement login, not N.
+  // Each caller used to invalidate unconditionally, which cleared the in-flight
+  // login the previous caller had just started — so every extra concurrent
+  // request both spawned another login and orphaned a session holding one of
+  // Pi-hole's sixteen seats for thirty minutes.
+  it("issues one replacement login when several requests 401 together", async () => {
+    let loginCount = 0;
+    mockRequest.mockImplementation((_svc: string, path: string) => {
+      if (path === "/auth") {
+        loginCount += 1;
+        return Promise.resolve({
+          session: { valid: true, sid: `sid-${loginCount}` },
+        });
+      }
+      // Everything fails while the first SID is live; succeeds after re-login.
+      const sid = mockRequest.mock.calls
+        .filter((c) => c[1] !== "/auth")
+        .at(-1)?.[2]?.headers?.["X-FTL-SID"];
+      if (sid === "sid-1") {
+        return Promise.reject(new HttpError(401, "Unauthorized", "u"));
+      }
+      return Promise.resolve({ ok: true });
+    });
+
+    await Promise.all([getSummary(), getBlocking(), getHistory()]);
+
+    // One initial login + exactly one replacement.
+    expect(loginCount).toBe(2);
+  });
+
+  it("does not clear a replacement session when a stale 401 arrives late", async () => {
+    let loginCount = 0;
+    mockRequest.mockImplementation((_svc: string, path: string) => {
+      if (path === "/auth") {
+        loginCount += 1;
+        return Promise.resolve({
+          session: { valid: true, sid: `sid-${loginCount}` },
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
+
+    await getSummary();
+    expect(getPiholeSid(INSTANCE)).toBe("sid-1");
+
+    // A request that had already captured sid-1 fails after the cache moved on.
+    setPiholeSid(INSTANCE, "sid-2");
+    invalidatePiholeSid(INSTANCE, "sid-1");
+    expect(getPiholeSid(INSTANCE)).toBe("sid-2");
   });
 
   // Looping on a genuine rejection would spend a seat per attempt.

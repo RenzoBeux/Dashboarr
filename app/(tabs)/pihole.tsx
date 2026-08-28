@@ -20,6 +20,7 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { Icon } from "@/components/ui/icon";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { toast, toastError } from "@/components/ui/toast";
+import { isAbortError } from "@/lib/http-client";
 import {
   usePiholeCnameRecords,
   usePiholeHistory,
@@ -236,9 +237,26 @@ function GravityCard() {
   const { data: summary } = usePiholeSummary();
   const gravity = useRunPiholeGravity();
   const [confirmVisible, setConfirmVisible] = useState(false);
+  // `gravity.last_update` at the moment a run we lost the connection to
+  // started. While this is set, gravity is still going server-side even though
+  // no request of ours is in flight — the button stays disabled so the user
+  // cannot kick off a second concurrent run, and it clears when the timestamp
+  // advances past it. That is the only completion signal available: the request
+  // cannot be cancelled and its abort tells us nothing about the run.
+  const [detachedSince, setDetachedSince] = useState<number | null>(null);
+
+  const lastUpdate = summary?.gravity.last_update ?? 0;
+  if (detachedSince !== null && lastUpdate > detachedSince) {
+    // Render-phase setState on a changed prop is the supported "derive state
+    // from props" pattern; React re-renders immediately without committing.
+    setDetachedSince(null);
+  }
+
+  const running = gravity.isPending || detachedSince !== null;
 
   const run = () => {
     setConfirmVisible(false);
+    setDetachedSince(null);
     gravity.mutate(undefined, {
       onSuccess: (result) => {
         if (result.status === "partial") {
@@ -254,8 +272,23 @@ function GravityCard() {
           toast("Gravity updated");
         }
       },
-      onError: (err) =>
-        toastError("Gravity update failed", err, piholeErrorMessage),
+      onError: (err) => {
+        // An abort means our five-minute read window elapsed, NOT that gravity
+        // failed: the request cannot be cancelled, so `pihole -g` keeps running
+        // server-side. Reporting failure here would invite the user to start a
+        // second concurrent update. Stay in the running state instead and let
+        // gravity.last_update confirm completion — the summary query polls on
+        // its own, so no invalidation is needed.
+        if (isAbortError(err)) {
+          setDetachedSince(lastUpdate);
+          toast(
+            "Still updating. Gravity keeps running on the Pi-hole; this will clear when it finishes.",
+            "info",
+          );
+          return;
+        }
+        toastError("Gravity update failed", err, piholeErrorMessage);
+      },
     });
   };
 
@@ -281,14 +314,14 @@ function GravityCard() {
         <Button
           label="Update Gravity"
           variant="outline"
-          loading={gravity.isPending}
+          loading={running}
           onPress={() => setConfirmVisible(true)}
         />
         {/* Inline and non-blocking on purpose: a modal would lock the user out
             of the blocking toggle for minutes over an operation that needs no
             attention. The request also cannot be cancelled, so we never claim
             failure on a timeout — the card's "Last updated" is the real signal. */}
-        {gravity.isPending ? (
+        {running ? (
           <Text className="text-zinc-500 text-xs leading-4">
             Updating gravity. This can take several minutes and keeps running
             even if you close the app.

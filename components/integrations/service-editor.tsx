@@ -310,6 +310,18 @@ export function ServiceEditor({
       }
     }
 
+    // MUST run BEFORE updateInstance, and the ordering is load-bearing.
+    // piholeClearSession DELETEs /api/auth to hand the session seat back (FTL
+    // allows 16 at once, with a 30-minute idle TTL), and it resolves the host
+    // from the store at call time. Clearing afterwards would send the OLD
+    // Pi-hole's session id to whatever host the user just typed in — the old
+    // one never gets logged out, and a live bearer credential is disclosed to a
+    // newly configured origin. Logging out first is safe either way: the logout
+    // authenticates with the SID, not the password.
+    if (serviceId === "pihole") {
+      await piholeClearSession(instanceId);
+    }
+
     updateInstance(serviceId, instanceId, {
       name: trimmedName,
       localUrl: normLocal,
@@ -338,14 +350,6 @@ export function ServiceEditor({
     }
     if (serviceId === "navidrome") {
       navidromeClearSession(instanceId);
-    }
-    // Pi-hole is awaited: piholeClearSession DELETEs /api/auth to hand the
-    // session seat back. FTL allows only 16 at once with a 30-minute idle TTL,
-    // so leaking one on every credential change is not free. This runs AFTER
-    // updateInstanceSecrets, which is correct — the logout authenticates with
-    // the SID, not the password.
-    if (serviceId === "pihole") {
-      await piholeClearSession(instanceId);
     }
 
     // First-save dashboard prompt. Fires once per editor session when the

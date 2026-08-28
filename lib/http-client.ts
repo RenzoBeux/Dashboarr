@@ -27,8 +27,9 @@ import { SEATS_EXCEEDED_MESSAGE, readFtlError } from "@/lib/pihole-normalize";
 // lives in lib/ precisely so http-client need not import services/.
 import {
   PIHOLE_SID_HEADER,
+  dedupedPiholeLogin,
   getPiholeSid,
-  setPiholeSid,
+  invalidatePiholeSid,
 } from "@/lib/pihole-session";
 import {
   basicAuthHeader,
@@ -861,6 +862,22 @@ function classifyUnauthorized(
   };
 }
 
+/**
+ * A probe verdict thrown from inside a helper.
+ *
+ * The Pi-hole case runs its login through a shared de-duplicating promise that
+ * can only resolve to a session id, so failures travel out as a throw and are
+ * unwrapped by the caller.
+ */
+class ProbeVerdict extends Error {
+  result: ConnectionTestResult;
+  constructor(result: ConnectionTestResult) {
+    super("probe verdict");
+    this.name = "ProbeVerdict";
+    this.result = result;
+  }
+}
+
 async function runConnectionProbe(
   serviceId: ServiceId,
   baseUrl: string,
@@ -1642,65 +1659,107 @@ async function runConnectionProbe(
         if (current?.session?.valid === true) return { kind: "ok" };
       }
 
-      // No usable session — log in.
-      const login = await fetch(authUrl, {
-        method: "POST",
-        headers: makeHeaders({
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        }),
-        body: JSON.stringify({ password }),
-        signal,
-      });
-      if (login.status >= 500)
-        return { kind: "unreachable", message: `Server error ${login.status}` };
-
-      const loginBody = await login.json().catch(() => null);
-      const ftl = readFtlError(loginBody);
-
-      if (login.status === 401 || login.status === 403 || login.status === 429) {
-        // One status, two unrelated problems. Only error.key separates them,
-        // and telling someone their password is wrong when the real problem is
-        // a full session pool sends them to change a working password — which
-        // invalidates every session and makes it worse.
-        if (ftl?.key === "api_seats_exceeded")
-          return { kind: "unreachable", message: SEATS_EXCEEDED_MESSAGE };
-        if (login.status === 429)
-          return {
-            kind: "auth_failed",
-            message: ftl?.message ?? "Too many login attempts — Pi-hole is rate-limiting",
-          };
-        return {
-          kind: "auth_failed",
-          message: password
-            ? ftl?.message || "Wrong password"
-            : "This Pi-hole needs its web password",
-        };
+      // The cached SID is stale (or there was none). Clear it BEFORE logging
+      // in, or dedupedPiholeLogin below would hand the same dead SID straight
+      // back. Conditional, so it cannot clobber a replacement another caller
+      // has already published.
+      if (input.instanceId && cachedSid) {
+        invalidatePiholeSid(input.instanceId, cachedSid);
       }
-      if (!login.ok)
-        return { kind: "unreachable", message: `Unexpected status ${login.status}` };
 
-      const session = (loginBody as PiholeAuthResponse | null)?.session;
-      if (!session?.valid)
-        return { kind: "auth_failed", message: session?.message || "Wrong password" };
+      // One login attempt, classifying every failure into a probe verdict.
+      const attemptLogin = async (): Promise<string> => {
+        const login = await fetch(authUrl, {
+          method: "POST",
+          headers: makeHeaders({
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          }),
+          body: JSON.stringify({ password }),
+          signal,
+        });
+        if (login.status >= 500)
+          throw new ProbeVerdict({
+            kind: "unreachable",
+            message: `Server error ${login.status}`,
+          });
 
-      if (session.sid) {
+        const loginBody = await login.json().catch(() => null);
+        const ftl = readFtlError(loginBody);
+
+        if (login.status === 401 || login.status === 403 || login.status === 429) {
+          // One status, two unrelated problems. Only error.key separates them,
+          // and telling someone their password is wrong when the real problem
+          // is a full session pool sends them to change a working password —
+          // which invalidates every session and makes it worse.
+          if (ftl?.key === "api_seats_exceeded")
+            throw new ProbeVerdict({
+              kind: "unreachable",
+              message: SEATS_EXCEEDED_MESSAGE,
+            });
+          if (login.status === 429)
+            throw new ProbeVerdict({
+              kind: "auth_failed",
+              message:
+                ftl?.message ?? "Too many login attempts — Pi-hole is rate-limiting",
+            });
+          throw new ProbeVerdict({
+            kind: "auth_failed",
+            message: password
+              ? ftl?.message || "Wrong password"
+              : "This Pi-hole needs its web password",
+          });
+        }
+        if (!login.ok)
+          throw new ProbeVerdict({
+            kind: "unreachable",
+            message: `Unexpected status ${login.status}`,
+          });
+
+        const session = (loginBody as PiholeAuthResponse | null)?.session;
+        if (!session?.valid)
+          throw new ProbeVerdict({
+            kind: "auth_failed",
+            message: session?.message || "Wrong password",
+          });
+        // "" is the no-password-configured case, and is a real session.
+        return session.sid ?? "";
+      };
+
+      try {
         if (input.instanceId) {
-          // Hand it to the data layer rather than throwing it away — this is
-          // what keeps the 30s health poll at zero new sessions from here on.
-          setPiholeSid(input.instanceId, session.sid);
-        } else {
-          // Testing an UNSAVED form: there is no instance to cache against, so
-          // give the seat straight back. Without this, sixteen taps of Test
-          // Connection lock the user out for thirty minutes.
+          // A SAVED instance shares the data layer's in-flight login. Without
+          // this the health poll and the screen's first query each mint their
+          // own session on a cold start — two of sixteen seats, one of them
+          // orphaned because only the last writer is cached.
+          await dedupedPiholeLogin(input.instanceId, attemptLogin);
+          return { kind: "ok" };
+        }
+        // Testing an UNSAVED form: there is no instance to cache against, so
+        // give the seat straight back. Without this, sixteen taps of Test
+        // Connection lock the user out for thirty minutes.
+        const sid = await attemptLogin();
+        if (sid) {
           await fetch(authUrl, {
             method: "DELETE",
-            headers: makeHeaders({ [PIHOLE_SID_HEADER]: session.sid }),
+            headers: makeHeaders({ [PIHOLE_SID_HEADER]: sid }),
             signal,
           }).catch(() => undefined);
         }
+        return { kind: "ok" };
+      } catch (err) {
+        if (err instanceof ProbeVerdict) return err.result;
+        // We joined a login started by the data layer and it failed. Its
+        // message already went through piholeErrorMessage, so it is
+        // user-facing (a wrong password, or the seat-exhaustion text).
+        const message = err instanceof Error ? err.message : undefined;
+        if (message === SEATS_EXCEEDED_MESSAGE)
+          return { kind: "unreachable", message };
+        return {
+          kind: "auth_failed",
+          message: message || "Pi-hole authentication failed",
+        };
       }
-      return { kind: "ok" };
     }
 
     default: {
