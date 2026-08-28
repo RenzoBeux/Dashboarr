@@ -247,6 +247,9 @@ export function usePiholeLiveQueries(
   filters: PiholeQueryFilters,
   live: boolean,
   instanceId?: string,
+  // The Pi-hole tab's 5-row preview card is mounted the whole time that tab is
+  // open, so it opts into a much slower cadence than the log screen's 3s.
+  intervalMs: number = LIVE_LOG_POLL_MS,
 ) {
   const { instanceId: id, enabled } = useInstanceTarget("pihole", instanceId);
   return useQuery({
@@ -254,9 +257,12 @@ export function usePiholeLiveQueries(
     queryFn: () => getQueries({ ...filters, length: QUERY_PAGE_SIZE }, id ?? undefined),
     enabled: enabled && !!id && live,
     staleTime: 0,
-    refetchInterval: live ? LIVE_LOG_POLL_MS : false,
+    refetchInterval: live ? intervalMs : false,
   });
 }
+
+/** Cadence for the tab's always-mounted recent-queries preview. */
+export const PIHOLE_PREVIEW_POLL_MS = 30_000;
 
 /** Scrollback. No refetchInterval, for the reason above. */
 export function usePiholeQueryLog(

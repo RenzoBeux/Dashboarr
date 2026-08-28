@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -146,15 +146,12 @@ function PiholeInstanceControl({
   compact?: boolean;
 }) {
   const flow = usePiholeDisableFlow(instance.id);
-  const { data } = useQueries({
-    queries: [
-      {
-        queryKey: piholeKeys.padd(instance.id),
-        queryFn: () => getPadd(instance.id),
-        staleTime: PADD_STALE_MS,
-      },
-    ],
-    combine: (results) => ({ data: results[0]?.data as PiholePadd | undefined }),
+  // Same key the parent already fetched, so this reads the shared cache rather
+  // than issuing a second request per instance.
+  const { data } = useQuery({
+    queryKey: piholeKeys.padd(instance.id),
+    queryFn: () => getPadd(instance.id),
+    staleTime: PADD_STALE_MS,
   });
 
   const enabled = isBlockingEnabled(data);
@@ -174,7 +171,6 @@ function PiholeInstanceControl({
         size="sm"
         loading={flow.isPending}
         onPress={enabled ? flow.openDurationSheet : flow.enableNow}
-        className={compact ? "" : undefined}
       />
       {flow.modals}
     </View>

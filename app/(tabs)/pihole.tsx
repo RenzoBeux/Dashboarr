@@ -28,6 +28,7 @@ import {
   usePiholeTopClients,
   usePiholeTopDomains,
   useRunPiholeGravity,
+  PIHOLE_PREVIEW_POLL_MS,
 } from "@/hooks/use-pihole";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { ICON } from "@/lib/constants";
@@ -315,6 +316,8 @@ function RecentQueriesCard() {
   const { data, isLoading } = usePiholeLiveQueries(
     { length: PREVIEW_QUERY_COUNT },
     true,
+    undefined,
+    PIHOLE_PREVIEW_POLL_MS,
   );
   const rows = (data?.queries ?? []).slice(0, PREVIEW_QUERY_COUNT);
 
