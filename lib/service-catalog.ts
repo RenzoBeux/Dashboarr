@@ -50,7 +50,6 @@ export interface ServiceCatalogEntry {
   oauth?: "plex";
   /** Where to find the key in the service's own UI. Omitted when unverified. */
   apiKeyHint?: string;
-  docsUrl?: string;
 }
 
 export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {

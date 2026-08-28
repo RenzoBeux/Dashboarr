@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { View, Text, Pressable, Linking } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter, Redirect } from "expo-router";
-import { Plus, Trash2, ArrowUp, ArrowDown, ExternalLink } from "lucide-react-native";
+import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -129,16 +128,6 @@ function KindInstances({
             </Text>
           </View>
         </View>
-        {catalog.docsUrl ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            label="Open docs"
-            className="self-start"
-            icon={<Icon icon={ExternalLink} size={14} color="#a1a1aa" />}
-            onPress={() => void Linking.openURL(catalog.docsUrl!)}
-          />
-        ) : null}
       </Card>
 
       <SettingsGroup
