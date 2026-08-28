@@ -32,6 +32,7 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   plex: "/(tabs)/plex",
   jellyfin: "/(tabs)/jellyfin",
   emby: "/(tabs)/emby",
+  navidrome: "/(tabs)/navidrome",
   glances: "/(tabs)/glances",
   bazarr: "/(tabs)/bazarr",
   unraid: "/(tabs)/unraid",

@@ -30,6 +30,23 @@ const LEGACY_USES_BASIC_AUTH = new Set<ServiceId>([
 ]);
 const LEGACY_USES_PASSWORD_ONLY = new Set<ServiceId>(["deluge"]);
 
+/**
+ * Kinds added AFTER the catalog landed, so there is no pre-catalog boolean to
+ * be in parity with. Their shape is asserted against upstream instead of
+ * against history, and the reason is recorded here:
+ *
+ *   navidrome - server/subsonic/middlewares.go:validateCredentials accepts only
+ *   p / t+s / jwt, and GetOpenSubsonicExtensions does not advertise the
+ *   OpenSubsonic apiKey extension. There is no API key to store.
+ */
+const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome"]);
+
+/** Every id whose credential form is username + password, from both sources. */
+const ALL_USER_PASS = new Set<ServiceId>([
+  ...LEGACY_USES_BASIC_AUTH,
+  ...POST_CATALOG_USER_PASS,
+]);
+
 describe("SERVICE_CATALOG", () => {
   it("has exactly one entry per service id", () => {
     expect(Object.keys(SERVICE_CATALOG).sort()).toEqual([...SERVICE_IDS].sort());
@@ -60,12 +77,22 @@ describe("auth shapes", () => {
   // The load-bearing test. Every id must resolve to the same credential form
   // it had before the catalog existed; a mismatch means that service silently
   // stops reading or writing its saved credential.
-  it("matches the pre-catalog usesBasicAuth boolean for all 25 kinds", () => {
+  it("matches the pre-catalog usesBasicAuth boolean for every kind that predates the catalog", () => {
     for (const id of SERVICE_IDS) {
+      if (POST_CATALOG_USER_PASS.has(id)) continue;
       const shape = secretsShapeFor(SERVICE_CATALOG[id].authShape);
       expect({ id, shape }).toEqual({
         id,
         shape: LEGACY_USES_BASIC_AUTH.has(id) ? "userPass" : "apiKey",
+      });
+    }
+  });
+
+  it("keeps post-catalog additions on the credential form upstream actually accepts", () => {
+    for (const id of POST_CATALOG_USER_PASS) {
+      expect({ id, shape: secretsShapeFor(SERVICE_CATALOG[id].authShape) }).toEqual({
+        id,
+        shape: "userPass",
       });
     }
   });
@@ -107,7 +134,7 @@ describe("auth shapes", () => {
       SERVICE_IDS.filter((id) => SERVICE_DEFAULTS[id].httpAuth === true),
     );
 
-    expect(userPass).toEqual(LEGACY_USES_BASIC_AUTH);
+    expect(userPass).toEqual(ALL_USER_PASS);
     expect(httpAuth).toEqual(
       new Set<ServiceId>(["rtorrent", "transmission", "nzbget", "glances"]),
     );
@@ -117,6 +144,10 @@ describe("auth shapes", () => {
     expect(httpAuth.has("qbittorrent")).toBe(false);
     expect(userPass.has("deluge")).toBe(true);
     expect(httpAuth.has("deluge")).toBe(false);
+    // Navidrome joins them: username + password, hashed into the Subsonic `t`
+    // param and posted to /auth/login, never sent as HTTP Basic.
+    expect(userPass.has("navidrome")).toBe(true);
+    expect(httpAuth.has("navidrome")).toBe(false);
   });
 });
 

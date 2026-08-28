@@ -182,8 +182,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         nzbhydra2 instance at import time, so older exports just need the
  *         version field bumped.
+ *   v48 — added the navidrome service entry (#336). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         navidrome instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 47;
+export const CURRENT_CONFIG_VERSION = 48;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -720,6 +724,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v46 → v47: added the nzbhydra2 service entry (#333). Pure version stamp —
   // defaultInstances() backfills a disabled nzbhydra2 instance at import.
   46: (payload) => ({ ...payload, version: 47 }),
+  // v47 → v48: added the navidrome service entry (#336). Pure version stamp —
+  // defaultInstances() backfills a disabled navidrome instance at import.
+  47: (payload) => ({ ...payload, version: 48 }),
 };
 
 /**

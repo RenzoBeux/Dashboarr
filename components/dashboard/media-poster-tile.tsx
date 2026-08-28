@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import { Image, type ImageSource } from "expo-image";
-import { Film, Tv, type LucideIcon } from "lucide-react-native";
+import { Film, Music, Tv, type LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { useUiScale } from "@/hooks/use-ui-scale";
 
@@ -26,7 +26,7 @@ interface MediaPosterTileProps {
   topLeftBadge?: React.ReactNode;
   bottomOverlay?: React.ReactNode;
   fallbackIcon?: LucideIcon;
-  mediaType?: "movie" | "tv";
+  mediaType?: "movie" | "tv" | "music";
   onPress?: () => void;
   onLongPress?: () => void;
   width?: number;
@@ -49,7 +49,7 @@ export function MediaPosterTile({
   height = POSTER_TILE_HEIGHT,
 }: MediaPosterTileProps) {
   const FallbackIcon =
-    fallbackIcon ?? (mediaType === "tv" ? Tv : Film);
+    fallbackIcon ?? (mediaType === "music" ? Music : mediaType === "tv" ? Tv : Film);
   const scale = useUiScale();
   const scaledWidth = Math.round(width * scale);
   const scaledHeight = Math.round(height * scale);

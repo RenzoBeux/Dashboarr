@@ -20,6 +20,7 @@ export interface CombinedNowPlayingSettingsValue extends Record<string, unknown>
   plexInstanceIds: InstanceBindingValue;
   jellyfinInstanceIds: InstanceBindingValue;
   embyInstanceIds: InstanceBindingValue;
+  navidromeInstanceIds: InstanceBindingValue;
   maxItems: number;
   hideLocalPlays: boolean;
   hideUsers: string;
@@ -32,6 +33,7 @@ export const COMBINED_NOW_PLAYING_DEFAULT_SETTINGS: CombinedNowPlayingSettingsVa
   plexInstanceIds: INSTANCE_BINDING_ALL,
   jellyfinInstanceIds: INSTANCE_BINDING_ALL,
   embyInstanceIds: INSTANCE_BINDING_ALL,
+  navidromeInstanceIds: INSTANCE_BINDING_ALL,
   maxItems: 5,
   hideLocalPlays: false,
   hideUsers: "",
@@ -57,6 +59,7 @@ export function CombinedNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
   const hasPlex = useAttachedEnabledInstances("plex").length > 0;
   const hasJellyfin = useAttachedEnabledInstances("jellyfin").length > 0;
   const hasEmby = useAttachedEnabledInstances("emby").length > 0;
+  const hasNavidrome = useAttachedEnabledInstances("navidrome").length > 0;
 
   return (
     <View className="px-4 py-2 gap-5">
@@ -84,6 +87,14 @@ export function CombinedNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
               label="Emby instances"
               value={settings.embyInstanceIds}
               onChange={(embyInstanceIds) => update({ embyInstanceIds })}
+            />
+          )}
+          {hasNavidrome && (
+            <InstancePickerRow
+              serviceId="navidrome"
+              label="Navidrome instances"
+              value={settings.navidromeInstanceIds}
+              onChange={(navidromeInstanceIds) => update({ navidromeInstanceIds })}
             />
           )}
         </View>

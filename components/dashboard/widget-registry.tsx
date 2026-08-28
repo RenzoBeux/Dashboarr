@@ -6,6 +6,7 @@ import {
   Cast,
   Clapperboard,
   Cpu,
+  Disc,
   Download,
   Film,
   Gauge,
@@ -59,6 +60,7 @@ import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
 import { AutobrrCard } from "@/components/dashboard/autobrr-card";
 import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
+import { NavidromeLibraryCard } from "@/components/dashboard/navidrome-library-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -198,6 +200,11 @@ import {
   CLEANUPARR_STATS_DEFAULT_SETTINGS,
   type CleanuparrStatsSettingsValue,
 } from "@/components/dashboard/widget-settings/cleanuparr-stats-settings";
+import {
+  NavidromeLibrarySettings,
+  NAVIDROME_LIBRARY_DEFAULT_SETTINGS,
+  type NavidromeLibrarySettingsValue,
+} from "@/components/dashboard/widget-settings/navidrome-library-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -582,6 +589,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: CleanuparrStatsSettings,
     defaultSettings: CLEANUPARR_STATS_DEFAULT_SETTINGS,
   },
+  "navidrome-library": {
+    id: "navidrome-library",
+    label: "Navidrome Library",
+    description: "Artist, album and track counts, library size and scan state",
+    icon: Disc,
+    service: "navidrome",
+    component: NavidromeLibraryCard,
+    settingsComponent: NavidromeLibrarySettings,
+    defaultSettings: NAVIDROME_LIBRARY_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -620,4 +637,5 @@ export type {
   ArrHealthSettingsValue,
   AutobrrStatsSettingsValue,
   CleanuparrStatsSettingsValue,
+  NavidromeLibrarySettingsValue,
 };

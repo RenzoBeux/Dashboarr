@@ -23,11 +23,16 @@ jest.mock("expo-secure-store", () => ({
 import {
   plexSessionToStream,
   mediaServerSessionToStream,
+  navidromeNowPlayingToStream,
   formatEpisodeStreamTitle,
   isLocalEndpoint,
   parseHiddenUsers,
 } from "./now-playing-stream";
-import type { JellyfinSession, PlexSession } from "./types";
+import type {
+  JellyfinSession,
+  NavidromeNowPlayingEntry,
+  PlexSession,
+} from "./types";
 
 describe("formatEpisodeStreamTitle", () => {
   it("builds the 3-part title from numeric indices", () => {
@@ -159,6 +164,76 @@ describe("mediaServerSessionToStream", () => {
     expect(s.transcoding).toBe(false);
     expect(s.isLocal).toBe(true);
     expect(s.mediaType).toBe("movie");
+  });
+});
+
+describe("navidromeNowPlayingToStream", () => {
+  function entry(over: Partial<NavidromeNowPlayingEntry> = {}): NavidromeNowPlayingEntry {
+    return {
+      id: "song-1",
+      title: "Xtal",
+      artist: "Aphex Twin",
+      album: "Selected Ambient Works 85-92",
+      duration: 300,
+      username: "renzo",
+      minutesAgo: 0,
+      playerId: 7,
+      playerName: "Feishin",
+      state: "playing",
+      positionMs: 60_000,
+      playbackRate: 1,
+      ...over,
+    };
+  }
+
+  it("maps a playing track, prefixing the artist onto the title", () => {
+    const stream = navidromeNowPlayingToStream(entry(), "inst-1");
+    expect(stream).toMatchObject({
+      serviceId: "navidrome",
+      instanceId: "inst-1",
+      title: "Aphex Twin - Xtal",
+      user: "renzo",
+      device: "Feishin",
+      state: "playing",
+      mediaType: "music",
+    });
+    // positionMs is ms, duration is SECONDS — mixing the units would report 200x.
+    expect(stream.progress).toBeCloseTo(0.2);
+  });
+
+  it("falls back to the bare title when the track has no artist", () => {
+    expect(navidromeNowPlayingToStream(entry({ artist: undefined }), "i").title).toBe("Xtal");
+  });
+
+  it("reads Navidrome's paused state case-insensitively", () => {
+    expect(navidromeNowPlayingToStream(entry({ state: "paused" }), "i").state).toBe("paused");
+    expect(navidromeNowPlayingToStream(entry({ state: "Paused" }), "i").state).toBe("paused");
+    expect(navidromeNowPlayingToStream(entry({ state: "playing" }), "i").state).toBe("playing");
+  });
+
+  it("does not divide by zero on a track with no duration", () => {
+    expect(navidromeNowPlayingToStream(entry({ duration: 0 }), "i").progress).toBe(0);
+  });
+
+  it("clamps progress when the reported position overruns the duration", () => {
+    expect(
+      navidromeNowPlayingToStream(entry({ duration: 10, positionMs: 999_000 }), "i").progress,
+    ).toBe(1);
+  });
+
+  // Navidrome reports neither transcoding metadata nor a client IP on this
+  // endpoint, so both are structurally absent rather than unread.
+  it("reports no transcoding and never guesses locality", () => {
+    const stream = navidromeNowPlayingToStream(entry(), "inst-1");
+    expect(stream.transcoding).toBe(false);
+    expect(stream.isLocal).toBe(false);
+  });
+
+  it("keys per player and track so two clients never collide", () => {
+    const a = navidromeNowPlayingToStream(entry({ playerId: 1 }), "inst-1");
+    const b = navidromeNowPlayingToStream(entry({ playerId: 2 }), "inst-1");
+    const other = navidromeNowPlayingToStream(entry({ playerId: 1 }), "inst-2");
+    expect(new Set([a.key, b.key, other.key]).size).toBe(3);
   });
 });
 

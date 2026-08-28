@@ -60,6 +60,11 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   // code/frontend/public/icons/icon-192x192.png). Purple-on-transparent with
   // black cutouts that blend into the dark UI, as on Cleanuparr's own UI.
   cleanuparr: require("@/assets/services/cleanuparr.png"),
+  // Official Navidrome vinyl mark (GPL-3.0, navidrome/navidrome
+  // ui/public/android-chrome-512x512.png), downscaled to 256px to match its
+  // siblings. Blue-on-transparent with black outlines, the same shape it has in
+  // Navidrome's own UI.
+  navidrome: require("@/assets/services/navidrome.png"),
 };
 
 export function hasServiceLogo(id: ServiceId): boolean {

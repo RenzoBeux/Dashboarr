@@ -1,5 +1,14 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import {
+  SUBSONIC_API_VERSION,
+  SUBSONIC_CLIENT,
+  isSubsonicAuthError,
+  randomSalt,
+  readSubsonicEnvelope,
+  subsonicErrorMessage,
+  subsonicToken,
+} from "@/lib/navidrome-normalize";
 import type { ServiceId } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
@@ -386,6 +395,13 @@ export async function serviceRequest<T>(
     if (secrets.apiKey) {
       headers.set("X-API-Token", secrets.apiKey);
     }
+  } else if (serviceId === "navidrome") {
+    // Navidrome speaks THREE auth modes on one host and cannot be expressed as
+    // one branch here, so services/navidrome-api.ts builds each call's auth and
+    // passes it in: the Subsonic u/t/s/v/c/f pair as `params`, and the native
+    // API's `X-ND-Authorization: Bearer <jwt>` as a request header (which the
+    // Headers merge above preserves). /auth/login itself is anonymous. There is
+    // no API key to inject — upstream does not implement one.
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID use
     // X-Api-Key (unRAID documents lowercase x-api-key; header names are
@@ -554,6 +570,11 @@ export async function pingService(
     // /healthz/liveness is anonymous, but send the real header anyway so the
     // ping's wire shape matches serviceRequest (and survives auth proxies).
     if (secrets.apiKey) headers.set("X-API-Token", secrets.apiKey);
+  } else if (serviceId === "navidrome") {
+    // pingPath is /rest/getOpenSubsonicExtensions, the one Subsonic route
+    // registered outside the auth group (server/subsonic/api.go), so it needs
+    // no credentials. Which also means it cannot validate them — that is the
+    // probe's job, and the probe uses /rest/ping.
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -1376,6 +1397,58 @@ async function runConnectionProbe(
         };
       }
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "navidrome": {
+      // Navidrome has no API key: server/subsonic/middlewares.go:validateCredentials
+      // accepts only p / t+s / jwt. We send the salted token so the password
+      // never travels in the clear, computed exactly as upstream recomputes it.
+      //
+      // THE trap: every Subsonic error is HTTP 200. sendResponse in
+      // server/subsonic/api.go sets no status for failures, so a wrong password
+      // arrives as a perfectly healthy 200 whose BODY says status "failed" with
+      // error code 40. Keying on res.status alone reports "connected".
+      const salt = randomSalt();
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/rest/ping", {
+        u: username,
+        t: subsonicToken(password, salt),
+        s: salt,
+        v: SUBSONIC_API_VERSION,
+        c: SUBSONIC_CLIENT,
+        f: "json",
+      });
+      const res = await fetch(url, {
+        method: "GET",
+        headers: makeHeaders({ Accept: "application/json" }),
+        signal,
+      });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong username or password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        // A 200 that isn't JSON is an auth proxy's login page, not Navidrome
+        // (issue #239) — /rest/ping always answers JSON when f=json.
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /rest and /api from the proxy.",
+        };
+      }
+      const envelope = readSubsonicEnvelope(body);
+      if (!envelope)
+        return { kind: "unreachable", message: "Not a Subsonic response" };
+      if (envelope.status === "ok") return { kind: "ok" };
+      const code = envelope.error?.code ?? 0;
+      const message = subsonicErrorMessage(code, envelope.error?.message);
+      return isSubsonicAuthError(code)
+        ? { kind: "auth_failed", message }
+        : { kind: "unreachable", message };
     }
 
     case "cleanuparr": {
