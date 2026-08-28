@@ -88,6 +88,7 @@ export function ServiceEditor({
   const updateInstanceSecrets = useConfigStore((s) => s.updateInstanceSecrets);
   const toggleInstance = useConfigStore((s) => s.toggleInstance);
   const removeInstance = useConfigStore((s) => s.removeInstance);
+  const addInstance = useConfigStore((s) => s.addInstance);
 
   // First-save dashboard prompt is offered exactly once per editor session,
   // after the user saves an instance whose initial state was unconfigured
@@ -174,13 +175,21 @@ export function ServiceEditor({
     isBlankInstance(config, secrets, usesUserPass),
   );
 
+  const isBlank = isBlankInstance(config, secrets, usesUserPass);
+
   // Live equivalent of the snapshot above. `handleAdd` writes the new instance
   // to the store before navigating here, so backing out of one you never filled
   // in used to leave a blank server sitting in the list. The first instance of
   // a kind never showed the bug because it reuses the seeded placeholder, which
   // is invisible until configured.
-  const isBlankNewInstance =
-    isNew && isBlankInstance(config, secrets, usesUserPass);
+  const isBlankNewInstance = isNew && isBlank;
+
+  // Removing the only instance of a kind is how you take an integration out of
+  // your services entirely, so it has to be offered. There is nothing to remove
+  // yet when that lone instance is still blank.
+  const isLastInstance = instancesForKind.length === 1;
+  const canRemove = !isLastInstance || !isBlank;
+  const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[serviceId];
 
   // Navigate first, then delete: removeInstance flips `inst` to undefined, so
   // deleting before the pop flashes the "Not found" branch. The store action
@@ -576,6 +585,14 @@ export function ServiceEditor({
           await qbClearSession(instanceId);
         }
         await removeInstance(serviceId, instanceId);
+        // Every kind must keep at least one slot. Leaving the array empty
+        // crashes the workspace editor, which reads list[0].id unguarded for
+        // any kind it considers single-instance (app/dashboard-edit/[id].tsx).
+        // A fresh blank placeholder also restores the kind to "not set up", so
+        // it leaves Your services and reappears under Add a service.
+        if (isLastInstance) {
+          addInstance(serviceId, { name: kindLabel });
+        }
       })();
     });
   };
@@ -780,13 +797,13 @@ export function ServiceEditor({
         />
       </SettingsGroup>
 
-      {/* Delete is only offered when the user has more than one instance of this
-          kind — kinds always carry at least one slot, so removing the only
-          instance would leave the kind in an unpopulated state and force the
-          user to re-create it. Better to let them disable instead. */}
-      {instancesForKind.length > 1 ? (
+      {/* Offered for the last instance too: that is the only way to take an
+          integration back out of your services once it is set up. Hidden only
+          when the lone instance is still blank, since there is nothing to
+          remove. */}
+      {canRemove ? (
         <Button
-          label="Delete instance"
+          label={isLastInstance ? `Remove ${kindLabel}` : "Delete instance"}
           onPress={() => flow.open("confirmDelete")}
           variant="outline"
         />
@@ -794,8 +811,12 @@ export function ServiceEditor({
 
       <ConfirmModal
         {...flow.bind("confirmDelete")}
-        title="Delete instance"
-        message={`This will remove "${config.name}" and its credentials. This cannot be undone.`}
+        title={isLastInstance ? `Remove ${kindLabel}` : "Delete instance"}
+        message={
+          isLastInstance
+            ? `This will remove "${config.name}" and its credentials, and take ${kindLabel} out of your services. You can set it up again from Add a service.`
+            : `This will remove "${config.name}" and its credentials. This cannot be undone.`
+        }
         icon={Trash2}
         tone="danger"
         confirmLabel="Delete"
