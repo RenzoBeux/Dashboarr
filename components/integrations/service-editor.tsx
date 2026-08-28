@@ -21,6 +21,7 @@ import { testServiceConnection, lanGuardBlockReason } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
+import { piholeClearSession } from "@/services/pihole-api";
 import { getPlexClientId } from "@/lib/plex-client-id";
 import {
   requestPin,
@@ -338,6 +339,14 @@ export function ServiceEditor({
     if (serviceId === "navidrome") {
       navidromeClearSession(instanceId);
     }
+    // Pi-hole is awaited: piholeClearSession DELETEs /api/auth to hand the
+    // session seat back. FTL allows only 16 at once with a 30-minute idle TTL,
+    // so leaking one on every credential change is not free. This runs AFTER
+    // updateInstanceSecrets, which is correct — the logout authenticates with
+    // the SID, not the password.
+    if (serviceId === "pihole") {
+      await piholeClearSession(instanceId);
+    }
 
     // First-save dashboard prompt. Fires once per editor session when the
     // instance was unconfigured on entry (either freshly added via "Add
@@ -592,6 +601,9 @@ export function ServiceEditor({
         }
         if (serviceId === "navidrome") {
           navidromeClearSession(instanceId);
+        }
+        if (serviceId === "pihole") {
+          await piholeClearSession(instanceId);
         }
         await removeInstance(serviceId, instanceId);
         // Every kind must keep at least one slot. Leaving the array empty

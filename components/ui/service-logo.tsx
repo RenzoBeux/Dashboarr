@@ -13,6 +13,11 @@ import EmbyLogo from "@/assets/services/emby.svg";
 import OverseerrLogo from "@/assets/services/overseerr.svg";
 import PlexLogo from "@/assets/services/plex.svg";
 import UnraidLogo from "@/assets/services/unraid.svg";
+// Pi-hole's "Vortex", from pi-hole/graphics (MIT). Upstream styles two of its
+// paths with a <style> block and CSS classes, which react-native-svg does not
+// apply reliably, and its viewBox is tall while ServiceLogo renders a square —
+// the copy in assets/ inlines those fills and pads the viewBox to square.
+import PiholeLogo from "@/assets/services/pihole.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
@@ -24,6 +29,7 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   overseerr: OverseerrLogo,
   plex: PlexLogo,
   unraid: UnraidLogo,
+  pihole: PiholeLogo,
 };
 
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {

@@ -21,6 +21,7 @@ import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import type { HealthStatusKind } from "@/lib/types";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
+import { piholeClearSession } from "@/services/pihole-api";
 import { SERVICE_IDS, type ServiceId } from "@/lib/constants";
 
 /**
@@ -113,6 +114,11 @@ function KindInstances({
     if (kind === "navidrome") {
       // Same for Navidrome's cached JWT + Subsonic salt.
       navidromeClearSession(instanceId);
+    }
+    if (kind === "pihole") {
+      // Log the Pi-hole session out before dropping it, so its seat goes back
+      // to the pool of 16 instead of idling for thirty minutes.
+      await piholeClearSession(instanceId);
     }
     await removeInstance(kind, instanceId);
   };

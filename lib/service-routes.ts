@@ -38,4 +38,5 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   unraid: "/(tabs)/unraid",
   autobrr: "/(tabs)/autobrr",
   cleanuparr: "/(tabs)/cleanuparr",
+  pihole: "/(tabs)/pihole",
 };

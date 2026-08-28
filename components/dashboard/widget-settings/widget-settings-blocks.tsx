@@ -211,7 +211,13 @@ export function AutoHideToggle({
  * findable. Add a new auto-hide toggle's key here or its widget will disappear
  * with nothing in edit mode explaining why.
  */
-const AUTO_HIDE_SETTING_KEYS = ["hideWhenEmpty", "hideWhenAllHealthy"] as const;
+const AUTO_HIDE_SETTING_KEYS = [
+  "hideWhenEmpty",
+  "hideWhenAllHealthy",
+  // Pi-hole's status widget hides while blocking is ON — its signal is
+  // inverted, but it is still an auto-hide and still needs the marker.
+  "hideWhenBlockingEnabled",
+] as const;
 
 /** Whether this slot is configured to hide itself under some condition. */
 export function slotAutoHides(settings?: Record<string, unknown>): boolean {

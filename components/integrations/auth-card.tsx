@@ -60,7 +60,7 @@ export function AuthCard({
       ) : null}
 
       {usesUserPass ? (
-        <>
+        <View className="gap-1.5">
           {usesPasswordOnly ? null : (
             <TextInput
               label="Username"
@@ -76,7 +76,16 @@ export function AuthCard({
             onChangeText={onPasswordChange}
             secureTextEntry
           />
-        </>
+          {/* The hint used to render only in the apiKey branch below, leaving
+              password services with no guidance at all — and those are exactly
+              the ones where the right credential is not obvious (Pi-hole wants
+              an application password, not the web password). */}
+          {entry.apiKeyHint ? (
+            <Text className="text-zinc-600 text-xs">
+              Find it in {entry.apiKeyHint}
+            </Text>
+          ) : null}
+        </View>
       ) : (
         <View className="gap-1.5">
           <TextInput
