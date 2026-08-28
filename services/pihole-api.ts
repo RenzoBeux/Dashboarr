@@ -61,6 +61,9 @@ import type {
  * When omitted, the user's active Pi-hole is used.
  */
 
+/** Best-effort logout — short, because nothing waits on the result. */
+const LOGOUT_TIMEOUT_MS = 5_000;
+
 function resolveInstanceId(instanceId?: string): string {
   if (instanceId) return instanceId;
   const id = useConfigStore.getState().getActiveInstanceId("pihole");
@@ -217,7 +220,21 @@ async function logoutSid(instanceId: string, sid: string): Promise<void> {
   const baseUrl = store.getActiveUrl("pihole", instanceId);
   if (!baseUrl) return;
   const url = buildUrl(baseUrl, SERVICE_DEFAULTS.pihole.apiBasePath, "/auth");
-  await fetch(url, { method: "DELETE", headers: { [PIHOLE_SID_HEADER]: sid } });
+  // Bounded: this runs on save and on delete, and a Pi-hole is usually a LAN
+  // address. Deleting an instance while off the home network would otherwise
+  // hang on the platform's default socket timeout with the UI waiting on it.
+  // Losing the logout only means the seat idles out on its own.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LOGOUT_TIMEOUT_MS);
+  try {
+    await fetch(url, {
+      method: "DELETE",
+      headers: { [PIHOLE_SID_HEADER]: sid },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // --- Blocking ---------------------------------------------------------------
