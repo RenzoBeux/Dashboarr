@@ -10,6 +10,7 @@ import {
   subsonicToken,
 } from "@/lib/navidrome-normalize";
 import type { ServiceId } from "@/lib/constants";
+import type { PiholeAuthResponse } from "@/lib/types";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
@@ -17,6 +18,18 @@ import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
 // service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
 // the same envelope the same way. Pure string/object helpers — no cycle.
 import { readHydraJsonError, readHydraXmlError } from "@/lib/nzbhydra2-normalize";
+// Same arrangement for Pi-hole: FTL's error envelope is nested, so the probe
+// below and services/pihole-api.ts read it identically. Type-only imports in
+// pihole-normalize keep it cycle-free.
+import { SEATS_EXCEEDED_MESSAGE, readFtlError } from "@/lib/pihole-normalize";
+// The probe shares the API module's session cache so the 30s health poll
+// re-validates an existing SID instead of minting a new one every cycle. This
+// lives in lib/ precisely so http-client need not import services/.
+import {
+  PIHOLE_SID_HEADER,
+  getPiholeSid,
+  setPiholeSid,
+} from "@/lib/pihole-session";
 import {
   basicAuthHeader,
   digestSessionKey,
@@ -402,6 +415,17 @@ export async function serviceRequest<T>(
     // API's `X-ND-Authorization: Bearer <jwt>` as a request header (which the
     // Headers merge above preserves). /auth/login itself is anonymous. There is
     // no API key to inject — upstream does not implement one.
+  } else if (serviceId === "pihole") {
+    // Pi-hole's credential is a SESSION, not a key: services/pihole-api.ts
+    // exchanges the password at POST /api/auth and passes the resulting id in
+    // as an `X-FTL-SID` request header, which the Headers merge above carries
+    // through. FTL implements no API key at all.
+    //
+    // This branch is not decorative. Without it a pihole call falls to the
+    // X-Api-Key else below, and while `apiKey` is normally undefined for a
+    // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
+    // (store/config-store.ts) — so a stale apiKey left on an instance id would
+    // be sent to Pi-hole on every request forever.
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID use
     // X-Api-Key (unRAID documents lowercase x-api-key; header names are
@@ -575,6 +599,12 @@ export async function pingService(
     // registered outside the auth group (server/subsonic/api.go), so it needs
     // no credentials. Which also means it cannot validate them — that is the
     // probe's job, and the probe uses /rest/ping.
+  } else if (serviceId === "pihole") {
+    // pingPath is /info/login, which FTL registers auth-not-required
+    // (src/api/api.c), so it needs no credentials. Which also means it cannot
+    // validate them — that is the probe's job, and the probe uses /auth.
+    // Deliberately no X-FTL-SID here: a reachability ping must not depend on,
+    // or consume, one of the sixteen available session seats.
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -1527,6 +1557,146 @@ async function runConnectionProbe(
       } catch {
         return { kind: "unreachable", message: "Invalid JSON response" };
       }
+    }
+
+    case "pihole": {
+      // Pi-hole v6 only. pingPath (/info/login) is registered auth-not-required
+      // in FTL's src/api/api.c, so it answers 200 with any password at all —
+      // the same false green as Autobrr's /healthz/liveness and NZBHydra2's
+      // /actuator/health/ping. The credential is checked at /auth.
+      //
+      // THE constraint on this case: hooks/use-service-health.ts runs
+      // checkInstanceHealth for every enabled instance every 30s, and FTL's
+      // webserver.api.max_sessions defaults to 16 with a 30-minute idle TTL. A
+      // probe that logged in each cycle would burn every seat in ~8 minutes and
+      // lock the user out of their own admin UI. So: VALIDATE an existing
+      // session first (free, and it refreshes the idle timer), and only log in
+      // when there is none — handing the new SID to the cache the data layer
+      // reads, exactly as input.instanceId already keys the Digest nonce cache.
+      const authUrl = buildUrl(baseUrl, defaults.apiBasePath, "/auth");
+      const cachedSid = input.instanceId ? getPiholeSid(input.instanceId) : null;
+
+      // GET /api/auth is itself auth-not-required, so it doubles as the "is
+      // there a v6 API here at all" question — v5 has no /api mount.
+      const checkHeaders = makeHeaders({ Accept: "application/json" });
+      if (cachedSid) checkHeaders.set(PIHOLE_SID_HEADER, cachedSid);
+      const check = await fetch(authUrl, {
+        method: "GET",
+        headers: checkHeaders,
+        signal,
+      });
+
+      if (check.status >= 500)
+        return { kind: "unreachable", message: `Server error ${check.status}` };
+
+      if (check.status === 404) {
+        // Either a v5 host (whose entire API is /admin/api.php) or a URL that
+        // is not a Pi-hole. Ask v5's own endpoint so the message is actionable
+        // rather than a bare "unexpected status 404".
+        const root = baseUrl.replace(/\/+$/, "");
+        const v5 = await fetch(`${root}/admin/api.php?status`, {
+          method: "GET",
+          headers: makeHeaders({ Accept: "application/json" }),
+          signal,
+        }).catch(() => null);
+        if (v5?.ok) {
+          const text = await v5.text().catch(() => "");
+          if (/"(status|domains_being_blocked)"\s*:/.test(text)) {
+            return {
+              kind: "unreachable",
+              message:
+                "This is Pi-hole v5. Dashboarr needs Pi-hole v6 or newer — update Pi-hole, then try again.",
+            };
+          }
+        }
+        // The single most common setup mistake, and one the generic auth-proxy
+        // message below would misdiagnose: /admin is the URL the web UI shows,
+        // but buildUrl turns it into /admin/api/... which 404s.
+        return {
+          kind: "unreachable",
+          message:
+            "No Pi-hole v6 API here. Use the web server root (e.g. http://pi.hole), not the /admin page.",
+        };
+      }
+
+      // Auth-proxy guard (#239): a 200 that is really an HTML login page.
+      const checkType = check.headers.get("content-type");
+      if (check.ok && !checkType?.toLowerCase().includes("application/json")) {
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+        };
+      }
+      if (check.ok) {
+        const current = (await check.json().catch(() => null)) as
+          | PiholeAuthResponse
+          | null;
+        // valid:true means the cached SID is still live, OR this Pi-hole has no
+        // password set at all. Either way there is nothing left to prove, and
+        // no new session was created.
+        if (current?.session?.valid === true) return { kind: "ok" };
+      }
+
+      // No usable session — log in.
+      const login = await fetch(authUrl, {
+        method: "POST",
+        headers: makeHeaders({
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: JSON.stringify({ password }),
+        signal,
+      });
+      if (login.status >= 500)
+        return { kind: "unreachable", message: `Server error ${login.status}` };
+
+      const loginBody = await login.json().catch(() => null);
+      const ftl = readFtlError(loginBody);
+
+      if (login.status === 401 || login.status === 403 || login.status === 429) {
+        // One status, two unrelated problems. Only error.key separates them,
+        // and telling someone their password is wrong when the real problem is
+        // a full session pool sends them to change a working password — which
+        // invalidates every session and makes it worse.
+        if (ftl?.key === "api_seats_exceeded")
+          return { kind: "unreachable", message: SEATS_EXCEEDED_MESSAGE };
+        if (login.status === 429)
+          return {
+            kind: "auth_failed",
+            message: ftl?.message ?? "Too many login attempts — Pi-hole is rate-limiting",
+          };
+        return {
+          kind: "auth_failed",
+          message: password
+            ? ftl?.message || "Wrong password"
+            : "This Pi-hole needs its web password",
+        };
+      }
+      if (!login.ok)
+        return { kind: "unreachable", message: `Unexpected status ${login.status}` };
+
+      const session = (loginBody as PiholeAuthResponse | null)?.session;
+      if (!session?.valid)
+        return { kind: "auth_failed", message: session?.message || "Wrong password" };
+
+      if (session.sid) {
+        if (input.instanceId) {
+          // Hand it to the data layer rather than throwing it away — this is
+          // what keeps the 30s health poll at zero new sessions from here on.
+          setPiholeSid(input.instanceId, session.sid);
+        } else {
+          // Testing an UNSAVED form: there is no instance to cache against, so
+          // give the seat straight back. Without this, sixteen taps of Test
+          // Connection lock the user out for thirty minutes.
+          await fetch(authUrl, {
+            method: "DELETE",
+            headers: makeHeaders({ [PIHOLE_SID_HEADER]: session.sid }),
+            signal,
+          }).catch(() => undefined);
+        }
+      }
+      return { kind: "ok" };
     }
 
     default: {

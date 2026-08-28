@@ -61,6 +61,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   unraid:      ["serviceOffline"],
   autobrr:     ["serviceOffline"],
   cleanuparr:  ["serviceOffline"],
+  // No blocking/gravity watcher in the app and no backend poller, so a
+  // "blocking disabled" toggle would be a switch nothing emits. Offline is the
+  // only category with a real source — the rtorrent/Lidarr/Bindery stance.
+  pihole:      ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

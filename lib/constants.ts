@@ -25,6 +25,7 @@ export const SERVICE_IDS = [
   "unraid",
   "autobrr",
   "cleanuparr",
+  "pihole",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -219,6 +220,31 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "",
     pingPath: "/health",
   },
+  // Pi-hole v6 ONLY. v6 replaced v5's PHP /admin/api.php with a real REST API
+  // under /api served by FTL itself, and there is no compatibility shim — a v5
+  // host 404s every path here, which runConnectionProbe detects and reports as
+  // "requires Pi-hole v6 or newer" rather than as a bad password.
+  //
+  // Auth is one web password exchanged at POST /api/auth for a session id that
+  // rides on every later call as X-FTL-SID (see services/pihole-api.ts). That
+  // makes it the qBittorrent/Deluge shape — a login endpoint and a session —
+  // not an API key and not an HTTP auth mount, so no httpAuth flag.
+  //
+  // pingPath is FTL's own unauthenticated endpoint (src/api/api.c registers
+  // /info/login with auth-not-required), so it answers 200 with or without a
+  // password: a fine reachability ping, and — the same trap as Autobrr's
+  // /healthz/liveness and NZBHydra2's /actuator/health/ping — useless as a
+  // credential probe. runConnectionProbe validates against /auth instead.
+  //
+  // defaultPort is v6's webserver.port default. The URL must be the web server
+  // ROOT (http://pi.hole), never /admin — that is the single most common setup
+  // mistake, and buildUrl would turn it into /admin/api/... 404s.
+  pihole: {
+    name: "Pi-hole",
+    defaultPort: 80,
+    apiBasePath: "/api",
+    pingPath: "/info/login",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -235,6 +261,15 @@ export const POLLING_INTERVALS = {
 // run past 30s. They need a far longer ceiling than http-client's 15s default,
 // which otherwise aborts a search that was going to succeed.
 export const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
+
+// POST /api/action/gravity shells out to `pihole -g`, which re-downloads every
+// blocklist and rebuilds the database. Two to five minutes is normal on a Pi
+// with many lists, so it needs its own ceiling well past the interactive-search
+// one. Note the request cannot be cancelled: aborting only stops us reading the
+// response, gravity keeps running server-side — which is why the caller treats
+// a timeout as "still running" rather than as a failure, and confirms via
+// stats/summary's gravity.last_update instead.
+export const GRAVITY_UPDATE_TIMEOUT = 300_000;
 
 export const DASHBOARD_WIDGET_IDS = [
   "server-stats",
@@ -268,6 +303,8 @@ export const DASHBOARD_WIDGET_IDS = [
   "unraid-array",
   "autobrr-stats",
   "cleanuparr-stats",
+  "pihole-status",
+  "pihole-top-blocked",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

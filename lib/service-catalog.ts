@@ -18,7 +18,8 @@ export type ServiceCategory =
   | "indexers"
   | "media-servers"
   | "requests"
-  | "monitoring";
+  | "monitoring"
+  | "network";
 
 /**
  * The shape of the credential FORM and of the stored ServiceSecrets.
@@ -252,6 +253,23 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     apiKeyHint: "Settings > Management Access",
     authShape: "apiKey",
   },
+
+  // --- Network ---
+  // Pi-hole has ONE web password and no username at all (FTL's POST /api/auth
+  // body is {password}), so passwordOnly — the Deluge shape. NOT httpAuth: the
+  // password is posted to a login endpoint and comes back as an X-FTL-SID
+  // session token, never as HTTP Basic. See the ServiceAuthShape warning above.
+  pihole: {
+    category: "network",
+    tagline: "Network-wide ad blocking",
+    keywords: ["dns", "adblock", "ads", "blocklist", "gravity", "ftl", "pi hole"],
+    authShape: "passwordOnly",
+    // An application password is the right credential: it is the documented way
+    // to authenticate an app, and it is the only way in when 2FA/TOTP is on
+    // (FTL skips the TOTP check for app passwords). Creating one invalidates
+    // every active session, so it belongs before configuring, not after.
+    apiKeyHint: "Settings > Web interface / API > Configure app password",
+  },
 };
 
 /** Display order of the category sections on the browse screen. */
@@ -262,6 +280,7 @@ export const CATEGORY_ORDER: ServiceCategory[] = [
   "media-servers",
   "requests",
   "monitoring",
+  "network",
 ];
 
 /**
@@ -277,6 +296,7 @@ export const SERVICE_CATEGORY_LABELS: Record<ServiceCategory, string> = {
   "media-servers": "Media servers",
   requests: "Requests and automation",
   monitoring: "Monitoring",
+  network: "Network",
 };
 
 /** Service kinds in a category, in canonical SERVICE_IDS order. */

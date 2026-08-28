@@ -186,8 +186,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         navidrome instance at import time, so older exports just need the
  *         version field bumped.
+ *   v49 — added the pihole service entry (#335). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         pihole instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 48;
+export const CURRENT_CONFIG_VERSION = 49;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -727,6 +731,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v47 → v48: added the navidrome service entry (#336). Pure version stamp —
   // defaultInstances() backfills a disabled navidrome instance at import.
   47: (payload) => ({ ...payload, version: 48 }),
+  // v48 → v49: added the pihole service entry (#335). Pure version stamp —
+  // defaultInstances() backfills a disabled pihole instance at import.
+  48: (payload) => ({ ...payload, version: 49 }),
 };
 
 /**
