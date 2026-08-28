@@ -33,6 +33,7 @@ export const SERVICE_IDS = [
   "unraid",
   "autobrr",
   "cleanuparr",
+  "pihole",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -297,6 +298,8 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   autobrr: "/api",
   // Cleanuparr's anonymous /health is root-mounted; API paths self-prefix /api.
   cleanuparr: "",
+  // Pi-hole v6's REST API, served by FTL itself.
+  pihole: "/api",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -356,6 +359,11 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   autobrr: "/healthz/liveness",
   // Cleanuparr's /health is anonymous and root-mounted (api base is "").
   cleanuparr: "/health",
+  // Pi-hole's /api/info/login is registered auth-not-required in FTL, which is
+  // exactly what a reachability poll wants — and why the backend needs none of
+  // the app's session handling. It cannot validate the password, but the
+  // backend never needs to: it only asks whether the host is up.
+  pihole: "/info/login",
 };
 
 // Notification category labels sent to the device as `data.type`

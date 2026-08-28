@@ -144,7 +144,11 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   signal?: AbortSignal;
 }
 
-const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token"];
+// "sid" is Pi-hole's session id. We always send it as the X-FTL-SID header and
+// never as a query param, but FTL accepts ?sid= too — so redact it here as a
+// belt-and-braces, because this URL ends up in HttpError.message, in every
+// error toast, and in formatErrorForCopy's clipboard payload.
+const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token", "sid"];
 
 export function redactUrl(url: string): string {
   try {

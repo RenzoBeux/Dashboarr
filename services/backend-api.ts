@@ -190,6 +190,12 @@ export function pushConfigSnapshot(): Promise<void> {
 
   const instances = SERVICE_IDS.flatMap((kind) => {
     const list = configState.serviceInstances[kind] ?? [];
+    // Pi-hole's password is not a read-only stats key: it grants
+    // PUT /api/config/*, i.e. rewriting the DNS of the whole household. There
+    // is no Pi-hole poller on the backend, so sending it would copy that
+    // credential into a second host's SQLite for nothing. Send the instance so
+    // the backend's offline poller still watches it, but never the secret.
+    const shareSecrets = kind !== "pihole";
     return list.map((inst) => {
       const secrets = configState.instanceSecrets[inst.id] ?? {
         apiKey: "",
@@ -204,9 +210,9 @@ export function pushConfigSnapshot(): Promise<void> {
         localUrl: inst.localUrl,
         remoteUrl: inst.remoteUrl,
         useRemote: inst.useRemote,
-        apiKey: secrets.apiKey || undefined,
-        username: secrets.username || undefined,
-        password: secrets.password || undefined,
+        apiKey: shareSecrets ? secrets.apiKey || undefined : undefined,
+        username: shareSecrets ? secrets.username || undefined : undefined,
+        password: shareSecrets ? secrets.password || undefined : undefined,
       };
     });
   });

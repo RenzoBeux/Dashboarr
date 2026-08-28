@@ -2701,6 +2701,228 @@ const DEMO_NAVIDROME_LOGIN = {
   token: "demo-jwt",
 };
 
+// --- Pi-hole ---------------------------------------------------------------
+// Domains are deliberately recognisable-but-generic tracker names: this screen
+// is the one people screenshot, and it must not look like a real household's
+// browsing history.
+
+const DEMO_PIHOLE_SUMMARY = {
+  queries: {
+    total: 48213,
+    blocked: 9764,
+    percent_blocked: 20.3,
+    unique_domains: 1842,
+    forwarded: 24310,
+    cached: 14139,
+    frequency: 0.56,
+    types: { A: 26104, AAAA: 14882, HTTPS: 4210, PTR: 1834, SRV: 612, TXT: 571 },
+  },
+  clients: { active: 23, total: 41 },
+  gravity: {
+    domains_being_blocked: 219727,
+    // Fixed timestamp so the fixture is deterministic; the UI renders it as a
+    // relative age, which reads as "a while ago" rather than a wrong date.
+    last_update: 1756300000,
+  },
+};
+
+const DEMO_PIHOLE_BLOCKING = { blocking: "enabled" as const, timer: null };
+
+/**
+ * 24h of 10-minute buckets (144 points), shaped like a real day: quiet
+ * overnight, a morning ramp, an evening peak. Generated rather than written out
+ * so the chart has something honest to downsample, and fully deterministic —
+ * no Math.random, so demo screenshots are reproducible.
+ */
+const DEMO_PIHOLE_HISTORY = (() => {
+  const BUCKETS = 144;
+  const STEP_S = 600;
+  // Anchored to a fixed instant for determinism; the chart labels off each
+  // bucket's own timestamp, so the absolute date never shows.
+  const startS = 1756300000 - BUCKETS * STEP_S;
+  const history = [];
+  for (let i = 0; i < BUCKETS; i++) {
+    const hour = ((i * 10) / 60) % 24;
+    // Two humps: ~09:00 and ~21:00, on a low overnight floor.
+    const shape =
+      0.18 +
+      0.55 * Math.exp(-(((hour - 9) / 3.2) ** 2)) +
+      0.85 * Math.exp(-(((hour - 21) / 2.6) ** 2));
+    // Small deterministic wobble so the bars are not a smooth curve.
+    const wobble = 1 + 0.12 * Math.sin(i * 1.7);
+    const total = Math.round(420 * shape * wobble);
+    const blocked = Math.round(total * (0.17 + 0.06 * Math.sin(i / 9)));
+    const cached = Math.round((total - blocked) * 0.37);
+    history.push({
+      timestamp: startS + i * STEP_S,
+      total,
+      cached,
+      blocked,
+      forwarded: total - blocked - cached,
+    });
+  }
+  return { history };
+})();
+
+const DEMO_PIHOLE_TOP_BLOCKED = {
+  domains: [
+    { domain: "ads.example-network.com", count: 1842 },
+    { domain: "telemetry.example-app.net", count: 1317 },
+    { domain: "metrics.example-cdn.io", count: 964 },
+    { domain: "track.example-analytics.com", count: 758 },
+    { domain: "beacon.example-media.net", count: 611 },
+    { domain: "pixel.example-social.com", count: 508 },
+    { domain: "collect.example-sdk.io", count: 402 },
+    { domain: "events.example-mobile.net", count: 351 },
+    { domain: "logs.example-device.com", count: 288 },
+    { domain: "reporting.example-tv.net", count: 214 },
+  ],
+  total_queries: 48213,
+  blocked_queries: 9764,
+};
+
+const DEMO_PIHOLE_TOP_PERMITTED = {
+  domains: [
+    { domain: "example-video.com", count: 3921 },
+    { domain: "cdn.example-static.net", count: 2874 },
+    { domain: "api.example-service.io", count: 2103 },
+    { domain: "updates.example-os.com", count: 1655 },
+    { domain: "mail.example-host.net", count: 1288 },
+    { domain: "sync.example-cloud.io", count: 977 },
+    { domain: "images.example-shop.com", count: 812 },
+    { domain: "time.example-ntp.org", count: 640 },
+    { domain: "chat.example-messenger.net", count: 519 },
+    { domain: "maps.example-nav.com", count: 431 },
+  ],
+  total_queries: 48213,
+  blocked_queries: 9764,
+};
+
+const DEMO_PIHOLE_TOP_CLIENTS = {
+  clients: [
+    { ip: "192.168.1.24", name: "living-room-tv.lan", count: 11204 },
+    { ip: "192.168.1.11", name: "desktop.lan", count: 9873 },
+    { ip: "192.168.1.42", name: "phone.lan", count: 7311 },
+    { ip: "192.168.1.7", name: "nas.lan", count: 5622 },
+    { ip: "192.168.1.63", name: null, count: 4180 },
+    { ip: "192.168.1.90", name: "tablet.lan", count: 3044 },
+    { ip: "127.0.0.1", name: "localhost", count: 1877 },
+  ],
+  total_queries: 48213,
+  blocked_queries: 9764,
+};
+
+const DEMO_PIHOLE_UPSTREAMS = {
+  upstreams: [
+    { ip: "127.0.0.1", name: "localhost", port: -1, count: 14139, statistics: { response: 0.0002, variance: 0.0001 } },
+    { ip: "1.1.1.1", name: "one.one.one.one", port: 53, count: 18422, statistics: { response: 0.0241, variance: 0.0106 } },
+    { ip: "9.9.9.9", name: "dns.quad9.net", port: 53, count: 5888, statistics: { response: 0.0318, variance: 0.0154 } },
+  ],
+  forwarded_queries: 24310,
+  total_queries: 48213,
+};
+
+/**
+ * The live query log. Deterministic, and every status string below is a real
+ * FTL status — lib/demo-data.pihole.test.ts asserts that against the classifier
+ * so a typo cannot make the demo render everything as "other".
+ */
+const DEMO_PIHOLE_QUERIES = (() => {
+  const rows: {
+    domain: string;
+    status: string;
+    type: string;
+    client: { ip: string; name: string | null };
+    reply: { type: string | null; time: number };
+    upstream: string | null;
+    cname: string | null;
+    dnssec: string | null;
+  }[] = [
+    { domain: "ads.example-network.com", status: "GRAVITY", type: "A", client: { ip: "192.168.1.42", name: "phone.lan" }, reply: { type: "NULL", time: 0.1 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "api.example-service.io", status: "FORWARDED", type: "A", client: { ip: "192.168.1.11", name: "desktop.lan" }, reply: { type: "IP", time: 21.4 }, upstream: "1.1.1.1#53", cname: null, dnssec: "SECURE" },
+    { domain: "cdn.example-static.net", status: "CACHE", type: "AAAA", client: { ip: "192.168.1.24", name: "living-room-tv.lan" }, reply: { type: "IP", time: 0.3 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "telemetry.example-app.net", status: "REGEX", type: "A", client: { ip: "192.168.1.63", name: null }, reply: { type: "NXDOMAIN", time: 0.2 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "example-video.com", status: "FORWARDED", type: "HTTPS", client: { ip: "192.168.1.24", name: "living-room-tv.lan" }, reply: { type: "RRNAME", time: 33.8 }, upstream: "1.1.1.1#53", cname: null, dnssec: "SECURE" },
+    { domain: "metrics.example-cdn.io", status: "GRAVITY_CNAME", type: "A", client: { ip: "192.168.1.90", name: "tablet.lan" }, reply: { type: "NULL", time: 0.4 }, upstream: null, cname: "collect.example-sdk.io", dnssec: "UNKNOWN" },
+    { domain: "nas.lan", status: "CACHE", type: "A", client: { ip: "192.168.1.11", name: "desktop.lan" }, reply: { type: "IP", time: 0.1 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "updates.example-os.com", status: "FORWARDED", type: "A", client: { ip: "192.168.1.11", name: "desktop.lan" }, reply: { type: "IP", time: 48.2 }, upstream: "9.9.9.9#53", cname: null, dnssec: "INSECURE" },
+    { domain: "track.example-analytics.com", status: "DENYLIST", type: "A", client: { ip: "192.168.1.42", name: "phone.lan" }, reply: { type: "NULL", time: 0.2 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "time.example-ntp.org", status: "CACHE_STALE", type: "A", client: { ip: "192.168.1.7", name: "nas.lan" }, reply: { type: "IP", time: 0.5 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "sync.example-cloud.io", status: "FORWARDED", type: "AAAA", client: { ip: "192.168.1.7", name: "nas.lan" }, reply: { type: "IP", time: 27.1 }, upstream: "1.1.1.1#53", cname: null, dnssec: "SECURE" },
+    { domain: "beacon.example-media.net", status: "GRAVITY", type: "A", client: { ip: "192.168.1.24", name: "living-room-tv.lan" }, reply: { type: "NULL", time: 0.1 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+  ];
+  // 120 rows: enough that the log paginates (page size 100) and the second page
+  // is short, which is what exercises getNextPageParam's stop conditions.
+  const TOTAL = 120;
+  const newestId = 175881;
+  const newestTimeS = 1756300000;
+  return Array.from({ length: TOTAL }, (_, i) => {
+    const row = rows[i % rows.length]!;
+    return {
+      id: newestId - i,
+      time: newestTimeS - i * 7,
+      type: row.type,
+      domain: row.domain,
+      cname: row.cname,
+      status: row.status,
+      client: row.client,
+      dnssec: row.dnssec,
+      reply: row.reply,
+      list_id: null,
+      upstream: row.upstream,
+      ede: { code: 0, text: null },
+    };
+  });
+})();
+
+const DEMO_PIHOLE_CNAME_RECORDS = {
+  config: {
+    dns: {
+      cnameRecords: [
+        "nas.lan,server.lan",
+        "*.dev.lan,workstation.lan",
+        "hourly.example-internal.com,example-internal.com,3600",
+      ],
+    },
+  },
+};
+
+const DEMO_PIHOLE_GRAVITY_LOG = [
+  "  [i] Neutrino emissions detected...",
+  "  [✓] Pulling blocklist source list into range",
+  "  [i] Target: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+  "  [✓] Status: Retrieval successful",
+  "  [i] Imported 172502 domains",
+  "  [i] Target: https://v.firebog.net/hosts/AdguardDNS.txt",
+  "  [✓] Status: No changes detected",
+  "  [i] Imported 47225 domains",
+  "  [✓] Creating new gravity databases",
+  "  [✓] Swapping databases",
+  "  [i] Number of gravity domains: 219,727 (215,440 unique domains)",
+  "  [✓] Cleaning up stray matter",
+  "  [✓] Pi-hole blocking is enabled",
+].join("\n");
+
+const DEMO_PIHOLE_PADD = {
+  blocking: "enabled",
+  gravity_size: 219727,
+  active_clients: 23,
+  recent_blocked: "ads.example-network.com",
+  top_domain: "example-video.com",
+  top_blocked: "ads.example-network.com",
+  top_client: "living-room-tv.lan",
+  queries: { total: 48213, blocked: 9764, percent_blocked: 20.3, frequency: 0.56 },
+  node_name: "pihole",
+};
+
+const DEMO_PIHOLE_VERSION = {
+  version: {
+    core: { local: { branch: "master", version: "v6.1.4", hash: "955e36a9" } },
+    web: { local: { branch: "master", version: "v6.2.1", hash: "1b2c3d4e" } },
+    ftl: { local: { branch: "master", version: "v6.1.3", hash: "aa11bb22" } },
+  },
+};
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -3149,6 +3371,98 @@ export function getDemoResponse(
           pageSize,
           totalCount: filtered.length,
           totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+        };
+      }
+      return undefined;
+    }
+    case "pihole": {
+      // The CNAME add/delete paths carry the record in the URL, so they must be
+      // matched BEFORE the bare element read — otherwise a PUT falls through
+      // and hands the caller the whole record list back as its void result.
+      // (DELETE is already short-circuited above; PUT is not.)
+      if (normalized.startsWith("/config/dns/cnameRecords/")) return undefined;
+      if (normalized === "/config/dns/cnameRecords") return DEMO_PIHOLE_CNAME_RECORDS;
+
+      if (normalized === "/dns/blocking") {
+        // Echo the requested state so the demo toggle visibly flips, exactly as
+        // the real endpoint does. Reads fall through to the resting state.
+        if (method === "POST" && body) {
+          try {
+            const parsed = JSON.parse(body) as {
+              blocking?: boolean;
+              timer?: number | null;
+            };
+            return {
+              blocking: parsed.blocking === false ? "disabled" : "enabled",
+              timer: parsed.timer ?? null,
+            };
+          } catch {
+            // fall through to the resting state
+          }
+        }
+        return DEMO_PIHOLE_BLOCKING;
+      }
+
+      if (normalized === "/action/gravity") return DEMO_PIHOLE_GRAVITY_LOG;
+      if (normalized === "/stats/summary") return DEMO_PIHOLE_SUMMARY;
+      if (normalized === "/stats/upstreams") return DEMO_PIHOLE_UPSTREAMS;
+      if (normalized === "/history") return DEMO_PIHOLE_HISTORY;
+      if (normalized === "/padd") return DEMO_PIHOLE_PADD;
+      if (normalized === "/info/version") return DEMO_PIHOLE_VERSION;
+      if (normalized === "/info/login") return { https_port: 443, dns: true };
+      if (normalized === "/auth") return { session: { valid: true, sid: null, totp: false } };
+
+      if (normalized === "/stats/top_domains") {
+        return params?.blocked === true || params?.blocked === "true"
+          ? DEMO_PIHOLE_TOP_BLOCKED
+          : DEMO_PIHOLE_TOP_PERMITTED;
+      }
+      if (normalized === "/stats/top_clients") return DEMO_PIHOLE_TOP_CLIENTS;
+      if (normalized === "/stats/recent_blocked") {
+        const count = params?.count != null ? Number(params.count) : 1;
+        return { blocked: DEMO_PIHOLE_TOP_BLOCKED.domains.slice(0, count).map((d) => d.domain) };
+      }
+
+      if (normalized === "/queries/suggestions") {
+        return {
+          suggestions: {
+            domain: DEMO_PIHOLE_TOP_BLOCKED.domains.slice(0, 5).map((d) => d.domain),
+            client_ip: DEMO_PIHOLE_TOP_CLIENTS.clients.map((c) => c.ip),
+            client_name: DEMO_PIHOLE_TOP_CLIENTS.clients
+              .map((c) => c.name)
+              .filter((n): n is string => !!n),
+            upstream: ["1.1.1.1#53", "9.9.9.9#53"],
+            type: ["A", "AAAA", "HTTPS", "PTR"],
+            status: ["GRAVITY", "FORWARDED", "CACHE", "REGEX", "DENYLIST"],
+            reply: ["IP", "NULL", "NXDOMAIN", "RRNAME"],
+            dnssec: ["SECURE", "INSECURE", "UNKNOWN"],
+          },
+        };
+      }
+
+      if (normalized === "/queries") {
+        // Real cursor pagination, so the infinite list's stop conditions get
+        // exercised in demo mode rather than only against a live Pi-hole.
+        const length = params?.length != null ? Number(params.length) : 100;
+        const cursor = params?.cursor != null ? Number(params.cursor) : undefined;
+        const domain = typeof params?.domain === "string" ? params.domain : undefined;
+
+        let rows = DEMO_PIHOLE_QUERIES;
+        if (domain) {
+          const needle = domain.replace(/\*/g, "").toLowerCase();
+          rows = rows.filter((q) => q.domain.toLowerCase().includes(needle));
+        }
+        const start = cursor != null ? rows.findIndex((q) => q.id === cursor) : 0;
+        const from = start < 0 ? rows.length : start;
+        const page = rows.slice(from, from + length);
+        const next = rows[from + length];
+        return {
+          queries: page,
+          // null on the last page, which is one of the three stop conditions.
+          cursor: next ? next.id : null,
+          recordsTotal: DEMO_PIHOLE_QUERIES.length,
+          recordsFiltered: rows.length,
+          earliest_timestamp: DEMO_PIHOLE_QUERIES.at(-1)?.time,
         };
       }
       return undefined;
