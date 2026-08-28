@@ -29,6 +29,10 @@ interface ShareLimitsSheetProps {
   visible: boolean;
   onClose: () => void;
   hash: string;
+  // Server the torrent came from. Threaded from the detail route so a torrent
+  // opened from the multi-instance dashboard widget writes its limits to that
+  // server rather than the active one.
+  instanceId?: string;
   // Current per-torrent limits (ratio_limit / seeding_time_limit). The seeding
   // limit is in minutes.
   ratioLimit: number;
@@ -54,10 +58,11 @@ export function ShareLimitsSheet({
   visible,
   onClose,
   hash,
+  instanceId,
   ratioLimit,
   seedingTimeLimit,
 }: ShareLimitsSheetProps) {
-  const setShare = useSetShareLimits();
+  const setShare = useSetShareLimits(instanceId);
 
   const [mode, setMode] = useState<ShareMode>("global");
   const [ratio, setRatio] = useState("");

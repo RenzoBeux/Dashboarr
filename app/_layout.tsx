@@ -91,6 +91,23 @@ function asInstanceId(value: unknown): string | null {
   return typeof value === "string" && INSTANCE_ID.test(value) ? value : null;
 }
 
+// Detail route for a torrent-client alert. Every torrent payload names its
+// source instance, so pin it rather than letting the detail screen fall back to
+// whichever instance of that kind is active: activateDashboardForInstance above
+// only switches workspace, and one workspace can hold several servers of the
+// same kind. The path segment is a literal per call site, never derived from
+// the payload.
+function torrentDetailRoute(
+  base: "torrent" | "transmission" | "deluge",
+  hash: string,
+  rawInstanceId: unknown,
+): string {
+  const source = asInstanceId(rawInstanceId);
+  return source
+    ? `/${base}/${hash}?instanceId=${encodeURIComponent(source)}`
+    : `/${base}/${hash}`;
+}
+
 // NZBGet's NZBID is a positive integer; accept either number or string forms
 // from the notification payload and normalize to string for the route.
 function asNzbgetId(value: unknown): string | null {
@@ -128,28 +145,19 @@ function NotificationRouter() {
         }
         case "torrent": {
           const hash = asTorrentHash(data.hash);
-          if (hash) router.push(`/torrent/${hash}`);
+          if (hash) router.push(torrentDetailRoute("torrent", hash, data.instanceId));
           break;
         }
         case "transmission": {
           const hash = asTorrentHash(data.hash);
-          if (hash) router.push(`/transmission/${hash}`);
+          if (hash) {
+            router.push(torrentDetailRoute("transmission", hash, data.instanceId));
+          }
           break;
         }
         case "deluge": {
           const hash = asTorrentHash(data.hash);
-          // The payload names the source instance, so pin it rather than
-          // letting the screen fall back to whichever Deluge is active —
-          // activateDashboardForInstance above only switches workspace, and a
-          // workspace can hold several Deluge servers.
-          const source = asInstanceId(data.instanceId);
-          if (hash) {
-            router.push(
-              source
-                ? `/deluge/${hash}?instanceId=${encodeURIComponent(source)}`
-                : `/deluge/${hash}`,
-            );
-          }
+          if (hash) router.push(torrentDetailRoute("deluge", hash, data.instanceId));
           break;
         }
         case "sabnzbd": {

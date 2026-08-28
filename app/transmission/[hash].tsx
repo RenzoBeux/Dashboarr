@@ -34,12 +34,21 @@ import { formatBytes, formatSpeed, formatEta } from "@/lib/utils";
 const ETA_UNKNOWN = 8640000;
 
 export default function TransmissionDetailScreen() {
-  const { hash } = useLocalSearchParams<{ hash: string }>();
-  const { data: detail, isLoading, error } = useTransmissionTorrent(hash);
-  const pauseMutation = transmissionTorrentAdapter.usePauseTorrent();
-  const resumeMutation = transmissionTorrentAdapter.useResumeTorrent();
-  const deleteMutation = transmissionTorrentAdapter.useDeleteTorrent();
-  const reannounceMutation = useReannounceTransmissionTorrent();
+  // `instanceId` is set when the row was opened from the dashboard Downloads
+  // widget (which aggregates every instance of this kind) or from a completion
+  // notification. Every query and mutation below is bound to it, so a torrent
+  // from a non-active server still loads and its actions hit that server.
+  // Absent — e.g. the Downloads tab, where the list already follows the active
+  // instance — the hooks fall back to the active one as before.
+  const { hash, instanceId } = useLocalSearchParams<{
+    hash: string;
+    instanceId?: string;
+  }>();
+  const { data: detail, isLoading, error } = useTransmissionTorrent(hash, instanceId);
+  const pauseMutation = transmissionTorrentAdapter.usePauseTorrent(instanceId);
+  const resumeMutation = transmissionTorrentAdapter.useResumeTorrent(instanceId);
+  const deleteMutation = transmissionTorrentAdapter.useDeleteTorrent(instanceId);
+  const reannounceMutation = useReannounceTransmissionTorrent(instanceId);
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
   const flow = useModalFlow<{ deleteSheet: void }>();
 
@@ -234,6 +243,7 @@ export default function TransmissionDetailScreen() {
         visible={shareLimitsOpen}
         onClose={() => setShareLimitsOpen(false)}
         hash={hash}
+        instanceId={instanceId}
         ratioMode={detail.seedRatioMode}
         ratioLimit={detail.seedRatioLimit}
         idleMode={detail.seedIdleMode}
