@@ -23,6 +23,7 @@ export const SERVICE_IDS = [
   "jellystat",
   "prowlarr",
   "jackett",
+  "nzbhydra2",
   "plex",
   "jellyfin",
   "emby",
@@ -280,6 +281,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   jellystat: "",
   prowlarr: "/api/v1",
   jackett: "/api/v2.0",
+  nzbhydra2: "",
   plex: "",
   jellyfin: "",
   emby: "",
@@ -328,6 +330,10 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // to this Torznab meta endpoint — the only cheap apikey-validated GET
   // Jackett has (its admin REST API wants the admin-password cookie).
   jackett: "/indexers/all/results/torznab/api",
+  // Anonymous liveness probe (permitAll in NZBHydra2's SecurityConfig).
+  // It can't validate the key, which is fine — offline/online is all the
+  // health poller asks. apiBasePath is empty so this is root-relative.
+  nzbhydra2: "/actuator/health/ping",
   plex: "/identity",
   jellyfin: "/System/Info/Public",
   emby: "/System/Info/Public",

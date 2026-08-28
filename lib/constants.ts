@@ -15,6 +15,7 @@ export const SERVICE_IDS = [
   "jellystat",
   "prowlarr",
   "jackett",
+  "nzbhydra2",
   "plex",
   "jellyfin",
   "emby",
@@ -149,6 +150,20 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/api/v2.0",
     pingPath: "/indexers/all/results/torznab/api",
   },
+  // NZBHydra2's anonymous liveness probe (/actuator/health/ping, permitAll in
+  // its SecurityConfig) is ROOT-mounted while everything we call lives under
+  // /api — so apiBasePath is empty and every path in
+  // services/nzbhydra2-api.ts carries its own /api prefix (the Cleanuparr /
+  // JellyStat pattern). Auth is one install-wide key travelling as an `apikey`
+  // QUERY PARAM (injected in lib/http-client.ts alongside Jackett's), plus a
+  // copy inside the JSON body of the four POST stats/history endpoints.
+  // The ping can't validate the key, so the connection probe uses t=caps.
+  nzbhydra2: {
+    name: "NZBHydra2",
+    defaultPort: 5076,
+    apiBasePath: "",
+    pingPath: "/actuator/health/ping",
+  },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
   jellyfin: { name: "Jellyfin", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
   // Emby shares Jellyfin's API surface (same default port, root API path, and
@@ -229,6 +244,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "emby-now-playing",
   "prowlarr-stats",
   "jackett-indexers",
+  "nzbhydra2-indexers",
   "bazarr-wanted",
   "wol-devices",
   "disk-space",

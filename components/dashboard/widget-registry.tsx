@@ -51,6 +51,7 @@ import { EmbyNowPlayingCard } from "@/components/dashboard/emby-now-playing-card
 import { CombinedNowPlayingCard } from "@/components/dashboard/combined-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { JackettCard } from "@/components/dashboard/jackett-card";
+import { Nzbhydra2Card } from "@/components/dashboard/nzbhydra2-card";
 import { ArrHealthCard } from "@/components/dashboard/arr-health-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
@@ -167,6 +168,11 @@ import {
   JACKETT_INDEXERS_DEFAULT_SETTINGS,
   type JackettIndexersSettingsValue,
 } from "@/components/dashboard/widget-settings/jackett-indexers-settings";
+import {
+  Nzbhydra2IndexersSettings,
+  NZBHYDRA2_INDEXERS_DEFAULT_SETTINGS,
+  type Nzbhydra2IndexersSettingsValue,
+} from "@/components/dashboard/widget-settings/nzbhydra2-indexers-settings";
 import {
   BazarrWantedSettings,
   BAZARR_WANTED_DEFAULT_SETTINGS,
@@ -496,6 +502,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: JackettIndexersSettings,
     defaultSettings: JACKETT_INDEXERS_DEFAULT_SETTINGS,
   },
+  "nzbhydra2-indexers": {
+    id: "nzbhydra2-indexers",
+    label: "NZBHydra2 Indexers",
+    description: "Indexer state and API hit limits from NZBHydra2",
+    icon: Radar,
+    service: "nzbhydra2",
+    component: Nzbhydra2Card,
+    settingsComponent: Nzbhydra2IndexersSettings,
+    defaultSettings: NZBHYDRA2_INDEXERS_DEFAULT_SETTINGS,
+  },
   "bazarr-wanted": {
     id: "bazarr-wanted",
     label: "Bazarr Wanted",
@@ -598,6 +614,7 @@ export type {
   RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
   JackettIndexersSettingsValue,
+  Nzbhydra2IndexersSettingsValue,
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
   ArrHealthSettingsValue,

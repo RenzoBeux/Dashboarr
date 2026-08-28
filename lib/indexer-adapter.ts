@@ -57,6 +57,12 @@ export interface IndexerSearchState {
 export interface IndexerSearchAdapter {
   serviceId: ServiceId;
   displayName: string;
+  // Optional caveat shown under the shared "No results" empty state. Only
+  // NZBHydra2 sets one: with its `searching.wrapApiErrors` option on, an
+  // internal failure is rendered as a well-formed EMPTY result, byte-identical
+  // to a search that genuinely matched nothing. No heuristic can separate the
+  // two, so the copy says so rather than the code guessing.
+  emptyResultsHint?: string;
   // Wraps the kind-specific search hook and maps results to UnifiedRelease[].
   useSearch: (
     query: string,

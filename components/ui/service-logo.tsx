@@ -45,6 +45,9 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   // Official Jackett jacket glyph, recolored white for the dark UI (upstream
   // ships it black-on-transparent).
   jackett: require("@/assets/services/jackett.png"),
+  // Official NZBHydra2 mark (GPL-3.0, theotherp/nzbhydra2
+  // core/ui-src/img/logo.png), downscaled to 256px to match its siblings.
+  nzbhydra2: require("@/assets/services/nzbhydra2.png"),
   tautulli: require("@/assets/services/tautulli.png"),
   tracearr: require("@/assets/services/tracearr.png"),
   jellystat: require("@/assets/services/jellystat.png"),

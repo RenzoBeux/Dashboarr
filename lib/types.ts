@@ -2618,6 +2618,281 @@ export interface CleanuparrPaginatedResult<T> {
   totalPages: number;
 }
 
+// --- NZBHydra2 Types ---
+//
+// Wire shapes read off theotherp/nzbhydra2@master. There is no OpenAPI spec
+// (springdoc is commented out in core/pom.xml) and the GitHub wiki is stale in
+// several places, so these come from the Java DTOs; Jackson serializes them
+// camelCase.
+
+// NZBHydra2 emits THREE shapes for the same timestamp field: a raw number
+// (epoch SECONDS), a numeric string, and an ISO-8601 string — its own Angular
+// UI parses all three (parseAppTimestamp in indexer-statuses-controller.js).
+// Never read one directly; run it through parseHydraTimestamp() in
+// lib/nzbhydra2-normalize.ts.
+export type Nzbhydra2Timestamp = number | string | null;
+
+// GET /api?t=caps&o=json. Only the parts we render are typed.
+// NOTE the "@attributes" key: every newznab JSON attribute holder upstream
+// carries @JsonProperty("@attributes"), NOT "attributes". Reading `.attributes`
+// type-checks against a hand-written interface and fails silently at runtime.
+export interface Nzbhydra2Caps {
+  server?: {
+    "@attributes"?: {
+      // The NZBHydra2 version string (UpdateManager.getCurrentVersionString()).
+      appversion?: string;
+      // The newznab API version, not the app version.
+      version?: string;
+      title?: string;
+      url?: string;
+      image?: string;
+      email?: string;
+    };
+  };
+  limits?: { "@attributes"?: Record<string, string> };
+  searching?: Record<string, unknown>;
+  categories?: { category?: unknown[] };
+}
+
+// The newznab error envelope. Every /api failure — wrong key included — comes
+// back as HTTP 200 carrying this, because ExternalApi's @ExceptionHandler
+// returns a NewznabXmlError whose default status is 200.
+export interface Nzbhydra2ApiError {
+  code?: string;
+  description?: string;
+}
+
+export type Nzbhydra2IndexerState =
+  | "ENABLED"
+  | "DISABLED_SYSTEM_TEMPORARY"
+  | "DISABLED_SYSTEM"
+  | "DISABLED_USER";
+
+// POST /api/stats/indexers answers with a BARE ARRAY of these. There is no
+// envelope and no numeric id, so `indexer` (the display name) is the identity.
+export interface Nzbhydra2IndexerStatus {
+  indexer: string;
+  state: Nzbhydra2IndexerState | string;
+  // Consecutive-failure backoff level.
+  level: number;
+  disabledUntil: Nzbhydra2Timestamp;
+  lastError: string | null;
+  apiResetTime: Nzbhydra2Timestamp;
+  downloadResetTime: Nzbhydra2Timestamp;
+  apiHits: number | null;
+  apiHitLimit: number | null;
+  downloadHits: number | null;
+  downloadHitLimit: number | null;
+  // "YYYY-MM-DD" or the literal string "Lifetime".
+  vipExpirationDate: string | null;
+}
+
+// POST /api/stats body is { apikey, request: StatsRequest }. ALWAYS send an
+// explicit request: omit it and upstream's no-arg ApiStatsRequest constructor
+// turns nearly every flag on, and the whole calculation is aborted at 30s.
+// Fields left undefined stay false (StatsRequest's own no-arg ctor). `after`
+// and `before` are Instants — send ISO-8601.
+export interface Nzbhydra2StatsRequest {
+  after?: string;
+  before?: string;
+  includeDisabled?: boolean;
+  indexerApiAccessStats?: boolean;
+  // NAMING MISMATCH: this REQUEST flag populates the `indexerScores` RESPONSE
+  // field, not one named after the flag.
+  avgIndexerUniquenessScore?: boolean;
+  avgResponseTimes?: boolean;
+  indexerDownloadShares?: boolean;
+  downloadsPerDayOfWeek?: boolean;
+  downloadsPerHourOfDay?: boolean;
+  searchesPerDayOfWeek?: boolean;
+  searchesPerHourOfDay?: boolean;
+  downloadsPerAgeStats?: boolean;
+  successfulDownloadsPerIndexer?: boolean;
+  downloadSharesPerUser?: boolean;
+  downloadSharesPerIp?: boolean;
+  searchSharesPerUser?: boolean;
+  searchSharesPerIp?: boolean;
+  userAgentSearchShares?: boolean;
+  userAgentDownloadShares?: boolean;
+}
+
+export interface Nzbhydra2IndexerApiAccessStat {
+  indexerName: string;
+  percentSuccessful: number | null;
+  percentConnectionError: number | null;
+  averageAccessesPerDay: number | null;
+}
+
+export interface Nzbhydra2IndexerScore {
+  indexerName: string;
+  averageUniquenessScore: number | null;
+  involvedSearches: number;
+  uniqueDownloads: number;
+}
+
+// Note the field name on this one only: `indexer`, not `indexerName`.
+export interface Nzbhydra2AvgResponseTime {
+  indexer: string;
+  avgResponseTime: number;
+  delta: number;
+}
+
+export interface Nzbhydra2DownloadShare {
+  indexerName: string;
+  total: number;
+  share: number;
+}
+
+export interface Nzbhydra2SuccessfulDownloadsPerIndexer {
+  indexerName: string;
+  countAll: number;
+  countSuccessful: number;
+  countError: number;
+  percentSuccessful: number | null;
+}
+
+// Every array is optional AND nullable: a section is only populated when its
+// request flag was set, and upstream leaves the rest null.
+export interface Nzbhydra2StatsResponse {
+  after?: Nzbhydra2Timestamp;
+  before?: Nzbhydra2Timestamp;
+  indexerApiAccessStats?: Nzbhydra2IndexerApiAccessStat[] | null;
+  // Populated by the avgIndexerUniquenessScore request flag.
+  indexerScores?: Nzbhydra2IndexerScore[] | null;
+  avgResponseTimes?: Nzbhydra2AvgResponseTime[] | null;
+  indexerDownloadShares?: Nzbhydra2DownloadShare[] | null;
+  successfulDownloadsPerIndexer?: Nzbhydra2SuccessfulDownloadsPerIndexer[] | null;
+  // Always populated, whatever flags were requested.
+  numberOfConfiguredIndexers?: number;
+  numberOfEnabledIndexers?: number;
+}
+
+// POST /api/history/{searches,downloads} body is { apikey, request }.
+export interface Nzbhydra2HistoryRequest {
+  distinct: boolean;
+  onlyCurrentUser: boolean;
+  // ONE-based. Don't confuse it with Nzbhydra2HistoryPage.number, which is
+  // zero-based.
+  page: number;
+  limit: number;
+  filterModel: Record<string, unknown>;
+  // sortMode 1 is ASC; upstream treats EVERY other value (0 included) as DESC.
+  // sortModel is mandatory — History.getHistory dereferences it unconditionally
+  // one line after its own null guard, so omitting it is a 500.
+  sortModel: { column: string; sortMode: 0 | 1 | 2 };
+}
+
+// Spring's Page<T> envelope. `number` is the ZERO-based index of the page just
+// returned while the request's `page` is one-based, so the next request page is
+// `number + 2`.
+export interface Nzbhydra2HistoryPage<T> {
+  content: T[];
+  last: boolean;
+  first: boolean;
+  totalElements: number;
+  totalPages: number;
+  numberOfElements: number;
+  number: number;
+  size: number;
+}
+
+export interface Nzbhydra2SearchHistoryRow {
+  id: number;
+  source: "API" | "INTERNAL" | string;
+  searchType: "SEARCH" | "TVSEARCH" | "MOVIE" | "BOOK" | string;
+  time: Nzbhydra2Timestamp;
+  identifiers: unknown[];
+  categoryName: string | null;
+  query: string | null;
+  season: number | null;
+  episode: string | null;
+  title: string | null;
+  author: string | null;
+  username: string | null;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+export type Nzbhydra2DownloadStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "INTERNAL_ERROR"
+  | "NZB_DOWNLOAD_SUCCESSFUL"
+  | "NZB_DOWNLOAD_ERROR"
+  | "NZB_ADDED"
+  | "NZB_NOT_ADDED"
+  | "NZB_ADD_ERROR"
+  | "NZB_ADD_REJECTED"
+  | "CONTENT_DOWNLOAD_SUCCESSFUL"
+  | "CONTENT_DOWNLOAD_ERROR"
+  | "CONTENT_DOWNLOAD_WARNING";
+
+export interface Nzbhydra2DownloadHistoryRow {
+  id: number;
+  // Nullable: purging a search result leaves its download row behind.
+  searchResult: {
+    id: number | string;
+    indexer: { id: number; name: string } | null;
+    firstFound: Nzbhydra2Timestamp;
+    title: string | null;
+    indexerGuid: string | null;
+    link: string | null;
+    details: string | null;
+    downloadType: "NZB" | "TORRENT" | string;
+    pubDate: Nzbhydra2Timestamp;
+  } | null;
+  nzbAccessType: string | null;
+  accessSource: "INTERNAL" | "API" | string;
+  time: Nzbhydra2Timestamp;
+  status: Nzbhydra2DownloadStatus | string;
+  error: string | null;
+  username: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  // Age of the release in days at download time.
+  age: number | null;
+  externalId: string | null;
+}
+
+// --- NZBHydra2 newznab search ---
+//
+// Passthrough of whatever the upstream indexer emitted, normalized only loosely
+// by Hydra — so every field is optional and a missing enclosure or attr array
+// must degrade to a row rather than crash the list.
+
+export interface Nzbhydra2SearchItemAttr {
+  "@attributes"?: { name?: string; value?: string | number };
+}
+
+export interface Nzbhydra2SearchItem {
+  title?: string;
+  guid?: string;
+  id?: string;
+  // Self-authenticating grab link built by Hydra's DownloadUrlBuilder:
+  // <hydraBaseUrl>/getnzb/api/<searchResultId>?apikey=<install key>.
+  link?: string;
+  pubDate?: string;
+  comments?: string;
+  description?: string;
+  category?: string;
+  enclosure?: {
+    "@attributes"?: { url?: string; length?: string | number; type?: string };
+  };
+  // The upstream indexer's newznab attributes plus Hydra's own
+  // hydraIndexerName / hydraIndexerHost / hydraIndexerScore.
+  attr?: Nzbhydra2SearchItemAttr[];
+}
+
+export interface Nzbhydra2SearchResponse {
+  channel?: {
+    title?: string;
+    generator?: string;
+    response?: { "@attributes"?: { offset?: string | number; total?: string | number } };
+    // Jackson can collapse a single-element list to a bare object.
+    item?: Nzbhydra2SearchItem[] | Nzbhydra2SearchItem;
+  };
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:

@@ -1252,6 +1252,255 @@ const DEMO_JACKETT_INDEXERS_XML = `<?xml version="1.0" encoding="utf-8"?>
 
 // JSON manual-search response. One magnet-only and one Link-only release so
 // the grab sheet's uri fallback chain is exercised in demo mode.
+// --- NZBHydra2 ---
+// Timestamps are epoch SECONDS, matching the shape NZBHydra2 actually emits
+// (see parseHydraTimestamp in lib/nzbhydra2-normalize.ts), so demo mode
+// exercises the same normalizer path a real server does.
+function hydraSeconds(days: number): number {
+  return (Date.now() + days * 86_400_000) / 1000;
+}
+
+const DEMO_NZBHYDRA2_CAPS = {
+  server: {
+    "@attributes": {
+      appversion: "8.9.0",
+      version: "0.1",
+      title: "NZBHydra 2",
+      url: "https://github.com/theotherp/nzbhydra2",
+    },
+  },
+  limits: { "@attributes": { max: "100", default: "100" } },
+  searching: {},
+  categories: { category: [] },
+};
+
+const DEMO_NZBHYDRA2_INDEXERS = [
+  {
+    indexer: "DemoNZB",
+    state: "ENABLED",
+    level: 0,
+    disabledUntil: null,
+    lastError: null,
+    apiResetTime: hydraSeconds(0.4),
+    downloadResetTime: null,
+    apiHits: 46,
+    apiHitLimit: 100,
+    downloadHits: 3,
+    downloadHitLimit: 10,
+    vipExpirationDate: "Lifetime",
+  },
+  {
+    indexer: "DemoUsenet",
+    state: "ENABLED",
+    level: 0,
+    disabledUntil: null,
+    lastError: null,
+    apiResetTime: null,
+    downloadResetTime: null,
+    apiHits: 12,
+    apiHitLimit: null,
+    downloadHits: 1,
+    downloadHitLimit: null,
+    // Inside the 7-day warning window, so the expiry badge is exercised.
+    vipExpirationDate: daysFromNow(4),
+  },
+  {
+    indexer: "DemoFlaky",
+    state: "DISABLED_SYSTEM_TEMPORARY",
+    level: 2,
+    disabledUntil: hydraSeconds(0.02),
+    lastError: "Connection timed out after 30000ms",
+    apiResetTime: null,
+    downloadResetTime: null,
+    apiHits: 4,
+    apiHitLimit: 50,
+    downloadHits: 0,
+    downloadHitLimit: null,
+    vipExpirationDate: null,
+  },
+  {
+    indexer: "DemoRetired",
+    state: "DISABLED_USER",
+    level: 0,
+    disabledUntil: null,
+    lastError: null,
+    apiResetTime: null,
+    downloadResetTime: null,
+    apiHits: null,
+    apiHitLimit: null,
+    downloadHits: null,
+    downloadHitLimit: null,
+    vipExpirationDate: null,
+  },
+];
+
+const DEMO_NZBHYDRA2_STATS = {
+  indexerApiAccessStats: [
+    { indexerName: "DemoNZB", percentSuccessful: 99, percentConnectionError: 1, averageAccessesPerDay: 41.2 },
+    { indexerName: "DemoUsenet", percentSuccessful: 96, percentConnectionError: 4, averageAccessesPerDay: 18.7 },
+    { indexerName: "DemoFlaky", percentSuccessful: 62, percentConnectionError: 38, averageAccessesPerDay: 6.1 },
+  ],
+  avgResponseTimes: [
+    { indexer: "DemoNZB", avgResponseTime: 412, delta: -118 },
+    { indexer: "DemoUsenet", avgResponseTime: 530, delta: 0 },
+    { indexer: "DemoFlaky", avgResponseTime: 1840, delta: 1310 },
+  ],
+  indexerDownloadShares: [
+    { indexerName: "DemoNZB", total: 63, share: 0.63 },
+    { indexerName: "DemoUsenet", total: 31, share: 0.31 },
+    { indexerName: "DemoFlaky", total: 6, share: 0.06 },
+  ],
+  successfulDownloadsPerIndexer: [
+    { indexerName: "DemoNZB", countAll: 63, countSuccessful: 62, countError: 1, percentSuccessful: 98.4 },
+    { indexerName: "DemoUsenet", countAll: 31, countSuccessful: 29, countError: 2, percentSuccessful: 93.5 },
+    { indexerName: "DemoFlaky", countAll: 6, countSuccessful: 4, countError: 2, percentSuccessful: 66.7 },
+  ],
+  numberOfConfiguredIndexers: 4,
+  numberOfEnabledIndexers: 2,
+};
+
+// Spring Page<T>: `number` is ZERO-based even though the request page is one-
+// based, and `last: true` stops the infinite query after the first page.
+function hydraPage<T>(content: T[]) {
+  return {
+    content,
+    last: true,
+    first: true,
+    totalElements: content.length,
+    totalPages: 1,
+    numberOfElements: content.length,
+    number: 0,
+    size: 50,
+  };
+}
+
+const DEMO_NZBHYDRA2_SEARCH_HISTORY = hydraPage([
+  {
+    id: 412, source: "API", searchType: "TVSEARCH", time: hydraSeconds(-0.02),
+    identifiers: [], categoryName: "TV HD", query: "demo show",
+    season: 1, episode: "5", title: null, author: null,
+    username: null, ip: "127.0.0.1", userAgent: "Sonarr",
+  },
+  {
+    id: 411, source: "INTERNAL", searchType: "MOVIE", time: hydraSeconds(-0.3),
+    identifiers: [], categoryName: "Movies", query: "demo movie",
+    season: null, episode: null, title: null, author: null,
+    username: null, ip: "127.0.0.1", userAgent: "Mozilla",
+  },
+  {
+    id: 410, source: "API", searchType: "SEARCH", time: hydraSeconds(-1.4),
+    identifiers: [], categoryName: "All", query: null,
+    season: null, episode: null, title: null, author: null,
+    username: null, ip: "127.0.0.1", userAgent: "Radarr",
+  },
+]);
+
+const DEMO_NZBHYDRA2_DOWNLOAD_HISTORY = hydraPage([
+  {
+    id: 1253,
+    searchResult: {
+      id: 88231, indexer: { id: 1, name: "DemoNZB" }, firstFound: hydraSeconds(-2),
+      title: "Demo.Show.S01E05.1080p.WEB.h264-GROUP",
+      indexerGuid: "demo-1", link: null, details: null,
+      downloadType: "NZB", pubDate: hydraSeconds(-2),
+    },
+    nzbAccessType: "REDIRECT", accessSource: "API", time: hydraSeconds(-0.02),
+    status: "CONTENT_DOWNLOAD_SUCCESSFUL", error: null,
+    username: null, ip: "127.0.0.1", userAgent: "Sonarr", age: 2, externalId: null,
+  },
+  {
+    id: 1252,
+    searchResult: {
+      id: 88104, indexer: { id: 2, name: "DemoUsenet" }, firstFound: hydraSeconds(-5),
+      title: "Demo.Movie.2024.2160p.UHD.WEB-DL-GROUP",
+      indexerGuid: "demo-2", link: null, details: null,
+      downloadType: "NZB", pubDate: hydraSeconds(-5),
+    },
+    nzbAccessType: "PROXY", accessSource: "INTERNAL", time: hydraSeconds(-0.6),
+    status: "NZB_ADDED", error: null,
+    username: null, ip: "127.0.0.1", userAgent: "Mozilla", age: 5, externalId: null,
+  },
+  {
+    id: 1251,
+    // A purged search result leaves its download row behind — exercises the
+    // "(release no longer in the database)" fallback.
+    searchResult: null,
+    nzbAccessType: "REDIRECT", accessSource: "API", time: hydraSeconds(-3),
+    status: "NZB_DOWNLOAD_ERROR", error: "Indexer returned 429 Too Many Requests",
+    username: null, ip: "127.0.0.1", userAgent: "Radarr", age: null, externalId: null,
+  },
+]);
+
+// Newznab JSON as NewznabJsonTransformer emits it — note the "@attributes"
+// holders, which is the shape the mapper actually has to read.
+const DEMO_NZBHYDRA2_SEARCH = {
+  channel: {
+    title: "NZBHydra 2",
+    generator: "NZBHydra2",
+    response: { "@attributes": { offset: 0, total: 3 } },
+    item: [
+      {
+        title: "Demo.Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP",
+        guid: "88231",
+        id: "88231",
+        link: "http://127.0.0.1:5076/getnzb/api/88231?apikey=demo",
+        pubDate: daysFromNowFull(-2),
+        comments: "https://demo-indexer.example/details/88231",
+        category: "Movies HD",
+        enclosure: {
+          "@attributes": {
+            url: "http://127.0.0.1:5076/getnzb/api/88231?apikey=demo",
+            length: "9663676416",
+            type: "application/x-nzb",
+          },
+        },
+        attr: [
+          { "@attributes": { name: "size", value: "9663676416" } },
+          { "@attributes": { name: "hydraIndexerName", value: "DemoNZB" } },
+        ],
+      },
+      {
+        title: "Demo.Movie.2024.2160p.UHD.WEB-DL.HDR.H.265-GROUP",
+        guid: "88232",
+        id: "88232",
+        link: "http://127.0.0.1:5076/getnzb/api/88232?apikey=demo",
+        pubDate: daysFromNowFull(-5),
+        category: "Movies UHD",
+        enclosure: {
+          "@attributes": {
+            url: "http://127.0.0.1:5076/getnzb/api/88232?apikey=demo",
+            length: "48318382080",
+            type: "application/x-nzb",
+          },
+        },
+        attr: [
+          { "@attributes": { name: "size", value: "48318382080" } },
+          { "@attributes": { name: "hydraIndexerName", value: "DemoUsenet" } },
+        ],
+      },
+      {
+        title: "Demo.Show.S01E05.1080p.WEB.h264-GROUP",
+        guid: "88233",
+        id: "88233",
+        link: "http://127.0.0.1:5076/getnzb/api/88233?apikey=demo",
+        pubDate: daysFromNowFull(-1),
+        category: "TV HD",
+        enclosure: {
+          "@attributes": {
+            url: "http://127.0.0.1:5076/getnzb/api/88233?apikey=demo",
+            length: "2147483648",
+            type: "application/x-nzb",
+          },
+        },
+        attr: [
+          { "@attributes": { name: "size", value: "2147483648" } },
+          { "@attributes": { name: "hydraIndexerName", value: "DemoNZB" } },
+        ],
+      },
+    ],
+  },
+};
+
 const DEMO_JACKETT_RESULTS = {
   Results: [
     {
@@ -2526,6 +2775,18 @@ export function getDemoResponse(
         ),
         Indexers: DEMO_JACKETT_RESULTS.Indexers.filter((i) => i.ID === indexerId),
       };
+    }
+    case "nzbhydra2": {
+      // apiBasePath is empty, so these paths carry their own /api prefix. The
+      // caps and search calls share the /api path and are told apart by `t`.
+      if (normalized === "/api") {
+        return params?.t === "caps" ? DEMO_NZBHYDRA2_CAPS : DEMO_NZBHYDRA2_SEARCH;
+      }
+      if (normalized === "/api/stats/indexers") return DEMO_NZBHYDRA2_INDEXERS;
+      if (normalized === "/api/stats") return DEMO_NZBHYDRA2_STATS;
+      if (normalized === "/api/history/searches") return DEMO_NZBHYDRA2_SEARCH_HISTORY;
+      if (normalized === "/api/history/downloads") return DEMO_NZBHYDRA2_DOWNLOAD_HISTORY;
+      return undefined;
     }
     case "bazarr": {
       if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;

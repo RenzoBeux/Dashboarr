@@ -9,9 +9,9 @@ const PREVIEW_LIMIT = 5;
 
 /**
  * Releases section of global search, one instance per attached indexer proxy
- * (Prowlarr, Jackett). The adapter supplies the search hook and the grab flow,
- * so the section has no kind-specific branches. Collapsed by default since
- * interactive indexer searches are the slowest and the noisiest.
+ * (Prowlarr, Jackett, NZBHydra2). The adapter supplies the search hook and the
+ * grab flow, so the section has no kind-specific branches. Collapsed by default
+ * since interactive indexer searches are the slowest and the noisiest.
  */
 export function ReleaseSearchSection({
   adapter,
