@@ -30,7 +30,7 @@ import {
 } from "@/services/plex-auth";
 import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
 import { SERVICE_CATALOG, secretsShapeFor } from "@/lib/service-catalog";
-import { kindListRoute } from "@/lib/integration-status";
+import { kindListRoute, isBlankInstance } from "@/lib/integration-status";
 import {
   CATEGORIES_FOR_KIND,
   CATEGORY_LABELS,
@@ -170,14 +170,25 @@ export function ServiceEditor({
   //      add from the user's perspective.
   // Re-configuring an already-set-up instance (URL or creds present) won't
   // trigger the prompt — the snapshot stays false through the session.
-  const [wasInitiallyUnconfigured] = useState(
-    () =>
-      config.localUrl.length === 0 &&
-      config.remoteUrl.length === 0 &&
-      (usesUserPass
-        ? !secrets.username && !secrets.password
-        : !secrets.apiKey),
+  const [wasInitiallyUnconfigured] = useState(() =>
+    isBlankInstance(config, secrets, usesUserPass),
   );
+
+  // Live equivalent of the snapshot above. `handleAdd` writes the new instance
+  // to the store before navigating here, so backing out of one you never filled
+  // in used to leave a blank server sitting in the list. The first instance of
+  // a kind never showed the bug because it reuses the seeded placeholder, which
+  // is invisible until configured.
+  const isBlankNewInstance =
+    isNew && isBlankInstance(config, secrets, usesUserPass);
+
+  // Navigate first, then delete: removeInstance flips `inst` to undefined, so
+  // deleting before the pop flashes the "Not found" branch. The store action
+  // is not tied to this component and finishes after the unmount.
+  const dropBlankNewInstance = () => {
+    if (!isBlankNewInstance) return;
+    void removeInstance(serviceId, instanceId);
+  };
 
   const headersJson = JSON.stringify(customHeaders);
   const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
@@ -198,7 +209,7 @@ export function ServiceEditor({
   // app/dashboard-edit/[id].tsx and app/overseerr/customize-discover.tsx;
   // `beforeRemove` is not fully supported on native-stack.
   usePreventRemove(
-    isDirty,
+    isDirty || isBlankNewInstance,
     useCallback(
       ({ data }) => {
         if (allowRemoveRef.current) {
@@ -206,10 +217,19 @@ export function ServiceEditor({
           navigation.dispatch(data.action);
           return;
         }
+        // Abandoning an instance you just added and never filled in. Nothing
+        // to save, so do not ask: drop the empty row and leave.
+        if (!isDirty && isBlankNewInstance) {
+          allowRemoveRef.current = true;
+          navigation.dispatch(data.action);
+          dropBlankNewInstance();
+          return;
+        }
         leaveActionRef.current = data.action;
         flow.open("unsaved");
       },
-      [navigation, flow],
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [navigation, flow, isDirty, isBlankNewInstance],
     ),
   );
 
@@ -817,7 +837,11 @@ export function ServiceEditor({
             label: "Discard",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
             variant: "danger",
-            onPress: () => flow.whenClear(leave),
+            onPress: () =>
+              flow.whenClear(() => {
+                leave();
+                dropBlankNewInstance();
+              }),
           },
         ]}
       />

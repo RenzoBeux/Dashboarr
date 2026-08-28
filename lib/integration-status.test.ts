@@ -9,6 +9,7 @@ import {
   resolveKindRoute,
   resolveBrowseRoute,
   isConfigured,
+  isBlankInstance,
   type InstanceProbeContext,
 } from "@/lib/integration-status";
 
@@ -80,6 +81,40 @@ describe("isConfigured", () => {
     expect(
       isConfigured([inst({ enabled: false, localUrl: "", remoteUrl: "https://a.b" })]),
     ).toBe(true);
+  });
+});
+
+describe("isBlankInstance", () => {
+  const blank = { localUrl: "", remoteUrl: "" };
+
+  it("is true for a slot with no URL and no credential", () => {
+    expect(isBlankInstance(blank, {}, false)).toBe(true);
+    expect(isBlankInstance(blank, {}, true)).toBe(true);
+  });
+
+  it("is false once either URL slot is filled", () => {
+    expect(isBlankInstance({ localUrl: "http://a", remoteUrl: "" }, {}, false)).toBe(
+      false,
+    );
+    expect(isBlankInstance({ localUrl: "", remoteUrl: "https://a" }, {}, false)).toBe(
+      false,
+    );
+  });
+
+  it("reads the credential slot the service actually uses", () => {
+    // An API-key service with a stray username is still blank, and vice versa,
+    // or backing out would keep a row the user never really configured.
+    expect(isBlankInstance(blank, { apiKey: "k" }, false)).toBe(false);
+    expect(isBlankInstance(blank, { username: "u" }, false)).toBe(true);
+
+    expect(isBlankInstance(blank, { username: "u" }, true)).toBe(false);
+    expect(isBlankInstance(blank, { password: "p" }, true)).toBe(false);
+    expect(isBlankInstance(blank, { apiKey: "k" }, true)).toBe(true);
+  });
+
+  it("treats empty strings as absent", () => {
+    expect(isBlankInstance(blank, { apiKey: "" }, false)).toBe(true);
+    expect(isBlankInstance(blank, { username: "", password: "" }, true)).toBe(true);
   });
 });
 

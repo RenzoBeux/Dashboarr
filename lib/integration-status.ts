@@ -87,6 +87,27 @@ export function isConfigured(instances: readonly ServiceInstance[]): boolean {
   );
 }
 
+/**
+ * True when an instance holds neither a URL nor a credential, i.e. it is an
+ * empty slot rather than a server anyone configured.
+ *
+ * Two callers in the editor, and they must agree: the mount snapshot that
+ * decides whether to offer the first-save dashboards sheet, and the live check
+ * that decides whether backing out of a freshly added instance should delete
+ * the empty row it left behind.
+ */
+export function isBlankInstance(
+  inst: { localUrl: string; remoteUrl: string },
+  secrets: { apiKey?: string; username?: string; password?: string },
+  usesUserPass: boolean,
+): boolean {
+  const hasUrl = inst.localUrl.length > 0 || inst.remoteUrl.length > 0;
+  const hasCreds = usesUserPass
+    ? Boolean(secrets.username) || Boolean(secrets.password)
+    : Boolean(secrets.apiKey);
+  return !hasUrl && !hasCreds;
+}
+
 /** Host and port of a URL, for the "Unreachable · host:port" reason line. */
 function hostLabel(url: string): string {
   if (!url) return "";
