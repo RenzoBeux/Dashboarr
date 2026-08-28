@@ -1,7 +1,7 @@
 import { View, Text, Pressable } from "react-native";
 import { Image, type ImageSource } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { Film, Tv, type LucideIcon } from "lucide-react-native";
+import { Film, Music, Tv, type LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { useUiScale } from "@/hooks/use-ui-scale";
 
@@ -16,7 +16,7 @@ interface MediaBackdropRowProps {
   subtitle?: string;
   rightAccessory?: React.ReactNode;
   fallbackIcon?: LucideIcon;
-  mediaType?: "movie" | "tv";
+  mediaType?: "movie" | "tv" | "music";
   onPress?: () => void;
 }
 
@@ -31,7 +31,7 @@ export function MediaBackdropRow({
   onPress,
 }: MediaBackdropRowProps) {
   const FallbackIcon =
-    fallbackIcon ?? (mediaType === "tv" ? Tv : Film);
+    fallbackIcon ?? (mediaType === "music" ? Music : mediaType === "tv" ? Tv : Film);
   const scale = useUiScale();
   const rowHeight = Math.round(BACKDROP_ROW_HEIGHT * scale);
   const posterW = Math.round(POSTER_W * scale);

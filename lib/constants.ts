@@ -19,6 +19,7 @@ export const SERVICE_IDS = [
   "plex",
   "jellyfin",
   "emby",
+  "navidrome",
   "glances",
   "bazarr",
   "unraid",
@@ -169,6 +170,20 @@ export const SERVICE_DEFAULTS: Record<
   // Emby shares Jellyfin's API surface (same default port, root API path, and
   // public System/Info endpoint). See lib/media-server-config.ts.
   emby: { name: "Emby", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
+  // Navidrome speaks THREE roots on one host, so apiBasePath is empty and every
+  // path in services/navidrome-api.ts carries its own prefix (the Cleanuparr /
+  // JellyStat pattern): /rest/* is the Subsonic API, /api/* is the native
+  // react-admin API (X-ND-Authorization: Bearer <jwt>), and /auth/login mints
+  // that jwt. pingPath is getOpenSubsonicExtensions because it is the one
+  // Subsonic route registered OUTSIDE the auth group (server/subsonic/api.go),
+  // so it answers without credentials — which also means it cannot validate
+  // them, and the connection probe uses /rest/ping instead.
+  navidrome: {
+    name: "Navidrome",
+    defaultPort: 4533,
+    apiBasePath: "",
+    pingPath: "/rest/getOpenSubsonicExtensions",
+  },
   glances: {
     name: "Glances",
     defaultPort: 61208,
@@ -242,6 +257,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "plex-now-playing",
   "jellyfin-now-playing",
   "emby-now-playing",
+  "navidrome-library",
   "prowlarr-stats",
   "jackett-indexers",
   "nzbhydra2-indexers",

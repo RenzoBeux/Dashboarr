@@ -7,7 +7,7 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { StatItem } from "@/components/indexers/stat-item";
+import { StatItem } from "@/components/ui/stat-item";
 import { Nzbhydra2ApiGate } from "@/components/indexers/nzbhydra2-api-gate";
 import { useNzbhydra2Caps, useNzbhydra2Stats } from "@/hooks/use-nzbhydra2";
 import { hydraCapsVersion, isStatsApiGated } from "@/lib/nzbhydra2-normalize";

@@ -2904,6 +2904,143 @@ export interface Nzbhydra2SearchResponse {
   };
 }
 
+// --- Navidrome Types ---
+//
+// Two wire formats live behind one host. Everything under `/rest` is the
+// Subsonic API (v1.16.1) and comes wrapped in a `subsonic-response` envelope
+// that lib/navidrome-normalize.ts unwraps; everything under `/api` is
+// Navidrome's own react-admin API and is plain JSON. Field names below are
+// upstream verbatim (server/subsonic/responses/responses.go and model/*.go).
+
+/** `POST /auth/login` response. `subsonicSalt`/`subsonicToken` are unused — we
+ * derive our own pair locally so the read path never depends on this call. */
+export interface NavidromeLoginResponse {
+  id: string;
+  name: string;
+  username: string;
+  isAdmin: boolean;
+  token: string;
+  avatar?: string;
+  subsonicSalt?: string;
+  subsonicToken?: string;
+}
+
+/** `GET /rest/getUser`. `adminRole` is how we learn whether the configured
+ * account may scan or read /api/library, without spending a login. */
+export interface NavidromeUser {
+  username: string;
+  adminRole: boolean;
+  scrobblingEnabled?: boolean;
+  settingsRole?: boolean;
+  downloadRole?: boolean;
+  playlistRole?: boolean;
+  streamRole?: boolean;
+  shareRole?: boolean;
+  jukeboxRole?: boolean;
+}
+
+/** A Subsonic `Child` (song). Only the fields we render are listed. */
+export interface NavidromeSong {
+  id: string;
+  parent?: string;
+  title: string;
+  album?: string;
+  artist?: string;
+  albumId?: string;
+  artistId?: string;
+  coverArt?: string;
+  duration?: number;
+  track?: number;
+  year?: number;
+  genre?: string;
+  size?: number;
+  suffix?: string;
+  bitRate?: number;
+  starred?: string;
+  path?: string;
+}
+
+/** A Subsonic ID3 artist (`getArtists`, `search3`). */
+export interface NavidromeArtist {
+  id: string;
+  name: string;
+  albumCount?: number;
+  coverArt?: string;
+  artistImageUrl?: string;
+  starred?: string;
+}
+
+/** A Subsonic ID3 album (`getAlbumList2`, `search3`). */
+export interface NavidromeAlbum {
+  id: string;
+  name: string;
+  artist?: string;
+  artistId?: string;
+  coverArt?: string;
+  songCount?: number;
+  duration?: number;
+  year?: number;
+  genre?: string;
+  created?: string;
+  starred?: string;
+}
+
+/** `getArtists` index buckets, one per initial letter. */
+export interface NavidromeArtistIndex {
+  name: string;
+  artist?: NavidromeArtist[];
+}
+
+export interface NavidromeArtistsResult {
+  index?: NavidromeArtistIndex[];
+  ignoredArticles?: string;
+  lastModified?: number;
+}
+
+/** `getNowPlaying`. Everything from `username` down is a Navidrome extension
+ * on top of the Subsonic Child — see server/subsonic/responses/responses.go. */
+export interface NavidromeNowPlayingEntry extends NavidromeSong {
+  username: string;
+  minutesAgo: number;
+  playerId: number;
+  playerName?: string;
+  state: string;
+  positionMs: number;
+  playbackRate: number;
+}
+
+/** `getPlaylists` / `getPlaylist`. `entry` is present only on the singular. */
+export interface NavidromePlaylist {
+  id: string;
+  name: string;
+  comment?: string;
+  songCount: number;
+  duration: number;
+  public?: boolean;
+  owner?: string;
+  created: string;
+  changed: string;
+  coverArt?: string;
+  entry?: NavidromeSong[];
+}
+
+/** `search3`. All three arrays are omitted when empty. */
+export interface NavidromeSearchResult {
+  artist?: NavidromeArtist[];
+  album?: NavidromeAlbum[];
+  song?: NavidromeSong[];
+}
+
+/** What the Overview and the dashboard widget render. Built by
+ * summarizeLibraries (admin) or scanStatusToSummary (everyone else). */
+export interface NavidromeOverview {
+  summary: import("@/lib/navidrome-normalize").NavidromeLibrarySummary;
+  /** Subsonic `serverVersion` from any ping/response envelope, when known. */
+  serverVersion: string | null;
+  /** True when the configured account may scan and read /api/library. */
+  isAdmin: boolean;
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:

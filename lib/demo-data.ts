@@ -2579,6 +2579,128 @@ const DEMO_CLEANUPARR_EVENTS = (() => {
   });
 })();
 
+// --- Navidrome ---
+// Wire shapes are upstream-exact: the Subsonic `subsonic-response` envelope
+// (so lib/navidrome-normalize.ts's unwrap runs for real), an ISO lastScan, and
+// totalSize in bytes on the native /api/library row.
+
+function navidromeEnvelope(key: string, payload: unknown) {
+  return {
+    "subsonic-response": {
+      status: "ok",
+      version: "1.16.1",
+      type: "navidrome",
+      serverVersion: "0.63.2",
+      openSubsonic: true,
+      ...(key ? { [key]: payload } : {}),
+    },
+  };
+}
+
+const DEMO_NAVIDROME_SCAN_STATUS = {
+  scanning: false,
+  count: 18432,
+  folderCount: 1247,
+  lastScan: "2026-08-27T04:12:00Z",
+  scanType: "quick",
+  elapsedTime: 41_000_000_000,
+};
+
+const DEMO_NAVIDROME_LIBRARIES = [
+  {
+    id: 1,
+    name: "Music Library",
+    path: "/music",
+    lastScanAt: "2026-08-27T04:12:00Z",
+    lastScanStartedAt: "2026-08-27T04:11:19Z",
+    fullScanInProgress: false,
+    totalSongs: 18432,
+    totalAlbums: 1583,
+    totalArtists: 742,
+    totalFolders: 1247,
+    totalFiles: 19104,
+    totalMissingFiles: 12,
+    totalSize: 412_884_996_608,
+    totalDuration: 4_912_800,
+  },
+];
+
+const DEMO_NAVIDROME_ALBUMS = [
+  { id: "al-1", name: "Selected Ambient Works 85-92", artist: "Aphex Twin", artistId: "ar-1", coverArt: "al-1", songCount: 13, duration: 4574, year: 1992, genre: "Ambient Techno", created: "2026-08-21T18:02:00Z" },
+  { id: "al-2", name: "Music Has the Right to Children", artist: "Boards of Canada", artistId: "ar-2", coverArt: "al-2", songCount: 18, duration: 4059, year: 1998, genre: "IDM", created: "2026-08-19T09:41:00Z" },
+  { id: "al-3", name: "Homogenic", artist: "Bjork", artistId: "ar-3", coverArt: "al-3", songCount: 10, duration: 2531, year: 1997, genre: "Art Pop", created: "2026-08-14T22:15:00Z" },
+  { id: "al-4", name: "In Rainbows", artist: "Radiohead", artistId: "ar-4", coverArt: "al-4", songCount: 10, duration: 2570, year: 2007, genre: "Alternative", created: "2026-08-11T12:30:00Z" },
+  { id: "al-5", name: "Untrue", artist: "Burial", artistId: "ar-5", coverArt: "al-5", songCount: 13, duration: 3060, year: 2007, genre: "Dubstep", created: "2026-08-04T07:55:00Z" },
+  { id: "al-6", name: "Blue Lines", artist: "Massive Attack", artistId: "ar-6", coverArt: "al-6", songCount: 9, duration: 2517, year: 1991, genre: "Trip Hop", created: "2026-07-30T16:20:00Z" },
+];
+
+const DEMO_NAVIDROME_ARTISTS_INDEX = {
+  ignoredArticles: "The El La Los Las Le Les Os As O A",
+  lastModified: 1787_000_000_000,
+  index: [
+    { name: "A", artist: [{ id: "ar-1", name: "Aphex Twin", albumCount: 14, coverArt: "ar-1" }] },
+    { name: "B", artist: [
+      { id: "ar-2", name: "Boards of Canada", albumCount: 8, coverArt: "ar-2" },
+      { id: "ar-3", name: "Bjork", albumCount: 11, coverArt: "ar-3" },
+      { id: "ar-5", name: "Burial", albumCount: 6, coverArt: "ar-5" },
+    ] },
+    { name: "M", artist: [{ id: "ar-6", name: "Massive Attack", albumCount: 7, coverArt: "ar-6" }] },
+    { name: "R", artist: [{ id: "ar-4", name: "Radiohead", albumCount: 9, coverArt: "ar-4" }] },
+  ],
+};
+
+const DEMO_NAVIDROME_NOW_PLAYING = {
+  entry: [
+    {
+      id: "sg-1", parent: "al-2", title: "Roygbiv", album: "Music Has the Right to Children",
+      artist: "Boards of Canada", albumId: "al-2", artistId: "ar-2", coverArt: "al-2",
+      duration: 151, track: 12, year: 1998, genre: "IDM", suffix: "flac", bitRate: 1006,
+      username: "renzo", minutesAgo: 0, playerId: 3, playerName: "Feishin",
+      state: "playing", positionMs: 47_000, playbackRate: 1,
+    },
+    {
+      id: "sg-2", parent: "al-5", title: "Archangel", album: "Untrue",
+      artist: "Burial", albumId: "al-5", artistId: "ar-5", coverArt: "al-5",
+      duration: 236, track: 2, year: 2007, genre: "Dubstep", suffix: "mp3", bitRate: 320,
+      username: "sam", minutesAgo: 1, playerId: 8, playerName: "play:Sub",
+      state: "paused", positionMs: 118_000, playbackRate: 1,
+    },
+  ],
+};
+
+const DEMO_NAVIDROME_PLAYLISTS = [
+  { id: "pl-1", name: "Late Night", comment: "Slow, dark, mostly instrumental.", songCount: 42, duration: 11_280, public: false, owner: "renzo", created: "2026-03-02T21:10:00Z", changed: "2026-08-25T23:41:00Z", coverArt: "pl-1" },
+  { id: "pl-2", name: "Focus", comment: "", songCount: 88, duration: 24_600, public: true, owner: "renzo", created: "2025-11-14T08:00:00Z", changed: "2026-08-20T10:05:00Z", coverArt: "pl-2" },
+  { id: "pl-3", name: "Recently Added", comment: "Smart playlist", songCount: 25, duration: 6_400, public: false, owner: "renzo", created: "2026-01-05T12:00:00Z", changed: "2026-08-27T04:12:00Z", coverArt: "pl-3" },
+];
+
+const DEMO_NAVIDROME_PLAYLIST_TRACKS = [
+  { id: "sg-1", title: "Roygbiv", artist: "Boards of Canada", album: "Music Has the Right to Children", albumId: "al-2", coverArt: "al-2", duration: 151, track: 12 },
+  { id: "sg-3", title: "Xtal", artist: "Aphex Twin", album: "Selected Ambient Works 85-92", albumId: "al-1", coverArt: "al-1", duration: 293, track: 1 },
+  { id: "sg-2", title: "Archangel", artist: "Burial", album: "Untrue", albumId: "al-5", coverArt: "al-5", duration: 236, track: 2 },
+  { id: "sg-4", title: "Unfinished Sympathy", artist: "Massive Attack", album: "Blue Lines", albumId: "al-6", coverArt: "al-6", duration: 308, track: 3 },
+];
+
+const DEMO_NAVIDROME_USER = {
+  username: "renzo",
+  adminRole: true,
+  scrobblingEnabled: true,
+  settingsRole: true,
+  downloadRole: true,
+  playlistRole: true,
+  streamRole: true,
+  shareRole: true,
+  jukeboxRole: false,
+};
+
+const DEMO_NAVIDROME_LOGIN = {
+  id: "u-1",
+  name: "Renzo",
+  username: "renzo",
+  isAdmin: true,
+  token: "demo-jwt",
+};
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -3030,6 +3152,58 @@ export function getDemoResponse(
         };
       }
       return undefined;
+    }
+    case "navidrome": {
+      // Three roots on one host, so route on the prefix. The native API is
+      // plain JSON; everything under /rest is wrapped in the Subsonic envelope
+      // so the demo path exercises the real unwrap + error handling.
+      if (normalized === "/auth/login") return DEMO_NAVIDROME_LOGIN;
+      if (normalized === "/api/library") return DEMO_NAVIDROME_LIBRARIES;
+      if (normalized === "/api/missing") return { ids: [] };
+      switch (normalized) {
+        case "/rest/ping":
+          return navidromeEnvelope("", null);
+        case "/rest/getScanStatus":
+        case "/rest/startScan":
+          return navidromeEnvelope("scanStatus", DEMO_NAVIDROME_SCAN_STATUS);
+        case "/rest/getUser":
+          return navidromeEnvelope("user", DEMO_NAVIDROME_USER);
+        case "/rest/getNowPlaying":
+          return navidromeEnvelope("nowPlaying", DEMO_NAVIDROME_NOW_PLAYING);
+        case "/rest/getArtists":
+          return navidromeEnvelope("artists", DEMO_NAVIDROME_ARTISTS_INDEX);
+        case "/rest/getAlbumList2":
+          return navidromeEnvelope("albumList2", { album: DEMO_NAVIDROME_ALBUMS });
+        case "/rest/getPlaylists":
+          return navidromeEnvelope("playlists", { playlist: DEMO_NAVIDROME_PLAYLISTS });
+        case "/rest/getPlaylist":
+          return navidromeEnvelope("playlist", {
+            ...(DEMO_NAVIDROME_PLAYLISTS.find((p) => p.id === params?.id) ??
+              DEMO_NAVIDROME_PLAYLISTS[0]),
+            entry: DEMO_NAVIDROME_PLAYLIST_TRACKS,
+          });
+        case "/rest/search3": {
+          // Substring, case-insensitive — close enough to Navidrome's prefix
+          // autocomplete for the demo, and it makes the empty state reachable.
+          const q = String(params?.query ?? "").toLowerCase();
+          const artists = DEMO_NAVIDROME_ARTISTS_INDEX.index
+            .flatMap((i) => i.artist)
+            .filter((a) => a.name.toLowerCase().includes(q));
+          const albums = DEMO_NAVIDROME_ALBUMS.filter(
+            (a) => a.name.toLowerCase().includes(q) || a.artist.toLowerCase().includes(q),
+          );
+          const songs = DEMO_NAVIDROME_PLAYLIST_TRACKS.filter(
+            (t) => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q),
+          );
+          return navidromeEnvelope("searchResult3", {
+            ...(artists.length ? { artist: artists } : {}),
+            ...(albums.length ? { album: albums } : {}),
+            ...(songs.length ? { song: songs } : {}),
+          });
+        }
+        default:
+          return undefined;
+      }
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
     case "emby":

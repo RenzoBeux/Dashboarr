@@ -20,6 +20,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import type { HealthStatusKind } from "@/lib/types";
 import { qbClearSession } from "@/services/qbittorrent-api";
+import { navidromeClearSession } from "@/services/navidrome-api";
 import { SERVICE_IDS, type ServiceId } from "@/lib/constants";
 
 /**
@@ -108,6 +109,10 @@ function KindInstances({
       // Drop any cached qBit session for the deleted instance before its
       // SecureStore row goes away.
       await qbClearSession(instanceId);
+    }
+    if (kind === "navidrome") {
+      // Same for Navidrome's cached JWT + Subsonic salt.
+      navidromeClearSession(instanceId);
     }
     await removeInstance(kind, instanceId);
   };

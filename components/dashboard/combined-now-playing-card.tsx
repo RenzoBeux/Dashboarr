@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getSessions as getPlexSessions } from "@/services/plex-api";
 import { getSessions as getMediaServerSessions } from "@/services/jellyfin-api";
+import { getNowPlaying as getNavidromeNowPlaying } from "@/services/navidrome-api";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
@@ -22,15 +23,21 @@ import {
 } from "@/components/dashboard/widget-settings/combined-now-playing-settings";
 import {
   mediaServerSessionToStream,
+  navidromeNowPlayingToStream,
   parseHiddenUsers,
   plexSessionToStream,
   type NowPlayingStream,
 } from "@/lib/now-playing-stream";
-import type { JellyfinSession, PlexSession } from "@/lib/types";
+import type {
+  JellyfinSession,
+  NavidromeNowPlayingEntry,
+  PlexSession,
+} from "@/lib/types";
 
-// Aggregated "Now Playing" across every enabled Plex + Jellyfin + Emby instance
-// in one poster row (issue #115). Reuses the per-server session query keys so a
-// dashboard holding both this and a per-service card shares fetches.
+// Aggregated "Now Playing" across every enabled Plex + Jellyfin + Emby +
+// Navidrome instance in one poster row (issue #115, #336). Reuses the
+// per-server session query keys so a dashboard holding both this and a
+// per-service card shares fetches.
 export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<CombinedNowPlayingSettingsValue>(
     slotId,
@@ -50,22 +57,36 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
     "emby",
     settings.embyInstanceIds,
   );
+  const navidromeInstances = useWorkspaceScopedInstances(
+    "navidrome",
+    settings.navidromeInstanceIds,
+  );
 
   // Flat list of (kind, instance) describing each session query, in display
-  // order: Plex → Jellyfin → Emby.
+  // order: Plex → Jellyfin → Emby → Navidrome.
   const sources = [
     ...plexInstances.map((inst) => ({ serviceId: "plex" as const, inst })),
     ...jellyfinInstances.map((inst) => ({ serviceId: "jellyfin" as const, inst })),
     ...embyInstances.map((inst) => ({ serviceId: "emby" as const, inst })),
+    ...navidromeInstances.map((inst) => ({ serviceId: "navidrome" as const, inst })),
   ];
 
   const queries = useQueries({
     queries: sources.map((src) => ({
-      queryKey: [src.serviceId, src.inst.id, "sessions"] as const,
+      // Navidrome's live playback comes from Subsonic getNowPlaying, so its key
+      // is "nowPlaying" — matching useNavidromeNowPlaying, which is what lets
+      // the Navidrome tab and this widget share one cache entry.
+      queryKey: [
+        src.serviceId,
+        src.inst.id,
+        src.serviceId === "navidrome" ? "nowPlaying" : "sessions",
+      ] as const,
       queryFn: () =>
         src.serviceId === "plex"
           ? getPlexSessions(src.inst.id)
-          : getMediaServerSessions(src.inst.id, src.serviceId),
+          : src.serviceId === "navidrome"
+            ? getNavidromeNowPlaying(src.inst.id)
+            : getMediaServerSessions(src.inst.id, src.serviceId),
       refetchInterval: POLLING_INTERVALS.activeTorrents,
     })),
   });
@@ -79,6 +100,11 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
     if (!data) return [];
     if (src.serviceId === "plex") {
       return (data as PlexSession[]).map((s) => plexSessionToStream(s, src.inst.id));
+    }
+    if (src.serviceId === "navidrome") {
+      return (data as NavidromeNowPlayingEntry[]).map((e) =>
+        navidromeNowPlayingToStream(e, src.inst.id),
+      );
     }
     return (data as JellyfinSession[]).map((s) =>
       mediaServerSessionToStream(s, src.inst.id, src.serviceId),

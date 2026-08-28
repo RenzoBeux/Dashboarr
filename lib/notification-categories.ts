@@ -57,6 +57,7 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   glances:     ["serviceOffline"],
   jellyfin:    ["serviceOffline"],
   emby:        ["serviceOffline"],
+  navidrome:   ["serviceOffline"],
   unraid:      ["serviceOffline"],
   autobrr:     ["serviceOffline"],
   cleanuparr:  ["serviceOffline"],

@@ -178,6 +178,18 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     keywords: [],
     authShape: "apiKey",
   },
+  // Navidrome has NO API keys: server/subsonic/middlewares.go:validateCredentials
+  // accepts only p / t+s / jwt, and GetOpenSubsonicExtensions does not advertise
+  // the OpenSubsonic apiKey extension. So it is userPass — but NOT httpAuth,
+  // exactly like qBittorrent and Deluge (see the ServiceAuthShape warning): the
+  // password is hashed into the Subsonic `t` param and posted to /auth/login,
+  // never sent as HTTP Basic.
+  navidrome: {
+    category: "media-servers",
+    tagline: "Music server",
+    keywords: ["music", "subsonic", "opensubsonic", "navi", "audio"],
+    authShape: "userPass",
+  },
 
   // --- Requests and automation ---
   overseerr: {

@@ -23,6 +23,7 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   plex: "PlayCircle",
   jellyfin: "Clapperboard",
   emby: "MonitorPlay",
+  navidrome: "Disc",
   glances: "Cpu",
   bazarr: "Captions",
   unraid: "Server",

@@ -3,8 +3,9 @@ import type { ServiceId } from "@/lib/constants";
 /**
  * Service kinds that participate in global search (#223). v1 is the set of
  * kinds that already expose a text-query search function (Radarr/Sonarr/Lidarr
- * lookup, Bindery author search, Seerr media search, Prowlarr indexer search). Plex/Jellyfin/Emby
- * library search is a planned follow-up — add their ids here when it lands.
+ * lookup, Bindery author search, Seerr media search, Prowlarr indexer search,
+ * Navidrome library search). Plex/Jellyfin/Emby library search is a planned
+ * follow-up — add their ids here when it lands.
  */
 export const GLOBAL_SEARCH_KINDS = [
   "radarr",
@@ -15,6 +16,7 @@ export const GLOBAL_SEARCH_KINDS = [
   "prowlarr",
   "jackett",
   "nzbhydra2",
+  "navidrome",
 ] as const satisfies readonly ServiceId[];
 
 /** True when at least one searchable kind is attached to the active workspace. */

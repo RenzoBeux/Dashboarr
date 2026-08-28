@@ -2,7 +2,7 @@ import { View, Text } from "react-native";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { StatItem } from "@/components/indexers/stat-item";
+import { StatItem } from "@/components/ui/stat-item";
 import { useProwlarrStats } from "@/hooks/use-prowlarr";
 
 // Prowlarr-only: Jackett exposes no stats endpoint without the admin cookie,

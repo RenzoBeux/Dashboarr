@@ -27,6 +27,7 @@ export const SERVICE_IDS = [
   "plex",
   "jellyfin",
   "emby",
+  "navidrome",
   "glances",
   "bazarr",
   "unraid",
@@ -285,6 +286,10 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   plex: "",
   jellyfin: "",
   emby: "",
+  // Navidrome serves three roots (/rest Subsonic, /api native, /auth/login), so
+  // there is no single base to prefix — paths self-prefix, and the ping below
+  // is root-relative. Mirrors lib/constants.ts.
+  navidrome: "",
   glances: "/api/4",
   bazarr: "/api",
   // unRAID's official API is GraphQL-only at the webgui root (POST /graphql).
@@ -337,6 +342,10 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   plex: "/identity",
   jellyfin: "/System/Info/Public",
   emby: "/System/Info/Public",
+  // The one Subsonic route registered outside Navidrome's auth group, so it
+  // answers without credentials. It can't validate them, which is fine — the
+  // health poller only asks offline/online.
+  navidrome: "/rest/getOpenSubsonicExtensions",
   glances: "/cpu",
   bazarr: "/system/status",
   // unRAID's /graphql rejects GET — pingService POSTs a minimal GraphQL query

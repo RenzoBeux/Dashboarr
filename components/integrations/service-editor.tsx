@@ -20,6 +20,7 @@ import { BackHeader } from "@/components/common/back-header";
 import { testServiceConnection, lanGuardBlockReason } from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
+import { navidromeClearSession } from "@/services/navidrome-api";
 import { getPlexClientId } from "@/lib/plex-client-id";
 import {
   requestPin,
@@ -323,14 +324,19 @@ export function ServiceEditor({
       await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
     }
     // Drop the cached session so the next request re-logs in with the new URL
-    // or credentials. Only the two cookie-session clients have one: glances,
+    // or credentials. Only the session-bearing clients have one: glances,
     // nzbget, rtorrent and transmission reuse the same credential form but
-    // authenticate per-request.
+    // authenticate per-request. Navidrome caches both a native-API JWT and the
+    // Subsonic salt its token is derived from, so a password change must clear
+    // it or every request keeps sending a token for the old password.
     if (serviceId === "qbittorrent") {
       await qbClearSession(instanceId);
     }
     if (serviceId === "deluge") {
       delugeClearSession(instanceId);
+    }
+    if (serviceId === "navidrome") {
+      navidromeClearSession(instanceId);
     }
 
     // First-save dashboard prompt. Fires once per editor session when the
@@ -583,6 +589,9 @@ export function ServiceEditor({
       void (async () => {
         if (serviceId === "qbittorrent") {
           await qbClearSession(instanceId);
+        }
+        if (serviceId === "navidrome") {
+          navidromeClearSession(instanceId);
         }
         await removeInstance(serviceId, instanceId);
         // Every kind must keep at least one slot. Leaving the array empty

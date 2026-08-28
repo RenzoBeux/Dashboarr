@@ -67,6 +67,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   plex: "Plex",
   jellyfin: "Jellyfin",
   emby: "Emby",
+  navidrome: "Navidrome",
   glances: "Glances",
   bazarr: "Bazarr",
   unraid: "unRAID",

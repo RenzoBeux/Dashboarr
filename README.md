@@ -63,6 +63,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Plex** | Now playing, recently added, on deck, library browsing |
 | **Jellyfin** | Now playing, recently added, continue watching, library browsing |
 | **Emby** | Now playing, recently added, continue watching, library browsing |
+| **Navidrome** | Library stats (artists, albums, tracks, size), now playing, quick & full rescan, delete missing files, search, playlists |
 | **Bazarr** | Wanted subtitles for movies & episodes, history, on-demand subtitle search |
 | **Glances** | Server CPU, RAM, disk, and network stats |
 | **unRAID** | Start/stop/restart Docker containers, array status, disks grouped by Array / Pools / Unassigned |

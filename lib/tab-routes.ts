@@ -20,6 +20,7 @@ export const PICKABLE_SERVICE_TABS = [
   "plex",
   "jellyfin",
   "emby",
+  "navidrome",
   "glances",
   "bazarr",
   "unraid",
@@ -60,6 +61,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   plex: "plex",
   jellyfin: "jellyfin",
   emby: "emby",
+  navidrome: "navidrome",
   glances: "glances",
   bazarr: "bazarr",
   unraid: "unraid",
@@ -91,6 +93,9 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   plex: ["plex"],
   jellyfin: ["jellyfin"],
   emby: ["emby"],
+  // Navidrome is a music server, not an *arr — it gets its own tab rather
+  // than sharing the Lidarr-backed Music tab, which is a library/automation view.
+  navidrome: ["navidrome"],
   glances: ["glances"],
   bazarr: ["bazarr"],
   unraid: ["unraid"],
