@@ -42,8 +42,11 @@ export function getPairingToken(token: string): PairingRow | null {
 }
 
 /**
- * Current unexpired + unclaimed token, if any. Used by /pair HTML so the same
- * QR stays valid across restarts until claimed.
+ * Current unexpired + unclaimed token, if any. `ensureActiveToken` reuses it so
+ * a restart inside the 10-minute TTL reprints the same QR instead of
+ * invalidating the one the user is currently looking at. (Originally written for
+ * a /pair HTML page that no longer exists — token minting is startup-log-only
+ * now, see routes/pair.ts.)
  */
 export function getActiveToken(): string | null {
   const row = getDb()

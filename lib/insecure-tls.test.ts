@@ -88,3 +88,51 @@ describe("computeInsecureHosts", () => {
     ).toEqual(["nas.local"]);
   });
 });
+
+// The backend lives in its own store, so its host reaches the allowlist through
+// `extraUrls` rather than through a ServiceInstance (#357).
+describe("computeInsecureHosts — extraUrls (backend host)", () => {
+  it("merges the extra host with service hosts, sorted", () => {
+    expect(
+      computeInsecureHosts(
+        services({ radarr: [inst({ ignoreCertErrors: true, localUrl: "https://nas.local:7878" })] }),
+        ["https://dashboarr.ember.ops"],
+      ),
+    ).toEqual(["dashboarr.ember.ops", "nas.local"]);
+  });
+
+  it("normalizes and lowercases an extra URL (#357 shape)", () => {
+    expect(
+      computeInsecureHosts(services({}), ["https://Dashboarr.Ember.OPS:8443"]),
+    ).toEqual(["dashboarr.ember.ops"]);
+  });
+
+  it("parses a scheme-less extra URL", () => {
+    expect(computeInsecureHosts(services({}), ["dashboarr.ember.ops:4000"])).toEqual([
+      "dashboarr.ember.ops",
+    ]);
+  });
+
+  it("ignores null, undefined, empty and whitespace extras", () => {
+    expect(
+      computeInsecureHosts(services({}), [null, undefined, "", "   "]),
+    ).toEqual([]);
+  });
+
+  it("dedupes an extra that repeats a service host", () => {
+    expect(
+      computeInsecureHosts(
+        services({ radarr: [inst({ ignoreCertErrors: true, localUrl: "https://nas.local:7878" })] }),
+        ["https://nas.local:4000"],
+      ),
+    ).toEqual(["nas.local"]);
+  });
+
+  it("defaults to no extras, leaving existing callers unchanged", () => {
+    expect(
+      computeInsecureHosts(
+        services({ radarr: [inst({ ignoreCertErrors: true, localUrl: "https://nas.local" })] }),
+      ),
+    ).toEqual(["nas.local"]);
+  });
+});

@@ -34,6 +34,15 @@ ENV NODE_ENV=production \
 VOLUME ["/data"]
 EXPOSE 4000
 
+# Liveness probe. GET /health with no Authorization header answers 200
+# {"ok":true,"name":"dashboarr-backend"} (see src/routes/health.ts). busybox
+# wget is the only HTTP client left in the runtime image — npm/npx/yarn are
+# stripped above — and it exits non-zero on any status >= 400, which is exactly
+# why hand-written probes against the old bearer-only /health marked every
+# container unhealthy forever (#357). Shell form so $PORT resolves at runtime.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:$PORT/health" || exit 1
+
 # NOTE: Do NOT enable Expo "Enhanced Security for Push Notifications" on the
 # shared projectId. If enabled, every user-hosted backend breaks silently.
 LABEL dashboarr.warning="Do NOT enable Expo Enhanced Security for Push Notifications — it breaks every self-hosted backend."

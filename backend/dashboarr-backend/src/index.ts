@@ -161,13 +161,21 @@ async function main(): Promise<void> {
     return reply.code(500).send({ error: "internal_error" });
   });
 
+  // 404s never reach setErrorHandler, so without this Fastify's default body
+  // echoes the caller's method and path back at them
+  // (`{"message":"Route POST:/pair/init not found",…}`), contradicting the
+  // neutral bodies the handler above exists to guarantee.
+  app.setNotFoundHandler((_request, reply) => {
+    return reply.code(404).send({ error: "not_found" });
+  });
+
   await app.register(rateLimit, {
     global: false,
   });
 
   // /pair/* — tight cap. Claiming a token is a one-shot credential exchange;
   // anything above a handful of requests per minute is abuse.
-  app.register(async (scope) => {
+  await app.register(async (scope) => {
     await scope.register(rateLimit, { max: 5, timeWindow: "1 minute" });
     await pairRoutes(scope);
   });

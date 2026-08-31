@@ -2,6 +2,7 @@ import { useBackendStore } from "@/store/backend-store";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_IDS } from "@/lib/constants";
 import { isPrivateHost } from "@/lib/url-validation";
+import { describeBackendTransportError } from "@/lib/backend-error";
 
 const DEFAULT_TIMEOUT = 10000;
 
@@ -27,12 +28,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? DEFAULT_TIMEOUT);
 
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      // Connection-level failure (TLS / DNS / refused / timeout) — no HTTP
+      // response exists. Translate it into something actionable; anything
+      // carrying a `.status` is passed straight through, which is what keeps
+      // `pairClaim`'s scheme fall-through correct.
+      throw describeBackendTransportError(err, url);
+    }
     if (!res.ok) {
       // Tag the status so callers can tell a real HTTP response (the endpoint
       // answered) apart from a connection-level failure (fetch rejects with no
@@ -55,17 +67,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 }
 
+/**
+ * Backend `/health` has two projections (backend v1.4.0+): anonymous callers
+ * get liveness only (`ok`, `name`), a valid bearer gets everything. Every field
+ * beyond `ok`/`name` is therefore optional — the app always sends a bearer, so
+ * it sees the full body, but typing them as required would be a lie the moment
+ * anything calls this unauthenticated.
+ */
 export interface BackendHealth {
   ok: boolean;
   name: string;
-  version: string;
-  expoAuth: string;
+  version?: string;
+  expoAuth?: string;
   // Multi-instance backends: `id` is the per-instance UUID, `kind` is the
   // service kind, `name` is the user-facing label. Older backends omit
   // `kind`/`name` and put the kind in `id`. `useBackendHealth` only reads
   // `ok` today, but the richer fields are available for any future UI that
   // wants to surface backend-side per-instance polling status.
-  pollers: {
+  pollers?: {
     id: string;
     kind?: string;
     name?: string;
@@ -73,7 +92,7 @@ export interface BackendHealth {
     lastRunAt: number | null;
     lastError: string | null;
   }[];
-  uptimeMs: number;
+  uptimeMs?: number;
 }
 
 export function getBackendHealth(): Promise<BackendHealth> {

@@ -399,11 +399,15 @@ function coerceBackend(v: unknown): ExportPayload["backend"] | null {
   const urlOk = v.url === null || isHttpUrlOrEmpty(v.url);
   const secretOk = v.sharedSecret === null || (typeof v.sharedSecret === "string" && v.sharedSecret.length <= 512);
   const idOk = v.deviceId === null || (typeof v.deviceId === "string" && v.deviceId.length <= 256);
-  if (!urlOk || !secretOk || !idOk) return null;
+  // v49: optional, so pre-v49 exports (which omit it) validate and default off.
+  const certOk =
+    v.ignoreCertErrors === undefined || typeof v.ignoreCertErrors === "boolean";
+  if (!urlOk || !secretOk || !idOk || !certOk) return null;
   return {
     url: typeof v.url === "string" ? v.url : null,
     sharedSecret: typeof v.sharedSecret === "string" ? v.sharedSecret : null,
     deviceId: typeof v.deviceId === "string" ? v.deviceId : null,
+    ignoreCertErrors: v.ignoreCertErrors === true,
   };
 }
 
