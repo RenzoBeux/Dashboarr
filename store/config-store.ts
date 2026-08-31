@@ -414,8 +414,13 @@ export interface ExportPayload {
   // `dashboardWidgets: WidgetId[]` + `widgetSettings: Record<WidgetId, …>`.
   dashboards: Dashboard[];
   activeDashboardId: string;
-  // v2
-  backend?: { url: string | null; sharedSecret: string | null; deviceId: string | null };
+  // v2 (v49: + ignoreCertErrors)
+  backend?: {
+    url: string | null;
+    sharedSecret: string | null;
+    deviceId: string | null;
+    ignoreCertErrors?: boolean;
+  };
   notificationSettings?: NotificationSettings;
   // v4
   wolDevices?: WakeOnLanDevice[];
@@ -2738,7 +2743,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       weekStart,
       notificationSettings: notifSettings,
     } = get();
-    const { url, sharedSecret, deviceId } = useBackendStore.getState();
+    const { url, sharedSecret, deviceId, ignoreCertErrors } = useBackendStore.getState();
 
     const payload: ExportPayload = {
       version: CURRENT_CONFIG_VERSION,
@@ -2753,7 +2758,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       servicesOrder,
       dashboards,
       activeDashboardId,
-      backend: { url, sharedSecret, deviceId },
+      backend: { url, sharedSecret, deviceId, ignoreCertErrors },
       notificationSettings: notifSettings,
       wolDevices,
       hapticsEnabled,
@@ -2944,6 +2949,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setJSON(STORAGE_KEYS.servicesOrder, importedServicesOrder);
 
     // Restore backend pairing (v2+)
+    if (payload.backend) {
+      // Restored outside the pairing guard below: an export taken before the
+      // device was paired still carries the TLS-bypass preference, and on a
+      // fresh device that flag is what makes the first pairing succeed at all
+      // when the backend sits behind a private CA (#357).
+      await useBackendStore
+        .getState()
+        .setIgnoreCertErrors(payload.backend.ignoreCertErrors ?? false);
+    }
     if (payload.backend?.url && payload.backend?.sharedSecret) {
       await useBackendStore.getState().pair({
         url: payload.backend.url,

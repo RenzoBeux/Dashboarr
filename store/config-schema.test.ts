@@ -1013,7 +1013,30 @@ describe("validateExportPayload — backend", () => {
       ...baseValid(),
       backend: { url: null, sharedSecret: null, deviceId: null },
     });
-    expect(result.backend).toEqual({ url: null, sharedSecret: null, deviceId: null });
+    expect(result.backend).toEqual({
+      url: null,
+      sharedSecret: null,
+      deviceId: null,
+      ignoreCertErrors: false,
+    });
+  });
+
+  // v49 (#357): opts the backend host into the TLS-bypass allowlist.
+  it("round-trips ignoreCertErrors=true", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      backend: { url: null, sharedSecret: null, deviceId: null, ignoreCertErrors: true },
+    });
+    expect(result.backend?.ignoreCertErrors).toBe(true);
+  });
+
+  it("rejects a non-boolean ignoreCertErrors", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        backend: { url: null, sharedSecret: null, deviceId: null, ignoreCertErrors: "yes" },
+      }),
+    ).toThrow(/backend/);
   });
 
   it("rejects a non-http(s) backend url", () => {

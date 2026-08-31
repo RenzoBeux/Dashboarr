@@ -259,19 +259,30 @@ function ThemeRoot({ children }: { children: ReactNode }) {
   return <View style={[{ flex: 1 }, themeVars]}>{children}</View>;
 }
 
-// Keeps the native TLS-bypass allowlist in lockstep with config: which hosts
-// the user opted out of certificate validation for. Pushes once on hydrate and
-// again on every config change (the sync itself dedupes, so unrelated changes
+// Keeps the native TLS-bypass allowlist in lockstep with which hosts the user
+// opted out of certificate validation for. Pushes once on hydrate and again on
+// every change to either source (the sync itself dedupes, so unrelated changes
 // are cheap). Without this the native module would never learn the allowlist
 // and every connection would validate certs normally.
+//
+// Two sources: per-instance `ignoreCertErrors` in the config store, and the
+// backend's own flag in the backend store (#357). The effect stays gated on
+// `configHydrated` alone — coupling it to the backend store's hydrate would let
+// a SecureStore failure there revoke the allowlist for every service host too.
+// The backend store's `hydrate()` calls `set()`, which fires this subscription,
+// so the two parallel hydrates need no ordering between them.
 function InsecureTlsBridge() {
   const configHydrated = useConfigStore((s) => s.hydrated);
 
   useEffect(() => {
     if (!configHydrated) return;
     syncInsecureHosts();
-    const unsub = useConfigStore.subscribe(syncInsecureHosts);
-    return unsub;
+    const unsubConfig = useConfigStore.subscribe(syncInsecureHosts);
+    const unsubBackend = useBackendStore.subscribe(syncInsecureHosts);
+    return () => {
+      unsubConfig();
+      unsubBackend();
+    };
   }, [configHydrated]);
 
   return null;

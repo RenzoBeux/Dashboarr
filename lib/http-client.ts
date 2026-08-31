@@ -253,6 +253,11 @@ export function formatErrorForCopy(err: unknown): string {
   if (err instanceof Error) {
     const parts = [`${err.name}: ${err.message}`];
     if (err.stack) parts.push(err.stack);
+    // Errors we rewrite for the user (see lib/backend-error.ts) keep the
+    // original on `cause` — that's the string worth pasting into a bug report.
+    if (err.cause instanceof Error) {
+      parts.push(`Caused by: ${err.cause.name}: ${err.cause.message}`);
+    }
     return parts.join("\n");
   }
   try {
