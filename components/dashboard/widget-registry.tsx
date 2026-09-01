@@ -21,6 +21,7 @@ import {
   PlayCircle,
   Power,
   Radar,
+  RefreshCw,
   Server,
   ShieldAlert,
   ShieldCheck,
@@ -60,6 +61,7 @@ import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
+import { TdarrQueueCard } from "@/components/dashboard/tdarr-queue-card";
 import { AutobrrCard } from "@/components/dashboard/autobrr-card";
 import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
 import { NavidromeLibraryCard } from "@/components/dashboard/navidrome-library-card";
@@ -189,6 +191,11 @@ import {
   DISK_SPACE_DEFAULT_SETTINGS,
   type DiskSpaceSettingsValue,
 } from "@/components/dashboard/widget-settings/disk-space-settings";
+import {
+  TdarrQueueSettings,
+  TDARR_QUEUE_DEFAULT_SETTINGS,
+  type TdarrQueueSettingsValue,
+} from "@/components/dashboard/widget-settings/tdarr-queue-settings";
 import {
   ArrHealthSettings,
   ARR_HEALTH_DEFAULT_SETTINGS,
@@ -583,6 +590,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     service: "unraid",
     component: UnraidCard,
   },
+  "tdarr-queue": {
+    id: "tdarr-queue",
+    label: "Tdarr",
+    description: "Transcode/health-check stats and space saved",
+    icon: RefreshCw,
+    service: "tdarr",
+    component: TdarrQueueCard,
+    settingsComponent: TdarrQueueSettings,
+    defaultSettings: TDARR_QUEUE_DEFAULT_SETTINGS,
+  },
   "autobrr-stats": {
     id: "autobrr-stats",
     label: "Autobrr Activity",
@@ -668,6 +685,7 @@ export type {
   Nzbhydra2IndexersSettingsValue,
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
+  TdarrQueueSettingsValue,
   ArrHealthSettingsValue,
   AutobrrStatsSettingsValue,
   CleanuparrStatsSettingsValue,

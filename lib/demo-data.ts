@@ -2195,6 +2195,131 @@ const DEMO_UNRAID_DISKS = [
   { id: "disk-sdi", device: "sdi", name: "Kingston A400 240GB (sdi)", vendor: "Kingston", size: 240057409536, serialNum: "50026B7682D8E5F1", temperature: 27, smartStatus: "OK", isSpinning: true, interfaceType: "SATA" },
 ];
 
+const DEMO_TDARR_STATUS = {
+  status: "good",
+  isProduction: true,
+  os: "linux",
+  version: "2.86.01",
+  buildDate: "2026_08_05T06_27_22z",
+  uptime: 238143,
+  serverEngine: "nodejs",
+};
+
+const DEMO_TDARR_RES_STATS = {
+  process: { uptime: 238141, heapUsedMB: "43.1", heapTotalMB: "49.2" },
+  os: { cpuPerc: "18.40", memUsedGB: "6.2", memTotalGB: "15.4" },
+};
+
+const DEMO_TDARR_NODES = {
+  demoNode1: {
+    _id: "demoNode1",
+    nodeName: "Media_Worker",
+    remoteAddress: "127.0.0.1",
+    workerLimits: { healthcheckcpu: 1, healthcheckgpu: 1, transcodecpu: 1, transcodegpu: 2 },
+    // Field names confirmed against the Tdarr WebUI's own JS bundle (see
+    // TdarrWorker in lib/types.ts) rather than a live populated worker.
+    workers: {
+      demoWorker1: {
+        file: "/data/media/movies/Sample Movie (2025)/Sample Movie (2025) WEBDL-1080p.mkv",
+        fps: 62,
+        percentage: 47,
+        ETA: "4m 12s",
+        originalfileSizeInGbytes: 8.42,
+        estSize: 3.98,
+        container: "mkv",
+        workerType: "transcodegpu",
+      },
+    },
+    resStats: DEMO_TDARR_RES_STATS,
+    queueLengths: { healthcheckcpu: 0, healthcheckgpu: 3, transcodecpu: 0, transcodegpu: 1 },
+    nodePaused: false,
+    nodeEngine: "nodejs",
+    protocolVersion: "socket.io-node-v1",
+  },
+};
+
+const DEMO_TDARR_STATISTICS = [
+  {
+    _id: "statistics",
+    totalFileCount: 751,
+    totalTranscodeCount: 958,
+    totalHealthCheckCount: 12539,
+    sizeDiff: 330.37,
+    tdarrScore: "100.0",
+    healthCheckScore: "100.0",
+    table0Count: 1,
+    table1Count: 3,
+    table2Count: 751,
+    table3Count: 0,
+    table4Count: 0,
+    table5Count: 751,
+    table6Count: 0,
+  },
+];
+
+const DEMO_TDARR_LIBRARIES = [
+  {
+    _id: "demoLib1",
+    name: "Movies",
+    folder: "/data/media/movies",
+    processLibrary: true,
+    processTranscodes: true,
+    processHealthChecks: true,
+  },
+  {
+    _id: "demoLib2",
+    name: "TV",
+    folder: "/data/media/tv",
+    processLibrary: true,
+    processTranscodes: true,
+    processHealthChecks: true,
+  },
+];
+
+const DEMO_TDARR_FILES = [
+  {
+    _id: "/data/media/movies/Sample Movie (2025)/Sample Movie (2025) WEBDL-1080p.mkv",
+    file: "/data/media/movies/Sample Movie (2025)/Sample Movie (2025) WEBDL-1080p.mkv",
+    fileNameWithoutExtension: "Sample Movie (2025) WEBDL-1080p",
+    DB: "demoLib1",
+    container: "mkv",
+    file_size: 8420,
+    video_resolution: "1080p",
+    video_codec_name: "h264",
+    audio_codec_name: "eac3",
+    bit_rate: 8123456,
+    duration: 6543,
+    HealthCheck: "Success",
+    TranscodeDecisionMaker: "Queued",
+    lastHealthCheckDate: Date.now() - 3600_000,
+    lastTranscodeDate: 0,
+    oldSize: 8.22,
+    newSize: 0,
+    newVsOldRatio: 0,
+    createdAt: Date.now() - 30 * 86400_000,
+  },
+  {
+    _id: "/data/media/tv/Sample Show/Season 01/Sample Show S01E01.mkv",
+    file: "/data/media/tv/Sample Show/Season 01/Sample Show S01E01.mkv",
+    fileNameWithoutExtension: "Sample Show S01E01",
+    DB: "demoLib2",
+    container: "mkv",
+    file_size: 1980,
+    video_resolution: "1080p",
+    video_codec_name: "hevc",
+    audio_codec_name: "aac",
+    bit_rate: 3123456,
+    duration: 1320,
+    HealthCheck: "Success",
+    TranscodeDecisionMaker: "Not required",
+    lastHealthCheckDate: Date.now() - 7200_000,
+    lastTranscodeDate: Date.now() - 5 * 86400_000,
+    oldSize: 2.4,
+    newSize: 1.93,
+    newVsOldRatio: 0.8,
+    createdAt: Date.now() - 60 * 86400_000,
+  },
+];
 
 // --- Bindery demo fixtures ---
 //
@@ -3154,6 +3279,37 @@ export function getDemoResponse(
       if (normalized === "/network") return DEMO_GLANCES_NET;
       if (normalized === "/gpu") return DEMO_GLANCES_GPU;
       if (normalized === "/containers") return DEMO_GLANCES_CONTAINERS;
+      return undefined;
+    }
+    case "tdarr": {
+      if (normalized === "/status") return DEMO_TDARR_STATUS;
+      if (normalized === "/get-nodes") return DEMO_TDARR_NODES;
+      if (normalized === "/get-res-stats") return DEMO_TDARR_RES_STATS;
+      if (normalized === "/search-db") return DEMO_TDARR_FILES;
+      if (normalized === "/cruddb") {
+        // Dispatch off the collection named in the POSTed body — cruddb is one
+        // endpoint for several JSON "tables" (see services/tdarr-api.ts).
+        const collection = (() => {
+          try {
+            return body ? (JSON.parse(body) as { data?: { collection?: string } }).data?.collection ?? "" : "";
+          } catch {
+            return "";
+          }
+        })();
+        if (collection === "StatisticsJSONDB") return DEMO_TDARR_STATISTICS;
+        if (collection === "StagedJSONDB") return [];
+        if (collection === "LibrarySettingsJSONDB") return DEMO_TDARR_LIBRARIES;
+        return undefined;
+      }
+      // update-node/cancel-worker-item/kill-worker: fire-and-forget mutations
+      // with no documented response body — accept silently in demo mode.
+      if (
+        normalized === "/update-node" ||
+        normalized === "/cancel-worker-item" ||
+        normalized === "/kill-worker"
+      ) {
+        return {};
+      }
       return undefined;
     }
     case "qbittorrent": {

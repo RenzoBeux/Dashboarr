@@ -437,9 +437,10 @@ export async function serviceRequest<T>(
     // (store/config-store.ts) — so a stale apiKey left on an instance id would
     // be sent to Pi-hole on every request forever.
   } else {
-    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID use
-    // X-Api-Key (unRAID documents lowercase x-api-key; header names are
-    // case-insensitive so this one branch covers it).
+    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
+    // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
+    // case-insensitive so this one branch covers it). Tdarr's auth is
+    // optional server-side — an empty header value is harmless when unset.
     if (secrets.apiKey) {
       headers.set("X-Api-Key", secrets.apiKey);
     }
@@ -757,14 +758,22 @@ export async function testServiceConnection(
     if (isAbortError(err)) {
       return { kind: "unreachable", message: "Request timed out" };
     }
+    if (err instanceof TypeError) {
+      // Tdarr's most common misconfiguration: pointing Dashboarr at the WebUI
+      // port (8265) instead of the REST API server port (8266) — the two are
+      // separate processes, and the WebUI port doesn't proxy /api/v2 at all.
+      if (serviceId === "tdarr" && /:8265\b/.test(baseUrl)) {
+        return {
+          kind: "unreachable",
+          message:
+            "Network error — Tdarr's REST API runs on port 8266, not the WebUI's 8265. Check the URL.",
+        };
+      }
+      return { kind: "unreachable", message: "Network error — check URL and connectivity" };
+    }
     return {
       kind: "unreachable",
-      message:
-        err instanceof TypeError
-          ? "Network error — check URL and connectivity"
-          : err instanceof Error
-            ? err.message
-            : "Network error",
+      message: err instanceof Error ? err.message : "Network error",
     };
   } finally {
     clearTimeout(timeoutId);
@@ -1427,6 +1436,35 @@ async function runConnectionProbe(
       } catch {
         return { kind: "unreachable", message: "Invalid JSON response" };
       }
+    }
+
+    case "tdarr": {
+      // Tdarr auth is optional server-side (set via the server's `auth` config
+      // var) — a bad/missing key when auth is required surfaces as 401/403; a
+      // server with auth disabled just ignores X-Api-Key entirely, so an empty
+      // key still probes "ok". /status is a cheap, always-available GET.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403) {
+        return {
+          kind: "auth_failed",
+          message: apiKey ? "Invalid API key" : "Server requires an API key",
+        };
+      }
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) {
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude its API path from the proxy.",
+        };
+      }
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 
     case "autobrr": {

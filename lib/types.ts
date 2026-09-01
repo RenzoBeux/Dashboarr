@@ -3314,3 +3314,117 @@ export interface ServiceHealthStatus {
   responseTime?: number;
   instances: ServiceInstanceHealthStatus[];
 }
+
+// --- Tdarr ---
+// Field names below were confirmed against a live Tdarr instance (see
+// services/tdarr-api.ts) rather than Tdarr's own (thin, auto-generated) API
+// docs, since the public docs don't document response shapes.
+
+export interface TdarrStatus {
+  status: string; // "good" when healthy
+  isProduction: boolean;
+  os: string;
+  version: string;
+  buildDate: string;
+  uptime: number; // ms
+  serverEngine: string;
+}
+
+export interface TdarrResStats {
+  process: { uptime: number; heapUsedMB: string; heapTotalMB: string };
+  os: { cpuPerc: string; memUsedGB: string; memTotalGB: string };
+}
+
+// Shape of an in-progress worker job. No job was running on the reference
+// instance, so this couldn't be captured from a live /get-nodes response —
+// instead these field names were confirmed by grepping the Tdarr WebUI's own
+// (minified) JS bundle for how it renders the worker/job objects (o.file,
+// o.percentage, o.ETA, o.fps, o.container, o.workerType, o.estSize, and the
+// *InGbytes size fields all appear verbatim there). Still treat optionally —
+// verify against a real populated `workers` entry if precision matters.
+export interface TdarrWorker {
+  file?: string;
+  fps?: number;
+  percentage?: number;
+  ETA?: string;
+  container?: string;
+  workerType?: string; // "transcodecpu" | "transcodegpu" | "healthcheckcpu" | "healthcheckgpu"
+  estSize?: number; // GB
+  sourcefileSizeInGbytes?: number;
+  originalfileSizeInGbytes?: number;
+  outputFileSizeInGbytes?: number;
+  // Nested job metadata (footprintId, type, start timestamp, ...) — shape not
+  // fully confirmed, kept loose.
+  job?: Record<string, unknown>;
+}
+
+export interface TdarrWorkerLimits {
+  healthcheckcpu: number;
+  healthcheckgpu: number;
+  transcodecpu: number;
+  transcodegpu: number;
+}
+
+export interface TdarrNode {
+  _id: string;
+  nodeName: string;
+  remoteAddress: string;
+  workerLimits: TdarrWorkerLimits;
+  workers: Record<string, TdarrWorker>;
+  resStats: TdarrResStats;
+  queueLengths: TdarrWorkerLimits;
+  nodePaused: boolean;
+  nodeEngine: string;
+  protocolVersion: string;
+}
+
+// Response of GET /get-nodes — an object keyed by node id, not an array.
+export type TdarrNodes = Record<string, TdarrNode>;
+
+export interface TdarrStatistics {
+  _id: string;
+  totalFileCount: number;
+  totalTranscodeCount: number;
+  totalHealthCheckCount: number;
+  sizeDiff: number; // GB saved by transcoding
+  tdarrScore: string;
+  healthCheckScore: string;
+  table0Count: number;
+  table1Count: number;
+  table2Count: number;
+  table3Count: number;
+  table4Count: number;
+  table5Count: number;
+  table6Count: number;
+}
+
+export interface TdarrLibrary {
+  _id: string;
+  name: string;
+  folder: string;
+  processLibrary: boolean;
+  processTranscodes: boolean;
+  processHealthChecks: boolean;
+}
+
+export interface TdarrFileItem {
+  _id: string; // file path, used as the DB doc id
+  file: string;
+  fileNameWithoutExtension: string;
+  DB: string; // owning library id
+  container: string;
+  file_size: number; // MB
+  video_resolution?: string;
+  video_codec_name?: string;
+  audio_codec_name?: string;
+  bit_rate?: number;
+  duration?: number;
+  HealthCheck?: string;
+  TranscodeDecisionMaker?: string;
+  lastHealthCheckDate?: number; // epoch ms
+  lastTranscodeDate?: number; // epoch ms
+  oldSize?: number; // GB
+  newSize?: number; // GB
+  newVsOldRatio?: number;
+  createdAt: number; // epoch ms
+}

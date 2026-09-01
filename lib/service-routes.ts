@@ -36,6 +36,7 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   glances: "/(tabs)/glances",
   bazarr: "/(tabs)/bazarr",
   unraid: "/(tabs)/unraid",
+  tdarr: "/(tabs)/tdarr",
   autobrr: "/(tabs)/autobrr",
   cleanuparr: "/(tabs)/cleanuparr",
   pihole: "/(tabs)/pihole",

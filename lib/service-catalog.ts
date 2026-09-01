@@ -132,6 +132,13 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     authShape: "apiKey",
     apiKeyHint: "Settings > General > Security > API Key",
   },
+  tdarr: {
+    category: "automation",
+    tagline: "Transcode automation",
+    keywords: ["transcode", "ffmpeg", "health check"],
+    authShape: "apiKey",
+    apiKeyHint: "Off by default — enable auth in Tdarr to require a key",
+  },
 
   // --- Indexers ---
   prowlarr: {

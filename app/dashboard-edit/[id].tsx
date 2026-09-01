@@ -71,6 +71,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   glances: "Glances",
   bazarr: "Bazarr",
   unraid: "unRAID",
+  tdarr: "Tdarr",
   autobrr: "Autobrr",
   cleanuparr: "Cleanuparr",
   pihole: "Pi-hole",

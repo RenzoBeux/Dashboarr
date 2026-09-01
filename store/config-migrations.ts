@@ -193,8 +193,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         pihole instance at import time, so older exports just need the
  *         version field bumped.
+ *   v51 — added the tdarr service entry. Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         tdarr instance at import time, so older exports just need the
+ *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 50;
+export const CURRENT_CONFIG_VERSION = 51;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -741,6 +745,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v49 → v50: added the pihole service entry (#335). Pure version stamp —
   // defaultInstances() backfills a disabled pihole instance at import.
   49: (payload) => ({ ...payload, version: 50 }),
+  // v50 → v51: added the tdarr service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled tdarr instance at import.
+  50: (payload) => ({ ...payload, version: 51 }),
 };
 
 /**

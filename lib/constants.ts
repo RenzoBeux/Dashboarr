@@ -23,6 +23,7 @@ export const SERVICE_IDS = [
   "glances",
   "bazarr",
   "unraid",
+  "tdarr",
   "autobrr",
   "cleanuparr",
   "pihole",
@@ -200,6 +201,11 @@ export const SERVICE_DEFAULTS: Record<
   // pingService and the connection probe POST a minimal query instead
   // (mirrors nzbget/rtorrent/transmission). defaultPort is the webgui port.
   unraid: { name: "unRAID", defaultPort: 80, apiBasePath: "", pingPath: "/graphql" },
+  // Tdarr's REST API lives on the server process (port 8266), not the WebUI
+  // (8265). Auth is optional (X-Api-Key when the server has it enabled — the
+  // default X-Api-Key branch in http-client.ts covers it, no special case
+  // needed). /status is a cheap always-available ping/probe endpoint.
+  tdarr: { name: "Tdarr", defaultPort: 8266, apiBasePath: "/api/v2", pingPath: "/status" },
   // Autobrr's REST API authenticates with an X-API-Token header (not the
   // default X-Api-Key — see the branch in lib/http-client.ts). pingPath is the
   // anonymous liveness probe; the connection probe uses /release/stats instead
@@ -301,6 +307,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "disk-space",
   "arr-health",
   "unraid-array",
+  "tdarr-queue",
   "autobrr-stats",
   "cleanuparr-stats",
   "pihole-status",

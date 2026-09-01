@@ -59,6 +59,9 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   jellystat: require("@/assets/services/jellystat.png"),
   bazarr: require("@/assets/services/bazarr.png"),
   glances: require("@/assets/services/glances.png"),
+  // Official Tdarr mark. Kept as PNG (not the source SVG) because that SVG
+  // uses filter-based glow/shadow effects react-native-svg doesn't support.
+  tdarr: require("@/assets/services/tdarr.png"),
   // Official autobrr rabbit (GPL-2.0, autobrr/autobrr web/public/logo192.png).
   // Blue-on-transparent, so it reads fine on the dark UI as shipped.
   autobrr: require("@/assets/services/autobrr.png"),

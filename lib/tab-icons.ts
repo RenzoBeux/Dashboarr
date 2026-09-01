@@ -27,6 +27,7 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   glances: "Cpu",
   bazarr: "Captions",
   unraid: "Server",
+  tdarr: "Zap",
   autobrr: "Zap",
   cleanuparr: "Sparkles",
   // LUCIDE_BY_NAME (lib/dashboard-icons.ts) is a curated registry: it has

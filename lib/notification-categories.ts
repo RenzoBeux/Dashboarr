@@ -59,6 +59,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   emby:        ["serviceOffline"],
   navidrome:   ["serviceOffline"],
   unraid:      ["serviceOffline"],
+  // No completion-watcher/backend poller in v1 — a future "transcode
+  // completed" push could reuse the Statistics collection's sizeDiff delta,
+  // mirroring how SABnzbd/NZBGet detect completion.
+  tdarr:       ["serviceOffline"],
   autobrr:     ["serviceOffline"],
   cleanuparr:  ["serviceOffline"],
   // No blocking/gravity watcher in the app and no backend poller, so a

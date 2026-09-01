@@ -34,6 +34,7 @@ export const SERVICE_IDS = [
   "autobrr",
   "cleanuparr",
   "pihole",
+  "tdarr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -300,6 +301,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   cleanuparr: "",
   // Pi-hole v6's REST API, served by FTL itself.
   pihole: "/api",
+  tdarr: "/api/v2",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -364,6 +366,7 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // the app's session handling. It cannot validate the password, but the
   // backend never needs to: it only asks whether the host is up.
   pihole: "/info/login",
+  tdarr: "/status",
 };
 
 // Notification category labels sent to the device as `data.type`
