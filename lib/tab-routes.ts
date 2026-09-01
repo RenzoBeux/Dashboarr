@@ -26,6 +26,7 @@ export const PICKABLE_SERVICE_TABS = [
   "unraid",
   "autobrr",
   "cleanuparr",
+  "pihole",
 ] as const;
 export type PickableServiceTab = (typeof PICKABLE_SERVICE_TABS)[number];
 
@@ -67,6 +68,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   unraid: "unraid",
   autobrr: "autobrr",
   cleanuparr: "cleanuparr",
+  pihole: "pihole",
 };
 
 // Inverse — the service kind(s) that back each tab. Used to decide pickability
@@ -101,6 +103,7 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   unraid: ["unraid"],
   autobrr: ["autobrr"],
   cleanuparr: ["cleanuparr"],
+  pihole: ["pihole"],
 };
 
 export function tabForServiceId(id: ServiceId): PickableServiceTab | null {

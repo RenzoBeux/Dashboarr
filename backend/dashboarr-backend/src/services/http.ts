@@ -129,6 +129,14 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
+  if (id === "pihole") {
+    // Pi-hole's credential is a session (POST /api/auth -> X-FTL-SID), and FTL
+    // implements no API key at all. The backend only ever pings
+    // /api/info/login, which is anonymous, so there is nothing to send — and it
+    // must NOT fall through to the X-Api-Key default below, which Pi-hole has
+    // no concept of.
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }

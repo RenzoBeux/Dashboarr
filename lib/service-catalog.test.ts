@@ -41,10 +41,23 @@ const LEGACY_USES_PASSWORD_ONLY = new Set<ServiceId>(["deluge"]);
  */
 const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome"]);
 
-/** Every id whose credential form is username + password, from both sources. */
+/**
+ * Post-catalog kinds whose credential is a bare password with no username.
+ *
+ *   pihole - Pi-hole v6's POST /api/auth takes a body of {password} and nothing
+ *   else; FTL has no username and implements no API key. An application
+ *   password is the same shape. Like Deluge it is passwordOnly but NOT
+ *   httpAuth: the password goes to a login endpoint and comes back as an
+ *   X-FTL-SID session token, never as HTTP Basic.
+ */
+const POST_CATALOG_PASSWORD_ONLY = new Set<ServiceId>(["pihole"]);
+
+/** Every id whose credential form is username + password, from all sources. */
 const ALL_USER_PASS = new Set<ServiceId>([
   ...LEGACY_USES_BASIC_AUTH,
   ...POST_CATALOG_USER_PASS,
+  // passwordOnly collapses to the userPass secrets shape — see secretsShapeFor.
+  ...POST_CATALOG_PASSWORD_ONLY,
 ]);
 
 describe("SERVICE_CATALOG", () => {
@@ -80,6 +93,7 @@ describe("auth shapes", () => {
   it("matches the pre-catalog usesBasicAuth boolean for every kind that predates the catalog", () => {
     for (const id of SERVICE_IDS) {
       if (POST_CATALOG_USER_PASS.has(id)) continue;
+      if (POST_CATALOG_PASSWORD_ONLY.has(id)) continue;
       const shape = secretsShapeFor(SERVICE_CATALOG[id].authShape);
       expect({ id, shape }).toEqual({
         id,
@@ -89,10 +103,17 @@ describe("auth shapes", () => {
   });
 
   it("keeps post-catalog additions on the credential form upstream actually accepts", () => {
-    for (const id of POST_CATALOG_USER_PASS) {
+    for (const id of [...POST_CATALOG_USER_PASS, ...POST_CATALOG_PASSWORD_ONLY]) {
       expect({ id, shape: secretsShapeFor(SERVICE_CATALOG[id].authShape) }).toEqual({
         id,
         shape: "userPass",
+      });
+    }
+    // ...but a single-password service must not grow a username field.
+    for (const id of POST_CATALOG_PASSWORD_ONLY) {
+      expect({ id, authShape: SERVICE_CATALOG[id].authShape }).toEqual({
+        id,
+        authShape: "passwordOnly",
       });
     }
   });
@@ -106,11 +127,16 @@ describe("auth shapes", () => {
     expect(secretsShapeFor(SERVICE_CATALOG.plex.authShape)).toBe("apiKey");
   });
 
-  it("marks Deluge, and only Deluge, as passwordOnly", () => {
+  it("marks exactly the single-password services as passwordOnly", () => {
     const passwordOnly = SERVICE_IDS.filter(
       (id) => SERVICE_CATALOG[id].authShape === "passwordOnly",
     );
-    expect(new Set(passwordOnly)).toEqual(LEGACY_USES_PASSWORD_ONLY);
+    expect(new Set(passwordOnly)).toEqual(
+      new Set<ServiceId>([
+        ...LEGACY_USES_PASSWORD_ONLY,
+        ...POST_CATALOG_PASSWORD_ONLY,
+      ]),
+    );
   });
 
   it("only offers OAuth alongside a credential shape, never instead of one", () => {

@@ -3041,6 +3041,241 @@ export interface NavidromeOverview {
   isAdmin: boolean;
 }
 
+// --- Pi-hole Types ---
+//
+// Pi-hole v6 only. Every shape here is the FTL REST API's wire format; derived
+// shapes (parsed CNAME records, chart series, gravity verdict) live in
+// lib/pihole-normalize.ts instead, because they are ours, not Pi-hole's.
+
+export interface PiholeSession {
+  valid: boolean;
+  totp: boolean;
+  /**
+   * The session id, sent back as the X-FTL-SID header on every later call.
+   * NULL when the Pi-hole has no password configured at all — that is a valid
+   * session, not a failed one, so never test this for truthiness to decide
+   * whether login succeeded. Check `valid`.
+   */
+  sid: string | null;
+  csrf: string | null;
+  /** Seconds until the session expires. Any authenticated call extends it. */
+  validity: number;
+  message: string | null;
+}
+
+export interface PiholeAuthResponse {
+  session: PiholeSession;
+  took?: number;
+}
+
+/**
+ * FTL's error envelope. Note it is NESTED — lib/http-client.ts's
+ * getHttpErrorMessage looks for a top-level `message`, so it returns undefined
+ * for every Pi-hole 4xx. lib/pihole-normalize.ts has a dedicated reader.
+ */
+export interface PiholeErrorBody {
+  error?: { key?: string; message?: string; hint?: string | null };
+}
+
+/**
+ * Four values, not two. "failed" and "unknown" must never render as enabled —
+ * a boolean toggle over this enum is the most likely correctness bug here.
+ */
+export type PiholeBlockingState = "enabled" | "disabled" | "failed" | "unknown";
+
+export interface PiholeBlockingStatus {
+  blocking: PiholeBlockingState;
+  /**
+   * REMAINING seconds until the mode automatically flips back, measured at the
+   * instant FTL answered — not an absolute time. null means the current mode is
+   * permanent. Consumers anchor it to React Query's dataUpdatedAt rather than
+   * decrementing it, or the countdown jumps backwards on cached data.
+   */
+  timer: number | null;
+  took?: number;
+}
+
+export interface PiholeSummary {
+  queries: {
+    total: number;
+    blocked: number;
+    /** Already a percentage (34.5), not a fraction. */
+    percent_blocked: number;
+    unique_domains: number;
+    forwarded: number;
+    cached: number;
+    /** Average queries per second. */
+    frequency: number;
+    types?: Record<string, number>;
+    status?: Record<string, number>;
+    replies?: Record<string, number>;
+  };
+  clients: { active: number; total: number };
+  gravity: {
+    domains_being_blocked: number;
+    /** Unix SECONDS. 0 means unknown — do not render that as 1970. */
+    last_update: number;
+  };
+  took?: number;
+}
+
+export interface PiholeTopDomain {
+  domain: string;
+  count: number;
+}
+
+export interface PiholeTopDomainsResponse {
+  domains: PiholeTopDomain[];
+  total_queries: number;
+  blocked_queries: number;
+}
+
+export interface PiholeTopClient {
+  ip: string;
+  name: string | null;
+  count: number;
+}
+
+export interface PiholeTopClientsResponse {
+  clients: PiholeTopClient[];
+  total_queries: number;
+  blocked_queries: number;
+}
+
+export interface PiholeUpstream {
+  ip: string | null;
+  name: string | null;
+  /** -1 when not applicable, e.g. the local cache. */
+  port: number;
+  count: number;
+  statistics?: { response: number; variance: number };
+}
+
+export interface PiholeUpstreamsResponse {
+  upstreams: PiholeUpstream[];
+  forwarded_queries: number;
+  total_queries: number;
+}
+
+/**
+ * One 10-minute bucket of the 24h activity graph.
+ *
+ * `total` is the SUM of cached + blocked + forwarded (plus a small remainder
+ * for statuses that fit no category). Stacking all four series double-counts
+ * every bucket — chart code stacks blocked and (total - blocked) only.
+ */
+export interface PiholeHistoryBucket {
+  /** Unix seconds, fractional. */
+  timestamp: number;
+  total: number;
+  cached: number;
+  blocked: number;
+  forwarded: number;
+}
+
+export interface PiholeHistoryResponse {
+  history: PiholeHistoryBucket[];
+  took?: number;
+}
+
+export interface PiholeQuery {
+  id: number;
+  /** Unix seconds, fractional. */
+  time: number;
+  type: string;
+  domain: string;
+  /** Set when the block happened during deep CNAME inspection. */
+  cname: string | null;
+  status: string | null;
+  client: { ip: string; name: string | null };
+  dnssec: string | null;
+  reply: { type: string | null; time: number };
+  list_id: number | null;
+  upstream: string | null;
+  ede?: { code: number; text: string | null };
+}
+
+export interface PiholeQueriesResponse {
+  queries: PiholeQuery[];
+  /** Pass back as `cursor` to page further into the past. */
+  cursor: number | null;
+  recordsTotal: number;
+  recordsFiltered: number;
+  earliest_timestamp?: number;
+  earliest_timestamp_disk?: number;
+}
+
+/** Camel-cased at our boundary; mapped to FTL's snake_case wire names. */
+export interface PiholeQueryFilters {
+  length?: number;
+  cursor?: number;
+  from?: number;
+  until?: number;
+  domain?: string;
+  clientIp?: string;
+  clientName?: string;
+  upstream?: string;
+  type?: string;
+  status?: string;
+  reply?: string;
+  dnssec?: string;
+  disk?: boolean;
+}
+
+export interface PiholeQuerySuggestions {
+  suggestions: {
+    domain?: string[];
+    client_ip?: string[];
+    client_name?: string[];
+    upstream?: string[];
+    type?: string[];
+    status?: string[];
+    reply?: string[];
+    dnssec?: string[];
+  };
+}
+
+/**
+ * GET /api/config/{element} answers with the filtered NESTED subtree, not a
+ * bare value — so cnameRecords arrives as {config:{dns:{cnameRecords:[…]}}}.
+ */
+export interface PiholeCnameConfigResponse {
+  config?: { dns?: { cnameRecords?: string[] } };
+  took?: number;
+}
+
+export interface PiholeVersionResponse {
+  version: {
+    core?: { local?: { branch: string | null; version: string | null; hash: string | null } };
+    web?: { local?: { branch: string | null; version: string | null; hash: string | null } };
+    ftl?: { local?: { branch: string | null; version: string | null; hash: string | null } };
+  };
+}
+
+/**
+ * GET /api/padd — one aggregated call covering what would otherwise be five.
+ * Its field names are PADD's own, deliberately NOT the stats API's
+ * (`gravity_size` vs `gravity.domains_being_blocked`), so this is its own type
+ * and its own normalizer rather than an attempt to unify the two.
+ */
+export interface PiholePadd {
+  blocking?: string | boolean;
+  gravity_size?: number;
+  active_clients?: number;
+  recent_blocked?: string | null;
+  top_domain?: string | null;
+  top_blocked?: string | null;
+  top_client?: string | null;
+  queries?: {
+    total?: number;
+    blocked?: number;
+    percent_blocked?: number;
+    frequency?: number;
+  };
+  node_name?: string;
+  took?: number;
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:

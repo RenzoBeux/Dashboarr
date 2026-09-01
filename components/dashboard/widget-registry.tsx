@@ -23,6 +23,8 @@ import {
   Radar,
   Server,
   ShieldAlert,
+  ShieldCheck,
+  Ban,
   Sparkles,
   Tv,
   Zap,
@@ -61,6 +63,8 @@ import { UnraidCard } from "@/components/dashboard/unraid-card";
 import { AutobrrCard } from "@/components/dashboard/autobrr-card";
 import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
 import { NavidromeLibraryCard } from "@/components/dashboard/navidrome-library-card";
+import { PiholeStatusCard } from "@/components/dashboard/pihole-status-card";
+import { PiholeTopBlockedCard } from "@/components/dashboard/pihole-top-blocked-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -205,6 +209,16 @@ import {
   NAVIDROME_LIBRARY_DEFAULT_SETTINGS,
   type NavidromeLibrarySettingsValue,
 } from "@/components/dashboard/widget-settings/navidrome-library-settings";
+import {
+  PiholeStatusSettings,
+  PIHOLE_STATUS_DEFAULT_SETTINGS,
+  type PiholeStatusSettingsValue,
+} from "@/components/dashboard/widget-settings/pihole-status-settings";
+import {
+  PiholeTopBlockedSettings,
+  PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
+  type PiholeTopBlockedSettingsValue,
+} from "@/components/dashboard/widget-settings/pihole-top-blocked-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -599,6 +613,26 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: NavidromeLibrarySettings,
     defaultSettings: NAVIDROME_LIBRARY_DEFAULT_SETTINGS,
   },
+  "pihole-status": {
+    id: "pihole-status",
+    label: "Pi-hole",
+    description: "Blocking state with one-tap disable, plus 24h query stats",
+    icon: ShieldCheck,
+    service: "pihole",
+    component: PiholeStatusCard,
+    settingsComponent: PiholeStatusSettings,
+    defaultSettings: PIHOLE_STATUS_DEFAULT_SETTINGS,
+  },
+  "pihole-top-blocked": {
+    id: "pihole-top-blocked",
+    label: "Top Blocked Domains",
+    description: "The domains Pi-hole blocks most often",
+    icon: Ban,
+    service: "pihole",
+    component: PiholeTopBlockedCard,
+    settingsComponent: PiholeTopBlockedSettings,
+    defaultSettings: PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -638,4 +672,6 @@ export type {
   AutobrrStatsSettingsValue,
   CleanuparrStatsSettingsValue,
   NavidromeLibrarySettingsValue,
+  PiholeStatusSettingsValue,
+  PiholeTopBlockedSettingsValue,
 };

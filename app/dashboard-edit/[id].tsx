@@ -73,6 +73,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   unraid: "unRAID",
   autobrr: "Autobrr",
   cleanuparr: "Cleanuparr",
+  pihole: "Pi-hole",
 };
 
 export default function DashboardEditScreen() {
