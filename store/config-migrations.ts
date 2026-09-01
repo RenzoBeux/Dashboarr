@@ -186,12 +186,15 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         navidrome instance at import time, so older exports just need the
  *         version field bumped.
- *   v49 — added the pihole service entry (#335). Pure version stamp —
+ *   v49 — added optional `backend.ignoreCertErrors` (#357), opting the backend
+ *         host into the TLS-bypass allowlist. Pure version stamp — the field is
+ *         optional, so older exports without it validate and default to false.
+ *   v50 — added the pihole service entry (#335). Pure version stamp —
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         pihole instance at import time, so older exports just need the
  *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 49;
+export const CURRENT_CONFIG_VERSION = 50;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -731,9 +734,13 @@ const migrations: Record<number, (payload: any) => any> = {
   // v47 → v48: added the navidrome service entry (#336). Pure version stamp —
   // defaultInstances() backfills a disabled navidrome instance at import.
   47: (payload) => ({ ...payload, version: 48 }),
-  // v48 → v49: added the pihole service entry (#335). Pure version stamp —
-  // defaultInstances() backfills a disabled pihole instance at import.
+  // v48 → v49: optional `backend.ignoreCertErrors` (#357). Pure version stamp —
+  // coerceBackend treats it as an optional key, so pre-v49 exports validate and
+  // the flag defaults to false.
   48: (payload) => ({ ...payload, version: 49 }),
+  // v49 → v50: added the pihole service entry (#335). Pure version stamp —
+  // defaultInstances() backfills a disabled pihole instance at import.
+  49: (payload) => ({ ...payload, version: 50 }),
 };
 
 /**

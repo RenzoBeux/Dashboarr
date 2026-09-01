@@ -573,6 +573,16 @@
           keyed to hostname and covers both that instance's local and remote hostnames, which means
           any other service on the same hostname is relaxed too.
         </p>
+        <p>
+          The <strong>backend</strong> has its own copy of the same toggle, under
+          <strong>Settings, Notifications, Backend</strong>. Turn it on when the backend sits behind a
+          reverse proxy using an internal CA, such as Caddy's default internal issuer or a homelab
+          root certificate. Your phone's browser may trust that CA while the app does not, so
+          <code>/health</code> opens fine in the browser and pairing still fails with "Network request
+          failed", with nothing reaching the container. Mounting the CA into the backend container,
+          for example with <code>NODE_EXTRA_CA_CERTS</code>, does not help: that only affects calls
+          the backend makes outward, never the phone's call inward.
+        </p>
 
         <h3>Behind a forward-auth SSO proxy</h3>
         <p>
@@ -926,6 +936,24 @@
           http to https redirect silently turns the pairing POST into a GET and 404s.
         </p>
 
+        <h3>Health checks</h3>
+        <p>
+          <code>GET /health</code> with no <code>Authorization</code> header answers
+          <code>200</code> with <code>{"ok":true,"name":"dashboarr-backend"}</code>, so a browser, an
+          uptime monitor or a Docker health check can confirm the container is alive without a token.
+          The full body, which lists every poller and its last error, needs the paired bearer, because
+          those errors contain your internal service URLs.
+        </p>
+        <div class="note">
+          <strong>A 401 <code>missing_bearer</code> is not a reverse-proxy problem.</strong> Backends
+          before v1.4.0 required the bearer on <code>/health</code> too, so opening it in a browser
+          returned <code>{"error":"missing_bearer"}</code>, and any hand-written
+          <code>wget .../health</code> health check marked the container unhealthy forever. Update the
+          image. On v1.4.0 and newer a 401 means the token you sent is wrong, not that your proxy is
+          misconfigured, and adding <code>^/health</code> to an Authentik Unauthenticated Paths list
+          was never the fix.
+        </div>
+
         <h3>Webhooks</h3>
         <p>
           Webhooks make Radarr, Sonarr, Seerr and Tracearr events near-instant instead of waiting for
@@ -1154,6 +1182,18 @@
           notifies about events that complete <em>after</em> it starts, so anything already finished is
           treated as seen; for Radarr, Sonarr and Seerr the webhook test event should produce a
           confirmation push; and Bazarr and Tautulli webhooks are logged but do not push yet.
+        </p>
+
+        <h3>Backend pairing says "Network request failed" but the URL opens in my browser.</h3>
+        <p>
+          Almost always an internal CA. If the backend is behind Caddy, Traefik or Nginx serving a
+          private root certificate, your phone's browser may trust it while the app does not, and the
+          pairing request fails before it ever reaches the container, which is why nothing appears in
+          the container log. Three fixes, best first: give that hostname a publicly trusted
+          certificate; or point the app at the backend over plain <code>http://</code> on your LAN; or
+          turn on <strong>Allow invalid certificates</strong> under
+          <strong>Settings, Notifications, Backend</strong>. Check the token as well: it is single-use
+          and expires in about ten minutes, so restart the container for a fresh one.
         </p>
 
         <h3>Wake-on-LAN does nothing.</h3>

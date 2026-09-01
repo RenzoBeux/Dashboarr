@@ -3,6 +3,7 @@ import { normalizeServiceUrl } from "@/lib/url-validation";
 import type { ServiceId } from "@/lib/constants";
 import type { ServiceInstance } from "@/store/config-store";
 import { useConfigStore } from "@/store/config-store";
+import { useBackendStore } from "@/store/backend-store";
 
 // Pull the bare hostname out of a (possibly scheme-less) service URL.
 // Returns null for blanks and unparseable values rather than throwing — a
@@ -23,8 +24,14 @@ function hostOf(url: string): string | null {
 // either may be the active one depending on the network, and the native layer
 // keys purely on hostname, so listing both keeps the bypass working after an
 // auto-switch without re-syncing.
+//
+// `extraUrls` carries hosts that don't come from a service instance — today
+// just the paired (and about-to-be-paired) backend, which lives in its own
+// store. Optional so existing callers and tests are unaffected. Blanks and
+// unparseable entries are dropped like any other URL.
 export function computeInsecureHosts(
   serviceInstances: Record<ServiceId, ServiceInstance[]>,
+  extraUrls: readonly (string | null | undefined)[] = [],
 ): string[] {
   const hosts = new Set<string>();
   for (const list of Object.values(serviceInstances)) {
@@ -36,6 +43,10 @@ export function computeInsecureHosts(
       if (remote) hosts.add(remote);
     }
   }
+  for (const url of extraUrls) {
+    const host = url ? hostOf(url) : null;
+    if (host) hosts.add(host);
+  }
   return Array.from(hosts).sort();
 }
 
@@ -46,8 +57,15 @@ let lastSynced = "";
 // Recompute the allowlist from current config and push it to the native module
 // if it changed. Safe to call on every config mutation. No-ops when the native
 // module is absent (Expo Go / web / pre-rebuild binary).
+//
+// Both the paired `url` and the in-flight `draftUrl` are offered: they're not
+// mutually exclusive during a re-pair, and `pairClaim`'s https-first retry
+// (services/backend-api.ts) only rewrites the scheme, so one hostname entry
+// covers every candidate it tries.
 export function syncInsecureHosts(): void {
-  const hosts = computeInsecureHosts(useConfigStore.getState().serviceInstances);
+  const backend = useBackendStore.getState();
+  const extras = backend.ignoreCertErrors ? [backend.url, backend.draftUrl] : [];
+  const hosts = computeInsecureHosts(useConfigStore.getState().serviceInstances, extras);
   const serialized = hosts.join(",");
   if (serialized === lastSynced) return;
   lastSynced = serialized;
