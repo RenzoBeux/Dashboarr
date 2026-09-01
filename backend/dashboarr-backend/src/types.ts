@@ -27,6 +27,7 @@ export const SERVICE_IDS = [
   "glances",
   "bazarr",
   "unraid",
+  "tdarr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -278,6 +279,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   bazarr: "/api",
   // unRAID's official API is GraphQL-only at the webgui root (POST /graphql).
   unraid: "",
+  tdarr: "/api/v2",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -317,6 +319,7 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // unRAID's /graphql rejects GET — pingService POSTs a minimal GraphQL query
   // to this path (mirrors the nzbget/transmission POST pings).
   unraid: "/graphql",
+  tdarr: "/status",
 };
 
 // Notification category labels sent to the device as `data.type`

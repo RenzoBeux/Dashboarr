@@ -605,14 +605,22 @@ export async function testServiceConnection(
     if (isAbortError(err)) {
       return { kind: "unreachable", message: "Request timed out" };
     }
+    if (err instanceof TypeError) {
+      // Tdarr's most common misconfiguration: pointing Dashboarr at the WebUI
+      // port (8265) instead of the REST API server port (8266) — the two are
+      // separate processes, and the WebUI port doesn't proxy /api/v2 at all.
+      if (serviceId === "tdarr" && /:8265\b/.test(baseUrl)) {
+        return {
+          kind: "unreachable",
+          message:
+            "Network error — Tdarr's REST API runs on port 8266, not the WebUI's 8265. Check the URL.",
+        };
+      }
+      return { kind: "unreachable", message: "Network error — check URL and connectivity" };
+    }
     return {
       kind: "unreachable",
-      message:
-        err instanceof TypeError
-          ? "Network error — check URL and connectivity"
-          : err instanceof Error
-            ? err.message
-            : "Network error",
+      message: err instanceof Error ? err.message : "Network error",
     };
   } finally {
     clearTimeout(timeoutId);
