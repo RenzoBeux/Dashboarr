@@ -14,12 +14,8 @@ import {
   type TdarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/tdarr-queue-settings";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import { fmt } from "@/lib/tdarr-format";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
-
-function fmt(n: number | string | null | undefined, dp = 1): string {
-  const num = typeof n === "string" ? Number(n) : n;
-  return typeof num === "number" && Number.isFinite(num) ? num.toFixed(dp) : "—";
-}
 
 export function TdarrQueueCard({ slotId }: WidgetComponentProps) {
   const { settings } = useWidgetSettings<TdarrQueueSettingsValue>(
@@ -42,9 +38,11 @@ export function TdarrQueueCard({ slotId }: WidgetComponentProps) {
   const stats = statsQueries.map((q) => q.data?.[0]).filter((s) => s != null);
   const totalFiles = stats.reduce((sum, s) => sum + (s.totalFileCount ?? 0), 0);
   const totalSaved = stats.reduce((sum, s) => sum + (Number(s.sizeDiff) || 0), 0);
+  // healthCheckScore, not tdarrScore — the latter is the transcode/plugin
+  // decision score, not a health metric (flagged in PR #363 review).
   const avgScore =
     stats.length > 0
-      ? stats.reduce((sum, s) => sum + (Number(s.tdarrScore) || 0), 0) / stats.length
+      ? stats.reduce((sum, s) => sum + (Number(s.healthCheckScore) || 0), 0) / stats.length
       : null;
 
   useHideWhenEmpty(slotId, {

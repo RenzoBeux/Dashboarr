@@ -9,9 +9,11 @@ import {
   cancelWorkerItem,
   killWorker,
   scanFiles,
+  searchFiles,
   alterWorkerLimit,
   type TdarrScanMode,
   type TdarrWorkerType,
+  type SearchFilesOptions,
 } from "@/services/tdarr-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
@@ -94,6 +96,14 @@ export function useTdarrScanFiles(instanceId?: string) {
       { dbID, arrayOrPath, mode }: { dbID: string; arrayOrPath: string; mode: TdarrScanMode },
       id,
     ) => scanFiles(dbID, arrayOrPath, mode, id),
+    instanceId,
+  );
+}
+
+export function useTdarrSearchFiles(instanceId?: string) {
+  return useServiceMutation(
+    "tdarr",
+    (opts: SearchFilesOptions, id) => searchFiles(opts, id),
     instanceId,
   );
 }
