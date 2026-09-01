@@ -3,7 +3,6 @@ import {
   getNodes,
   getResStats,
   getStatistics,
-  getStagedQueue,
   getLibraries,
   pauseNode,
   cancelWorkerItem,
@@ -37,16 +36,6 @@ export function useTdarrStatistics(instanceId?: string) {
     "tdarr",
     ["statistics"],
     getStatistics,
-    POLLING_INTERVALS.queue,
-    instanceId,
-  );
-}
-
-export function useTdarrStagedQueue(instanceId?: string) {
-  return useServiceQuery(
-    "tdarr",
-    ["staged-queue"],
-    getStagedQueue,
     POLLING_INTERVALS.queue,
     instanceId,
   );

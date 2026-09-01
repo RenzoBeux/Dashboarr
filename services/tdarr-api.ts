@@ -42,10 +42,6 @@ export function getStatistics(instanceId?: string): Promise<TdarrStatistics[]> {
   return cruddbGetAll<TdarrStatistics[]>("StatisticsJSONDB", instanceId);
 }
 
-export function getStagedQueue(instanceId?: string): Promise<unknown[]> {
-  return cruddbGetAll<unknown[]>("StagedJSONDB", instanceId);
-}
-
 export function getLibraries(instanceId?: string): Promise<TdarrLibrary[]> {
   return cruddbGetAll<TdarrLibrary[]>("LibrarySettingsJSONDB", instanceId);
 }

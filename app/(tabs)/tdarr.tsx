@@ -43,7 +43,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { lightHaptic } from "@/lib/haptics";
-import { fmt, fileBaseName } from "@/lib/tdarr-format";
+import { fmt, fileBaseName, sumParts } from "@/lib/tdarr-format";
 import type { TdarrNode, TdarrWorker, TdarrLibrary, TdarrFileItem } from "@/lib/types";
 import type { TdarrWorkerType } from "@/services/tdarr-api";
 
@@ -77,8 +77,11 @@ function TdarrScreenInner() {
 
 function StatusCard() {
   const { data: status, isLoading: statusLoading } = useTdarrStatus();
-  const { data: res, isLoading: resLoading } = useTdarrResStats();
-  const isLoading = statusLoading || resLoading;
+  // Only /status gates the skeleton. The resource pills below are already
+  // rendered conditionally, so folding /get-res-stats into the gate would pin
+  // the card in a skeleton (re-flickering on every 5s poll) whenever that one
+  // endpoint is broken, even though /status answered fine.
+  const { data: res } = useTdarrResStats();
 
   return (
     <Card>
@@ -98,7 +101,7 @@ function StatusCard() {
         )}
       </CardHeader>
 
-      {isLoading ? (
+      {statusLoading ? (
         <SkeletonCardContent rows={2} />
       ) : !status ? (
         <EmptyState title="No data" />
@@ -350,8 +353,8 @@ function NodeRow({
 
       {q && (
         <View className="flex-row gap-3 flex-wrap mb-2">
-          <StatPill label="Transcode Q" value={String(q.transcodecpu + q.transcodegpu)} />
-          <StatPill label="Health Q" value={String(q.healthcheckcpu + q.healthcheckgpu)} />
+          <StatPill label="Transcode Q" value={sumParts(q.transcodecpu, q.transcodegpu)} />
+          <StatPill label="Health Q" value={sumParts(q.healthcheckcpu, q.healthcheckgpu)} />
         </View>
       )}
 

@@ -3297,7 +3297,6 @@ export function getDemoResponse(
           }
         })();
         if (collection === "StatisticsJSONDB") return DEMO_TDARR_STATISTICS;
-        if (collection === "StagedJSONDB") return [];
         if (collection === "LibrarySettingsJSONDB") return DEMO_TDARR_LIBRARIES;
         return undefined;
       }

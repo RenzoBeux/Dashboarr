@@ -15,3 +15,14 @@ export function fileBaseName(path: string | undefined | null): string | undefine
   const segments = path.split(/[\\/]/);
   return segments[segments.length - 1] || undefined;
 }
+
+// Sums a Tdarr count that arrives split across CPU/GPU keys. These types were
+// mapped from a live instance, so a key can simply be absent on another build,
+// and a plain `a + b` then renders the literal "NaN". Missing parts count as
+// zero; the pill falls back to "—" only when nothing at all was reported.
+export function sumParts(...parts: (number | string | null | undefined)[]): string {
+  const nums = parts
+    .map((part) => (typeof part === "string" ? Number(part) : part))
+    .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  return nums.length > 0 ? String(nums.reduce((sum, n) => sum + n, 0)) : "—";
+}
