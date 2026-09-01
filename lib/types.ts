@@ -957,6 +957,287 @@ export interface LidarrArtistSearchResult {
   remotePoster?: string;
 }
 
+// --- Bindery Types ---
+// Bindery is the Go successor to Readarr (books + audiobooks). Its route names
+// echo the *arr family but the payloads are its own, so none of the Lidarr /
+// Radarr / Sonarr types apply. Four divergences drive most of the code below:
+//
+//   1. Envelopes are inconsistent. /author, /book and /history return
+//      { items, total, limit, offset } (offset-paginated, NOT page); /queue
+//      returns { items, partial?, staleClients? }; several others return a
+//      bare array. lib/bindery-normalize.ts unwraps all of them.
+//   2. Cover art is a single `imageUrl` string, not an images[] array, and it
+//      is a RELATIVE proxy path (/api/v1/images?url=<encoded remote>) rather
+//      than a URL. binderyImageSource() turns it into the { url, remoteUrl }
+//      pair hooks/use-service-image.ts expects.
+//   3. Progress is a STRING percentage ("42.5", sometimes "42.5%"), not the
+//      size/sizeleft pair every *arr queue uses.
+//   4. Author.statistics carries only bookCount. See BinderyAuthorStatistics.
+
+// Offset-paginated envelope shared by /author, /book and /history.
+// `limit` echoes what the server actually applied: values above 500 are
+// silently clamped, so paging must advance by the echoed limit, not the
+// requested one.
+export interface BinderyListEnvelope<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Only `bookCount` is real. Upstream declares availableBookCount and
+// wantedBookCount but never assigns them anywhere in its codebase (the struct
+// is built in exactly one place, internal/db/authors.go, which sets BookCount
+// alone), so both always serialize as 0. Deriving a progress bar from them
+// renders 0% or 100% for every author forever — see components/bindery/
+// books-view.tsx, which counts real statuses on the detail screen instead.
+// `statistics` is also present ONLY on the /author list response; GET
+// /author/{id} omits the key entirely.
+export interface BinderyAuthorStatistics {
+  bookCount: number;
+  availableBookCount?: number;
+  wantedBookCount?: number;
+}
+
+export type BinderyMediaType = "ebook" | "audiobook" | "both";
+export type BinderyAuthorMonitorMode =
+  | "all"
+  | "future"
+  | "latest"
+  | "none"
+  | "series";
+export type BinderyBookStatus =
+  | "wanted"
+  | "downloading"
+  | "downloaded"
+  | "imported"
+  | "skipped";
+
+// The eleven states a download row can be in.
+export type BinderyDownloadState =
+  | "grabbed"
+  | "downloading"
+  | "completed"
+  | "importPending"
+  | "importing"
+  | "imported"
+  | "failed"
+  | "importFailed"
+  | "importBlocked"
+  | "importExternal"
+  | "importHeld";
+
+export interface BinderyAuthor {
+  id: number;
+  foreignAuthorId: string;
+  authorName: string;
+  sortName?: string;
+  description?: string;
+  // Relative proxy path, not a URL. Run it through binderyImageSource().
+  imageUrl?: string;
+  disambiguation?: string;
+  ratingsCount?: number;
+  averageRating?: number;
+  monitored: boolean;
+  monitorMode?: BinderyAuthorMonitorMode;
+  monitorLatestCount?: number;
+  monitorNewItems?: "all" | "none";
+  qualityProfileId?: number | null;
+  metadataProfileId?: number | null;
+  rootFolderId?: number | null;
+  audiobookRootFolderId?: number | null;
+  metadataProvider?: string;
+  lastMetadataRefreshAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  // Populated on GET /author/{id} only, and image-proxied like the parent.
+  // This is where real per-status counts come from; the list response has no
+  // usable progress data.
+  books?: BinderyBook[];
+  statistics?: BinderyAuthorStatistics;
+}
+
+export interface BinderyBookFile {
+  id: number;
+  bookId: number;
+  format: "ebook" | "audiobook";
+  path: string;
+  sizeBytes: number;
+  createdAt?: string;
+}
+
+// The provider identity map, attached to GET /book/{id} only.
+export interface BinderyBookIdentifier {
+  id?: number;
+  bookId?: number;
+  provider?: string;
+  identifier?: string;
+  value?: string;
+}
+
+export interface BinderyBook {
+  id: number;
+  foreignBookId: string;
+  authorId: number;
+  title: string;
+  sortTitle?: string;
+  originalTitle?: string;
+  description?: string;
+  imageUrl?: string;
+  releaseDate?: string | null;
+  genres?: string[];
+  averageRating?: number;
+  ratingsCount?: number;
+  monitored: boolean;
+  status: BinderyBookStatus | string;
+  filePath?: string;
+  language?: string;
+  mediaType?: BinderyMediaType | string;
+  narrator?: string;
+  durationSeconds?: number;
+  asin?: string;
+  // The one snake_case field in the whole API.
+  calibre_id?: number | null;
+  metadataProvider?: string;
+  lastMetadataRefreshAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lockedFields?: string[];
+  excluded?: boolean;
+  ebookFilePath?: string;
+  audiobookFilePath?: string;
+  author?: BinderyAuthor;
+  // Attached on GET /book/{id} only.
+  bookFiles?: BinderyBookFile[];
+  identifiers?: BinderyBookIdentifier[];
+  // NOTE: models.Book also declares `editions[]`, but no Bindery handler ever
+  // populates it (GET /book/{id} attaches files and identifiers and nothing
+  // else) and there is no /book/{id}/editions route. Deliberately not typed
+  // here so no screen is tempted to render it.
+}
+
+export interface BinderyQueueItem {
+  id: number;
+  guid?: string;
+  title: string;
+  status: BinderyDownloadState | string;
+  size: number;
+  protocol?: string;
+  errorMessage?: string;
+  addedAt?: string;
+  grabbedAt?: string;
+  completedAt?: string;
+  importedAt?: string;
+  bookId?: number | null;
+  // Live overlay from the download client — present only while it is
+  // reporting. Percentage is 0-100 as a string, occasionally with a "%".
+  percentage?: string;
+  timeLeft?: string;
+  speed?: string;
+  // Minimal projection so a row can name the book and its author without a
+  // second fetch. Carries no artwork.
+  book?: {
+    id: number;
+    title: string;
+    authorId: number;
+    authorName: string;
+  };
+}
+
+export interface BinderyQueueResponse {
+  items: BinderyQueueItem[];
+  // True when a download client did not answer inside its deadline; the items
+  // are still valid, just possibly missing live progress.
+  partial?: boolean;
+  staleClients?: { clientId: number; name?: string; message?: string }[];
+}
+
+export interface BinderyRootFolder {
+  id: number;
+  path: string;
+  // Bavail * Bsize. There is no total/capacity field anywhere in the API, and
+  // the Windows implementation returns 0 — so no free-vs-total disk widget.
+  freeSpace: number;
+  createdAt?: string;
+}
+
+export interface BinderyMetadataProfile {
+  id: number;
+  name: string;
+  minPopularity?: number;
+  minPages?: number;
+  skipMissingDate?: boolean;
+  skipMissingIsbn?: boolean;
+  skipPartBooks?: boolean;
+  allowedLanguages?: string;
+  unknownLanguageBehavior?: "pass" | "fail";
+}
+
+// Response of GET /api/v1/system/status. That is the service's ping path (see
+// SERVICE_DEFAULTS) rather than a screen's data source, so it is exercised by
+// lib/http-client.ts's probe rather than by services/bindery-api.ts.
+export interface BinderySystemStatus {
+  version: string;
+  commit?: string;
+  buildDate?: string;
+  latestVersion?: string;
+  imageCacheBytes?: number;
+}
+
+// Stub record returned by /search/author. `id` is 0 (these are not in the
+// library yet) and `imageUrl` is a RAW remote URL or empty — unlike library
+// records it is never proxied, so it must not go through useServiceImage.
+export interface BinderyAuthorSearchResult {
+  id?: number;
+  foreignAuthorId: string;
+  authorName: string;
+  description?: string;
+  disambiguation?: string;
+  imageUrl?: string;
+  averageRating?: number;
+  ratingsCount?: number;
+  statistics?: BinderyAuthorStatistics;
+}
+
+export interface BinderyAddAuthorPayload {
+  foreignAuthorId: string;
+  authorName: string;
+  monitored: boolean;
+  searchOnAdd: boolean;
+  mediaType?: BinderyMediaType;
+  rootFolderId?: number;
+  metadataProfileId?: number;
+  monitorMode?: BinderyAuthorMonitorMode;
+  monitorLatestCount?: number;
+}
+
+// Partial patch for PUT /author/{id}. Every field the server decodes is a
+// pointer, so omitting one leaves it alone — send ONLY what changed. JSON null
+// is indistinguishable from omission server-side, so a profile cannot be
+// cleared this way; only the audiobook root folder has an explicit clear flag.
+export interface BinderyUpdateAuthorPayload {
+  monitored?: boolean;
+  monitorMode?: BinderyAuthorMonitorMode;
+  monitorLatestCount?: number;
+  monitorNewItems?: "all" | "none";
+  qualityProfileId?: number;
+  metadataProfileId?: number;
+  rootFolderId?: number;
+  audiobookRootFolderId?: number;
+  clearAudiobookRootFolder?: boolean;
+  applyMonitorModeToExisting?: boolean;
+}
+
+// Partial patch for PUT /book/{id}. Same pointer semantics as the author
+// patch. Do NOT include title/description/genres/language/releaseDate on a
+// monitor toggle: setting any of them also LOCKS that field against future
+// metadata refreshes.
+export interface BinderyUpdateBookPayload {
+  monitored?: boolean;
+  status?: BinderyBookStatus;
+  mediaType?: BinderyMediaType;
+}
+
 // --- Overseerr Types ---
 
 export type OverseerrMediaType = "movie" | "tv";
@@ -2154,6 +2435,845 @@ export interface UnraidStorage {
   dataDisks: UnraidArrayDisk[];
   pools: UnraidPool[];
   unassigned: UnraidPhysicalDisk[];
+}
+
+// --- Autobrr Types ---
+// Wire shapes verified against autobrr's web/src/types/*.d.ts (snake_case JSON).
+
+export interface AutobrrReleaseStats {
+  total_count: number;
+  filtered_count: number;
+  filter_rejected_count: number;
+  push_approved_count: number;
+  push_rejected_count: number;
+  push_error_count: number;
+}
+
+// ReleaseActionStatus.status values (domain.ReleasePushStatus).
+export type AutobrrPushStatus = "PUSH_APPROVED" | "PUSH_REJECTED" | "PUSH_ERROR" | "PENDING";
+
+export interface AutobrrActionStatus {
+  id: number;
+  status: AutobrrPushStatus | string;
+  action: string;
+  action_id: number;
+  type: string;
+  client: string;
+  filter: string;
+  rejections: string[];
+  timestamp: string;
+}
+
+export interface AutobrrRelease {
+  id: number;
+  filter_status: string;
+  rejections: string[];
+  indexer: { id: number; name: string; identifier: string };
+  filter: string;
+  protocol: string;
+  name: string;
+  title: string;
+  size: number;
+  info_url: string;
+  timestamp: string;
+  // Empty when the release matched no filter action (filtered-only entry).
+  action_status: AutobrrActionStatus[];
+}
+
+export interface AutobrrFindReleasesResponse {
+  data: AutobrrRelease[];
+  next_cursor: number;
+  count: number;
+}
+
+export interface AutobrrFilter {
+  id: number;
+  name: string;
+  enabled: boolean;
+}
+
+export interface AutobrrIrcChannel {
+  id: number;
+  enabled: boolean;
+  name: string;
+  monitoring: boolean;
+  state?: string;
+}
+
+export interface AutobrrIrcNetwork {
+  id: number;
+  name: string;
+  enabled: boolean;
+  server: string;
+  port: number;
+  nick: string;
+  connected: boolean;
+  connected_since: string;
+  channels: AutobrrIrcChannel[];
+  connection_errors: string[];
+  healthy: boolean;
+}
+
+// --- Cleanuparr Types ---
+// Wire shapes verified against Cleanuparr's C# DTOs. MVC serializes camelCase
+// property names but PascalCase enum STRING values (JsonStringEnumConverter
+// with no naming policy) — so breakdown keys and enum-typed fields arrive as
+// "StalledStrike" / "Warning" style names. Zero-activity breakdown keys are
+// omitted entirely, never sent as 0.
+
+export interface CleanuparrJobTypeStats {
+  total: number;
+  completed: number;
+  failed: number;
+  lastRunAt?: string;
+  nextRunAt?: string;
+}
+
+export interface CleanuparrClientHealth {
+  id: string;
+  name: string;
+  type: string;
+  isHealthy: boolean;
+  lastChecked: string;
+  responseTimeMs?: number;
+  errorMessage?: string | null;
+}
+
+export interface CleanuparrStats {
+  events: {
+    total: number;
+    byType: Record<string, number>;
+    bySeverity: Record<string, number>;
+  };
+  strikes: {
+    total: number;
+    byType: Record<string, number>;
+    recovered: number;
+  };
+  removals: {
+    total: number;
+    byReason: Record<string, number>;
+  };
+  cleaned: {
+    total: number;
+    byReason: Record<string, number>;
+  };
+  searches: {
+    total: number;
+    completed: number;
+    failed: number;
+    grabbed: number;
+    byReason: Record<string, number>;
+  };
+  jobs: {
+    total: number;
+    completed: number;
+    failed: number;
+    byType: Record<string, CleanuparrJobTypeStats>;
+  };
+  health: {
+    downloadClients: CleanuparrClientHealth[];
+    arrInstances: CleanuparrClientHealth[];
+  };
+  timeframeHours: number;
+  generatedAt: string;
+}
+
+// JobType enum names — also the path segment for POST /api/jobs/{jobType}/trigger.
+export type CleanuparrJobType =
+  | "QueueCleaner"
+  | "MalwareBlocker"
+  | "DownloadCleaner"
+  | "BlacklistSynchronizer"
+  | "Seeker"
+  | "CustomFormatScoreSyncer";
+
+export interface CleanuparrJob {
+  name: string;
+  status: string;
+  schedule: string;
+  nextRunTime?: string | null;
+  previousRunTime?: string | null;
+  jobType: CleanuparrJobType | string;
+}
+
+export type CleanuparrEventSeverity = "Test" | "Information" | "Warning" | "Important" | "Error";
+
+export interface CleanuparrEvent {
+  id: string;
+  timestamp: string;
+  eventType: string;
+  message: string;
+  severity: CleanuparrEventSeverity | string;
+  isDryRun: boolean;
+  itemTitle?: string | null;
+  strikeCount?: number | null;
+}
+
+export interface CleanuparrPaginatedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+// --- NZBHydra2 Types ---
+//
+// Wire shapes read off theotherp/nzbhydra2@master. There is no OpenAPI spec
+// (springdoc is commented out in core/pom.xml) and the GitHub wiki is stale in
+// several places, so these come from the Java DTOs; Jackson serializes them
+// camelCase.
+
+// NZBHydra2 emits THREE shapes for the same timestamp field: a raw number
+// (epoch SECONDS), a numeric string, and an ISO-8601 string — its own Angular
+// UI parses all three (parseAppTimestamp in indexer-statuses-controller.js).
+// Never read one directly; run it through parseHydraTimestamp() in
+// lib/nzbhydra2-normalize.ts.
+export type Nzbhydra2Timestamp = number | string | null;
+
+// Every newznab JSON attribute holder upstream is declared
+// @JsonProperty("@attributes"), but the GraalVM native build (which BOTH
+// mainstream Docker images ship) loses that rename and emits the bare field
+// name `attributes`. Both spellings are live in the wild, so every holder is
+// typed with both and read through hydraHolder() in lib/nzbhydra2-normalize.ts.
+export interface Nzbhydra2AttrHolder<T> {
+  "@attributes"?: T;
+  attributes?: T;
+}
+
+// GET /api?t=caps&o=json. Only the parts we render are typed.
+export interface Nzbhydra2Caps {
+  server?: Nzbhydra2AttrHolder<{
+      // The NZBHydra2 version string (UpdateManager.getCurrentVersionString()).
+      appversion?: string;
+      // The newznab API version, not the app version.
+      version?: string;
+      title?: string;
+      url?: string;
+      image?: string;
+      email?: string;
+    }>;
+  limits?: Nzbhydra2AttrHolder<Record<string, string>>;
+  searching?: Record<string, unknown>;
+  categories?: { category?: unknown[] };
+}
+
+// The newznab error envelope. Every /api failure — wrong key included — comes
+// back as HTTP 200 carrying this, because ExternalApi's @ExceptionHandler
+// returns a NewznabXmlError whose default status is 200.
+export interface Nzbhydra2ApiError {
+  code?: string;
+  description?: string;
+}
+
+export type Nzbhydra2IndexerState =
+  | "ENABLED"
+  | "DISABLED_SYSTEM_TEMPORARY"
+  | "DISABLED_SYSTEM"
+  | "DISABLED_USER";
+
+// POST /api/stats/indexers answers with a BARE ARRAY of these. There is no
+// envelope and no numeric id, so `indexer` (the display name) is the identity.
+export interface Nzbhydra2IndexerStatus {
+  indexer: string;
+  state: Nzbhydra2IndexerState | string;
+  // Consecutive-failure backoff level.
+  level: number;
+  disabledUntil: Nzbhydra2Timestamp;
+  lastError: string | null;
+  apiResetTime: Nzbhydra2Timestamp;
+  downloadResetTime: Nzbhydra2Timestamp;
+  apiHits: number | null;
+  apiHitLimit: number | null;
+  downloadHits: number | null;
+  downloadHitLimit: number | null;
+  // "YYYY-MM-DD" or the literal string "Lifetime".
+  vipExpirationDate: string | null;
+}
+
+// POST /api/stats body is { apikey, request: StatsRequest }. ALWAYS send an
+// explicit request: omit it and upstream's no-arg ApiStatsRequest constructor
+// turns nearly every flag on, and the whole calculation is aborted at 30s.
+// Fields left undefined stay false (StatsRequest's own no-arg ctor). `after`
+// and `before` are Instants — send ISO-8601.
+export interface Nzbhydra2StatsRequest {
+  after?: string;
+  before?: string;
+  includeDisabled?: boolean;
+  indexerApiAccessStats?: boolean;
+  // NAMING MISMATCH: this REQUEST flag populates the `indexerScores` RESPONSE
+  // field, not one named after the flag.
+  avgIndexerUniquenessScore?: boolean;
+  avgResponseTimes?: boolean;
+  indexerDownloadShares?: boolean;
+  downloadsPerDayOfWeek?: boolean;
+  downloadsPerHourOfDay?: boolean;
+  searchesPerDayOfWeek?: boolean;
+  searchesPerHourOfDay?: boolean;
+  downloadsPerAgeStats?: boolean;
+  successfulDownloadsPerIndexer?: boolean;
+  downloadSharesPerUser?: boolean;
+  downloadSharesPerIp?: boolean;
+  searchSharesPerUser?: boolean;
+  searchSharesPerIp?: boolean;
+  userAgentSearchShares?: boolean;
+  userAgentDownloadShares?: boolean;
+}
+
+export interface Nzbhydra2IndexerApiAccessStat {
+  indexerName: string;
+  percentSuccessful: number | null;
+  percentConnectionError: number | null;
+  averageAccessesPerDay: number | null;
+}
+
+export interface Nzbhydra2IndexerScore {
+  indexerName: string;
+  averageUniquenessScore: number | null;
+  involvedSearches: number;
+  uniqueDownloads: number;
+}
+
+// Note the field name on this one only: `indexer`, not `indexerName`.
+export interface Nzbhydra2AvgResponseTime {
+  indexer: string;
+  avgResponseTime: number;
+  delta: number;
+}
+
+export interface Nzbhydra2DownloadShare {
+  indexerName: string;
+  total: number;
+  share: number;
+}
+
+export interface Nzbhydra2SuccessfulDownloadsPerIndexer {
+  indexerName: string;
+  countAll: number;
+  countSuccessful: number;
+  countError: number;
+  percentSuccessful: number | null;
+}
+
+// Every array is optional AND nullable: a section is only populated when its
+// request flag was set, and upstream leaves the rest null.
+export interface Nzbhydra2StatsResponse {
+  after?: Nzbhydra2Timestamp;
+  before?: Nzbhydra2Timestamp;
+  indexerApiAccessStats?: Nzbhydra2IndexerApiAccessStat[] | null;
+  // Populated by the avgIndexerUniquenessScore request flag.
+  indexerScores?: Nzbhydra2IndexerScore[] | null;
+  avgResponseTimes?: Nzbhydra2AvgResponseTime[] | null;
+  indexerDownloadShares?: Nzbhydra2DownloadShare[] | null;
+  successfulDownloadsPerIndexer?: Nzbhydra2SuccessfulDownloadsPerIndexer[] | null;
+  // Always populated, whatever flags were requested.
+  numberOfConfiguredIndexers?: number;
+  numberOfEnabledIndexers?: number;
+}
+
+// POST /api/history/{searches,downloads} body is { apikey, request }.
+export interface Nzbhydra2HistoryRequest {
+  distinct: boolean;
+  onlyCurrentUser: boolean;
+  // ONE-based. Don't confuse it with Nzbhydra2HistoryPage.number, which is
+  // zero-based.
+  page: number;
+  limit: number;
+  filterModel: Record<string, unknown>;
+  // sortMode 1 is ASC; upstream treats EVERY other value (0 included) as DESC.
+  // sortModel is mandatory — History.getHistory dereferences it unconditionally
+  // one line after its own null guard, so omitting it is a 500.
+  sortModel: { column: string; sortMode: 0 | 1 | 2 };
+}
+
+// Spring's Page<T> envelope. `number` is the ZERO-based index of the page just
+// returned while the request's `page` is one-based, so the next request page is
+// `number + 2`.
+export interface Nzbhydra2HistoryPage<T> {
+  content: T[];
+  last: boolean;
+  first: boolean;
+  totalElements: number;
+  totalPages: number;
+  numberOfElements: number;
+  number: number;
+  size: number;
+}
+
+export interface Nzbhydra2SearchHistoryRow {
+  id: number;
+  source: "API" | "INTERNAL" | string;
+  searchType: "SEARCH" | "TVSEARCH" | "MOVIE" | "BOOK" | string;
+  time: Nzbhydra2Timestamp;
+  identifiers: unknown[];
+  categoryName: string | null;
+  query: string | null;
+  season: number | null;
+  episode: string | null;
+  title: string | null;
+  author: string | null;
+  username: string | null;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+export type Nzbhydra2DownloadStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "INTERNAL_ERROR"
+  | "NZB_DOWNLOAD_SUCCESSFUL"
+  | "NZB_DOWNLOAD_ERROR"
+  | "NZB_ADDED"
+  | "NZB_NOT_ADDED"
+  | "NZB_ADD_ERROR"
+  | "NZB_ADD_REJECTED"
+  | "CONTENT_DOWNLOAD_SUCCESSFUL"
+  | "CONTENT_DOWNLOAD_ERROR"
+  | "CONTENT_DOWNLOAD_WARNING";
+
+export interface Nzbhydra2DownloadHistoryRow {
+  id: number;
+  // Nullable: purging a search result leaves its download row behind.
+  searchResult: {
+    id: number | string;
+    indexer: { id: number; name: string } | null;
+    firstFound: Nzbhydra2Timestamp;
+    title: string | null;
+    indexerGuid: string | null;
+    link: string | null;
+    details: string | null;
+    downloadType: "NZB" | "TORRENT" | string;
+    pubDate: Nzbhydra2Timestamp;
+  } | null;
+  nzbAccessType: string | null;
+  accessSource: "INTERNAL" | "API" | string;
+  time: Nzbhydra2Timestamp;
+  status: Nzbhydra2DownloadStatus | string;
+  error: string | null;
+  username: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  // Age of the release in days at download time.
+  age: number | null;
+  externalId: string | null;
+}
+
+// --- NZBHydra2 newznab search ---
+//
+// Passthrough of whatever the upstream indexer emitted, normalized only loosely
+// by Hydra — so every field is optional and a missing enclosure or attr array
+// must degrade to a row rather than crash the list.
+
+export type Nzbhydra2SearchItemAttr = Nzbhydra2AttrHolder<{
+  name?: string;
+  value?: string | number;
+}>;
+
+export interface Nzbhydra2SearchItem {
+  title?: string;
+  guid?: string;
+  id?: string;
+  // Self-authenticating grab link built by Hydra's DownloadUrlBuilder:
+  // <hydraBaseUrl>/getnzb/api/<searchResultId>?apikey=<install key>.
+  link?: string;
+  pubDate?: string;
+  comments?: string;
+  description?: string;
+  category?: string;
+  enclosure?: Nzbhydra2AttrHolder<{
+    url?: string;
+    length?: string | number;
+    type?: string;
+  }>;
+  // The upstream indexer's newznab attributes plus Hydra's own
+  // hydraIndexerName / hydraIndexerHost / hydraIndexerScore.
+  attr?: Nzbhydra2SearchItemAttr[];
+}
+
+export interface Nzbhydra2SearchResponse {
+  channel?: {
+    title?: string;
+    generator?: string;
+    response?: Nzbhydra2AttrHolder<{
+      offset?: string | number;
+      total?: string | number;
+    }>;
+    // Jackson can collapse a single-element list to a bare object.
+    item?: Nzbhydra2SearchItem[] | Nzbhydra2SearchItem;
+  };
+}
+
+// --- Navidrome Types ---
+//
+// Two wire formats live behind one host. Everything under `/rest` is the
+// Subsonic API (v1.16.1) and comes wrapped in a `subsonic-response` envelope
+// that lib/navidrome-normalize.ts unwraps; everything under `/api` is
+// Navidrome's own react-admin API and is plain JSON. Field names below are
+// upstream verbatim (server/subsonic/responses/responses.go and model/*.go).
+
+/** `POST /auth/login` response. `subsonicSalt`/`subsonicToken` are unused — we
+ * derive our own pair locally so the read path never depends on this call. */
+export interface NavidromeLoginResponse {
+  id: string;
+  name: string;
+  username: string;
+  isAdmin: boolean;
+  token: string;
+  avatar?: string;
+  subsonicSalt?: string;
+  subsonicToken?: string;
+}
+
+/** `GET /rest/getUser`. `adminRole` is how we learn whether the configured
+ * account may scan or read /api/library, without spending a login. */
+export interface NavidromeUser {
+  username: string;
+  adminRole: boolean;
+  scrobblingEnabled?: boolean;
+  settingsRole?: boolean;
+  downloadRole?: boolean;
+  playlistRole?: boolean;
+  streamRole?: boolean;
+  shareRole?: boolean;
+  jukeboxRole?: boolean;
+}
+
+/** A Subsonic `Child` (song). Only the fields we render are listed. */
+export interface NavidromeSong {
+  id: string;
+  parent?: string;
+  title: string;
+  album?: string;
+  artist?: string;
+  albumId?: string;
+  artistId?: string;
+  coverArt?: string;
+  duration?: number;
+  track?: number;
+  year?: number;
+  genre?: string;
+  size?: number;
+  suffix?: string;
+  bitRate?: number;
+  starred?: string;
+  path?: string;
+}
+
+/** A Subsonic ID3 artist (`getArtists`, `search3`). */
+export interface NavidromeArtist {
+  id: string;
+  name: string;
+  albumCount?: number;
+  coverArt?: string;
+  artistImageUrl?: string;
+  starred?: string;
+}
+
+/** A Subsonic ID3 album (`getAlbumList2`, `search3`). */
+export interface NavidromeAlbum {
+  id: string;
+  name: string;
+  artist?: string;
+  artistId?: string;
+  coverArt?: string;
+  songCount?: number;
+  duration?: number;
+  year?: number;
+  genre?: string;
+  created?: string;
+  starred?: string;
+}
+
+/** `getArtists` index buckets, one per initial letter. */
+export interface NavidromeArtistIndex {
+  name: string;
+  artist?: NavidromeArtist[];
+}
+
+export interface NavidromeArtistsResult {
+  index?: NavidromeArtistIndex[];
+  ignoredArticles?: string;
+  lastModified?: number;
+}
+
+/** `getNowPlaying`. Everything from `username` down is a Navidrome extension
+ * on top of the Subsonic Child — see server/subsonic/responses/responses.go. */
+export interface NavidromeNowPlayingEntry extends NavidromeSong {
+  username: string;
+  minutesAgo: number;
+  playerId: number;
+  playerName?: string;
+  state: string;
+  positionMs: number;
+  playbackRate: number;
+}
+
+/** `getPlaylists` / `getPlaylist`. `entry` is present only on the singular. */
+export interface NavidromePlaylist {
+  id: string;
+  name: string;
+  comment?: string;
+  songCount: number;
+  duration: number;
+  public?: boolean;
+  owner?: string;
+  created: string;
+  changed: string;
+  coverArt?: string;
+  entry?: NavidromeSong[];
+}
+
+/** `search3`. All three arrays are omitted when empty. */
+export interface NavidromeSearchResult {
+  artist?: NavidromeArtist[];
+  album?: NavidromeAlbum[];
+  song?: NavidromeSong[];
+}
+
+/** What the Overview and the dashboard widget render. Built by
+ * summarizeLibraries (admin) or scanStatusToSummary (everyone else). */
+export interface NavidromeOverview {
+  summary: import("@/lib/navidrome-normalize").NavidromeLibrarySummary;
+  /** Subsonic `serverVersion` from any ping/response envelope, when known. */
+  serverVersion: string | null;
+  /** True when the configured account may scan and read /api/library. */
+  isAdmin: boolean;
+}
+
+// --- Pi-hole Types ---
+//
+// Pi-hole v6 only. Every shape here is the FTL REST API's wire format; derived
+// shapes (parsed CNAME records, chart series, gravity verdict) live in
+// lib/pihole-normalize.ts instead, because they are ours, not Pi-hole's.
+
+export interface PiholeSession {
+  valid: boolean;
+  totp: boolean;
+  /**
+   * The session id, sent back as the X-FTL-SID header on every later call.
+   * NULL when the Pi-hole has no password configured at all — that is a valid
+   * session, not a failed one, so never test this for truthiness to decide
+   * whether login succeeded. Check `valid`.
+   */
+  sid: string | null;
+  csrf: string | null;
+  /** Seconds until the session expires. Any authenticated call extends it. */
+  validity: number;
+  message: string | null;
+}
+
+export interface PiholeAuthResponse {
+  session: PiholeSession;
+  took?: number;
+}
+
+/**
+ * FTL's error envelope. Note it is NESTED — lib/http-client.ts's
+ * getHttpErrorMessage looks for a top-level `message`, so it returns undefined
+ * for every Pi-hole 4xx. lib/pihole-normalize.ts has a dedicated reader.
+ */
+export interface PiholeErrorBody {
+  error?: { key?: string; message?: string; hint?: string | null };
+}
+
+/**
+ * Four values, not two. "failed" and "unknown" must never render as enabled —
+ * a boolean toggle over this enum is the most likely correctness bug here.
+ */
+export type PiholeBlockingState = "enabled" | "disabled" | "failed" | "unknown";
+
+export interface PiholeBlockingStatus {
+  blocking: PiholeBlockingState;
+  /**
+   * REMAINING seconds until the mode automatically flips back, measured at the
+   * instant FTL answered — not an absolute time. null means the current mode is
+   * permanent. Consumers anchor it to React Query's dataUpdatedAt rather than
+   * decrementing it, or the countdown jumps backwards on cached data.
+   */
+  timer: number | null;
+  took?: number;
+}
+
+export interface PiholeSummary {
+  queries: {
+    total: number;
+    blocked: number;
+    /** Already a percentage (34.5), not a fraction. */
+    percent_blocked: number;
+    unique_domains: number;
+    forwarded: number;
+    cached: number;
+    /** Average queries per second. */
+    frequency: number;
+    types?: Record<string, number>;
+    status?: Record<string, number>;
+    replies?: Record<string, number>;
+  };
+  clients: { active: number; total: number };
+  gravity: {
+    domains_being_blocked: number;
+    /** Unix SECONDS. 0 means unknown — do not render that as 1970. */
+    last_update: number;
+  };
+  took?: number;
+}
+
+export interface PiholeTopDomain {
+  domain: string;
+  count: number;
+}
+
+export interface PiholeTopDomainsResponse {
+  domains: PiholeTopDomain[];
+  total_queries: number;
+  blocked_queries: number;
+}
+
+export interface PiholeTopClient {
+  ip: string;
+  name: string | null;
+  count: number;
+}
+
+export interface PiholeTopClientsResponse {
+  clients: PiholeTopClient[];
+  total_queries: number;
+  blocked_queries: number;
+}
+
+export interface PiholeUpstream {
+  ip: string | null;
+  name: string | null;
+  /** -1 when not applicable, e.g. the local cache. */
+  port: number;
+  count: number;
+  statistics?: { response: number; variance: number };
+}
+
+export interface PiholeUpstreamsResponse {
+  upstreams: PiholeUpstream[];
+  forwarded_queries: number;
+  total_queries: number;
+}
+
+/**
+ * One 10-minute bucket of the 24h activity graph.
+ *
+ * `total` is the SUM of cached + blocked + forwarded (plus a small remainder
+ * for statuses that fit no category). Stacking all four series double-counts
+ * every bucket — chart code stacks blocked and (total - blocked) only.
+ */
+export interface PiholeHistoryBucket {
+  /** Unix seconds, fractional. */
+  timestamp: number;
+  total: number;
+  cached: number;
+  blocked: number;
+  forwarded: number;
+}
+
+export interface PiholeHistoryResponse {
+  history: PiholeHistoryBucket[];
+  took?: number;
+}
+
+export interface PiholeQuery {
+  id: number;
+  /** Unix seconds, fractional. */
+  time: number;
+  type: string;
+  domain: string;
+  /** Set when the block happened during deep CNAME inspection. */
+  cname: string | null;
+  status: string | null;
+  client: { ip: string; name: string | null };
+  dnssec: string | null;
+  reply: { type: string | null; time: number };
+  list_id: number | null;
+  upstream: string | null;
+  ede?: { code: number; text: string | null };
+}
+
+export interface PiholeQueriesResponse {
+  queries: PiholeQuery[];
+  /** Pass back as `cursor` to page further into the past. */
+  cursor: number | null;
+  recordsTotal: number;
+  recordsFiltered: number;
+  earliest_timestamp?: number;
+  earliest_timestamp_disk?: number;
+}
+
+/** Camel-cased at our boundary; mapped to FTL's snake_case wire names. */
+export interface PiholeQueryFilters {
+  length?: number;
+  cursor?: number;
+  from?: number;
+  until?: number;
+  domain?: string;
+  clientIp?: string;
+  clientName?: string;
+  upstream?: string;
+  type?: string;
+  status?: string;
+  reply?: string;
+  dnssec?: string;
+  disk?: boolean;
+}
+
+export interface PiholeQuerySuggestions {
+  suggestions: {
+    domain?: string[];
+    client_ip?: string[];
+    client_name?: string[];
+    upstream?: string[];
+    type?: string[];
+    status?: string[];
+    reply?: string[];
+    dnssec?: string[];
+  };
+}
+
+/**
+ * GET /api/config/{element} answers with the filtered NESTED subtree, not a
+ * bare value — so cnameRecords arrives as {config:{dns:{cnameRecords:[…]}}}.
+ */
+export interface PiholeCnameConfigResponse {
+  config?: { dns?: { cnameRecords?: string[] } };
+  took?: number;
+}
+
+export interface PiholeVersionResponse {
+  version: {
+    core?: { local?: { branch: string | null; version: string | null; hash: string | null } };
+    web?: { local?: { branch: string | null; version: string | null; hash: string | null } };
+    ftl?: { local?: { branch: string | null; version: string | null; hash: string | null } };
+  };
+}
+
+/**
+ * GET /api/padd — one aggregated call covering what would otherwise be five.
+ * Its field names are PADD's own, deliberately NOT the stats API's
+ * (`gravity_size` vs `gravity.domains_being_blocked`), so this is its own type
+ * and its own normalizer rather than an attempt to unify the two.
+ */
+export interface PiholePadd {
+  blocking?: string | boolean;
+  gravity_size?: number;
+  active_clients?: number;
+  recent_blocked?: string | null;
+  top_domain?: string | null;
+  top_blocked?: string | null;
+  top_client?: string | null;
+  queries?: {
+    total?: number;
+    blocked?: number;
+    percent_blocked?: number;
+    frequency?: number;
+  };
+  node_name?: string;
+  took?: number;
 }
 
 // --- Shared Types ---

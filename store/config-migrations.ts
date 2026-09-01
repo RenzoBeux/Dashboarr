@@ -162,12 +162,43 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v42 — optional `qbtMutedCategories` on notificationSettings (#310). Pure
  *         version stamp — absence means no muting; coerceNotificationSettings
  *         validates the map on import.
- *   v43 — added the tdarr service entry. Pure version stamp —
+ *   v43 — added the bindery service entry (#308). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         bindery instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v44 — added the autobrr service entry (#317). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         autobrr instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v45 — added the cleanuparr service entry (#317). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         cleanuparr instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v46 — added the deluge service entry (#319). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         deluge instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v47 — added the nzbhydra2 service entry (#333). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         nzbhydra2 instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v48 — added the navidrome service entry (#336). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         navidrome instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v49 — added optional `backend.ignoreCertErrors` (#357), opting the backend
+ *         host into the TLS-bypass allowlist. Pure version stamp — the field is
+ *         optional, so older exports without it validate and default to false.
+ *   v50 — added the pihole service entry (#335). Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         pihole instance at import time, so older exports just need the
+ *         version field bumped.
+ *   v51 — added the tdarr service entry. Pure version stamp —
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         tdarr instance at import time, so older exports just need the
  *         version field bumped.
  */
-export const CURRENT_CONFIG_VERSION = 43;
+export const CURRENT_CONFIG_VERSION = 51;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -689,9 +720,34 @@ const migrations: Record<number, (payload: any) => any> = {
   // v41 → v42: optional `qbtMutedCategories` on notificationSettings (#310).
   // Pure version stamp — absence means no muting.
   41: (payload) => ({ ...payload, version: 42 }),
-  // v42 → v43: added the tdarr service entry. Pure version stamp —
-  // defaultInstances() backfills a disabled tdarr instance at import.
+  // v42 → v43: added the bindery service entry (#308). Pure version stamp —
+  // defaultInstances() backfills a disabled bindery instance at import.
   42: (payload) => ({ ...payload, version: 43 }),
+  // v43 → v44: added the autobrr service entry (#317). Pure version stamp —
+  // defaultInstances() backfills a disabled autobrr instance at import.
+  43: (payload) => ({ ...payload, version: 44 }),
+  // v44 → v45: added the cleanuparr service entry (#317). Pure version stamp —
+  // defaultInstances() backfills a disabled cleanuparr instance at import.
+  44: (payload) => ({ ...payload, version: 45 }),
+  // v45 → v46: added the deluge service entry (#319). Pure version stamp —
+  // defaultInstances() backfills a disabled deluge instance at import.
+  45: (payload) => ({ ...payload, version: 46 }),
+  // v46 → v47: added the nzbhydra2 service entry (#333). Pure version stamp —
+  // defaultInstances() backfills a disabled nzbhydra2 instance at import.
+  46: (payload) => ({ ...payload, version: 47 }),
+  // v47 → v48: added the navidrome service entry (#336). Pure version stamp —
+  // defaultInstances() backfills a disabled navidrome instance at import.
+  47: (payload) => ({ ...payload, version: 48 }),
+  // v48 → v49: optional `backend.ignoreCertErrors` (#357). Pure version stamp —
+  // coerceBackend treats it as an optional key, so pre-v49 exports validate and
+  // the flag defaults to false.
+  48: (payload) => ({ ...payload, version: 49 }),
+  // v49 → v50: added the pihole service entry (#335). Pure version stamp —
+  // defaultInstances() backfills a disabled pihole instance at import.
+  49: (payload) => ({ ...payload, version: 50 }),
+  // v50 → v51: added the tdarr service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled tdarr instance at import.
+  50: (payload) => ({ ...payload, version: 51 }),
 };
 
 /**

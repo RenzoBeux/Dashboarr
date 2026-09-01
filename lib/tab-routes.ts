@@ -13,16 +13,21 @@ export const PICKABLE_SERVICE_TABS = [
   "tv",
   "library",
   "music",
+  "books",
   "requests",
   "activity",
   "indexers",
   "plex",
   "jellyfin",
   "emby",
+  "navidrome",
   "glances",
   "bazarr",
   "unraid",
   "tdarr",
+  "autobrr",
+  "cleanuparr",
+  "pihole",
 ] as const;
 export type PickableServiceTab = (typeof PICKABLE_SERVICE_TABS)[number];
 
@@ -45,6 +50,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   radarr: "movies",
   sonarr: "tv",
   lidarr: "music",
+  bindery: "books",
   overseerr: "requests",
   // The stream monitors share the Activity tab — it aggregates whichever of
   // Tautulli / Tracearr / JellyStat is attached (see lib/monitor-adapter.ts).
@@ -53,13 +59,18 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   jellystat: "activity",
   prowlarr: "indexers",
   jackett: "indexers",
+  nzbhydra2: "indexers",
   plex: "plex",
   jellyfin: "jellyfin",
   emby: "emby",
+  navidrome: "navidrome",
   glances: "glances",
   bazarr: "bazarr",
   unraid: "unraid",
   tdarr: "tdarr",
+  autobrr: "autobrr",
+  cleanuparr: "cleanuparr",
+  pihole: "pihole",
 };
 
 // Inverse — the service kind(s) that back each tab. Used to decide pickability
@@ -75,20 +86,27 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   // radarr→movies and sonarr→tv so existing deep-links are unchanged.
   library: ["radarr", "sonarr"],
   music: ["lidarr"],
+  books: ["bindery"],
   requests: ["overseerr"],
   // Jellyfin/Emby are additive here — SERVICE_TO_TAB still points them at their
   // dedicated tabs, but the Activity tab is also pickable when they're attached.
   // JellyStat is an Activity-only stream monitor (history + stats for Jellyfin).
   activity: ["tautulli", "tracearr", "jellystat", "jellyfin", "emby"],
   // The Indexers tab hosts both indexer proxies behind a source switcher.
-  indexers: ["prowlarr", "jackett"],
+  indexers: ["prowlarr", "jackett", "nzbhydra2"],
   plex: ["plex"],
   jellyfin: ["jellyfin"],
   emby: ["emby"],
+  // Navidrome is a music server, not an *arr — it gets its own tab rather
+  // than sharing the Lidarr-backed Music tab, which is a library/automation view.
+  navidrome: ["navidrome"],
   glances: ["glances"],
   bazarr: ["bazarr"],
   unraid: ["unraid"],
   tdarr: ["tdarr"],
+  autobrr: ["autobrr"],
+  cleanuparr: ["cleanuparr"],
+  pihole: ["pihole"],
 };
 
 export function tabForServiceId(id: ServiceId): PickableServiceTab | null {
@@ -103,6 +121,7 @@ const DOWNLOAD_KINDS: ServiceId[] = [
   "qbittorrent",
   "rtorrent",
   "transmission",
+  "deluge",
   "sabnzbd",
   "nzbget",
 ];

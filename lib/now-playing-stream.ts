@@ -1,10 +1,11 @@
-import type { JellyfinSession, PlexSession } from "@/lib/types";
+import type { JellyfinSession, NavidromeNowPlayingEntry, PlexSession } from "@/lib/types";
 import { getPlexImageSource } from "@/services/plex-api";
 import {
   getJellyfinImageSource,
   isJellyfinTranscoding,
   ticksToMs,
 } from "@/services/jellyfin-api";
+import { getCoverArtSource } from "@/services/navidrome-api";
 import type { MediaServerId } from "@/lib/media-server-config";
 import type { ServiceId } from "@/lib/constants";
 import { isPrivateHost } from "@/lib/url-validation";
@@ -13,7 +14,7 @@ import { formatEpisodeCode } from "@/lib/utils";
 // The media servers whose live sessions the combined "Now Playing" widget
 // aggregates. Tautulli is deliberately excluded — it reports Plex's own
 // streams, so including it would double-count.
-export const NOW_PLAYING_SERVICE_IDS = ["plex", "jellyfin", "emby"] as const;
+export const NOW_PLAYING_SERVICE_IDS = ["plex", "jellyfin", "emby", "navidrome"] as const;
 export type NowPlayingServiceId = (typeof NOW_PLAYING_SERVICE_IDS)[number];
 
 // Normalized shape every server's session maps into, so one tile/row renders
@@ -36,7 +37,9 @@ export interface NowPlayingStream {
   transcoding: boolean;
   progress: number; // 0–1
   poster: { uri: string; cacheKey: string } | null;
-  mediaType: "movie" | "tv";
+  // "music" exists because Navidrome is a music server: the poster is square
+  // album art and the fallback icon is a note, not a film reel.
+  mediaType: "movie" | "tv" | "music";
   // Human-readable resolution label ("4K", "1080p", …) when the source reports
   // it. Used by the Activity tab's stream cards; left undefined by media-server
   // mappers that don't surface it.
@@ -216,5 +219,46 @@ export function mediaServerSessionToStream(
     progress: durationMs > 0 ? positionMs / durationMs : 0,
     poster: getJellyfinImageSource(item ?? null, "Primary", 220, 330, instanceId, serviceId),
     mediaType: item?.Type === "Episode" ? "tv" : "movie",
+  };
+}
+
+/**
+ * A Subsonic `getNowPlaying` entry as a NowPlayingStream.
+ *
+ * Navidrome extends the plain Subsonic Child with `state`, `positionMs`,
+ * `playerName` and `minutesAgo` (server/subsonic/responses/responses.go), which
+ * is what makes a real progress bar possible here at all — stock Subsonic
+ * reports neither position nor play state.
+ *
+ * Two fields are structurally absent rather than unread: Navidrome streams
+ * without transcoding metadata in this response, and it reports no client IP,
+ * so `isLocal` cannot be inferred and is left false rather than guessed.
+ */
+export function navidromeNowPlayingToStream(
+  entry: NavidromeNowPlayingEntry,
+  instanceId: string,
+): NowPlayingStream {
+  const durationSec = entry.duration ?? 0;
+  const positionMs = entry.positionMs ?? 0;
+  const title = entry.artist ? `${entry.artist} - ${entry.title}` : entry.title;
+  // `state` is Navidrome's own string; anything that isn't an explicit pause is
+  // treated as playing, because an entry only appears here while it is loaded.
+  const paused = typeof entry.state === "string" && entry.state.toLowerCase() === "paused";
+
+  return {
+    // playerId is per-client and stable, but a client can play only one track,
+    // so it uniquely identifies the row even as the track changes.
+    key: `navidrome:${instanceId}:${entry.playerId}:${entry.id}`,
+    serviceId: "navidrome",
+    instanceId,
+    title,
+    user: entry.username,
+    device: entry.playerName,
+    isLocal: false,
+    state: paused ? "paused" : "playing",
+    transcoding: false,
+    progress: durationSec > 0 ? Math.min(1, positionMs / (durationSec * 1000)) : 0,
+    poster: getCoverArtSource(entry.coverArt, 300, instanceId),
+    mediaType: "music",
   };
 }

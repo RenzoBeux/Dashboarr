@@ -50,7 +50,7 @@ async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise
     "# Back-compat — secret in the URL path (works with services that can't send custom headers):",
   ];
   for (const id of SERVICE_IDS) {
-    if (id === "qbittorrent" || id === "transmission" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "emby" || id === "glances") continue;
+    if (id === "qbittorrent" || id === "transmission" || id === "deluge" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "emby" || id === "glances" || id === "autobrr" || id === "cleanuparr" || id === "nzbhydra2" || id === "navidrome") continue;
     lines.push(`${id.padEnd(10)} ${webhookBase}/${id}/${webhookSecret}`);
   }
   const content = lines.join("\n") + "\n";
@@ -161,13 +161,21 @@ async function main(): Promise<void> {
     return reply.code(500).send({ error: "internal_error" });
   });
 
+  // 404s never reach setErrorHandler, so without this Fastify's default body
+  // echoes the caller's method and path back at them
+  // (`{"message":"Route POST:/pair/init not found",…}`), contradicting the
+  // neutral bodies the handler above exists to guarantee.
+  app.setNotFoundHandler((_request, reply) => {
+    return reply.code(404).send({ error: "not_found" });
+  });
+
   await app.register(rateLimit, {
     global: false,
   });
 
   // /pair/* — tight cap. Claiming a token is a one-shot credential exchange;
   // anything above a handful of requests per minute is abuse.
-  app.register(async (scope) => {
+  await app.register(async (scope) => {
     await scope.register(rateLimit, { max: 5, timeWindow: "1 minute" });
     await pairRoutes(scope);
   });

@@ -10,7 +10,8 @@ import {
   DOWNLOAD_INDICATOR_COLOR,
   BAR_KIND_COLOR,
 } from "@/lib/arr-poster-status";
-import type { RadarrMovie, SonarrSeries } from "@/lib/types";
+import { binderyBookBarKind, binderyBookIsMissing } from "@/lib/arr-poster-status";
+import type { RadarrMovie, SonarrSeries, BinderyBook } from "@/lib/types";
 
 function series(over: Partial<SonarrSeries>): SonarrSeries {
   return {
@@ -312,5 +313,55 @@ describe("cornerColorFor", () => {
     expect(cornerColorFor("continuing")).toBeNull();
     expect(cornerColorFor("released")).toBeNull();
     expect(cornerColorFor("inCinemas")).toBeNull();
+  });
+});
+
+function book(over: Partial<BinderyBook>): BinderyBook {
+  return {
+    id: 1,
+    foreignBookId: "OL1W",
+    authorId: 1,
+    title: "A Book",
+    monitored: true,
+    status: "wanted",
+    ...over,
+  };
+}
+
+describe("binderyBookBarKind", () => {
+  it("reads purple while the book is downloading, whatever its stored status", () => {
+    expect(binderyBookBarKind(book({ status: "wanted" }), true)).toBe("purple");
+    expect(binderyBookBarKind(book({ status: "imported" }), true)).toBe("purple");
+  });
+
+  it("reads green once the file has landed", () => {
+    expect(binderyBookBarKind(book({ status: "downloaded" }), false)).toBe("success");
+    expect(binderyBookBarKind(book({ status: "imported" }), false)).toBe("success");
+  });
+
+  it("reads red for a monitored book that is still missing", () => {
+    expect(binderyBookBarKind(book({ status: "wanted", monitored: true }), false)).toBe("danger");
+  });
+
+  it("reads amber for an unmonitored book", () => {
+    expect(binderyBookBarKind(book({ status: "wanted", monitored: false }), false)).toBe("warning");
+    expect(binderyBookBarKind(book({ status: "skipped", monitored: false }), false)).toBe("warning");
+  });
+});
+
+describe("binderyBookIsMissing", () => {
+  it("mirrors the danger branch exactly, so the filter and the red bar agree", () => {
+    for (const status of ["wanted", "downloading", "skipped"] as const) {
+      for (const monitored of [true, false]) {
+        const b = book({ status, monitored });
+        const isDanger = binderyBookBarKind(b, false) === "danger";
+        expect(binderyBookIsMissing(b)).toBe(isDanger);
+      }
+    }
+  });
+
+  it("never flags a book whose file is present", () => {
+    expect(binderyBookIsMissing(book({ status: "downloaded" }))).toBe(false);
+    expect(binderyBookIsMissing(book({ status: "imported" }))).toBe(false);
   });
 });

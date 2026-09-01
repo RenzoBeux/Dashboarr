@@ -3,6 +3,7 @@ import {
   useDownloadingTorrentsForWatcher,
 } from "@/hooks/use-qbittorrent";
 import { useTransmissionTorrentsForWatcher } from "@/hooks/use-transmission";
+import { useDelugeTorrentsForWatcher } from "@/hooks/use-deluge";
 import { getTorrents } from "@/services/qbittorrent-api";
 import { useRadarrHistory } from "@/hooks/use-radarr";
 import { useSonarrHistory } from "@/hooks/use-sonarr";
@@ -88,6 +89,7 @@ export function NotificationWatchers() {
 
   const qbInstances = useEnabledInstances("qbittorrent");
   const transmissionInstances = useEnabledInstances("transmission");
+  const delugeInstances = useEnabledInstances("deluge");
   const sabInstances = useEnabledInstances("sabnzbd");
   const nzbgetInstances = useEnabledInstances("nzbget");
   const radarrInstances = useEnabledInstances("radarr");
@@ -111,6 +113,13 @@ export function NotificationWatchers() {
       ))}
       {transmissionInstances.map((inst) => (
         <TransmissionDownloadWatcher
+          key={inst.id}
+          instanceId={inst.id}
+          active={liveActive("torrentCompleted", inst.id)}
+        />
+      ))}
+      {delugeInstances.map((inst) => (
+        <DelugeDownloadWatcher
           key={inst.id}
           instanceId={inst.id}
           active={liveActive("torrentCompleted", inst.id)}
@@ -285,6 +294,63 @@ function TransmissionDownloadWatcher({
         title: "Download complete",
         body: now.name,
         data: { type: "transmission", hash, instanceId },
+      });
+    }
+  }, [torrents, active, instanceId]);
+
+  return null;
+}
+
+// --- Deluge: torrent downloading → completed ---
+// Same shape as the Transmission watcher: core.get_torrents_status has no
+// server-side status filter, so we poll the full library (gated by `active`,
+// sharing the downloads screen's query key so it dedupes) and track the
+// downloading subset client-side. When a hash leaves that subset we look it up
+// in the SAME payload: now seeding / 100% → notify; paused or gone → skip.
+function isDelugeDownloading(t: UnifiedTorrent): boolean {
+  return t.status === "downloading" || t.status === "stalled";
+}
+function isDelugeCompleted(t: UnifiedTorrent): boolean {
+  return t.status === "seeding" || t.progress >= 1;
+}
+function DelugeDownloadWatcher({
+  instanceId,
+  active,
+}: {
+  instanceId: string;
+  active: boolean;
+}) {
+  const { data: torrents } = useDelugeTorrentsForWatcher(active, instanceId);
+  const prevDownloading = useRef<Map<string, UnifiedTorrent>>(new Map());
+
+  useEffect(() => {
+    if (!active) prevDownloading.current = new Map();
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (!Array.isArray(torrents)) return;
+
+    const byHash = new Map(torrents.map((t) => [t.hash, t]));
+    const currentDownloading = new Map(
+      torrents.filter(isDelugeDownloading).map((t) => [t.hash, t]),
+    );
+    const prev = prevDownloading.current;
+    prevDownloading.current = currentDownloading;
+
+    for (const [hash, t] of prev) {
+      if (currentDownloading.has(hash)) continue;
+      const now = byHash.get(hash);
+      if (!now) continue; // deleted, not completed
+      if (!isDelugeCompleted(now)) continue; // paused mid-download → skip
+      // Skip torrents managed by Radarr/Sonarr — they send their own, more
+      // informative notifications. Deluge carries the *arr name as a label
+      // (Label plugin), not a category.
+      if (isManagedByArr(t.label)) continue;
+      sendLocalNotification({
+        title: "Download complete",
+        body: now.name,
+        data: { type: "deluge", hash, instanceId },
       });
     }
   }, [torrents, active, instanceId]);

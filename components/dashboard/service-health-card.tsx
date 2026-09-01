@@ -15,7 +15,11 @@ import { useManualRefresh } from "@/store/manual-refresh-store";
 import { ICON, type ServiceId } from "@/lib/constants";
 import { applyServicesOrder } from "@/lib/services-order";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
-import { resolveActiveUrlKind, isRemoteOnlyOffline } from "@/lib/url-validation";
+import {
+  resolveActiveUrlKind,
+  isRemoteOnlyOffline,
+  workspaceForcesRemote,
+} from "@/lib/url-validation";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedInstances, useActiveDashboard } from "@/hooks/use-active-dashboard";
 import {
@@ -108,11 +112,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   // A workspace that explicitly selected no live home networks (homeNetworkIds:
   // [] or only stale ids) is "always remote" — mirror getActiveUrl step 2 so the
   // L/R badge reads "remote" even when global auto-switch is off (#148).
-  const workspaceForcesRemote = (() => {
-    const ids = activeDashboard?.homeNetworkIds;
-    if (!Array.isArray(ids)) return false;
-    return !ids.some((id) => homeNetworks.some((n) => n.id === id));
-  })();
+  const forcesRemote = workspaceForcesRemote(activeDashboard, homeNetworks);
 
   const hiddenSet = new Set(settings.hiddenKinds);
   // Index health by (kind, instanceId) so we can pair each bound instance with
@@ -161,7 +161,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         inst,
         autoSwitchNetwork,
         networkAwayFromHome,
-        workspaceForcesRemote,
+        forcesRemote,
       );
       entries.push({
         kindId,
@@ -175,7 +175,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           inst,
           autoSwitchNetwork,
           networkAwayFromHome,
-          workspaceForcesRemote,
+          forcesRemote,
         ),
         awayBlocked,
         // Away-blocked instances are deterministically offline-by-config (no

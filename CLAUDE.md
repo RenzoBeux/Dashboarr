@@ -14,12 +14,13 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 2. SABnzbd — Usenet client
 3. Radarr — movie automation
 4. Sonarr — TV automation
-5. Seerr — media requests (formerly Overseerr; same API, internal id and folders still use `overseerr`)
-6. Tautulli — Plex monitoring & stats
-7. Prowlarr — indexer management
-8. Plex — media consumption layer
-9. Bazarr — subtitle management
-10. Glances — system/server monitoring
+5. Bindery — book/audiobook automation (the Readarr successor, Go rewrite)
+6. Seerr — media requests (formerly Overseerr; same API, internal id and folders still use `overseerr`)
+7. Tautulli — Plex monitoring & stats
+8. Prowlarr — indexer management
+9. Plex — media consumption layer
+10. Bazarr — subtitle management
+11. Glances — system/server monitoring
 
 ## Architecture Rules
 - Primarily client-side: the app talks directly to service APIs, with no server in the request path

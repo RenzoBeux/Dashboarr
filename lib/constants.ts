@@ -2,24 +2,31 @@ export const SERVICE_IDS = [
   "qbittorrent",
   "rtorrent",
   "transmission",
+  "deluge",
   "sabnzbd",
   "nzbget",
   "radarr",
   "sonarr",
   "lidarr",
+  "bindery",
   "overseerr",
   "tautulli",
   "tracearr",
   "jellystat",
   "prowlarr",
   "jackett",
+  "nzbhydra2",
   "plex",
   "jellyfin",
   "emby",
+  "navidrome",
   "glances",
   "bazarr",
   "unraid",
   "tdarr",
+  "autobrr",
+  "cleanuparr",
+  "pihole",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -73,6 +80,19 @@ export const SERVICE_DEFAULTS: Record<
     pingPath: "",
     httpAuth: true,
   },
+  // Deluge's Web UI speaks JSON-RPC over a single POST /json endpoint. Default
+  // web port is 8112. Auth is a WebUI *password* (no username) exchanged for a
+  // `_session_id` cookie via the auth.login method — the qBittorrent model, not
+  // an HTTP auth mount, so no httpAuth flag. There is no GET ping endpoint
+  // (GET /json is not a JSON-RPC call), so pingPath is empty and both
+  // pingService and the connection probe POST a method instead — mirrors
+  // nzbget/rtorrent/transmission/unraid.
+  deluge: {
+    name: "Deluge",
+    defaultPort: 8112,
+    apiBasePath: "/json",
+    pingPath: "",
+  },
   // SAB has no REST routes — every call is /api?mode=<command>. The empty
   // pingPath combined with mode=version (injected as a param in pingService)
   // gives /api?mode=version&apikey=... at request time.
@@ -91,6 +111,13 @@ export const SERVICE_DEFAULTS: Record<
   sonarr: { name: "Sonarr", defaultPort: 8989, apiBasePath: "/api/v3", pingPath: "/system/status" },
   // Lidarr is an *arr sibling but on the v1 API (not v3 like Radarr/Sonarr).
   lidarr: { name: "Lidarr", defaultPort: 8686, apiBasePath: "/api/v1", pingPath: "/system/status" },
+  // Bindery is the Go rewrite that replaces the archived Readarr (books and
+  // audiobooks). Despite the *arr-looking route names it is NOT an *arr fork
+  // and has no /api/v3 — /api/v1 is its own native API. Note the probe path:
+  // /api/v1/health is on the server's unauthenticated allowlist and answers
+  // 200 without a key, so it would light the health dot green for a wrong API
+  // key; /system/status is the cheapest endpoint that actually validates it.
+  bindery: { name: "Bindery", defaultPort: 8787, apiBasePath: "/api/v1", pingPath: "/system/status" },
   overseerr: { name: "Seerr", defaultPort: 5055, apiBasePath: "/api/v1", pingPath: "/status" },
   tautulli: { name: "Tautulli", defaultPort: 8181, apiBasePath: "/api/v2", pingPath: "/home" },
   // Tracearr's read-only public API lives under /api/v1/public with Bearer-token
@@ -126,11 +153,39 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/api/v2.0",
     pingPath: "/indexers/all/results/torznab/api",
   },
+  // NZBHydra2's anonymous liveness probe (/actuator/health/ping, permitAll in
+  // its SecurityConfig) is ROOT-mounted while everything we call lives under
+  // /api — so apiBasePath is empty and every path in
+  // services/nzbhydra2-api.ts carries its own /api prefix (the Cleanuparr /
+  // JellyStat pattern). Auth is one install-wide key travelling as an `apikey`
+  // QUERY PARAM (injected in lib/http-client.ts alongside Jackett's), plus a
+  // copy inside the JSON body of the four POST stats/history endpoints.
+  // The ping can't validate the key, so the connection probe uses t=caps.
+  nzbhydra2: {
+    name: "NZBHydra2",
+    defaultPort: 5076,
+    apiBasePath: "",
+    pingPath: "/actuator/health/ping",
+  },
   plex: { name: "Plex", defaultPort: 32400, apiBasePath: "", pingPath: "/identity" },
   jellyfin: { name: "Jellyfin", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
   // Emby shares Jellyfin's API surface (same default port, root API path, and
   // public System/Info endpoint). See lib/media-server-config.ts.
   emby: { name: "Emby", defaultPort: 8096, apiBasePath: "", pingPath: "/System/Info/Public" },
+  // Navidrome speaks THREE roots on one host, so apiBasePath is empty and every
+  // path in services/navidrome-api.ts carries its own prefix (the Cleanuparr /
+  // JellyStat pattern): /rest/* is the Subsonic API, /api/* is the native
+  // react-admin API (X-ND-Authorization: Bearer <jwt>), and /auth/login mints
+  // that jwt. pingPath is getOpenSubsonicExtensions because it is the one
+  // Subsonic route registered OUTSIDE the auth group (server/subsonic/api.go),
+  // so it answers without credentials — which also means it cannot validate
+  // them, and the connection probe uses /rest/ping instead.
+  navidrome: {
+    name: "Navidrome",
+    defaultPort: 4533,
+    apiBasePath: "",
+    pingPath: "/rest/getOpenSubsonicExtensions",
+  },
   glances: {
     name: "Glances",
     defaultPort: 61208,
@@ -151,6 +206,51 @@ export const SERVICE_DEFAULTS: Record<
   // default X-Api-Key branch in http-client.ts covers it, no special case
   // needed). /status is a cheap always-available ping/probe endpoint.
   tdarr: { name: "Tdarr", defaultPort: 8266, apiBasePath: "/api/v2", pingPath: "/status" },
+  // Autobrr's REST API authenticates with an X-API-Token header (not the
+  // default X-Api-Key — see the branch in lib/http-client.ts). pingPath is the
+  // anonymous liveness probe; the connection probe uses /release/stats instead
+  // because liveness answers 200 regardless of the API key.
+  autobrr: {
+    name: "Autobrr",
+    defaultPort: 7474,
+    apiBasePath: "/api",
+    pingPath: "/healthz/liveness",
+  },
+  // Cleanuparr's anonymous /health probe is ROOT-mounted while the REST API
+  // lives under /api — so apiBasePath is empty and every path in
+  // services/cleanuparr-api.ts carries its own /api prefix (the JellyStat
+  // pattern). Auth is the default X-Api-Key header.
+  cleanuparr: {
+    name: "Cleanuparr",
+    defaultPort: 11011,
+    apiBasePath: "",
+    pingPath: "/health",
+  },
+  // Pi-hole v6 ONLY. v6 replaced v5's PHP /admin/api.php with a real REST API
+  // under /api served by FTL itself, and there is no compatibility shim — a v5
+  // host 404s every path here, which runConnectionProbe detects and reports as
+  // "requires Pi-hole v6 or newer" rather than as a bad password.
+  //
+  // Auth is one web password exchanged at POST /api/auth for a session id that
+  // rides on every later call as X-FTL-SID (see services/pihole-api.ts). That
+  // makes it the qBittorrent/Deluge shape — a login endpoint and a session —
+  // not an API key and not an HTTP auth mount, so no httpAuth flag.
+  //
+  // pingPath is FTL's own unauthenticated endpoint (src/api/api.c registers
+  // /info/login with auth-not-required), so it answers 200 with or without a
+  // password: a fine reachability ping, and — the same trap as Autobrr's
+  // /healthz/liveness and NZBHydra2's /actuator/health/ping — useless as a
+  // credential probe. runConnectionProbe validates against /auth instead.
+  //
+  // defaultPort is v6's webserver.port default. The URL must be the web server
+  // ROOT (http://pi.hole), never /admin — that is the single most common setup
+  // mistake, and buildUrl would turn it into /admin/api/... 404s.
+  pihole: {
+    name: "Pi-hole",
+    defaultPort: 80,
+    apiBasePath: "/api",
+    pingPath: "/info/login",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -168,6 +268,15 @@ export const POLLING_INTERVALS = {
 // which otherwise aborts a search that was going to succeed.
 export const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
+// POST /api/action/gravity shells out to `pihole -g`, which re-downloads every
+// blocklist and rebuilds the database. Two to five minutes is normal on a Pi
+// with many lists, so it needs its own ceiling well past the interactive-search
+// one. Note the request cannot be cancelled: aborting only stops us reading the
+// response, gravity keeps running server-side — which is why the caller treats
+// a timeout as "still running" rather than as a failure, and confirms via
+// stats/summary's gravity.last_update instead.
+export const GRAVITY_UPDATE_TIMEOUT = 300_000;
+
 export const DASHBOARD_WIDGET_IDS = [
   "server-stats",
   "speed-stats",
@@ -178,6 +287,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "radarr-queue",
   "sonarr-queue",
   "lidarr-queue",
+  "bindery-queue",
   "recently-downloaded",
   "calendar",
   "still-pending",
@@ -188,14 +298,20 @@ export const DASHBOARD_WIDGET_IDS = [
   "plex-now-playing",
   "jellyfin-now-playing",
   "emby-now-playing",
+  "navidrome-library",
   "prowlarr-stats",
   "jackett-indexers",
+  "nzbhydra2-indexers",
   "bazarr-wanted",
   "wol-devices",
   "disk-space",
   "arr-health",
   "unraid-array",
   "tdarr-queue",
+  "autobrr-stats",
+  "cleanuparr-stats",
+  "pihole-status",
+  "pihole-top-blocked",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

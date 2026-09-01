@@ -28,15 +28,15 @@ The warning is surfaced in:
 - This README
 - The Dockerfile `LABEL` metadata
 - The startup log banner
-- The `/health` JSON response (`expoAuth: "must-be-disabled"`)
-- The `/pair` HTML page
+- The authenticated `/health` JSON response (`expoAuth: "must-be-disabled"`)
 
 ---
 
 ## How it works
 
 1. You run this container alongside Radarr/Sonarr/qBittorrent/etc.
-2. It exposes an HTTP API, a pairing QR page, and webhook ingestion endpoints.
+2. It exposes an HTTP API and webhook ingestion endpoints, and prints a pairing
+   QR to its startup log.
 3. You open Dashboarr → Settings → Backend on your phone, scan the pairing
    QR, and the phone exchanges its Expo push token for a durable shared secret.
 4. The app pushes its current service config to the backend (every configured
@@ -174,10 +174,8 @@ docker run -d --name dashboarr-backend \
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET`  | `/health` | none | Liveness + poller status + Expo auth canary |
-| `GET`  | `/pair` | none | HTML pairing page with QR + webhook URLs |
-| `POST` | `/pair/init` | rate-limited | Regenerate the pairing token |
-| `POST` | `/pair/claim` | one-time token in body | Exchange token + push token for shared secret |
+| `GET`  | `/health` | none (liveness) / bearer (full) | Without an `Authorization` header: `{ "ok": true, "name": "dashboarr-backend" }` — safe for a browser, a Docker `HEALTHCHECK` or an uptime monitor. With a valid bearer: adds `version`, `expoAuth`, `pollers[]` and `uptimeMs`. A **malformed or unknown** `Bearer` still returns `401`, so the app can detect a stale secret |
+| `POST` | `/pair/claim` | one-time token in body | Exchange token + push token for shared secret. The token is printed to the **startup log only** — there is deliberately no endpoint that mints or regenerates one (see `src/routes/pair.ts`), so restart the container for a fresh one |
 | `POST` | `/device/register` | bearer | Refresh push token on reinstall |
 | `POST` | `/device/unregister` | bearer | Remove this device |
 | `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers. Accepts the multi-instance shape `{ instances: [{ id, kind, … }], notifications }` and the legacy `{ services: [{ id, … }], notifications }` shape for back-compat. `notifications` may include an optional `apprise: { enabled, url, tags }` block (see Apprise below) |
@@ -210,6 +208,11 @@ headers.
 
 Rate limits: `/pair/*` is capped at 5 req/min, `/webhooks/*` at 60 req/min,
 everything else at 120 req/min, all per source IP.
+
+Auth is per-route: there is no global hook and no public-path allowlist, so
+every route above states its own requirement. The full `/health` body stays
+behind the bearer because `pollers[].lastError` embeds your internal service
+URLs, and the poller list itself reveals which services you have configured.
 
 ---
 
@@ -328,9 +331,9 @@ the app (Settings → Backend → Apprise) and use **Send Apprise test** to veri
 ## Verifying push delivery
 
 ```sh
-# 1. Server is up
+# 1. Server is up (no auth needed — liveness projection)
 curl http://localhost:4000/health
-# → { "ok": true, "expoAuth": "must-be-disabled", "pollers": [], ... }
+# → { "ok": true, "name": "dashboarr-backend" }
 
 # 2. Pair a fake device for smoke-testing (replace token from logs)
 curl -X POST http://localhost:4000/pair/claim \
@@ -347,6 +350,11 @@ curl -X PUT http://localhost:4000/config \
 # 4. Fire a test push (will log DeviceNotRegistered for the fake token)
 curl -X POST http://localhost:4000/notifications/test \
   -H "Authorization: Bearer <sharedSecret>"
+
+# 5. Full status: poller list, version, uptime (needs the paired bearer)
+curl http://localhost:4000/health -H "Authorization: Bearer <sharedSecret>"
+# → { "ok": true, "name": "dashboarr-backend", "version": "1.4.0",
+#     "expoAuth": "must-be-disabled", "pollers": [], "uptimeMs": 12345 }
 ```
 
 For real end-to-end testing you need a development build of Dashboarr with the
@@ -379,6 +387,72 @@ dashboarr.example.com {
   reverse_proxy dashboarr-backend:4000
 }
 ```
+
+---
+
+## Troubleshooting
+
+### `/health` returns `{"error":"missing_bearer"}`
+
+On **v1.4.0 and newer** an unauthenticated `GET /health` returns
+`200 {"ok":true,"name":"dashboarr-backend"}`. If you still get a 401:
+
+- **You are on an older image.** `docker compose pull && docker compose up -d`.
+- **You sent an `Authorization: Bearer …` the backend does not recognise.** That
+  is a real 401 (`invalid_bearer`): the shared secret was rotated, or the SQLite
+  file was replaced. Re-pair from the app.
+
+Either way it was never a reverse-proxy problem — your proxy was forwarding the
+request correctly and the backend was answering it. Adding `^/health` to an
+Authentik or Authelia Unauthenticated Paths list does not change it.
+
+### The container is permanently "unhealthy"
+
+A health check written against the old bearer-only `/health` can never pass:
+busybox `wget` exits non-zero on any status ≥ 400, so a 401 fails the probe on
+every interval forever.
+
+From v1.4.0 the image ships its own `HEALTHCHECK`, so you can delete a
+hand-written one. To use a different interval, override it:
+
+```yaml
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+```
+
+### Pairing fails with "Network request failed" behind a private CA
+
+Symptom: `https://dashboarr.example.com/health` loads fine in your phone's
+browser, but pairing fails instantly in the app and **nothing appears in the
+container log**. The TLS handshake is failing before any HTTP request is sent.
+
+Cause: the proxy is serving a certificate from a private or internal CA (Caddy's
+default internal issuer, a homelab root CA, an ACME-less Traefik). Your phone's
+browser trusts it because you installed the CA profile; app traffic does not use
+that trust store the same way, and on Android user-installed CAs are not trusted
+by apps at all unless the app opts in.
+
+Mounting the CA into the **backend** container does not help. `NODE_EXTRA_CA_CERTS`
+only affects connections the backend makes *outward* (to your services and to
+Expo). It has no bearing on the phone's connection *inward*.
+
+Fixes, best first:
+
+1. **Give that hostname a publicly-trusted certificate.** Let's Encrypt via
+   DNS-01 works for names that are not internet-reachable.
+2. **Pair over plain `http://` on your LAN.** The shared secret still protects
+   the API; see [TLS / network exposure](#tls--network-exposure).
+3. **Turn on "Allow invalid certificates"** in the app under **Settings →
+   Notifications → Backend**. It skips certificate validation for that host
+   only. Use it for a server you trust on a network you control.
+
+If pairing reaches the backend but still fails, check the token: it is
+single-use and expires in about 10 minutes. Restart the container to print a
+fresh one.
 
 ---
 

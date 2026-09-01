@@ -60,16 +60,21 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   tv: "TV",
   library: "Library",
   music: "Music",
+  books: "Books",
   requests: "Requests",
   activity: "Activity",
   indexers: "Indexers",
   plex: "Plex",
   jellyfin: "Jellyfin",
   emby: "Emby",
+  navidrome: "Navidrome",
   glances: "Glances",
   bazarr: "Bazarr",
   unraid: "unRAID",
   tdarr: "Tdarr",
+  autobrr: "Autobrr",
+  cleanuparr: "Cleanuparr",
+  pihole: "Pi-hole",
 };
 
 export default function DashboardEditScreen() {
@@ -1048,7 +1053,7 @@ const InstanceKindCard = memo(function InstanceKindCard({
           </Text>
           {!inst.enabled && (
             <Text className="text-zinc-600 text-xs mt-0.5">
-              Enable in Settings to attach
+              Enable in Settings → Integrations to attach
             </Text>
           )}
         </View>
@@ -1085,7 +1090,7 @@ const InstanceKindCard = memo(function InstanceKindCard({
             numberOfLines={1}
           >
             {kindUntouchable
-              ? "All instances disabled — enable in Settings"
+              ? "All instances disabled — enable in Settings → Integrations"
               : `${attachedCount} of ${list.length} attached`}
           </Text>
         </View>

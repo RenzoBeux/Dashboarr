@@ -41,16 +41,27 @@ import { qbBadgeVariant } from "@/lib/torrent-adapters/qbittorrent";
 import { downloadBadgeColor } from "@/lib/download-status";
 
 export default function TorrentDetailScreen() {
-  const { hash } = useLocalSearchParams<{ hash: string }>();
-  const { data: torrent, isLoading, error } = useTorrent(hash);
-  const { data: files } = useTorrentFiles(hash);
-  const { data: trackers } = useTorrentTrackers(hash);
-  const { data: categories } = useTorrentCategories();
-  const pauseMutation = usePauseTorrent();
-  const resumeMutation = useResumeTorrent();
-  const reannounceMutation = useReannounceTorrent();
-  const deleteMutation = useDeleteTorrent();
-  const setCategoryMutation = useSetTorrentCategory();
+  // `instanceId` is set when the row was opened from the dashboard Downloads
+  // widget (which aggregates every instance of this kind) or from a completion
+  // notification. Every query and mutation below is bound to it, so a torrent
+  // from a non-active server still loads and its actions hit that server.
+  // Absent — e.g. the Downloads tab, where the list already follows the active
+  // instance — the hooks fall back to the active one as before.
+  const { hash, instanceId } = useLocalSearchParams<{
+    hash: string;
+    instanceId?: string;
+  }>();
+  const { data: torrent, isLoading, error } = useTorrent(hash, instanceId);
+  const { data: files } = useTorrentFiles(hash, instanceId);
+  const { data: trackers } = useTorrentTrackers(hash, instanceId);
+  // Categories are per-server too: offering the active instance's list would
+  // let the user assign a category the source server has never heard of.
+  const { data: categories } = useTorrentCategories(instanceId);
+  const pauseMutation = usePauseTorrent(instanceId);
+  const resumeMutation = useResumeTorrent(instanceId);
+  const reannounceMutation = useReannounceTorrent(instanceId);
+  const deleteMutation = useDeleteTorrent(instanceId);
+  const setCategoryMutation = useSetTorrentCategory(instanceId);
   const [shareLimitsOpen, setShareLimitsOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const flow = useModalFlow<{ deleteSheet: void }>();
@@ -261,6 +272,7 @@ export default function TorrentDetailScreen() {
         visible={shareLimitsOpen}
         onClose={() => setShareLimitsOpen(false)}
         hash={hash}
+        instanceId={instanceId}
         ratioLimit={torrent.ratio_limit ?? -2}
         seedingTimeLimit={torrent.seeding_time_limit ?? -2}
       />

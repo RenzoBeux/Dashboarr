@@ -1,10 +1,12 @@
 import {
   Activity,
+  BookOpen,
   CalendarDays,
   Captions,
   Cast,
   Clapperboard,
   Cpu,
+  Disc,
   Download,
   Film,
   Gauge,
@@ -22,7 +24,11 @@ import {
   RefreshCw,
   Server,
   ShieldAlert,
+  ShieldCheck,
+  Ban,
+  Sparkles,
   Tv,
+  Zap,
   type LucideIcon,
 } from "lucide-react-native";
 import type Animated from "react-native-reanimated";
@@ -36,6 +42,7 @@ import { NzbgetQueueCard } from "@/components/dashboard/nzbget-queue-card";
 import { RadarrQueueCard } from "@/components/dashboard/radarr-queue-card";
 import { SonarrQueueCard } from "@/components/dashboard/sonarr-queue-card";
 import { LidarrQueueCard } from "@/components/dashboard/lidarr-queue-card";
+import { BinderyQueueCard } from "@/components/dashboard/bindery-queue-card";
 import { RecentlyDownloadedCard } from "@/components/dashboard/recently-downloaded-card";
 import { CalendarCard } from "@/components/dashboard/calendar-card";
 import { StillPendingCard } from "@/components/dashboard/still-pending-card";
@@ -48,12 +55,18 @@ import { EmbyNowPlayingCard } from "@/components/dashboard/emby-now-playing-card
 import { CombinedNowPlayingCard } from "@/components/dashboard/combined-now-playing-card";
 import { ProwlarrStatsCard } from "@/components/dashboard/prowlarr-stats-card";
 import { JackettCard } from "@/components/dashboard/jackett-card";
+import { Nzbhydra2Card } from "@/components/dashboard/nzbhydra2-card";
 import { ArrHealthCard } from "@/components/dashboard/arr-health-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
 import { TdarrQueueCard } from "@/components/dashboard/tdarr-queue-card";
+import { AutobrrCard } from "@/components/dashboard/autobrr-card";
+import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
+import { NavidromeLibraryCard } from "@/components/dashboard/navidrome-library-card";
+import { PiholeStatusCard } from "@/components/dashboard/pihole-status-card";
+import { PiholeTopBlockedCard } from "@/components/dashboard/pihole-top-blocked-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -145,6 +158,10 @@ import {
   type LidarrQueueSettingsValue,
 } from "@/components/dashboard/widget-settings/lidarr-queue-settings";
 import {
+  BinderyQueueSettings,
+  BINDERY_QUEUE_DEFAULT_SETTINGS,
+} from "@/components/dashboard/widget-settings/bindery-queue-settings";
+import {
   RecentlyDownloadedSettings,
   RECENTLY_DOWNLOADED_DEFAULT_SETTINGS,
   type RecentlyDownloadedSettingsValue,
@@ -159,6 +176,11 @@ import {
   JACKETT_INDEXERS_DEFAULT_SETTINGS,
   type JackettIndexersSettingsValue,
 } from "@/components/dashboard/widget-settings/jackett-indexers-settings";
+import {
+  Nzbhydra2IndexersSettings,
+  NZBHYDRA2_INDEXERS_DEFAULT_SETTINGS,
+  type Nzbhydra2IndexersSettingsValue,
+} from "@/components/dashboard/widget-settings/nzbhydra2-indexers-settings";
 import {
   BazarrWantedSettings,
   BAZARR_WANTED_DEFAULT_SETTINGS,
@@ -179,6 +201,31 @@ import {
   ARR_HEALTH_DEFAULT_SETTINGS,
   type ArrHealthSettingsValue,
 } from "@/components/dashboard/widget-settings/arr-health-settings";
+import {
+  AutobrrStatsSettings,
+  AUTOBRR_STATS_DEFAULT_SETTINGS,
+  type AutobrrStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/autobrr-stats-settings";
+import {
+  CleanuparrStatsSettings,
+  CLEANUPARR_STATS_DEFAULT_SETTINGS,
+  type CleanuparrStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/cleanuparr-stats-settings";
+import {
+  NavidromeLibrarySettings,
+  NAVIDROME_LIBRARY_DEFAULT_SETTINGS,
+  type NavidromeLibrarySettingsValue,
+} from "@/components/dashboard/widget-settings/navidrome-library-settings";
+import {
+  PiholeStatusSettings,
+  PIHOLE_STATUS_DEFAULT_SETTINGS,
+  type PiholeStatusSettingsValue,
+} from "@/components/dashboard/widget-settings/pihole-status-settings";
+import {
+  PiholeTopBlockedSettings,
+  PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
+  type PiholeTopBlockedSettingsValue,
+} from "@/components/dashboard/widget-settings/pihole-top-blocked-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -280,7 +327,15 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Speed Stats",
     description: "Live download/upload speeds from clients or server network",
     icon: Gauge,
-    service: ["qbittorrent", "transmission", "sabnzbd", "nzbget", "rtorrent", "glances"],
+    service: [
+      "qbittorrent",
+      "transmission",
+      "deluge",
+      "sabnzbd",
+      "nzbget",
+      "rtorrent",
+      "glances",
+    ],
     component: SpeedStatsCard,
     settingsComponent: SpeedStatsSettings,
     defaultSettings: SPEED_STATS_DEFAULT_SETTINGS,
@@ -290,7 +345,7 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Downloads",
     description: "Top active torrents with pause and resume",
     icon: Download,
-    service: ["qbittorrent", "rtorrent", "transmission"],
+    service: ["qbittorrent", "rtorrent", "transmission", "deluge"],
     component: DownloadCard,
     settingsComponent: DownloadsSettings,
     defaultSettings: DOWNLOADS_DEFAULT_SETTINGS,
@@ -344,6 +399,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     component: LidarrQueueCard,
     settingsComponent: LidarrQueueSettings,
     defaultSettings: LIDARR_QUEUE_DEFAULT_SETTINGS,
+  },
+  "bindery-queue": {
+    id: "bindery-queue",
+    label: "Bindery Queue",
+    description: "Books currently downloading or grabbed",
+    icon: BookOpen,
+    service: "bindery",
+    component: BinderyQueueCard,
+    settingsComponent: BinderyQueueSettings,
+    defaultSettings: BINDERY_QUEUE_DEFAULT_SETTINGS,
   },
   "recently-downloaded": {
     id: "recently-downloaded",
@@ -465,6 +530,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: JackettIndexersSettings,
     defaultSettings: JACKETT_INDEXERS_DEFAULT_SETTINGS,
   },
+  "nzbhydra2-indexers": {
+    id: "nzbhydra2-indexers",
+    label: "NZBHydra2 Indexers",
+    description: "Indexer state and API hit limits from NZBHydra2",
+    icon: Radar,
+    service: "nzbhydra2",
+    component: Nzbhydra2Card,
+    settingsComponent: Nzbhydra2IndexersSettings,
+    defaultSettings: NZBHYDRA2_INDEXERS_DEFAULT_SETTINGS,
+  },
   "bazarr-wanted": {
     id: "bazarr-wanted",
     label: "Bazarr Wanted",
@@ -488,6 +563,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Disk Space",
     description: "Mount usage from Radarr, Sonarr or Lidarr — no Glances needed",
     icon: HardDrive,
+    // Bindery is deliberately absent: its /rootfolder reports freeSpace but no
+    // total, and the usage bar needs both. Nothing to add here for it.
     service: ["radarr", "sonarr", "lidarr"],
     component: DiskSpaceCard,
     settingsComponent: DiskSpaceSettings,
@@ -498,6 +575,8 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     label: "Health Alerts",
     description: "System Health warnings and errors from Sonarr, Radarr, Prowlarr and Lidarr",
     icon: ShieldAlert,
+    // Bindery is deliberately absent: it exposes no *arr-style health-check
+    // array (its /health is a liveness probe returning {status, version}).
     service: ["radarr", "sonarr", "prowlarr", "lidarr"],
     component: ArrHealthCard,
     settingsComponent: ArrHealthSettings,
@@ -520,6 +599,56 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     component: TdarrQueueCard,
     settingsComponent: TdarrQueueSettings,
     defaultSettings: TDARR_QUEUE_DEFAULT_SETTINGS,
+  },
+  "autobrr-stats": {
+    id: "autobrr-stats",
+    label: "Autobrr Activity",
+    description: "Approved, rejected and errored pushes from Autobrr",
+    icon: Zap,
+    service: "autobrr",
+    component: AutobrrCard,
+    settingsComponent: AutobrrStatsSettings,
+    defaultSettings: AUTOBRR_STATS_DEFAULT_SETTINGS,
+  },
+  "cleanuparr-stats": {
+    id: "cleanuparr-stats",
+    label: "Cleanuparr Stats",
+    description: "Strikes, removals and client health from Cleanuparr",
+    icon: Sparkles,
+    service: "cleanuparr",
+    component: CleanuparrCard,
+    settingsComponent: CleanuparrStatsSettings,
+    defaultSettings: CLEANUPARR_STATS_DEFAULT_SETTINGS,
+  },
+  "navidrome-library": {
+    id: "navidrome-library",
+    label: "Navidrome Library",
+    description: "Artist, album and track counts, library size and scan state",
+    icon: Disc,
+    service: "navidrome",
+    component: NavidromeLibraryCard,
+    settingsComponent: NavidromeLibrarySettings,
+    defaultSettings: NAVIDROME_LIBRARY_DEFAULT_SETTINGS,
+  },
+  "pihole-status": {
+    id: "pihole-status",
+    label: "Pi-hole",
+    description: "Blocking state with one-tap disable, plus 24h query stats",
+    icon: ShieldCheck,
+    service: "pihole",
+    component: PiholeStatusCard,
+    settingsComponent: PiholeStatusSettings,
+    defaultSettings: PIHOLE_STATUS_DEFAULT_SETTINGS,
+  },
+  "pihole-top-blocked": {
+    id: "pihole-top-blocked",
+    label: "Top Blocked Domains",
+    description: "The domains Pi-hole blocks most often",
+    icon: Ban,
+    service: "pihole",
+    component: PiholeTopBlockedCard,
+    settingsComponent: PiholeTopBlockedSettings,
+    defaultSettings: PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
   },
 };
 
@@ -553,8 +682,14 @@ export type {
   RecentlyDownloadedSettingsValue,
   ProwlarrStatsSettingsValue,
   JackettIndexersSettingsValue,
+  Nzbhydra2IndexersSettingsValue,
   BazarrWantedSettingsValue,
   DiskSpaceSettingsValue,
   TdarrQueueSettingsValue,
   ArrHealthSettingsValue,
+  AutobrrStatsSettingsValue,
+  CleanuparrStatsSettingsValue,
+  NavidromeLibrarySettingsValue,
+  PiholeStatusSettingsValue,
+  PiholeTopBlockedSettingsValue,
 };

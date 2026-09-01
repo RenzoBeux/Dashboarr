@@ -1252,6 +1252,258 @@ const DEMO_JACKETT_INDEXERS_XML = `<?xml version="1.0" encoding="utf-8"?>
 
 // JSON manual-search response. One magnet-only and one Link-only release so
 // the grab sheet's uri fallback chain is exercised in demo mode.
+// --- NZBHydra2 ---
+// Timestamps are epoch SECONDS, matching the shape NZBHydra2 actually emits
+// (see parseHydraTimestamp in lib/nzbhydra2-normalize.ts), so demo mode
+// exercises the same normalizer path a real server does.
+function hydraSeconds(days: number): number {
+  return (Date.now() + days * 86_400_000) / 1000;
+}
+
+const DEMO_NZBHYDRA2_CAPS = {
+  server: {
+    attributes: {
+      appversion: "8.9.0",
+      version: "0.1",
+      title: "NZBHydra 2",
+      url: "https://github.com/theotherp/nzbhydra2",
+    },
+  },
+  limits: { attributes: { max: "100", default: "100" } },
+  searching: {},
+  categories: { category: [] },
+};
+
+const DEMO_NZBHYDRA2_INDEXERS = [
+  {
+    indexer: "DemoNZB",
+    state: "ENABLED",
+    level: 0,
+    disabledUntil: null,
+    lastError: null,
+    apiResetTime: hydraSeconds(0.4),
+    downloadResetTime: null,
+    apiHits: 46,
+    apiHitLimit: 100,
+    downloadHits: 3,
+    downloadHitLimit: 10,
+    vipExpirationDate: "Lifetime",
+  },
+  {
+    indexer: "DemoUsenet",
+    state: "ENABLED",
+    level: 0,
+    disabledUntil: null,
+    lastError: null,
+    apiResetTime: null,
+    downloadResetTime: null,
+    apiHits: 12,
+    apiHitLimit: null,
+    downloadHits: 1,
+    downloadHitLimit: null,
+    // Inside the 7-day warning window, so the expiry badge is exercised.
+    vipExpirationDate: daysFromNow(4),
+  },
+  {
+    indexer: "DemoFlaky",
+    state: "DISABLED_SYSTEM_TEMPORARY",
+    level: 2,
+    disabledUntil: hydraSeconds(0.02),
+    lastError: "Connection timed out after 30000ms",
+    apiResetTime: null,
+    downloadResetTime: null,
+    apiHits: 4,
+    apiHitLimit: 50,
+    downloadHits: 0,
+    downloadHitLimit: null,
+    vipExpirationDate: null,
+  },
+  {
+    indexer: "DemoRetired",
+    state: "DISABLED_USER",
+    level: 0,
+    disabledUntil: null,
+    lastError: null,
+    apiResetTime: null,
+    downloadResetTime: null,
+    apiHits: null,
+    apiHitLimit: null,
+    downloadHits: null,
+    downloadHitLimit: null,
+    vipExpirationDate: null,
+  },
+];
+
+const DEMO_NZBHYDRA2_STATS = {
+  indexerApiAccessStats: [
+    { indexerName: "DemoNZB", percentSuccessful: 99, percentConnectionError: 1, averageAccessesPerDay: 41.2 },
+    { indexerName: "DemoUsenet", percentSuccessful: 96, percentConnectionError: 4, averageAccessesPerDay: 18.7 },
+    { indexerName: "DemoFlaky", percentSuccessful: 62, percentConnectionError: 38, averageAccessesPerDay: 6.1 },
+  ],
+  avgResponseTimes: [
+    { indexer: "DemoNZB", avgResponseTime: 412, delta: -118 },
+    { indexer: "DemoUsenet", avgResponseTime: 530, delta: 0 },
+    { indexer: "DemoFlaky", avgResponseTime: 1840, delta: 1310 },
+  ],
+  indexerDownloadShares: [
+    { indexerName: "DemoNZB", total: 63, share: 0.63 },
+    { indexerName: "DemoUsenet", total: 31, share: 0.31 },
+    { indexerName: "DemoFlaky", total: 6, share: 0.06 },
+  ],
+  successfulDownloadsPerIndexer: [
+    { indexerName: "DemoNZB", countAll: 63, countSuccessful: 62, countError: 1, percentSuccessful: 98.4 },
+    { indexerName: "DemoUsenet", countAll: 31, countSuccessful: 29, countError: 2, percentSuccessful: 93.5 },
+    { indexerName: "DemoFlaky", countAll: 6, countSuccessful: 4, countError: 2, percentSuccessful: 66.7 },
+  ],
+  numberOfConfiguredIndexers: 4,
+  numberOfEnabledIndexers: 2,
+};
+
+// Spring Page<T>: `number` is ZERO-based even though the request page is one-
+// based, and `last: true` stops the infinite query after the first page.
+function hydraPage<T>(content: T[]) {
+  return {
+    content,
+    last: true,
+    first: true,
+    totalElements: content.length,
+    totalPages: 1,
+    numberOfElements: content.length,
+    number: 0,
+    size: 50,
+  };
+}
+
+const DEMO_NZBHYDRA2_SEARCH_HISTORY = hydraPage([
+  {
+    id: 412, source: "API", searchType: "TVSEARCH", time: hydraSeconds(-0.02),
+    identifiers: [], categoryName: "TV HD", query: "demo show",
+    season: 1, episode: "5", title: null, author: null,
+    username: null, ip: "127.0.0.1", userAgent: "Sonarr",
+  },
+  {
+    id: 411, source: "INTERNAL", searchType: "MOVIE", time: hydraSeconds(-0.3),
+    identifiers: [], categoryName: "Movies", query: "demo movie",
+    season: null, episode: null, title: null, author: null,
+    username: null, ip: "127.0.0.1", userAgent: "Mozilla",
+  },
+  {
+    id: 410, source: "API", searchType: "SEARCH", time: hydraSeconds(-1.4),
+    identifiers: [], categoryName: "All", query: null,
+    season: null, episode: null, title: null, author: null,
+    username: null, ip: "127.0.0.1", userAgent: "Radarr",
+  },
+]);
+
+const DEMO_NZBHYDRA2_DOWNLOAD_HISTORY = hydraPage([
+  {
+    id: 1253,
+    searchResult: {
+      id: 88231, indexer: { id: 1, name: "DemoNZB" }, firstFound: hydraSeconds(-2),
+      title: "Demo.Show.S01E05.1080p.WEB.h264-GROUP",
+      indexerGuid: "demo-1", link: null, details: null,
+      downloadType: "NZB", pubDate: hydraSeconds(-2),
+    },
+    nzbAccessType: "REDIRECT", accessSource: "API", time: hydraSeconds(-0.02),
+    status: "CONTENT_DOWNLOAD_SUCCESSFUL", error: null,
+    username: null, ip: "127.0.0.1", userAgent: "Sonarr", age: 2, externalId: null,
+  },
+  {
+    id: 1252,
+    searchResult: {
+      id: 88104, indexer: { id: 2, name: "DemoUsenet" }, firstFound: hydraSeconds(-5),
+      title: "Demo.Movie.2024.2160p.UHD.WEB-DL-GROUP",
+      indexerGuid: "demo-2", link: null, details: null,
+      downloadType: "NZB", pubDate: hydraSeconds(-5),
+    },
+    nzbAccessType: "PROXY", accessSource: "INTERNAL", time: hydraSeconds(-0.6),
+    status: "NZB_ADDED", error: null,
+    username: null, ip: "127.0.0.1", userAgent: "Mozilla", age: 5, externalId: null,
+  },
+  {
+    id: 1251,
+    // A purged search result leaves its download row behind — exercises the
+    // "(release no longer in the database)" fallback.
+    searchResult: null,
+    nzbAccessType: "REDIRECT", accessSource: "API", time: hydraSeconds(-3),
+    status: "NZB_DOWNLOAD_ERROR", error: "Indexer returned 429 Too Many Requests",
+    username: null, ip: "127.0.0.1", userAgent: "Radarr", age: null, externalId: null,
+  },
+]);
+
+// Newznab JSON as NewznabJsonTransformer emits it. The attribute holders use
+// the bare `attributes` key, which is what a real server sends: upstream
+// declares @JsonProperty("@attributes"), but the GraalVM native build that both
+// mainstream Docker images ship loses that rename (measured against 8.9.0). The
+// mapper accepts either spelling; the "@attributes" one is covered in unit tests.
+const DEMO_NZBHYDRA2_SEARCH = {
+  channel: {
+    title: "NZBHydra 2",
+    generator: "NZBHydra2",
+    response: { attributes: { offset: 0, total: 3 } },
+    item: [
+      {
+        title: "Demo.Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP",
+        guid: "88231",
+        id: "88231",
+        link: "http://127.0.0.1:5076/getnzb/api/88231?apikey=demo",
+        pubDate: daysFromNowFull(-2),
+        comments: "https://demo-indexer.example/details/88231",
+        category: "Movies HD",
+        enclosure: {
+          attributes: {
+            url: "http://127.0.0.1:5076/getnzb/api/88231?apikey=demo",
+            length: "9663676416",
+            type: "application/x-nzb",
+          },
+        },
+        attr: [
+          { attributes: { name: "size", value: "9663676416" } },
+          { attributes: { name: "hydraIndexerName", value: "DemoNZB" } },
+        ],
+      },
+      {
+        title: "Demo.Movie.2024.2160p.UHD.WEB-DL.HDR.H.265-GROUP",
+        guid: "88232",
+        id: "88232",
+        link: "http://127.0.0.1:5076/getnzb/api/88232?apikey=demo",
+        pubDate: daysFromNowFull(-5),
+        category: "Movies UHD",
+        enclosure: {
+          attributes: {
+            url: "http://127.0.0.1:5076/getnzb/api/88232?apikey=demo",
+            length: "48318382080",
+            type: "application/x-nzb",
+          },
+        },
+        attr: [
+          { attributes: { name: "size", value: "48318382080" } },
+          { attributes: { name: "hydraIndexerName", value: "DemoUsenet" } },
+        ],
+      },
+      {
+        title: "Demo.Show.S01E05.1080p.WEB.h264-GROUP",
+        guid: "88233",
+        id: "88233",
+        link: "http://127.0.0.1:5076/getnzb/api/88233?apikey=demo",
+        pubDate: daysFromNowFull(-1),
+        category: "TV HD",
+        enclosure: {
+          attributes: {
+            url: "http://127.0.0.1:5076/getnzb/api/88233?apikey=demo",
+            length: "2147483648",
+            type: "application/x-nzb",
+          },
+        },
+        attr: [
+          { attributes: { name: "size", value: "2147483648" } },
+          { attributes: { name: "hydraIndexerName", value: "DemoNZB" } },
+        ],
+      },
+    ],
+  },
+};
+
 const DEMO_JACKETT_RESULTS = {
   Results: [
     {
@@ -1717,6 +1969,129 @@ const DEMO_TRANSMISSION_SESSION = {
   "alt-speed-enabled": false,
 };
 
+// --- Deluge (JSON-RPC) demo fixtures ---
+// delugeRpc returns getDemoResponse() verbatim as the JSON-RPC `result`, so
+// these are the raw payloads the service maps. core.get_torrents_status answers
+// with a dict KEYED BY INFO HASH (lowercase hex), `progress` is 0-100 and
+// `file_progress` is 0-1 — the three shapes most easily got wrong.
+const DEMO_DELUGE_TORRENTS: Record<string, Record<string, unknown>> = {
+  "00000000000000000000000000000000000d0a01": {
+    name: "Ubuntu 24.04.1 LTS Desktop amd64",
+    state: "Downloading",
+    progress: 40,
+    total_size: 5_400_000_000,
+    total_wanted: 5_400_000_000,
+    total_done: 2_160_000_000,
+    total_remaining: 3_240_000_000,
+    download_payload_rate: 5_400_000,
+    upload_payload_rate: 180_000,
+    eta: 600,
+    ratio: 0.12,
+    all_time_download: 2_160_000_000,
+    total_uploaded: 259_000_000,
+    time_added: 1_716_800_000,
+    completed_time: 0,
+    save_path: "/downloads",
+    message: "OK",
+    label: "linux-isos",
+    files: [
+      { index: 0, path: "ubuntu-24.04.1-desktop-amd64.iso", size: 5_400_000_000, offset: 0 },
+    ],
+    file_progress: [0.4],
+    trackers: [{ url: "https://torrent.ubuntu.com/announce", tier: 0 }],
+    tracker_host: "ubuntu.com",
+    tracker_status: "Announce OK",
+    num_seeds: 42,
+    total_seeds: 1240,
+    num_peers: 8,
+    total_peers: 86,
+    stop_at_ratio: false,
+    stop_ratio: 2,
+    remove_at_ratio: false,
+  },
+  "00000000000000000000000000000000000d0b02": {
+    name: "Debian 12.5.0 amd64 netinst",
+    state: "Seeding",
+    progress: 100,
+    total_size: 3_900_000_000,
+    total_wanted: 3_900_000_000,
+    total_done: 3_900_000_000,
+    total_remaining: 0,
+    download_payload_rate: 0,
+    upload_payload_rate: 920_000,
+    eta: 0,
+    ratio: 1.34,
+    all_time_download: 3_900_000_000,
+    total_uploaded: 5_226_000_000,
+    time_added: 1_716_600_000,
+    completed_time: 1_716_690_000,
+    save_path: "/downloads",
+    message: "OK",
+    label: "linux-isos",
+    files: [
+      { index: 0, path: "debian-12.5.0-amd64-netinst.iso", size: 3_900_000_000, offset: 0 },
+    ],
+    file_progress: [1],
+    trackers: [{ url: "https://bttracker.debian.org:6969/announce", tier: 0 }],
+    tracker_host: "debian.org",
+    tracker_status: "Announce OK",
+    num_seeds: 12,
+    total_seeds: 870,
+    num_peers: 3,
+    total_peers: 14,
+    stop_at_ratio: true,
+    stop_ratio: 2,
+    remove_at_ratio: false,
+  },
+  "00000000000000000000000000000000000d0c03": {
+    name: "Arch Linux 2024.05.01 x86_64",
+    state: "Paused",
+    progress: 50,
+    total_size: 1_050_000_000,
+    total_wanted: 1_050_000_000,
+    total_done: 525_000_000,
+    total_remaining: 525_000_000,
+    download_payload_rate: 0,
+    upload_payload_rate: 0,
+    eta: 0,
+    ratio: 0.4,
+    all_time_download: 525_000_000,
+    total_uploaded: 210_000_000,
+    time_added: 1_716_500_000,
+    completed_time: 0,
+    save_path: "/downloads",
+    message: "OK",
+    label: "",
+    files: [
+      { index: 0, path: "archlinux-2024.05.01-x86_64.iso", size: 1_050_000_000, offset: 0 },
+    ],
+    file_progress: [0.5],
+    trackers: [],
+    tracker_host: "",
+    tracker_status: "",
+    num_seeds: 0,
+    total_seeds: 0,
+    num_peers: 0,
+    total_peers: 0,
+    stop_at_ratio: false,
+    stop_ratio: 2,
+    remove_at_ratio: false,
+  },
+};
+// Legacy libtorrent session-status names, the ones Deluge 2.x back-compat-maps
+// and the only ones 1.3 knows.
+const DEMO_DELUGE_SESSION_STATUS = {
+  payload_download_rate: 5_400_000,
+  payload_upload_rate: 1_100_000,
+  total_payload_download: 850_000_000_000,
+  total_payload_upload: 420_000_000_000,
+};
+// KiB/s, negative = unlimited (0 would throttle to a standstill).
+const DEMO_DELUGE_CONFIG_VALUES = {
+  max_download_speed: -1,
+  max_upload_speed: 500,
+};
+
 // Shared across radarr/sonarr/lidarr — the /diskspace payload is identical on
 // all three. Percentages chosen to exercise the amber (≥70%) and red (≥85%)
 // bar thresholds in demo screenshots.
@@ -1946,6 +2321,733 @@ const DEMO_TDARR_FILES = [
   },
 ];
 
+// --- Bindery demo fixtures ---
+//
+// Deliberately reproduces Bindery's real envelope shapes rather than flattening
+// them: the /author and /book routes are offset-paginated objects while /queue
+// is its own {items, partial} shape. Demo mode is the only place outside unit
+// tests where unwrapBinderyList() sees all of them.
+
+function makeBinderyAuthor(
+  id: number,
+  authorName: string,
+  foreignAuthorId: string,
+  bookCount: number,
+  monitored = true,
+) {
+  return {
+    id,
+    foreignAuthorId,
+    authorName,
+    sortName: authorName.split(" ").slice(-1)[0] + ", " + authorName.split(" ")[0],
+    description: `${authorName} is a demo author used to preview the Books tab.`,
+    // Matches the real shape: a relative image-proxy path, not a URL.
+    imageUrl: `/api/v1/images?url=${encodeURIComponent(`https://covers.example/${id}.jpg`)}`,
+    monitored,
+    monitorMode: "all",
+    metadataProvider: "openlibrary",
+    averageRating: 4.2,
+    ratingsCount: 1840,
+    createdAt: "2026-02-11T09:00:00Z",
+    // Only bookCount is ever populated upstream; the other two are always 0.
+    statistics: { bookCount, availableBookCount: 0, wantedBookCount: 0 },
+  };
+}
+
+function makeBinderyBook(
+  id: number,
+  title: string,
+  authorId: number,
+  year: number,
+  status: string,
+  mediaType = "ebook",
+) {
+  return {
+    id,
+    foreignBookId: `OL${id}W`,
+    authorId,
+    title,
+    description: `${title} is a demo book used to preview the Books tab.`,
+    imageUrl: `/api/v1/images?url=${encodeURIComponent(`https://covers.example/b${id}.jpg`)}`,
+    releaseDate: `${year}-06-01T00:00:00Z`,
+    genres: ["Science Fiction"],
+    averageRating: 4.4,
+    ratingsCount: 920,
+    monitored: true,
+    status,
+    mediaType,
+    language: "eng",
+    createdAt: "2026-02-11T09:00:00Z",
+  };
+}
+
+const DEMO_BINDERY_AUTHORS = [
+  makeBinderyAuthor(1, "Andy Weir", "/authors/OL7115219A", 4),
+  makeBinderyAuthor(2, "Becky Chambers", "/authors/OL7360590A", 6),
+  makeBinderyAuthor(3, "Ursula K. Le Guin", "/authors/OL22242A", 22, false),
+];
+
+const DEMO_BINDERY_BOOKS = [
+  makeBinderyBook(101, "Project Hail Mary", 1, 2021, "imported"),
+  makeBinderyBook(102, "The Martian", 1, 2011, "imported", "both"),
+  makeBinderyBook(103, "Artemis", 1, 2017, "wanted"),
+  makeBinderyBook(201, "A Psalm for the Wild-Built", 2, 2021, "imported", "audiobook"),
+  makeBinderyBook(202, "The Long Way to a Small, Angry Planet", 2, 2014, "downloading"),
+  makeBinderyBook(301, "The Left Hand of Darkness", 3, 1969, "wanted"),
+];
+
+// The offset envelope /author, /book and /history all use.
+function binderyPage<T>(items: T[]) {
+  return { items, total: items.length, limit: 500, offset: 0 };
+}
+
+const DEMO_BINDERY_QUEUE = {
+  items: [
+    {
+      id: 901,
+      guid: "demo-guid-901",
+      title: "Becky.Chambers.The.Long.Way.To.A.Small.Angry.Planet.epub",
+      status: "downloading",
+      size: 4_194_304,
+      protocol: "usenet",
+      addedAt: "2026-02-18T18:20:00Z",
+      bookId: 202,
+      percentage: "64.5",
+      timeLeft: "00:02:11",
+      speed: "3.1 MB/s",
+      book: {
+        id: 202,
+        title: "The Long Way to a Small, Angry Planet",
+        authorId: 2,
+        authorName: "Becky Chambers",
+      },
+    },
+    {
+      id: 902,
+      guid: "demo-guid-902",
+      title: "Andy.Weir.Artemis.Audiobook.m4b",
+      status: "importFailed",
+      size: 512_000_000,
+      protocol: "usenet",
+      errorMessage: "No files found are eligible for import",
+      addedAt: "2026-02-18T15:02:00Z",
+      bookId: 103,
+      book: {
+        id: 103,
+        title: "Artemis",
+        authorId: 1,
+        authorName: "Andy Weir",
+      },
+    },
+  ],
+};
+
+const DEMO_BINDERY_STATUS = {
+  version: "1.32.2",
+  commit: "demo",
+  buildDate: "2026-08-25T00:00:00Z",
+};
+
+// --- Autobrr demo fixtures ---
+
+const DEMO_AUTOBRR_STATS = {
+  total_count: 18432,
+  filtered_count: 1843,
+  filter_rejected_count: 16589,
+  push_approved_count: 312,
+  push_rejected_count: 84,
+  push_error_count: 3,
+};
+
+// Compact factory — a full Release literal is ~20 lines and the feed needs
+// eight of them. `minsAgo` keeps the timestamps fresh on every launch.
+function autobrrDemoRelease(
+  id: number,
+  name: string,
+  indexer: string,
+  filter: string,
+  status: "PUSH_APPROVED" | "PUSH_REJECTED" | "PUSH_ERROR" | null,
+  size: number,
+  minsAgo: number,
+) {
+  const timestamp = new Date(Date.now() - minsAgo * 60000).toISOString();
+  return {
+    id,
+    filter_status: "FILTER_APPROVED",
+    rejections: [] as string[],
+    indexer: { id: 1, name: indexer, identifier: indexer.toLowerCase() },
+    filter,
+    protocol: "torrent",
+    name,
+    title: name.split(".")[0]!.replace(/\./g, " "),
+    size,
+    info_url: "",
+    timestamp,
+    action_status:
+      status === null
+        ? []
+        : [
+            {
+              id: id * 10,
+              status,
+              action: "qBittorrent",
+              action_id: 1,
+              type: "QBITTORRENT",
+              client: "qBittorrent",
+              filter,
+              rejections:
+                status === "PUSH_REJECTED" ? ["max active downloads reached"] : [],
+              timestamp,
+            },
+          ],
+  };
+}
+
+const DEMO_AUTOBRR_RELEASES = [
+  autobrrDemoRelease(101, "The.Quiet.Signal.2026.1080p.BluRay.x264-DEMO", "AlphaBits", "Movies 1080p", "PUSH_APPROVED", 9_663_676_416, 4),
+  autobrrDemoRelease(100, "Orbital.Decay.S02E05.2160p.WEB-DL.DDP5.1-DEMO", "BetaHD", "TV 4K", "PUSH_APPROVED", 5_368_709_120, 21),
+  autobrrDemoRelease(99, "Midnight.Harbor.S01.Complete.1080p.WEB.h264-DEMO", "AlphaBits", "TV Packs", "PUSH_REJECTED", 32_212_254_720, 47),
+  autobrrDemoRelease(98, "Static.Bloom.2025.REMUX.2160p.HDR-DEMO", "GammaCove", "Movies Remux", "PUSH_ERROR", 58_982_400_000, 93),
+  autobrrDemoRelease(97, "Glass.Meridian.S03E01.1080p.WEB.h264-DEMO", "BetaHD", "TV 1080p", "PUSH_APPROVED", 3_221_225_472, 128),
+  autobrrDemoRelease(96, "Paper.Lanterns.2026.720p.WEB.h264-DEMO", "AlphaBits", "Movies 1080p", null, 2_147_483_648, 166),
+  autobrrDemoRelease(95, "Iron.Estuary.S01E08.2160p.WEB-DL-DEMO", "GammaCove", "TV 4K", "PUSH_APPROVED", 6_442_450_944, 204),
+  autobrrDemoRelease(94, "Salt.and.Circuitry.2024.1080p.BluRay-DEMO", "BetaHD", "Movies 1080p", "PUSH_REJECTED", 10_737_418_240, 251),
+];
+
+const DEMO_AUTOBRR_FILTERS = [
+  { id: 1, name: "Movies 1080p", enabled: true },
+  { id: 2, name: "Movies Remux", enabled: true },
+  { id: 3, name: "TV 1080p", enabled: true },
+  { id: 4, name: "TV 4K", enabled: true },
+  { id: 5, name: "Music FLAC", enabled: false },
+];
+
+const DEMO_AUTOBRR_IRC = [
+  {
+    id: 1,
+    name: "AlphaBits IRC",
+    enabled: true,
+    server: "irc.alphabits.demo",
+    port: 6697,
+    nick: "dashboarr",
+    connected: true,
+    connected_since: new Date(Date.now() - 86_400_000 * 3).toISOString(),
+    channels: [
+      { id: 1, enabled: true, name: "#announces", monitoring: true, state: "Monitoring" },
+    ],
+    connection_errors: [] as string[],
+    healthy: true,
+  },
+  {
+    id: 2,
+    name: "BetaHD IRC",
+    enabled: true,
+    server: "irc.betahd.demo",
+    port: 6697,
+    nick: "dashboarr",
+    connected: false,
+    connected_since: "",
+    channels: [
+      { id: 2, enabled: true, name: "#beta-announce", monitoring: false, state: "Error" },
+    ],
+    connection_errors: ["dial tcp: connection refused"],
+    healthy: false,
+  },
+];
+
+// --- Cleanuparr demo fixtures ---
+
+// Static 7-day numbers — the `hours` param is ignored in demo (same stance as
+// Tautulli's time_range). Breakdown keys are PascalCase enum names and only
+// active ones are present, mirroring the real API.
+const DEMO_CLEANUPARR_STATS = {
+  events: {
+    total: 58,
+    byType: {
+      StalledStrike: 14,
+      SlowSpeedStrike: 6,
+      FailedImportStrike: 4,
+      QueueItemDeleted: 9,
+      DownloadCleaned: 11,
+      SearchTriggered: 8,
+      StrikeReset: 6,
+    },
+    bySeverity: { Information: 34, Warning: 16, Important: 6, Error: 2 },
+  },
+  strikes: {
+    total: 24,
+    byType: { Stalled: 14, SlowSpeed: 6, FailedImport: 4 },
+    recovered: 6,
+  },
+  removals: {
+    total: 9,
+    byReason: { Stalled: 5, SlowSpeed: 2, AllFilesBlocked: 2 },
+  },
+  cleaned: {
+    total: 11,
+    byReason: { MaxRatioReached: 8, MaxSeedTimeReached: 3 },
+  },
+  searches: {
+    total: 8,
+    completed: 7,
+    failed: 1,
+    grabbed: 5,
+    byReason: { Missing: 5, Replacement: 2, QualityCutoffNotMet: 1 },
+  },
+  jobs: {
+    total: 168,
+    completed: 166,
+    failed: 2,
+    byType: {
+      QueueCleaner: {
+        total: 84,
+        completed: 83,
+        failed: 1,
+        lastRunAt: new Date(Date.now() - 9 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 21 * 60000).toISOString(),
+      },
+      MalwareBlocker: {
+        total: 48,
+        completed: 48,
+        failed: 0,
+        lastRunAt: new Date(Date.now() - 14 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 16 * 60000).toISOString(),
+      },
+      DownloadCleaner: {
+        total: 24,
+        completed: 23,
+        failed: 1,
+        lastRunAt: new Date(Date.now() - 32 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 28 * 60000).toISOString(),
+      },
+      Seeker: {
+        total: 12,
+        completed: 12,
+        failed: 0,
+        lastRunAt: new Date(Date.now() - 55 * 60000).toISOString(),
+        nextRunAt: new Date(Date.now() + 65 * 60000).toISOString(),
+      },
+    },
+  },
+  health: {
+    downloadClients: [
+      {
+        id: "dc-1",
+        name: "qBittorrent",
+        type: "qBittorrent",
+        isHealthy: true,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        responseTimeMs: 38.4,
+        errorMessage: null,
+      },
+      {
+        id: "dc-2",
+        name: "SABnzbd",
+        type: "Sabnzbd",
+        isHealthy: false,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        responseTimeMs: undefined,
+        errorMessage: "Connection refused",
+      },
+    ],
+    arrInstances: [
+      {
+        id: "arr-1",
+        name: "Radarr",
+        type: "Radarr",
+        isHealthy: true,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        errorMessage: null,
+      },
+      {
+        id: "arr-2",
+        name: "Sonarr",
+        type: "Sonarr",
+        isHealthy: true,
+        lastChecked: new Date(Date.now() - 3 * 60000).toISOString(),
+        errorMessage: null,
+      },
+    ],
+  },
+  timeframeHours: 168,
+  generatedAt: new Date().toISOString(),
+};
+
+const DEMO_CLEANUPARR_JOBS = [
+  { name: "Queue Cleaner", status: "Normal", schedule: "Every 30 minutes", nextRunTime: new Date(Date.now() + 21 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 9 * 60000).toISOString(), jobType: "QueueCleaner" },
+  { name: "Malware Blocker", status: "Normal", schedule: "Every 30 minutes", nextRunTime: new Date(Date.now() + 16 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 14 * 60000).toISOString(), jobType: "MalwareBlocker" },
+  { name: "Download Cleaner", status: "Normal", schedule: "Every hour", nextRunTime: new Date(Date.now() + 28 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 32 * 60000).toISOString(), jobType: "DownloadCleaner" },
+  { name: "Seeker", status: "Normal", schedule: "Every 2 hours", nextRunTime: new Date(Date.now() + 65 * 60000).toISOString(), previousRunTime: new Date(Date.now() - 55 * 60000).toISOString(), jobType: "Seeker" },
+];
+
+// 32 rows across severities/types so the events feed pages twice in demo
+// (pageSize 25). Deterministic pattern — no RNG, identical every launch.
+const DEMO_CLEANUPARR_EVENTS = (() => {
+  const templates = [
+    { eventType: "StalledStrike", severity: "Warning", message: "Strike 2/3: download stalled", itemTitle: "Orbital.Decay.S02E05.2160p.WEB-DL", strikeCount: 2 },
+    { eventType: "QueueItemDeleted", severity: "Important", message: "Removed stalled download after 3 strikes", itemTitle: "Midnight.Harbor.S01E03.1080p.WEB", strikeCount: 3 },
+    { eventType: "DownloadCleaned", severity: "Information", message: "Cleaned after reaching max ratio", itemTitle: "The.Quiet.Signal.2026.1080p.BluRay", strikeCount: null },
+    { eventType: "SearchTriggered", severity: "Information", message: "Search started for missing item", itemTitle: "Glass Meridian S03E02", strikeCount: null },
+    { eventType: "SlowSpeedStrike", severity: "Warning", message: "Strike 1/3: below minimum speed", itemTitle: "Static.Bloom.2025.REMUX.2160p", strikeCount: 1 },
+    { eventType: "StrikeReset", severity: "Information", message: "Download recovered, strikes reset", itemTitle: "Iron.Estuary.S01E08.2160p.WEB-DL", strikeCount: null },
+    { eventType: "QueueItemDeleted", severity: "Error", message: "Removed: every file matched the malware blocklist", itemTitle: "Paper.Lanterns.2026.720p.WEB", strikeCount: null },
+    { eventType: "FailedImportStrike", severity: "Warning", message: "Strike 1/3: failed to import", itemTitle: "Salt.and.Circuitry.2024.1080p.BluRay", strikeCount: 1 },
+  ];
+  return Array.from({ length: 32 }, (_, i) => {
+    const t = templates[i % templates.length]!;
+    return {
+      id: `demo-event-${i + 1}`,
+      timestamp: new Date(Date.now() - (i + 1) * 47 * 60000).toISOString(),
+      isDryRun: i % 11 === 0,
+      ...t,
+    };
+  });
+})();
+
+// --- Navidrome ---
+// Wire shapes are upstream-exact: the Subsonic `subsonic-response` envelope
+// (so lib/navidrome-normalize.ts's unwrap runs for real), an ISO lastScan, and
+// totalSize in bytes on the native /api/library row.
+
+function navidromeEnvelope(key: string, payload: unknown) {
+  return {
+    "subsonic-response": {
+      status: "ok",
+      version: "1.16.1",
+      type: "navidrome",
+      serverVersion: "0.63.2",
+      openSubsonic: true,
+      ...(key ? { [key]: payload } : {}),
+    },
+  };
+}
+
+const DEMO_NAVIDROME_SCAN_STATUS = {
+  scanning: false,
+  count: 18432,
+  folderCount: 1247,
+  lastScan: "2026-08-27T04:12:00Z",
+  scanType: "quick",
+  elapsedTime: 41_000_000_000,
+};
+
+const DEMO_NAVIDROME_LIBRARIES = [
+  {
+    id: 1,
+    name: "Music Library",
+    path: "/music",
+    lastScanAt: "2026-08-27T04:12:00Z",
+    lastScanStartedAt: "2026-08-27T04:11:19Z",
+    fullScanInProgress: false,
+    totalSongs: 18432,
+    totalAlbums: 1583,
+    totalArtists: 742,
+    totalFolders: 1247,
+    totalFiles: 19104,
+    totalMissingFiles: 12,
+    totalSize: 412_884_996_608,
+    totalDuration: 4_912_800,
+  },
+];
+
+const DEMO_NAVIDROME_ALBUMS = [
+  { id: "al-1", name: "Selected Ambient Works 85-92", artist: "Aphex Twin", artistId: "ar-1", coverArt: "al-1", songCount: 13, duration: 4574, year: 1992, genre: "Ambient Techno", created: "2026-08-21T18:02:00Z" },
+  { id: "al-2", name: "Music Has the Right to Children", artist: "Boards of Canada", artistId: "ar-2", coverArt: "al-2", songCount: 18, duration: 4059, year: 1998, genre: "IDM", created: "2026-08-19T09:41:00Z" },
+  { id: "al-3", name: "Homogenic", artist: "Bjork", artistId: "ar-3", coverArt: "al-3", songCount: 10, duration: 2531, year: 1997, genre: "Art Pop", created: "2026-08-14T22:15:00Z" },
+  { id: "al-4", name: "In Rainbows", artist: "Radiohead", artistId: "ar-4", coverArt: "al-4", songCount: 10, duration: 2570, year: 2007, genre: "Alternative", created: "2026-08-11T12:30:00Z" },
+  { id: "al-5", name: "Untrue", artist: "Burial", artistId: "ar-5", coverArt: "al-5", songCount: 13, duration: 3060, year: 2007, genre: "Dubstep", created: "2026-08-04T07:55:00Z" },
+  { id: "al-6", name: "Blue Lines", artist: "Massive Attack", artistId: "ar-6", coverArt: "al-6", songCount: 9, duration: 2517, year: 1991, genre: "Trip Hop", created: "2026-07-30T16:20:00Z" },
+];
+
+const DEMO_NAVIDROME_ARTISTS_INDEX = {
+  ignoredArticles: "The El La Los Las Le Les Os As O A",
+  lastModified: 1787_000_000_000,
+  index: [
+    { name: "A", artist: [{ id: "ar-1", name: "Aphex Twin", albumCount: 14, coverArt: "ar-1" }] },
+    { name: "B", artist: [
+      { id: "ar-2", name: "Boards of Canada", albumCount: 8, coverArt: "ar-2" },
+      { id: "ar-3", name: "Bjork", albumCount: 11, coverArt: "ar-3" },
+      { id: "ar-5", name: "Burial", albumCount: 6, coverArt: "ar-5" },
+    ] },
+    { name: "M", artist: [{ id: "ar-6", name: "Massive Attack", albumCount: 7, coverArt: "ar-6" }] },
+    { name: "R", artist: [{ id: "ar-4", name: "Radiohead", albumCount: 9, coverArt: "ar-4" }] },
+  ],
+};
+
+const DEMO_NAVIDROME_NOW_PLAYING = {
+  entry: [
+    {
+      id: "sg-1", parent: "al-2", title: "Roygbiv", album: "Music Has the Right to Children",
+      artist: "Boards of Canada", albumId: "al-2", artistId: "ar-2", coverArt: "al-2",
+      duration: 151, track: 12, year: 1998, genre: "IDM", suffix: "flac", bitRate: 1006,
+      username: "renzo", minutesAgo: 0, playerId: 3, playerName: "Feishin",
+      state: "playing", positionMs: 47_000, playbackRate: 1,
+    },
+    {
+      id: "sg-2", parent: "al-5", title: "Archangel", album: "Untrue",
+      artist: "Burial", albumId: "al-5", artistId: "ar-5", coverArt: "al-5",
+      duration: 236, track: 2, year: 2007, genre: "Dubstep", suffix: "mp3", bitRate: 320,
+      username: "sam", minutesAgo: 1, playerId: 8, playerName: "play:Sub",
+      state: "paused", positionMs: 118_000, playbackRate: 1,
+    },
+  ],
+};
+
+const DEMO_NAVIDROME_PLAYLISTS = [
+  { id: "pl-1", name: "Late Night", comment: "Slow, dark, mostly instrumental.", songCount: 42, duration: 11_280, public: false, owner: "renzo", created: "2026-03-02T21:10:00Z", changed: "2026-08-25T23:41:00Z", coverArt: "pl-1" },
+  { id: "pl-2", name: "Focus", comment: "", songCount: 88, duration: 24_600, public: true, owner: "renzo", created: "2025-11-14T08:00:00Z", changed: "2026-08-20T10:05:00Z", coverArt: "pl-2" },
+  { id: "pl-3", name: "Recently Added", comment: "Smart playlist", songCount: 25, duration: 6_400, public: false, owner: "renzo", created: "2026-01-05T12:00:00Z", changed: "2026-08-27T04:12:00Z", coverArt: "pl-3" },
+];
+
+const DEMO_NAVIDROME_PLAYLIST_TRACKS = [
+  { id: "sg-1", title: "Roygbiv", artist: "Boards of Canada", album: "Music Has the Right to Children", albumId: "al-2", coverArt: "al-2", duration: 151, track: 12 },
+  { id: "sg-3", title: "Xtal", artist: "Aphex Twin", album: "Selected Ambient Works 85-92", albumId: "al-1", coverArt: "al-1", duration: 293, track: 1 },
+  { id: "sg-2", title: "Archangel", artist: "Burial", album: "Untrue", albumId: "al-5", coverArt: "al-5", duration: 236, track: 2 },
+  { id: "sg-4", title: "Unfinished Sympathy", artist: "Massive Attack", album: "Blue Lines", albumId: "al-6", coverArt: "al-6", duration: 308, track: 3 },
+];
+
+const DEMO_NAVIDROME_USER = {
+  username: "renzo",
+  adminRole: true,
+  scrobblingEnabled: true,
+  settingsRole: true,
+  downloadRole: true,
+  playlistRole: true,
+  streamRole: true,
+  shareRole: true,
+  jukeboxRole: false,
+};
+
+const DEMO_NAVIDROME_LOGIN = {
+  id: "u-1",
+  name: "Renzo",
+  username: "renzo",
+  isAdmin: true,
+  token: "demo-jwt",
+};
+
+// --- Pi-hole ---------------------------------------------------------------
+// Domains are deliberately recognisable-but-generic tracker names: this screen
+// is the one people screenshot, and it must not look like a real household's
+// browsing history.
+
+const DEMO_PIHOLE_SUMMARY = {
+  queries: {
+    total: 48213,
+    blocked: 9764,
+    percent_blocked: 20.3,
+    unique_domains: 1842,
+    forwarded: 24310,
+    cached: 14139,
+    frequency: 0.56,
+    types: { A: 26104, AAAA: 14882, HTTPS: 4210, PTR: 1834, SRV: 612, TXT: 571 },
+  },
+  clients: { active: 23, total: 41 },
+  gravity: {
+    domains_being_blocked: 219727,
+    // Fixed timestamp so the fixture is deterministic; the UI renders it as a
+    // relative age, which reads as "a while ago" rather than a wrong date.
+    last_update: 1756300000,
+  },
+};
+
+const DEMO_PIHOLE_BLOCKING = { blocking: "enabled" as const, timer: null };
+
+/**
+ * 24h of 10-minute buckets (144 points), shaped like a real day: quiet
+ * overnight, a morning ramp, an evening peak. Generated rather than written out
+ * so the chart has something honest to downsample, and fully deterministic —
+ * no Math.random, so demo screenshots are reproducible.
+ */
+const DEMO_PIHOLE_HISTORY = (() => {
+  const BUCKETS = 144;
+  const STEP_S = 600;
+  // Anchored to a fixed instant for determinism; the chart labels off each
+  // bucket's own timestamp, so the absolute date never shows.
+  const startS = 1756300000 - BUCKETS * STEP_S;
+  const history = [];
+  for (let i = 0; i < BUCKETS; i++) {
+    const hour = ((i * 10) / 60) % 24;
+    // Two humps: ~09:00 and ~21:00, on a low overnight floor.
+    const shape =
+      0.18 +
+      0.55 * Math.exp(-(((hour - 9) / 3.2) ** 2)) +
+      0.85 * Math.exp(-(((hour - 21) / 2.6) ** 2));
+    // Small deterministic wobble so the bars are not a smooth curve.
+    const wobble = 1 + 0.12 * Math.sin(i * 1.7);
+    const total = Math.round(420 * shape * wobble);
+    const blocked = Math.round(total * (0.17 + 0.06 * Math.sin(i / 9)));
+    const cached = Math.round((total - blocked) * 0.37);
+    history.push({
+      timestamp: startS + i * STEP_S,
+      total,
+      cached,
+      blocked,
+      forwarded: total - blocked - cached,
+    });
+  }
+  return { history };
+})();
+
+const DEMO_PIHOLE_TOP_BLOCKED = {
+  domains: [
+    { domain: "ads.example-network.com", count: 1842 },
+    { domain: "telemetry.example-app.net", count: 1317 },
+    { domain: "metrics.example-cdn.io", count: 964 },
+    { domain: "track.example-analytics.com", count: 758 },
+    { domain: "beacon.example-media.net", count: 611 },
+    { domain: "pixel.example-social.com", count: 508 },
+    { domain: "collect.example-sdk.io", count: 402 },
+    { domain: "events.example-mobile.net", count: 351 },
+    { domain: "logs.example-device.com", count: 288 },
+    { domain: "reporting.example-tv.net", count: 214 },
+  ],
+  total_queries: 48213,
+  blocked_queries: 9764,
+};
+
+const DEMO_PIHOLE_TOP_PERMITTED = {
+  domains: [
+    { domain: "example-video.com", count: 3921 },
+    { domain: "cdn.example-static.net", count: 2874 },
+    { domain: "api.example-service.io", count: 2103 },
+    { domain: "updates.example-os.com", count: 1655 },
+    { domain: "mail.example-host.net", count: 1288 },
+    { domain: "sync.example-cloud.io", count: 977 },
+    { domain: "images.example-shop.com", count: 812 },
+    { domain: "time.example-ntp.org", count: 640 },
+    { domain: "chat.example-messenger.net", count: 519 },
+    { domain: "maps.example-nav.com", count: 431 },
+  ],
+  total_queries: 48213,
+  blocked_queries: 9764,
+};
+
+const DEMO_PIHOLE_TOP_CLIENTS = {
+  clients: [
+    { ip: "192.168.1.24", name: "living-room-tv.lan", count: 11204 },
+    { ip: "192.168.1.11", name: "desktop.lan", count: 9873 },
+    { ip: "192.168.1.42", name: "phone.lan", count: 7311 },
+    { ip: "192.168.1.7", name: "nas.lan", count: 5622 },
+    { ip: "192.168.1.63", name: null, count: 4180 },
+    { ip: "192.168.1.90", name: "tablet.lan", count: 3044 },
+    { ip: "127.0.0.1", name: "localhost", count: 1877 },
+  ],
+  total_queries: 48213,
+  blocked_queries: 9764,
+};
+
+const DEMO_PIHOLE_UPSTREAMS = {
+  upstreams: [
+    { ip: "127.0.0.1", name: "localhost", port: -1, count: 14139, statistics: { response: 0.0002, variance: 0.0001 } },
+    { ip: "1.1.1.1", name: "one.one.one.one", port: 53, count: 18422, statistics: { response: 0.0241, variance: 0.0106 } },
+    { ip: "9.9.9.9", name: "dns.quad9.net", port: 53, count: 5888, statistics: { response: 0.0318, variance: 0.0154 } },
+  ],
+  forwarded_queries: 24310,
+  total_queries: 48213,
+};
+
+/**
+ * The live query log. Deterministic, and every status string below is a real
+ * FTL status — lib/demo-data.pihole.test.ts asserts that against the classifier
+ * so a typo cannot make the demo render everything as "other".
+ */
+const DEMO_PIHOLE_QUERIES = (() => {
+  const rows: {
+    domain: string;
+    status: string;
+    type: string;
+    client: { ip: string; name: string | null };
+    reply: { type: string | null; time: number };
+    upstream: string | null;
+    cname: string | null;
+    dnssec: string | null;
+  }[] = [
+    { domain: "ads.example-network.com", status: "GRAVITY", type: "A", client: { ip: "192.168.1.42", name: "phone.lan" }, reply: { type: "NULL", time: 0.1 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "api.example-service.io", status: "FORWARDED", type: "A", client: { ip: "192.168.1.11", name: "desktop.lan" }, reply: { type: "IP", time: 21.4 }, upstream: "1.1.1.1#53", cname: null, dnssec: "SECURE" },
+    { domain: "cdn.example-static.net", status: "CACHE", type: "AAAA", client: { ip: "192.168.1.24", name: "living-room-tv.lan" }, reply: { type: "IP", time: 0.3 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "telemetry.example-app.net", status: "REGEX", type: "A", client: { ip: "192.168.1.63", name: null }, reply: { type: "NXDOMAIN", time: 0.2 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "example-video.com", status: "FORWARDED", type: "HTTPS", client: { ip: "192.168.1.24", name: "living-room-tv.lan" }, reply: { type: "RRNAME", time: 33.8 }, upstream: "1.1.1.1#53", cname: null, dnssec: "SECURE" },
+    { domain: "metrics.example-cdn.io", status: "GRAVITY_CNAME", type: "A", client: { ip: "192.168.1.90", name: "tablet.lan" }, reply: { type: "NULL", time: 0.4 }, upstream: null, cname: "collect.example-sdk.io", dnssec: "UNKNOWN" },
+    { domain: "nas.lan", status: "CACHE", type: "A", client: { ip: "192.168.1.11", name: "desktop.lan" }, reply: { type: "IP", time: 0.1 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "updates.example-os.com", status: "FORWARDED", type: "A", client: { ip: "192.168.1.11", name: "desktop.lan" }, reply: { type: "IP", time: 48.2 }, upstream: "9.9.9.9#53", cname: null, dnssec: "INSECURE" },
+    { domain: "track.example-analytics.com", status: "DENYLIST", type: "A", client: { ip: "192.168.1.42", name: "phone.lan" }, reply: { type: "NULL", time: 0.2 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "time.example-ntp.org", status: "CACHE_STALE", type: "A", client: { ip: "192.168.1.7", name: "nas.lan" }, reply: { type: "IP", time: 0.5 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+    { domain: "sync.example-cloud.io", status: "FORWARDED", type: "AAAA", client: { ip: "192.168.1.7", name: "nas.lan" }, reply: { type: "IP", time: 27.1 }, upstream: "1.1.1.1#53", cname: null, dnssec: "SECURE" },
+    { domain: "beacon.example-media.net", status: "GRAVITY", type: "A", client: { ip: "192.168.1.24", name: "living-room-tv.lan" }, reply: { type: "NULL", time: 0.1 }, upstream: null, cname: null, dnssec: "UNKNOWN" },
+  ];
+  // 120 rows: enough that the log paginates (page size 100) and the second page
+  // is short, which is what exercises getNextPageParam's stop conditions.
+  const TOTAL = 120;
+  const newestId = 175881;
+  const newestTimeS = 1756300000;
+  return Array.from({ length: TOTAL }, (_, i) => {
+    const row = rows[i % rows.length]!;
+    return {
+      id: newestId - i,
+      time: newestTimeS - i * 7,
+      type: row.type,
+      domain: row.domain,
+      cname: row.cname,
+      status: row.status,
+      client: row.client,
+      dnssec: row.dnssec,
+      reply: row.reply,
+      list_id: null,
+      upstream: row.upstream,
+      ede: { code: 0, text: null },
+    };
+  });
+})();
+
+const DEMO_PIHOLE_CNAME_RECORDS = {
+  config: {
+    dns: {
+      cnameRecords: [
+        "nas.lan,server.lan",
+        "*.dev.lan,workstation.lan",
+        "hourly.example-internal.com,example-internal.com,3600",
+      ],
+    },
+  },
+};
+
+const DEMO_PIHOLE_GRAVITY_LOG = [
+  "  [i] Neutrino emissions detected...",
+  "  [✓] Pulling blocklist source list into range",
+  "  [i] Target: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+  "  [✓] Status: Retrieval successful",
+  "  [i] Imported 172502 domains",
+  "  [i] Target: https://v.firebog.net/hosts/AdguardDNS.txt",
+  "  [✓] Status: No changes detected",
+  "  [i] Imported 47225 domains",
+  "  [✓] Creating new gravity databases",
+  "  [✓] Swapping databases",
+  "  [i] Number of gravity domains: 219,727 (215,440 unique domains)",
+  "  [✓] Cleaning up stray matter",
+  "  [✓] Pi-hole blocking is enabled",
+].join("\n");
+
+const DEMO_PIHOLE_PADD = {
+  blocking: "enabled",
+  gravity_size: 219727,
+  active_clients: 23,
+  recent_blocked: "ads.example-network.com",
+  top_domain: "example-video.com",
+  top_blocked: "ads.example-network.com",
+  top_client: "living-room-tv.lan",
+  queries: { total: 48213, blocked: 9764, percent_blocked: 20.3, frequency: 0.56 },
+  node_name: "pihole",
+};
+
+const DEMO_PIHOLE_VERSION = {
+  version: {
+    core: { local: { branch: "master", version: "v6.1.4", hash: "955e36a9" } },
+    web: { local: { branch: "master", version: "v6.2.1", hash: "1b2c3d4e" } },
+    ftl: { local: { branch: "master", version: "v6.1.3", hash: "aa11bb22" } },
+  },
+};
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -1961,7 +3063,7 @@ export function getDemoResponse(
   // would match `startsWith("/queue")` and hand the caller the whole queue back
   // as its "void" result. Return nothing instead, so a demo delete resolves the
   // way the real one does. POST/PUT are deliberately excluded: NZBGet,
-  // Transmission and rtorrent dispatch their reads off a POST body.
+  // Transmission, Deluge and rtorrent dispatch their reads off a POST body.
   if (method === "DELETE") return undefined;
 
   switch (serviceId) {
@@ -2041,6 +3143,65 @@ export function getDemoResponse(
       if (normalized.startsWith("/health")) return [];
       return undefined;
     }
+    case "bindery": {
+      if (normalized === "/system/status") return DEMO_BINDERY_STATUS;
+      if (normalized === "/health") return { status: "ok", version: "1.32.2" };
+      if (normalized === "/author") return binderyPage(DEMO_BINDERY_AUTHORS);
+      if (normalized === "/author/:id") {
+        const authorId = Number(basePath.split("/").pop());
+        const author =
+          DEMO_BINDERY_AUTHORS.find((a) => a.id === authorId) ?? DEMO_BINDERY_AUTHORS[0]!;
+        // Detail responses embed books[] and, unlike the list, omit statistics
+        // entirely — the app derives its counts from the books.
+        const { statistics: _statistics, ...rest } = author;
+        return {
+          ...rest,
+          books: DEMO_BINDERY_BOOKS.filter((b) => b.authorId === author.id),
+        };
+      }
+      if (normalized === "/book/:id") {
+        const bookId = Number(basePath.split("/").pop());
+        const book = DEMO_BINDERY_BOOKS.find((b) => b.id === bookId) ?? DEMO_BINDERY_BOOKS[0]!;
+        const author = DEMO_BINDERY_AUTHORS.find((a) => a.id === book.authorId);
+        return {
+          ...book,
+          author,
+          // bookFiles and identifiers are attached to single-book reads only.
+          bookFiles:
+            book.status === "imported"
+              ? [
+                  {
+                    id: book.id * 10,
+                    bookId: book.id,
+                    format: book.mediaType === "audiobook" ? "audiobook" : "ebook",
+                    path: `/books/${book.title}.epub`,
+                    sizeBytes: 3_145_728,
+                  },
+                ]
+              : [],
+          identifiers: [{ provider: "openlibrary", identifier: book.foreignBookId }],
+        };
+      }
+      if (normalized === "/book") {
+        const authorId = params?.authorId != null ? Number(params.authorId) : null;
+        const status = params?.status != null ? String(params.status) : null;
+        let books = DEMO_BINDERY_BOOKS;
+        if (authorId != null) books = books.filter((b) => b.authorId === authorId);
+        if (status != null) books = books.filter((b) => b.status === status);
+        return binderyPage(books);
+      }
+      if (normalized.startsWith("/queue")) return DEMO_BINDERY_QUEUE;
+      // Bare arrays, matching the real routes.
+      if (normalized.startsWith("/wanted/missing")) {
+        return DEMO_BINDERY_BOOKS.filter((b) => b.status === "wanted");
+      }
+      if (normalized.startsWith("/rootfolder")) {
+        return [{ id: 1, path: "/books", freeSpace: 2199023255552 }];
+      }
+      if (normalized.startsWith("/metadataprofile")) return [{ id: 1, name: "Standard" }];
+      if (normalized.startsWith("/search/author")) return [];
+      return undefined;
+    }
     case "overseerr": {
       if (normalized.startsWith("/request/count")) return DEMO_OVERSEERR_REQUEST_COUNT;
       if (normalized.startsWith("/request")) return DEMO_OVERSEERR_REQUESTS;
@@ -2086,6 +3247,18 @@ export function getDemoResponse(
         ),
         Indexers: DEMO_JACKETT_RESULTS.Indexers.filter((i) => i.ID === indexerId),
       };
+    }
+    case "nzbhydra2": {
+      // apiBasePath is empty, so these paths carry their own /api prefix. The
+      // caps and search calls share the /api path and are told apart by `t`.
+      if (normalized === "/api") {
+        return params?.t === "caps" ? DEMO_NZBHYDRA2_CAPS : DEMO_NZBHYDRA2_SEARCH;
+      }
+      if (normalized === "/api/stats/indexers") return DEMO_NZBHYDRA2_INDEXERS;
+      if (normalized === "/api/stats") return DEMO_NZBHYDRA2_STATS;
+      if (normalized === "/api/history/searches") return DEMO_NZBHYDRA2_SEARCH_HISTORY;
+      if (normalized === "/api/history/downloads") return DEMO_NZBHYDRA2_DOWNLOAD_HISTORY;
+      return undefined;
     }
     case "bazarr": {
       if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;
@@ -2244,6 +3417,43 @@ export function getDemoResponse(
       // torrent-add / torrent-set / torrent-reannounce → empty success ack.
       return {};
     }
+    case "deluge": {
+      // Deluge dispatches off the JSON-RPC method name in the request body and
+      // the api returns getDemoResponse() verbatim as the `result`. Note
+      // core.get_torrents_status answers with a hash-keyed DICT, while the
+      // singular core.get_torrent_status answers with a bare status object.
+      let method = "";
+      let params: unknown[] = [];
+      try {
+        const parsed = body
+          ? (JSON.parse(body) as { method?: string; params?: unknown[] })
+          : undefined;
+        method = parsed?.method ?? "";
+        params = Array.isArray(parsed?.params) ? parsed.params : [];
+      } catch {
+        return undefined;
+      }
+      // The session + daemon handshake always succeeds in demo mode.
+      if (method === "auth.login" || method === "web.connected") return true;
+      if (method === "web.get_hosts") return [["demo-host", "127.0.0.1", 58846, "localuser"]];
+      if (method === "web.connect") return ["core.get_torrents_status"];
+      if (method === "core.get_torrents_status") return DEMO_DELUGE_TORRENTS;
+      if (method === "core.get_torrent_status") {
+        const id = String(params[0] ?? "").toLowerCase();
+        return DEMO_DELUGE_TORRENTS[id] ?? null;
+      }
+      if (method === "core.get_session_status") return DEMO_DELUGE_SESSION_STATUS;
+      if (method === "core.get_config_values") return DEMO_DELUGE_CONFIG_VALUES;
+      // core.remove_torrents answers with a list of per-id failures — an empty
+      // list is the success shape, so a demo delete must not return null here.
+      if (method === "core.remove_torrents") return [];
+      if (method === "core.add_torrent_magnet" || method === "core.add_torrent_url") {
+        return "00000000000000000000000000000000000d0d04";
+      }
+      // core.pause_torrents / resume_torrents / set_config / force_reannounce /
+      // set_torrent_options / label.* all answer null.
+      return null;
+    }
     case "unraid": {
       // unRAID is GraphQL — dispatch off the operation name in the POSTed
       // body ({query, variables}); unraid-api.ts unwraps the {data} envelope.
@@ -2272,6 +3482,198 @@ export function getDemoResponse(
         }
       }
       return undefined;
+    }
+    case "autobrr": {
+      // Mutations first, so they can't fall through to a read route: the
+      // retry POST, the filter-enabled PUT, and the (GET!) IRC restart all
+      // resolve as no-ops like the real endpoints do.
+      if (normalized.endsWith("/retry")) return undefined;
+      if (normalized.endsWith("/enabled")) return undefined;
+      if (normalized.startsWith("/irc/network/")) return undefined;
+      // /release/stats before the /release list (exact-match discipline).
+      if (normalized === "/release/stats") return DEMO_AUTOBRR_STATS;
+      if (normalized === "/release") {
+        // Respect the server-side filters so the chips and search work in demo.
+        const status = params?.push_status;
+        const q = typeof params?.q === "string" ? params.q.toLowerCase() : "";
+        const data = DEMO_AUTOBRR_RELEASES.filter((r) => {
+          if (status && r.action_status[0]?.status !== status) return false;
+          if (q && !r.name.toLowerCase().includes(q)) return false;
+          return true;
+        });
+        return { data, next_cursor: 0, count: data.length };
+      }
+      if (normalized === "/filters") return DEMO_AUTOBRR_FILTERS;
+      if (normalized === "/irc") return DEMO_AUTOBRR_IRC;
+      return undefined;
+    }
+    case "cleanuparr": {
+      // The trigger POST must not fall through to the jobs list read.
+      if (normalized.endsWith("/trigger")) return undefined;
+      if (normalized === "/api/jobs") return DEMO_CLEANUPARR_JOBS;
+      if (normalized === "/api/v2/stats") return DEMO_CLEANUPARR_STATS;
+      if (normalized === "/api/events") {
+        // Respect severity + paging so the chips and Load More work in demo.
+        const severity = params?.severity;
+        const page = params?.page != null ? Number(params.page) : 1;
+        const pageSize = params?.pageSize != null ? Number(params.pageSize) : 25;
+        const filtered = severity
+          ? DEMO_CLEANUPARR_EVENTS.filter((e) => e.severity === severity)
+          : DEMO_CLEANUPARR_EVENTS;
+        const start = (page - 1) * pageSize;
+        return {
+          items: filtered.slice(start, start + pageSize),
+          page,
+          pageSize,
+          totalCount: filtered.length,
+          totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+        };
+      }
+      return undefined;
+    }
+    case "pihole": {
+      // The CNAME add/delete paths carry the record in the URL, so they must be
+      // matched BEFORE the bare element read — otherwise a PUT falls through
+      // and hands the caller the whole record list back as its void result.
+      // (DELETE is already short-circuited above; PUT is not.)
+      if (normalized.startsWith("/config/dns/cnameRecords/")) return undefined;
+      if (normalized === "/config/dns/cnameRecords") return DEMO_PIHOLE_CNAME_RECORDS;
+
+      if (normalized === "/dns/blocking") {
+        // Echo the requested state so the demo toggle visibly flips, exactly as
+        // the real endpoint does. Reads fall through to the resting state.
+        if (method === "POST" && body) {
+          try {
+            const parsed = JSON.parse(body) as {
+              blocking?: boolean;
+              timer?: number | null;
+            };
+            return {
+              blocking: parsed.blocking === false ? "disabled" : "enabled",
+              timer: parsed.timer ?? null,
+            };
+          } catch {
+            // fall through to the resting state
+          }
+        }
+        return DEMO_PIHOLE_BLOCKING;
+      }
+
+      if (normalized === "/action/gravity") return DEMO_PIHOLE_GRAVITY_LOG;
+      if (normalized === "/stats/summary") return DEMO_PIHOLE_SUMMARY;
+      if (normalized === "/stats/upstreams") return DEMO_PIHOLE_UPSTREAMS;
+      if (normalized === "/history") return DEMO_PIHOLE_HISTORY;
+      if (normalized === "/padd") return DEMO_PIHOLE_PADD;
+      if (normalized === "/info/version") return DEMO_PIHOLE_VERSION;
+      if (normalized === "/info/login") return { https_port: 443, dns: true };
+      if (normalized === "/auth") return { session: { valid: true, sid: null, totp: false } };
+
+      if (normalized === "/stats/top_domains") {
+        return params?.blocked === true || params?.blocked === "true"
+          ? DEMO_PIHOLE_TOP_BLOCKED
+          : DEMO_PIHOLE_TOP_PERMITTED;
+      }
+      if (normalized === "/stats/top_clients") return DEMO_PIHOLE_TOP_CLIENTS;
+      if (normalized === "/stats/recent_blocked") {
+        const count = params?.count != null ? Number(params.count) : 1;
+        return { blocked: DEMO_PIHOLE_TOP_BLOCKED.domains.slice(0, count).map((d) => d.domain) };
+      }
+
+      if (normalized === "/queries/suggestions") {
+        return {
+          suggestions: {
+            domain: DEMO_PIHOLE_TOP_BLOCKED.domains.slice(0, 5).map((d) => d.domain),
+            client_ip: DEMO_PIHOLE_TOP_CLIENTS.clients.map((c) => c.ip),
+            client_name: DEMO_PIHOLE_TOP_CLIENTS.clients
+              .map((c) => c.name)
+              .filter((n): n is string => !!n),
+            upstream: ["1.1.1.1#53", "9.9.9.9#53"],
+            type: ["A", "AAAA", "HTTPS", "PTR"],
+            status: ["GRAVITY", "FORWARDED", "CACHE", "REGEX", "DENYLIST"],
+            reply: ["IP", "NULL", "NXDOMAIN", "RRNAME"],
+            dnssec: ["SECURE", "INSECURE", "UNKNOWN"],
+          },
+        };
+      }
+
+      if (normalized === "/queries") {
+        // Real cursor pagination, so the infinite list's stop conditions get
+        // exercised in demo mode rather than only against a live Pi-hole.
+        const length = params?.length != null ? Number(params.length) : 100;
+        const cursor = params?.cursor != null ? Number(params.cursor) : undefined;
+        const domain = typeof params?.domain === "string" ? params.domain : undefined;
+
+        let rows = DEMO_PIHOLE_QUERIES;
+        if (domain) {
+          const needle = domain.replace(/\*/g, "").toLowerCase();
+          rows = rows.filter((q) => q.domain.toLowerCase().includes(needle));
+        }
+        const start = cursor != null ? rows.findIndex((q) => q.id === cursor) : 0;
+        const from = start < 0 ? rows.length : start;
+        const page = rows.slice(from, from + length);
+        const next = rows[from + length];
+        return {
+          queries: page,
+          // null on the last page, which is one of the three stop conditions.
+          cursor: next ? next.id : null,
+          recordsTotal: DEMO_PIHOLE_QUERIES.length,
+          recordsFiltered: rows.length,
+          earliest_timestamp: DEMO_PIHOLE_QUERIES.at(-1)?.time,
+        };
+      }
+      return undefined;
+    }
+    case "navidrome": {
+      // Three roots on one host, so route on the prefix. The native API is
+      // plain JSON; everything under /rest is wrapped in the Subsonic envelope
+      // so the demo path exercises the real unwrap + error handling.
+      if (normalized === "/auth/login") return DEMO_NAVIDROME_LOGIN;
+      if (normalized === "/api/library") return DEMO_NAVIDROME_LIBRARIES;
+      if (normalized === "/api/missing") return { ids: [] };
+      switch (normalized) {
+        case "/rest/ping":
+          return navidromeEnvelope("", null);
+        case "/rest/getScanStatus":
+        case "/rest/startScan":
+          return navidromeEnvelope("scanStatus", DEMO_NAVIDROME_SCAN_STATUS);
+        case "/rest/getUser":
+          return navidromeEnvelope("user", DEMO_NAVIDROME_USER);
+        case "/rest/getNowPlaying":
+          return navidromeEnvelope("nowPlaying", DEMO_NAVIDROME_NOW_PLAYING);
+        case "/rest/getArtists":
+          return navidromeEnvelope("artists", DEMO_NAVIDROME_ARTISTS_INDEX);
+        case "/rest/getAlbumList2":
+          return navidromeEnvelope("albumList2", { album: DEMO_NAVIDROME_ALBUMS });
+        case "/rest/getPlaylists":
+          return navidromeEnvelope("playlists", { playlist: DEMO_NAVIDROME_PLAYLISTS });
+        case "/rest/getPlaylist":
+          return navidromeEnvelope("playlist", {
+            ...(DEMO_NAVIDROME_PLAYLISTS.find((p) => p.id === params?.id) ??
+              DEMO_NAVIDROME_PLAYLISTS[0]),
+            entry: DEMO_NAVIDROME_PLAYLIST_TRACKS,
+          });
+        case "/rest/search3": {
+          // Substring, case-insensitive — close enough to Navidrome's prefix
+          // autocomplete for the demo, and it makes the empty state reachable.
+          const q = String(params?.query ?? "").toLowerCase();
+          const artists = DEMO_NAVIDROME_ARTISTS_INDEX.index
+            .flatMap((i) => i.artist)
+            .filter((a) => a.name.toLowerCase().includes(q));
+          const albums = DEMO_NAVIDROME_ALBUMS.filter(
+            (a) => a.name.toLowerCase().includes(q) || a.artist.toLowerCase().includes(q),
+          );
+          const songs = DEMO_NAVIDROME_PLAYLIST_TRACKS.filter(
+            (t) => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q),
+          );
+          return navidromeEnvelope("searchResult3", {
+            ...(artists.length ? { artist: artists } : {}),
+            ...(albums.length ? { album: albums } : {}),
+            ...(songs.length ? { song: songs } : {}),
+          });
+        }
+        default:
+          return undefined;
+      }
     }
     // Emby shares Jellyfin's API surface, so it reuses the same demo payloads.
     case "emby":

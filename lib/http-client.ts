@@ -1,9 +1,36 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
+import {
+  SUBSONIC_API_VERSION,
+  SUBSONIC_CLIENT,
+  isSubsonicAuthError,
+  randomSalt,
+  readSubsonicEnvelope,
+  subsonicErrorMessage,
+  subsonicToken,
+} from "@/lib/navidrome-normalize";
 import type { ServiceId } from "@/lib/constants";
+import type { PiholeAuthResponse } from "@/lib/types";
 import { buildUrl } from "@/lib/url-builder";
 import { getDemoResponse } from "@/lib/demo-data";
-import { isPrivateUrl } from "@/lib/url-validation";
+import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+// The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
+// service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
+// the same envelope the same way. Pure string/object helpers — no cycle.
+import { readHydraJsonError, readHydraXmlError } from "@/lib/nzbhydra2-normalize";
+// Same arrangement for Pi-hole: FTL's error envelope is nested, so the probe
+// below and services/pihole-api.ts read it identically. Type-only imports in
+// pihole-normalize keep it cycle-free.
+import { SEATS_EXCEEDED_MESSAGE, readFtlError } from "@/lib/pihole-normalize";
+// The probe shares the API module's session cache so the 30s health poll
+// re-validates an existing SID instead of minting a new one every cycle. This
+// lives in lib/ precisely so http-client need not import services/.
+import {
+  PIHOLE_SID_HEADER,
+  dedupedPiholeLogin,
+  getPiholeSid,
+  invalidatePiholeSid,
+} from "@/lib/pihole-session";
 import {
   basicAuthHeader,
   digestSessionKey,
@@ -30,23 +57,79 @@ const DEFAULT_TIMEOUT = 15000;
  * existing away→remote URL resolution already keeps the LAN URL out of those
  * requests when auto-switch is on.
  *
- * An active VPN the user opted to trust as home (`treatVpnAsHome`) voids the
- * premise: WireGuard/OpenVPN/Tailscale subnet routes carry the private ranges
- * into the tunnel, so the LAN URL may be reachable from anywhere (#185). Stand
- * down for that case and let the bounded timeout handle a genuinely-unreachable
- * server. A VPN WITHOUT the opt-in is NOT trusted to reach home, so the guard
- * stays up — otherwise any tunnel (even to a hostile network) would silently
- * make the private URL "work" off Wi-Fi, contradicting the opt-in. This keeps
- * the guard aligned with `getActiveUrl`/`evaluateHomeNetwork`, which only treat
- * a VPN as home when `treatVpnAsHome` is on.
+ * Two things void the "private ⇒ unreachable" premise, both requiring a LIVE
+ * tunnel (`isVpnActive`); without one the guard always stands, so the #106
+ * fail-fast is untouched:
+ *
+ *  1. The user opted to trust the VPN as home (`treatVpnAsHome`): WireGuard/
+ *     OpenVPN/Tailscale subnet routes carry the private ranges into the tunnel,
+ *     so the LAN URL may be reachable from anywhere (#185).
+ *  2. The URL being requested is the instance's **Remote URL** (#356). That
+ *     slot is the address the user declared for "when I'm away", so a private
+ *     one there is a deliberate statement that it is reachable through their
+ *     tunnel — a ZeroTier/WireGuard-assigned 10.x, or a LAN address the tunnel
+ *     routes. Blocking it made the health dots red while Test Connection (which
+ *     skips this guard) reported the very same URL as connected, and it forced
+ *     users onto the global `treatVpnAsHome` opt-in — which then resolves to the
+ *     LOCAL URL, the one their tunnel can't reach.
+ *
+ * A VPN without either condition is NOT trusted to reach the LOCAL URL, so the
+ * guard stays up for that slot — otherwise any tunnel (even to a hostile
+ * network) would silently make the private local URL "work" off Wi-Fi,
+ * contradicting the opt-in. This keeps the local-slot guard aligned with
+ * `getActiveUrl`/`evaluateHomeNetwork`, which only treat a VPN as home when
+ * `treatVpnAsHome` is on.
  */
-function lanUnreachableOffWifi(url: string): boolean {
+function lanUnreachableOffWifi(
+  url: string,
+  inst?: { remoteUrl: string },
+): boolean {
   const store = useConfigStore.getState();
   // Demo mode never hits the network (probes return canned data), so don't let
   // the guard short-circuit demo services to offline when testing on cellular.
   if (store.demoMode) return false;
   if (store.isVpnActive && store.treatVpnAsHome) return false;
+  if (store.isVpnActive && isRemoteSlotUrl(url, inst)) return false;
   return store.isOnWifi === false && isPrivateUrl(url);
+}
+
+/**
+ * Whether `url` is the one `getActiveUrl` took from the instance's Remote URL
+ * field. Compared post-`normalizeServiceUrl` because that's what `getActiveUrl`
+ * returns; an empty Remote URL never matches.
+ */
+function isRemoteSlotUrl(url: string, inst?: { remoteUrl: string }): boolean {
+  const remote = normalizeServiceUrl(inst?.remoteUrl ?? "");
+  return remote !== "" && remote === url;
+}
+
+/**
+ * Why the guard tripped, appended to both the thrown error and the health-grid
+ * message. "(no VPN detected)" was previously printed unconditionally, which
+ * read as a lie to the one group most likely to see it — users with a tunnel up
+ * whose local URL it can't route (#356). Name the actual setting instead.
+ */
+function lanGuardReason(): string {
+  return useConfigStore.getState().isVpnActive
+    ? "VPN detected, but Treat VPN as home is off"
+    : "no VPN detected";
+}
+
+/**
+ * The guard's verdict for UI that has to explain a disagreement (#356): the
+ * settings "Test" button fires at the URL you typed and deliberately skips the
+ * guard, so a URL can answer there while the health probes short-circuit it.
+ * Returns null when nothing is being blocked, otherwise the reason to show.
+ *
+ * `inst` carries the IN-PROGRESS Remote URL from the form, not the saved one,
+ * so the remote-slot stand-down is judged against what the user is about to
+ * save.
+ */
+export function lanGuardBlockReason(
+  url: string,
+  inst?: { remoteUrl: string },
+): string | null {
+  return lanUnreachableOffWifi(url, inst) ? lanGuardReason() : null;
 }
 
 interface RequestOptions extends Omit<RequestInit, "signal"> {
@@ -62,7 +145,11 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   signal?: AbortSignal;
 }
 
-const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token"];
+// "sid" is Pi-hole's session id. We always send it as the X-FTL-SID header and
+// never as a query param, but FTL accepts ?sid= too — so redact it here as a
+// belt-and-braces, because this URL ends up in HttpError.message, in every
+// error toast, and in formatErrorForCopy's clipboard payload.
+const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token", "sid"];
 
 export function redactUrl(url: string): string {
   try {
@@ -184,6 +271,11 @@ export function formatErrorForCopy(err: unknown): string {
   if (err instanceof Error) {
     const parts = [`${err.name}: ${err.message}`];
     if (err.stack) parts.push(err.stack);
+    // Errors we rewrite for the user (see lib/backend-error.ts) keep the
+    // original on `cause` — that's the string worth pasting into a bug report.
+    if (err.cause instanceof Error) {
+      parts.push(`Caused by: ${err.cause.name}: ${err.cause.message}`);
+    }
     return parts.join("\n");
   }
   try {
@@ -249,21 +341,25 @@ export async function serviceRequest<T>(
     throw new Error(`No URL configured for ${serviceId}`);
   }
   // Fail fast instead of hanging on an unreachable LAN address off WiFi.
-  // Slot-neutral wording: the guard keys on the URL's host, so a private
-  // address in the Remote URL slot trips it too (#185).
-  if (lanUnreachableOffWifi(baseUrl)) {
+  // Slot-neutral wording: with no VPN up the guard keys on the URL's host, so a
+  // private address in the Remote URL slot trips it too (#185).
+  if (lanUnreachableOffWifi(baseUrl, inst)) {
     throw new Error(
-      `${serviceId}: private LAN address not reachable off Wi-Fi (no VPN detected)`,
+      `${serviceId}: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`,
     );
   }
 
-  // SABnzbd and Jackett auth live in the query string (?apikey=…), not
-  // headers. Merge defaults into the caller-supplied params so service
-  // modules don't have to know about either of those parameters.
+  // SABnzbd, Jackett and NZBHydra2 auth live in the query string (?apikey=…),
+  // not headers. Merge defaults into the caller-supplied params so service
+  // modules don't have to know about either of those parameters. NZBHydra2's
+  // stats/history endpoints ALSO need the key in their JSON body (they bind
+  // @RequestBody since v7.15.3, which ignores query params) — that copy is
+  // added by services/nzbhydra2-api.ts, and sending both keeps older installs,
+  // which only read the query param, working too.
   const finalParams =
     serviceId === "sabnzbd"
       ? { ...(params ?? {}), apikey: secrets.apiKey ?? "", output: "json" }
-      : serviceId === "jackett"
+      : serviceId === "jackett" || serviceId === "nzbhydra2"
         ? { ...(params ?? {}), apikey: secrets.apiKey ?? "" }
         : params;
 
@@ -282,7 +378,11 @@ export async function serviceRequest<T>(
   if (serviceId === "qbittorrent") {
     // qBittorrent uses cookie-based auth — handled by the cookie jar
     // The login function must be called first to establish the session
-  } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
+  } else if (
+    serviceId === "sabnzbd" ||
+    serviceId === "jackett" ||
+    serviceId === "nzbhydra2"
+  ) {
     // apikey is injected as a query param above — no header needed
   } else if (usesHttpAuth(serviceId)) {
     // HTTP auth mount in front of the API: NZBGet's ControlUsername/Password,
@@ -312,6 +412,30 @@ export async function serviceRequest<T>(
     if (secrets.apiKey) {
       headers.set("Authorization", `Bearer ${secrets.apiKey}`);
     }
+  } else if (serviceId === "autobrr") {
+    // Autobrr authenticates with X-API-Token (a ?apikey= query param also
+    // works, but the header keeps the key out of logs).
+    if (secrets.apiKey) {
+      headers.set("X-API-Token", secrets.apiKey);
+    }
+  } else if (serviceId === "navidrome") {
+    // Navidrome speaks THREE auth modes on one host and cannot be expressed as
+    // one branch here, so services/navidrome-api.ts builds each call's auth and
+    // passes it in: the Subsonic u/t/s/v/c/f pair as `params`, and the native
+    // API's `X-ND-Authorization: Bearer <jwt>` as a request header (which the
+    // Headers merge above preserves). /auth/login itself is anonymous. There is
+    // no API key to inject — upstream does not implement one.
+  } else if (serviceId === "pihole") {
+    // Pi-hole's credential is a SESSION, not a key: services/pihole-api.ts
+    // exchanges the password at POST /api/auth and passes the resulting id in
+    // as an `X-FTL-SID` request header, which the Headers merge above carries
+    // through. FTL implements no API key at all.
+    //
+    // This branch is not decorative. Without it a pihole call falls to the
+    // X-Api-Key else below, and while `apiKey` is normally undefined for a
+    // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
+    // (store/config-store.ts) — so a stale apiKey left on an instance id would
+    // be sent to Pi-hole on every request forever.
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
     // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
@@ -427,7 +551,7 @@ export async function pingService(
   // Don't hang pinging a LAN address off WiFi. Skipped only for the stored URL;
   // an explicit urlOverride (form "Test" value) is always attempted so the user
   // can validate a local URL even while away.
-  if (!urlOverride && lanUnreachableOffWifi(baseUrl)) return null;
+  if (!urlOverride && lanUnreachableOffWifi(baseUrl, inst)) return null;
 
   // SAB has no /system endpoint to GET — it advertises version through the
   // single /api?mode=version handler, so we synthesize the ping URL from the
@@ -467,12 +591,31 @@ export async function pingService(
     if (serviceId === "nzbget" || serviceId === "transmission") {
       headers.set("Content-Type", "application/json");
     }
-  } else if (serviceId === "sabnzbd" || serviceId === "jackett") {
+  } else if (
+    serviceId === "sabnzbd" ||
+    serviceId === "jackett" ||
+    serviceId === "nzbhydra2"
+  ) {
     // apikey already in query params
   } else if (serviceId === "tracearr") {
     if (secrets.apiKey) headers.set("Authorization", `Bearer ${secrets.apiKey}`);
   } else if (serviceId === "jellystat") {
     if (secrets.apiKey) headers.set("x-api-token", secrets.apiKey);
+  } else if (serviceId === "autobrr") {
+    // /healthz/liveness is anonymous, but send the real header anyway so the
+    // ping's wire shape matches serviceRequest (and survives auth proxies).
+    if (secrets.apiKey) headers.set("X-API-Token", secrets.apiKey);
+  } else if (serviceId === "navidrome") {
+    // pingPath is /rest/getOpenSubsonicExtensions, the one Subsonic route
+    // registered outside the auth group (server/subsonic/api.go), so it needs
+    // no credentials. Which also means it cannot validate them — that is the
+    // probe's job, and the probe uses /rest/ping.
+  } else if (serviceId === "pihole") {
+    // pingPath is /info/login, which FTL registers auth-not-required
+    // (src/api/api.c), so it needs no credentials. Which also means it cannot
+    // validate them — that is the probe's job, and the probe uses /auth.
+    // Deliberately no X-FTL-SID here: a reachability ping must not depend on,
+    // or consume, one of the sixteen available session seats.
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -491,6 +634,7 @@ export async function pingService(
     const isRtorrent = serviceId === "rtorrent";
     const isTransmission = serviceId === "transmission";
     const isUnraid = serviceId === "unraid";
+    const isDeluge = serviceId === "deluge";
     let method = "GET";
     let body: string | undefined;
     if (isNzbget) {
@@ -506,6 +650,15 @@ export async function pingService(
       // still reads as reachable.
       method = "POST";
       body = JSON.stringify({ method: "session-get" });
+      headers.set("Content-Type", "application/json");
+    } else if (isDeluge) {
+      // GET /json answers 405, so POST. auth.check_session is the cheapest
+      // method Deluge has that needs no session (AUTH_LEVEL_NONE): it answers
+      // 200 with `false` rather than an error when unauthenticated, which is
+      // exactly what a reachability ping wants.
+      method = "POST";
+      body = JSON.stringify({ method: "auth.check_session", params: [], id: 1 });
+      // Bare value — Deluge <= 2.0.5 string-compares this header.
       headers.set("Content-Type", "application/json");
     } else if (isUnraid) {
       // unRAID's /graphql rejects GET — POST the cheapest valid document.
@@ -643,10 +796,10 @@ export async function checkInstanceHealth(
   // A LAN URL can't be reached off WiFi — short-circuit instead of probing it.
   // This is the core of the Glances/#106 fix: without it the doomed connect
   // hangs and stalls every other probe in the batch.
-  if (lanUnreachableOffWifi(url)) {
+  if (lanUnreachableOffWifi(url, inst)) {
     return {
       kind: "unreachable",
-      message: "Private LAN address not reachable off Wi-Fi (no VPN detected)",
+      message: `Private LAN address not reachable off Wi-Fi (${lanGuardReason()})`,
     };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};
@@ -713,6 +866,22 @@ function classifyUnauthorized(
         ? "Wrong username or password"
         : "Server requires credentials",
   };
+}
+
+/**
+ * A probe verdict thrown from inside a helper.
+ *
+ * The Pi-hole case runs its login through a shared de-duplicating promise that
+ * can only resolve to a session id, so failures travel out as a throw and are
+ * unwrapped by the caller.
+ */
+class ProbeVerdict extends Error {
+  result: ConnectionTestResult;
+  constructor(result: ConnectionTestResult) {
+    super("probe verdict");
+    this.name = "ProbeVerdict";
+    this.result = result;
+  }
 }
 
 async function runConnectionProbe(
@@ -1057,10 +1226,95 @@ async function runConnectionProbe(
       };
     }
 
+    case "deluge": {
+      // Deluge answers EVERYTHING with HTTP 200 — a wrong password is
+      // `{result: false, error: null}`, not a 401 — so this probe reads the
+      // body, the way the qBittorrent case reads "Ok."/"Fails.".
+      //
+      // It then asks one extra question, because Deluge's most common real
+      // failure is not credentials: deluge-web is a proxy to a separate
+      // deluged daemon, and while it is detached every core.* call answers
+      // "Unknown method" and the Downloads screen is silently empty. Reporting
+      // "ok" there would be a false green of exactly the kind the Bindery
+      // /health note warns about, so a detached daemon is surfaced instead.
+      //
+      // Deliberately read-only: it does NOT run web.connect. Attaching the
+      // shared deluge-web process to a daemon is a side effect no health poll
+      // should have — the API layer does that on the first real request
+      // (services/deluge-api.ts), and the next poll then sees it connected.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const rpc = (method: string, id: number) =>
+        fetch(url, {
+          method: "POST",
+          // Bare content type: Deluge <= 2.0.5 string-compares this header and
+          // rejects the `; charset=utf-8` most HTTP stacks would append.
+          headers: makeHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ method, params: method === "auth.login" ? [password] : [], id }),
+          signal,
+        });
+
+      const res = await rpc("auth.login", 1);
+      // A proxy in front of Deluge can still produce real status codes.
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      // GET /json is 405 and a wrong base path is 404 — we POST, so a 405 here
+      // means something other than Deluge is answering.
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+
+      let login: { result?: unknown; error?: { message?: string } | null };
+      try {
+        login = (await res.json()) as typeof login;
+      } catch {
+        return {
+          kind: "unreachable",
+          message: "Not a Deluge JSON-RPC endpoint — check the URL points at the Web UI",
+        };
+      }
+      if (login.error) {
+        return {
+          kind: "unreachable",
+          message: `Deluge rejected the request: ${login.error.message ?? "unknown error"}`,
+        };
+      }
+      if (login.result !== true) {
+        return { kind: "auth_failed", message: "Wrong password" };
+      }
+
+      // Authenticated. Now the daemon question. The session cookie rides along
+      // in the platform jar for this second call on the same connection.
+      try {
+        const connRes = await rpc("web.connected", 2);
+        if (connRes.ok) {
+          const conn = (await connRes.json()) as { result?: unknown };
+          if (conn.result === false) {
+            return {
+              kind: "unreachable",
+              message:
+                "Signed in, but Deluge's Web UI is not connected to the deluged daemon — connect it in the Deluge Web UI",
+            };
+          }
+        }
+      } catch {
+        // The daemon question is a bonus; a failure to ask it must not turn a
+        // good credential into a bad verdict.
+      }
+      return { kind: "ok" };
+    }
+
     case "radarr":
     case "sonarr":
     case "lidarr":
     case "prowlarr":
+    // Bindery is not an *arr, but /api/v1/system/status behaves identically:
+    // 200 JSON with a valid X-Api-Key, 401 without. (Its /api/v1/health is on
+    // the server's unauthenticated allowlist, which is why SERVICE_DEFAULTS
+    // points the probe at /system/status instead.) An install running in
+    // "disabled" or "local only" auth mode answers 200 with no key at all;
+    // that is a reachable server by any measure, so "ok" is the right verdict.
+    case "bindery":
     case "bazarr": {
       // *arr family: /system/status returns 200 with X-Api-Key, 401 without.
       const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
@@ -1203,6 +1457,344 @@ async function runConnectionProbe(
         };
       }
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "autobrr": {
+      // /healthz/liveness is anonymous (it answers 200 with or without a key),
+      // so the probe hits /release/stats instead — the cheapest X-API-Token-
+      // validated GET: 200 JSON with a valid key, 401 without.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/release/stats");
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-API-Token", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) {
+        // Same auth-proxy guard as the *arr case (issue #239): a 200 that
+        // isn't JSON is a login page standing in for the API.
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude its API path from the proxy.",
+        };
+      }
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "navidrome": {
+      // Navidrome has no API key: server/subsonic/middlewares.go:validateCredentials
+      // accepts only p / t+s / jwt. We send the salted token so the password
+      // never travels in the clear, computed exactly as upstream recomputes it.
+      //
+      // THE trap: every Subsonic error is HTTP 200. sendResponse in
+      // server/subsonic/api.go sets no status for failures, so a wrong password
+      // arrives as a perfectly healthy 200 whose BODY says status "failed" with
+      // error code 40. Keying on res.status alone reports "connected".
+      const salt = randomSalt();
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/rest/ping", {
+        u: username,
+        t: subsonicToken(password, salt),
+        s: salt,
+        v: SUBSONIC_API_VERSION,
+        c: SUBSONIC_CLIENT,
+        f: "json",
+      });
+      const res = await fetch(url, {
+        method: "GET",
+        headers: makeHeaders({ Accept: "application/json" }),
+        signal,
+      });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Wrong username or password" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        // A 200 that isn't JSON is an auth proxy's login page, not Navidrome
+        // (issue #239) — /rest/ping always answers JSON when f=json.
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /rest and /api from the proxy.",
+        };
+      }
+      const envelope = readSubsonicEnvelope(body);
+      if (!envelope)
+        return { kind: "unreachable", message: "Not a Subsonic response" };
+      if (envelope.status === "ok") return { kind: "ok" };
+      const code = envelope.error?.code ?? 0;
+      const message = subsonicErrorMessage(code, envelope.error?.message);
+      return isSubsonicAuthError(code)
+        ? { kind: "auth_failed", message }
+        : { kind: "unreachable", message };
+    }
+
+    case "cleanuparr": {
+      // The anonymous /health ping can't validate the key, so the probe hits
+      // /api/jobs — a tiny (≤6 rows) [Authorize]-guarded GET: 200 JSON with a
+      // valid X-Api-Key, 401 without. apiBasePath is empty (root-mounted
+      // /health), so the /api prefix is spelled here.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/api/jobs");
+      const headers = makeHeaders({ Accept: "application/json" });
+      if (apiKey) headers.set("X-Api-Key", apiKey);
+      const res = await fetch(url, { method: "GET", headers, signal });
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) {
+        // Same auth-proxy guard as the *arr case (issue #239).
+        const ct = res.headers.get("content-type");
+        if (ct?.toLowerCase().includes("application/json")) return { kind: "ok" };
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+        };
+      }
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "nzbhydra2": {
+      // NZBHydra2 answers HTTP 200 for EVERYTHING, errors included: its
+      // ExternalApi @ExceptionHandler returns a newznab <error code="100"/>
+      // document with the default 200 status, so a wrong key never surfaces as
+      // a 401 and the body is the only signal.
+      //
+      // The pingPath (/actuator/health/ping) is anonymous — it answers 200 with
+      // or without a key — so the probe uses the newznab caps endpoint instead.
+      // caps is also the only endpoint we call that is NOT behind NZBHydra2's
+      // auth.allowApiStats flag, so a user who turned that off still gets a
+      // green dot and a working search rather than a bogus "invalid key".
+      // apiBasePath is empty, so /api is spelled here.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/api", {
+        t: "caps",
+        o: "json",
+        apikey: apiKey,
+      });
+      const headers = makeHeaders({ Accept: "application/json" });
+      const res = await fetch(url, { method: "GET", headers, signal });
+      // Not reachable on a stock install, but a reverse proxy in front of
+      // NZBHydra2 may answer these itself.
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid API key" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const text = await res.text();
+      // Auth-proxy guard (#239): a 200 that is really an HTML login page.
+      if (/^\s*<(!doctype\s+html|html)/i.test(text))
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+        };
+      // o=json fixes the format of the SUCCESS path only; the error path still
+      // content-negotiates, so a rejected key can come back as XML either way.
+      const xmlError = readHydraXmlError(text);
+      if (xmlError) return { kind: "auth_failed", message: xmlError };
+      try {
+        const body = JSON.parse(text);
+        // `server` present means real caps — checked before the error probe so
+        // a future field named `code` on a good response can't read as failure.
+        if (body?.server) return { kind: "ok" };
+        const jsonError = readHydraJsonError(body);
+        if (jsonError) return { kind: "auth_failed", message: jsonError };
+        return { kind: "unreachable", message: "Unrecognized caps response" };
+      } catch {
+        return { kind: "unreachable", message: "Invalid JSON response" };
+      }
+    }
+
+    case "pihole": {
+      // Pi-hole v6 only. pingPath (/info/login) is registered auth-not-required
+      // in FTL's src/api/api.c, so it answers 200 with any password at all —
+      // the same false green as Autobrr's /healthz/liveness and NZBHydra2's
+      // /actuator/health/ping. The credential is checked at /auth.
+      //
+      // THE constraint on this case: hooks/use-service-health.ts runs
+      // checkInstanceHealth for every enabled instance every 30s, and FTL's
+      // webserver.api.max_sessions defaults to 16 with a 30-minute idle TTL. A
+      // probe that logged in each cycle would burn every seat in ~8 minutes and
+      // lock the user out of their own admin UI. So: VALIDATE an existing
+      // session first (free, and it refreshes the idle timer), and only log in
+      // when there is none — handing the new SID to the cache the data layer
+      // reads, exactly as input.instanceId already keys the Digest nonce cache.
+      const authUrl = buildUrl(baseUrl, defaults.apiBasePath, "/auth");
+      const cachedSid = input.instanceId ? getPiholeSid(input.instanceId) : null;
+
+      // GET /api/auth is itself auth-not-required, so it doubles as the "is
+      // there a v6 API here at all" question — v5 has no /api mount.
+      const checkHeaders = makeHeaders({ Accept: "application/json" });
+      if (cachedSid) checkHeaders.set(PIHOLE_SID_HEADER, cachedSid);
+      const check = await fetch(authUrl, {
+        method: "GET",
+        headers: checkHeaders,
+        signal,
+      });
+
+      if (check.status >= 500)
+        return { kind: "unreachable", message: `Server error ${check.status}` };
+
+      if (check.status === 404) {
+        // Either a v5 host (whose entire API is /admin/api.php) or a URL that
+        // is not a Pi-hole. Ask v5's own endpoint so the message is actionable
+        // rather than a bare "unexpected status 404".
+        const root = baseUrl.replace(/\/+$/, "");
+        const v5 = await fetch(`${root}/admin/api.php?status`, {
+          method: "GET",
+          headers: makeHeaders({ Accept: "application/json" }),
+          signal,
+        }).catch(() => null);
+        if (v5?.ok) {
+          const text = await v5.text().catch(() => "");
+          if (/"(status|domains_being_blocked)"\s*:/.test(text)) {
+            return {
+              kind: "unreachable",
+              message:
+                "This is Pi-hole v5. Dashboarr needs Pi-hole v6 or newer — update Pi-hole, then try again.",
+            };
+          }
+        }
+        // The single most common setup mistake, and one the generic auth-proxy
+        // message below would misdiagnose: /admin is the URL the web UI shows,
+        // but buildUrl turns it into /admin/api/... which 404s.
+        return {
+          kind: "unreachable",
+          message:
+            "No Pi-hole v6 API here. Use the web server root (e.g. http://pi.hole), not the /admin page.",
+        };
+      }
+
+      // Auth-proxy guard (#239): a 200 that is really an HTML login page.
+      const checkType = check.headers.get("content-type");
+      if (check.ok && !checkType?.toLowerCase().includes("application/json")) {
+        return {
+          kind: "unreachable",
+          message:
+            "Got an HTML page instead of the API. The service may be behind an auth proxy (Authentik/Authelia) — exclude /api from the proxy.",
+        };
+      }
+      if (check.ok) {
+        const current = (await check.json().catch(() => null)) as
+          | PiholeAuthResponse
+          | null;
+        // valid:true means the cached SID is still live, OR this Pi-hole has no
+        // password set at all. Either way there is nothing left to prove, and
+        // no new session was created.
+        if (current?.session?.valid === true) return { kind: "ok" };
+      }
+
+      // The cached SID is stale (or there was none). Clear it BEFORE logging
+      // in, or dedupedPiholeLogin below would hand the same dead SID straight
+      // back. Conditional, so it cannot clobber a replacement another caller
+      // has already published.
+      if (input.instanceId && cachedSid) {
+        invalidatePiholeSid(input.instanceId, cachedSid);
+      }
+
+      // One login attempt, classifying every failure into a probe verdict.
+      const attemptLogin = async (): Promise<string> => {
+        const login = await fetch(authUrl, {
+          method: "POST",
+          headers: makeHeaders({
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          }),
+          body: JSON.stringify({ password }),
+          signal,
+        });
+        if (login.status >= 500)
+          throw new ProbeVerdict({
+            kind: "unreachable",
+            message: `Server error ${login.status}`,
+          });
+
+        const loginBody = await login.json().catch(() => null);
+        const ftl = readFtlError(loginBody);
+
+        if (login.status === 401 || login.status === 403 || login.status === 429) {
+          // One status, two unrelated problems. Only error.key separates them,
+          // and telling someone their password is wrong when the real problem
+          // is a full session pool sends them to change a working password —
+          // which invalidates every session and makes it worse.
+          if (ftl?.key === "api_seats_exceeded")
+            throw new ProbeVerdict({
+              kind: "unreachable",
+              message: SEATS_EXCEEDED_MESSAGE,
+            });
+          if (login.status === 429)
+            throw new ProbeVerdict({
+              kind: "auth_failed",
+              message:
+                ftl?.message ?? "Too many login attempts — Pi-hole is rate-limiting",
+            });
+          throw new ProbeVerdict({
+            kind: "auth_failed",
+            message: password
+              ? ftl?.message || "Wrong password"
+              : "This Pi-hole needs its web password",
+          });
+        }
+        if (!login.ok)
+          throw new ProbeVerdict({
+            kind: "unreachable",
+            message: `Unexpected status ${login.status}`,
+          });
+
+        const session = (loginBody as PiholeAuthResponse | null)?.session;
+        if (!session?.valid)
+          throw new ProbeVerdict({
+            kind: "auth_failed",
+            message: session?.message || "Wrong password",
+          });
+        // "" is the no-password-configured case, and is a real session.
+        return session.sid ?? "";
+      };
+
+      try {
+        if (input.instanceId) {
+          // A SAVED instance shares the data layer's in-flight login. Without
+          // this the health poll and the screen's first query each mint their
+          // own session on a cold start — two of sixteen seats, one of them
+          // orphaned because only the last writer is cached.
+          await dedupedPiholeLogin(input.instanceId, attemptLogin);
+          return { kind: "ok" };
+        }
+        // Testing an UNSAVED form: there is no instance to cache against, so
+        // give the seat straight back. Without this, sixteen taps of Test
+        // Connection lock the user out for thirty minutes.
+        const sid = await attemptLogin();
+        if (sid) {
+          await fetch(authUrl, {
+            method: "DELETE",
+            headers: makeHeaders({ [PIHOLE_SID_HEADER]: sid }),
+            signal,
+          }).catch(() => undefined);
+        }
+        return { kind: "ok" };
+      } catch (err) {
+        if (err instanceof ProbeVerdict) return err.result;
+        // We joined a login started by the data layer and it failed. Its
+        // message already went through piholeErrorMessage, so it is
+        // user-facing (a wrong password, or the seat-exhaustion text).
+        const message = err instanceof Error ? err.message : undefined;
+        if (message === SEATS_EXCEEDED_MESSAGE)
+          return { kind: "unreachable", message };
+        return {
+          kind: "auth_failed",
+          message: message || "Pi-hole authentication failed",
+        };
+      }
     }
 
     default: {

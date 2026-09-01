@@ -12,9 +12,14 @@ import {
   ChipGroup,
   HideWhenEmptyToggle,
   MaxItemsSelector,
+  MultiChipGroup,
   SettingsSection,
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+import {
+  RADARR_RELEASE_KINDS,
+  type RadarrReleaseKind,
+} from "@/lib/radarr-release-date";
 
 export interface StillPendingSettingsValue extends Record<string, unknown> {
   // Independent per-service bindings, same shape as the calendar widget.
@@ -24,6 +29,10 @@ export interface StillPendingSettingsValue extends Record<string, unknown> {
   includeRadarr: boolean;
   lookbackDays: number;
   maxItems: number;
+  // Which Radarr dates make a movie overdue (issue #355). All three selected —
+  // the default — means "Any": defer to Radarr's own release date, which
+  // follows the movie's Minimum Availability. See lib/radarr-release-date.ts.
+  radarrReleaseTypes: RadarrReleaseKind[];
   // When on, items dated today that have already aired/released are included
   // too (they also appear under "Today" in the Releasing Soon widget). Off by
   // default so the two cards never list the same item.
@@ -40,9 +49,16 @@ export const STILL_PENDING_DEFAULT_SETTINGS: StillPendingSettingsValue = {
   // Movies Wanted tab; this widget is about catching what just slipped by.
   lookbackDays: 14,
   maxItems: 5,
+  radarrReleaseTypes: [...RADARR_RELEASE_KINDS],
   includeToday: false,
   hideWhenEmpty: false,
 };
+
+const RELEASE_TYPE_OPTIONS: { value: RadarrReleaseKind; label: string }[] = [
+  { value: "cinemas", label: "Cinemas" },
+  { value: "digital", label: "Digital" },
+  { value: "physical", label: "Physical" },
+];
 
 const LOOKBACK_OPTIONS: { value: number; label: string }[] = [
   { value: 7, label: "7 days" },
@@ -68,7 +84,7 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
             description={
               sonarrEnabled
                 ? "Show aired episodes that haven't downloaded"
-                : "Enable Sonarr in Settings to use this source"
+                : "Enable Sonarr in Settings → Integrations"
             }
             value={settings.includeSonarr && sonarrEnabled}
             onValueChange={(includeSonarr) => update({ includeSonarr })}
@@ -79,7 +95,7 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
             description={
               radarrEnabled
                 ? "Show released movies that haven't downloaded"
-                : "Enable Radarr in Settings to use this source"
+                : "Enable Radarr in Settings → Integrations"
             }
             value={settings.includeRadarr && radarrEnabled}
             onValueChange={(includeRadarr) => update({ includeRadarr })}
@@ -103,6 +119,19 @@ export function StillPendingSettings({ slotId }: WidgetSettingsComponentProps) {
           label="Radarr instance"
           value={settings.radarrInstanceIds}
           onChange={(radarrInstanceIds) => update({ radarrInstanceIds })}
+        />
+      )}
+
+      {settings.includeRadarr && radarrEnabled && (
+        <MultiChipGroup
+          label="Movie release date"
+          options={RELEASE_TYPE_OPTIONS}
+          value={settings.radarrReleaseTypes}
+          onChange={(radarrReleaseTypes) => update({ radarrReleaseTypes })}
+          caption={
+            "All three selected means any release: Radarr's own date, from each movie's Minimum Availability. " +
+            "Pick fewer and a movie counts as due on the first of those dates it has; movies with none of them drop off the card."
+          }
         />
       )}
 

@@ -161,23 +161,33 @@ export function QueueIssuesBanner({
           onPress: () =>
             flow.open("confirmAction", { item: sheetItem, mode: "remove" }),
         },
-        {
-          label: "Blocklist & Search",
-          icon: <Icon icon={Search} size={18} color="#ef4444" />,
-          variant: "danger",
-          onPress: () =>
-            flow.open("confirmAction", {
-              item: sheetItem,
-              mode: "blocklistAndSearch",
-            }),
-        },
-        {
-          label: "Blocklist only",
-          icon: <Icon icon={Ban} size={18} color="#ef4444" />,
-          variant: "danger",
-          onPress: () =>
-            flow.open("confirmAction", { item: sheetItem, mode: "blocklist" }),
-        },
+        // Both blocklist actions depend on the service being able to blocklist
+        // during a removal. Where it can't, offering them would silently do a
+        // plain remove and the release would come straight back.
+        ...(adapter.supportsBlocklist !== false
+          ? [
+              {
+                label: "Blocklist & Search",
+                icon: <Icon icon={Search} size={18} color="#ef4444" />,
+                variant: "danger" as const,
+                onPress: () =>
+                  flow.open("confirmAction", {
+                    item: sheetItem,
+                    mode: "blocklistAndSearch" as const,
+                  }),
+              },
+              {
+                label: "Blocklist only",
+                icon: <Icon icon={Ban} size={18} color="#ef4444" />,
+                variant: "danger" as const,
+                onPress: () =>
+                  flow.open("confirmAction", {
+                    item: sheetItem,
+                    mode: "blocklist" as const,
+                  }),
+              },
+            ]
+          : []),
       ]
     : [];
 

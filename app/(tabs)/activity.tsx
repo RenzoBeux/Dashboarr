@@ -140,7 +140,7 @@ export default function ActivityScreen() {
       {sources.length === 0 ? (
         <EmptyState
           title="No monitor configured"
-          message="Enable Tautulli, Tracearr, JellyStat, Jellyfin, or Emby in Settings"
+          message="Enable Tautulli, Tracearr, JellyStat, Jellyfin, or Emby in Settings → Integrations"
         />
       ) : (
         <>

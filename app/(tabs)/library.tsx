@@ -68,7 +68,7 @@ export default function LibraryScreen() {
       <ScreenWrapper>
         <EmptyState
           title="No library configured"
-          message="Enable Radarr or Sonarr in Settings to browse your library."
+          message="Enable Radarr or Sonarr in Settings → Integrations to browse your library."
         />
       </ScreenWrapper>
     );

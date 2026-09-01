@@ -3,7 +3,11 @@ import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { useActiveInstance } from "@/hooks/use-active-instance";
 import type { ServiceInstance } from "@/store/config-store";
 
-export type TorrentClientId = "qbittorrent" | "rtorrent" | "transmission";
+export type TorrentClientId =
+  | "qbittorrent"
+  | "rtorrent"
+  | "transmission"
+  | "deluge";
 
 // One candidate destination for a magnet/torrent link: a torrent client kind +
 // a specific configured instance of it.
@@ -17,6 +21,7 @@ export const TORRENT_CLIENT_LABELS: Record<TorrentClientId, string> = {
   qbittorrent: "qBittorrent",
   rtorrent: "rTorrent",
   transmission: "Transmission",
+  deluge: "Deluge",
 };
 
 /**
@@ -29,15 +34,18 @@ export function useTorrentTargets(): TorrentTarget[] {
   const qbEnabled = useConfigStore((s) => s.services.qbittorrent.enabled);
   const rtEnabled = useConfigStore((s) => s.services.rtorrent?.enabled ?? false);
   const trEnabled = useConfigStore((s) => s.services.transmission?.enabled ?? false);
+  const dgEnabled = useConfigStore((s) => s.services.deluge?.enabled ?? false);
   const attachedKinds = useAttachedKinds();
   const qbInstances = useActiveInstance("qbittorrent").instances;
   const rtInstances = useActiveInstance("rtorrent").instances;
   const trInstances = useActiveInstance("transmission").instances;
+  const dgInstances = useActiveInstance("deluge").instances;
 
   const kinds: [TorrentClientId, boolean, ServiceInstance[]][] = [
     ["qbittorrent", qbEnabled, qbInstances],
     ["rtorrent", rtEnabled, rtInstances],
     ["transmission", trEnabled, trInstances],
+    ["deluge", dgEnabled, dgInstances],
   ];
 
   return kinds.flatMap(([kind, enabled, instances]) =>

@@ -16,16 +16,24 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   tv: "Tv",
   library: "Library",
   music: "Music",
+  books: "BookOpen",
   requests: "Inbox",
   activity: "Activity",
   indexers: "Radar",
   plex: "PlayCircle",
   jellyfin: "Clapperboard",
   emby: "MonitorPlay",
+  navidrome: "Disc",
   glances: "Cpu",
   bazarr: "Captions",
   unraid: "Server",
   tdarr: "Zap",
+  autobrr: "Zap",
+  cleanuparr: "Sparkles",
+  // LUCIDE_BY_NAME (lib/dashboard-icons.ts) is a curated registry: it has
+  // Shield but not ShieldBan/ShieldOff/Network, and adding one would also put
+  // it in the user-facing dashboard icon picker.
+  pihole: "Shield",
 };
 
 // Resolve the icon component for a tab, honoring a per-workspace override

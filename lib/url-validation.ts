@@ -102,6 +102,26 @@ export function isPrivateUrl(url: string): boolean {
 }
 
 /**
+ * True when the active workspace explicitly selected NO live home network
+ * (`homeNetworkIds: []`, or only ids that no longer match a saved network) and
+ * is therefore pinned to "always remote" — `getActiveUrl` step 2 (#148), which
+ * holds even when global auto-switch is off. `undefined` (auto-attach every
+ * network, the default) is NOT remote-only.
+ *
+ * Feeds the `workspaceForcesRemote` argument of `resolveActiveUrlKind` /
+ * `isRemoteOnlyOffline`. Shared so the health grid's L/R badge and the settings
+ * "Test" button can't drift from each other, or from `getActiveUrl`.
+ */
+export function workspaceForcesRemote(
+  dashboard: { homeNetworkIds?: string[] } | undefined,
+  homeNetworks: { id: string }[],
+): boolean {
+  const ids = dashboard?.homeNetworkIds;
+  if (!Array.isArray(ids)) return false;
+  return !ids.some((id) => homeNetworks.some((n) => n.id === id));
+}
+
+/**
  * Which URL bucket a service instance is actively using right now: "local",
  * "remote", or null when neither URL is configured. This MIRRORS the decision
  * tree in `getActiveUrl` (store/config-store.ts) — keep the two in sync — but

@@ -72,7 +72,7 @@ export function ReleaseSearch({
       )}
 
       {!isError && results && results.length === 0 && debounced.length >= 2 && (
-        <EmptyState title="No results" />
+        <EmptyState title="No results" message={adapter.emptyResultsHint} />
       )}
 
       {results && results.length > 0 && (

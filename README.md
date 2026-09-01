@@ -48,21 +48,28 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 |---|---|
 | **qBittorrent** | View queue, pause/resume/delete torrents, speed stats, transfer progress |
 | **rTorrent / ruTorrent** | View queue, pause/resume/delete torrents, global speed stats, transfer progress |
+| **Deluge** | View queue, pause/resume/delete torrents, files & trackers, labels, global speed limits |
 | **SABnzbd** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **NZBGet** | View Usenet queue & history, pause/resume/delete jobs, add NZB by URL, speed stats |
 | **Radarr** | Search & add movies, monitor status, view queue, missing/wanted lists |
 | **Sonarr** | Search & add shows, episode monitoring, airing calendar/schedule |
+| **Bindery** | Book library, search & add authors, monitor books, queue, wanted. The Readarr successor |
 | **Seerr** | Browse & search media, request movies/shows, approve/decline requests |
 | **Tautulli** | Active Plex streams, bandwidth stats, playback history |
 | **Tracearr** | Live streams with codec/quality details, bandwidth, playback history |
 | **Prowlarr** | Indexer status & toggle, search across all indexers, grab releases, stats |
 | **Jackett** | Search across all indexers, send releases to your torrent client, indexer list with per-indexer search and test |
+| **NZBHydra2** | Usenet meta-search across all indexers, send NZBs to SABnzbd or NZBGet, indexer health with API hit limits, stats, search & download history |
 | **Plex** | Now playing, recently added, on deck, library browsing |
 | **Jellyfin** | Now playing, recently added, continue watching, library browsing |
 | **Emby** | Now playing, recently added, continue watching, library browsing |
+| **Navidrome** | Library stats (artists, albums, tracks, size), now playing, quick & full rescan, delete missing files, search, playlists |
 | **Bazarr** | Wanted subtitles for movies & episodes, history, on-demand subtitle search |
 | **Glances** | Server CPU, RAM, disk, and network stats |
 | **unRAID** | Start/stop/restart Docker containers, array status, disks grouped by Array / Pools / Unassigned |
+| **Autobrr** | Push stats, release feed with retry, filter toggles, IRC network health & restart |
+| **Cleanuparr** | Strike/removal/cleanup stats, scheduled jobs with run-now, client health, event feed |
+| **Pi-hole** | Timed blocking disable with countdown, Gravity update, 24h query stats & graph, top domains/clients, live query log, local CNAME records (v6+) |
 
 ## Features
 

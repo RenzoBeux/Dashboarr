@@ -10,23 +10,30 @@ export const SERVICE_IDS = [
   "qbittorrent",
   "rtorrent",
   "transmission",
+  "deluge",
   "sabnzbd",
   "nzbget",
   "radarr",
   "sonarr",
   "lidarr",
+  "bindery",
   "overseerr",
   "tautulli",
   "tracearr",
   "jellystat",
   "prowlarr",
   "jackett",
+  "nzbhydra2",
   "plex",
   "jellyfin",
   "emby",
+  "navidrome",
   "glances",
   "bazarr",
   "unraid",
+  "autobrr",
+  "cleanuparr",
+  "pihole",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -260,24 +267,39 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   qbittorrent: "/api/v2",
   rtorrent: "/RPC2",
   transmission: "/transmission/rpc",
+  // Deluge's Web UI is JSON-RPC over a single POST /json endpoint.
+  deluge: "/json",
   sabnzbd: "/api",
   nzbget: "/jsonrpc",
   radarr: "/api/v3",
   sonarr: "/api/v3",
   lidarr: "/api/v1",
+  // Bindery is the Go successor to Readarr, not an *arr fork — /api/v1 is its
+  // own native API and there is no v3.
+  bindery: "/api/v1",
   overseerr: "/api/v1",
   tautulli: "/api/v2",
   tracearr: "/api/v1/public",
   jellystat: "",
   prowlarr: "/api/v1",
   jackett: "/api/v2.0",
+  nzbhydra2: "",
   plex: "",
   jellyfin: "",
   emby: "",
+  // Navidrome serves three roots (/rest Subsonic, /api native, /auth/login), so
+  // there is no single base to prefix — paths self-prefix, and the ping below
+  // is root-relative. Mirrors lib/constants.ts.
+  navidrome: "",
   glances: "/api/4",
   bazarr: "/api",
   // unRAID's official API is GraphQL-only at the webgui root (POST /graphql).
   unraid: "",
+  autobrr: "/api",
+  // Cleanuparr's anonymous /health is root-mounted; API paths self-prefix /api.
+  cleanuparr: "",
+  // Pi-hole v6's REST API, served by FTL itself.
+  pihole: "/api",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -288,6 +310,9 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // Transmission is JSON-RPC over /transmission/rpc; the ping POSTs session-get
   // (see pingService), so there is no GET ping path.
   transmission: "",
+  // Deluge is JSON-RPC over /json and has no GET ping path; the ping POSTs
+  // auth.check_session (see pingService).
+  deluge: "",
   // SAB has no path-based ping endpoint — pingService synthesises ?mode=version.
   sabnzbd: "",
   // NZBGet uses JSON-RPC POST to /jsonrpc; ping logic POSTs the version method.
@@ -296,6 +321,10 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   sonarr: "/system/status",
   // Lidarr is an *arr sibling on the v1 API; same status ping as Radarr/Sonarr.
   lidarr: "/system/status",
+  // Bindery's /health is on its unauthenticated allowlist and answers 200
+  // without a key, so it would report a wrong API key as healthy.
+  // /system/status is the cheapest endpoint that actually validates it.
+  bindery: "/system/status",
   overseerr: "/status",
   tautulli: "/home",
   // Tracearr's /health is Bearer-authed, so it doubles as a reachability +
@@ -309,14 +338,32 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // to this Torznab meta endpoint — the only cheap apikey-validated GET
   // Jackett has (its admin REST API wants the admin-password cookie).
   jackett: "/indexers/all/results/torznab/api",
+  // Anonymous liveness probe (permitAll in NZBHydra2's SecurityConfig).
+  // It can't validate the key, which is fine — offline/online is all the
+  // health poller asks. apiBasePath is empty so this is root-relative.
+  nzbhydra2: "/actuator/health/ping",
   plex: "/identity",
   jellyfin: "/System/Info/Public",
   emby: "/System/Info/Public",
+  // The one Subsonic route registered outside Navidrome's auth group, so it
+  // answers without credentials. It can't validate them, which is fine — the
+  // health poller only asks offline/online.
+  navidrome: "/rest/getOpenSubsonicExtensions",
   glances: "/cpu",
   bazarr: "/system/status",
   // unRAID's /graphql rejects GET — pingService POSTs a minimal GraphQL query
   // to this path (mirrors the nzbget/transmission POST pings).
   unraid: "/graphql",
+  // Autobrr's liveness probe is anonymous (auth for real calls is the
+  // X-API-Token header — see applyAuth in services/http.ts).
+  autobrr: "/healthz/liveness",
+  // Cleanuparr's /health is anonymous and root-mounted (api base is "").
+  cleanuparr: "/health",
+  // Pi-hole's /api/info/login is registered auth-not-required in FTL, which is
+  // exactly what a reachability poll wants — and why the backend needs none of
+  // the app's session handling. It cannot validate the password, but the
+  // backend never needs to: it only asks whether the host is up.
+  pihole: "/info/login",
 };
 
 // Notification category labels sent to the device as `data.type`

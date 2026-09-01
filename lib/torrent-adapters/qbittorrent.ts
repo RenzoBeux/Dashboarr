@@ -131,7 +131,13 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
     categories: true,
   },
 
-  detailRoute: (hash) => `/torrent/${hash}`,
+  // Pin the source instance in the route so a row opened from the multi-
+  // instance dashboard widget queries and mutates the server it came from,
+  // not whichever qBittorrent is currently active.
+  detailRoute: (hash, instanceId) =>
+    instanceId
+      ? `/torrent/${hash}?instanceId=${encodeURIComponent(instanceId)}`
+      : `/torrent/${hash}`,
 
   useTorrents: (opts: TorrentListFilter, instanceId?: string): TorrentListResult => {
     const { sort, reverse } = sortKeyToQB(opts.sort);

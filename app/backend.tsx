@@ -27,6 +27,35 @@ import { Toggle } from "@/components/ui/toggle";
 
 type Mode = "summary" | "scanning" | "manual";
 
+/**
+ * Opts the backend's hostname into the app's per-host TLS bypass (#357).
+ *
+ * Mirrors the per-instance "Allow invalid certificates" toggle in
+ * components/integrations/service-editor.tsx so the two read as one feature.
+ * Like that one it applies instantly rather than on a save, because it programs
+ * a native host allowlist — a deferred toggle would appear to do nothing.
+ *
+ * Rendered on every pairing surface (URL entry, manual token, and the paired
+ * summary), since the user may only discover they need it after a failed claim,
+ * or long after pairing if they later move the backend behind a TLS proxy.
+ */
+function CertToggle({
+  value,
+  onValueChange,
+}: {
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+}) {
+  return (
+    <Toggle
+      label="Allow invalid certificates"
+      description="Skip TLS certificate checks for the backend URL. Needed when it's served with a self-signed certificate or one from your own internal CA, which phones don't trust even when the browser does. Only enable for a server you trust."
+      value={value}
+      onValueChange={onValueChange}
+    />
+  );
+}
+
 function parseQrPayload(data: string): { token: string; url?: string } | null {
   // Raw hex token (32 chars = 16 random bytes) — backend without PUBLIC_URL
   const trimmed = data.trim();
@@ -52,6 +81,10 @@ export default function BackendScreen() {
   const isHealthy = useBackendStore((s) => s.isHealthy);
   const pair = useBackendStore((s) => s.pair);
   const unpair = useBackendStore((s) => s.unpair);
+  const ignoreCertErrors = useBackendStore((s) => s.ignoreCertErrors);
+  const setIgnoreCertErrors = useBackendStore((s) => s.setIgnoreCertErrors);
+  const setDraftUrl = useBackendStore((s) => s.setDraftUrl);
+  const draftUrl = useBackendStore((s) => s.draftUrl);
 
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
@@ -77,6 +110,13 @@ export default function BackendScreen() {
         return;
       }
       setBackendUrl(trimmedUrl);
+      // Publish the host BEFORE any network call so the native TLS-bypass
+      // allowlist already covers it if "Allow invalid certificates" is on —
+      // POST /pair/claim is itself the request that needs the bypass (#357).
+      // The store subscription runs synchronously, so this is in place by the
+      // time pairClaim fires. Covers the QR path too: `urlOverride` is
+      // normalized above, so a host the user never typed still lands here.
+      setDraftUrl(trimmedUrl);
       claimingRef.current = true;
       setBusy(true);
       try {
@@ -116,7 +156,7 @@ export default function BackendScreen() {
         setBusy(false);
       }
     },
-    [backendUrl, pair],
+    [backendUrl, pair, setDraftUrl],
   );
 
   const handleScan = useCallback(
@@ -257,6 +297,15 @@ export default function BackendScreen() {
     if (!url) claimingRef.current = false;
   }, [url]);
 
+  // Unpair and Rotate secret leave this screen mounted, so local state keeps
+  // whatever it had (empty, when the user arrived already paired). Seed the URL
+  // field from the draft `unpair()` preserved rather than making them retype
+  // the address they were just using. Never overwrites something typed.
+  useEffect(() => {
+    if (url || !draftUrl) return;
+    setBackendUrl((current) => current || draftUrl);
+  }, [url, draftUrl]);
+
   return (
     <ScreenWrapper>
       <BackHeader title="Backend" right={<BackendStatusPill />} />
@@ -312,6 +361,16 @@ export default function BackendScreen() {
                   className="flex-1"
                 />
               </View>
+
+              <Card className="gap-3 mb-3">
+                <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+                  Connection security
+                </Text>
+                <CertToggle
+                  value={ignoreCertErrors}
+                  onValueChange={(v) => void setIgnoreCertErrors(v)}
+                />
+              </Card>
 
               <Card className="gap-3 mb-3">
                 <Toggle
@@ -377,13 +436,26 @@ export default function BackendScreen() {
                   placeholder="http://192.168.1.50:4000"
                   value={backendUrl}
                   onChangeText={setBackendUrl}
-                  onBlur={() => setBackendUrl(normalizeServiceUrl(backendUrl))}
+                  onBlur={() => {
+                    // Commit on blur, like the Apprise fields above, so flipping
+                    // the cert toggle allowlists this host even before a claim.
+                    const normalized = normalizeServiceUrl(backendUrl);
+                    setBackendUrl(normalized);
+                    setDraftUrl(normalized || null);
+                  }}
                   keyboardType="url"
                   autoCapitalize="none"
                 />
                 <Text className="text-zinc-500 text-xs mt-2">
                   Behind Cloudflare Tunnel or a reverse proxy? Enter the full https:// URL.
                 </Text>
+                <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mt-4">
+                  Connection security
+                </Text>
+                <CertToggle
+                  value={ignoreCertErrors}
+                  onValueChange={(v) => void setIgnoreCertErrors(v)}
+                />
               </Card>
 
               <Pressable
@@ -451,6 +523,10 @@ export default function BackendScreen() {
               value={manualToken}
               onChangeText={setManualToken}
               autoCapitalize="none"
+            />
+            <CertToggle
+              value={ignoreCertErrors}
+              onValueChange={(v) => void setIgnoreCertErrors(v)}
             />
           </Card>
 

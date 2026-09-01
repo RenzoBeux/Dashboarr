@@ -56,7 +56,7 @@ export function RecentlyDownloadedSettings({ slotId }: WidgetSettingsComponentPr
             description={
               sonarrEnabled
                 ? "Show recently imported episodes"
-                : "Enable Sonarr in Settings to use this source"
+                : "Enable Sonarr in Settings → Integrations"
             }
             value={settings.includeSonarr && sonarrEnabled}
             onValueChange={(includeSonarr) => update({ includeSonarr })}
@@ -67,7 +67,7 @@ export function RecentlyDownloadedSettings({ slotId }: WidgetSettingsComponentPr
             description={
               radarrEnabled
                 ? "Show recently imported movies"
-                : "Enable Radarr in Settings to use this source"
+                : "Enable Radarr in Settings → Integrations"
             }
             value={settings.includeRadarr && radarrEnabled}
             onValueChange={(includeRadarr) => update({ includeRadarr })}

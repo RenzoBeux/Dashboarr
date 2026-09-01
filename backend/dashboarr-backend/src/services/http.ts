@@ -90,6 +90,14 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     headers.set("Content-Type", "application/json");
     return;
   }
+  if (id === "deluge") {
+    // Deluge authenticates with a JSON-RPC auth.login call carrying the Web UI
+    // password, exchanged for a _session_id cookie — handled by
+    // services/deluge.ts, not here. All this layer owes it is the content type,
+    // which Deluge <= 2.0.5 string-compares (no charset suffix allowed).
+    headers.set("Content-Type", "application/json");
+    return;
+  }
   if (id === "plex") {
     if (config.apiKey) {
       headers.set("X-Plex-Token", config.apiKey);
@@ -110,6 +118,23 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     if (config.apiKey) {
       headers.set("Authorization", `Bearer ${config.apiKey}`);
     }
+    return;
+  }
+  if (id === "autobrr") {
+    // Autobrr authenticates with X-API-Token, mirroring the app's http-client.
+    // (The health poller's liveness ping is anonymous, but keep the wire shape
+    // consistent for any future authenticated call.)
+    if (config.apiKey) {
+      headers.set("X-API-Token", config.apiKey);
+    }
+    return;
+  }
+  if (id === "pihole") {
+    // Pi-hole's credential is a session (POST /api/auth -> X-FTL-SID), and FTL
+    // implements no API key at all. The backend only ever pings
+    // /api/info/login, which is anonymous, so there is nothing to send — and it
+    // must NOT fall through to the X-Api-Key default below, which Pi-hole has
+    // no concept of.
     return;
   }
   if (config.apiKey) {
@@ -189,14 +214,16 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
   try {
-    // NZBGet, Transmission and unRAID reject GET on their RPC mount — all POST.
-    // NZBGet posts a JSON-RPC version call; Transmission posts session-get (a
-    // 409 CSRF challenge still counts as reachable since it's < 500); unRAID
-    // posts the cheapest valid GraphQL document to /graphql.
+    // NZBGet, Transmission, Deluge and unRAID reject GET on their RPC mount —
+    // all POST. NZBGet posts a JSON-RPC version call; Transmission posts
+    // session-get (a 409 CSRF challenge still counts as reachable since it's
+    // < 500); Deluge posts auth.check_session, the one method it exposes at
+    // AUTH_LEVEL_NONE; unRAID posts the cheapest valid GraphQL document.
     const isNzbget = config.id === "nzbget";
     const isTransmission = config.id === "transmission";
+    const isDeluge = config.id === "deluge";
     const isUnraid = config.id === "unraid";
-    const usePost = isNzbget || isTransmission || isUnraid;
+    const usePost = isNzbget || isTransmission || isDeluge || isUnraid;
     if (isUnraid) headers.set("Content-Type", "application/json");
     const res = await fetch(url, {
       method: usePost ? "POST" : "GET",
@@ -204,9 +231,11 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
         ? JSON.stringify({ version: "1.1", method: "version", params: [] })
         : isTransmission
           ? JSON.stringify({ method: "session-get" })
-          : isUnraid
-            ? JSON.stringify({ query: "{__typename}" })
-            : undefined,
+          : isDeluge
+            ? JSON.stringify({ method: "auth.check_session", params: [], id: 1 })
+            : isUnraid
+              ? JSON.stringify({ query: "{__typename}" })
+              : undefined,
       headers,
       signal: controller.signal,
     });

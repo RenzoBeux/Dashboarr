@@ -41,7 +41,8 @@ const TOTALS_SCOPE_OPTIONS: readonly { value: SpeedStatsTotalsScope; label: stri
 // pills never double-count (download-client traffic flows through the same NIC
 // Glances reports, so summing them would count it twice). Place several widgets
 // with different titles for different purposes.
-//   clients — qBittorrent / SABnzbd / rTorrent transfer speeds.
+//   clients — qBittorrent / rTorrent / Transmission / Deluge / SABnzbd /
+//             NZBGet transfer speeds.
 //   network — Glances interface throughput (received → down, sent → up).
 export type SpeedStatsSource = "clients" | "network";
 
@@ -120,13 +121,15 @@ export function SpeedStatsSettings({ slotId }: WidgetSettingsComponentProps) {
   const nzbgetInstances = useAttachedEnabledInstances("nzbget");
   const rtInstances = useAttachedEnabledInstances("rtorrent");
   const transInstances = useAttachedEnabledInstances("transmission");
+  const delugeInstances = useAttachedEnabledInstances("deluge");
   const glancesInstances = useAttachedEnabledInstances("glances");
   const hasClients =
     qbitInstances.length +
       sabInstances.length +
       nzbgetInstances.length +
       rtInstances.length +
-      transInstances.length >
+      transInstances.length +
+      delugeInstances.length >
     0;
   const hasGlances = glancesInstances.length > 0;
   const source = resolveSpeedStatsSource(settings.source, hasClients, hasGlances);

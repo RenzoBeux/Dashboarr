@@ -2,6 +2,7 @@ import { View, Text } from "react-native";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { StatItem } from "@/components/ui/stat-item";
 import { useProwlarrStats } from "@/hooks/use-prowlarr";
 
 // Prowlarr-only: Jackett exposes no stats endpoint without the admin cookie,
@@ -29,17 +30,6 @@ export function ProwlarrStats() {
           </View>
         </Card>
       ))}
-    </View>
-  );
-}
-
-function StatItem({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
-  return (
-    <View>
-      <Text className="text-zinc-500 text-xs">{label}</Text>
-      <Text className={`text-sm font-medium ${danger ? "text-danger" : "text-zinc-300"}`}>
-        {value}
-      </Text>
     </View>
   );
 }

@@ -118,10 +118,15 @@ export function ArrQueueCard({ slotId, adapter }: Props) {
               subtitle={item.subtitle}
               fallbackIcon={adapter.fallbackIcon}
               mediaType={adapter.mediaType}
-              cornerBadge={{
-                label: item.qualityLabel,
-                color: adapter.badgeColor,
-              }}
+              // Omitted rather than empty when there is nothing to label: the
+              // *arr adapters always have a quality name, but Bindery's queue
+              // rows carry no quality concept at all, and an empty badge draws
+              // a bare coloured square in the poster corner.
+              cornerBadge={
+                item.qualityLabel
+                  ? { label: item.qualityLabel, color: adapter.badgeColor }
+                  : undefined
+              }
               bottomOverlay={
                 <PosterProgressStrip
                   progress={item.progress}

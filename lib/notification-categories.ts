@@ -16,6 +16,9 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // watcher (app) + poller (backend) emit "Download complete" just like
   // qBittorrent, so no new category is needed.
   transmission: ["torrentCompleted", "serviceOffline"],
+  // Deluge reuses the shared "torrentCompleted" category for the same reason
+  // Transmission does — one toggle covers every torrent client.
+  deluge: ["torrentCompleted", "serviceOffline"],
   sabnzbd:     ["sabnzbdCompleted", "serviceOffline"],
   nzbget:      ["nzbgetCompleted",  "serviceOffline"],
   radarr:      ["radarrDownloaded", "serviceOffline"],
@@ -24,9 +27,15 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // the offline category is surfaced (an "album downloaded" toggle would be a
   // dead switch nothing emits yet). Mirrors rtorrent's offline-only stance.
   lidarr:      ["serviceOffline"],
+  // Bindery mirrors the Lidarr/rtorrent stance: no book-import watcher in the
+  // app and no backend poller, and Bindery exposes no webhook receiver we could
+  // subscribe to, so a "book downloaded" toggle would be a switch nothing
+  // emits. Offline is the only category with a real source.
+  bindery:     ["serviceOffline"],
   overseerr:   ["overseerrNewRequest", "serviceOffline"],
   prowlarr:    ["serviceOffline"],
   jackett:     ["serviceOffline"],
+  nzbhydra2:   ["serviceOffline"],
   tautulli:    ["serviceOffline"],
   // Tracearr webhook events. These have no global toggle rows in Settings →
   // Notifications; they're controlled per-instance here (each Tracearr instance
@@ -48,11 +57,18 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   glances:     ["serviceOffline"],
   jellyfin:    ["serviceOffline"],
   emby:        ["serviceOffline"],
+  navidrome:   ["serviceOffline"],
   unraid:      ["serviceOffline"],
   // No completion-watcher/backend poller in v1 — a future "transcode
   // completed" push could reuse the Statistics collection's sizeDiff delta,
   // mirroring how SABnzbd/NZBGet detect completion.
   tdarr:       ["serviceOffline"],
+  autobrr:     ["serviceOffline"],
+  cleanuparr:  ["serviceOffline"],
+  // No blocking/gravity watcher in the app and no backend poller, so a
+  // "blocking disabled" toggle would be a switch nothing emits. Offline is the
+  // only category with a real source — the rtorrent/Lidarr/Bindery stance.
+  pihole:      ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {
