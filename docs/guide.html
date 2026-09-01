@@ -1033,9 +1033,11 @@
         <p>
           <strong>Import settings</strong> confirms first, then opens a file picker, then asks for the
           passphrase. It is a full replace, not a merge, so export your current setup first if you
-          might want it back. Older unencrypted backups from previous app versions still import
-          without a passphrase. Backups are forward-migrated automatically; a backup made by a newer
-          app version is refused with a message telling you to update the app first.
+          might want it back. The passphrase is only requested for encrypted files: an unencrypted
+          JSON imports straight through, which is what makes
+          <a href="#config-file">writing a config on your PC</a> possible. Backups are forward-migrated
+          automatically; a backup made by a newer app version is refused with a message telling you to
+          update the app first.
         </p>
         <p>Two deliberate behaviours after an import:</p>
         <ul>
@@ -1050,6 +1052,95 @@
           The same screen also holds <strong>Clear image cache</strong>, for when cached posters and
           backdrops add up, and the <strong>Demo Mode</strong> toggle under Advanced.
         </p>
+
+        <h3 id="config-file">Writing a config file on your PC <a class="anchor" href="#config-file" aria-label="Permalink to Writing a config file on your PC">#</a></h3>
+        <p>
+          Export always encrypts, but <strong>import does not require an encrypted file</strong>. The
+          importer only decrypts when the file carries the <code>dashboarr-encrypted-v1</code> header;
+          anything else is read as plain JSON and restored directly. So if typing a dozen URLs and API
+          keys on a phone keyboard is the thing stopping you, write the whole setup in a text editor
+          instead, put the file on the device, and use <strong>Import settings</strong>. This is a
+          supported path, not a legacy fallback.
+        </p>
+        <p>A complete, working file with two services:</p>
+<pre><code>{
+  "version": 51,
+  "exportedAt": "2026-09-01T00:00:00.000Z",
+  "services": {
+    "qbittorrent": [{
+      "id": "qbt-1",
+      "enabled": true,
+      "name": "qBittorrent",
+      "localUrl": "http://192.168.1.10:8080",
+      "remoteUrl": "https://qbt.example.com",
+      "useRemote": false
+    }],
+    "radarr": [{
+      "id": "radarr-1",
+      "enabled": true,
+      "name": "Radarr",
+      "localUrl": "http://192.168.1.10:7878",
+      "remoteUrl": "",
+      "useRemote": false
+    }]
+  },
+  "secrets": {
+    "qbt-1": { "username": "admin", "password": "your-password" },
+    "radarr-1": { "apiKey": "0123456789abcdef0123456789abcdef" }
+  },
+  "autoSwitchNetwork": false,
+  "homeNetworks": [],
+  "dashboards": [{ "id": "dash-1", "name": "Home", "widgets": [] }],
+  "activeDashboardId": "dash-1"
+}</code></pre>
+
+        <h4>Top-level fields</h4>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Field</th><th>Required</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>version</code></td><td>Yes</td><td>Schema version the file targets. An older number is fine and gets migrated forward, so you do not need the newest one. A number higher than your installed app supports is refused.</td></tr>
+              <tr><td><code>exportedAt</code></td><td>Yes</td><td>Any string up to 64 characters. An ISO timestamp is conventional; nothing parses it.</td></tr>
+              <tr><td><code>services</code></td><td>Yes</td><td>Object keyed by service id, each value an array of instances. Unrecognised keys are ignored, so you only list what you use.</td></tr>
+              <tr><td><code>secrets</code></td><td>Yes</td><td>Object keyed by instance <code>id</code>. May be <code>{}</code> if nothing needs credentials.</td></tr>
+              <tr><td><code>autoSwitchNetwork</code></td><td>Yes</td><td>Boolean. See <a href="#networks">Local and remote URLs</a>.</td></tr>
+              <tr><td><code>homeNetworks</code></td><td>Yes</td><td>Array, may be empty. Entries are <code>{ "id", "ssid", "bssid" }</code>, all strings; <code>bssid</code> may be <code>""</code>.</td></tr>
+              <tr><td><code>dashboards</code></td><td>Yes</td><td>Array with at least one entry. <code>{ "id", "name", "widgets": [] }</code> is enough; add widgets in the app afterwards, it is far easier than writing slot settings by hand.</td></tr>
+              <tr><td><code>activeDashboardId</code></td><td>No</td><td>Falls back to the first dashboard if missing or unmatched.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Everything else is optional and falls back to defaults when omitted:
+          <code>backend</code>, <code>notificationSettings</code>, <code>wolDevices</code>,
+          <code>hapticsEnabled</code>, <code>treatVpnAsHome</code>, <code>globalCustomHeaders</code>,
+          <code>uiScale</code>, <code>appTheme</code> and <code>servicesOrder</code>. The simplest way
+          to see their exact shape is to configure one in the app and read it back from an export.
+        </p>
+
+        <h4>Instances and secrets</h4>
+        <p>
+          Every instance needs all six of <code>id</code>, <code>enabled</code>, <code>name</code>,
+          <code>localUrl</code>, <code>remoteUrl</code> and <code>useRemote</code>. Optionally add
+          <code>ignoreCertErrors: true</code> for a self-signed certificate. A secrets entry may carry
+          any of <code>apiKey</code>, <code>username</code>, <code>password</code> and
+          <code>customHeaders</code> (an object of header name to value).
+        </p>
+        <p>Four things reject a file or silently drop data, in rough order of how often they bite:</p>
+        <ul>
+          <li><strong>URLs need a scheme and must be present.</strong> <code>"http://…"</code> or <code>"https://…"</code>, or <code>""</code> for unset. <code>"192.168.1.10:8080"</code> is rejected, and omitting the key entirely is rejected too, so write <code>"remoteUrl": ""</code> rather than leaving it out.</li>
+          <li><strong><code>id</code> must be unique across every service</strong>, not just within one kind. It is any string you choose; it only has to match between <code>services</code> and <code>secrets</code>. A duplicate rejects the file.</li>
+          <li><strong>A <code>secrets</code> key matching no instance <code>id</code> is dropped without an error</strong>, and you get a service that loads but cannot authenticate. If a service is unauthorised after import, check that spelling first.</li>
+          <li><strong>Service keys must match exactly:</strong> <code>qbittorrent</code>, <code>rtorrent</code>, <code>transmission</code>, <code>deluge</code>, <code>sabnzbd</code>, <code>nzbget</code>, <code>radarr</code>, <code>sonarr</code>, <code>lidarr</code>, <code>bindery</code>, <code>overseerr</code> (Seerr), <code>tautulli</code>, <code>tracearr</code>, <code>jellystat</code>, <code>prowlarr</code>, <code>jackett</code>, <code>nzbhydra2</code>, <code>plex</code>, <code>jellyfin</code>, <code>emby</code>, <code>navidrome</code>, <code>glances</code>, <code>bazarr</code>, <code>unraid</code>, <code>tdarr</code>, <code>autobrr</code>, <code>cleanuparr</code>, <code>pihole</code>. A misspelled key is ignored silently, so the service simply will not appear.</li>
+        </ul>
+        <div class="note warn">
+          <strong>An unencrypted config is a plaintext credential file.</strong> It holds your API
+          keys and passwords in the clear. Move it to the phone over something you trust, import it,
+          then delete it from both machines. This is exactly why <em>export</em> insists on a
+          passphrase: that file goes out through the share sheet, usually into a cloud drive.
+        </div>
       </section>
 
       <!-- 10 -->
