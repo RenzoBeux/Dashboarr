@@ -50,7 +50,7 @@ import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { getLidarrAlbumCover } from "@/services/lidarr-api";
 import { formatBytes } from "@/lib/utils";
-import { BAR_KIND_COLOR } from "@/lib/arr-poster-status";
+import { BAR_KIND_COLOR, lidarrArtistTrackCounts } from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum } from "@/lib/types";
 
 type DeleteMode = "keep" | "withFiles";
@@ -385,8 +385,7 @@ function buildArtistMeta(artist: LidarrArtist): string {
 
 function buildArtistStats(artist: LidarrArtist) {
   const stats = artist.statistics;
-  const have = stats?.trackFileCount ?? 0;
-  const total = stats?.totalTrackCount ?? stats?.trackCount ?? 0;
+  const { have, total } = lidarrArtistTrackCounts(artist);
   return [
     { label: "Status", value: capitalize(artist.status) },
     { label: "Albums", value: stats?.albumCount != null ? String(stats.albumCount) : "—" },
@@ -426,8 +425,8 @@ function TrackProgressBlock({
   artist: LidarrArtist;
   downloading: boolean;
 }) {
-  const have = artist.statistics?.trackFileCount ?? 0;
-  const total = artist.statistics?.totalTrackCount ?? artist.statistics?.trackCount ?? 0;
+  // Wanted tracks only: an unmonitored album must not read as missing (#383).
+  const { have, total } = lidarrArtistTrackCounts(artist);
   if (!total) return null;
   const ratio = total > 0 ? have / total : 0;
   const missing = total - have;

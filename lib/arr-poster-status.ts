@@ -152,19 +152,37 @@ export function radarrBarKind(movie: RadarrMovie, isDownloading: boolean): Poste
 }
 
 /**
+ * Tracks on disk vs. tracks wanted for an artist. `total` is Lidarr's
+ * `trackCount`, never `totalTrackCount`: ArtistStatisticsRepository counts a
+ * track toward `trackCount` only when its album is monitored and released, or
+ * the track already has a file, whereas `totalTrackCount` is every track of
+ * every album. Dividing by the latter makes each unmonitored album read as
+ * "missing" (issue #383). Every artist progress surface (poster bar, detail
+ * Progress block, stats strip) derives from this so they cannot drift.
+ */
+export function lidarrArtistTrackCounts(artist: LidarrArtist): {
+  have: number;
+  total: number;
+} {
+  return {
+    have: artist.statistics?.trackFileCount ?? 0,
+    total: artist.statistics?.trackCount ?? 0,
+  };
+}
+
+/** Artist poster bar fill percentage (0–100) — trackFileCount / trackCount, the
+ * Sonarr-style proportional fill Lidarr's ArtistIndexProgressBar uses. */
+export function lidarrArtistBarProgress(artist: LidarrArtist): number {
+  const { have, total } = lidarrArtistTrackCounts(artist);
+  return total ? (have / total) * 100 : 100;
+}
+
+/**
  * Lidarr artist progress bar — same shape as Sonarr's series logic, but the
  * progress denominator is tracks (trackFileCount / trackCount). An `ended`
  * artist that's fully downloaded reads green; an in-progress monitored artist
  * reads red (missing), unmonitored reads amber.
  */
-/** Artist poster bar fill percentage (0–100) — trackFileCount / trackCount, the
- * Sonarr-style proportional fill Lidarr's ArtistIndexProgressBar uses. */
-export function lidarrArtistBarProgress(artist: LidarrArtist): number {
-  const trackCount = artist.statistics?.trackCount ?? 0;
-  const fileCount = artist.statistics?.trackFileCount ?? 0;
-  return trackCount ? (fileCount / trackCount) * 100 : 100;
-}
-
 export function lidarrArtistBarKind(
   artist: LidarrArtist,
   isDownloading: boolean,

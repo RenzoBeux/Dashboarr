@@ -11,7 +11,18 @@ import {
   BAR_KIND_COLOR,
 } from "@/lib/arr-poster-status";
 import { binderyBookBarKind, binderyBookIsMissing } from "@/lib/arr-poster-status";
-import type { RadarrMovie, SonarrSeries, BinderyBook } from "@/lib/types";
+import {
+  lidarrArtistBarProgress,
+  lidarrArtistIsMissing,
+  lidarrArtistTrackCounts,
+} from "@/lib/arr-poster-status";
+import type {
+  RadarrMovie,
+  SonarrSeries,
+  BinderyBook,
+  LidarrArtist,
+  LidarrArtistStatistics,
+} from "@/lib/types";
 
 function series(over: Partial<SonarrSeries>): SonarrSeries {
   return {
@@ -363,5 +374,50 @@ describe("binderyBookIsMissing", () => {
   it("never flags a book whose file is present", () => {
     expect(binderyBookIsMissing(book({ status: "downloaded" }))).toBe(false);
     expect(binderyBookIsMissing(book({ status: "imported" }))).toBe(false);
+  });
+});
+
+function artist(stats: Partial<LidarrArtistStatistics>): LidarrArtist {
+  return {
+    status: "continuing",
+    monitored: true,
+    statistics: {
+      trackFileCount: 0,
+      trackCount: 0,
+      totalTrackCount: 0,
+      sizeOnDisk: 0,
+      ...stats,
+    },
+  } as LidarrArtist;
+}
+
+describe("lidarrArtistTrackCounts", () => {
+  it("counts wanted tracks (trackCount), not every track of every album (issue #383)", () => {
+    // New artist, one of ten albums left monitored, nothing downloaded yet.
+    const a = artist({ trackFileCount: 0, trackCount: 12, totalTrackCount: 120 });
+    expect(lidarrArtistTrackCounts(a)).toEqual({ have: 0, total: 12 });
+  });
+
+  it("that album fully downloaded reads complete, not 12/120", () => {
+    const a = artist({ trackFileCount: 12, trackCount: 12, totalTrackCount: 120 });
+    expect(lidarrArtistTrackCounts(a)).toEqual({ have: 12, total: 12 });
+    expect(lidarrArtistIsMissing(a)).toBe(false);
+  });
+
+  it("missing statistics read as 0/0", () => {
+    const a = { status: "continuing", monitored: true } as LidarrArtist;
+    expect(lidarrArtistTrackCounts(a)).toEqual({ have: 0, total: 0 });
+  });
+});
+
+describe("lidarrArtistBarProgress", () => {
+  it("derives from the same wanted-track counts as the detail screen", () => {
+    const a = artist({ trackFileCount: 6, trackCount: 12, totalTrackCount: 120 });
+    expect(lidarrArtistBarProgress(a)).toBe(50);
+  });
+
+  it("nothing wanted and nothing on disk reads as complete", () => {
+    const a = artist({ trackFileCount: 0, trackCount: 0, totalTrackCount: 120 });
+    expect(lidarrArtistBarProgress(a)).toBe(100);
   });
 });
