@@ -18,6 +18,10 @@ import UnraidLogo from "@/assets/services/unraid.svg";
 // apply reliably, and its viewBox is tall while ServiceLogo renders a square —
 // the copy in assets/ inlines those fills and pads the viewBox to square.
 import PiholeLogo from "@/assets/services/pihole.svg";
+// Maintainerr's official icon mark (MIT, jorenn92/Maintainerr
+// apps/ui/public/logo_icon.svg). Square viewBox, no CSS <style> block, so it
+// renders under react-native-svg as shipped.
+import MaintainerrLogo from "@/assets/services/maintainerr.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
@@ -30,6 +34,7 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   plex: PlexLogo,
   unraid: UnraidLogo,
   pihole: PiholeLogo,
+  maintainerr: MaintainerrLogo,
 };
 
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
