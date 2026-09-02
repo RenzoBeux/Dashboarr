@@ -15,10 +15,14 @@ export function getWantedMovies(
   length = 50,
   instanceId?: string,
 ): Promise<BazarrWantedMoviesResponse> {
-  return serviceRequest<BazarrWantedMoviesResponse>("bazarr", "/movies/wanted", {
-    params: { start, length },
-    instanceId,
-  });
+  return serviceRequest<BazarrWantedMoviesResponse>(
+    "bazarr",
+    "/movies/wanted",
+    {
+      params: { start, length },
+      instanceId,
+    },
+  );
 }
 
 export function getWantedEpisodes(
@@ -26,10 +30,14 @@ export function getWantedEpisodes(
   length = 50,
   instanceId?: string,
 ): Promise<BazarrWantedEpisodesResponse> {
-  return serviceRequest<BazarrWantedEpisodesResponse>("bazarr", "/episodes/wanted", {
-    params: { start, length },
-    instanceId,
-  });
+  return serviceRequest<BazarrWantedEpisodesResponse>(
+    "bazarr",
+    "/episodes/wanted",
+    {
+      params: { start, length },
+      instanceId,
+    },
+  );
 }
 
 // --- History ---
@@ -59,14 +67,19 @@ export function getEpisodeHistory(
 // --- Providers ---
 
 export function getProviders(instanceId?: string): Promise<BazarrProvider[]> {
-  return serviceRequest<BazarrProvider[]>("bazarr", "/providers", { instanceId });
+  return serviceRequest<BazarrProvider[]>("bazarr", "/providers", {
+    instanceId,
+  });
 }
 
 // --- Manual search triggers ---
-// Bazarr uses PATCH on the wanted endpoints with an action body to trigger a search.
 
-export function searchWantedMovie(radarrid: number, instanceId?: string): Promise<void> {
-  return serviceRequest<void>("bazarr", "/movies/wanted", {
+// The wanted route is GET-only; movie actions are PATCHed on the movie resource.
+export function searchWantedMovie(
+  radarrid: number,
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("bazarr", "/movies", {
     method: "PATCH",
     body: JSON.stringify({ radarrid, action: "search-missing" }),
     instanceId,
