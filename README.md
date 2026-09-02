@@ -234,6 +234,17 @@ plugins/              # Custom Expo config plugins (Android signing)
 | Icons | lucide-react-native |
 | Language | TypeScript (strict mode) |
 
+## How AI is used
+
+Architecture is built with AI, code is written by AI.
+
+- **Planning:** features and architecture are discussed with Claude in planning sessions until the design is what I want.
+- **Implementation:** once the plan is settled, Claude implements it.
+- **Review:** every PR is reviewed separately by Claude and Codex. I inspect the findings and decide what to do about them.
+- **Testing:** before merging, I smoke test the change on real Android and iPhone devices.
+
+Models used: Fable (High/xHigh) for planning, Opus 5 (xHigh) for implementation, Opus 5 (xHigh) and Sol (High) for code review.
+
 ## Roadmap
 
 See [TODO.md](TODO.md) for planned features and ideas.
