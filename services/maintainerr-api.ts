@@ -1,0 +1,86 @@
+import { serviceRequest } from "@/lib/http-client";
+import type {
+  MaintainerrCollection,
+  MaintainerrHealth,
+  MaintainerrVersion,
+} from "@/lib/types";
+
+// Maintainerr API notes:
+//   - Maintainerr ships no auth on its own API (it expects reverse-proxy
+//     protection), so Dashboarr registers it as userPass + httpAuth: any
+//     Basic/Digest credentials ride along, and nothing is sent on an open LAN.
+//   - apiBasePath is "" (the anonymous /api/health/live ping is root-mounted),
+//     so every path here carries its own /api prefix (the Cleanuparr pattern).
+//   - GET /api/app/status is JSON.stringify'd upstream, so the version payload
+//     can arrive double-encoded as a string; parseVersionStatus normalizes it.
+// Per-instance routing: every function takes an optional `instanceId`. When
+// omitted, the user's active Maintainerr instance is used.
+
+export function getHealth(instanceId?: string): Promise<MaintainerrHealth> {
+  return serviceRequest<MaintainerrHealth>("maintainerr", "/api/health", { instanceId });
+}
+
+export async function getVersion(instanceId?: string): Promise<MaintainerrVersion> {
+  const raw = await serviceRequest<MaintainerrVersion | string>(
+    "maintainerr",
+    "/api/app/status",
+    { instanceId },
+  );
+  return parseVersionStatus(raw);
+}
+
+export function getCollections(instanceId?: string): Promise<MaintainerrCollection[]> {
+  return serviceRequest<MaintainerrCollection[]>("maintainerr", "/api/collections", { instanceId });
+}
+
+/**
+ * Total media scheduled across all collections, or within one collection when
+ * `collectionId` is given (GET /api/collections/media/count).
+ */
+export function getMediaCount(collectionId?: number, instanceId?: string): Promise<number> {
+  return serviceRequest<number>("maintainerr", "/api/collections/media/count", {
+    params: collectionId != null ? { collectionId } : undefined,
+    instanceId,
+  });
+}
+
+// --- Pure helpers (unit-tested) ---
+
+/**
+ * Normalizes GET /api/app/status. Upstream JSON.stringify's the payload, so the
+ * transport can hand us either the parsed object or a JSON string; parse the
+ * string form, and fall back to the value as-is if it is already an object.
+ */
+export function parseVersionStatus(raw: MaintainerrVersion | string): MaintainerrVersion {
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as MaintainerrVersion;
+    } catch {
+      // Not valid JSON — fall through and return the raw value below.
+    }
+  }
+  return raw as MaintainerrVersion;
+}
+
+/** Rolls a collections list into the two headline dashboard numbers. */
+export function summarizeCollections(collections: MaintainerrCollection[]): {
+  activeCollections: number;
+  totalScheduled: number;
+} {
+  let activeCollections = 0;
+  let totalScheduled = 0;
+  for (const c of collections) {
+    if (c.isActive) activeCollections += 1;
+    totalScheduled += c.mediaCount ?? 0;
+  }
+  return { activeCollections, totalScheduled };
+}
+
+/** Maps a health payload to the status tone used by the dashboard dots. */
+export function maintainerrHealthTone(
+  health: MaintainerrHealth | null | undefined,
+): "ok" | "degraded" | "down" {
+  if (!health) return "down";
+  if (health.status === "ok" && health.database === "ok") return "ok";
+  return "degraded";
+}

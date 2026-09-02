@@ -1805,6 +1805,32 @@ async function runConnectionProbe(
       }
     }
 
+    case "maintainerr": {
+      // Maintainerr's own API is unauthenticated, so /api/health/live answers
+      // 200 on any reachable instance. A 401/403 therefore comes from a reverse
+      // proxy in front of it: send optional Basic (upgrading to Digest) and
+      // treat a rejection as an auth failure, mirroring Glances.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const extra: Record<string, string> = {};
+      const basic = basicAuthHeader(username, password);
+      if (basic) extra["Authorization"] = basic;
+      const res = await fetchWithDigestRetry(
+        url,
+        { method: "GET", signal },
+        makeHeaders(extra),
+        username,
+        password,
+        digestSessionKey(input.instanceId, baseUrl),
+      );
+      if (res.status === 401 || res.status === 403) {
+        return classifyUnauthorized(res, username, password);
+      }
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
     default: {
       // Exhaustiveness check — a new ServiceId without a probe case fails here.
       const _exhaustive: never = serviceId;

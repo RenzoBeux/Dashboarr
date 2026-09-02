@@ -75,6 +75,7 @@ const TAB_LABELS: Record<TabRouteId, string> = {
   autobrr: "Autobrr",
   cleanuparr: "Cleanuparr",
   pihole: "Pi-hole",
+  maintainerr: "Maintainerr",
 };
 
 export default function DashboardEditScreen() {

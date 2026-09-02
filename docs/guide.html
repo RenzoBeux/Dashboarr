@@ -560,6 +560,7 @@
               <tr><td><strong>Autobrr</strong></td><td>7474</td><td>API key</td><td>Create the key under Settings &rarr; API keys in autobrr. Test Connection validates it against the release stats endpoint, because autobrr's health endpoint answers OK even with a wrong key.</td></tr>
               <tr><td><strong>Cleanuparr</strong></td><td>11011</td><td>API key</td><td>Find the key in the Cleanuparr UI under Account Settings. The same key unlocks stats, the events feed and manual job triggers. If you set a BASE_PATH, include it in the URL field.</td></tr>
               <tr><td><strong>Pi-hole</strong></td><td>80</td><td>Password</td><td><strong>Pi-hole v6 or newer only</strong> &mdash; v5&rsquo;s <code>/admin/api.php</code> was removed upstream and Dashboarr says so if you point it at one. Use the <strong>web server root</strong> (<code>http://pi.hole</code>), never the <code>/admin</code> page, or every call 404s. Create an <strong>application password</strong> under Settings &rarr; Web interface / API and use that rather than your web password: it is the only credential that works when 2FA is on, and creating one logs you out of the web UI. Pi-hole allows 16 API sessions at once, so Dashboarr keeps a single session per instance and reuses it.</td></tr>
+              <tr><td><strong>Maintainerr</strong></td><td>6246</td><td>User + password (optional)</td><td>Maintainerr has no authentication of its own, so on a trusted LAN just the URL is enough. If you put it behind a reverse proxy that adds HTTP Basic or Digest auth, enter those credentials in the username and password fields. If you set a BASE_PATH on Maintainerr, include it in the URL.</td></tr>
             </tbody>
           </table>
         </div>
@@ -733,10 +734,11 @@
           chevrons to reorder, the red X to unpin, and tap a pinned tab's small icon chip to change
           which icon represents it in the bar.
         </p>
-        <p>The twenty-two pinnable tabs are:</p>
+        <p>The twenty-three pinnable tabs are:</p>
         <p style="color:var(--muted)">
           Downloads, Calendar, Services, Movies, TV, Library, Music, Books, Requests, Activity, Indexers,
-          Plex, Jellyfin, Emby, Navidrome, Glances, Bazarr, unRAID, Tdarr, Autobrr, Cleanuparr, Pi-hole.
+          Plex, Jellyfin, Emby, Navidrome, Glances, Bazarr, unRAID, Tdarr, Autobrr, Cleanuparr, Pi-hole,
+          Maintainerr.
         </p>
         <p>
           A tab becomes pickable when the workspace has at least one <strong>attached</strong> instance

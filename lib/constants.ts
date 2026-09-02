@@ -27,6 +27,7 @@ export const SERVICE_IDS = [
   "autobrr",
   "cleanuparr",
   "pihole",
+  "maintainerr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -250,6 +251,17 @@ export const SERVICE_DEFAULTS: Record<
     defaultPort: 80,
     apiBasePath: "/api",
     pingPath: "/info/login",
+  },
+  // apiBasePath is "" because Maintainerr's liveness ping and every data path
+  // are root-mounted under their own /api prefix (the Cleanuparr pattern). The
+  // API itself is unauthenticated; httpAuth carries optional reverse-proxy
+  // Basic/Digest credentials, and nothing is sent on an open LAN.
+  maintainerr: {
+    name: "Maintainerr",
+    defaultPort: 6246,
+    apiBasePath: "",
+    pingPath: "/api/health/live",
+    httpAuth: true,
   },
 };
 
