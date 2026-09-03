@@ -4,7 +4,10 @@ import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
-import { secretsShapeFor, type ServiceCatalogEntry } from "@/lib/service-catalog";
+import {
+  secretsShapeFor,
+  type ServiceCatalogEntry,
+} from "@/lib/service-catalog";
 
 /**
  * The credential form for one instance.
@@ -75,6 +78,7 @@ export function AuthCard({
             value={password}
             onChangeText={onPasswordChange}
             secureTextEntry
+            revealable
           />
           {/* The hint used to render only in the apiKey branch below, leaving
               password services with no guidance at all — and those are exactly
@@ -94,6 +98,7 @@ export function AuthCard({
             value={apiKey}
             onChangeText={onApiKeyChange}
             secureTextEntry
+            revealable
           />
           {entry.apiKeyHint ? (
             <Text className="text-zinc-600 text-xs">

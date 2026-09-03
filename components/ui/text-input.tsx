@@ -1,14 +1,24 @@
 import { useCallback, useState } from "react";
-import { TextInput as RNTextInput, View, Text, Platform } from "react-native";
+import {
+  TextInput as RNTextInput,
+  View,
+  Text,
+  Platform,
+  Pressable,
+} from "react-native";
 import type {
   TextInputProps as RNTextInputProps,
   LayoutChangeEvent,
 } from "react-native";
+import { Eye, EyeOff } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 
 interface TextInputProps extends RNTextInputProps {
   label?: string;
   error?: string;
   containerClassName?: string;
+  /** Adds a hidden-by-default eye toggle when secureTextEntry is enabled. */
+  revealable?: boolean;
 }
 
 export function TextInput({
@@ -19,9 +29,13 @@ export function TextInput({
   value,
   onLayout,
   onFocus,
+  secureTextEntry,
+  revealable = false,
   ...props
 }: TextInputProps) {
   const isIOS = Platform.OS === "ios";
+  const [revealed, setRevealed] = useState(false);
+  const canReveal = revealable && secureTextEntry === true;
 
   // iOS New Architecture (Fabric) intermittently renders a controlled
   // TextInput's initial non-empty `value` as BLANK until the field is focused —
@@ -87,24 +101,35 @@ export function TextInput({
 
   return (
     <View className={containerClassName}>
-      {label && (
-        <Text className="text-zinc-400 text-sm mb-1.5">{label}</Text>
-      )}
-      <RNTextInput
-        value={displayValue}
-        onLayout={handleLayout}
-        onFocus={handleFocus}
-        className={`bg-surface-light border rounded-xl px-4 py-3 text-zinc-100 text-base ${
-          error ? "border-danger" : "border-border"
-        } ${className}`}
-        placeholderTextColor="#71717a"
-        autoCapitalize="none"
-        autoCorrect={false}
-        {...props}
-      />
-      {error && (
-        <Text className="text-danger text-xs mt-1">{error}</Text>
-      )}
+      {label && <Text className="text-zinc-400 text-sm mb-1.5">{label}</Text>}
+      <View className="relative">
+        <RNTextInput
+          value={displayValue}
+          onLayout={handleLayout}
+          onFocus={handleFocus}
+          className={`bg-surface-light border rounded-xl px-4 py-3 text-zinc-100 text-base ${
+            canReveal ? "pr-12" : ""
+          } ${error ? "border-danger" : "border-border"} ${className}`}
+          placeholderTextColor="#71717a"
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry={canReveal ? !revealed : secureTextEntry}
+          {...props}
+        />
+        {canReveal ? (
+          <Pressable
+            onPress={() => setRevealed((current) => !current)}
+            accessibilityRole="button"
+            accessibilityLabel={`${revealed ? "Hide" : "Show"} ${label ?? "value"}`}
+            accessibilityState={{ expanded: revealed }}
+            hitSlop={8}
+            className="absolute inset-y-0 right-1 items-center justify-center px-3"
+          >
+            <Icon icon={revealed ? EyeOff : Eye} size={18} color="#a1a1aa" />
+          </Pressable>
+        ) : null}
+      </View>
+      {error && <Text className="text-danger text-xs mt-1">{error}</Text>}
     </View>
   );
 }
