@@ -92,7 +92,9 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
   });
   // Initial-load gate only — once any instance returns sessions we keep
   // rendering across refetches even if a sibling is failing its retry loop.
-  const { isInitialLoading } = aggregateMultiInstanceState(queries);
+  // When every instance is failing, say so instead of a misleading "Nothing
+  // playing" (#400).
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
 
   const allStreams: NowPlayingStream[] = queries.flatMap((q, i) => {
     const src = sources[i]!;
@@ -126,7 +128,7 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
 
   useHideWhenEmpty(slotId, {
     enabled: settings.hideWhenEmpty,
-    isEmpty: sources.length === 0 || display.length === 0,
+    isEmpty: sources.length === 0 || (!isAllErrored && display.length === 0),
     isLoading: isInitialLoading,
   });
 
@@ -149,6 +151,8 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
         <EmptyState compact title="No media servers enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
+      ) : isAllErrored ? (
+        <EmptyState compact title="Couldn't reach any media server" />
       ) : display.length === 0 ? (
         <EmptyState compact title="Nothing playing" />
       ) : (
