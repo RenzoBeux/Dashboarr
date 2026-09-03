@@ -11,6 +11,7 @@ import { SheetHeader } from "@/components/ui/sheet-header";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useTargetInstance } from "@/hooks/use-instance-target";
+import { useAddDefaultsStore, addDefaultsKey } from "@/store/add-defaults-store";
 import { formatBytes } from "@/lib/utils";
 
 export interface AddMediaSheetCommonState {
@@ -89,8 +90,8 @@ export function AddMediaSheet({
 }: AddMediaSheetProps) {
   const [qualityProfileId, setQualityProfileId] = useState<number | undefined>();
   const [rootFolderPath, setRootFolderPath] = useState<string | undefined>();
-  const [selectedTags, setSelectedTags] = useState<number[]>([]);
-  const [searchOnAdd, setSearchOnAdd] = useState(true);
+  const [selectedTags, setSelectedTags] = useState<number[] | undefined>();
+  const [searchOnAdd, setSearchOnAdd] = useState<boolean | undefined>();
   const footerPadding = useSheetBottomPadding();
 
   // User-configured defaults for this instance (Settings → Add Defaults), with
@@ -98,6 +99,15 @@ export function AddMediaSheet({
   // exists on the server (profile/folder deleted upstream). An in-sheet pick
   // (qualityProfileId / rootFolderPath state) always wins over the default.
   const inst = useTargetInstance(serviceId, instanceId);
+
+  // Last config used to add on this instance, so the sheet defaults to it the
+  // way Radarr's own web UI does (#341). Precedence below is: in-sheet pick >
+  // last-used (if it still exists on the server) > Settings default > first in
+  // list, so the Settings default still applies until the first add.
+  const lastUsedKey = inst ? addDefaultsKey(serviceId, inst.id) : null;
+  const lastUsed = useAddDefaultsStore((s) => (lastUsedKey ? s.lastUsed[lastUsedKey] : undefined));
+  const rememberLastUsed = useAddDefaultsStore((s) => s.remember);
+
   const storedProfileId = inst?.defaultQualityProfileId;
   const defaultProfileId =
     storedProfileId != null && profiles?.some((p) => p.id === storedProfileId)
@@ -109,16 +119,28 @@ export function AddMediaSheet({
       ? storedFolderPath
       : folders?.[0]?.path;
 
-  const effectiveQualityProfileId = qualityProfileId ?? defaultProfileId;
-  const effectiveRootFolderPath = rootFolderPath ?? defaultFolderPath;
+  const lastProfileId =
+    lastUsed?.qualityProfileId != null && profiles?.some((p) => p.id === lastUsed.qualityProfileId)
+      ? lastUsed.qualityProfileId
+      : undefined;
+  const lastFolderPath =
+    lastUsed?.rootFolderPath != null && folders?.some((f) => f.path === lastUsed.rootFolderPath)
+      ? lastUsed.rootFolderPath
+      : undefined;
+
+  const effectiveQualityProfileId = qualityProfileId ?? lastProfileId ?? defaultProfileId;
+  const effectiveRootFolderPath = rootFolderPath ?? lastFolderPath ?? defaultFolderPath;
+  const effectiveTags = selectedTags ?? lastUsed?.tags ?? [];
+  const effectiveSearchOnAdd = searchOnAdd ?? lastUsed?.searchOnAdd ?? true;
 
   const poster = result?.images.find((i) => i.coverType === "poster");
   const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, serviceId);
 
   const toggleTag = (tagId: number) => {
-    setSelectedTags((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId],
-    );
+    setSelectedTags((prev) => {
+      const base = prev ?? effectiveTags;
+      return base.includes(tagId) ? base.filter((t) => t !== tagId) : [...base, tagId];
+    });
   };
 
   const canSubmit =
@@ -126,11 +148,20 @@ export function AddMediaSheet({
 
   const handleAdd = () => {
     if (!canSubmit) return;
+    // Remember this config so the next add on this instance preselects it (#341).
+    if (lastUsedKey) {
+      rememberLastUsed(lastUsedKey, {
+        qualityProfileId: effectiveQualityProfileId,
+        rootFolderPath: effectiveRootFolderPath,
+        tags: effectiveTags,
+        searchOnAdd: effectiveSearchOnAdd,
+      });
+    }
     onSubmit({
       qualityProfileId: effectiveQualityProfileId!,
       rootFolderPath: effectiveRootFolderPath!,
-      selectedTags,
-      searchOnAdd,
+      selectedTags: effectiveTags,
+      searchOnAdd: effectiveSearchOnAdd,
     });
   };
 
@@ -216,7 +247,7 @@ export function AddMediaSheet({
                   <FilterChip
                     key={tag.id}
                     label={tag.label}
-                    selected={selectedTags.includes(tag.id)}
+                    selected={effectiveTags.includes(tag.id)}
                     onPress={() => toggleTag(tag.id)}
                   />
                 ))}
@@ -227,7 +258,7 @@ export function AddMediaSheet({
           <Toggle
             label="Start Search on Add"
             description={searchToggleDescription}
-            value={searchOnAdd}
+            value={effectiveSearchOnAdd}
             onValueChange={setSearchOnAdd}
           />
 
