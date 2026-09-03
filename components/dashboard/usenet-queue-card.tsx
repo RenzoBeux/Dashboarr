@@ -31,17 +31,19 @@ function compareTagged(
   a: TaggedItem,
   b: TaggedItem,
   sortBy: UsenetQueueSortBy,
+  reverse: boolean,
 ): number {
+  const direction = reverse ? -1 : 1;
   switch (sortBy) {
     case "progress":
-      return b.item.progress - a.item.progress;
+      return direction * (b.item.progress - a.item.progress);
     case "name":
-      return a.item.name.localeCompare(b.item.name);
+      return direction * a.item.name.localeCompare(b.item.name);
     case "size":
-      return b.item.bytes - a.item.bytes;
+      return direction * (b.item.bytes - a.item.bytes);
     case "added":
       // Per-instance index — across instances this is stable-but-rough.
-      return b.item.index - a.item.index;
+      return direction * (b.item.index - a.item.index);
   }
 }
 
@@ -81,7 +83,7 @@ export function UsenetQueueCard({ slotId, adapter }: Props) {
 
   const filtered = allTagged
     .filter((t) => allowedStatuses.has(t.item.status))
-    .sort((a, b) => compareTagged(a, b, settings.sortBy));
+    .sort((a, b) => compareTagged(a, b, settings.sortBy, settings.reverseSort));
 
   const display = filtered.slice(0, settings.maxItems);
   const hasMore = filtered.length > settings.maxItems;

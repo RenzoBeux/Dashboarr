@@ -22,8 +22,8 @@ import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   DOWNLOADS_DEFAULT_SETTINGS,
   type DownloadsSettingsValue,
-  type DownloadsSortBy,
 } from "@/components/dashboard/widget-settings/downloads-settings";
+import { compareDownloads, hasEta, qbSortParams } from "@/lib/downloads-sort";
 import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { isTorrentPaused, type QBTorrent, type TorrentState } from "@/lib/types";
@@ -48,8 +48,6 @@ import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 import { downloadStatusColor } from "@/lib/download-status";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
-
-const ETA_UNKNOWN = 8640000;
 
 // Source-agnostic display row. Each client computes its own `group` with its
 // native classifier (so qBittorrent's exact grouping is preserved) and the rest
@@ -189,35 +187,6 @@ function delugeRow(t: UnifiedTorrent, instanceId: string): DownloadRow {
   };
 }
 
-function compareRows(a: DownloadRow, b: DownloadRow, sortBy: DownloadsSortBy): number {
-  switch (sortBy) {
-    case "speed":
-      return b.dlSpeed + b.upSpeed - (a.dlSpeed + a.upSpeed);
-    case "progress":
-      return b.progress - a.progress;
-    case "eta": {
-      const ae = !a.eta || a.eta >= ETA_UNKNOWN || a.eta < 0 ? Number.POSITIVE_INFINITY : a.eta;
-      const be = !b.eta || b.eta >= ETA_UNKNOWN || b.eta < 0 ? Number.POSITIVE_INFINITY : b.eta;
-      return ae - be;
-    }
-    case "added":
-      return b.addedOn - a.addedOn;
-  }
-}
-
-function sortByToQB(sortBy: DownloadsSortBy): { sort: keyof QBTorrent; reverse: boolean } {
-  switch (sortBy) {
-    case "speed":
-      return { sort: "dlspeed", reverse: true };
-    case "progress":
-      return { sort: "progress", reverse: true };
-    case "eta":
-      return { sort: "eta", reverse: false };
-    case "added":
-      return { sort: "added_on", reverse: true };
-  }
-}
-
 function pickServerFilter(s: DownloadsSettingsValue): QBTorrentFilter | undefined {
   const flags: { flag: boolean; filter: QBTorrentFilter }[] = [
     { flag: s.showDownloading, filter: "downloading" },
@@ -249,7 +218,7 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
     slotId,
     DOWNLOADS_DEFAULT_SETTINGS,
   );
-  const { sort, reverse } = sortByToQB(settings.sortBy);
+  const { sort, reverse } = qbSortParams(settings.sortBy, settings.reverseSort);
   const queryOptions: GetTorrentsOptions = {
     filter: pickServerFilter(settings),
     sort,
@@ -349,7 +318,9 @@ export function DownloadCard({ slotId }: WidgetComponentProps) {
 
   const filtered = rows
     .filter((row) => allowedGroups.has(row.group))
-    .sort((a, b) => compareRows(a, b, settings.sortBy));
+    .sort((a, b) =>
+      compareDownloads(a, b, settings.sortBy, settings.reverseSort),
+    );
 
   const displayTorrents = filtered.slice(0, settings.maxItems);
   const hasMore = filtered.length > settings.maxItems;
@@ -460,7 +431,7 @@ function TorrentTile({
   const subtitle =
     row.group === "downloading"
       ? formatSpeed(row.dlSpeed)
-      : row.eta > 0 && row.eta < ETA_UNKNOWN
+      : hasEta(row)
         ? `ETA ${formatEta(row.eta)}`
         : row.upSpeed > 0
           ? `↑ ${formatSpeed(row.upSpeed)}`

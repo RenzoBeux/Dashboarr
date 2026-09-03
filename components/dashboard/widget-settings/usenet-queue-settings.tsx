@@ -8,10 +8,10 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
-  ChipGroup,
   HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
+  SortSelector,
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
 import type { ServiceId } from "@/lib/constants";
@@ -25,6 +25,7 @@ export interface UsenetQueueSettingsValue extends Record<string, unknown> {
   showPaused: boolean;
   showQueued: boolean;
   sortBy: UsenetQueueSortBy;
+  reverseSort: boolean;
   hideWhenEmpty: boolean;
 }
 
@@ -35,6 +36,7 @@ export const USENET_QUEUE_DEFAULT_SETTINGS: UsenetQueueSettingsValue = {
   showPaused: true,
   showQueued: true,
   sortBy: "progress",
+  reverseSort: false,
   hideWhenEmpty: false,
 };
 
@@ -88,11 +90,12 @@ export function UsenetQueueSettings({ slotId, serviceId }: Props) {
         onChange={(maxItems) => update({ maxItems })}
       />
 
-      <ChipGroup
-        label="Sort by"
+      <SortSelector
         options={SORT_OPTIONS}
         value={settings.sortBy}
         onChange={(sortBy) => update({ sortBy })}
+        reversed={settings.reverseSort}
+        onReversedChange={(reverseSort) => update({ reverseSort })}
       />
 
       <HideWhenEmptyToggle
