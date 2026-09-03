@@ -69,6 +69,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
+import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
@@ -627,6 +628,7 @@ function CalendarView({
                   service="sonarr"
                   title={ep.series.title}
                   subtitle={`${formatEpisodeCode(ep.seasonNumber, ep.episodeNumber)} — ${ep.title}`}
+                  badge={isSeasonPremiere(ep) ? PREMIERE_BADGE : undefined}
                   hasFile={ep.hasFile}
                   downloading={downloadingEpisodeIds.has(ep.id)}
                   barColor={

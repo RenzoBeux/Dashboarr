@@ -34,6 +34,7 @@ import {
   orderedWeekdays,
 } from "@/lib/calendar-grid";
 import { resolveWeekStartDow } from "@/lib/week-start";
+import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
 import { useConfigStore } from "@/store/config-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
@@ -529,6 +530,9 @@ export default function CalendarScreen() {
               const events = itemsByDate.get(cell.dateKey);
               const hasEpisodes = events?.some((e) => e.type === "episode");
               const hasMovies = events?.some((e) => e.type === "movie");
+              const startsSeason = events?.some(
+                (e) => e.type === "episode" && isSeasonPremiere(e.data),
+              );
 
               return (
                 <Pressable
@@ -564,9 +568,17 @@ export default function CalendarScreen() {
                   </View>
                   {/* Event dots */}
                   <View className="flex-row gap-0.5 mt-0.5 h-1.5">
-                    {hasEpisodes && (
-                      <View className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                    )}
+                    {/* A day that opens a season widens its episode dot into
+                        a capsule, reusing the same slot so the grid keeps its
+                        height at every uiScale. Sky, not blue: `primary` is
+                        #3b82f6, so a blue-500/600 marker would read as the
+                        selected-day circle sitting right above it. */}
+                    {hasEpisodes &&
+                      (startsSeason ? (
+                        <View className="w-3.5 h-1.5 rounded-full bg-sky-400" />
+                      ) : (
+                        <View className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      ))}
                     {hasMovies && (
                       <View className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                     )}
@@ -650,12 +662,14 @@ function EpisodeRow({
   downloading: boolean;
   onPress: () => void;
 }) {
+  const badge = isSeasonPremiere(episode) ? PREMIERE_BADGE : undefined;
   return (
     <CalendarEventRow
       images={episode.series.images}
       service="sonarr"
       title={episode.series.title}
       subtitle={`${formatEpisodeCode(episode.seasonNumber, episode.episodeNumber)} — ${episode.title}`}
+      badge={badge}
       hasFile={episode.hasFile}
       downloading={downloading}
       barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(episode, downloading)]}
