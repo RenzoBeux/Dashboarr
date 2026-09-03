@@ -56,8 +56,9 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
   });
 
   // Initial-load gate only — keep loaded streams visible across refetches even
-  // if a sibling monitor is currently failing.
-  const { isInitialLoading } = aggregateMultiInstanceState(queries);
+  // if a sibling monitor is currently failing. When every monitor is failing,
+  // say so instead of a misleading "Nothing playing" (#400).
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
 
   const allStreams = queries.flatMap((q) => q.data?.streams ?? []);
   const hiddenUsers = parseHiddenUsers(settings.hideUsers);
@@ -100,6 +101,8 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
         <EmptyState compact title="No stream monitor enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
+      ) : isAllErrored ? (
+        <EmptyState compact title="Couldn't reach any stream monitor" />
       ) : display.length === 0 ? (
         <EmptyState compact title="Nothing playing" />
       ) : (

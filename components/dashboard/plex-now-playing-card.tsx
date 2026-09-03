@@ -38,8 +38,9 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
   });
   // Initial-load gate only — see lib/multi-instance-query.ts. Once any Plex
   // returns sessions we keep rendering them across refetches even if a sibling
-  // instance is currently failing.
-  const { isInitialLoading } = aggregateMultiInstanceState(queries);
+  // instance is currently failing. When every instance is failing, say so
+  // instead of a misleading "Nothing playing" (#400).
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
 
   // Tag every session with its source instance so per-tile poster URLs hit the
   // right Plex (thumb paths are token-scoped), then normalize to a stream.
@@ -84,6 +85,8 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
         <EmptyState compact title="No Plex instances enabled" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
+      ) : isAllErrored ? (
+        <EmptyState compact title="Couldn't reach Plex" />
       ) : display.length === 0 ? (
         <EmptyState compact title="Nothing playing" />
       ) : (

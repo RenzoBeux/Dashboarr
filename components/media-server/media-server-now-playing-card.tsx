@@ -45,8 +45,9 @@ export function MediaServerNowPlayingCard({
   });
   // Initial-load gate only — once any instance returns sessions, render them
   // even if a sibling instance is currently failing its retry loop. Prevents
-  // the "one offline server flickers the card every 5s" problem.
-  const { isInitialLoading } = aggregateMultiInstanceState(queries);
+  // the "one offline server flickers the card every 5s" problem. When every
+  // instance is failing, say so instead of a misleading "Nothing playing" (#400).
+  const { isInitialLoading, isAllErrored } = aggregateMultiInstanceState(queries);
 
   const allStreams = queries.flatMap((q, i) =>
     (q.data ?? []).map((s) => mediaServerSessionToStream(s, instances[i].id, serviceId)),
@@ -89,6 +90,8 @@ export function MediaServerNowPlayingCard({
         <EmptyState compact title={`No ${displayName} instances enabled`} />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
+      ) : isAllErrored ? (
+        <EmptyState compact title={`Couldn't reach ${displayName}`} />
       ) : display.length === 0 ? (
         <EmptyState compact title="Nothing playing" />
       ) : (
