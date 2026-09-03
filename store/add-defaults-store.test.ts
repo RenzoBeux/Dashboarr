@@ -21,7 +21,12 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(async () => {}),
 }));
 
-import { useAddDefaultsStore, addDefaultsKey, type LastUsedAdd } from "./add-defaults-store";
+import {
+  useAddDefaultsStore,
+  addDefaultsKey,
+  validRememberedTags,
+  type LastUsedAdd,
+} from "./add-defaults-store";
 import { getJSON, setJSON, deleteKey } from "./storage";
 
 const STORAGE_KEY = "ui.lastUsedAdd";
@@ -73,5 +78,18 @@ describe("useAddDefaultsStore (#341)", () => {
   it("hydrate is a safe no-op when nothing is stored", () => {
     expect(() => useAddDefaultsStore.getState().hydrate()).not.toThrow();
     expect(useAddDefaultsStore.getState().lastUsed).toEqual({});
+  });
+});
+
+describe("validRememberedTags (#402)", () => {
+  const tags = [{ id: 1 }, { id: 2 }, { id: 3 }];
+
+  it("drops a remembered tag that was deleted on the server", () => {
+    expect(validRememberedTags([1, 2, 99], tags)).toEqual([1, 2]);
+  });
+
+  it("is empty when tags haven't loaded or nothing was remembered", () => {
+    expect(validRememberedTags([1, 2], undefined)).toEqual([]);
+    expect(validRememberedTags(undefined, tags)).toEqual([]);
   });
 });
