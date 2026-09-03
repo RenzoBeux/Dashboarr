@@ -17,7 +17,7 @@ import {
   useMaintainerrHealth,
   useMaintainerrVersion,
 } from "@/hooks/use-maintainerr";
-import { summarizeCollections } from "@/services/maintainerr-api";
+import { maintainerrActionLabel, summarizeCollections } from "@/services/maintainerr-api";
 import type { MaintainerrCollection } from "@/lib/types";
 
 export default function MaintainerrScreen() {
@@ -134,11 +134,9 @@ const TYPE_ICON: Record<string, LucideIcon> = { movie: Film, show: Tv };
 
 function CollectionRow({ collection }: { collection: MaintainerrCollection }) {
   const TypeIcon = TYPE_ICON[collection.type] ?? Layers;
-  const days = collection.deleteAfterDays;
   const retention =
-    days == null
-      ? "No automatic deletion"
-      : `Auto-deletes ${days} day${days === 1 ? "" : "s"} after being added`;
+    maintainerrActionLabel(collection.arrAction, collection.deleteAfterDays) ??
+    "No automatic action";
 
   return (
     <View className="flex-row items-start gap-3">
