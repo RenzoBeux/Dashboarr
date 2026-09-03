@@ -12,6 +12,7 @@ import {
 import type { ServiceId } from "@/lib/constants";
 import type { PiholeAuthResponse } from "@/lib/types";
 import { buildUrl } from "@/lib/url-builder";
+import { setMediaServerAuthHeaders } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
@@ -402,10 +403,10 @@ export async function serviceRequest<T>(
       headers.set("Accept", "application/json");
     }
   } else if (serviceId === "jellyfin" || serviceId === "emby") {
-    // Emby and Jellyfin both authenticate with the X-Emby-Token header.
-    if (secrets.apiKey) {
-      headers.set("X-Emby-Token", secrets.apiKey);
-    }
+    // Jellyfin gates the Emby-era X-Emby-Token header behind the server's
+    // EnableLegacyAuthorization flag; setMediaServerAuthHeaders sends the
+    // Authorization: MediaBrowser shape that survives it (#399).
+    setMediaServerAuthHeaders(headers, serviceId, secrets.apiKey);
   } else if (serviceId === "tracearr") {
     // Tracearr's public API uses a Bearer token (Authorization: Bearer
     // trr_pub_<token>). Image-proxy URLs are public, so only API calls need it.
@@ -578,7 +579,7 @@ export async function pingService(
     if (secrets.apiKey) headers.set("X-Plex-Token", secrets.apiKey);
     headers.set("Accept", "application/json");
   } else if (serviceId === "jellyfin" || serviceId === "emby") {
-    if (secrets.apiKey) headers.set("X-Emby-Token", secrets.apiKey);
+    setMediaServerAuthHeaders(headers, serviceId, secrets.apiKey);
   } else if (usesHttpAuth(serviceId)) {
     // Same credential rule as serviceRequest — the `&&` this used to require
     // left a token-in-password instance pinged anonymously. No Digest retry
@@ -1091,13 +1092,20 @@ async function runConnectionProbe(
       // keys and user tokens, so it matches every auth shape this app supports.
       const url = buildUrl(baseUrl, defaults.apiBasePath, "/System/Info");
       const headers = makeHeaders();
-      if (apiKey) headers.set("X-Emby-Token", apiKey);
+      setMediaServerAuthHeaders(headers, serviceId, apiKey);
       const res = await fetch(url, { method: "GET", headers, signal });
-      if (res.status === 401 || res.status === 403)
+      if (res.status === 401 || res.status === 403) {
+        const name = serviceId === "emby" ? "Emby" : "Jellyfin";
+        // An empty key reaches the server as an anonymous request, which answers
+        // with the same 401 a wrong key does, so say which one it was instead of
+        // sending the user off to re-check a key they never entered (#399).
         return {
           kind: "auth_failed",
-          message: `Invalid ${serviceId === "emby" ? "Emby" : "Jellyfin"} token`,
+          message: apiKey
+            ? `Invalid ${name} token`
+            : `No API key set. Create one in ${name}'s Dashboard > API Keys`,
         };
+      }
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
       if (res.ok) return { kind: "ok" };

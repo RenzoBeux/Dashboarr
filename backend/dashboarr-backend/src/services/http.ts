@@ -106,9 +106,15 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     return;
   }
   if (id === "jellyfin" || id === "emby") {
-    // Emby and Jellyfin both authenticate with the X-Emby-Token header.
+    // Jellyfin gates the Emby-era X-Emby-Token header behind the server's
+    // EnableLegacyAuthorization flag (off by default from 12.0), so it gets the
+    // Authorization: MediaBrowser shape that every release reads. Emby never
+    // deprecated the header. Mirrors the app's lib/media-server-config.ts.
     if (config.apiKey) {
       headers.set("X-Emby-Token", config.apiKey);
+      if (id === "jellyfin" && !headers.has("Authorization")) {
+        headers.set("Authorization", `MediaBrowser Token="${config.apiKey}"`);
+      }
     }
     return;
   }

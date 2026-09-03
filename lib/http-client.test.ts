@@ -228,12 +228,34 @@ describe("serviceRequest — custom header injection", () => {
     expect(getSentHeaders().get("X-Emby-Token")).toBe("jelly-token");
   });
 
-  it("authenticates Emby with X-Emby-Token (same scheme as Jellyfin)", async () => {
+  // X-Emby-Token only reaches Jellyfin's AuthorizationContext when the server's
+  // EnableLegacyAuthorization flag is on (off by default from 12.0), while the
+  // Authorization: MediaBrowser shape is read unconditionally (#399).
+  it("authenticates Jellyfin with an Authorization: MediaBrowser header", async () => {
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentHeaders().get("Authorization")).toBe(
+      'MediaBrowser Token="jelly-token"',
+    );
+  });
+
+  // A custom Authorization header is a reverse proxy's Basic credential;
+  // clobbering it locks the user out before Jellyfin ever sees the request.
+  it("leaves a custom Authorization header alone on Jellyfin", async () => {
+    mockStateRef.current.secrets.jellyfin.customHeaders = {
+      Authorization: "Basic cHJveHk6cGFzcw==",
+    };
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentHeaders().get("Authorization")).toBe("Basic cHJveHk6cGFzcw==");
+    expect(getSentHeaders().get("X-Emby-Token")).toBe("jelly-token");
+  });
+
+  it("authenticates Emby with X-Emby-Token (the header Emby still documents)", async () => {
     mockStateRef.current.secrets.emby.customHeaders = {
       "X-Emby-Token": "spoofed",
     };
     await serviceRequest("emby", "/System/Info/Public");
     expect(getSentHeaders().get("X-Emby-Token")).toBe("emby-token");
+    expect(getSentHeaders().get("Authorization")).toBeNull();
   });
 
   it("never lets a custom header overwrite Basic auth on Glances", async () => {
