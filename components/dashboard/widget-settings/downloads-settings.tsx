@@ -8,14 +8,13 @@ import {
   type InstanceBindingValue,
 } from "@/components/dashboard/widget-settings/instance-picker-row";
 import {
-  ChipGroup,
   HideWhenEmptyToggle,
   MaxItemsSelector,
   SettingsSection,
+  SortSelector,
   ToggleCard,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
-
-export type DownloadsSortBy = "speed" | "progress" | "eta" | "added";
+import type { DownloadsSortBy } from "@/lib/downloads-sort";
 
 export interface DownloadsSettingsValue extends Record<string, unknown> {
   // Which qBittorrent instances this widget shows. "all" aggregates every
@@ -27,6 +26,7 @@ export interface DownloadsSettingsValue extends Record<string, unknown> {
   showPaused: boolean;
   showErrored: boolean;
   sortBy: DownloadsSortBy;
+  reverseSort: boolean;
   hideWhenEmpty: boolean;
 }
 
@@ -38,6 +38,7 @@ export const DOWNLOADS_DEFAULT_SETTINGS: DownloadsSettingsValue = {
   showPaused: false,
   showErrored: false,
   sortBy: "speed",
+  reverseSort: false,
   hideWhenEmpty: false,
 };
 
@@ -98,11 +99,12 @@ export function DownloadsSettings({ slotId }: WidgetSettingsComponentProps) {
         onChange={(maxItems) => update({ maxItems })}
       />
 
-      <ChipGroup
-        label="Sort by"
+      <SortSelector
         options={SORT_OPTIONS}
         value={settings.sortBy}
         onChange={(sortBy) => update({ sortBy })}
+        reversed={settings.reverseSort}
+        onReversedChange={(reverseSort) => update({ reverseSort })}
       />
 
       <HideWhenEmptyToggle

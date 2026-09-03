@@ -47,11 +47,13 @@ export function ChipGroup<T extends string | number>({
   options,
   value,
   onChange,
+  footer,
 }: {
   label: string;
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
+  footer?: ReactNode;
 }) {
   return (
     <SettingsSection label={label}>
@@ -65,7 +67,40 @@ export function ChipGroup<T extends string | number>({
           />
         ))}
       </View>
+      {footer ? <View className="mt-3">{footer}</View> : null}
     </SettingsSection>
+  );
+}
+
+export function SortSelector<T extends string>({
+  options,
+  value,
+  onChange,
+  reversed,
+  onReversedChange,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  reversed: boolean;
+  onReversedChange: (value: boolean) => void;
+}) {
+  return (
+    <ChipGroup
+      label="Sort by"
+      options={options}
+      value={value}
+      onChange={onChange}
+      footer={
+        <ToggleCard>
+          <Toggle
+            label="Reverse order"
+            value={reversed}
+            onValueChange={onReversedChange}
+          />
+        </ToggleCard>
+      }
+    />
   );
 }
 
