@@ -7,6 +7,7 @@ import {
   AuthProxyResponseError,
   HttpError,
   isAbortError,
+  type ConnectionTestResult,
 } from "./http-client";
 
 // jest.mock factories run before module-scope code; the only refs allowed
@@ -601,18 +602,29 @@ describe("testServiceConnection — TLS hint on transport failure", () => {
   // so this is the shape the real failure arrives in.
   const networkFailure = () => new TypeError("Network request failed");
 
+  // The `ok` variant carries no `message`, and Jest transpiles without
+  // type-checking, so reading it unnarrowed passes the suite and fails tsc.
+  const unreachable = (
+    result: ConnectionTestResult,
+  ): Extract<ConnectionTestResult, { kind: "unreachable" }> => {
+    if (result.kind !== "unreachable") {
+      throw new Error(`expected unreachable, got ${result.kind}`);
+    }
+    return result;
+  };
+
   it("names the host and mentions certificates for an https URL", async () => {
     fetchSpy.mockRejectedValue(networkFailure());
     const result = await testServiceConnection("radarr", {
       url: "https://radarr.example.com:7878",
       apiKey: "k",
     });
-    expect(result.kind).toBe("unreachable");
-    expect(result.message).toContain("radarr.example.com");
-    expect(result.message).toContain("Allow invalid certificates");
+    const { message } = unreachable(result);
+    expect(message).toContain("radarr.example.com");
+    expect(message).toContain("Allow invalid certificates");
     // The mismatched-hostname case is the one a generic "check connectivity"
     // message hides: the server answers, the certificate just names another host.
-    expect(result.message).toContain("hostname mismatch");
+    expect(message).toContain("hostname mismatch");
   });
 
   // #357 caps these at 160 chars because toasts clamp to 4 lines. This one is
@@ -625,10 +637,11 @@ describe("testServiceConnection — TLS hint on transport failure", () => {
       url: "https://a-fairly-long-service-hostname.example.com:7878",
       apiKey: "k",
     });
-    expect(result.message.length).toBeLessThanOrEqual(160);
-    const toasted = `Could not reach Remote URL: ${result.message}`;
+    const { message } = unreachable(result);
+    expect(message.length).toBeLessThanOrEqual(160);
+    const toasted = `Could not reach Remote URL: ${message}`;
     expect(toasted.length).toBeLessThanOrEqual(200);
-    expect(result.message).toContain("hostname mismatch");
+    expect(message).toContain("hostname mismatch");
   });
 
   it("does not mention certificates for an http URL", async () => {
@@ -637,9 +650,9 @@ describe("testServiceConnection — TLS hint on transport failure", () => {
       url: "http://radarr.local:7878",
       apiKey: "k",
     });
-    expect(result.kind).toBe("unreachable");
-    expect(result.message).not.toContain("certificate");
-    expect(result.message).toBe("Network error — check URL and connectivity");
+    const { message } = unreachable(result);
+    expect(message).not.toContain("certificate");
+    expect(message).toBe("Network error — check URL and connectivity");
   });
 
   it("leaves the timeout message alone", async () => {
@@ -650,7 +663,7 @@ describe("testServiceConnection — TLS hint on transport failure", () => {
       url: "https://radarr.example.com:7878",
       apiKey: "k",
     });
-    expect(result.message).toBe("Request timed out");
+    expect(result).toMatchObject({ message: "Request timed out" });
   });
 
   it("keeps the Tdarr port hint, which is more specific than the TLS one", async () => {
@@ -659,9 +672,10 @@ describe("testServiceConnection — TLS hint on transport failure", () => {
       url: "https://tdarr.example.com:8265",
       apiKey: "k",
     });
-    expect(result.message).toContain("8266");
+    const { message } = unreachable(result);
+    expect(message).toContain("8266");
     // The port hint replaces the TLS one rather than concatenating with it.
-    expect(result.message).not.toContain("certificates");
+    expect(message).not.toContain("certificates");
   });
 });
 
