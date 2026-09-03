@@ -113,6 +113,13 @@ describe("summarizeCollections", () => {
   it("is empty-safe", () => {
     expect(summarizeCollections([])).toEqual({ activeCollections: 0, totalScheduled: 0 });
   });
+
+  it("counts an immediate action-7 collection even with no retention window", () => {
+    // CHANGE_QUALITY_PROFILE acts immediately and its window is cleared, so it
+    // must still count toward the scheduled total (#392 review).
+    const collections = [collection({ mediaCount: 8, arrAction: 7, deleteAfterDays: null })];
+    expect(summarizeCollections(collections)).toEqual({ activeCollections: 1, totalScheduled: 8 });
+  });
 });
 
 describe("maintainerrActionLabel", () => {
@@ -139,8 +146,8 @@ describe("maintainerrActionLabel", () => {
     expect(maintainerrActionLabel(6, 14)).toBe("Unmonitors after 14 days");
   });
 
-  it("names the quality-profile change", () => {
-    expect(maintainerrActionLabel(7, 7)).toBe("Changes quality profile after 7 days");
+  it("labels the immediate quality-profile change (Maintainerr clears its window, so null)", () => {
+    expect(maintainerrActionLabel(7, null)).toBe("Changes quality profile immediately");
   });
 
   it("singularizes one day and falls back for an unknown action", () => {
