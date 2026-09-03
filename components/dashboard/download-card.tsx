@@ -46,6 +46,7 @@ import { PosterProgressStrip } from "@/components/dashboard/poster-progress-stri
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import { ViewAllTile } from "@/components/dashboard/view-all-tile";
 import { downloadStatusColor } from "@/lib/download-status";
+import { swarmOrConnected } from "@/lib/torrent-peers";
 
 type StateGroup = "downloading" | "seeding" | "paused" | "errored" | "other";
 
@@ -65,6 +66,9 @@ interface DownloadRow {
   isPaused: boolean;
   group: StateGroup;
   canDrillIn: boolean;
+  // Swarm seeds and leechers. Omitted when the client does not expose them.
+  seeds?: number;
+  peers?: number;
 }
 
 function classifyState(state: TorrentState): StateGroup {
@@ -129,6 +133,8 @@ function qbRow(t: QBTorrent, instanceId: string): DownloadRow {
     isPaused: isTorrentPaused(t.state),
     group: classifyState(t.state),
     canDrillIn: true,
+    seeds: swarmOrConnected(t.num_complete, t.num_seeds),
+    peers: swarmOrConnected(t.num_incomplete, t.num_leechs),
   };
 }
 
@@ -436,6 +442,10 @@ function TorrentTile({
         : row.upSpeed > 0
           ? `↑ ${formatSpeed(row.upSpeed)}`
           : undefined;
+  const swarm =
+    row.seeds !== undefined && row.peers !== undefined
+      ? `${row.seeds}/${row.peers}`
+      : undefined;
 
   return (
     <MediaPosterTile
@@ -455,10 +465,19 @@ function TorrentTile({
         onPress: handleToggle,
       }}
       bottomOverlay={
-        <PosterProgressStrip
-          progress={row.progress}
-          color={downloadStatusColor(row.group)}
-        />
+        <>
+          {swarm ? (
+            <View pointerEvents="none" className="items-end px-1 pb-1">
+              <View className="rounded-md bg-black/60 px-1.5 py-0.5">
+                <Text className="text-white text-xs font-semibold">{swarm}</Text>
+              </View>
+            </View>
+          ) : null}
+          <PosterProgressStrip
+            progress={row.progress}
+            color={downloadStatusColor(row.group)}
+          />
+        </>
       }
       mediaType={posterEntry?.mediaType}
       fallbackIcon={!posterEntry ? Download : undefined}

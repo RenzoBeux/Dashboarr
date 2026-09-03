@@ -114,8 +114,14 @@ export function MediaPosterTile({
           <CornerBadge badge={bottomLeftBadge} position="bottom-left" />
         )}
 
+        {/* box-none: the slot is decorative and sits above bottomLeftBadge, so
+            an overlay taller than the progress strip would otherwise take that
+            button's taps and drill into the item instead of pausing it. */}
         {bottomOverlay && (
-          <View className="absolute bottom-0 left-0 right-0">
+          <View
+            pointerEvents="box-none"
+            className="absolute bottom-0 left-0 right-0"
+          >
             {bottomOverlay}
           </View>
         )}
