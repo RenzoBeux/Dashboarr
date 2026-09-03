@@ -11,7 +11,7 @@ import { SheetHeader } from "@/components/ui/sheet-header";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useTargetInstance } from "@/hooks/use-instance-target";
-import { useAddDefaultsStore, addDefaultsKey } from "@/store/add-defaults-store";
+import { useAddDefaultsStore, addDefaultsKey, validRememberedTags } from "@/store/add-defaults-store";
 import { formatBytes } from "@/lib/utils";
 
 export interface AddMediaSheetCommonState {
@@ -130,7 +130,7 @@ export function AddMediaSheet({
 
   const effectiveQualityProfileId = qualityProfileId ?? lastProfileId ?? defaultProfileId;
   const effectiveRootFolderPath = rootFolderPath ?? lastFolderPath ?? defaultFolderPath;
-  const effectiveTags = selectedTags ?? lastUsed?.tags ?? [];
+  const effectiveTags = selectedTags ?? validRememberedTags(lastUsed?.tags, tags);
   const effectiveSearchOnAdd = searchOnAdd ?? lastUsed?.searchOnAdd ?? true;
 
   const poster = result?.images.find((i) => i.coverType === "poster");
@@ -153,7 +153,9 @@ export function AddMediaSheet({
       rememberLastUsed(lastUsedKey, {
         qualityProfileId: effectiveQualityProfileId,
         rootFolderPath: effectiveRootFolderPath,
-        tags: effectiveTags,
+        // Only rewrite remembered tags once the server list has loaded; adding
+        // before it loads must not wipe them with the filtered-to-empty value.
+        tags: tags ? effectiveTags : lastUsed?.tags,
         searchOnAdd: effectiveSearchOnAdd,
       });
     }

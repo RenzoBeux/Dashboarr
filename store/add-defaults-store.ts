@@ -50,3 +50,17 @@ export const useAddDefaultsStore = create<AddDefaultsStore>((set, get) => ({
     setJSON(STORAGE_KEY, lastUsed);
   },
 }));
+
+/**
+ * Keep only remembered tag IDs that still exist on the server. A tag deleted in
+ * Radarr/Sonarr/Lidarr leaves a stale id that would otherwise be shown as no
+ * chip, submitted invisibly, and re-persisted (#402 review). Mirrors the
+ * quality-profile / root-folder validity fallback in the add sheet.
+ */
+export function validRememberedTags(
+  rememberedTags: number[] | undefined,
+  currentTags: { id: number }[] | undefined,
+): number[] {
+  if (!rememberedTags) return [];
+  return rememberedTags.filter((id) => currentTags?.some((t) => t.id === id));
+}
