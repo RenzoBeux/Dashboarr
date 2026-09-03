@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 
-type BadgeVariant = "default" | "downloading" | "grabbing" | "seeding" | "paused" | "missing" | "wanted" | "warning" | "error" | "success" | "info";
+export type BadgeVariant = "default" | "downloading" | "grabbing" | "seeding" | "paused" | "missing" | "wanted" | "warning" | "error" | "success" | "info";
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   default: "bg-zinc-700",

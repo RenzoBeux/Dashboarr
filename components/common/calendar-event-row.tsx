@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Tv, Film, Check, Download, type LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import {
@@ -32,6 +33,8 @@ export interface CalendarEventRowProps {
   service: "sonarr" | "radarr";
   title: string;
   subtitle: string;
+  /** Optional pill beside the title, e.g. the "New Season" marker (#354). */
+  badge?: { label: string; variant?: BadgeVariant };
   /** Drives the status indicators: green when downloaded, gray when missing. */
   hasFile: boolean;
   /**
@@ -70,6 +73,7 @@ export function CalendarEventRow({
   service,
   title,
   subtitle,
+  badge,
   hasFile,
   downloading = false,
   barColor,
@@ -157,9 +161,19 @@ export function CalendarEventRow({
         </View>
 
         <View className="flex-1">
-          <Text className="text-zinc-50 text-sm font-semibold" numberOfLines={1}>
-            {title}
-          </Text>
+          <View className="flex-row items-center gap-1.5">
+            {/* `shrink` so a long series title truncates instead of pushing
+                the badge out — RN defaults flexShrink to 0. */}
+            <Text
+              className="text-zinc-50 text-sm font-semibold shrink"
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            {badge ? (
+              <Badge label={badge.label} variant={badge.variant} />
+            ) : null}
+          </View>
           <Text className="text-zinc-300 text-xs" numberOfLines={1}>
             {subtitle}
           </Text>

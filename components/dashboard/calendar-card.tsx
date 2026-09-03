@@ -34,6 +34,7 @@ import {
   getQueue as getRadarrQueue,
 } from "@/services/radarr-api";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
+import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
 import { pickRadarrDate } from "@/lib/calendar-agenda";
 import {
@@ -333,12 +334,14 @@ function EpisodeRow({
   downloading: boolean;
   onPress: () => void;
 }) {
+  const badge = isSeasonPremiere(entry) ? PREMIERE_BADGE : undefined;
   return (
     <CalendarEventRow
       images={entry.series.images}
       service="sonarr"
       title={entry.series.title}
       subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
+      badge={badge}
       hasFile={entry.hasFile}
       downloading={downloading}
       barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
