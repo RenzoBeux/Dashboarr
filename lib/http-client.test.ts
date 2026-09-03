@@ -7,6 +7,7 @@ import {
   AuthProxyResponseError,
   HttpError,
   isAbortError,
+  type ConnectionTestResult,
 } from "./http-client";
 
 // jest.mock factories run before module-scope code; the only refs allowed
@@ -578,6 +579,103 @@ describe("testServiceConnection — auth-proxy detection (#239)", () => {
       apiKey: "k",
     });
     expect(result.kind).toBe("ok");
+  });
+});
+
+describe("testServiceConnection — TLS hint on transport failure", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // React Native rejects with a bare TypeError for every pre-HTTP failure —
+  // DNS, refused connection, cleartext block and untrusted certificate alike —
+  // so this is the shape the real failure arrives in.
+  const networkFailure = () => new TypeError("Network request failed");
+
+  // The `ok` variant carries no `message`, and Jest transpiles without
+  // type-checking, so reading it unnarrowed passes the suite and fails tsc.
+  const unreachable = (
+    result: ConnectionTestResult,
+  ): Extract<ConnectionTestResult, { kind: "unreachable" }> => {
+    if (result.kind !== "unreachable") {
+      throw new Error(`expected unreachable, got ${result.kind}`);
+    }
+    return result;
+  };
+
+  it("names the host and mentions certificates for an https URL", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("radarr", {
+      url: "https://radarr.example.com:7878",
+      apiKey: "k",
+    });
+    const { message } = unreachable(result);
+    expect(message).toContain("radarr.example.com");
+    expect(message).toContain("Allow invalid certificates");
+    // The mismatched-hostname case is the one a generic "check connectivity"
+    // message hides: the server answers, the certificate just names another host.
+    expect(message).toContain("hostname mismatch");
+  });
+
+  // #357 caps these at 160 chars because toasts clamp to 4 lines. This one is
+  // additionally prefixed by service-editor before display, so the budget has
+  // to be measured against the string the user actually sees, or the tail —
+  // the part naming the fix — is what gets cut.
+  it("stays inside the toast budget once service-editor prefixes it", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("radarr", {
+      url: "https://a-fairly-long-service-hostname.example.com:7878",
+      apiKey: "k",
+    });
+    const { message } = unreachable(result);
+    expect(message.length).toBeLessThanOrEqual(160);
+    const toasted = `Could not reach Remote URL: ${message}`;
+    expect(toasted.length).toBeLessThanOrEqual(200);
+    expect(message).toContain("hostname mismatch");
+  });
+
+  it("does not mention certificates for an http URL", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("radarr", {
+      url: "http://radarr.local:7878",
+      apiKey: "k",
+    });
+    const { message } = unreachable(result);
+    expect(message).not.toContain("certificate");
+    expect(message).toBe("Network error — check URL and connectivity");
+  });
+
+  it("leaves the timeout message alone", async () => {
+    const abort = new Error("Aborted");
+    abort.name = "AbortError";
+    fetchSpy.mockRejectedValue(abort);
+    const result = await testServiceConnection("radarr", {
+      url: "https://radarr.example.com:7878",
+      apiKey: "k",
+    });
+    expect(result).toMatchObject({ message: "Request timed out" });
+  });
+
+  it("keeps the Tdarr port hint, which is more specific than the TLS one", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("tdarr", {
+      url: "https://tdarr.example.com:8265",
+      apiKey: "k",
+    });
+    const { message } = unreachable(result);
+    expect(message).toContain("8266");
+    // The port hint replaces the TLS one rather than concatenating with it.
+    expect(message).not.toContain("certificates");
   });
 });
 
