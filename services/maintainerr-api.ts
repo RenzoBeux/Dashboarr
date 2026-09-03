@@ -62,6 +62,10 @@ export function parseVersionStatus(raw: MaintainerrVersion | string): Maintainer
   return raw as MaintainerrVersion;
 }
 
+// Maintainerr's ServarrAction.DO_NOTHING (enum index 4): the collection keeps
+// its members but the worker never deletes or unmonitors them.
+const MAINTAINERR_DO_NOTHING = 4;
+
 /** Rolls a collections list into the two headline dashboard numbers. */
 export function summarizeCollections(collections: MaintainerrCollection[]): {
   activeCollections: number;
@@ -71,7 +75,13 @@ export function summarizeCollections(collections: MaintainerrCollection[]): {
   let totalScheduled = 0;
   for (const c of collections) {
     if (c.isActive) activeCollections += 1;
-    totalScheduled += c.mediaCount ?? 0;
+    // Only media the worker will actually act on counts as "scheduled": an
+    // active collection with a deletion window and an action other than
+    // DO_NOTHING. Inactive collections, and those with no window or DO_NOTHING,
+    // keep their members untouched.
+    if (c.isActive && c.deleteAfterDays != null && c.arrAction !== MAINTAINERR_DO_NOTHING) {
+      totalScheduled += c.mediaCount ?? 0;
+    }
   }
   return { activeCollections, totalScheduled };
 }
