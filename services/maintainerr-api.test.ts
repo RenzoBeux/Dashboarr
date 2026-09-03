@@ -94,14 +94,19 @@ describe("parseVersionStatus", () => {
 });
 
 describe("summarizeCollections", () => {
-  const collections = [
-    { isActive: true, mediaCount: 5 },
-    { isActive: false, mediaCount: 3 },
-    { isActive: true, mediaCount: 0 },
-  ] as MaintainerrCollection[];
+  const collection = (over: Partial<MaintainerrCollection>): MaintainerrCollection =>
+    ({ isActive: true, deleteAfterDays: 30, arrAction: 0, mediaCount: 0, ...over } as MaintainerrCollection);
 
-  it("counts active collections and sums scheduled media across all of them", () => {
-    expect(summarizeCollections(collections)).toEqual({ activeCollections: 2, totalScheduled: 8 });
+  it("counts active collections and sums only media that will actually be acted on", () => {
+    const collections = [
+      collection({ mediaCount: 12 }), // active, has window, DELETE -> counts
+      collection({ mediaCount: 5, deleteAfterDays: 90 }), // counts
+      collection({ mediaCount: 3, deleteAfterDays: null }), // no deletion window -> excluded
+      collection({ mediaCount: 7, arrAction: 4 }), // DO_NOTHING -> excluded
+      collection({ isActive: false, mediaCount: 9 }), // inactive -> excluded from scheduled
+    ];
+    // 4 active collections; scheduled = 12 + 5 (the window+action ones only).
+    expect(summarizeCollections(collections)).toEqual({ activeCollections: 4, totalScheduled: 17 });
   });
 
   it("is empty-safe", () => {

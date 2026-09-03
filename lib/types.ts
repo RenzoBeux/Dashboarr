@@ -3467,6 +3467,12 @@ export interface MaintainerrCollection {
   isActive: boolean;
   /** Retention window in days; null means members are never auto-deleted. */
   deleteAfterDays: number | null;
+  /**
+   * Maintainerr's ServarrAction for the collection (numeric enum). 4 is
+   * DO_NOTHING: the collection keeps its members but the worker never acts on
+   * them, so those members are not scheduled for anything.
+   */
+  arrAction: number;
   addDate: string;
   handledMediaAmount: number;
   mediaCount: number;
