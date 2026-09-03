@@ -78,7 +78,7 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
 
   useHideWhenEmpty(slotId, {
     enabled: settings.hideWhenEmpty,
-    isEmpty: sources.length === 0 || display.length === 0,
+    isEmpty: sources.length === 0 || (!isAllErrored && display.length === 0),
     isLoading: isInitialLoading,
   });
 

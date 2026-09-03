@@ -62,7 +62,7 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
 
   useHideWhenEmpty(slotId, {
     enabled: settings.hideWhenEmpty,
-    isEmpty: instances.length === 0 || display.length === 0,
+    isEmpty: instances.length === 0 || (!isAllErrored && display.length === 0),
     isLoading: isInitialLoading,
   });
 
