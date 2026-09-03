@@ -11,6 +11,7 @@ import {
   getHealth,
   getMediaCount,
   getVersion,
+  maintainerrActionLabel,
   maintainerrHealthTone,
   parseVersionStatus,
   summarizeCollections,
@@ -111,6 +112,40 @@ describe("summarizeCollections", () => {
 
   it("is empty-safe", () => {
     expect(summarizeCollections([])).toEqual({ activeCollections: 0, totalScheduled: 0 });
+  });
+});
+
+describe("maintainerrActionLabel", () => {
+  it("is null when there is no retention window", () => {
+    expect(maintainerrActionLabel(0, null)).toBeNull();
+  });
+
+  it("is null for DO_NOTHING even with a window (nothing is promised)", () => {
+    expect(maintainerrActionLabel(4, 30)).toBeNull();
+  });
+
+  it("says deletes for DELETE and DELETE_SHOW_IF_EMPTY", () => {
+    expect(maintainerrActionLabel(0, 90)).toBe("Auto-deletes after 90 days");
+    expect(maintainerrActionLabel(5, 90)).toBe("Auto-deletes after 90 days");
+  });
+
+  it("says unmonitors and deletes for the unmonitor+delete actions", () => {
+    expect(maintainerrActionLabel(1, 30)).toBe("Unmonitors and deletes after 30 days");
+    expect(maintainerrActionLabel(2, 30)).toBe("Unmonitors and deletes after 30 days");
+  });
+
+  it("says unmonitors (no deletion) for UNMONITOR and UNMONITOR_SHOW_IF_EMPTY", () => {
+    expect(maintainerrActionLabel(3, 14)).toBe("Unmonitors after 14 days");
+    expect(maintainerrActionLabel(6, 14)).toBe("Unmonitors after 14 days");
+  });
+
+  it("names the quality-profile change", () => {
+    expect(maintainerrActionLabel(7, 7)).toBe("Changes quality profile after 7 days");
+  });
+
+  it("singularizes one day and falls back for an unknown action", () => {
+    expect(maintainerrActionLabel(0, 1)).toBe("Auto-deletes after 1 day");
+    expect(maintainerrActionLabel(99, 5)).toBe("Handled after 5 days");
   });
 });
 

@@ -34,8 +34,9 @@ export function getCollections(instanceId?: string): Promise<MaintainerrCollecti
 }
 
 /**
- * Total media scheduled across all collections, or within one collection when
- * `collectionId` is given (GET /api/collections/media/count).
+ * Total media across all collections (all collection membership, not just the
+ * scheduled subset that summarizeCollections counts), or within one collection
+ * when `collectionId` is given (GET /api/collections/media/count).
  */
 export function getMediaCount(collectionId?: number, instanceId?: string): Promise<number> {
   return serviceRequest<number>("maintainerr", "/api/collections/media/count", {
@@ -84,6 +85,37 @@ export function summarizeCollections(collections: MaintainerrCollection[]): {
     }
   }
   return { activeCollections, totalScheduled };
+}
+
+/**
+ * Human wording for what a collection does to its members once the retention
+ * window passes. Maintainerr's action is not always deletion (it can unmonitor,
+ * change a quality profile, or do nothing), so the UI must not promise deletion
+ * for every collection (#392 review). Returns null when there is nothing to
+ * say: no window, or the action is DO_NOTHING.
+ */
+export function maintainerrActionLabel(
+  arrAction: number,
+  deleteAfterDays: number | null,
+): string | null {
+  if (deleteAfterDays == null || arrAction === MAINTAINERR_DO_NOTHING) return null;
+  const days = `${deleteAfterDays} day${deleteAfterDays === 1 ? "" : "s"}`;
+  // ServarrAction enum indices, from Maintainerr's contracts.
+  switch (arrAction) {
+    case 0: // DELETE
+    case 5: // DELETE_SHOW_IF_EMPTY
+      return `Auto-deletes after ${days}`;
+    case 1: // UNMONITOR_DELETE_ALL
+    case 2: // UNMONITOR_DELETE_EXISTING
+      return `Unmonitors and deletes after ${days}`;
+    case 3: // UNMONITOR
+    case 6: // UNMONITOR_SHOW_IF_EMPTY
+      return `Unmonitors after ${days}`;
+    case 7: // CHANGE_QUALITY_PROFILE
+      return `Changes quality profile after ${days}`;
+    default:
+      return `Handled after ${days}`;
+  }
 }
 
 /** Maps a health payload to the status tone used by the dashboard dots. */
