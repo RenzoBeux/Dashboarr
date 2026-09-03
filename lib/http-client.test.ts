@@ -581,6 +581,90 @@ describe("testServiceConnection — auth-proxy detection (#239)", () => {
   });
 });
 
+describe("testServiceConnection — TLS hint on transport failure", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // React Native rejects with a bare TypeError for every pre-HTTP failure —
+  // DNS, refused connection, cleartext block and untrusted certificate alike —
+  // so this is the shape the real failure arrives in.
+  const networkFailure = () => new TypeError("Network request failed");
+
+  it("names the host and mentions certificates for an https URL", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("radarr", {
+      url: "https://radarr.example.com:7878",
+      apiKey: "k",
+    });
+    expect(result.kind).toBe("unreachable");
+    expect(result.message).toContain("radarr.example.com");
+    expect(result.message).toContain("Allow invalid certificates");
+    // The mismatched-hostname case is the one a generic "check connectivity"
+    // message hides: the server answers, the certificate just names another host.
+    expect(result.message).toContain("hostname mismatch");
+  });
+
+  // #357 caps these at 160 chars because toasts clamp to 4 lines. This one is
+  // additionally prefixed by service-editor before display, so the budget has
+  // to be measured against the string the user actually sees, or the tail —
+  // the part naming the fix — is what gets cut.
+  it("stays inside the toast budget once service-editor prefixes it", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("radarr", {
+      url: "https://a-fairly-long-service-hostname.example.com:7878",
+      apiKey: "k",
+    });
+    expect(result.message.length).toBeLessThanOrEqual(160);
+    const toasted = `Could not reach Remote URL: ${result.message}`;
+    expect(toasted.length).toBeLessThanOrEqual(200);
+    expect(result.message).toContain("hostname mismatch");
+  });
+
+  it("does not mention certificates for an http URL", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("radarr", {
+      url: "http://radarr.local:7878",
+      apiKey: "k",
+    });
+    expect(result.kind).toBe("unreachable");
+    expect(result.message).not.toContain("certificate");
+    expect(result.message).toBe("Network error — check URL and connectivity");
+  });
+
+  it("leaves the timeout message alone", async () => {
+    const abort = new Error("Aborted");
+    abort.name = "AbortError";
+    fetchSpy.mockRejectedValue(abort);
+    const result = await testServiceConnection("radarr", {
+      url: "https://radarr.example.com:7878",
+      apiKey: "k",
+    });
+    expect(result.message).toBe("Request timed out");
+  });
+
+  it("keeps the Tdarr port hint, which is more specific than the TLS one", async () => {
+    fetchSpy.mockRejectedValue(networkFailure());
+    const result = await testServiceConnection("tdarr", {
+      url: "https://tdarr.example.com:8265",
+      apiKey: "k",
+    });
+    expect(result.message).toContain("8266");
+    // The port hint replaces the TLS one rather than concatenating with it.
+    expect(result.message).not.toContain("certificates");
+  });
+});
+
 describe("testServiceConnection — rTorrent authentication diagnostics (#352)", () => {
   let originalFetch: typeof global.fetch;
   let fetchSpy: jest.Mock;

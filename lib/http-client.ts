@@ -718,6 +718,25 @@ export interface ConnectionTestInput {
   instanceId?: string;
 }
 
+/** Hostname of a probe URL, for naming what we couldn't reach. Null if unparseable. */
+function hostOfUrl(url: string): string | null {
+  try {
+    const host = new URL(normalizeServiceUrl(url)).hostname;
+    return host.length > 0 ? host : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the probe URL resolves to https, i.e. a certificate is involved. */
+function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(normalizeServiceUrl(url)).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export async function testServiceConnection(
   serviceId: ServiceId,
   input: ConnectionTestInput,
@@ -767,6 +786,26 @@ export async function testServiceConnection(
           kind: "unreachable",
           message:
             "Network error — Tdarr's REST API runs on port 8266, not the WebUI's 8265. Check the URL.",
+        };
+      }
+      // An untrusted certificate reaches JS as the same
+      // TypeError("Network request failed") as a refused connection or a DNS
+      // miss — React Native does not surface the underlying
+      // SSLPeerUnverifiedException / NSURLError — so the cause cannot be
+      // proven here. Name the host and mention the certificate on https only,
+      // where it is a plausible cause; on http it would be noise. Same
+      // treatment the backend path already gets in
+      // lib/backend-error.ts (#357), and held to the same 160-char budget:
+      // error toasts clamp to 4 lines (LINE_CLAMP in components/ui/toast.tsx)
+      // and service-editor prefixes this with "Could not reach X URL: ", so a
+      // longer string loses its tail — which is the actionable half.
+      const host = hostOfUrl(baseUrl);
+      if (host && isHttpsUrl(baseUrl)) {
+        return {
+          kind: "unreachable",
+          message:
+            `Can't reach ${host}. Check the URL, or turn on "Allow invalid ` +
+            'certificates" (self-signed, private CA, or hostname mismatch).',
         };
       }
       return { kind: "unreachable", message: "Network error — check URL and connectivity" };
