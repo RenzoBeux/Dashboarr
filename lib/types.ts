@@ -70,8 +70,12 @@ export interface QBTorrent {
   dlspeed: number;
   upspeed: number;
   priority: number;
+  // Connected peers. `num_complete` / `num_incomplete` are the swarm totals a
+  // tracker scraped, and are -1 when none has reported one.
   num_seeds: number;
   num_leechs: number;
+  num_complete: number;
+  num_incomplete: number;
   ratio: number;
   // Per-torrent share limits from /torrents/info, sharing the setShareLimits
   // sentinels: -2 = use global limit, -1 = no limit. seeding_time_limit is in
