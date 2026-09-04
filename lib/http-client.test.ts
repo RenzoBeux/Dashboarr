@@ -171,6 +171,11 @@ describe("serviceRequest — custom header injection", () => {
     return init.headers;
   }
 
+  function getSentUrl(): string {
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    return String(fetchSpy.mock.calls[0][0]);
+  }
+
   it("attaches a per-service custom header on a Radarr request", async () => {
     mockStateRef.current.secrets.radarr.customHeaders = {
       "CF-Access-Client-Id": "id-1",
@@ -228,12 +233,41 @@ describe("serviceRequest — custom header injection", () => {
     expect(getSentHeaders().get("X-Emby-Token")).toBe("jelly-token");
   });
 
-  it("authenticates Emby with X-Emby-Token (same scheme as Jellyfin)", async () => {
+  // X-Emby-Token only reaches Jellyfin's AuthorizationContext when the server's
+  // EnableLegacyAuthorization flag is on (off by default from 12.0), while the
+  // Authorization: MediaBrowser shape is read unconditionally (#399).
+  it("authenticates Jellyfin with an Authorization: MediaBrowser header", async () => {
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentHeaders().get("Authorization")).toBe(
+      'MediaBrowser Token="jelly-token"',
+    );
+  });
+
+  // A custom Authorization header is a reverse proxy's Basic credential;
+  // clobbering it locks the user out before Jellyfin ever sees the request.
+  // Jellyfin discards any non-MediaBrowser scheme rather than falling through,
+  // so the token has to move to the ApiKey query param or 12.0 answers 401.
+  it("falls back to the ApiKey param when a proxy owns Authorization", async () => {
+    mockStateRef.current.secrets.jellyfin.customHeaders = {
+      Authorization: "Basic cHJveHk6cGFzcw==",
+    };
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentHeaders().get("Authorization")).toBe("Basic cHJveHk6cGFzcw==");
+    expect(getSentUrl()).toContain("ApiKey=jelly-token");
+  });
+
+  it("keeps the key out of the URL when it can use the Authorization header", async () => {
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentUrl()).not.toContain("ApiKey");
+  });
+
+  it("authenticates Emby with X-Emby-Token (the header Emby still documents)", async () => {
     mockStateRef.current.secrets.emby.customHeaders = {
       "X-Emby-Token": "spoofed",
     };
     await serviceRequest("emby", "/System/Info/Public");
     expect(getSentHeaders().get("X-Emby-Token")).toBe("emby-token");
+    expect(getSentHeaders().get("Authorization")).toBeNull();
   });
 
   it("never lets a custom header overwrite Basic auth on Glances", async () => {

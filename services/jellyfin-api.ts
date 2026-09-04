@@ -195,17 +195,21 @@ export function getJellyfinImageUrl(
 
   // Jellyfin and Emby differ here: Jellyfin honors fillWidth/fillHeight, Emby
   // only maxWidth/maxHeight. The per-service config supplies the right pair.
+  const config = getMediaServerConfig(serviceId);
   const params = new URLSearchParams({
-    ...getMediaServerConfig(serviceId).imageSizeParams(width, height),
+    ...config.imageSizeParams(width, height),
     quality: "90",
     tag,
   });
-  if (secrets?.apiKey) params.set("api_key", secrets.apiKey);
+  // <Image> can't carry the Authorization header the API calls use, so the key
+  // rides in the query string. Jellyfin gates `api_key` behind
+  // EnableLegacyAuthorization but always reads `ApiKey`. See imageAuthParam.
+  if (secrets?.apiKey) params.set(config.imageAuthParam, secrets.apiKey);
   return `${trimmed}/Items/${encodeURIComponent(itemId)}/Images/${type}?${params.toString()}`;
 }
 
-// expo-image source with a token-stripped cacheKey so rotating the api_key
-// doesn't invalidate every cached poster.
+// expo-image source with a token-stripped cacheKey so rotating the key doesn't
+// invalidate every cached poster.
 export function getJellyfinImageSource(
   item: Parameters<typeof getJellyfinImageUrl>[0],
   type: "Primary" | "Backdrop" | "Thumb" = "Primary",
@@ -216,7 +220,7 @@ export function getJellyfinImageSource(
 ): { uri: string; cacheKey: string } | null {
   const uri = getJellyfinImageUrl(item, type, width, height, instanceId, serviceId);
   if (!uri) return null;
-  const cacheKey = uri.replace(/[?&]api_key=[^&]*/g, "");
+  const cacheKey = uri.replace(/[?&](?:ApiKey|api_key)=[^&]*/g, "");
   return { uri, cacheKey };
 }
 
