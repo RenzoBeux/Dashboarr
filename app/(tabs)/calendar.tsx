@@ -199,7 +199,7 @@ export default function CalendarScreen() {
   // purple in the day list — same indicator as the poster grid and the detail
   // screens (issue #207). Rides the shared ["sonarr"/"radarr", id, "queue"]
   // cache the rest of the app already polls.
-  const downloadingKeys = useArrDownloadingKeys(sonarrInstances, radarrInstances);
+  const queuedKeys = useArrDownloadingKeys(sonarrInstances, radarrInstances);
 
   // Tag each calendar entry with the source instance so navigation can route
   // detail-screen queries to the correct Sonarr/Radarr (ids aren't globally
@@ -272,10 +272,11 @@ export default function CalendarScreen() {
   );
   const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
 
-  // `hasFile` only lives in the calendar payload, which nothing invalidates —
-  // without this an imported item reverts from purple to red until the 60s poll
-  // comes round, instead of turning green (#401).
-  useRefreshOnDownloadComplete(downloadingKeys, calendarKeys);
+  // `hasFile` only lives in the calendar payload, which nothing else
+  // invalidates — without this an imported item reverts from purple to red
+  // until the 60s poll comes round, instead of turning green (#401). The hook
+  // also holds a just-departed item purple until that refresh lands.
+  const downloadingKeys = useRefreshOnDownloadComplete(queuedKeys, calendarKeys);
 
   // Build items map keyed by date
   const { itemsByDate, allItems } = useMemo(() => {
@@ -597,7 +598,7 @@ function SelectedDayList({
   downloadingKeys,
 }: {
   items: CalendarItem[];
-  downloadingKeys: Set<string>;
+  downloadingKeys: ReadonlySet<string | number>;
 }) {
   const router = useRouter();
 

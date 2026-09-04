@@ -579,15 +579,16 @@ function CalendarView({
   const { instanceId } = useInstanceTarget("sonarr");
   const router = useRouter();
 
-  const downloadingEpisodeIds = useMemo(
+  const queuedEpisodeIds = useMemo(
     () => new Set((queue?.records ?? []).map((r) => r.episodeId)),
     [queue],
   );
 
-  // `hasFile` only lives in the calendar payload, which nothing invalidates —
-  // without this an imported episode reverts from purple to red until the 60s
-  // poll comes round, instead of turning green (#401).
-  useRefreshOnDownloadComplete(downloadingEpisodeIds, [
+  // `hasFile` only lives in the calendar payload, which nothing else
+  // invalidates — without this an imported episode reverts from purple to red
+  // until the 60s poll comes round, instead of turning green (#401). The hook
+  // also holds a just-departed episode purple until that refresh lands.
+  const downloadingEpisodeIds = useRefreshOnDownloadComplete(queuedEpisodeIds, [
     sonarrCalendarKey(instanceId),
   ]);
 

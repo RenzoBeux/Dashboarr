@@ -101,7 +101,7 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
   // Download queues per instance: an overdue item that's already grabbing reads
   // purple instead of the neutral "pending" spine — same indicator as the rest
   // of the app (issue #207). Shares the ["sonarr"/"radarr", id, "queue"] cache.
-  const downloadingKeys = useArrDownloadingKeys(
+  const queuedKeys = useArrDownloadingKeys(
     showSonarr ? sonarrInstances : NO_INSTANCES,
     showRadarr ? radarrInstances : NO_INSTANCES,
   );
@@ -110,7 +110,7 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
   // spine falls from purple straight back to red and the item keeps counting as
   // overdue until "wanted" polls 60s later. Refresh it the moment the download
   // completes instead (#401).
-  useRefreshOnDownloadComplete(downloadingKeys, [
+  const downloadingKeys = useRefreshOnDownloadComplete(queuedKeys, [
     ...sonarrInstances.map((inst) => ["sonarr", inst.id, "wanted"]),
     ...radarrInstances.map((inst) => ["radarr", inst.id, "wanted"]),
   ]);

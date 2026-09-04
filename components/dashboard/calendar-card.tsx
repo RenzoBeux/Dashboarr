@@ -106,15 +106,16 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   // Download queues per instance, so a release already grabbing reads purple —
   // same indicator as the poster grid, detail screens and Calendar tab (#207).
   // Shares the ["sonarr"/"radarr", id, "queue"] cache the rest of the app polls.
-  const downloadingKeys = useArrDownloadingKeys(
+  const queuedKeys = useArrDownloadingKeys(
     showSonarr ? sonarrInstances : NO_INSTANCES,
     showRadarr ? radarrInstances : NO_INSTANCES,
   );
 
-  // `hasFile` only lives in the calendar payload, which nothing invalidates —
-  // without this an imported item reverts from purple to red until the 60s poll
-  // comes round, instead of turning green (#401).
-  useRefreshOnDownloadComplete(downloadingKeys, [
+  // `hasFile` only lives in the calendar payload, which nothing else
+  // invalidates — without this an imported item reverts from purple to red
+  // until the 60s poll comes round, instead of turning green (#401). The hook
+  // also holds a just-departed item purple until that refresh lands.
+  const downloadingKeys = useRefreshOnDownloadComplete(queuedKeys, [
     ...sonarrInstances.map((inst) => sonarrCalendarKey(inst.id, settings.daysAhead)),
     ...radarrInstances.map((inst) => radarrCalendarKey(inst.id, settings.daysAhead)),
   ]);
