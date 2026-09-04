@@ -50,10 +50,18 @@ export function useRadarrMovies(instanceId?: string) {
   });
 }
 
-export function useRadarrCalendar(days = 30, instanceId?: string) {
+export const RADARR_CALENDAR_DAYS = 30;
+
+/** See sonarrCalendarKey — same reason, same shape. */
+export const radarrCalendarKey = (
+  instanceId: string | null,
+  days: number = RADARR_CALENDAR_DAYS,
+) => ["radarr", instanceId, "calendar", days] as const;
+
+export function useRadarrCalendar(days = RADARR_CALENDAR_DAYS, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", id, "calendar", days],
+    queryKey: radarrCalendarKey(id, days),
     queryFn: () => getCalendar(getDateOffset(0), getDateOffset(days), {}, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.calendar,
     enabled: enabled && !!id,

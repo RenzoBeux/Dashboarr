@@ -18,7 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
  */
 export function useRefreshOnDownloadComplete(
   downloading: ReadonlySet<string | number>,
-  queryKeys: readonly unknown[][],
+  queryKeys: readonly (readonly unknown[])[],
 ): void {
   const queryClient = useQueryClient();
   const previous = useRef(downloading);
@@ -32,13 +32,15 @@ export function useRefreshOnDownloadComplete(
     previous.current = downloading;
     if (!settled) return;
     for (const queryKey of keys.current) {
-      // `cancelRefetch: false` because several calendar surfaces can be mounted
-      // at once and all observe the same queue: they invalidate overlapping key
-      // prefixes in the same commit, and the default would abort each in-flight
-      // calendar request and start it over. getCalendar forwards no AbortSignal,
-      // so those cancelled requests still run server-side, just discarded. This
-      // way the later invalidations join the fetch already in flight.
-      queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
+      // Deliberately the default `cancelRefetch: true`. A fetch already in
+      // flight was very likely issued *before* the import landed, so joining it
+      // (cancelRefetch: false) returns pre-import data — and its success clears
+      // `isInvalidated`, so nothing refetches afterwards and the row stays red
+      // until the 60s poll, which is the bug this hook exists to fix. Cancelling
+      // and restarting guarantees at least one request begins after departure.
+      // Callers pass the exact keys they observe so this stays one request per
+      // surface rather than a cross-matching stampede.
+      queryClient.invalidateQueries({ queryKey });
     }
   }, [downloading, queryClient]);
 }

@@ -31,3 +31,6 @@ google-services.json
 *-firebase-adminsdk-*.json
 play-service-account.json
 coverage/*
+
+# Local pnpm content-addressable store (created by a store path override).
+.pnpm-store/

@@ -10,6 +10,8 @@ import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
+import { sonarrCalendarKey } from "@/hooks/use-sonarr";
+import { radarrCalendarKey } from "@/hooks/use-radarr";
 import { useArrDownloadingKeys, NO_INSTANCES } from "@/hooks/use-arr-downloading-keys";
 import { useRefreshOnDownloadComplete } from "@/hooks/use-refresh-on-download-complete";
 import { POLLING_INTERVALS } from "@/lib/constants";
@@ -85,7 +87,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const sonarrQueries = useQueries({
     queries: showSonarr
       ? sonarrInstances.map((inst) => ({
-          queryKey: ["sonarr", inst.id, "calendar", settings.daysAhead] as const,
+          queryKey: sonarrCalendarKey(inst.id, settings.daysAhead),
           queryFn: () => getSonarrCalendar(start, end, {}, inst.id),
           refetchInterval: POLLING_INTERVALS.calendar,
         }))
@@ -94,7 +96,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const radarrQueries = useQueries({
     queries: showRadarr
       ? radarrInstances.map((inst) => ({
-          queryKey: ["radarr", inst.id, "calendar", settings.daysAhead] as const,
+          queryKey: radarrCalendarKey(inst.id, settings.daysAhead),
           queryFn: () => getRadarrCalendar(start, end, {}, inst.id),
           refetchInterval: POLLING_INTERVALS.calendar,
         }))
@@ -113,8 +115,8 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   // without this an imported item reverts from purple to red until the 60s poll
   // comes round, instead of turning green (#401).
   useRefreshOnDownloadComplete(downloadingKeys, [
-    ...sonarrInstances.map((inst) => ["sonarr", inst.id, "calendar"]),
-    ...radarrInstances.map((inst) => ["radarr", inst.id, "calendar"]),
+    ...sonarrInstances.map((inst) => sonarrCalendarKey(inst.id, settings.daysAhead)),
+    ...radarrInstances.map((inst) => radarrCalendarKey(inst.id, settings.daysAhead)),
   ]);
 
   // Initial-load gate per kind — see lib/multi-instance-query.ts. The skeleton

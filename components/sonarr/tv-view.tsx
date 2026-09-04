@@ -52,6 +52,7 @@ import {
   useSonarrSeries,
   useSonarrQueue,
   useSonarrCalendar,
+  sonarrCalendarKey,
   useSearchForSeries,
   useSearchForEpisodes,
   useSearchAllMissingEpisodes,
@@ -587,7 +588,7 @@ function CalendarView({
   // without this an imported episode reverts from purple to red until the 60s
   // poll comes round, instead of turning green (#401).
   useRefreshOnDownloadComplete(downloadingEpisodeIds, [
-    ["sonarr", instanceId, "calendar"],
+    sonarrCalendarKey(instanceId),
   ]);
 
   if (isLoading) return <SkeletonCardContent rows={4} />;

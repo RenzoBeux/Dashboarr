@@ -80,10 +80,23 @@ export function useSonarrEpisodeFiles(seriesId: number, instanceId?: string) {
   });
 }
 
-export function useSonarrCalendar(days = 7, instanceId?: string) {
+export const SONARR_CALENDAR_DAYS = 7;
+
+/**
+ * Key builder so a surface can invalidate exactly the calendar entry it
+ * observes. Invalidating the looser ["sonarr", id, "calendar"] prefix instead
+ * cross-matches every other surface's entry, and with several mounted that
+ * turns one completed download into a burst of overlapping calendar requests.
+ */
+export const sonarrCalendarKey = (
+  instanceId: string | null,
+  days: number = SONARR_CALENDAR_DAYS,
+) => ["sonarr", instanceId, "calendar", days] as const;
+
+export function useSonarrCalendar(days = SONARR_CALENDAR_DAYS, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
-    queryKey: ["sonarr", id, "calendar", days],
+    queryKey: sonarrCalendarKey(id, days),
     // Padded ±1 day: episodes are placed on the local day of airDateUtc, so a
     // boundary airing whose UTC day differs from the local day would fall
     // outside the server-side range filter. Consumers re-bound to [0, days].
