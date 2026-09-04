@@ -8,7 +8,6 @@ import {
   getMovies,
   getMovie,
   getCollectionByTmdbId,
-  getQueue,
   getHistory,
   getMovieHistory,
   getAllWantedMissing,
@@ -32,6 +31,8 @@ import type { RadarrMovie } from "@/lib/types";
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { radarrQueueQuery } from "@/lib/arr-queue-query";
+import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
 import { describeGrabFailure } from "@/lib/download-client-error";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
@@ -88,11 +89,9 @@ export function useRadarrCollection(
 export function useRadarrQueue(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
-    queryKey: ["radarr", id, "queue"],
-    // Args must stay identical to radarrArrQueueAdapter.fetchQueue — the
-    // dashboard widget and the queue-issues banner share this cache entry.
-    queryFn: () => getQueue(1, 100, true, id ?? undefined),
-    refetchInterval: POLLING_INTERVALS.queue,
+    // Key, args and interval come from lib/arr-queue-query so every producer of
+    // this shared cache entry requests the same page.
+    ...radarrQueueQuery(id ?? undefined),
     enabled: enabled && !!id,
   });
 }
@@ -475,7 +474,13 @@ export function useGrabRadarrRelease(instanceId?: string) {
       grabRadarrRelease(guid, indexerId, id ?? undefined),
     onSuccess: () => {
       toast("Sent to download client");
-      queryClient.invalidateQueries({ queryKey: ["radarr", id, "queue"] });
+      // Radarr populates /queue on a trailing 5s debounce, so a single
+      // invalidate here always reads a queue without the grab in it — see
+      // lib/post-grab-refresh (#401).
+      const queryKey = ["radarr", id, "queue"] as const;
+      scheduleGrabRecheck(`radarr:${id}:queue`, () =>
+        queryClient.invalidateQueries({ queryKey }),
+      );
     },
     onError: (err) => {
       toastError("Failed to grab release", err, (msg) =>

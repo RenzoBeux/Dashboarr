@@ -12,7 +12,6 @@ import {
   deleteEpisodeFile,
   deleteEpisodeFiles,
   getCalendar,
-  getQueue,
   getHistory,
   getEpisodeHistory,
   searchSeries,
@@ -36,7 +35,9 @@ import {
 import { toast, toastError } from "@/components/ui/toast";
 import type { SonarrSeries } from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { sonarrQueueQuery } from "@/lib/arr-queue-query";
 import { describeGrabFailure } from "@/lib/download-client-error";
+import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
@@ -96,11 +97,9 @@ export function useSonarrCalendar(days = 7, instanceId?: string) {
 export function useSonarrQueue(instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
-    queryKey: ["sonarr", id, "queue"],
-    // Args must stay identical to sonarrArrQueueAdapter.fetchQueue — the
-    // dashboard widget and the queue-issues banner share this cache entry.
-    queryFn: () => getQueue(1, 100, true, true, id ?? undefined),
-    refetchInterval: POLLING_INTERVALS.queue,
+    // Key, args and interval come from lib/arr-queue-query so every producer of
+    // this shared cache entry requests the same page.
+    ...sonarrQueueQuery(id ?? undefined),
     enabled: enabled && !!id,
   });
 }
@@ -611,7 +610,13 @@ export function useGrabSonarrRelease(instanceId?: string) {
       grabSonarrRelease(guid, indexerId, id ?? undefined),
     onSuccess: () => {
       toast("Sent to download client");
-      queryClient.invalidateQueries({ queryKey: ["sonarr", id, "queue"] });
+      // Sonarr populates /queue on a trailing 5s debounce, so a single
+      // invalidate here always reads a queue without the grab in it — see
+      // lib/post-grab-refresh (#401).
+      const queryKey = ["sonarr", id, "queue"] as const;
+      scheduleGrabRecheck(`sonarr:${id}:queue`, () =>
+        queryClient.invalidateQueries({ queryKey }),
+      );
     },
     onError: (err) => {
       toastError("Failed to grab release", err, (msg) =>

@@ -20,14 +20,8 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { ICON, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
-import {
-  getCalendar as getSonarrCalendar,
-  getQueue as getSonarrQueue,
-} from "@/services/sonarr-api";
-import {
-  getCalendar as getRadarrCalendar,
-  getQueue as getRadarrQueue,
-} from "@/services/radarr-api";
+import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
+import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import {
   getCalendarGrid,
   getFetchRange,
@@ -37,6 +31,8 @@ import { resolveWeekStartDow } from "@/lib/week-start";
 import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
 import { useConfigStore } from "@/store/config-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
+import { useArrDownloadingKeys } from "@/hooks/use-arr-downloading-keys";
+import { useRefreshOnDownloadComplete } from "@/hooks/use-refresh-on-download-complete";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
@@ -201,43 +197,9 @@ export default function CalendarScreen() {
 
   // Per-instance download queues, so an episode/movie currently grabbing reads
   // purple in the day list — same indicator as the poster grid and the detail
-  // screens (issue #207). Reuses the shared ["sonarr"/"radarr", id, "queue"]
-  // cache key, so this rides whatever the rest of the app already polls.
-  const sonarrQueueQueries = useQueries({
-    queries: sonarrInstances.map((inst) => ({
-      queryKey: ["sonarr", inst.id, "queue"] as const,
-      queryFn: () => getSonarrQueue(1, 20, true, true, inst.id),
-      refetchInterval: POLLING_INTERVALS.queue,
-    })),
-  });
-  const radarrQueueQueries = useQueries({
-    queries: radarrInstances.map((inst) => ({
-      queryKey: ["radarr", inst.id, "queue"] as const,
-      queryFn: () => getRadarrQueue(1, 20, true, inst.id),
-      refetchInterval: POLLING_INTERVALS.queue,
-    })),
-  });
-
-  // Keyed by `instanceId:episodeId` / `instanceId:movieId` because ids aren't
-  // globally unique across instances.
-  const downloadingKeys = useMemo(() => {
-    const keys = new Set<string>();
-    sonarrQueueQueries.forEach((q, i) => {
-      const instanceId = sonarrInstances[i]?.id;
-      if (!instanceId) return;
-      (q.data?.records ?? []).forEach((r) =>
-        keys.add(`${instanceId}:${r.episodeId}`),
-      );
-    });
-    radarrQueueQueries.forEach((q, i) => {
-      const instanceId = radarrInstances[i]?.id;
-      if (!instanceId) return;
-      (q.data?.records ?? []).forEach((r) =>
-        keys.add(`${instanceId}:${r.movieId}`),
-      );
-    });
-    return keys;
-  }, [sonarrQueueQueries, radarrQueueQueries, sonarrInstances, radarrInstances]);
+  // screens (issue #207). Rides the shared ["sonarr"/"radarr", id, "queue"]
+  // cache the rest of the app already polls.
+  const downloadingKeys = useArrDownloadingKeys(sonarrInstances, radarrInstances);
 
   // Tag each calendar entry with the source instance so navigation can route
   // detail-screen queries to the correct Sonarr/Radarr (ids aren't globally
@@ -277,7 +239,7 @@ export default function CalendarScreen() {
   // Pull-to-refresh invalidates every per-instance calendar slot. Building
   // these key lists from the live instance arrays guarantees we don't miss
   // (or stale-refresh) an instance the user just added or disabled.
-  const refreshKeys = useMemo<unknown[][]>(
+  const calendarKeys = useMemo<unknown[][]>(
     () => [
       ...sonarrInstances.map((inst) => [
         "sonarr",
@@ -298,7 +260,22 @@ export default function CalendarScreen() {
     ],
     [sonarrInstances, radarrInstances, start, end, includeUnmonitored],
   );
+  // The queues drive the purple "downloading" bar, so a manual pull has to
+  // refresh them too — otherwise pulling only updates half the row's state.
+  const refreshKeys = useMemo<unknown[][]>(
+    () => [
+      ...calendarKeys,
+      ...sonarrInstances.map((inst) => ["sonarr", inst.id, "queue"]),
+      ...radarrInstances.map((inst) => ["radarr", inst.id, "queue"]),
+    ],
+    [calendarKeys, sonarrInstances, radarrInstances],
+  );
   const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
+
+  // `hasFile` only lives in the calendar payload, which nothing invalidates —
+  // without this an imported item reverts from purple to red until the 60s poll
+  // comes round, instead of turning green (#401).
+  useRefreshOnDownloadComplete(downloadingKeys, calendarKeys);
 
   // Build items map keyed by date
   const { itemsByDate, allItems } = useMemo(() => {

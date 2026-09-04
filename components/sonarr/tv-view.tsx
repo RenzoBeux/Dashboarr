@@ -67,6 +67,8 @@ import {
   sonarrEpisodeBarKind,
 } from "@/lib/arr-poster-status";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useRefreshOnDownloadComplete } from "@/hooks/use-refresh-on-download-complete";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
@@ -573,12 +575,20 @@ function CalendarView({
 }) {
   const { data: episodes, isLoading, error } = useSonarrCalendar();
   const { data: queue } = useSonarrQueue();
+  const { instanceId } = useInstanceTarget("sonarr");
   const router = useRouter();
 
   const downloadingEpisodeIds = useMemo(
     () => new Set((queue?.records ?? []).map((r) => r.episodeId)),
     [queue],
   );
+
+  // `hasFile` only lives in the calendar payload, which nothing invalidates —
+  // without this an imported episode reverts from purple to red until the 60s
+  // poll comes round, instead of turning green (#401).
+  useRefreshOnDownloadComplete(downloadingEpisodeIds, [
+    ["sonarr", instanceId, "calendar"],
+  ]);
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
   if (error) {

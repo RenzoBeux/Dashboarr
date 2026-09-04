@@ -1,5 +1,4 @@
 import {
-  getQueue,
   getWantedMissing,
   getRadarrPoster,
   removeFromQueue,
@@ -7,6 +6,7 @@ import {
 } from "@/services/radarr-api";
 import type { RadarrQueue, RadarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
+import { fetchRadarrQueue } from "@/lib/arr-queue-query";
 import {
   queueImportBlocked,
   queueIssueMessages,
@@ -26,7 +26,7 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
   wantedQueryKey: (instanceId) => ["radarr", instanceId, "wanted"] as const,
 
   // Same key + args as useRadarrQueue, so the widget shares its cache entry.
-  fetchQueue: (instanceId) => getQueue(1, 100, true, instanceId),
+  fetchQueue: (instanceId) => fetchRadarrQueue(instanceId),
 
   toItems: (data, instanceId) =>
     ((data as RadarrQueue).records ?? []).map((item) => {
