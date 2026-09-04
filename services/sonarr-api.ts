@@ -163,9 +163,13 @@ export function getWantedMissing(
 
 // `includeUnknownSeriesItems` matters for the queue-issues banner (#285): a
 // grab whose series was deleted from the library is exactly the kind that gets
-// stuck, and Sonarr hides those by default. The page size is generous for the
-// same reason — blocked items have no `timeleft` and sort last under the
-// default sort, so a small page would clip them off.
+// stuck, and Sonarr hides those by default. The page size is generous for a
+// related reason: the effective default sort is `timeleft` *descending* (the
+// controller's ascending default only applies to SortDirection.Default, and an
+// omitted direction deserializes to Descending), and TimeleftComparer ranks a
+// missing timeleft highest — so blocked and pending items crowd the front of
+// page 1 and a small page clips the live downloads off the back. Callers must
+// go through lib/arr-queue-query, which owns the shared cache entry's args.
 export function getQueue(
   page = 1,
   pageSize = 100,

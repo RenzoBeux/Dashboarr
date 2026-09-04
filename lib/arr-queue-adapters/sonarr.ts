@@ -1,5 +1,4 @@
 import {
-  getQueue,
   getWantedMissing,
   getSonarrPoster,
   removeFromQueue,
@@ -7,6 +6,7 @@ import {
 } from "@/services/sonarr-api";
 import type { SonarrQueue, SonarrQueueItem, SonarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
+import { fetchSonarrQueue } from "@/lib/arr-queue-query";
 import {
   queueImportBlocked,
   queueIssueMessages,
@@ -38,7 +38,7 @@ export const sonarrArrQueueAdapter: ArrQueueAdapter = {
   wantedQueryKey: (instanceId) => ["sonarr", instanceId, "wanted"] as const,
 
   // Same key + args as useSonarrQueue, so the widget shares its cache entry.
-  fetchQueue: (instanceId) => getQueue(1, 100, true, true, instanceId),
+  fetchQueue: (instanceId) => fetchSonarrQueue(instanceId),
 
   toItems: (data, instanceId) =>
     ((data as SonarrQueue).records ?? []).map((item) => {

@@ -10,6 +10,11 @@ import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
+import {
+  useArrDownloadingKeys,
+  NO_INSTANCES,
+} from "@/hooks/use-arr-downloading-keys";
+import { useRefreshOnDownloadComplete } from "@/hooks/use-refresh-on-download-complete";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   STILL_PENDING_DEFAULT_SETTINGS,
@@ -24,14 +29,8 @@ import {
   getDateOffset,
   localDateKey,
 } from "@/lib/utils";
-import {
-  getWantedMissing as getSonarrWantedMissing,
-  getQueue as getSonarrQueue,
-} from "@/services/sonarr-api";
-import {
-  getAllWantedMissing as getRadarrWantedMissing,
-  getQueue as getRadarrQueue,
-} from "@/services/radarr-api";
+import { getWantedMissing as getSonarrWantedMissing } from "@/services/sonarr-api";
+import { getAllWantedMissing as getRadarrWantedMissing } from "@/services/radarr-api";
 import { radarrPendingTime } from "@/lib/radarr-release-date";
 import { useSearchForMovie } from "@/hooks/use-radarr";
 import { useSearchForEpisodes } from "@/hooks/use-sonarr";
@@ -102,40 +101,19 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
   // Download queues per instance: an overdue item that's already grabbing reads
   // purple instead of the neutral "pending" spine — same indicator as the rest
   // of the app (issue #207). Shares the ["sonarr"/"radarr", id, "queue"] cache.
-  const sonarrQueueQueries = useQueries({
-    queries: showSonarr
-      ? sonarrInstances.map((inst) => ({
-          queryKey: ["sonarr", inst.id, "queue"] as const,
-          queryFn: () => getSonarrQueue(1, 20, true, true, inst.id),
-          refetchInterval: POLLING_INTERVALS.queue,
-        }))
-      : [],
-  });
-  const radarrQueueQueries = useQueries({
-    queries: showRadarr
-      ? radarrInstances.map((inst) => ({
-          queryKey: ["radarr", inst.id, "queue"] as const,
-          queryFn: () => getRadarrQueue(1, 20, true, inst.id),
-          refetchInterval: POLLING_INTERVALS.queue,
-        }))
-      : [],
-  });
+  const queuedKeys = useArrDownloadingKeys(
+    showSonarr ? sonarrInstances : NO_INSTANCES,
+    showRadarr ? radarrInstances : NO_INSTANCES,
+  );
 
-  // Keyed by `instanceId:episodeId` / `instanceId:movieId` (ids aren't unique
-  // across instances).
-  const downloadingKeys = new Set<string>();
-  sonarrQueueQueries.forEach((q, i) => {
-    const instanceId = sonarrInstances[i]?.id;
-    if (!instanceId) return;
-    for (const r of q.data?.records ?? [])
-      downloadingKeys.add(`${instanceId}:${r.episodeId}`);
-  });
-  radarrQueueQueries.forEach((q, i) => {
-    const instanceId = radarrInstances[i]?.id;
-    if (!instanceId) return;
-    for (const r of q.data?.records ?? [])
-      downloadingKeys.add(`${instanceId}:${r.movieId}`);
-  });
+  // Every row here is already overdue, so once a download leaves the queue the
+  // spine falls from purple straight back to red and the item keeps counting as
+  // overdue until "wanted" polls 60s later. Refresh it the moment the download
+  // completes instead (#401).
+  const downloadingKeys = useRefreshOnDownloadComplete(queuedKeys, [
+    ...sonarrInstances.map((inst) => ["sonarr", inst.id, "wanted"]),
+    ...radarrInstances.map((inst) => ["radarr", inst.id, "wanted"]),
+  ]);
 
   // Initial-load gate per kind — see lib/multi-instance-query.ts. The skeleton
   // shows only while we're truly cold across both kinds; a single failing

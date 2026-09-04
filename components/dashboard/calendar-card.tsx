@@ -10,6 +10,10 @@ import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
+import { sonarrCalendarKey } from "@/hooks/use-sonarr";
+import { radarrCalendarKey } from "@/hooks/use-radarr";
+import { useArrDownloadingKeys, NO_INSTANCES } from "@/hooks/use-arr-downloading-keys";
+import { useRefreshOnDownloadComplete } from "@/hooks/use-refresh-on-download-complete";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   CALENDAR_DEFAULT_SETTINGS,
@@ -25,14 +29,8 @@ import {
   localDateKey,
   releaseDateKey,
 } from "@/lib/utils";
-import {
-  getCalendar as getSonarrCalendar,
-  getQueue as getSonarrQueue,
-} from "@/services/sonarr-api";
-import {
-  getCalendar as getRadarrCalendar,
-  getQueue as getRadarrQueue,
-} from "@/services/radarr-api";
+import { getCalendar as getSonarrCalendar } from "@/services/sonarr-api";
+import { getCalendar as getRadarrCalendar } from "@/services/radarr-api";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
 import { CardHeaderLink } from "@/components/dashboard/card-header-link";
@@ -89,7 +87,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const sonarrQueries = useQueries({
     queries: showSonarr
       ? sonarrInstances.map((inst) => ({
-          queryKey: ["sonarr", inst.id, "calendar", settings.daysAhead] as const,
+          queryKey: sonarrCalendarKey(inst.id, settings.daysAhead),
           queryFn: () => getSonarrCalendar(start, end, {}, inst.id),
           refetchInterval: POLLING_INTERVALS.calendar,
         }))
@@ -98,7 +96,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   const radarrQueries = useQueries({
     queries: showRadarr
       ? radarrInstances.map((inst) => ({
-          queryKey: ["radarr", inst.id, "calendar", settings.daysAhead] as const,
+          queryKey: radarrCalendarKey(inst.id, settings.daysAhead),
           queryFn: () => getRadarrCalendar(start, end, {}, inst.id),
           refetchInterval: POLLING_INTERVALS.calendar,
         }))
@@ -108,40 +106,19 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   // Download queues per instance, so a release already grabbing reads purple —
   // same indicator as the poster grid, detail screens and Calendar tab (#207).
   // Shares the ["sonarr"/"radarr", id, "queue"] cache the rest of the app polls.
-  const sonarrQueueQueries = useQueries({
-    queries: showSonarr
-      ? sonarrInstances.map((inst) => ({
-          queryKey: ["sonarr", inst.id, "queue"] as const,
-          queryFn: () => getSonarrQueue(1, 20, true, true, inst.id),
-          refetchInterval: POLLING_INTERVALS.queue,
-        }))
-      : [],
-  });
-  const radarrQueueQueries = useQueries({
-    queries: showRadarr
-      ? radarrInstances.map((inst) => ({
-          queryKey: ["radarr", inst.id, "queue"] as const,
-          queryFn: () => getRadarrQueue(1, 20, true, inst.id),
-          refetchInterval: POLLING_INTERVALS.queue,
-        }))
-      : [],
-  });
+  const queuedKeys = useArrDownloadingKeys(
+    showSonarr ? sonarrInstances : NO_INSTANCES,
+    showRadarr ? radarrInstances : NO_INSTANCES,
+  );
 
-  // Keyed by `instanceId:episodeId` / `instanceId:movieId` (ids aren't unique
-  // across instances).
-  const downloadingKeys = new Set<string>();
-  sonarrQueueQueries.forEach((q, i) => {
-    const instanceId = sonarrInstances[i]?.id;
-    if (!instanceId) return;
-    for (const r of q.data?.records ?? [])
-      downloadingKeys.add(`${instanceId}:${r.episodeId}`);
-  });
-  radarrQueueQueries.forEach((q, i) => {
-    const instanceId = radarrInstances[i]?.id;
-    if (!instanceId) return;
-    for (const r of q.data?.records ?? [])
-      downloadingKeys.add(`${instanceId}:${r.movieId}`);
-  });
+  // `hasFile` only lives in the calendar payload, which nothing else
+  // invalidates — without this an imported item reverts from purple to red
+  // until the 60s poll comes round, instead of turning green (#401). The hook
+  // also holds a just-departed item purple until that refresh lands.
+  const downloadingKeys = useRefreshOnDownloadComplete(queuedKeys, [
+    ...sonarrInstances.map((inst) => sonarrCalendarKey(inst.id, settings.daysAhead)),
+    ...radarrInstances.map((inst) => radarrCalendarKey(inst.id, settings.daysAhead)),
+  ]);
 
   // Initial-load gate per kind — see lib/multi-instance-query.ts. The skeleton
   // shows only while we're truly cold across both kinds; a single failing
