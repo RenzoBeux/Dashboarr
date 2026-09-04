@@ -10,6 +10,30 @@ import {
 } from "@/lib/service-catalog";
 
 /**
+ * Confirms that a credential is stored, in a Text node of our own.
+ *
+ * The masked input cannot be trusted to prove this by itself. On iOS the backing
+ * UITextField intermittently paints neither its dots nor its placeholder while
+ * holding a real value (#149; seen again on iOS 26 in #399, where the reporter
+ * confirmed the field was not empty), so a fully configured service reads as
+ * unconfigured and people go hunting for credentials that were never lost. That
+ * is also the shape of #382. The native paint race is not fixed here, and it is
+ * not reproducible without a device, so this does the one thing that holds
+ * regardless of cause: never let the screen imply the field is empty.
+ *
+ * The count doubles as paste feedback, since a Jellyfin key is 32 characters and
+ * a truncated or whitespace-padded paste shows up as the wrong number.
+ */
+function StoredCredentialHint({ value }: { value: string }) {
+  if (!value) return null;
+  return (
+    <Text className="text-zinc-500 text-xs">
+      {value.length} character{value.length === 1 ? "" : "s"} entered
+    </Text>
+  );
+}
+
+/**
  * The credential form for one instance.
  *
  * Which fields render is decided by the catalog entry, not by a chain of
@@ -80,6 +104,7 @@ export function AuthCard({
             secureTextEntry
             revealable
           />
+          <StoredCredentialHint value={password} />
           {/* The hint used to render only in the apiKey branch below, leaving
               password services with no guidance at all — and those are exactly
               the ones where the right credential is not obvious (Pi-hole wants
@@ -100,6 +125,7 @@ export function AuthCard({
             secureTextEntry
             revealable
           />
+          <StoredCredentialHint value={apiKey} />
           {entry.apiKeyHint ? (
             <Text className="text-zinc-600 text-xs">
               Find it in {entry.apiKeyHint}

@@ -171,6 +171,11 @@ describe("serviceRequest — custom header injection", () => {
     return init.headers;
   }
 
+  function getSentUrl(): string {
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    return String(fetchSpy.mock.calls[0][0]);
+  }
+
   it("attaches a per-service custom header on a Radarr request", async () => {
     mockStateRef.current.secrets.radarr.customHeaders = {
       "CF-Access-Client-Id": "id-1",
@@ -240,13 +245,20 @@ describe("serviceRequest — custom header injection", () => {
 
   // A custom Authorization header is a reverse proxy's Basic credential;
   // clobbering it locks the user out before Jellyfin ever sees the request.
-  it("leaves a custom Authorization header alone on Jellyfin", async () => {
+  // Jellyfin discards any non-MediaBrowser scheme rather than falling through,
+  // so the token has to move to the ApiKey query param or 12.0 answers 401.
+  it("falls back to the ApiKey param when a proxy owns Authorization", async () => {
     mockStateRef.current.secrets.jellyfin.customHeaders = {
       Authorization: "Basic cHJveHk6cGFzcw==",
     };
     await serviceRequest("jellyfin", "/System/Info/Public");
     expect(getSentHeaders().get("Authorization")).toBe("Basic cHJveHk6cGFzcw==");
-    expect(getSentHeaders().get("X-Emby-Token")).toBe("jelly-token");
+    expect(getSentUrl()).toContain("ApiKey=jelly-token");
+  });
+
+  it("keeps the key out of the URL when it can use the Authorization header", async () => {
+    await serviceRequest("jellyfin", "/System/Info/Public");
+    expect(getSentUrl()).not.toContain("ApiKey");
   });
 
   it("authenticates Emby with X-Emby-Token (the header Emby still documents)", async () => {

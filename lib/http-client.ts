@@ -12,7 +12,7 @@ import {
 import type { ServiceId } from "@/lib/constants";
 import type { PiholeAuthResponse } from "@/lib/types";
 import { buildUrl } from "@/lib/url-builder";
-import { setMediaServerAuthHeaders } from "@/lib/media-server-config";
+import { applyMediaServerAuth } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
@@ -350,22 +350,6 @@ export async function serviceRequest<T>(
     );
   }
 
-  // SABnzbd, Jackett and NZBHydra2 auth live in the query string (?apikey=…),
-  // not headers. Merge defaults into the caller-supplied params so service
-  // modules don't have to know about either of those parameters. NZBHydra2's
-  // stats/history endpoints ALSO need the key in their JSON body (they bind
-  // @RequestBody since v7.15.3, which ignores query params) — that copy is
-  // added by services/nzbhydra2-api.ts, and sending both keeps older installs,
-  // which only read the query param, working too.
-  const finalParams =
-    serviceId === "sabnzbd"
-      ? { ...(params ?? {}), apikey: secrets.apiKey ?? "", output: "json" }
-      : serviceId === "jackett" || serviceId === "nzbhydra2"
-        ? { ...(params ?? {}), apikey: secrets.apiKey ?? "" }
-        : params;
-
-  const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
-
   const headers = new Headers(fetchOptions.headers);
 
   // Apply user-supplied custom headers (global + per-instance merged) FIRST so
@@ -374,6 +358,11 @@ export async function serviceRequest<T>(
   // user from accidentally pasting `X-Api-Key` and breaking service auth.
   const customHeaders = store.getMergedHeaders(serviceId, targetId);
   for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+
+  // Query-string auth, collected before the URL is built below. Jellyfin only
+  // lands here when a custom Authorization header already owns the header slot
+  // it would otherwise use.
+  let authParams: Record<string, string> | undefined;
 
   // Inject auth headers based on service type
   if (serviceId === "qbittorrent") {
@@ -404,9 +393,10 @@ export async function serviceRequest<T>(
     }
   } else if (serviceId === "jellyfin" || serviceId === "emby") {
     // Jellyfin gates the Emby-era X-Emby-Token header behind the server's
-    // EnableLegacyAuthorization flag; setMediaServerAuthHeaders sends the
-    // Authorization: MediaBrowser shape that survives it (#399).
-    setMediaServerAuthHeaders(headers, serviceId, secrets.apiKey);
+    // EnableLegacyAuthorization flag; applyMediaServerAuth sends the
+    // Authorization: MediaBrowser shape that survives it, or hands back the
+    // ApiKey query param when a proxy already owns that header (#399).
+    authParams = applyMediaServerAuth(headers, serviceId, secrets.apiKey);
   } else if (serviceId === "tracearr") {
     // Tracearr's public API uses a Bearer token (Authorization: Bearer
     // trr_pub_<token>). Image-proxy URLs are public, so only API calls need it.
@@ -446,6 +436,24 @@ export async function serviceRequest<T>(
       headers.set("X-Api-Key", secrets.apiKey);
     }
   }
+
+  // SABnzbd, Jackett and NZBHydra2 auth live in the query string (?apikey=…),
+  // not headers. Merge defaults into the caller-supplied params so service
+  // modules don't have to know about either of those parameters. NZBHydra2's
+  // stats/history endpoints ALSO need the key in their JSON body (they bind
+  // @RequestBody since v7.15.3, which ignores query params) — that copy is
+  // added by services/nzbhydra2-api.ts, and sending both keeps older installs,
+  // which only read the query param, working too.
+  const finalParams =
+    serviceId === "sabnzbd"
+      ? { ...(params ?? {}), apikey: secrets.apiKey ?? "", output: "json" }
+      : serviceId === "jackett" || serviceId === "nzbhydra2"
+        ? { ...(params ?? {}), apikey: secrets.apiKey ?? "" }
+        : authParams
+          ? { ...(params ?? {}), ...authParams }
+          : params;
+
+  const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
 
   // FormData bodies (SAB addfile upload) must keep fetch's own multipart
   // Content-Type — the boundary parameter is generated per-request and a
@@ -559,15 +567,6 @@ export async function pingService(
   // mode + apikey params. Jackett's apikey also lives in the query string;
   // t=indexers lists configured indexers without querying any tracker, making
   // it the cheapest apikey-validated GET Jackett has.
-  const pingParams: Record<string, string> | undefined =
-    serviceId === "sabnzbd"
-      ? { mode: "version", apikey: secrets.apiKey ?? "", output: "json" }
-      : serviceId === "jackett"
-        ? { t: "indexers", configured: "true", apikey: secrets.apiKey ?? "" }
-        : undefined;
-
-  const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath, pingParams);
-
   const headers = new Headers();
 
   // Same custom-then-auth ordering as serviceRequest so the proxy lets the
@@ -575,11 +574,13 @@ export async function pingService(
   const customHeaders = store.getMergedHeaders(serviceId, targetId);
   for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
 
+  let authParams: Record<string, string> | undefined;
+
   if (serviceId === "plex") {
     if (secrets.apiKey) headers.set("X-Plex-Token", secrets.apiKey);
     headers.set("Accept", "application/json");
   } else if (serviceId === "jellyfin" || serviceId === "emby") {
-    setMediaServerAuthHeaders(headers, serviceId, secrets.apiKey);
+    authParams = applyMediaServerAuth(headers, serviceId, secrets.apiKey);
   } else if (usesHttpAuth(serviceId)) {
     // Same credential rule as serviceRequest — the `&&` this used to require
     // left a token-in-password instance pinged anonymously. No Digest retry
@@ -620,6 +621,21 @@ export async function pingService(
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
+
+  // SAB has no /system endpoint to GET — it advertises version through the
+  // single /api?mode=version handler, so we synthesize the ping URL from the
+  // mode + apikey params. Jackett's apikey also lives in the query string;
+  // t=indexers lists configured indexers without querying any tracker, making
+  // it the cheapest apikey-validated GET Jackett has. authParams carries
+  // Jellyfin's ApiKey fallback when a proxy owns the Authorization header.
+  const pingParams: Record<string, string> | undefined =
+    serviceId === "sabnzbd"
+      ? { mode: "version", apikey: secrets.apiKey ?? "", output: "json" }
+      : serviceId === "jackett"
+        ? { t: "indexers", configured: "true", apikey: secrets.apiKey ?? "" }
+        : authParams;
+
+  const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath, pingParams);
 
   if (useConfigStore.getState().demoMode) return 45;
 
@@ -1090,9 +1106,9 @@ async function runConnectionProbe(
       // needing a user-bound token — /Users/Me returns 400 for server-wide API
       // keys because they lack a user context. /System/Info accepts both API
       // keys and user tokens, so it matches every auth shape this app supports.
-      const url = buildUrl(baseUrl, defaults.apiBasePath, "/System/Info");
       const headers = makeHeaders();
-      setMediaServerAuthHeaders(headers, serviceId, apiKey);
+      const authParams = applyMediaServerAuth(headers, serviceId, apiKey);
+      const url = buildUrl(baseUrl, defaults.apiBasePath, "/System/Info", authParams);
       const res = await fetch(url, { method: "GET", headers, signal });
       if (res.status === 401 || res.status === 403) {
         const name = serviceId === "emby" ? "Emby" : "Jellyfin";

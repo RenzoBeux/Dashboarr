@@ -42,7 +42,8 @@ export function getMediaServerConfig(id: MediaServerId): MediaServerConfig {
 }
 
 /**
- * Apply Jellyfin/Emby credentials to an outgoing request.
+ * Apply Jellyfin/Emby credentials to an outgoing request, returning any query
+ * params the caller must merge into the URL.
  *
  * Jellyfin moved every Emby-era credential shape behind a single server flag,
  * `EnableLegacyAuthorization` (Jellyfin.Server.Implementations/Security/
@@ -52,29 +53,37 @@ export function getMediaServerConfig(id: MediaServerId): MediaServerConfig {
  * (#399). The flag defaults to `true` in 10.11.x but is an admin-facing toggle
  * there, and defaults to `false` on 12.0 (verified on v12.0-rc7).
  *
- * The two shapes that are read unconditionally in every release from v10.8.13
- * through v12.0-rc7 are the `Authorization: MediaBrowser …` header and the
- * `ApiKey` query param, so Jellyfin gets the header as its primary credential.
- * `X-Emby-Token` still goes out for both services: Jellyfin prefers the
- * Authorization header when both are present, and Emby never deprecated it.
+ * Exactly two shapes are read unconditionally in every release from v10.8.13
+ * through v12.0-rc7: the `Authorization: MediaBrowser …` header and the `ApiKey`
+ * query param. Jellyfin gets the header when the slot is free, and falls back to
+ * the query param when it is not, because `GetAuthorizationDictionary` reads the
+ * Authorization header FIRST and `GetAuthorization` returns null for any scheme
+ * that is not `MediaBrowser`. A proxy's `Basic` credential does not just coexist
+ * with the token, it consumes the only header Jellyfin would have read.
+ * Leaving it at `X-Emby-Token` there would 401 on exactly the reverse-proxied
+ * 12.0 setup this is meant to fix.
+ *
+ * The header is preferred over the query param so the key stays out of proxy and
+ * server access logs; the param is the fallback precisely because it is the only
+ * thing left. `X-Emby-Token` still goes out for both services: Jellyfin reads the
+ * Authorization header first when both are present, and Emby never deprecated it.
  *
  * Only `Token` goes into the Authorization header, deliberately. When the key is
  * a *user* access token rather than a server API key, Jellyfin writes any
  * `Device`/`Version` parts back onto that token's device row, which would rename
  * whichever client actually minted it.
- *
- * A caller-supplied Authorization header wins: that's a reverse proxy's Basic
- * credential (Settings -> Network -> Custom Headers), and clobbering it would
- * lock the user out at the proxy before Jellyfin ever sees the request.
  */
-export function setMediaServerAuthHeaders(
+export function applyMediaServerAuth(
   headers: Headers,
   serviceId: MediaServerId,
   apiKey: string | undefined,
-): void {
-  if (!apiKey) return;
+): Record<string, string> | undefined {
+  if (!apiKey) return undefined;
   headers.set("X-Emby-Token", apiKey);
-  if (serviceId === "jellyfin" && !headers.has("Authorization")) {
+  if (serviceId !== "jellyfin") return undefined;
+  if (!headers.has("Authorization")) {
     headers.set("Authorization", `MediaBrowser Token="${apiKey}"`);
+    return undefined;
   }
+  return { ApiKey: apiKey };
 }

@@ -54,7 +54,14 @@ export function buildUrl(
   return url.toString();
 }
 
-function applyAuth(headers: Headers, config: StoredServiceConfig): void {
+/**
+ * Injects credentials, returning any query params the caller must merge in.
+ * Only Jellyfin uses the return value: see lib/media-server-config.ts in the app.
+ */
+function applyAuth(
+  headers: Headers,
+  config: StoredServiceConfig,
+): Record<string, string> | undefined {
   const { id } = config;
   if (id === "qbittorrent") {
     // cookie-based — qbittorrent.ts handles it
@@ -108,13 +115,14 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
   if (id === "jellyfin" || id === "emby") {
     // Jellyfin gates the Emby-era X-Emby-Token header behind the server's
     // EnableLegacyAuthorization flag (off by default from 12.0), so it gets the
-    // Authorization: MediaBrowser shape that every release reads. Emby never
+    // Authorization: MediaBrowser shape that every release reads, or the ApiKey
+    // query param when something else already owns that header. Emby never
     // deprecated the header. Mirrors the app's lib/media-server-config.ts.
     if (config.apiKey) {
       headers.set("X-Emby-Token", config.apiKey);
-      if (id === "jellyfin" && !headers.has("Authorization")) {
-        headers.set("Authorization", `MediaBrowser Token="${config.apiKey}"`);
-      }
+      if (id !== "jellyfin") return undefined;
+      if (headers.has("Authorization")) return { ApiKey: config.apiKey };
+      headers.set("Authorization", `MediaBrowser Token="${config.apiKey}"`);
     }
     return;
   }
@@ -165,13 +173,13 @@ export async function serviceFetch<T>(
         ? { ...(options.params ?? {}), apikey: config.apiKey ?? "" }
         : options.params;
 
-  const url = buildUrl(baseUrl, apiBase, path, finalParams);
-
   const headers = new Headers(options.headers);
-  applyAuth(headers, config);
+  const authParams = applyAuth(headers, config);
   if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }
+
+  const url = buildUrl(baseUrl, apiBase, path, { ...(finalParams ?? {}), ...(authParams ?? {}) });
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT);
@@ -213,9 +221,12 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
       : config.id === "jackett"
         ? { t: "indexers", configured: "true", apikey: config.apiKey ?? "" }
         : undefined;
-  const url = buildUrl(baseUrl, apiBase, SERVICE_PING_PATH[config.id], pingParams);
   const headers = new Headers();
-  applyAuth(headers, config);
+  const authParams = applyAuth(headers, config);
+  const url = buildUrl(baseUrl, apiBase, SERVICE_PING_PATH[config.id], {
+    ...(pingParams ?? {}),
+    ...(authParams ?? {}),
+  });
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
