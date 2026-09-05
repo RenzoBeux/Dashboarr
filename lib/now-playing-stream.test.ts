@@ -21,6 +21,7 @@ jest.mock("expo-secure-store", () => ({
 }));
 
 import {
+  plexPlayDecision,
   plexSessionToStream,
   mediaServerSessionToStream,
   navidromeNowPlayingToStream,
@@ -76,7 +77,22 @@ describe("plexSessionToStream", () => {
       viewOffset: 500,
       Player: { title: "Living Room", platform: "tvOS", state: "paused", local: true, address: "10.0.0.5" },
       Session: { id: "sid", bandwidth: 100, location: "lan" },
-      TranscodeSession: { videoDecision: "transcode", audioDecision: "direct play", progress: 0, speed: 1 },
+      Media: [
+        {
+          selected: true,
+          Part: [
+            {
+              selected: true,
+              decision: "transcode",
+              Stream: [
+                { streamType: 1, selected: true, decision: "transcode" },
+                { streamType: 2, selected: true },
+              ],
+            },
+          ],
+        },
+      ],
+      TranscodeSession: { videoDecision: "transcode", audioDecision: "directplay", progress: 0, speed: 1 },
       User: { id: 1, title: "alice" },
     } as PlexSession;
 
@@ -111,6 +127,181 @@ describe("plexSessionToStream", () => {
     expect(s.progress).toBe(0);
     expect(s.isLocal).toBe(false);
     expect(s.mediaType).toBe("movie");
+  });
+});
+
+// Every fixture below is the shape of a real `/status/sessions` capture, not an
+// invention: a Plex client marks the stream it plays with `selected`, stamps a
+// `decision` on the streams it does NOT play as-is, and omits `decision`
+// entirely on the ones it does. Sources are noted per case.
+function plexSession(over: Partial<PlexSession>): PlexSession {
+  return {
+    sessionKey: "s",
+    ratingKey: "r",
+    type: "movie",
+    title: "Movie",
+    duration: 1000,
+    viewOffset: 0,
+    Player: { title: "TV", platform: "tvOS", state: "playing", local: true, address: "10.0.0.5" },
+    Session: { id: "sid", bandwidth: 100, location: "lan" },
+    User: { id: 1, title: "alice" },
+    ...over,
+  } as PlexSession;
+}
+
+// One Media > Part with the given per-stream decisions. `undefined` means Plex
+// omitted the attribute, i.e. that stream is being played as-is.
+function plexMedia(
+  partDecision: "directplay" | "copy" | "transcode" | undefined,
+  video?: "copy" | "transcode",
+  audio?: "copy" | "transcode",
+  subtitle?: "copy" | "transcode" | "burn",
+) {
+  return [
+    {
+      selected: true,
+      Part: [
+        {
+          selected: true,
+          decision: partDecision,
+          Stream: [
+            { streamType: 1, decision: video },
+            { streamType: 2, selected: true, decision: audio },
+            ...(subtitle ? [{ streamType: 3, selected: true, decision: subtitle }] : []),
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+describe("plexPlayDecision", () => {
+  it("reads a direct play as direct play (no TranscodeSession)", () => {
+    // arcadellama/plex-nowplaying example.xml, session 1: Part decision
+    // "directplay", both Streams with no decision at all.
+    expect(plexPlayDecision(plexSession({ Media: plexMedia("directplay") }))).toBe("direct play");
+  });
+
+  it("reads a direct play as direct play even when a TranscodeSession is attached", () => {
+    // Issue #407. The old code tested `session.TranscodeSession ? "Transcode"`,
+    // so any attached decision session — however stale, complete, or
+    // direct-play — printed Transcode. The streams are the truth.
+    const session = plexSession({
+      Media: plexMedia("directplay"),
+      TranscodeSession: { videoDecision: "directplay", audioDecision: "directplay", complete: true },
+    });
+    expect(plexPlayDecision(session)).toBe("direct play");
+    expect(plexSessionToStream(session, "i").transcoding).toBe(false);
+  });
+
+  it("reads a container remux as copy, not transcode", () => {
+    // drewstinnett/goflex active-sessions.xml: a full TranscodeSession with
+    // videoDecision and audioDecision both "copy" and nothing re-encoding.
+    const session = plexSession({
+      Media: plexMedia("transcode", "copy", "copy"),
+      TranscodeSession: { videoDecision: "copy", audioDecision: "copy", throttled: true },
+    });
+    expect(plexPlayDecision(session)).toBe("copy");
+    expect(plexSessionToStream(session, "i").transcoding).toBe(false);
+  });
+
+  it("reads an audio-only transcode as transcode", () => {
+    // arcadellama example.xml, session 2: video copy, audio eac3 -> aac. The
+    // old code matched videoDecision "copy" first and printed Direct Stream.
+    const session = plexSession({
+      Media: plexMedia("transcode", "copy", "transcode"),
+      TranscodeSession: { videoDecision: "copy", audioDecision: "transcode" },
+    });
+    expect(plexPlayDecision(session)).toBe("transcode");
+    expect(plexSessionToStream(session, "i").transcoding).toBe(true);
+  });
+
+  it("reads a video transcode as transcode", () => {
+    expect(
+      plexPlayDecision(plexSession({ Media: plexMedia("transcode", "transcode", "transcode") })),
+    ).toBe("transcode");
+  });
+
+  it("reads a transcode reported with no TranscodeSession element", () => {
+    // ha-session_base.xml / local-h264-eac3.xml: per-stream decisions present,
+    // no TranscodeSession. The old code reported Direct Play here.
+    expect(plexPlayDecision(plexSession({ Media: plexMedia("transcode", "copy", "transcode") }))).toBe(
+      "transcode",
+    );
+  });
+
+  it("treats a subtitle burn as a transcode", () => {
+    expect(
+      plexPlayDecision(plexSession({ Media: plexMedia("transcode", "copy", "copy", "burn") })),
+    ).toBe("transcode");
+  });
+
+  it("handles a music track whose TranscodeSession has no videoDecision", () => {
+    // arcadellama example.xml, session 3: a Track, audio-only, complete="1".
+    const session = plexSession({
+      type: "track",
+      Media: [
+        {
+          selected: true,
+          Part: [
+            { selected: true, decision: "transcode", Stream: [{ streamType: 2, selected: true, decision: "transcode" }] },
+          ],
+        },
+      ],
+      TranscodeSession: { audioDecision: "transcode", complete: true },
+    });
+    expect(plexPlayDecision(session)).toBe("transcode");
+  });
+
+  it("falls back to TranscodeSession when the server reports no per-stream decisions", () => {
+    // plexcontrol.xml: an older server whose Streams carry no `decision`
+    // attribute at all, so "absent" cannot be read as direct play.
+    const session = plexSession({
+      Media: [
+        {
+          Part: [{ Stream: [{ streamType: 1 }, { streamType: 2, selected: true }, { streamType: 3 }] }],
+        },
+      ],
+      TranscodeSession: { videoDecision: "copy", audioDecision: "transcode", throttled: true },
+    });
+    expect(plexPlayDecision(session)).toBe("transcode");
+  });
+
+  it("returns direct play when neither the Media tree nor a TranscodeSession is present", () => {
+    expect(plexPlayDecision(plexSession({}))).toBe("direct play");
+  });
+
+  it("prefers TranscodeSession on Live TV, where the stream decisions go stale", () => {
+    // Tautulli applies the same override (pmsconnect.py, "Overrides for live
+    // sessions") because Plex leaves Live TV stream decisions behind.
+    const session = plexSession({
+      live: "1",
+      Media: plexMedia("directplay"),
+      TranscodeSession: { videoDecision: "transcode", audioDecision: "transcode" },
+    });
+    expect(plexPlayDecision(session)).toBe("transcode");
+  });
+
+  it("picks the selected Media, Part and audio stream over the first one", () => {
+    const session = plexSession({
+      Media: [
+        { Part: [{ decision: "transcode", Stream: [{ streamType: 2, decision: "transcode" }] }] },
+        {
+          selected: true,
+          Part: [
+            {
+              selected: true,
+              decision: "directplay",
+              Stream: [
+                { streamType: 2, decision: "transcode" },
+                { streamType: 2, selected: true },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(plexPlayDecision(session)).toBe("direct play");
   });
 });
 

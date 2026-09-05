@@ -1579,9 +1579,13 @@ const DEMO_PLEX_LIBRARIES = {
   },
 };
 
+// Three sessions, one per play decision, so demo mode actually exercises all
+// three badges. The Media > Part > Stream tree is what decides: Plex omits a
+// stream's `decision` when it plays it as-is, and a TranscodeSession can be
+// attached to a session that is direct-playing (issue #407).
 const DEMO_PLEX_SESSIONS = {
   MediaContainer: {
-    size: 1,
+    size: 3,
     Metadata: [
       {
         sessionKey: "abc123",
@@ -1595,6 +1599,112 @@ const DEMO_PLEX_SESSIONS = {
         Player: { title: "Apple TV 4K", platform: "tvOS", state: "playing", local: true, address: "192.168.1.45" },
         Session: { id: "sess1", bandwidth: 8000, location: "lan" },
         User: { id: 1, title: "john_smith" },
+        // Direct Play: no stream carries a decision.
+        Media: [
+          {
+            selected: true,
+            container: "mkv",
+            videoResolution: "4k",
+            Part: [
+              {
+                selected: true,
+                decision: "directplay",
+                container: "mkv",
+                Stream: [
+                  { streamType: 1, decision: undefined, location: "direct", codec: "hevc" },
+                  { streamType: 2, selected: true, decision: undefined, location: "direct", codec: "truehd" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        sessionKey: "abc124",
+        ratingKey: "12347",
+        type: "episode",
+        title: "The Big Door Prize",
+        grandparentTitle: "Fallout",
+        parentIndex: 1,
+        index: 5,
+        thumb: "",
+        grandparentThumb: "",
+        duration: 3720000,
+        viewOffset: 900000,
+        Player: { title: "Chrome", platform: "Linux", state: "playing", local: false, address: "203.0.113.9" },
+        Session: { id: "sess2", bandwidth: 4200, location: "wan" },
+        User: { id: 2, title: "sarah" },
+        // Transcode: video is copied, audio is re-encoded. Reads Transcode even
+        // though videoDecision is "copy".
+        Media: [
+          {
+            selected: true,
+            container: "mkv",
+            videoResolution: "1080",
+            Part: [
+              {
+                selected: true,
+                decision: "transcode",
+                container: "mkv",
+                Stream: [
+                  { streamType: 1, decision: "copy", location: "segments-video", codec: "h264" },
+                  { streamType: 2, selected: true, decision: "transcode", location: "segments-audio", codec: "eac3" },
+                ],
+              },
+            ],
+          },
+        ],
+        TranscodeSession: {
+          videoDecision: "copy",
+          audioDecision: "transcode",
+          throttled: true,
+          complete: false,
+          context: "streaming",
+          progress: 41.2,
+          speed: 3.4,
+        },
+      },
+      {
+        sessionKey: "abc125",
+        ratingKey: "12346",
+        type: "movie",
+        title: "Oppenheimer",
+        year: 2023,
+        thumb: "",
+        duration: 11040000,
+        viewOffset: 2208000,
+        Player: { title: "iPhone", platform: "iOS", state: "paused", local: true, address: "192.168.1.72" },
+        Session: { id: "sess3", bandwidth: 6100, location: "lan" },
+        User: { id: 3, title: "mike" },
+        // Direct Stream: a container remux. A full TranscodeSession is attached
+        // while nothing is being re-encoded.
+        Media: [
+          {
+            selected: true,
+            container: "mkv",
+            videoResolution: "1080",
+            Part: [
+              {
+                selected: true,
+                decision: "transcode",
+                container: "mp4",
+                Stream: [
+                  { streamType: 1, decision: "copy", location: "segments-video", codec: "h264" },
+                  { streamType: 2, selected: true, decision: "copy", location: "segments-audio", codec: "aac" },
+                ],
+              },
+            ],
+          },
+        ],
+        TranscodeSession: {
+          videoDecision: "copy",
+          audioDecision: "copy",
+          throttled: false,
+          complete: false,
+          context: "streaming",
+          progress: 20,
+          speed: 1.8,
+        },
       },
     ],
   },
