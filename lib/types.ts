@@ -2000,6 +2000,45 @@ export interface PlexMediaContainer<T> {
   };
 }
 
+// --- Session media tree (/status/sessions only) ---
+//
+// A session's authoritative play decision lives HERE, not on TranscodeSession:
+// Plex stamps a `decision` on each Stream of the selected Media > Part and
+// omits it entirely when that stream is being played as-is. See
+// `plexPlayDecision` in lib/now-playing-stream.ts.
+//
+// These are separate from the library-item `PlexMedia` above because the
+// session flavor carries the Part/Stream tree that flavor never has.
+//
+// The shapes are JSON — services/plex-api.ts sends `Accept: application/json`,
+// so `selected`/`live` are booleans and `streamType` is a number. The extra
+// `number | string` members only absorb XML-shaped payloads from proxies.
+export interface PlexSessionStream {
+  streamType?: number | string; // 1 = video, 2 = audio, 3 = subtitle
+  selected?: boolean | number | string;
+  // Absent means this stream is direct-played. "burn" is subtitle burn-in.
+  decision?: "copy" | "transcode" | "burn";
+  // "direct" | "segments-video" | … — delivery shape only. NOT a play decision:
+  // a transcoded stream can still be location="direct".
+  location?: string;
+  codec?: string;
+  displayTitle?: string;
+}
+
+export interface PlexSessionPart {
+  selected?: boolean | number | string;
+  decision?: "directplay" | "copy" | "transcode";
+  container?: string;
+  Stream?: PlexSessionStream[];
+}
+
+export interface PlexSessionMedia {
+  selected?: boolean | number | string;
+  container?: string;
+  videoResolution?: string;
+  Part?: PlexSessionPart[];
+}
+
 export interface PlexSession {
   sessionKey: string;
   ratingKey: string;
@@ -2027,11 +2066,30 @@ export interface PlexSession {
     bandwidth: number;
     location: "lan" | "wan";
   };
+  Media?: PlexSessionMedia[];
+  // Live TV / DVR session. Plex leaves the per-Stream decisions stale on these,
+  // so the decision has to come off TranscodeSession instead (Tautulli applies
+  // the same override — plexpy/pmsconnect.py, "Overrides for live sessions").
+  live?: boolean | number | string;
+  // Present whenever the client opened a transcode decision session — which is
+  // NOT the same as transcoding: a container remux carries a full
+  // TranscodeSession with videoDecision/audioDecision both "copy". Never test
+  // for its mere presence.
+  //
+  // Every field is optional: a music track's TranscodeSession has no
+  // videoDecision at all. And the spelling is Plex's own "directplay", one
+  // word — "direct play" with a space is TAUTULLI's vocabulary, which Tautulli
+  // rewrites itself (pmsconnect.py: `.replace('directplay', 'direct play')`),
+  // so it must never be compared against raw Plex data.
   TranscodeSession?: {
-    videoDecision: "direct play" | "copy" | "transcode";
-    audioDecision: "direct play" | "copy" | "transcode";
-    progress: number;
-    speed: number;
+    videoDecision?: "directplay" | "copy" | "transcode";
+    audioDecision?: "directplay" | "copy" | "transcode";
+    subtitleDecision?: "directplay" | "copy" | "transcode" | "burn";
+    throttled?: boolean | number | string;
+    complete?: boolean | number | string;
+    context?: string;
+    progress?: number;
+    speed?: number;
   };
   User: {
     id: number;

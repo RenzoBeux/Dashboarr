@@ -51,6 +51,7 @@ import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
+import { plexPlayDecision } from "@/lib/now-playing-stream";
 import type { PlexSession, PlexMediaItem, PlexLibrary } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 
@@ -240,14 +241,13 @@ function SessionCard({ session }: { session: PlexSession }) {
     120,
   );
 
+  // Decision comes from the shared helper, never from TranscodeSession's
+  // presence — see plexPlayDecision (issue #407). Color is derived from the
+  // decision, not from the label text, so rewording the label can't silently
+  // turn every badge amber.
+  const decision = plexPlayDecision(session);
   const transcodeLabel =
-    session.TranscodeSession?.videoDecision === "direct play"
-      ? "Direct Play"
-      : session.TranscodeSession?.videoDecision === "copy"
-        ? "Direct Stream"
-        : session.TranscodeSession
-          ? "Transcode"
-          : "Direct Play";
+    decision === "transcode" ? "Transcode" : decision === "copy" ? "Direct Stream" : "Direct Play";
 
   return (
     <Card className="flex-row gap-3">
@@ -274,7 +274,7 @@ function SessionCard({ session }: { session: PlexSession }) {
         </View>
         <ProgressBar progress={progress} className="mb-1.5" />
         <View className="flex-row items-center gap-2">
-          <Badge label={transcodeLabel} variant={transcodeLabel === "Direct Play" ? "success" : "warning"} />
+          <Badge label={transcodeLabel} variant={decision === "direct play" ? "success" : "warning"} />
         </View>
         <Text className="text-zinc-500 text-xs mt-1">
           {session.User.title} · {session.Player.title} · {session.Player.platform}
