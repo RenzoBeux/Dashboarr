@@ -518,7 +518,7 @@
         <p>
           Dashboarr stores exactly three credential fields per instance (API key, username, password)
           plus optional custom headers. The editor shows one of two shapes:
-          <strong>Username and Password</strong> for five services, <strong>API Key</strong> for
+          <strong>Username and Password</strong> for seven services, <strong>API Key</strong> for
           everything else. Plex adds a "Connect with Plex" button on top of the API Key field.
         </p>
         <p>
@@ -560,6 +560,7 @@
               <tr><td><strong>Autobrr</strong></td><td>7474</td><td>API key</td><td>Create the key under Settings &rarr; API keys in autobrr. Test Connection validates it against the release stats endpoint, because autobrr's health endpoint answers OK even with a wrong key.</td></tr>
               <tr><td><strong>Cleanuparr</strong></td><td>11011</td><td>API key</td><td>Find the key in the Cleanuparr UI under Account Settings. The same key unlocks stats, the events feed and manual job triggers. If you set a BASE_PATH, include it in the URL field.</td></tr>
               <tr><td><strong>Pi-hole</strong></td><td>80</td><td>Password</td><td><strong>Pi-hole v6 or newer only</strong> &mdash; v5&rsquo;s <code>/admin/api.php</code> was removed upstream and Dashboarr says so if you point it at one. Use the <strong>web server root</strong> (<code>http://pi.hole</code>), never the <code>/admin</code> page, or every call 404s. Create an <strong>application password</strong> under Settings &rarr; Web interface / API and use that rather than your web password: it is the only credential that works when 2FA is on, and creating one logs you out of the web UI. Pi-hole allows 16 API sessions at once, so Dashboarr keeps a single session per instance and reuses it.</td></tr>
+              <tr><td><strong>Maintainerr</strong></td><td>6246</td><td>User + password (optional)</td><td>Maintainerr has no authentication of its own, so on a trusted LAN just the URL is enough. If you put it behind a reverse proxy that adds HTTP Basic or Digest auth, enter those credentials in the username and password fields. If you set a BASE_PATH on Maintainerr, include it in the URL.</td></tr>
             </tbody>
           </table>
         </div>
@@ -733,10 +734,11 @@
           chevrons to reorder, the red X to unpin, and tap a pinned tab's small icon chip to change
           which icon represents it in the bar.
         </p>
-        <p>The twenty-two pinnable tabs are:</p>
+        <p>The twenty-three pinnable tabs are:</p>
         <p style="color:var(--muted)">
           Downloads, Calendar, Services, Movies, TV, Library, Music, Books, Requests, Activity, Indexers,
-          Plex, Jellyfin, Emby, Navidrome, Glances, Bazarr, unRAID, Tdarr, Autobrr, Cleanuparr, Pi-hole.
+          Plex, Jellyfin, Emby, Navidrome, Glances, Bazarr, unRAID, Tdarr, Autobrr, Cleanuparr, Pi-hole,
+          Maintainerr.
         </p>
         <p>
           A tab becomes pickable when the workspace has at least one <strong>attached</strong> instance
@@ -774,6 +776,7 @@
           <li><strong>Cleanuparr</strong>: strike/removal/cleanup stats over a selectable 24h/7d/30d window, scheduled jobs with run-now buttons, health of its connected download clients and *arr instances, and a filterable event feed.</li>
           <li><strong>Pi-hole</strong>: blocking on/off with timed presets (1&nbsp;minute through &ldquo;until tomorrow&rdquo;, plus a custom duration) and a live countdown, a one-tap Gravity update, 24h query stats with a blocked/allowed graph, top blocked and permitted domains and top clients, a live query log with domain and client filters, and local CNAME records you can add and delete.</li>
           <li><strong>Bazarr</strong>: Movies, Episodes, History, with a per-item search button for missing subtitles.</li>
+          <li><strong>Maintainerr</strong>: an Overview with the scheduled-media and active-collection counts, plus a banner when Maintainerr&rsquo;s database is unreachable, and a Collections list showing each collection&rsquo;s media count and what its rule does to those items (auto-delete, unmonitor, change quality profile, or nothing) with an icon matching the action.</li>
           <li><strong>Services</strong>: a two-column grid of your enabled, attached services with a status dot each. Long-press a tile to drag-reorder, and the order saves per dashboard. When a tile is not green the reason is printed under its name rather than leaving a silent red dot.</li>
         </ul>
 
@@ -1133,7 +1136,7 @@
           <li><strong>URLs need a scheme and must be present.</strong> <code>"http://…"</code> or <code>"https://…"</code>, or <code>""</code> for unset. <code>"192.168.1.10:8080"</code> is rejected, and omitting the key entirely is rejected too, so write <code>"remoteUrl": ""</code> rather than leaving it out.</li>
           <li><strong><code>id</code> must be unique across every service</strong>, not just within one kind. It is any string you choose; it only has to match between <code>services</code> and <code>secrets</code>. A duplicate rejects the file.</li>
           <li><strong>A <code>secrets</code> key matching no instance <code>id</code> is dropped without an error</strong>, and you get a service that loads but cannot authenticate. If a service is unauthorised after import, check that spelling first.</li>
-          <li><strong>Service keys must match exactly:</strong> <code>qbittorrent</code>, <code>rtorrent</code>, <code>transmission</code>, <code>deluge</code>, <code>sabnzbd</code>, <code>nzbget</code>, <code>radarr</code>, <code>sonarr</code>, <code>lidarr</code>, <code>bindery</code>, <code>overseerr</code> (Seerr), <code>tautulli</code>, <code>tracearr</code>, <code>jellystat</code>, <code>prowlarr</code>, <code>jackett</code>, <code>nzbhydra2</code>, <code>plex</code>, <code>jellyfin</code>, <code>emby</code>, <code>navidrome</code>, <code>glances</code>, <code>bazarr</code>, <code>unraid</code>, <code>tdarr</code>, <code>autobrr</code>, <code>cleanuparr</code>, <code>pihole</code>. A misspelled key is ignored silently, so the service simply will not appear.</li>
+          <li><strong>Service keys must match exactly:</strong> <code>qbittorrent</code>, <code>rtorrent</code>, <code>transmission</code>, <code>deluge</code>, <code>sabnzbd</code>, <code>nzbget</code>, <code>radarr</code>, <code>sonarr</code>, <code>lidarr</code>, <code>bindery</code>, <code>overseerr</code> (Seerr), <code>tautulli</code>, <code>tracearr</code>, <code>jellystat</code>, <code>prowlarr</code>, <code>jackett</code>, <code>nzbhydra2</code>, <code>plex</code>, <code>jellyfin</code>, <code>emby</code>, <code>navidrome</code>, <code>glances</code>, <code>bazarr</code>, <code>unraid</code>, <code>tdarr</code>, <code>autobrr</code>, <code>cleanuparr</code>, <code>pihole</code>, <code>maintainerr</code>. A misspelled key is ignored silently, so the service simply will not appear.</li>
         </ul>
         <div class="note warn">
           <strong>An unencrypted config is a plaintext credential file.</strong> It holds your API

@@ -35,6 +35,7 @@ export const SERVICE_IDS = [
   "cleanuparr",
   "pihole",
   "tdarr",
+  "maintainerr",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -302,6 +303,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   // Pi-hole v6's REST API, served by FTL itself.
   pihole: "/api",
   tdarr: "/api/v2",
+  maintainerr: "",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -367,6 +369,7 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // backend never needs to: it only asks whether the host is up.
   pihole: "/info/login",
   tdarr: "/status",
+  maintainerr: "/api/health/live",
 };
 
 // Notification category labels sent to the device as `data.type`

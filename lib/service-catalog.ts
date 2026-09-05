@@ -277,6 +277,15 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     // every active session, so it belongs before configuring, not after.
     apiKeyHint: "Settings > Web interface / API > Configure app password",
   },
+  maintainerr: {
+    category: "requests",
+    tagline: "Plex library maintenance",
+    keywords: ["cleanup", "plex", "collections", "rules", "delete", "curator", "arr"],
+    // Maintainerr's own API is unauthenticated; the username/password fields are
+    // for an optional reverse proxy in front of it (Basic, upgrading to Digest),
+    // so they can be left blank on a trusted LAN.
+    authShape: "userPass",
+  },
 };
 
 /** Display order of the category sections on the browse screen. */

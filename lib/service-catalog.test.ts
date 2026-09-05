@@ -38,8 +38,12 @@ const LEGACY_USES_PASSWORD_ONLY = new Set<ServiceId>(["deluge"]);
  *   navidrome - server/subsonic/middlewares.go:validateCredentials accepts only
  *   p / t+s / jwt, and GetOpenSubsonicExtensions does not advertise the
  *   OpenSubsonic apiKey extension. There is no API key to store.
+ *
+ *   maintainerr - its own API is unauthenticated (it expects reverse-proxy
+ *   protection), so the username/password are optional HTTP Basic/Digest creds
+ *   for that proxy. Like Glances it is userPass AND httpAuth.
  */
-const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome"]);
+const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome", "maintainerr"]);
 
 /**
  * Post-catalog kinds whose credential is a bare password with no username.
@@ -162,7 +166,7 @@ describe("auth shapes", () => {
 
     expect(userPass).toEqual(ALL_USER_PASS);
     expect(httpAuth).toEqual(
-      new Set<ServiceId>(["rtorrent", "transmission", "nzbget", "glances"]),
+      new Set<ServiceId>(["rtorrent", "transmission", "nzbget", "glances", "maintainerr"]),
     );
     expect(userPass).not.toEqual(httpAuth);
     // The exact services that make them differ.

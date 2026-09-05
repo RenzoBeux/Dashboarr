@@ -33,6 +33,12 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
 };
 
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
+  // Maintainerr's official mark (MIT, jorenn92/Maintainerr
+  // apps/ui/public/maintainerr-logo.png). Upstream's only vector for it is a
+  // Fabric.js export that wraps a single 980x992 base64 PNG in an <image> tag
+  // (69 KB, which react-native-svg-transformer would inline into the bundle), so
+  // the raster decoded from it and downscaled to 256px is the smaller asset.
+  maintainerr: require("@/assets/services/maintainerr.png"),
   // Official ruTorrent mark (the rtorrent/ruTorrent stack has no public vector).
   rtorrent: require("@/assets/services/rtorrent.png"),
   // Official Deluge droplet (GPL-3.0, deluge-torrent/deluge

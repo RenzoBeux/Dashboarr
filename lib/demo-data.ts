@@ -3056,6 +3056,65 @@ const DEMO_PIHOLE_VERSION = {
   },
 };
 
+const DEMO_MAINTAINERR_HEALTH = {
+  status: "ok",
+  uptimeSeconds: 486_000,
+  database: "ok",
+  timestamp: "2026-09-02T12:00:00.000Z",
+};
+
+const DEMO_MAINTAINERR_VERSION = {
+  status: 1,
+  version: "2.19.0",
+  commitTag: "a1b2c3d",
+  updateAvailable: false,
+};
+
+const DEMO_MAINTAINERR_COLLECTIONS = [
+  {
+    id: 1,
+    title: "Watched movies (90 days)",
+    description: "",
+    libraryId: "1",
+    type: "movie",
+    isActive: true,
+    deleteAfterDays: 90,
+    arrAction: 0,
+    addDate: "2026-06-01T00:00:00.000Z",
+    handledMediaAmount: 34,
+    mediaCount: 12,
+    media: [],
+  },
+  {
+    id: 2,
+    title: "Stale TV shows",
+    description: "",
+    libraryId: "2",
+    type: "show",
+    isActive: true,
+    deleteAfterDays: 30,
+    arrAction: 0,
+    addDate: "2026-06-15T00:00:00.000Z",
+    handledMediaAmount: 8,
+    mediaCount: 5,
+    media: [],
+  },
+  {
+    id: 3,
+    title: "Curated 4K keepers",
+    description: "",
+    libraryId: "1",
+    type: "movie",
+    isActive: false,
+    deleteAfterDays: null,
+    arrAction: 0,
+    addDate: "2026-05-01T00:00:00.000Z",
+    handledMediaAmount: 0,
+    mediaCount: 3,
+    media: [],
+  },
+];
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -3535,6 +3594,15 @@ export function getDemoResponse(
           totalCount: filtered.length,
           totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
         };
+      }
+      return undefined;
+    }
+    case "maintainerr": {
+      if (normalized === "/api/health") return DEMO_MAINTAINERR_HEALTH;
+      if (normalized === "/api/app/status") return DEMO_MAINTAINERR_VERSION;
+      if (normalized === "/api/collections") return DEMO_MAINTAINERR_COLLECTIONS;
+      if (normalized === "/api/collections/media/count") {
+        return DEMO_MAINTAINERR_COLLECTIONS.reduce((sum, c) => sum + c.mediaCount, 0);
       }
       return undefined;
     }

@@ -3432,3 +3432,68 @@ export interface TdarrFileItem {
   newVsOldRatio?: number;
   createdAt: number; // epoch ms
 }
+
+// --- Maintainerr Types ---
+// Maintainerr (github.com/jorenn92/Maintainerr) curates Plex libraries: rules
+// build collections of media, and each collection deletes its members
+// `deleteAfterDays` after they were added. Its own API is unauthenticated (it
+// expects reverse-proxy protection), so Dashboarr models it as userPass +
+// httpAuth with optional Basic/Digest credentials. Shapes mirror the upstream
+// @maintainerr/contracts package and the collection entities.
+
+/** GET /api/health */
+export interface MaintainerrHealth {
+  status: "ok" | "degraded";
+  uptimeSeconds: number;
+  database: "ok" | "unreachable";
+  timestamp: string;
+}
+
+/**
+ * GET /api/app/status. Upstream returns this JSON.stringify'd with a text/html
+ * content type, so it arrives as a single-encoded JSON string (fetched with
+ * allowTextBody); parseVersionStatus() parses it back to this shape.
+ */
+export interface MaintainerrVersion {
+  status: 1 | 0;
+  version: string;
+  commitTag: string;
+  updateAvailable: boolean;
+}
+
+/** One entry from GET /api/collections (augmented with a media preview + mediaCount). */
+export interface MaintainerrCollection {
+  id: number;
+  title: string;
+  description?: string;
+  libraryId: string;
+  /** Plex media type of the collection, e.g. "movie" or "show". */
+  type: string;
+  isActive: boolean;
+  /** Retention window in days; null means members are never auto-deleted. */
+  deleteAfterDays: number | null;
+  /**
+   * Maintainerr's ServarrAction for the collection (numeric enum). 4 is
+   * DO_NOTHING: the collection keeps its members but the worker never acts on
+   * them, so those members are not scheduled for anything.
+   */
+  arrAction: number;
+  addDate: string;
+  handledMediaAmount: number;
+  mediaCount: number;
+  media: MaintainerrCollectionMedia[];
+}
+
+/** A member of a collection (GET /api/collections/media/:id/content/:page). */
+export interface MaintainerrCollectionMedia {
+  id: number;
+  collectionId: number;
+  mediaServerId: string;
+  tmdbId?: number;
+  tvdbId?: number;
+  /** When the item entered the collection; deletion is addDate + deleteAfterDays. */
+  addDate: string;
+  image_path?: string;
+  sizeBytes: number | null;
+  isManual: boolean;
+}
