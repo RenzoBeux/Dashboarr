@@ -25,5 +25,37 @@ describe("redirectSystemPath", () => {
     expect(
       redirectSystemPath({ path: "dashboarr://downloads?client=deluge", initial: true }),
     ).toBe("dashboarr://downloads?client=deluge");
+    expect(redirectSystemPath({ path: "dashboarr:///calendar", initial: true })).toBe(
+      "dashboarr:///calendar",
+    );
+  });
+
+  // Series/movie details live inside several tab stacks (#330); an OS link
+  // has no tab context, so it is pinned to the always-present Dashboard stack.
+  // The Android calendar widget bakes these links in as `scheme:///path`.
+  describe("content deep links land in the Dashboard stack", () => {
+    it.each([
+      ["/series/42?instanceId=s1", "/(tabs)/(dashboard)/series/42?instanceId=s1"],
+      ["dashboarr:///series/42?instanceId=s1", "/(tabs)/(dashboard)/series/42?instanceId=s1"],
+      ["dashboarr://movie/7", "/(tabs)/(dashboard)/movie/7"],
+      ["dashboarr-dev:///movie/7?instanceId=x", "/(tabs)/(dashboard)/movie/7?instanceId=x"],
+    ])("%s -> %s", (path, expected) => {
+      expect(redirectSystemPath({ path, initial: true })).toBe(expected);
+      expect(redirectSystemPath({ path, initial: false })).toBe(expected);
+    });
+
+    it("leaves an already qualified path alone", () => {
+      const qualified = "/(tabs)/(dashboard)/series/1";
+      expect(redirectSystemPath({ path: qualified, initial: true })).toBe(qualified);
+    });
+
+    it("only matches the series and movie families", () => {
+      expect(redirectSystemPath({ path: "/series-search", initial: true })).toBe(
+        "/series-search",
+      );
+      expect(redirectSystemPath({ path: "dashboarr:///movies", initial: true })).toBe(
+        "dashboarr:///movies",
+      );
+    });
   });
 });
