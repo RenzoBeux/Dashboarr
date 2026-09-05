@@ -1,11 +1,24 @@
 // Mock the http client entirely — maintainerr-api routes every call through
 // serviceRequest, and mocking the module here also stops the config-store /
-// AsyncStorage import chain from loading in the test environment.
-jest.mock("@/lib/http-client", () => ({
-  serviceRequest: jest.fn(),
-}));
+// AsyncStorage import chain from loading in the test environment. HttpError is
+// re-exported too because getHealth branches on `err instanceof HttpError`. The
+// real-transport tests (maintainerr-api.transport.test.ts) exercise the actual
+// wire format that this suite deliberately mocks past.
+jest.mock("@/lib/http-client", () => {
+  class HttpError extends Error {
+    status: number;
+    body?: unknown;
+    constructor(status: number, statusText: string, url: string, body?: unknown) {
+      super(`HTTP ${status}`);
+      this.name = "HttpError";
+      this.status = status;
+      this.body = body;
+    }
+  }
+  return { serviceRequest: jest.fn(), HttpError };
+});
 
-import { serviceRequest } from "@/lib/http-client";
+import { serviceRequest, HttpError } from "@/lib/http-client";
 import {
   getCollections,
   getHealth,
@@ -37,23 +50,53 @@ describe("request routing", () => {
   });
 
   it("getMediaCount omits the collectionId param for the all-collections total", async () => {
+    mockRequest.mockResolvedValue(0);
     await getMediaCount();
     expect(mockRequest).toHaveBeenCalledWith("maintainerr", "/api/collections/media/count", {
       params: undefined,
       instanceId: undefined,
+      allowTextBody: true,
     });
   });
 
   it("getMediaCount passes collectionId when scoped to one collection", async () => {
+    mockRequest.mockResolvedValue(0);
     await getMediaCount(7, "inst-1");
     expect(mockRequest).toHaveBeenCalledWith("maintainerr", "/api/collections/media/count", {
       params: { collectionId: 7 },
       instanceId: "inst-1",
+      allowTextBody: true,
     });
   });
 });
 
-describe("getVersion (double-encoded status)", () => {
+describe("getMediaCount coercion", () => {
+  it("coerces a string count (the text/html transport shape) to a number", async () => {
+    mockRequest.mockResolvedValue("42");
+    await expect(getMediaCount()).resolves.toBe(42);
+  });
+
+  it("passes a numeric count straight through", async () => {
+    mockRequest.mockResolvedValue(7);
+    await expect(getMediaCount(3)).resolves.toBe(7);
+  });
+});
+
+describe("getHealth degraded (503) handling", () => {
+  it("returns the degraded body a 503 carries instead of rejecting", async () => {
+    const degraded = { status: "degraded", database: "unreachable", uptimeSeconds: 1, timestamp: "" };
+    mockRequest.mockRejectedValue(new HttpError(503, "Service Unavailable", "url", degraded));
+    await expect(getHealth()).resolves.toEqual(degraded);
+  });
+
+  it("re-throws a non-503 error", async () => {
+    const err = new HttpError(500, "Server Error", "url", { message: "boom" });
+    mockRequest.mockRejectedValue(err);
+    await expect(getHealth()).rejects.toBe(err);
+  });
+});
+
+describe("getVersion (single-encoded status string)", () => {
   const version: MaintainerrVersion = {
     status: 1,
     version: "2.19.0",
@@ -123,36 +166,45 @@ describe("summarizeCollections", () => {
 });
 
 describe("maintainerrActionLabel", () => {
-  it("is null when there is no retention window", () => {
-    expect(maintainerrActionLabel(0, null)).toBeNull();
+  it("is the neutral no-action pair when there is no retention window", () => {
+    expect(maintainerrActionLabel(0, null)).toEqual({ label: "No automatic action", icon: "none" });
   });
 
-  it("is null for DO_NOTHING even with a window (nothing is promised)", () => {
-    expect(maintainerrActionLabel(4, 30)).toBeNull();
+  it("is no-action for DO_NOTHING even with a window (nothing is promised)", () => {
+    expect(maintainerrActionLabel(4, 30)).toEqual({ label: "No automatic action", icon: "none" });
   });
 
-  it("says deletes for DELETE and DELETE_SHOW_IF_EMPTY", () => {
-    expect(maintainerrActionLabel(0, 90)).toBe("Auto-deletes after 90 days");
-    expect(maintainerrActionLabel(5, 90)).toBe("Auto-deletes after 90 days");
+  it("says deletes (trash icon) for DELETE and DELETE_SHOW_IF_EMPTY", () => {
+    expect(maintainerrActionLabel(0, 90)).toEqual({ label: "Auto-deletes after 90 days", icon: "delete" });
+    expect(maintainerrActionLabel(5, 90)).toEqual({ label: "Auto-deletes after 90 days", icon: "delete" });
   });
 
-  it("says unmonitors and deletes for the unmonitor+delete actions", () => {
-    expect(maintainerrActionLabel(1, 30)).toBe("Unmonitors and deletes after 30 days");
-    expect(maintainerrActionLabel(2, 30)).toBe("Unmonitors and deletes after 30 days");
+  it("says unmonitors and deletes (trash icon) for the unmonitor+delete actions", () => {
+    expect(maintainerrActionLabel(1, 30)).toEqual({
+      label: "Unmonitors and deletes after 30 days",
+      icon: "delete",
+    });
+    expect(maintainerrActionLabel(2, 30)).toEqual({
+      label: "Unmonitors and deletes after 30 days",
+      icon: "delete",
+    });
   });
 
-  it("says unmonitors (no deletion) for UNMONITOR and UNMONITOR_SHOW_IF_EMPTY", () => {
-    expect(maintainerrActionLabel(3, 14)).toBe("Unmonitors after 14 days");
-    expect(maintainerrActionLabel(6, 14)).toBe("Unmonitors after 14 days");
+  it("says unmonitors (no deletion, eye-off icon) for UNMONITOR and UNMONITOR_SHOW_IF_EMPTY", () => {
+    expect(maintainerrActionLabel(3, 14)).toEqual({ label: "Unmonitors after 14 days", icon: "unmonitor" });
+    expect(maintainerrActionLabel(6, 14)).toEqual({ label: "Unmonitors after 14 days", icon: "unmonitor" });
   });
 
-  it("labels the immediate quality-profile change (Maintainerr clears its window, so null)", () => {
-    expect(maintainerrActionLabel(7, null)).toBe("Changes quality profile immediately");
+  it("labels the immediate quality-profile change with the real (7, null) shape", () => {
+    expect(maintainerrActionLabel(7, null)).toEqual({
+      label: "Changes quality profile immediately",
+      icon: "quality",
+    });
   });
 
   it("singularizes one day and falls back for an unknown action", () => {
-    expect(maintainerrActionLabel(0, 1)).toBe("Auto-deletes after 1 day");
-    expect(maintainerrActionLabel(99, 5)).toBe("Handled after 5 days");
+    expect(maintainerrActionLabel(0, 1)).toEqual({ label: "Auto-deletes after 1 day", icon: "delete" });
+    expect(maintainerrActionLabel(99, 5)).toEqual({ label: "Handled after 5 days", icon: "unmonitor" });
   });
 });
 

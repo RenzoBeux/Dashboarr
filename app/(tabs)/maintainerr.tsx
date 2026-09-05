@@ -1,5 +1,5 @@
 import { View, Text } from "react-native";
-import { ArrowUp, Film, Layers, Trash2, TriangleAlert, Tv } from "lucide-react-native";
+import { ArrowUp, Ban, EyeOff, Film, Layers, SlidersHorizontal, Trash2, TriangleAlert, Tv } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -18,6 +18,7 @@ import {
   useMaintainerrVersion,
 } from "@/hooks/use-maintainerr";
 import { maintainerrActionLabel, summarizeCollections } from "@/services/maintainerr-api";
+import type { MaintainerrActionIcon } from "@/services/maintainerr-api";
 import type { MaintainerrCollection } from "@/lib/types";
 
 export default function MaintainerrScreen() {
@@ -132,11 +133,18 @@ function CollectionsCard() {
 
 const TYPE_ICON: Record<string, LucideIcon> = { movie: Film, show: Tv };
 
+// Row glyph per action, decided alongside the label in maintainerrActionLabel so
+// an UNMONITOR or DO_NOTHING collection no longer shows a deletion trash can.
+const ACTION_ICON: Record<MaintainerrActionIcon, LucideIcon> = {
+  delete: Trash2,
+  unmonitor: EyeOff,
+  quality: SlidersHorizontal,
+  none: Ban,
+};
+
 function CollectionRow({ collection }: { collection: MaintainerrCollection }) {
   const TypeIcon = TYPE_ICON[collection.type] ?? Layers;
-  const retention =
-    maintainerrActionLabel(collection.arrAction, collection.deleteAfterDays) ??
-    "No automatic action";
+  const action = maintainerrActionLabel(collection.arrAction, collection.deleteAfterDays);
 
   return (
     <View className="flex-row items-start gap-3">
@@ -149,9 +157,9 @@ function CollectionRow({ collection }: { collection: MaintainerrCollection }) {
           {!collection.isActive ? <Badge label="Inactive" variant="paused" /> : null}
         </View>
         <View className="flex-row items-center gap-1.5">
-          <Icon icon={Trash2} size={12} color="#71717a" />
+          <Icon icon={ACTION_ICON[action.icon]} size={12} color="#71717a" />
           <Text className="text-zinc-500 text-xs flex-1" numberOfLines={1}>
-            {retention}
+            {action.label}
           </Text>
         </View>
       </View>
