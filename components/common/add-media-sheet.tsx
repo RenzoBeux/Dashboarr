@@ -143,16 +143,22 @@ export function AddMediaSheet({
     });
   };
 
+  // Require tags to have loaded so submit cannot send [] while the persist branch
+  // below still reports the remembered tags: the two halves must agree (#341).
   const canSubmit =
-    !!effectiveQualityProfileId && !!effectiveRootFolderPath && !!result;
+    !!effectiveQualityProfileId && !!effectiveRootFolderPath && !!result && tags !== undefined;
 
   const handleAdd = () => {
     if (!canSubmit) return;
-    // Remember this config so the next add on this instance preselects it (#341).
+    // Remember only what the user actually picked this time (falling back to the
+    // previously remembered pick), not the resolved effective* values. Persisting
+    // effective* would freeze the Settings default into the store on the first
+    // passive add and then permanently outrank it, turning Settings -> Add Defaults
+    // into a dead control; #341 only asks to remember a deliberate pick.
     if (lastUsedKey) {
       rememberLastUsed(lastUsedKey, {
-        qualityProfileId: effectiveQualityProfileId,
-        rootFolderPath: effectiveRootFolderPath,
+        qualityProfileId: qualityProfileId ?? lastUsed?.qualityProfileId,
+        rootFolderPath: rootFolderPath ?? lastUsed?.rootFolderPath,
         // Only rewrite remembered tags once the server list has loaded; adding
         // before it loads must not wipe them with the filtered-to-empty value.
         tags: tags ? effectiveTags : lastUsed?.tags,
