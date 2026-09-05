@@ -197,6 +197,10 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         tdarr instance at import time, so older exports just need the
  *         version field bumped.
+ *   v52 — added the maintainerr service entry. Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         maintainerr instance at import time, so older exports just need the
+ *         version field bumped.
  */
 export const CURRENT_CONFIG_VERSION = 52;
 

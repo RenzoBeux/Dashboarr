@@ -72,6 +72,20 @@ function applyAuth(headers: Headers, config: StoredServiceConfig): void {
     }
     return;
   }
+  if (id === "maintainerr") {
+    // Maintainerr's own API is unauthenticated; credentials are optional Basic
+    // for a reverse proxy in front of it. Send on EITHER field so a
+    // token-in-password proxy setup authenticates too, matching the app's
+    // http-client. Without this the poller falls through to the X-Api-Key
+    // default (a no-op for a userPass service), so behind an nginx auth_basic
+    // proxy the ping gets a 401 — which reads as online (status < 500) and the
+    // offline push never fires even though the app's own dot goes red.
+    if (config.username || config.password) {
+      const encoded = Buffer.from(`${config.username ?? ""}:${config.password ?? ""}`).toString("base64");
+      headers.set("Authorization", `Basic ${encoded}`);
+    }
+    return;
+  }
   if (id === "nzbget") {
     if (config.username && config.password) {
       const encoded = Buffer.from(`${config.username}:${config.password}`).toString("base64");

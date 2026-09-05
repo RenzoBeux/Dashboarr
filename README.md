@@ -71,6 +71,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Autobrr** | Push stats, release feed with retry, filter toggles, IRC network health & restart |
 | **Cleanuparr** | Strike/removal/cleanup stats, scheduled jobs with run-now, client health, event feed |
 | **Pi-hole** | Timed blocking disable with countdown, Gravity update, 24h query stats & graph, top domains/clients, live query log, local CNAME records (v6+) |
+| **Maintainerr** | Rule-built collection overview, scheduled-media and active-collection counts, per-collection action (auto-delete, unmonitor, quality-profile change) and retention window, database-health banner |
 
 ## Features
 

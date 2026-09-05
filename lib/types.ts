@@ -3446,8 +3446,9 @@ export interface MaintainerrHealth {
 }
 
 /**
- * GET /api/app/status. Upstream returns this JSON.stringify'd, so it can arrive
- * double-encoded as a string; parseVersionStatus() normalizes both shapes.
+ * GET /api/app/status. Upstream returns this JSON.stringify'd with a text/html
+ * content type, so it arrives as a single-encoded JSON string (fetched with
+ * allowTextBody); parseVersionStatus() parses it back to this shape.
  */
 export interface MaintainerrVersion {
   status: 1 | 0;

@@ -1,4 +1,4 @@
-import { serviceRequest } from "@/lib/http-client";
+import { serviceRequest, HttpError } from "@/lib/http-client";
 import type {
   MaintainerrCollection,
   MaintainerrHealth,
@@ -11,20 +11,43 @@ import type {
 //     Basic/Digest credentials ride along, and nothing is sent on an open LAN.
 //   - apiBasePath is "" (the anonymous /api/health/live ping is root-mounted),
 //     so every path here carries its own /api prefix (the Cleanuparr pattern).
-//   - GET /api/app/status is JSON.stringify'd upstream, so the version payload
-//     can arrive double-encoded as a string; parseVersionStatus normalizes it.
+//   - GET /api/app/status and /api/collections/media/count answer with a
+//     text/html content type: upstream returns a JSON.stringify'd string (a
+//     bare number for the count), which Express res.send stamps as text/html.
+//     Both pass allowTextBody so the transport does not mistake the payload for
+//     a proxy login page; the status body is single-encoded JSON that
+//     parseVersionStatus parses.
 // Per-instance routing: every function takes an optional `instanceId`. When
 // omitted, the user's active Maintainerr instance is used.
 
-export function getHealth(instanceId?: string): Promise<MaintainerrHealth> {
-  return serviceRequest<MaintainerrHealth>("maintainerr", "/api/health", { instanceId });
+export async function getHealth(instanceId?: string): Promise<MaintainerrHealth> {
+  try {
+    return await serviceRequest<MaintainerrHealth>("maintainerr", "/api/health", { instanceId });
+  } catch (err) {
+    // GET /api/health mirrors upstream /ready, which throws HttpException(body,
+    // 503) when the database is unreachable, exactly the state this call exists
+    // to surface. The 503 body IS the degraded HealthResponse, so return it
+    // rather than let the query reject (which would leave the banner dead).
+    if (err instanceof HttpError && err.status === 503 && isMaintainerrHealth(err.body)) {
+      return err.body;
+    }
+    throw err;
+  }
+}
+
+function isMaintainerrHealth(body: unknown): body is MaintainerrHealth {
+  if (typeof body !== "object" || body === null) return false;
+  // Require both fields to be strings, not merely present, so a proxy's JSON
+  // error body cannot be mistaken for a health payload just by carrying the keys.
+  const b = body as Record<string, unknown>;
+  return typeof b.status === "string" && typeof b.database === "string";
 }
 
 export async function getVersion(instanceId?: string): Promise<MaintainerrVersion> {
   const raw = await serviceRequest<MaintainerrVersion | string>(
     "maintainerr",
     "/api/app/status",
-    { instanceId },
+    { instanceId, allowTextBody: true },
   );
   return parseVersionStatus(raw);
 }
@@ -38,19 +61,25 @@ export function getCollections(instanceId?: string): Promise<MaintainerrCollecti
  * scheduled subset that summarizeCollections counts), or within one collection
  * when `collectionId` is given (GET /api/collections/media/count).
  */
-export function getMediaCount(collectionId?: number, instanceId?: string): Promise<number> {
-  return serviceRequest<number>("maintainerr", "/api/collections/media/count", {
+export async function getMediaCount(collectionId?: number, instanceId?: string): Promise<number> {
+  const raw = await serviceRequest<number | string>("maintainerr", "/api/collections/media/count", {
     params: collectionId != null ? { collectionId } : undefined,
     instanceId,
+    allowTextBody: true,
   });
+  // A bare number goes through Express res.send as a text/html string ("42"),
+  // so allowTextBody hands it back as a string; coerce it to the number.
+  return typeof raw === "string" ? Number(raw) : raw;
 }
 
 // --- Pure helpers (unit-tested) ---
 
 /**
- * Normalizes GET /api/app/status. Upstream JSON.stringify's the payload, so the
- * transport can hand us either the parsed object or a JSON string; parse the
- * string form, and fall back to the value as-is if it is already an object.
+ * Normalizes GET /api/app/status. Upstream returns JSON.stringify(status) with a
+ * text/html content type, so the transport (allowTextBody) hands us the raw
+ * single-encoded JSON string; parse it. If a proxied setup ever labels it
+ * application/json, the transport has already parsed it, so an object is
+ * returned as-is.
  */
 export function parseVersionStatus(raw: MaintainerrVersion | string): MaintainerrVersion {
   if (typeof raw === "string") {
@@ -103,35 +132,51 @@ export function summarizeCollections(collections: MaintainerrCollection[]): {
   return { activeCollections, totalScheduled };
 }
 
+/** The glyph a collection row shows next to its action label. The UI maps each
+ *  to a lucide icon; keeping it here (not in the component) means the icon and
+ *  the wording are decided together and cannot drift apart. */
+export type MaintainerrActionIcon = "delete" | "unmonitor" | "quality" | "none";
+
+export interface MaintainerrAction {
+  label: string;
+  icon: MaintainerrActionIcon;
+}
+
 /**
- * Human wording for what a collection does to its members. Maintainerr's action
- * is not always deletion (it can unmonitor, change a quality profile, or do
- * nothing), so the UI must not promise deletion for every collection (#392
- * review). CHANGE_QUALITY_PROFILE runs immediately and carries no retention
- * window; every other acting label is "<verb> after N days". Returns null when
- * there is nothing to say: no window (for the windowed actions), or DO_NOTHING.
+ * Human wording (and a matching row icon) for what a collection does to its
+ * members. Maintainerr's action is not always deletion (it can unmonitor,
+ * change a quality profile, or do nothing), so the UI must not promise deletion
+ * for every collection (#392 review). CHANGE_QUALITY_PROFILE runs immediately
+ * and carries no retention window; every other acting label is "<verb> after N
+ * days". When there is nothing to say (no window for the windowed actions, or
+ * DO_NOTHING) it returns the neutral "No automatic action" / "none" pair, so the
+ * row always has both a label and an icon that agree.
  */
 export function maintainerrActionLabel(
   arrAction: number,
   deleteAfterDays: number | null,
-): string | null {
-  if (!maintainerrWillAct(arrAction, deleteAfterDays)) return null;
+): MaintainerrAction {
+  if (!maintainerrWillAct(arrAction, deleteAfterDays)) {
+    return { label: "No automatic action", icon: "none" };
+  }
   // Immediate action carries no retention window (Maintainerr clears it).
-  if (arrAction === MAINTAINERR_CHANGE_QUALITY_PROFILE) return "Changes quality profile immediately";
+  if (arrAction === MAINTAINERR_CHANGE_QUALITY_PROFILE) {
+    return { label: "Changes quality profile immediately", icon: "quality" };
+  }
   const days = `${deleteAfterDays} day${deleteAfterDays === 1 ? "" : "s"}`;
   // ServarrAction enum indices, from Maintainerr's contracts.
   switch (arrAction) {
     case 0: // DELETE
     case 5: // DELETE_SHOW_IF_EMPTY
-      return `Auto-deletes after ${days}`;
+      return { label: `Auto-deletes after ${days}`, icon: "delete" };
     case 1: // UNMONITOR_DELETE_ALL
     case 2: // UNMONITOR_DELETE_EXISTING
-      return `Unmonitors and deletes after ${days}`;
+      return { label: `Unmonitors and deletes after ${days}`, icon: "delete" };
     case 3: // UNMONITOR
     case 6: // UNMONITOR_SHOW_IF_EMPTY
-      return `Unmonitors after ${days}`;
+      return { label: `Unmonitors after ${days}`, icon: "unmonitor" };
     default:
-      return `Handled after ${days}`;
+      return { label: `Handled after ${days}`, icon: "unmonitor" };
   }
 }
 
