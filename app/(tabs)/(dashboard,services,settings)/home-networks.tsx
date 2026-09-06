@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { toast } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useConfigStore } from "@/store/config-store";
 import {
   detectWifiWithRefresh,
@@ -192,6 +193,23 @@ export default function HomeNetworksScreen() {
     setEditingId(null);
   };
 
+  const closeForm = () => {
+    resetForm();
+    setMode("list");
+  };
+
+  // Typed-but-unsaved form input is easy to lose: the Android hardware back
+  // and the tab re-tap pop this whole screen, not just the form. Ask first
+  // when the add form has content or the edit form differs from the network.
+  const editing = editingId ? homeNetworks.find((n) => n.id === editingId) : undefined;
+  const formDirty =
+    mode === "add"
+      ? ssid.trim() !== "" || bssid.trim() !== ""
+      : mode === "edit" &&
+        editing !== undefined &&
+        (ssid !== editing.ssid || bssid !== editing.bssid);
+  const guard = useUnsavedChangesGuard(formDirty, closeForm);
+
   const startAdd = () => {
     if (homeNetworks.length >= MAX_HOME_NETWORKS) {
       toast(`Maximum of ${MAX_HOME_NETWORKS} networks reached`, "error");
@@ -273,10 +291,7 @@ export default function HomeNetworksScreen() {
       <ScreenWrapper>
         <BackHeader
           title={mode === "add" ? "Add Home Network" : "Edit Home Network"}
-          onBack={() => {
-            resetForm();
-            setMode("list");
-          }}
+          onBack={guard.leave}
         />
 
         <Card className="gap-4 mb-4">
@@ -337,15 +352,22 @@ export default function HomeNetworksScreen() {
         <View className="flex-row gap-3">
           <Button
             label="Cancel"
-            onPress={() => {
-              resetForm();
-              setMode("list");
-            }}
+            onPress={closeForm}
             variant="outline"
             className="flex-1"
           />
           <Button label="Save" onPress={handleSave} className="flex-1" />
         </View>
+
+        <ConfirmModal
+          {...guard.discardModalProps}
+          title="Discard changes?"
+          message="This network hasn't been saved yet."
+          tone="danger"
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          onConfirm={guard.confirmDiscard}
+        />
       </ScreenWrapper>
     );
   }
