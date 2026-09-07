@@ -13,6 +13,7 @@ import { resolveTabIcon } from "@/lib/tab-icons";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   ALL_PICKABLE_TABS,
+  TAB_LABELS,
   tabGroupName,
   tabIdFromSegments,
   visiblePinnedTabs,
@@ -114,6 +115,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name={tabGroupName("dashboard")}
         options={{
+          // The bar hides labels (`tabBarShowLabel: false`), so these two are
+          // a11y-only: `title` feeds the iOS Large Content Viewer, and
+          // `tabBarAccessibilityLabel` feeds VoiceOver and TalkBack. Without
+          // them React Navigation falls back to the route name, which since
+          // #330 is the group name "(dashboard)".
+          title: TAB_LABELS.dashboard,
+          tabBarAccessibilityLabel: TAB_LABELS.dashboard,
           // Raw lucide component (not the scaling <Icon> wrapper) — the tab
           // bar is deliberately excluded from UI scale per CLAUDE.md.
           tabBarIcon: ({ color }) =>
@@ -135,6 +143,8 @@ export default function TabLayout() {
             name={tabGroupName(name)}
             options={{
               href: visible ? undefined : null,
+              title: TAB_LABELS[name],
+              tabBarAccessibilityLabel: TAB_LABELS[name],
               tabBarIcon: ({ color }) => (
                 <IconComponent size={TAB_ICON_SIZE} color={color} />
               ),
@@ -147,6 +157,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name={tabGroupName("settings")}
         options={{
+          title: TAB_LABELS.settings,
+          tabBarAccessibilityLabel: TAB_LABELS.settings,
           tabBarIcon: ({ color }) => (
             <Settings size={TAB_ICON_SIZE} color={color} />
           ),

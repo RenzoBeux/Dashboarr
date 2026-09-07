@@ -157,4 +157,35 @@ describe("tab route resolution", () => {
     expect(result.groupStack).toEqual(["dashboard", "series/[id]"]);
     expect(result.leaf.params).toEqual({ id: "42", instanceId: "s1" });
   });
+
+  // A screen in a multi-tab array group is registered in every tab stack that
+  // lists it, so an OS link (no tab context) resolves into whichever group the
+  // route tree orders first. That order is incidental — adding or renaming a
+  // tab silently changes it — so assert the invariant instead: after
+  // +native-intent, every shared screen lands in the Dashboard stack with the
+  // Dashboard root underneath. Some families get there via the rewrite, the
+  // settings-ish ones already resolve that way; either is fine, drifting out
+  // is not. The count guards against a screen silently leaving a group.
+  it("lands every shared-group screen in the Dashboard stack with no tab context", () => {
+    let checked = 0;
+    for (const key of routeKeys) {
+      const match = /^\(tabs\)\/\(([^/]*,[^/]*)\)\/(.+)$/.exec(key);
+      if (!match || match[2] === "_layout") continue;
+      const href = `/${match[2].replace(/\/index$/, "").replace(/\[[^\]]+\]/g, "1")}`;
+      const result = resolve(redirectSystemPath({ path: href, initial: true }));
+      expect({ href, group: result.group, under: result.groupStack?.[0] }).toEqual({
+        href,
+        group: "(dashboard)",
+        under: "dashboard",
+      });
+      checked += 1;
+    }
+    expect(checked).toBe(32);
+  });
+
+  it("keeps a rewritten link in the Dashboard stack even from another tab", () => {
+    const href = redirectSystemPath({ path: "dashboarr:///torrent/abc", initial: true });
+    expect(resolve(href).group).toBe("(dashboard)");
+    expect(resolve(href, at("tv", "tv")).group).toBe("(dashboard)");
+  });
 });

@@ -229,6 +229,40 @@ export function tabGroupName(id: AnyTabRouteId): string {
 export const TAB_STACK_ANCHORS: Readonly<Record<string, { anchor: string }>> =
   Object.fromEntries(ALL_TAB_ROUTE_IDS.map((id) => [id, { anchor: id }]));
 
+// One human label per tab. React Navigation derives a tab's accessible name
+// from `title` / `tabBarAccessibilityLabel` and otherwise falls back to the
+// ROUTE NAME, which since #330 is the group name "(tv)". The bar hides labels
+// (`tabBarShowLabel: false`), so this map is the only name a screen reader
+// gets. It also drives the pin list in the dashboard editor. Typed as a full
+// Record on purpose: adding an id to PICKABLE_*_TABS is a compile error here
+// until a label is supplied.
+export const TAB_LABELS: Record<AnyTabRouteId, string> = {
+  dashboard: "Dashboard",
+  downloads: "Downloads",
+  calendar: "Calendar",
+  services: "Services",
+  movies: "Movies",
+  tv: "TV",
+  library: "Library",
+  music: "Music",
+  books: "Books",
+  requests: "Requests",
+  activity: "Activity",
+  indexers: "Indexers",
+  plex: "Plex",
+  jellyfin: "Jellyfin",
+  emby: "Emby",
+  navidrome: "Navidrome",
+  glances: "Glances",
+  bazarr: "Bazarr",
+  unraid: "unRAID",
+  tdarr: "Tdarr",
+  autobrr: "Autobrr",
+  cleanuparr: "Cleanuparr",
+  pihole: "Pi-hole",
+  settings: "Settings",
+};
+
 // Notifications and OS deep links to content details land in the Dashboard
 // stack: it's the only tab that is always present and pinned, so the result
 // is the same cold and warm, and the user's other tab stacks stay untouched.
