@@ -1,0 +1,9 @@
+{
+  "auth": {
+    "mode": "bearer"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/healthcheck"
+  }
+}

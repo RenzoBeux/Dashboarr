@@ -1,0 +1,14 @@
+{
+  "auth": {
+    "mode": "header",
+    "headerName": "X-API-Key"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/api/v0/application",
+    "versionPath": "version.current"
+  },
+  "stats": [
+    { "label": "Soulseek", "path": "server.state", "format": "text" }
+  ]
+}
