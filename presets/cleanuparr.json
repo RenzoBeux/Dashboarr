@@ -6,7 +6,6 @@
   "health": {
     "method": "GET",
     "path": "/api/status",
-    "statusPath": "application.version",
     "versionPath": "application.version"
   },
   "stats": [
