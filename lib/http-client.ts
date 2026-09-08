@@ -15,6 +15,12 @@ import { buildUrl } from "@/lib/url-builder";
 import { applyMediaServerAuth } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+// Definition-driven status/version extraction for the "custom" probe below —
+// pure, dependency-free, shared verbatim with services/custom-api.ts's real
+// (non-test) requests. Type-only concerns aside, importing this here (rather
+// than services/custom-api.ts itself) keeps this file free of any services/
+// import, avoiding the cycle that module has back into serviceRequest.
+import { getPath } from "@/lib/json-path";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
 // service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
 // the same envelope the same way. Pure string/object helpers — no cycle.
@@ -1869,10 +1875,185 @@ async function runConnectionProbe(
     }
 
     case "custom": {
-      // Stub only — a sibling item implements the real probe (the request is
-      // entirely defined by the per-instance `custom` block, see
-      // lib/custom-service.ts), driven by services/custom-api.
-      throw new Error("custom services are handled by services/custom-api");
+      // Every part of this request — auth, an optional login exchange, and
+      // the health probe itself — is defined by the per-instance `custom`
+      // block (lib/custom-service.ts) rather than any fixed shape this
+      // switch could special-case, so it's read straight from the saved
+      // instance. There is no unsaved-form path yet (the dedicated editor is
+      // a sibling item), so testing before saving reports unreachable rather
+      // than guessing at a shape services/custom-api.ts's real (non-test)
+      // requests don't need to.
+      if (!input.instanceId) {
+        return {
+          kind: "unreachable",
+          message: "Save the service before testing its connection",
+        };
+      }
+      const def = useConfigStore.getState().getInstance("custom", input.instanceId)?.custom;
+      if (!def) {
+        return { kind: "unreachable", message: "No custom service definition configured" };
+      }
+      const health = def.health;
+      if (!health) {
+        return { kind: "unreachable", message: "No health check configured" };
+      }
+
+      // Primary auth (def.auth): none/header/query/basic/bearer.
+      const authHeaders: Record<string, string> = {};
+      const authParams: Record<string, string> = {};
+      const custAuth = def.auth;
+      if (custAuth && custAuth.mode !== "none") {
+        switch (custAuth.mode) {
+          case "header":
+            if (custAuth.headerName && custAuth.token) authHeaders[custAuth.headerName] = custAuth.token;
+            break;
+          case "query":
+            if (custAuth.queryParam && custAuth.token) authParams[custAuth.queryParam] = custAuth.token;
+            break;
+          case "basic": {
+            const basic = basicAuthHeader(custAuth.username, custAuth.password);
+            if (basic) authHeaders["Authorization"] = basic;
+            break;
+          }
+          case "bearer":
+            if (custAuth.token) authHeaders["Authorization"] = `Bearer ${custAuth.token}`;
+            break;
+        }
+      }
+
+      // Optional login exchange: capture from a JSON body path first, then a
+      // Set-Cookie header, then inject the captured value per injectAs — the
+      // same rules services/custom-api.ts applies for real requests.
+      // {{username}}/{{password}} in the login body come from auth.username/
+      // auth.password regardless of auth.mode (a "none" primary mode can
+      // still pair with a login step that posts credentials in its body).
+      const captureHeaders: Record<string, string> = {};
+      const captureParams: Record<string, string> = {};
+      if (def.login) {
+        const login = def.login;
+        const loginUrl = buildUrl(baseUrl, defaults.apiBasePath, login.path);
+        const loginHeaders = makeHeaders(authHeaders);
+        if (login.contentType) loginHeaders.set("Content-Type", login.contentType);
+        const username = custAuth?.username ?? "";
+        const password = custAuth?.password ?? "";
+        const loginBody = login.body
+          ?.replace(/\{\{username\}\}/g, username)
+          .replace(/\{\{password\}\}/g, password);
+
+        let loginRes: Response;
+        try {
+          loginRes = await fetch(loginUrl, {
+            method: login.method,
+            headers: loginHeaders,
+            body: loginBody,
+            signal,
+          });
+        } catch {
+          return { kind: "unreachable", message: "Login request failed" };
+        }
+
+        let captured: string | null = null;
+        if (login.captureJSONPath) {
+          try {
+            const json = await loginRes.clone().json();
+            const value = getPath(json, login.captureJSONPath);
+            if (value !== undefined && value !== null) captured = String(value);
+          } catch {
+            // Not JSON, or the path didn't resolve — fall through.
+          }
+        }
+        if (!captured && login.captureCookie) {
+          const setCookie = loginRes.headers.get("set-cookie");
+          const escaped = login.captureCookie.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const match = setCookie?.match(new RegExp(`${escaped}=([^;]+)`));
+          if (match?.[1]) captured = match[1];
+        }
+
+        if (!loginRes.ok && !captured) {
+          if (loginRes.status === 401 || loginRes.status === 403) {
+            return {
+              kind: "auth_failed",
+              message: "Login rejected — check the configured credentials",
+            };
+          }
+          return { kind: "unreachable", message: `Login failed (HTTP ${loginRes.status})` };
+        }
+
+        if (captured) {
+          const name = login.injectName;
+          switch (login.injectAs) {
+            case "header":
+              if (name) captureHeaders[name] = captured;
+              break;
+            case "query":
+              if (name) captureParams[name] = captured;
+              break;
+            case "cookie":
+              captureHeaders["Cookie"] = `${name || "session"}=${captured}`;
+              break;
+            case "bearer":
+              captureHeaders["Authorization"] = `Bearer ${captured}`;
+              break;
+          }
+        }
+      }
+
+      const healthParams = { ...authParams, ...captureParams };
+      const healthUrl = buildUrl(
+        baseUrl,
+        defaults.apiBasePath,
+        health.path,
+        Object.keys(healthParams).length > 0 ? healthParams : undefined,
+      );
+      const healthHeaders = makeHeaders({ ...authHeaders, ...captureHeaders });
+      if (health.body) healthHeaders.set("Content-Type", "application/json");
+
+      let res: Response;
+      try {
+        res = await fetch(healthUrl, {
+          method: health.method,
+          headers: healthHeaders,
+          body: health.body,
+          signal,
+        });
+      } catch {
+        return { kind: "unreachable", message: "Network error — check URL and connectivity" };
+      }
+
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid credentials" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        body = undefined;
+      }
+
+      const okValues = (health.okValues ?? []).map((v) => v.toLowerCase());
+      const warnValues = (health.warnValues ?? []).map((v) => v.toLowerCase());
+      if (health.statusPath && (okValues.length > 0 || warnValues.length > 0)) {
+        const statusValue = getPath(body, health.statusPath);
+        const statusStr =
+          statusValue === undefined || statusValue === null
+            ? undefined
+            : String(statusValue).toLowerCase();
+        if (
+          statusStr === undefined ||
+          (!okValues.includes(statusStr) && !warnValues.includes(statusStr))
+        ) {
+          return {
+            kind: "unreachable",
+            message: "Reached the server, but its reported status is not healthy",
+          };
+        }
+      }
+
+      return { kind: "ok" };
     }
 
     default: {
