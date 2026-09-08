@@ -72,6 +72,10 @@ import {
   workspaceForcesRemote,
 } from "@/lib/url-validation";
 import { generateInstanceId } from "@/lib/uuid";
+import {
+  validateCustomServiceDefinition,
+  type CustomServiceDefinition,
+} from "@/lib/custom-service";
 
 export interface WakeOnLanDevice {
   id: string;
@@ -118,6 +122,11 @@ export interface ServiceConfig {
   // Off by default (absent/undefined behaves like false) because enabling it
   // writes a tag into the user's qBittorrent config on first use.
   tagAddedTorrents?: boolean;
+  // v52 — custom-only: the user-authored request/auth/health/stats/actions
+  // definition for a `custom` kind instance (see lib/custom-service.ts).
+  // Absent for every other kind, and absent here too until the (sibling-owned)
+  // editor UI writes one.
+  custom?: CustomServiceDefinition;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
@@ -938,14 +947,26 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 function isServiceInstance(v: unknown): v is ServiceInstance {
   if (!isPlainObject(v)) return false;
-  return (
-    typeof v.id === "string" &&
-    typeof v.enabled === "boolean" &&
-    typeof v.name === "string" &&
-    typeof v.localUrl === "string" &&
-    typeof v.remoteUrl === "string" &&
-    typeof v.useRemote === "boolean"
-  );
+  if (
+    !(
+      typeof v.id === "string" &&
+      typeof v.enabled === "boolean" &&
+      typeof v.name === "string" &&
+      typeof v.localUrl === "string" &&
+      typeof v.remoteUrl === "string" &&
+      typeof v.useRemote === "boolean"
+    )
+  ) {
+    return false;
+  }
+  // custom is optional, but when present it must be a valid definition — an
+  // instance with a corrupt/hand-edited custom block is dropped whole rather
+  // than silently kept with garbage in it (mirrors how every other field here
+  // is a hard reject, not a best-effort coercion).
+  if (v.custom !== undefined && !validateCustomServiceDefinition(v.custom).ok) {
+    return false;
+  }
+  return true;
 }
 
 const VALID_SERVICE_IDS = new Set<string>(SERVICE_IDS);

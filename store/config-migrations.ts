@@ -197,8 +197,14 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         tdarr instance at import time, so older exports just need the
  *         version field bumped.
+ *   v52 — added the custom service kind. Pure version stamp —
+ *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
+ *         custom instance at import time, so older exports just need the
+ *         version field bumped. The instance's optional `custom` definition
+ *         block (lib/custom-service.ts) is itself new with this kind, so no
+ *         existing instance of any other kind carries one to migrate.
  */
-export const CURRENT_CONFIG_VERSION = 51;
+export const CURRENT_CONFIG_VERSION = 52;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -748,6 +754,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v50 → v51: added the tdarr service entry. Pure version stamp —
   // defaultInstances() backfills a disabled tdarr instance at import.
   50: (payload) => ({ ...payload, version: 51 }),
+  // v51 → v52: added the custom service kind. Pure version stamp —
+  // defaultInstances() backfills a disabled custom instance at import.
+  51: (payload) => ({ ...payload, version: 52 }),
 };
 
 /**

@@ -1801,3 +1801,55 @@ describe("v42 → v43 (bindery service stamp)", () => {
     });
   });
 });
+
+describe("v51 → v52 (custom service kind stamp)", () => {
+  it("migrates a v51 config with existing instances to v52 unchanged except the version", () => {
+    // The migration is a pure version stamp: defaultInstances() backfills the
+    // disabled `custom` instance at import time, so a payload with other,
+    // already-configured instances must come through byte-for-byte apart from
+    // the version field — nothing here invents a custom entry or touches the
+    // instances that already exist.
+    const payload = {
+      version: 51,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "http://radarr.local:7878",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+        qbittorrent: [
+          {
+            id: "q1",
+            enabled: true,
+            name: "qBittorrent Home",
+            localUrl: "http://qbit.local:8080",
+            remoteUrl: "https://qbit.example.com",
+            useRemote: false,
+          },
+          {
+            id: "q2",
+            enabled: false,
+            name: "qBittorrent Cabin",
+            localUrl: "http://192.168.2.10:8080",
+            remoteUrl: "",
+            useRemote: false,
+          },
+        ],
+      },
+      secrets: { r1: { apiKey: "abc123" } },
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    };
+    const result: any = migrateConfig(payload);
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services).toEqual(payload.services);
+    expect(result.services.custom).toBeUndefined();
+    expect(result.secrets).toEqual(payload.secrets);
+  });
+});

@@ -1868,6 +1868,13 @@ async function runConnectionProbe(
       }
     }
 
+    case "custom": {
+      // Stub only — a sibling item implements the real probe (the request is
+      // entirely defined by the per-instance `custom` block, see
+      // lib/custom-service.ts), driven by services/custom-api.
+      throw new Error("custom services are handled by services/custom-api");
+    }
+
     default: {
       // Exhaustiveness check — a new ServiceId without a probe case fails here.
       const _exhaustive: never = serviceId;

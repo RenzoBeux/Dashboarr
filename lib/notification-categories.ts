@@ -69,6 +69,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // "blocking disabled" toggle would be a switch nothing emits. Offline is the
   // only category with a real source — the rtorrent/Lidarr/Bindery stance.
   pihole:      ["serviceOffline"],
+  // No shared completion category makes sense for an arbitrary user-described
+  // API — the rtorrent/Lidarr/Bindery/pihole stance. Offline is the only
+  // category with a real source (health polling).
+  custom:      ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {
