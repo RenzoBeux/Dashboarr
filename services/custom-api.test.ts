@@ -153,7 +153,10 @@ describe("buildRequest — capture injection", () => {
   };
 
   it("injects a header capture", () => {
-    const spec = buildRequest({ login: baseLogin }, "/s", { method: "GET", capture: "abc" });
+    const spec = buildRequest({ login: baseLogin }, "/s", {
+      method: "GET",
+      capture: { value: "abc" },
+    });
     expect(spec.headers).toEqual({ "X-Token": "abc" });
   });
 
@@ -161,7 +164,7 @@ describe("buildRequest — capture injection", () => {
     const spec = buildRequest(
       { login: { ...baseLogin, injectAs: "query", injectName: "token" } },
       "/s",
-      { method: "GET", capture: "abc" },
+      { method: "GET", capture: { value: "abc" } },
     );
     expect(spec.params).toEqual({ token: "abc" });
   });
@@ -170,24 +173,43 @@ describe("buildRequest — capture injection", () => {
     const spec = buildRequest(
       { login: { ...baseLogin, injectAs: "bearer" } },
       "/s",
-      { method: "GET", capture: "abc" },
+      { method: "GET", capture: { value: "abc" } },
     );
     expect(spec.headers).toEqual({ Authorization: "Bearer abc" });
   });
 
-  it("injects a cookie capture", () => {
+  it("injects a cookie capture under injectName when set", () => {
     const spec = buildRequest(
       { login: { ...baseLogin, injectAs: "cookie", injectName: "SID" } },
       "/s",
-      { method: "GET", capture: "abc" },
+      { method: "GET", capture: { value: "abc", cookieName: "QBT_SID_8080" } },
     );
+    // injectName wins over the captured real cookie name when both are set.
     expect(spec.headers).toEqual({ Cookie: "SID=abc" });
   });
 
-  it("skips capture injection when capture is null or absent", () => {
-    expect(buildRequest({ login: baseLogin }, "/s", { method: "GET", capture: null }).headers).toEqual(
-      {},
+  it("falls back to the captured cookie's real name when injectName is empty", () => {
+    const spec = buildRequest(
+      { login: { ...baseLogin, injectAs: "cookie", injectName: undefined } },
+      "/s",
+      { method: "GET", capture: { value: "abc", cookieName: "QBT_SID_8080" } },
     );
+    expect(spec.headers).toEqual({ Cookie: "QBT_SID_8080=abc" });
+  });
+
+  it("falls back to 'session' when neither injectName nor a captured cookie name is available", () => {
+    const spec = buildRequest(
+      { login: { ...baseLogin, injectAs: "cookie", injectName: undefined } },
+      "/s",
+      { method: "GET", capture: { value: "abc" } },
+    );
+    expect(spec.headers).toEqual({ Cookie: "session=abc" });
+  });
+
+  it("skips capture injection when capture is null or absent", () => {
+    expect(
+      buildRequest({ login: baseLogin }, "/s", { method: "GET", capture: null }).headers,
+    ).toEqual({});
     expect(buildRequest({ login: baseLogin }, "/s", { method: "GET" }).headers).toEqual({});
   });
 
@@ -198,7 +220,7 @@ describe("buildRequest — capture injection", () => {
         login: baseLogin,
       },
       "/s",
-      { method: "GET", capture: "abc" },
+      { method: "GET", capture: { value: "abc" } },
     );
     expect(spec.headers).toEqual({ "X-Api-Key": "static", "X-Token": "abc" });
   });
@@ -274,6 +296,43 @@ describe("checkHealth — status/version mapping", () => {
     setStore({ health: { method: "GET", path: "/s" } });
     mockRequest.mockResolvedValue({ anything: 1 });
     expect((await checkHealth(INSTANCE)).status).toBe("ok");
+  });
+
+  // statusPath IS set here (unlike the test above, which has none at all) but
+  // both okValues/warnValues are empty — a non-empty extracted value still
+  // reads as reachable/healthy.
+  it("treats a non-empty status value as ok when statusPath is set but both ok/warn lists are empty", async () => {
+    setStore({ health: { method: "GET", path: "/s", statusPath: "state" } });
+    mockRequest.mockResolvedValue({ state: "anything" });
+    const result = await checkHealth(INSTANCE);
+    expect(result.status).toBe("ok");
+    expect(result.online).toBe(true);
+  });
+
+  it("treats a missing statusPath value as offline when both ok/warn lists are empty", async () => {
+    setStore({ health: { method: "GET", path: "/s", statusPath: "state" } });
+    mockRequest.mockResolvedValue({ somethingElse: 1 });
+    const result = await checkHealth(INSTANCE);
+    expect(result.status).toBe("offline");
+    expect(result.online).toBe(false);
+  });
+
+  it("treats an empty-string statusPath value as offline when both ok/warn lists are empty", async () => {
+    setStore({ health: { method: "GET", path: "/s", statusPath: "state" } });
+    mockRequest.mockResolvedValue({ state: "" });
+    const result = await checkHealth(INSTANCE);
+    expect(result.status).toBe("offline");
+    expect(result.online).toBe(false);
+  });
+
+  // Unchanged-behavior control: with okValues configured, a non-matching
+  // value is still offline regardless of the empty-lists fallback above.
+  it("still maps a non-matching status to offline when okValues is configured (unchanged)", async () => {
+    setStore({ health: { method: "GET", path: "/s", statusPath: "state", okValues: ["ok"] } });
+    mockRequest.mockResolvedValue({ state: "nope" });
+    const result = await checkHealth(INSTANCE);
+    expect(result.status).toBe("offline");
+    expect(result.online).toBe(false);
   });
 
   it("extracts a version via versionPath", async () => {
@@ -387,6 +446,142 @@ describe("runAction", () => {
   });
 });
 
+// Live-proof: qBittorrent v5.2.3's POST /api/v2/torrents/stop with body
+// "hashes=all" returns 400 sent as application/json and 200 as
+// application/x-www-form-urlencoded — the definition gives no contentType
+// for health/stats/action bodies (only login has that field), so it must be
+// inferred from the body's own shape, not hardcoded to JSON.
+describe("content-type inference for health/stats/action bodies", () => {
+  it("infers form-urlencoded for a non-JSON action body (hashes=all)", async () => {
+    setStore({
+      actions: [{ id: "stop", label: "Stop", method: "POST", path: "/stop", body: "hashes=all" }],
+    });
+    mockRequest.mockResolvedValue({});
+
+    await runAction(INSTANCE, "stop");
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/stop",
+      expect.objectContaining({
+        body: "hashes=all",
+        headers: expect.objectContaining({ "Content-Type": "application/x-www-form-urlencoded" }),
+      }),
+    );
+  });
+
+  it("infers application/json for a JSON-shaped action body", async () => {
+    setStore({
+      actions: [{ id: "restart", label: "Restart", method: "POST", path: "/restart", body: '{"a":1}' }],
+    });
+    mockRequest.mockResolvedValue({});
+
+    await runAction(INSTANCE, "restart");
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/restart",
+      expect.objectContaining({
+        body: '{"a":1}',
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+  });
+
+  it("sends no Content-Type when the action has no body", async () => {
+    setStore({ actions: [{ id: "ping", label: "Ping", method: "POST", path: "/ping" }] });
+    mockRequest.mockResolvedValue({});
+
+    await runAction(INSTANCE, "ping");
+
+    const headers = mockRequest.mock.calls[0]![2].headers as Record<string, string>;
+    expect("Content-Type" in headers).toBe(false);
+  });
+
+  it("infers form-urlencoded for a non-JSON health body", async () => {
+    setStore({ health: { method: "POST", path: "/status", body: "hashes=all" } });
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/x-www-form-urlencoded" }),
+      }),
+    );
+  });
+
+  it("infers application/json for a JSON-shaped health body", async () => {
+    setStore({ health: { method: "POST", path: "/status", body: '{"a":1}' } });
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
+    );
+  });
+
+  it("sends no Content-Type when the health check has no body", async () => {
+    setStore({ health: { method: "GET", path: "/status" } });
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    const headers = mockRequest.mock.calls[0]![2].headers as Record<string, string>;
+    expect("Content-Type" in headers).toBe(false);
+  });
+
+  it("infers form-urlencoded for a non-JSON stats source body", async () => {
+    setStore({
+      health: { method: "POST", path: "/status", body: "hashes=all" },
+      stats: [{ label: "Count", path: "count" }],
+    });
+    mockRequest.mockResolvedValue({ count: 3 });
+
+    await getStats(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "application/x-www-form-urlencoded" }),
+      }),
+    );
+  });
+
+  // The login step keeps its own explicit contentType, unaffected by
+  // inference — never overridden by this rule.
+  it("leaves the login body's explicit contentType unchanged", async () => {
+    setStore({
+      login: {
+        method: "POST",
+        path: "/login",
+        contentType: "application/json",
+        // Deliberately NOT JSON-shaped, to prove inference is not applied here.
+        body: "hashes=all",
+        captureJSONPath: "token",
+        injectAs: "header",
+        injectName: "X-Token",
+      },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(mockLoginResponse({ jsonBody: { token: "tok" } }));
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    const [, fetchInit] = mockFetch().mock.calls[0];
+    expect(fetchInit.headers["Content-Type"]).toBe("application/json");
+  });
+});
+
 describe("login capture", () => {
   it("substitutes {{username}}/{{password}} from auth even when auth.mode is 'none'", async () => {
     setStore({
@@ -458,6 +653,201 @@ describe("login capture", () => {
       "/status",
       expect.objectContaining({ headers: expect.objectContaining({ Cookie: "SESSIONID=xyz789" }) }),
     );
+  });
+
+  // Live-proof: qBittorrent 5.2.3 sets its session cookie as `QBT_SID_8080`
+  // (port-suffixed) — a fixed `captureCookie: "SID"` never matches it.
+  it("captures the real cookie name through a * wildcard and injects it when injectName is empty", async () => {
+    setStore({
+      login: {
+        method: "POST",
+        path: "/login",
+        captureCookie: "*SID*",
+        injectAs: "cookie",
+      },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(
+      mockLoginResponse({ setCookie: "QBT_SID_8080=abc; HttpOnly" }),
+    );
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ headers: expect.objectContaining({ Cookie: "QBT_SID_8080=abc" }) }),
+    );
+  });
+
+  it("sends no cookie when the captureCookie pattern matches nothing", async () => {
+    setStore({
+      login: {
+        method: "POST",
+        path: "/login",
+        captureCookie: "*NOPE*",
+        injectAs: "cookie",
+      },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(
+      mockLoginResponse({ setCookie: "QBT_SID_8080=abc; HttpOnly" }),
+    );
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({
+        headers: expect.not.objectContaining({ Cookie: expect.anything() }),
+      }),
+    );
+  });
+
+  it("treats special regex characters in captureCookie literally, never as a raw regex", async () => {
+    setStore({
+      // As a raw regex /SID.ID/ (`.` = any char) this would match "SIDXID"
+      // too — it must not once the pattern is escaped.
+      login: { method: "POST", path: "/login", captureCookie: "SID.ID", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(mockLoginResponse({ setCookie: "SIDXID=wrong; HttpOnly" }));
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({
+        headers: expect.not.objectContaining({ Cookie: expect.anything() }),
+      }),
+    );
+  });
+
+  // The fetch polyfill this app runs under joins MULTIPLE Set-Cookie response
+  // headers with ", " into one string — there is no way to read them
+  // separately from JS. A pattern must still find the right cookie's name
+  // among the comma-joined pieces, not accidentally swallow a neighboring
+  // cookie or its attributes into the captured name/value.
+  it("finds the right cookie among multiple comma-joined Set-Cookie headers", async () => {
+    setStore({
+      login: { method: "POST", path: "/login", captureCookie: "*SID*", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(
+      mockLoginResponse({ setCookie: "other=1; Path=/, QBT_SID_8080=abc; HttpOnly" }),
+    );
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ headers: expect.objectContaining({ Cookie: "QBT_SID_8080=abc" }) }),
+    );
+  });
+
+  it("matches the right cookie among comma-joined headers with a prefix wildcard", async () => {
+    setStore({
+      login: { method: "POST", path: "/login", captureCookie: "QBT_SID_*", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(
+      mockLoginResponse({ setCookie: "csrf=t; Path=/, QBT_SID_8080=abc" }),
+    );
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ headers: expect.objectContaining({ Cookie: "QBT_SID_8080=abc" }) }),
+    );
+  });
+
+  it("picks the first matching cookie in header order when more than one candidate matches", async () => {
+    setStore({
+      login: { method: "POST", path: "/login", captureCookie: "*SID*", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(
+      mockLoginResponse({ setCookie: "SID=first; Path=/, QBT_SID_8080=second" }),
+    );
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ headers: expect.objectContaining({ Cookie: "SID=first" }) }),
+    );
+  });
+
+  it("matches qBittorrent's real Set-Cookie header shape (attributes, comma-bearing expires)", async () => {
+    setStore({
+      login: { method: "POST", path: "/login", captureCookie: "*SID*", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(
+      mockLoginResponse({
+        setCookie:
+          "QBT_SID_8080=abc; HttpOnly; SameSite=Lax; expires=Tue, 08-Sep-2026 18:21:35 GMT; path=/",
+      }),
+    );
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ headers: expect.objectContaining({ Cookie: "QBT_SID_8080=abc" }) }),
+    );
+  });
+
+  it("still matches an exact (non-wildcard) captureCookie name unchanged", async () => {
+    setStore({
+      login: { method: "POST", path: "/login", captureCookie: "SID", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(mockLoginResponse({ setCookie: "SID=exactvalue; Path=/" }));
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ headers: expect.objectContaining({ Cookie: "SID=exactvalue" }) }),
+    );
+  });
+
+  // ReDoS regression: the previous RegExp-based matcher (`.*?`-per-`*`
+  // compiled against the raw header) took >10s on node 22 for a many-star
+  // pattern against a long run of a repeated character. `pattern` is
+  // user-typed and the header is server-controlled, so both sides of the
+  // match are untrusted — this must stay linear-time with no RegExp built
+  // from either.
+  it("resolves a pathological captureCookie pattern against a long header without ReDoS", async () => {
+    setStore({
+      login: { method: "POST", path: "/login", captureCookie: "*a*a*a*a*a*", injectAs: "cookie" },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(mockLoginResponse({ setCookie: "a".repeat(5000) }));
+    mockRequest.mockResolvedValue({});
+
+    const start = Date.now();
+    await checkHealth(INSTANCE);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(50);
   });
 
   it("treats a cookie-injectAs login with no readable Set-Cookie as authenticated via the platform jar", async () => {

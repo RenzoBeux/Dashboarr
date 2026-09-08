@@ -52,15 +52,27 @@ interface BuiltRequest {
   body?: string;
 }
 
+// A successful login's captured value. `cookieName` is only set when the
+// value came from matching `login.captureCookie` against Set-Cookie — the
+// REAL cookie name the server used, which can differ from the configured
+// pattern when it contains a `*` wildcard (e.g. qBittorrent 5.2.3 sets
+// `QBT_SID_8080`, not the fixed `SID` older builds used). It's what
+// `applyCapture` falls back to for `injectAs: "cookie"` when `injectName` is
+// left empty — never the pattern itself.
+interface CustomCapture {
+  value: string;
+  cookieName?: string;
+}
+
 interface BuildRequestOptions {
   method: string;
   body?: string;
   contentType?: string;
-  // The currently-cached login capture value (or null when the login is
-  // "cookie"-injected and relying on the platform's cookie jar rather than a
-  // value we can attach ourselves — see performLogin below). Undefined when
-  // there is no login step at all.
-  capture?: string | null;
+  // The currently-cached login capture (or null when the login is "cookie"-
+  // injected and relying on the platform's cookie jar rather than a value we
+  // can attach ourselves — see performLogin below). Undefined when there is
+  // no login step at all.
+  capture?: CustomCapture | null;
 }
 
 /**
@@ -122,9 +134,10 @@ function applyCapture(
   headers: Record<string, string>,
   params: Record<string, string>,
   login: CustomServiceLogin | undefined,
-  value: string,
+  capture: CustomCapture,
 ): void {
   if (!login) return;
+  const { value, cookieName } = capture;
   const name = login.injectName;
   switch (login.injectAs) {
     case "header":
@@ -134,7 +147,12 @@ function applyCapture(
       if (name) params[name] = value;
       return;
     case "cookie": {
-      const pair = `${name || "session"}=${value}`;
+      // injectName wins when set; otherwise use the REAL cookie name the
+      // server issued (captured via captureCookie, possibly through a `*`
+      // wildcard) rather than a made-up default — the server won't
+      // recognize a cookie sent back under the wrong name.
+      const cookieKey = name || cookieName || "session";
+      const pair = `${cookieKey}=${value}`;
       headers["Cookie"] = headers["Cookie"] ? `${headers["Cookie"]}; ${pair}` : pair;
       return;
     }
@@ -159,8 +177,127 @@ function substituteLoginBody(
   return body.replace(/\{\{username\}\}/g, username).replace(/\{\{password\}\}/g, password);
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Infer a Content-Type for a health/stats/action body — none of those three
+ * carry a `contentType` field on the definition (only `login` does, and that
+ * keeps using its own explicit value unchanged: see performLogin). Live-
+ * proof: qBittorrent v5.2.3's `POST /api/v2/torrents/stop` with body
+ * `hashes=all` returns 400 sent as `application/json` and 200 as
+ * `application/x-www-form-urlencoded` — most hand-authored action/health
+ * bodies are form-encoded `key=value` pairs, not JSON, so defaulting to JSON
+ * (the old behavior) broke exactly this shape. A trimmed body starting with
+ * `{` or `[` is JSON; anything else defaults to form-urlencoded. No body →
+ * no inferred type (undefined), same as before.
+ */
+function inferContentType(body: string | undefined): string | undefined {
+  if (!body) return undefined;
+  const trimmed = body.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[")
+    ? "application/json"
+    : "application/x-www-form-urlencoded";
+}
+
+// Cookie-attribute names (RFC 6265bis + the still-widely-used non-standard
+// ones), lowercase — a piece of a Set-Cookie header whose name matches one of
+// these is an attribute (Path=/, SameSite=Lax, ...), never a cookie itself,
+// so matchCaptureCookie's candidate scan below skips it. This is what makes
+// `expires=Tue, 08-Sep-2026 18:21:35 GMT` harmless even though it contains a
+// comma and looks like its own `key=value` pair.
+const COOKIE_ATTRIBUTE_NAMES = new Set([
+  "expires",
+  "path",
+  "domain",
+  "max-age",
+  "samesite",
+  "secure",
+  "httponly",
+  "priority",
+  "partitioned",
+]);
+
+/**
+ * Case-sensitive glob match: `*` matches any run of characters (including
+ * zero) in `text`; every other character of `pattern` must match literally.
+ * No `*` in `pattern` degrades to a plain exact-equality check, same as
+ * before wildcards existed.
+ *
+ * Deliberately NOT implemented as a compiled RegExp — `pattern` is
+ * user-typed and `text` (a cookie name candidate, itself parsed out of a
+ * server-controlled Set-Cookie header) is untrusted, and a RegExp built from
+ * either is a ReDoS vector (a pattern like `*a*a*a*a*a*` against a long run
+ * of `a`s made the previous `.*?`-per-star version take >10s). This is the
+ * standard iterative two-pointer wildcard matcher: one pass over `text` with
+ * backtracking bounded by `pattern.length * text.length` (re-trying a `*`
+ * one character later, never re-scanning from the start), so it can't blow
+ * up the way regex backtracking can.
+ */
+function globMatch(pattern: string, text: string): boolean {
+  let pIdx = 0;
+  let tIdx = 0;
+  let starIdx = -1;
+  let starMatchIdx = 0;
+
+  while (tIdx < text.length) {
+    if (pIdx < pattern.length && pattern[pIdx] === "*") {
+      starIdx = pIdx;
+      starMatchIdx = tIdx;
+      pIdx++;
+    } else if (pIdx < pattern.length && pattern[pIdx] === text[tIdx]) {
+      pIdx++;
+      tIdx++;
+    } else if (starIdx !== -1) {
+      pIdx = starIdx + 1;
+      starMatchIdx++;
+      tIdx = starMatchIdx;
+    } else {
+      return false;
+    }
+  }
+  while (pIdx < pattern.length && pattern[pIdx] === "*") pIdx++;
+  return pIdx === pattern.length;
+}
+
+/**
+ * Split a raw Set-Cookie header value into (name, value) candidates. The
+ * fetch polyfill this app runs under joins MULTIPLE Set-Cookie response
+ * headers with `, ` into one string (there is no way to read them
+ * separately from JS), so a header full of both `;`-separated attributes and
+ * `,`-joined cookies is split on EITHER — `other=1; Path=/, QBT_SID_8080=abc`
+ * is 3 pieces: "other=1", "Path=/", "QBT_SID_8080=abc". Each piece is
+ * trimmed, then split on its first `=`; pieces with no `=`, a name
+ * containing whitespace, or a name that's a cookie attribute
+ * (COOKIE_ATTRIBUTE_NAMES) are skipped — the rest are real cookie
+ * candidates, in header order (so "first match wins" naturally falls out of
+ * scanning this list in order).
+ */
+function parseCookieCandidates(setCookie: string): Array<{ name: string; value: string }> {
+  const candidates: Array<{ name: string; value: string }> = [];
+  for (const rawPiece of setCookie.split(/[;,]/)) {
+    const piece = rawPiece.trim();
+    const eq = piece.indexOf("=");
+    if (eq === -1) continue;
+    const name = piece.slice(0, eq).trim();
+    if (name.length === 0 || /\s/.test(name)) continue;
+    if (COOKIE_ATTRIBUTE_NAMES.has(name.toLowerCase())) continue;
+    candidates.push({ name, value: piece.slice(eq + 1) });
+  }
+  return candidates;
+}
+
+/**
+ * Match `login.captureCookie` (glob — see globMatch) against a raw
+ * Set-Cookie header value, returning the ACTUAL name the server used
+ * alongside the captured value — first match wins (header order, via
+ * parseCookieCandidates). Null when nothing matches.
+ */
+function matchCaptureCookie(
+  setCookie: string,
+  pattern: string,
+): { name: string; value: string } | null {
+  for (const candidate of parseCookieCandidates(setCookie)) {
+    if (globMatch(pattern, candidate.name)) return candidate;
+  }
+  return null;
 }
 
 // A definition's own query-string auth param name (auth.queryParam) and any
@@ -193,6 +330,10 @@ interface CaptureEntry {
   // cookie login uses). Either way, presence in the cache means "already
   // authenticated, don't log in again yet".
   value: string | null;
+  // Name+value are cached TOGETHER (see matchCaptureCookie) so a replayed
+  // request always injects the cookie under the name the server actually
+  // used, not the (possibly wildcarded) captureCookie pattern.
+  cookieName?: string;
   expiresAt: number;
 }
 
@@ -209,8 +350,8 @@ function getCachedEntry(instanceId: string): CaptureEntry | undefined {
   return entry;
 }
 
-function setCachedEntry(instanceId: string, value: string | null): void {
-  captureCache.set(instanceId, { value, expiresAt: Date.now() + CAPTURE_TTL_MS });
+function setCachedEntry(instanceId: string, value: string | null, cookieName?: string): void {
+  captureCache.set(instanceId, { value, cookieName, expiresAt: Date.now() + CAPTURE_TTL_MS });
 }
 
 function clearCachedEntry(instanceId: string): void {
@@ -261,7 +402,7 @@ async function performLogin(
   instanceId: string,
   def: CustomServiceDefinition,
   baseUrl: string,
-): Promise<string | null> {
+): Promise<CustomCapture | null> {
   const login = def.login;
   if (!login) return null;
 
@@ -301,6 +442,7 @@ async function performLogin(
   }
 
   let captured: string | null = null;
+  let capturedCookieName: string | undefined;
 
   if (login.captureJSONPath) {
     try {
@@ -315,8 +457,11 @@ async function performLogin(
   if (!captured && login.captureCookie) {
     const setCookie = response.headers.get("set-cookie");
     if (setCookie) {
-      const match = setCookie.match(new RegExp(`${escapeRegExp(login.captureCookie)}=([^;]+)`));
-      if (match?.[1]) captured = match[1];
+      const found = matchCaptureCookie(setCookie, login.captureCookie);
+      if (found) {
+        captured = found.value;
+        capturedCookieName = found.name;
+      }
     }
   }
 
@@ -330,18 +475,20 @@ async function performLogin(
     );
   }
 
-  setCachedEntry(instanceId, captured);
-  return captured;
+  setCachedEntry(instanceId, captured, capturedCookieName);
+  return captured !== null ? { value: captured, cookieName: capturedCookieName } : null;
 }
 
 async function ensureCapture(
   instanceId: string,
   def: CustomServiceDefinition,
   baseUrl: string,
-): Promise<string | null> {
+): Promise<CustomCapture | null> {
   if (!def.login) return null;
   const cached = getCachedEntry(instanceId);
-  if (cached) return cached.value;
+  if (cached) {
+    return cached.value !== null ? { value: cached.value, cookieName: cached.cookieName } : null;
+  }
   return performLogin(instanceId, def, baseUrl);
 }
 
@@ -410,7 +557,7 @@ export async function checkHealth(instanceId: string): Promise<CustomHealthResul
     const body = await customRequest<unknown>(instanceId, health.path, {
       method: health.method,
       body: health.body,
-      contentType: health.body ? "application/json" : undefined,
+      contentType: inferContentType(health.body),
     });
 
     const okValues = (health.okValues ?? []).map((v) => v.toLowerCase());
@@ -419,12 +566,22 @@ export async function checkHealth(instanceId: string): Promise<CustomHealthResul
     let status: CustomHealthResult["status"] = "ok";
     if (health.statusPath) {
       const statusValue = getPath(body, health.statusPath);
-      if (statusValue !== undefined && statusValue !== null) {
-        const statusStr = String(statusValue).toLowerCase();
-        if (okValues.includes(statusStr)) status = "ok";
-        else if (warnValues.includes(statusStr)) status = "warning";
-        else if (okValues.length > 0 || warnValues.length > 0) status = "offline";
-      } else if (okValues.length > 0 || warnValues.length > 0) {
+      const statusStr =
+        statusValue === undefined || statusValue === null
+          ? undefined
+          : String(statusValue).toLowerCase();
+      if (okValues.length === 0 && warnValues.length === 0) {
+        // No ok/warn values configured — fall back to plain reachability:
+        // any non-empty status value reads as healthy, but a missing, null,
+        // or empty-string one does not (a present-but-empty field is exactly
+        // the "server responded, but has nothing to say" shape a real
+        // health check should treat as unhealthy, not silently pass).
+        status = statusStr !== undefined && statusStr !== "" ? "ok" : "offline";
+      } else if (statusStr !== undefined && okValues.includes(statusStr)) {
+        status = "ok";
+      } else if (statusStr !== undefined && warnValues.includes(statusStr)) {
+        status = "warning";
+      } else {
         status = "offline";
       }
     }
@@ -459,7 +616,7 @@ export async function getStats(instanceId: string): Promise<CustomStatResult[]> 
   const body = await customRequest<unknown>(instanceId, source?.path ?? "", {
     method: source?.method ?? "GET",
     body: source?.body,
-    contentType: source?.body ? "application/json" : undefined,
+    contentType: inferContentType(source?.body),
   });
 
   return stats.map((stat) => {
@@ -483,7 +640,7 @@ export async function runAction(
     const body = await customRequest<unknown>(instanceId, action.path, {
       method: action.method,
       body: action.body,
-      contentType: action.body ? "application/json" : undefined,
+      contentType: inferContentType(action.body),
     });
     return { status: 200, body };
   } catch (err) {
