@@ -158,11 +158,21 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
 // error toast, and in formatErrorForCopy's clipboard payload.
 const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token", "sid"];
 
-export function redactUrl(url: string): string {
+/**
+ * `extraParams` covers the "custom" service kind: its query-string auth param
+ * name (auth.queryParam) and login-capture inject name (login.injectName,
+ * when injectAs is "query") are user-defined per instance, so they can't live
+ * in the fixed REDACT_PARAMS list above — a queryParam literally named "key"
+ * or "access_token" would otherwise land in clear in HttpError.message, which
+ * flows into checkHealth's `message` and from there into a UI toast.
+ */
+export function redactUrl(url: string, extraParams: string[] = []): string {
   try {
     const u = new URL(url);
+    const extra = extraParams.map((p) => p.toLowerCase());
     for (const key of Array.from(u.searchParams.keys())) {
-      if (REDACT_PARAMS.includes(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (REDACT_PARAMS.includes(lower) || extra.includes(lower)) {
         u.searchParams.set(key, "***");
       }
     }
@@ -183,8 +193,12 @@ export class HttpError extends Error {
     public statusText: string,
     public url: string,
     body?: unknown,
+    // See redactUrl's `extraParams` doc — passed for a "custom" instance's
+    // own query-string auth/capture param name(s), which the fixed
+    // REDACT_PARAMS list can't know about ahead of time.
+    extraRedactParams?: string[],
   ) {
-    const safe = redactUrl(url);
+    const safe = redactUrl(url, extraRedactParams);
     super(`HTTP ${status} ${statusText} — ${safe}`);
     this.url = safe;
     this.name = "HttpError";
@@ -207,8 +221,14 @@ export const AUTH_PROXY_MESSAGE =
   "the service settings.";
 
 export class AuthProxyResponseError extends HttpError {
-  constructor(status: number, statusText: string, url: string, body?: unknown) {
-    super(status, statusText, url, body);
+  constructor(
+    status: number,
+    statusText: string,
+    url: string,
+    body?: unknown,
+    extraRedactParams?: string[],
+  ) {
+    super(status, statusText, url, body, extraRedactParams);
     this.name = "AuthProxyResponseError";
     // Override the bare "HTTP 200 …" message HttpError builds with an actionable
     // one. ErrorBanner/ErrorBoundary fall back to error.message (an HTML body is
@@ -433,6 +453,47 @@ export async function serviceRequest<T>(
     // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
     // (store/config-store.ts) — so a stale apiKey left on an instance id would
     // be sent to Pi-hole on every request forever.
+  } else if (serviceId === "custom") {
+    // Auth comes entirely from the per-instance `custom` definition
+    // (lib/custom-service.ts) — never send secrets.apiKey here. This branch
+    // exists for the same reason the pihole one above does:
+    // `secretsShapeFor("custom")` resolves to "apiKey" (lib/service-
+    // catalog.ts) so the service editor's generic apiKey field CAN write
+    // into instanceSecrets for a custom instance (e.g. left over from
+    // switching a service's kind) — without this branch that stale key would
+    // fall to the X-Api-Key else below on every request, silently
+    // overwriting a definition header literally named X-Api-Key and leaking
+    // the store secret alongside the definition's own auth.
+    //
+    // services/custom-api.ts already builds this same header/param set (so
+    // its request options are independently assertable in tests against a
+    // mocked serviceRequest), but re-applying it here — AFTER the custom-
+    // header merge above — is what makes definition auth win a name
+    // collision with a user's global/instance custom header, the same
+    // guarantee every other kind gets from its branch running at this point.
+    // The login-capture header/param (services/custom-api.ts's own cache) is
+    // NOT re-applied here — only the primary def.auth is.
+    const cAuth = inst.custom?.auth;
+    if (cAuth && cAuth.mode !== "none") {
+      switch (cAuth.mode) {
+        case "header":
+          if (cAuth.headerName && cAuth.token) headers.set(cAuth.headerName, cAuth.token);
+          break;
+        case "query":
+          if (cAuth.queryParam && cAuth.token) {
+            authParams = { ...(authParams ?? {}), [cAuth.queryParam]: cAuth.token };
+          }
+          break;
+        case "basic": {
+          const basic = basicAuthHeader(cAuth.username, cAuth.password);
+          if (basic) headers.set("Authorization", basic);
+          break;
+        }
+        case "bearer":
+          if (cAuth.token) headers.set("Authorization", `Bearer ${cAuth.token}`);
+          break;
+      }
+    }
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
     // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
@@ -460,6 +521,19 @@ export async function serviceRequest<T>(
           : params;
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
+
+  // A "custom" instance's query-string auth param (auth.queryParam) and any
+  // query-injected login capture (login.injectName when injectAs is "query")
+  // are user-defined per instance, so redactUrl's fixed REDACT_PARAMS list
+  // can't mask them — pass them through explicitly for every kind else this
+  // stays an empty (no-op) array.
+  const customExtraRedactParams: string[] =
+    serviceId === "custom"
+      ? [
+          inst.custom?.auth?.mode === "query" ? inst.custom.auth.queryParam : undefined,
+          inst.custom?.login?.injectAs === "query" ? inst.custom.login.injectName : undefined,
+        ].filter((v): v is string => Boolean(v))
+      : [];
 
   // FormData bodies (SAB addfile upload) must keep fetch's own multipart
   // Content-Type — the boundary parameter is generated per-request and a
@@ -512,9 +586,16 @@ export async function serviceRequest<T>(
           response.statusText,
           url,
           errorBody,
+          customExtraRedactParams,
         );
       }
-      throw new HttpError(response.status, response.statusText, url, errorBody);
+      throw new HttpError(
+        response.status,
+        response.statusText,
+        url,
+        errorBody,
+        customExtraRedactParams,
+      );
     }
 
     if (contentType?.includes("application/json")) {
@@ -534,6 +615,7 @@ export async function serviceRequest<T>(
         response.statusText,
         url,
         body,
+        customExtraRedactParams,
       );
     }
     return body as unknown as T;

@@ -35,6 +35,7 @@ import { useConfigStore } from "@/store/config-store";
 import {
   buildRequest,
   checkHealth,
+  clearCustomServiceCache,
   getStats,
   resetCustomServiceCache,
   runAction,
@@ -47,10 +48,15 @@ const mockFetch = () => global.fetch as jest.Mock;
 
 const INSTANCE = "inst-1";
 
-function setStore(def: CustomServiceDefinition, baseUrl = "http://custom.local") {
+function setStore(
+  def: CustomServiceDefinition,
+  baseUrl = "http://custom.local",
+  mergedHeaders: Record<string, string> = {},
+) {
   mockGetState.mockReturnValue({
     getInstance: () => ({ id: INSTANCE, enabled: true, custom: def }),
     getActiveUrl: () => baseUrl,
+    getMergedHeaders: () => mergedHeaders,
   });
 }
 
@@ -542,5 +548,108 @@ describe("login capture", () => {
     const result = await checkHealth(INSTANCE);
     expect(result.status).toBe("offline");
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("performLogin — merged custom headers", () => {
+  it("applies the instance's merged custom headers to the login request, skipping any Cookie, with definition headers winning on collision", async () => {
+    setStore(
+      {
+        auth: { mode: "header", headerName: "Authorization", token: "def-token" },
+        login: {
+          method: "POST",
+          path: "/login",
+          captureJSONPath: "token",
+          injectAs: "header",
+          injectName: "X-Token",
+        },
+        health: { method: "GET", path: "/status" },
+      },
+      "http://custom.local",
+      {
+        "X-Proxy-Auth": "proxy-secret",
+        Authorization: "Bearer should-not-win",
+        Cookie: "leftover=1",
+      },
+    );
+    mockFetch().mockResolvedValue(mockLoginResponse({ jsonBody: { token: "tok" } }));
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    const [, fetchInit] = mockFetch().mock.calls[0];
+    expect(fetchInit.headers["X-Proxy-Auth"]).toBe("proxy-secret");
+    expect(fetchInit.headers["Authorization"]).toBe("def-token");
+    expect(fetchInit.headers["Cookie"]).toBeUndefined();
+  });
+});
+
+describe("timeout", () => {
+  it("passes def.timeoutSeconds through to serviceRequest as timeout (ms) for health/stats/actions", async () => {
+    setStore({ health: { method: "GET", path: "/status" }, timeoutSeconds: 5 });
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      "custom",
+      "/status",
+      expect.objectContaining({ timeout: 5000 }),
+    );
+  });
+
+  it("leaves timeout unset (serviceRequest's own default) when timeoutSeconds is unconfigured", async () => {
+    setStore({ health: { method: "GET", path: "/status" } });
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    expect(mockRequest.mock.calls[0]![2].timeout).toBeUndefined();
+  });
+
+  it("wires an AbortController on the login fetch honoring def.timeoutSeconds", async () => {
+    setStore({
+      login: {
+        method: "POST",
+        path: "/login",
+        captureJSONPath: "token",
+        injectAs: "header",
+        injectName: "X-Token",
+      },
+      health: { method: "GET", path: "/status" },
+      timeoutSeconds: 3,
+    });
+    mockFetch().mockResolvedValue(mockLoginResponse({ jsonBody: { token: "tok" } }));
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+
+    const [, fetchInit] = mockFetch().mock.calls[0];
+    expect(fetchInit.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("clearCustomServiceCache", () => {
+  it("forces a fresh login on the next request instead of reusing the cached capture", async () => {
+    setStore({
+      login: {
+        method: "POST",
+        path: "/login",
+        captureJSONPath: "token",
+        injectAs: "header",
+        injectName: "X-Token",
+      },
+      health: { method: "GET", path: "/status" },
+    });
+    mockFetch().mockResolvedValue(mockLoginResponse({ jsonBody: { token: "tok" } }));
+    mockRequest.mockResolvedValue({});
+
+    await checkHealth(INSTANCE);
+    expect(mockFetch()).toHaveBeenCalledTimes(1);
+
+    clearCustomServiceCache(INSTANCE);
+
+    await checkHealth(INSTANCE);
+    expect(mockFetch()).toHaveBeenCalledTimes(2);
   });
 });

@@ -163,6 +163,26 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// A definition's own query-string auth param name (auth.queryParam) and any
+// query-injected login capture name (login.injectName, when injectAs is
+// "query") are user-defined per instance, so lib/http-client.ts's fixed
+// REDACT_PARAMS list can't know about them — pass them through explicitly
+// wherever this module builds its own HttpError (the login request, which
+// bypasses serviceRequest — see performLogin). serviceRequest's own throw
+// sites do the equivalent for the real (non-login) requests.
+function customRedactParamNames(def: CustomServiceDefinition): string[] {
+  const names: string[] = [];
+  if (def.auth?.mode === "query" && def.auth.queryParam) names.push(def.auth.queryParam);
+  if (def.login?.injectAs === "query" && def.login.injectName) names.push(def.login.injectName);
+  return names;
+}
+
+const DEFAULT_LOGIN_TIMEOUT_MS = 15000;
+
+function timeoutMsFor(def: CustomServiceDefinition): number {
+  return def.timeoutSeconds ? def.timeoutSeconds * 1000 : DEFAULT_LOGIN_TIMEOUT_MS;
+}
+
 // ---- login capture cache ----------------------------------------------
 
 interface CaptureEntry {
@@ -195,6 +215,16 @@ function setCachedEntry(instanceId: string, value: string | null): void {
 
 function clearCachedEntry(instanceId: string): void {
   captureCache.delete(instanceId);
+}
+
+/**
+ * Drop one instance's cached login capture, forcing the next request to log
+ * in again. The settings editor should call this on save — an edited auth
+ * mode, login step, or credential must not keep using a capture minted under
+ * the old definition for up to 10 more minutes.
+ */
+export function clearCustomServiceCache(instanceId: string): void {
+  clearCachedEntry(instanceId);
 }
 
 /** Test-only: clear every cached login capture between test cases. */
@@ -241,12 +271,34 @@ async function performLogin(
     contentType: login.contentType,
   });
 
+  // Merge the instance's global/custom headers (e.g. a reverse-proxy auth
+  // header) same as every other login flow — skip a user-supplied Cookie so
+  // it can't fight this login's own session, and layer the definition's
+  // headers (auth + Content-Type) on top so THEY win a name collision,
+  // mirroring services/qbittorrent-api.ts's qbLogin.
+  const merged = useConfigStore.getState().getMergedHeaders("custom", instanceId);
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(merged)) {
+    if (k.toLowerCase() === "cookie") continue;
+    headers[k] = v;
+  }
+  Object.assign(headers, spec.headers);
+
   const url = buildUrl(baseUrl, SERVICE_DEFAULTS.custom.apiBasePath, login.path, spec.params);
-  const response = await fetch(url, {
-    method: spec.method,
-    headers: spec.headers,
-    body: spec.body,
-  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMsFor(def));
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: spec.method,
+      headers,
+      body: spec.body,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   let captured: string | null = null;
 
@@ -269,7 +321,13 @@ async function performLogin(
   }
 
   if (!response.ok && !captured) {
-    throw new HttpError(response.status, response.statusText, url);
+    throw new HttpError(
+      response.status,
+      response.statusText,
+      url,
+      undefined,
+      customRedactParamNames(def),
+    );
   }
 
   setCachedEntry(instanceId, captured);
@@ -303,6 +361,10 @@ async function customRequest<T>(
   const { def, baseUrl } = resolveInstance(instanceId);
   const capture = await ensureCapture(instanceId, def, baseUrl);
   const spec = buildRequest(def, path, { ...opts, capture });
+  // Read by services/custom-api.ts's login (timeoutMsFor) too, so both the
+  // login exchange and the real request honor the same per-definition
+  // timeout — serviceRequest defaults this away (undefined) when unset.
+  const timeout = def.timeoutSeconds ? def.timeoutSeconds * 1000 : undefined;
 
   try {
     return await serviceRequest<T>("custom", path, {
@@ -311,6 +373,7 @@ async function customRequest<T>(
       params: spec.params,
       body: spec.body,
       instanceId,
+      timeout,
     });
   } catch (err) {
     if (!isAuthError(err) || !def.login) throw err;
@@ -323,6 +386,7 @@ async function customRequest<T>(
       params: retrySpec.params,
       body: retrySpec.body,
       instanceId,
+      timeout,
     });
   }
 }
