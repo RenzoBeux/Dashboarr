@@ -523,6 +523,17 @@ const DEMO_RADARR_MANUAL_IMPORT = [
   },
 ];
 
+// GET /qualitydefinition — the quality list the manual-import screen offers for
+// a file *arr parsed no quality off (#306). Trimmed to the common tiers.
+const DEMO_ARR_QUALITY_DEFINITIONS = [
+  { id: 1, title: "Unknown", weight: 1, quality: { id: 0, name: "Unknown" } },
+  { id: 2, title: "SDTV", weight: 2, quality: { id: 1, name: "SDTV", resolution: 480 } },
+  { id: 3, title: "HDTV-720p", weight: 3, quality: { id: 4, name: "HDTV-720p", resolution: 720 } },
+  { id: 4, title: "WEBDL-1080p", weight: 4, quality: { id: 3, name: "WEBDL-1080p", resolution: 1080 } },
+  { id: 5, title: "Bluray-1080p", weight: 5, quality: { id: 7, name: "Bluray-1080p", resolution: 1080 } },
+  { id: 6, title: "Bluray-2160p", weight: 6, quality: { id: 19, name: "Bluray-2160p", resolution: 2160 } },
+];
+
 const DEMO_RADARR_WANTED = {
   page: 1,
   pageSize: 20,
@@ -575,6 +586,51 @@ const DEMO_SONARR_SERIES = [
   makeSeries(4, "Shogun", 2024, 345678),
   makeSeries(5, "Severance", 2022, 403891),
 ];
+
+// Neutral episode titles, cycled per season. Demo mode needs a real episode
+// list so the series screen and manual import's season/episode pickers (#306)
+// are usable, but inventing 80 titles for five real shows is worse than a
+// small honest pool.
+const DEMO_EPISODE_TITLES = [
+  "Cold Open",
+  "Fault Lines",
+  "The Long Way Down",
+  "Static",
+  "Borrowed Time",
+  "The Quiet Part",
+  "Fallout Shelter",
+  "Last Light",
+];
+
+// Matches the season shape makeSeries reports: two seasons of eight, all of
+// season 1 on disk and the last two of season 2 still missing.
+function makeEpisodes(seriesId: number) {
+  const out = [];
+  for (const seasonNumber of [1, 2]) {
+    for (let episodeNumber = 1; episodeNumber <= 8; episodeNumber += 1) {
+      // Weekly airings ending on the 15th episode, so the two without a file
+      // are the two most recent rather than something that aired a year ago.
+      const airedDaysAgo = ((seasonNumber - 1) * 8 + episodeNumber - 15) * 7;
+      out.push({
+        // Distinct from the calendar's 20x ids so the two fixtures can't collide.
+        id: seriesId * 1000 + seasonNumber * 100 + episodeNumber,
+        seriesId,
+        seasonNumber,
+        episodeNumber,
+        title: DEMO_EPISODE_TITLES[episodeNumber - 1]!,
+        airDate: daysFromNow(airedDaysAgo),
+        airDateUtc: daysFromNowFull(airedDaysAgo),
+        hasFile: seasonNumber === 1 || episodeNumber <= 6,
+        monitored: true,
+      });
+    }
+  }
+  return out;
+}
+
+const DEMO_SONARR_EPISODES = DEMO_SONARR_SERIES.flatMap((series) =>
+  makeEpisodes(series.id),
+);
 
 const DEMO_SONARR_CALENDAR = [
   {
@@ -635,7 +691,7 @@ const DEMO_SONARR_QUEUE = {
     {
       id: 301,
       seriesId: 3,
-      episodeId: 203,
+      episodeId: 3106,
       title: "Fallout.S01E06.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
       status: "downloading",
       trackedDownloadStatus: "ok",
@@ -654,7 +710,7 @@ const DEMO_SONARR_QUEUE = {
     {
       id: 302,
       seriesId: 3,
-      episodeId: 204,
+      episodeId: 3107,
       title: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
       status: "completed",
       trackedDownloadStatus: "warning",
@@ -689,7 +745,7 @@ const DEMO_SONARR_MANUAL_IMPORT = [
     size: 2952790016,
     series: makeSeries(3, "Fallout", 2024, 456789),
     seasonNumber: 1,
-    episodes: [{ id: 204 }],
+    episodes: [{ id: 3107 }],
     episodeFileId: 0,
     releaseType: "singleEpisode",
     quality: { quality: { id: 3, name: "WEBDL-1080p" } },
@@ -3195,6 +3251,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/manualimport")) return DEMO_RADARR_MANUAL_IMPORT;
       if (normalized.startsWith("/wanted/missing")) return DEMO_RADARR_WANTED;
       if (normalized.startsWith("/calendar")) return DEMO_RADARR_CALENDAR;
+      if (normalized.startsWith("/qualitydefinition")) return DEMO_ARR_QUALITY_DEFINITIONS;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/movies", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
@@ -3213,6 +3270,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/calendar")) return DEMO_SONARR_CALENDAR;
       if (normalized.startsWith("/queue")) return DEMO_SONARR_QUEUE;
       if (normalized.startsWith("/manualimport")) return DEMO_SONARR_MANUAL_IMPORT;
+      if (normalized.startsWith("/qualitydefinition")) return DEMO_ARR_QUALITY_DEFINITIONS;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
@@ -3221,6 +3279,15 @@ export function getDemoResponse(
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/health")) return DEMO_SONARR_HEALTH;
       if (normalized.startsWith("/series/lookup")) return [];
+      if (normalized === "/episode") {
+        const seriesId = Number(params?.seriesId);
+        return DEMO_SONARR_EPISODES.filter((e) => e.seriesId === seriesId);
+      }
+      if (normalized === "/episode/:id") {
+        const episodeId = Number(basePath.split("/").pop());
+        return DEMO_SONARR_EPISODES.find((e) => e.id === episodeId);
+      }
+      // /episodefile and anything else under /episode has no fixture.
       if (normalized.startsWith("/episode")) return [];
       return undefined;
     }

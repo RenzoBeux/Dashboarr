@@ -73,4 +73,6 @@ export const sonarrArrQueueAdapter: ArrQueueAdapter = {
 
   forceImport: (instanceId, downloadId) =>
     forceImportQueueItem(downloadId, instanceId),
+
+  supportsManualImport: true,
 };

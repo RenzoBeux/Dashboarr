@@ -789,16 +789,20 @@
         </p>
         <p>
           Tapping it lists every stuck grab with the reason the service gave and the release name.
-          Tap one for three actions:
+          Tap one for these actions:
         </p>
         <ul>
+          <li><strong>Force import</strong> (Radarr and Sonarr, blocked imports only): imports the downloaded files anyway, replacing the current file if there is one. This is the fix when the release was fine but the *arr refused it, most often because it is not an upgrade over what you already have.</li>
+          <li><strong>Manual import</strong> (Radarr and Sonarr, blocked imports only): opens the download's files so you can map them yourself. Pick the movie or the series, then the season and episodes for each file, adjust the quality if the *arr could not read one off the file name, and import. This is the fix when the release is named in a way the *arr cannot parse, so it matched nothing and Force import has nothing to send.</li>
           <li><strong>Remove from queue</strong>: drops the grab and deletes it from the download client. The release stays eligible, so the same copy can be grabbed again.</li>
           <li><strong>Blocklist &amp; Search</strong>: also blocks the release so it is never grabbed again, then starts a search for a replacement. This is the one you want for a bad copy.</li>
           <li><strong>Blocklist only</strong>: blocks the release with no replacement search.</li>
         </ul>
         <p>
-          All three ask for confirmation first, and blocklisted releases show up under
-          <em>System &rarr; Blocklist</em> in Radarr, Sonarr or Lidarr itself.
+          Force import and the three disposal actions ask for confirmation first, and blocklisted
+          releases show up under <em>System &rarr; Blocklist</em> in Radarr, Sonarr or Lidarr itself.
+          The import itself runs on the server, so the stuck grab clears from the queue a moment
+          after the app says the import started.
         </p>
 
         <h3>Global search</h3>
