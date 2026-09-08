@@ -22,6 +22,9 @@ import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
+import { clearCustomServiceCache } from "@/services/custom-api";
+import { validateCustomServiceDefinition, type CustomServiceDefinition } from "@/lib/custom-service";
+import { CustomServiceEditor } from "@/components/integrations/custom-editor";
 import { getPlexClientId } from "@/lib/plex-client-id";
 import {
   requestPin,
@@ -117,6 +120,12 @@ export function ServiceEditor({
   const [customHeaders, setCustomHeaders] = useState<Record<string, string>>(
     secrets.customHeaders ?? {},
   );
+  // `custom` kind only: the request/auth/health/stats/actions definition
+  // edited by CustomServiceEditor and persisted onto instance.custom. Kept as
+  // its own deferred-until-Save piece of state, same as name/localUrl/etc.
+  const [customDef, setCustomDef] = useState<CustomServiceDefinition>(
+    config.custom ?? {},
+  );
   const [testing, setTesting] = useState(false);
   // "Connect with Plex" PIN-OAuth flow (Plex-only). The poll loop is cancelled
   // on browser-dismiss and on editor unmount via this controller.
@@ -203,12 +212,15 @@ export function ServiceEditor({
 
   const headersJson = JSON.stringify(customHeaders);
   const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
+  const customDefJson = JSON.stringify(customDef);
+  const savedCustomDefJson = JSON.stringify(config.custom ?? {});
 
   const isDirty =
     name !== config.name ||
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
+    (serviceId === "custom" && customDefJson !== savedCustomDefJson) ||
     (usesUserPass
       ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
       : apiKey !== (secrets.apiKey ?? ""));
@@ -310,6 +322,20 @@ export function ServiceEditor({
       }
     }
 
+    // `custom` only: re-validate the definition the editor built up (Import
+    // JSON already validates on its own, but the field-by-field UI can still
+    // produce something structurally invalid, e.g. an action id typed outside
+    // its allowed charset) so a bad definition can never reach the store.
+    let validatedCustomDef: CustomServiceDefinition | undefined;
+    if (serviceId === "custom") {
+      const result = validateCustomServiceDefinition(customDef);
+      if (!result.ok) {
+        toast(result.errors[0] ?? "Invalid custom service definition", "error");
+        return "aborted";
+      }
+      validatedCustomDef = result.value;
+    }
+
     // MUST run BEFORE updateInstance, and the ordering is load-bearing.
     // piholeClearSession DELETEs /api/auth to hand the session seat back (FTL
     // allows 16 at once, with a 30-minute idle TTL), and it resolves the host
@@ -326,7 +352,15 @@ export function ServiceEditor({
       name: trimmedName,
       localUrl: normLocal,
       remoteUrl: normRemote,
+      ...(validatedCustomDef !== undefined ? { custom: validatedCustomDef } : {}),
     });
+    // The definition just saved may have changed auth mode, the login step,
+    // or a credential — drop any cached login capture so the next request
+    // re-authenticates under the new definition instead of reusing one minted
+    // under the old one for up to CAPTURE_TTL_MS more (services/custom-api.ts).
+    if (serviceId === "custom") {
+      clearCustomServiceCache(instanceId);
+    }
     if (usesUserPass) {
       await updateInstanceSecrets(instanceId, {
         username,
@@ -362,9 +396,14 @@ export function ServiceEditor({
     // and the hint that widgets are added separately.
     if ((isNew || wasInitiallyUnconfigured) && !promptShown) {
       const hasUrl = normLocal.length > 0 || normRemote.length > 0;
-      const hasCreds = usesUserPass
-        ? username.length > 0 || password.length > 0
-        : apiKey.length > 0;
+      // `custom` has no apiKey/username field of its own — a configured
+      // instance is one whose definition has at least one section filled in.
+      const hasCreds =
+        serviceId === "custom"
+          ? Object.keys(customDef).length > 0
+          : usesUserPass
+            ? username.length > 0 || password.length > 0
+            : apiKey.length > 0;
       if (hasUrl && hasCreds) {
         setPromptShown(true);
         flow.open("addToDashboards");
@@ -711,6 +750,10 @@ export function ServiceEditor({
         onConnectPlex={() => void handleConnectPlex()}
         connecting={connecting}
       />
+
+      {serviceId === "custom" ? (
+        <CustomServiceEditor value={customDef} onChange={setCustomDef} />
+      ) : null}
 
       <Card className="gap-4 mb-4">
         <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">

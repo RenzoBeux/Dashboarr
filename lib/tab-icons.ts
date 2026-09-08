@@ -34,6 +34,7 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   // Shield but not ShieldBan/ShieldOff/Network, and adding one would also put
   // it in the user-facing dashboard icon picker.
   pihole: "Shield",
+  custom: "Braces",
 };
 
 // Resolve the icon component for a tab, honoring a per-workspace override

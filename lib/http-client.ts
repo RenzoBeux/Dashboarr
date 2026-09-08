@@ -15,6 +15,12 @@ import { buildUrl } from "@/lib/url-builder";
 import { applyMediaServerAuth } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+// Definition-driven status/version extraction for the "custom" probe below —
+// pure, dependency-free, shared verbatim with services/custom-api.ts's real
+// (non-test) requests. Type-only concerns aside, importing this here (rather
+// than services/custom-api.ts itself) keeps this file free of any services/
+// import, avoiding the cycle that module has back into serviceRequest.
+import { getPath } from "@/lib/json-path";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
 // service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
 // the same envelope the same way. Pure string/object helpers — no cycle.
@@ -152,11 +158,21 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
 // error toast, and in formatErrorForCopy's clipboard payload.
 const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token", "sid"];
 
-export function redactUrl(url: string): string {
+/**
+ * `extraParams` covers the "custom" service kind: its query-string auth param
+ * name (auth.queryParam) and login-capture inject name (login.injectName,
+ * when injectAs is "query") are user-defined per instance, so they can't live
+ * in the fixed REDACT_PARAMS list above — a queryParam literally named "key"
+ * or "access_token" would otherwise land in clear in HttpError.message, which
+ * flows into checkHealth's `message` and from there into a UI toast.
+ */
+export function redactUrl(url: string, extraParams: string[] = []): string {
   try {
     const u = new URL(url);
+    const extra = extraParams.map((p) => p.toLowerCase());
     for (const key of Array.from(u.searchParams.keys())) {
-      if (REDACT_PARAMS.includes(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (REDACT_PARAMS.includes(lower) || extra.includes(lower)) {
         u.searchParams.set(key, "***");
       }
     }
@@ -177,8 +193,12 @@ export class HttpError extends Error {
     public statusText: string,
     public url: string,
     body?: unknown,
+    // See redactUrl's `extraParams` doc — passed for a "custom" instance's
+    // own query-string auth/capture param name(s), which the fixed
+    // REDACT_PARAMS list can't know about ahead of time.
+    extraRedactParams?: string[],
   ) {
-    const safe = redactUrl(url);
+    const safe = redactUrl(url, extraRedactParams);
     super(`HTTP ${status} ${statusText} — ${safe}`);
     this.url = safe;
     this.name = "HttpError";
@@ -201,8 +221,14 @@ export const AUTH_PROXY_MESSAGE =
   "the service settings.";
 
 export class AuthProxyResponseError extends HttpError {
-  constructor(status: number, statusText: string, url: string, body?: unknown) {
-    super(status, statusText, url, body);
+  constructor(
+    status: number,
+    statusText: string,
+    url: string,
+    body?: unknown,
+    extraRedactParams?: string[],
+  ) {
+    super(status, statusText, url, body, extraRedactParams);
     this.name = "AuthProxyResponseError";
     // Override the bare "HTTP 200 …" message HttpError builds with an actionable
     // one. ErrorBanner/ErrorBoundary fall back to error.message (an HTML body is
@@ -427,6 +453,47 @@ export async function serviceRequest<T>(
     // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
     // (store/config-store.ts) — so a stale apiKey left on an instance id would
     // be sent to Pi-hole on every request forever.
+  } else if (serviceId === "custom") {
+    // Auth comes entirely from the per-instance `custom` definition
+    // (lib/custom-service.ts) — never send secrets.apiKey here. This branch
+    // exists for the same reason the pihole one above does:
+    // `secretsShapeFor("custom")` resolves to "apiKey" (lib/service-
+    // catalog.ts) so the service editor's generic apiKey field CAN write
+    // into instanceSecrets for a custom instance (e.g. left over from
+    // switching a service's kind) — without this branch that stale key would
+    // fall to the X-Api-Key else below on every request, silently
+    // overwriting a definition header literally named X-Api-Key and leaking
+    // the store secret alongside the definition's own auth.
+    //
+    // services/custom-api.ts already builds this same header/param set (so
+    // its request options are independently assertable in tests against a
+    // mocked serviceRequest), but re-applying it here — AFTER the custom-
+    // header merge above — is what makes definition auth win a name
+    // collision with a user's global/instance custom header, the same
+    // guarantee every other kind gets from its branch running at this point.
+    // The login-capture header/param (services/custom-api.ts's own cache) is
+    // NOT re-applied here — only the primary def.auth is.
+    const cAuth = inst.custom?.auth;
+    if (cAuth && cAuth.mode !== "none") {
+      switch (cAuth.mode) {
+        case "header":
+          if (cAuth.headerName && cAuth.token) headers.set(cAuth.headerName, cAuth.token);
+          break;
+        case "query":
+          if (cAuth.queryParam && cAuth.token) {
+            authParams = { ...(authParams ?? {}), [cAuth.queryParam]: cAuth.token };
+          }
+          break;
+        case "basic": {
+          const basic = basicAuthHeader(cAuth.username, cAuth.password);
+          if (basic) headers.set("Authorization", basic);
+          break;
+        }
+        case "bearer":
+          if (cAuth.token) headers.set("Authorization", `Bearer ${cAuth.token}`);
+          break;
+      }
+    }
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
     // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
@@ -454,6 +521,19 @@ export async function serviceRequest<T>(
           : params;
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
+
+  // A "custom" instance's query-string auth param (auth.queryParam) and any
+  // query-injected login capture (login.injectName when injectAs is "query")
+  // are user-defined per instance, so redactUrl's fixed REDACT_PARAMS list
+  // can't mask them — pass them through explicitly for every kind else this
+  // stays an empty (no-op) array.
+  const customExtraRedactParams: string[] =
+    serviceId === "custom"
+      ? [
+          inst.custom?.auth?.mode === "query" ? inst.custom.auth.queryParam : undefined,
+          inst.custom?.login?.injectAs === "query" ? inst.custom.login.injectName : undefined,
+        ].filter((v): v is string => Boolean(v))
+      : [];
 
   // FormData bodies (SAB addfile upload) must keep fetch's own multipart
   // Content-Type — the boundary parameter is generated per-request and a
@@ -506,9 +586,16 @@ export async function serviceRequest<T>(
           response.statusText,
           url,
           errorBody,
+          customExtraRedactParams,
         );
       }
-      throw new HttpError(response.status, response.statusText, url, errorBody);
+      throw new HttpError(
+        response.status,
+        response.statusText,
+        url,
+        errorBody,
+        customExtraRedactParams,
+      );
     }
 
     if (contentType?.includes("application/json")) {
@@ -528,6 +615,7 @@ export async function serviceRequest<T>(
         response.statusText,
         url,
         body,
+        customExtraRedactParams,
       );
     }
     return body as unknown as T;
@@ -1869,10 +1957,185 @@ async function runConnectionProbe(
     }
 
     case "custom": {
-      // Stub only — a sibling item implements the real probe (the request is
-      // entirely defined by the per-instance `custom` block, see
-      // lib/custom-service.ts), driven by services/custom-api.
-      throw new Error("custom services are handled by services/custom-api");
+      // Every part of this request — auth, an optional login exchange, and
+      // the health probe itself — is defined by the per-instance `custom`
+      // block (lib/custom-service.ts) rather than any fixed shape this
+      // switch could special-case, so it's read straight from the saved
+      // instance. There is no unsaved-form path yet (the dedicated editor is
+      // a sibling item), so testing before saving reports unreachable rather
+      // than guessing at a shape services/custom-api.ts's real (non-test)
+      // requests don't need to.
+      if (!input.instanceId) {
+        return {
+          kind: "unreachable",
+          message: "Save the service before testing its connection",
+        };
+      }
+      const def = useConfigStore.getState().getInstance("custom", input.instanceId)?.custom;
+      if (!def) {
+        return { kind: "unreachable", message: "No custom service definition configured" };
+      }
+      const health = def.health;
+      if (!health) {
+        return { kind: "unreachable", message: "No health check configured" };
+      }
+
+      // Primary auth (def.auth): none/header/query/basic/bearer.
+      const authHeaders: Record<string, string> = {};
+      const authParams: Record<string, string> = {};
+      const custAuth = def.auth;
+      if (custAuth && custAuth.mode !== "none") {
+        switch (custAuth.mode) {
+          case "header":
+            if (custAuth.headerName && custAuth.token) authHeaders[custAuth.headerName] = custAuth.token;
+            break;
+          case "query":
+            if (custAuth.queryParam && custAuth.token) authParams[custAuth.queryParam] = custAuth.token;
+            break;
+          case "basic": {
+            const basic = basicAuthHeader(custAuth.username, custAuth.password);
+            if (basic) authHeaders["Authorization"] = basic;
+            break;
+          }
+          case "bearer":
+            if (custAuth.token) authHeaders["Authorization"] = `Bearer ${custAuth.token}`;
+            break;
+        }
+      }
+
+      // Optional login exchange: capture from a JSON body path first, then a
+      // Set-Cookie header, then inject the captured value per injectAs — the
+      // same rules services/custom-api.ts applies for real requests.
+      // {{username}}/{{password}} in the login body come from auth.username/
+      // auth.password regardless of auth.mode (a "none" primary mode can
+      // still pair with a login step that posts credentials in its body).
+      const captureHeaders: Record<string, string> = {};
+      const captureParams: Record<string, string> = {};
+      if (def.login) {
+        const login = def.login;
+        const loginUrl = buildUrl(baseUrl, defaults.apiBasePath, login.path);
+        const loginHeaders = makeHeaders(authHeaders);
+        if (login.contentType) loginHeaders.set("Content-Type", login.contentType);
+        const username = custAuth?.username ?? "";
+        const password = custAuth?.password ?? "";
+        const loginBody = login.body
+          ?.replace(/\{\{username\}\}/g, username)
+          .replace(/\{\{password\}\}/g, password);
+
+        let loginRes: Response;
+        try {
+          loginRes = await fetch(loginUrl, {
+            method: login.method,
+            headers: loginHeaders,
+            body: loginBody,
+            signal,
+          });
+        } catch {
+          return { kind: "unreachable", message: "Login request failed" };
+        }
+
+        let captured: string | null = null;
+        if (login.captureJSONPath) {
+          try {
+            const json = await loginRes.clone().json();
+            const value = getPath(json, login.captureJSONPath);
+            if (value !== undefined && value !== null) captured = String(value);
+          } catch {
+            // Not JSON, or the path didn't resolve — fall through.
+          }
+        }
+        if (!captured && login.captureCookie) {
+          const setCookie = loginRes.headers.get("set-cookie");
+          const escaped = login.captureCookie.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const match = setCookie?.match(new RegExp(`${escaped}=([^;]+)`));
+          if (match?.[1]) captured = match[1];
+        }
+
+        if (!loginRes.ok && !captured) {
+          if (loginRes.status === 401 || loginRes.status === 403) {
+            return {
+              kind: "auth_failed",
+              message: "Login rejected — check the configured credentials",
+            };
+          }
+          return { kind: "unreachable", message: `Login failed (HTTP ${loginRes.status})` };
+        }
+
+        if (captured) {
+          const name = login.injectName;
+          switch (login.injectAs) {
+            case "header":
+              if (name) captureHeaders[name] = captured;
+              break;
+            case "query":
+              if (name) captureParams[name] = captured;
+              break;
+            case "cookie":
+              captureHeaders["Cookie"] = `${name || "session"}=${captured}`;
+              break;
+            case "bearer":
+              captureHeaders["Authorization"] = `Bearer ${captured}`;
+              break;
+          }
+        }
+      }
+
+      const healthParams = { ...authParams, ...captureParams };
+      const healthUrl = buildUrl(
+        baseUrl,
+        defaults.apiBasePath,
+        health.path,
+        Object.keys(healthParams).length > 0 ? healthParams : undefined,
+      );
+      const healthHeaders = makeHeaders({ ...authHeaders, ...captureHeaders });
+      if (health.body) healthHeaders.set("Content-Type", "application/json");
+
+      let res: Response;
+      try {
+        res = await fetch(healthUrl, {
+          method: health.method,
+          headers: healthHeaders,
+          body: health.body,
+          signal,
+        });
+      } catch {
+        return { kind: "unreachable", message: "Network error — check URL and connectivity" };
+      }
+
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid credentials" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        body = undefined;
+      }
+
+      const okValues = (health.okValues ?? []).map((v) => v.toLowerCase());
+      const warnValues = (health.warnValues ?? []).map((v) => v.toLowerCase());
+      if (health.statusPath && (okValues.length > 0 || warnValues.length > 0)) {
+        const statusValue = getPath(body, health.statusPath);
+        const statusStr =
+          statusValue === undefined || statusValue === null
+            ? undefined
+            : String(statusValue).toLowerCase();
+        if (
+          statusStr === undefined ||
+          (!okValues.includes(statusStr) && !warnValues.includes(statusStr))
+        ) {
+          return {
+            kind: "unreachable",
+            message: "Reached the server, but its reported status is not healthy",
+          };
+        }
+      }
+
+      return { kind: "ok" };
     }
 
     default: {

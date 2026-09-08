@@ -1,6 +1,8 @@
 import type { ComponentType } from "react";
 import { Image } from "expo-image";
 import type { SvgProps } from "react-native-svg";
+import { Braces } from "lucide-react-native";
+import { Icon } from "@/components/ui/icon";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import type { ServiceId } from "@/lib/constants";
 
@@ -77,7 +79,12 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
 };
 
 export function hasServiceLogo(id: ServiceId): boolean {
-  return id in SVG_LOGOS || id in PNG_LOGOS;
+  // `custom` has no fixed mark of its own — every instance describes a
+  // different API — so it renders the generic Braces fallback below instead
+  // of an SVG/PNG. Still counted as "has a logo" so custom instances aren't
+  // silently dropped from surfaces that gate on this (e.g. the Service
+  // Health widget).
+  return id in SVG_LOGOS || id in PNG_LOGOS || id === "custom";
 }
 
 interface ServiceLogoProps {
@@ -105,6 +112,13 @@ export function ServiceLogo({ id, size, online = true }: ServiceLogoProps) {
         contentFit="contain"
       />
     );
+  }
+
+  // Generic fallback for `custom` — no fixed mark exists since every instance
+  // describes a different API. `size` (not `px`): Icon applies useUiScale
+  // itself, so pre-scaling here would double it.
+  if (id === "custom") {
+    return <Icon icon={Braces} size={size} color="#a1a1aa" opacity={opacity} />;
   }
 
   return null;

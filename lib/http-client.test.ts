@@ -34,6 +34,10 @@ interface FakeInstance {
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+  // Only populated for a "custom" kind instance — the per-instance
+  // request/auth/health/stats/actions definition (lib/custom-service.ts).
+  // Loosely typed here since these tests only care about the `auth` shape.
+  custom?: unknown;
 }
 
 interface FakeSecrets {
@@ -277,6 +281,93 @@ describe("serviceRequest — custom header injection", () => {
     await serviceRequest("glances", "/cpu");
     const auth = getSentHeaders().get("Authorization");
     expect(auth?.startsWith("Basic ")).toBe(true);
+  });
+
+  // The "custom" kind stores its auth on instance.custom (lib/custom-
+  // service.ts), not the generic ServiceSecrets apiKey/username/password
+  // every other kind shares — but secretsShapeFor("custom") still resolves
+  // to "apiKey" (lib/service-catalog.ts) so the editor's generic apiKey
+  // field, or a leftover value from switching a service's kind, CAN write
+  // into instanceSecrets for a custom instance. Before the guard branch, that
+  // stale secrets.apiKey fell to the default X-Api-Key else and silently
+  // overwrote a definition header of the same name.
+  it("never sends secrets.apiKey for 'custom' and preserves a definition header of the same name", async () => {
+    mockStateRef.current.serviceInstances.custom = [
+      {
+        id: "custom-uuid",
+        enabled: true,
+        name: "custom",
+        localUrl: "http://custom.local",
+        remoteUrl: "",
+        useRemote: false,
+        custom: { auth: { mode: "header", headerName: "X-Api-Key", token: "definition-token" } },
+      },
+    ];
+    mockStateRef.current.instanceSecrets["custom-uuid"] = { apiKey: "leaked-secret" };
+    mockStateRef.current.activeInstance.custom = "custom-uuid";
+    mockStateRef.current.secrets.custom = mockStateRef.current.instanceSecrets["custom-uuid"];
+
+    await serviceRequest("custom", "/status");
+
+    const sent = getSentHeaders().get("X-Api-Key");
+    expect(sent).toBe("definition-token");
+    expect(sent).not.toBe("leaked-secret");
+  });
+});
+
+describe("serviceRequest — 'custom' query-auth param redaction", () => {
+  let originalFetch: typeof global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // A custom definition's queryParam (or a query-injected login capture
+  // name) is user-defined per instance, so redactUrl's fixed REDACT_PARAMS
+  // list can't know about it ahead of time — without threading it through,
+  // a param literally named "key" or "access_token" lands in clear in
+  // HttpError.message, which flows into checkHealth's `message` and from
+  // there into a UI toast.
+  it("masks a custom query-auth param in a thrown HttpError's message", async () => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ error: "bad key" }),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    }) as any;
+
+    mockStateRef.current = makeState();
+    mockStateRef.current.serviceInstances.custom = [
+      {
+        id: "custom-uuid",
+        enabled: true,
+        name: "custom",
+        localUrl: "http://custom.local",
+        remoteUrl: "",
+        useRemote: false,
+        custom: { auth: { mode: "query", queryParam: "key", token: "SECRET" } },
+      },
+    ];
+    mockStateRef.current.instanceSecrets["custom-uuid"] = {};
+    mockStateRef.current.activeInstance.custom = "custom-uuid";
+    mockStateRef.current.secrets.custom = mockStateRef.current.instanceSecrets["custom-uuid"];
+
+    let message = "";
+    try {
+      await serviceRequest("custom", "/status");
+      throw new Error("expected serviceRequest to reject");
+    } catch (err) {
+      message = err instanceof HttpError ? err.message : String(err);
+    }
+
+    expect(message).not.toContain("SECRET");
+    expect(message).toContain("***");
   });
 });
 

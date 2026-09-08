@@ -7,6 +7,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  Braces,
   Briefcase,
   Camera,
   CalendarDays,
@@ -130,6 +131,7 @@ export const LUCIDE_BY_NAME = {
   Joystick,
   Lightbulb,
   Users,
+  Braces,
 } as const satisfies Record<string, LucideIcon>;
 
 export type DashboardIconName = keyof typeof LUCIDE_BY_NAME;

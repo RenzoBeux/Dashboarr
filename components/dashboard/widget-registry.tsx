@@ -1,6 +1,7 @@
 import {
   Activity,
   BookOpen,
+  Braces,
   CalendarDays,
   Captions,
   Cast,
@@ -67,6 +68,7 @@ import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
 import { NavidromeLibraryCard } from "@/components/dashboard/navidrome-library-card";
 import { PiholeStatusCard } from "@/components/dashboard/pihole-status-card";
 import { PiholeTopBlockedCard } from "@/components/dashboard/pihole-top-blocked-card";
+import { CustomCard } from "@/components/dashboard/custom-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -226,6 +228,11 @@ import {
   PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
   type PiholeTopBlockedSettingsValue,
 } from "@/components/dashboard/widget-settings/pihole-top-blocked-settings";
+import {
+  CustomStatsSettings,
+  CUSTOM_STATS_DEFAULT_SETTINGS,
+  type CustomStatsSettingsValue,
+} from "@/components/dashboard/widget-settings/custom-stats-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -650,6 +657,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: PiholeTopBlockedSettings,
     defaultSettings: PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
   },
+  "custom-stats": {
+    id: "custom-stats",
+    label: "Custom Service",
+    description: "Health, stats and actions from a user-described JSON API",
+    icon: Braces,
+    service: "custom",
+    component: CustomCard,
+    settingsComponent: CustomStatsSettings,
+    defaultSettings: CUSTOM_STATS_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -692,4 +709,5 @@ export type {
   NavidromeLibrarySettingsValue,
   PiholeStatusSettingsValue,
   PiholeTopBlockedSettingsValue,
+  CustomStatsSettingsValue,
 };
