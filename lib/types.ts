@@ -422,6 +422,16 @@ export interface ArrQualityModel {
   revision?: { version?: number; real?: number; isRepack?: boolean };
 }
 
+// One entry of `GET /qualitydefinition` — every quality the instance knows,
+// which is what the manual-import screen offers when *arr parsed none off the
+// file name (#306). Radarr and Sonarr answer the same shape.
+export interface ArrQualityDefinition {
+  id: number;
+  title: string;
+  weight: number;
+  quality: { id: number; name: string; source?: string; resolution?: number };
+}
+
 // A candidate file from `GET /manualimport?downloadId=` — the list Radarr's own
 // Manual Import screen shows for a completed download (#325). `quality` and
 // `languages` round-trip verbatim into the ManualImport command, so only the

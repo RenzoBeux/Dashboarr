@@ -1,5 +1,11 @@
 import { serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
+import {
+  autoRows,
+  sonarrImportFiles,
+  toSonarrCandidates,
+  type SonarrManualImportFile,
+} from "@/lib/manual-import";
 import type {
   SonarrSeries,
   SonarrEpisode,
@@ -14,6 +20,7 @@ import type {
   SonarrImage,
   SonarrRelease,
   SonarrWantedMissing,
+  ArrQualityDefinition,
   ArrQueueRemoveOptions,
 } from "@/lib/types";
 
@@ -209,12 +216,14 @@ export function removeFromQueue(
   });
 }
 
-// --- Force import (#325) ---
+// --- Manual import (#325, #306) ---
 
-// The import candidates Sonarr matched for a completed download — the same
-// list its own Manual Import screen shows. `filterExistingFiles: false` so
-// nothing the scan found is hidden from the eligibility check below.
-function getManualImportItems(
+/**
+ * The import candidates Sonarr matched for a completed download — the same
+ * list its own Manual Import screen shows. `filterExistingFiles: false` so
+ * nothing the scan found is hidden, including files it could not map.
+ */
+export function getManualImportCandidates(
   downloadId: string,
   instanceId?: string,
 ): Promise<SonarrManualImportItem[]> {
@@ -225,47 +234,57 @@ function getManualImportItems(
 }
 
 /**
- * Imports a completed download Sonarr refused to import ("Import blocked",
- * typically a grab-anyway release that isn't a quality upgrade), replacing the
- * existing episode files. The app-side equivalent of desktop Manual Import:
- * fetch Sonarr's own candidates for the download, then issue a ManualImport
- * command for every file it identified — the command imports regardless of
- * rejections, which is the "force". File payload mirrors Sonarr's web UI
- * (InteractiveImportModalContent). Only files Sonarr mapped to episodes with a
- * parsed quality qualify; anything unidentified needs the desktop screen's
- * manual mapping, so with no qualifying file this rejects instead of silently
- * importing nothing.
+ * Every quality this instance knows. The manual-import screen offers these
+ * when Sonarr parsed no quality off the file name, which is exactly the case
+ * where the release is named in a way it can't read (#306).
  */
-export async function forceImportQueueItem(
-  downloadId: string,
+export function getQualityDefinitions(
+  instanceId?: string,
+): Promise<ArrQualityDefinition[]> {
+  return serviceRequest<ArrQualityDefinition[]>("sonarr", "/qualitydefinition", {
+    instanceId,
+  });
+}
+
+/**
+ * Issues the ManualImport command for already-built file payloads. The command
+ * imports regardless of rejections, which is what makes it a *force*.
+ * `importMode: "auto"` matches Sonarr's own default (copy vs. hardlink/move is
+ * decided from the download client's setting).
+ */
+export function runManualImport(
+  files: SonarrManualImportFile[],
   instanceId?: string,
 ): Promise<void> {
-  const candidates = await getManualImportItems(downloadId, instanceId);
-  const files = candidates
-    .filter((c) => c.path && c.series && c.episodes?.length && c.quality)
-    .map((c) => ({
-      path: c.path,
-      folderName: c.folderName,
-      seriesId: c.series!.id,
-      episodeIds: c.episodes!.map((e) => e.id),
-      quality: c.quality,
-      languages: c.languages ?? [],
-      releaseGroup: c.releaseGroup,
-      indexerFlags: c.indexerFlags ?? 0,
-      releaseType: c.releaseType,
-      episodeFileId: c.episodeFileId,
-      downloadId,
-    }));
-  if (files.length === 0) {
-    throw new Error(
-      "Sonarr couldn't match this download to any episode. Use Manual Import in Sonarr to map it.",
-    );
-  }
   return serviceRequest<void>("sonarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "ManualImport", files, importMode: "auto" }),
     instanceId,
   });
+}
+
+/**
+ * Imports a completed download Sonarr refused to import ("Import blocked",
+ * typically a grab-anyway release that isn't a quality upgrade), replacing the
+ * existing episode files. The one-tap path: it sends only what Sonarr already
+ * mapped by itself. A release whose name Sonarr can't parse resolves to no
+ * episode at all, so this rejects instead of silently importing nothing — that
+ * case needs the manual-import screen, where the mapping is chosen by hand.
+ */
+export async function forceImportQueueItem(
+  downloadId: string,
+  instanceId?: string,
+): Promise<void> {
+  const candidates = toSonarrCandidates(
+    await getManualImportCandidates(downloadId, instanceId),
+  );
+  const rows = autoRows("sonarr", candidates);
+  if (rows.length === 0) {
+    throw new Error(
+      "Sonarr couldn't match this download to any episode. Use Manual import to map the files yourself.",
+    );
+  }
+  return runManualImport(sonarrImportFiles(rows, downloadId), instanceId);
 }
 
 // --- History ---

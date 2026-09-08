@@ -92,6 +92,12 @@ export interface ArrQueueAdapter {
   // payload is track-level and unverified, so it doesn't implement this.
   forceImport?: (instanceId: string, downloadId: string) => Promise<void>;
 
+  // Whether /manual-import can map this service's files by hand (#306) — the
+  // case forceImport can't cover, where *arr parsed no series/movie off the
+  // release name and so matched nothing to import. Only set where that screen
+  // knows the service's payload shape (Radarr, Sonarr).
+  supportsManualImport?: boolean;
+
   // Whether the service can blocklist a release as part of a queue removal.
   // Defaults to true — every *arr can, via the `blocklist` DELETE param. Set
   // false when it can't (Bindery: its removal routes take no blocklist flag,

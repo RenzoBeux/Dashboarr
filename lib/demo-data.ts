@@ -523,6 +523,17 @@ const DEMO_RADARR_MANUAL_IMPORT = [
   },
 ];
 
+// GET /qualitydefinition — the quality list the manual-import screen offers for
+// a file *arr parsed no quality off (#306). Trimmed to the common tiers.
+const DEMO_ARR_QUALITY_DEFINITIONS = [
+  { id: 1, title: "Unknown", weight: 1, quality: { id: 0, name: "Unknown" } },
+  { id: 2, title: "SDTV", weight: 2, quality: { id: 1, name: "SDTV", resolution: 480 } },
+  { id: 3, title: "HDTV-720p", weight: 3, quality: { id: 4, name: "HDTV-720p", resolution: 720 } },
+  { id: 4, title: "WEBDL-1080p", weight: 4, quality: { id: 3, name: "WEBDL-1080p", resolution: 1080 } },
+  { id: 5, title: "Bluray-1080p", weight: 5, quality: { id: 7, name: "Bluray-1080p", resolution: 1080 } },
+  { id: 6, title: "Bluray-2160p", weight: 6, quality: { id: 19, name: "Bluray-2160p", resolution: 2160 } },
+];
+
 const DEMO_RADARR_WANTED = {
   page: 1,
   pageSize: 20,
@@ -3085,6 +3096,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/manualimport")) return DEMO_RADARR_MANUAL_IMPORT;
       if (normalized.startsWith("/wanted/missing")) return DEMO_RADARR_WANTED;
       if (normalized.startsWith("/calendar")) return DEMO_RADARR_CALENDAR;
+      if (normalized.startsWith("/qualitydefinition")) return DEMO_ARR_QUALITY_DEFINITIONS;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/movies", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
@@ -3103,6 +3115,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/calendar")) return DEMO_SONARR_CALENDAR;
       if (normalized.startsWith("/queue")) return DEMO_SONARR_QUEUE;
       if (normalized.startsWith("/manualimport")) return DEMO_SONARR_MANUAL_IMPORT;
+      if (normalized.startsWith("/qualitydefinition")) return DEMO_ARR_QUALITY_DEFINITIONS;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
