@@ -70,7 +70,7 @@ where its version comes from.
 | `path` | string | **Required.** Relative to the base URL. |
 | `body` | string | Request body, for `POST`. |
 | `statusPath` | string | Path into the response used to determine status. Leave empty to treat any 2xx response as online. |
-| `okValues` | string[] | Values at `statusPath` that mean "online". Empty means any value (still gated on 2xx) counts as online. |
+| `okValues` | string[] | Values at `statusPath` that mean "online". If both `okValues` and `warnValues` are empty, any non-empty value at `statusPath` (still gated on 2xx) counts as online and a missing or empty value is offline. When either list is set, a value that matches neither list is offline. |
 | `warnValues` | string[] | Values at `statusPath` that mean "degraded" rather than fully down. |
 | `versionPath` | string | Path into the response to read the service's version string from. Leave empty if the whole body already is the version (e.g. a plain-text response). |
 
