@@ -1,5 +1,6 @@
 import {
   autoRows,
+  seedMapping,
   qualityFromDefinition,
   qualityLabel,
   radarrImportFiles,
@@ -151,6 +152,46 @@ describe("autoRows", () => {
   it("skips candidates missing media or quality on either service", () => {
     expect(autoRows("radarr", [candidate({ mediaId: undefined })])).toEqual([]);
     expect(autoRows("sonarr", [candidate({ quality: undefined })])).toEqual([]);
+  });
+});
+
+describe("seedMapping", () => {
+  it("carries over what *arr resolved for the chosen destination", () => {
+    expect(seedMapping([candidate()])).toEqual({
+      mediaId: 7,
+      episodeIds: { 1: [42] },
+      included: { 1: true },
+    });
+  });
+
+  it("drops episode ids belonging to another series", () => {
+    // A folder holding two shows: file 2 matched series 9, but the screen
+    // imports into series 7, so its episode ids must NOT ride along.
+    const seed = seedMapping([
+      candidate({ id: 1, mediaId: 7, episodeIds: [42] }),
+      candidate({ id: 2, mediaId: 9, episodeIds: [88] }),
+    ]);
+    expect(seed.mediaId).toBe(7);
+    expect(seed.episodeIds).toEqual({ 1: [42] });
+    expect(seed.included).toEqual({ 1: true });
+  });
+
+  it("selects the largest file when *arr matched nothing", () => {
+    const seed = seedMapping([
+      candidate({ id: 1, mediaId: undefined, episodeIds: [], size: 100 }),
+      candidate({ id: 2, mediaId: undefined, episodeIds: [], size: 900 }),
+    ]);
+    expect(seed.mediaId).toBeUndefined();
+    expect(seed.episodeIds).toEqual({});
+    expect(seed.included).toEqual({ 2: true });
+  });
+
+  it("leaves an unmatched file out when another file did match", () => {
+    const seed = seedMapping([
+      candidate({ id: 1, mediaId: 7, episodeIds: [42] }),
+      candidate({ id: 2, mediaId: undefined, episodeIds: [] }),
+    ]);
+    expect(seed.included).toEqual({ 1: true });
   });
 });
 

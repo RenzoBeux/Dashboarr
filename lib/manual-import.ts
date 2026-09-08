@@ -185,6 +185,42 @@ export function autoRows(
 }
 
 /**
+ * The starting mapping for the manual-import screen: what *arr already
+ * resolved by itself, plus which files begin selected.
+ *
+ * The destination is screen-wide — one series or movie for the whole download
+ * folder — so a file's episode ids are only carried over when that file matched
+ * THAT destination. A folder holding two series would otherwise pair one file's
+ * episode ids with the other file's seriesId, and the command would import into
+ * the wrong show. Files matched to something else start unmapped, for the user
+ * to map by hand or leave out.
+ */
+export function seedMapping(candidates: ManualImportCandidate[]): {
+  mediaId?: number;
+  episodeIds: Record<number, number[]>;
+  included: Record<number, boolean>;
+} {
+  const mediaId = candidates.find((c) => c.mediaId)?.mediaId;
+  const onTarget =
+    mediaId === undefined ? [] : candidates.filter((c) => c.mediaId === mediaId);
+
+  // Radarr has no per-file mapping to imply intent, so inclusion is explicit:
+  // start from the files it matched, or the largest one when it matched none
+  // (sample and subtitle files are exactly what the user deselects).
+  const seedIncluded = onTarget.length
+    ? onTarget
+    : candidates.slice().sort((a, b) => b.size - a.size).slice(0, 1);
+
+  return {
+    mediaId,
+    episodeIds: Object.fromEntries(
+      onTarget.filter((c) => c.episodeIds.length).map((c) => [c.id, c.episodeIds]),
+    ),
+    included: Object.fromEntries(seedIncluded.map((c) => [c.id, true])),
+  };
+}
+
+/**
  * Payload mirroring Sonarr's web UI (InteractiveImportModalContent). The
  * per-file `downloadId` is what ties the import back to the queue item, so the
  * grab leaves the queue instead of lingering as a second stuck entry.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -33,6 +33,8 @@ import { useSonarrEpisodes } from "@/hooks/use-sonarr";
 import {
   qualityFromDefinition,
   qualityLabel,
+  seedMapping,
+  type ManualImportCandidate,
   type ManualImportRow,
   type ManualImportService,
 } from "@/lib/manual-import";
@@ -107,32 +109,31 @@ export function ManualImportView({
   const [qualityAsked, setQualityAsked] = useState(false);
   const qualityQuery = useArrQualityDefinitions(service, qualityAsked, instanceId);
 
-  // Seed the mapping from what *arr resolved on its own, once per fetch. A
-  // pull-to-refresh re-arms this so the screen genuinely reloads from the
-  // server instead of keeping selections that no longer match the new ids.
+  // Everything *arr resolved on its own becomes the starting mapping.
+  const seedFrom = useCallback((list: ManualImportCandidate[]) => {
+    const seed = seedMapping(list);
+    setMediaId(seed.mediaId);
+    setEpisodeIds(seed.episodeIds);
+    setIncluded(seed.included);
+    // Any quality the user overrode belonged to the previous fetch.
+    setQualities({});
+  }, []);
+
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current || !candidates?.length) return;
     seeded.current = true;
-    setMediaId(candidates.find((c) => c.mediaId)?.mediaId);
-    setEpisodeIds(
-      Object.fromEntries(
-        candidates.filter((c) => c.episodeIds.length).map((c) => [c.id, c.episodeIds]),
-      ),
-    );
-    // Radarr has no per-file mapping to imply intent, so inclusion is explicit:
-    // start with the files Radarr matched, or the largest one when it matched
-    // none (sample and subtitle files are exactly what the user is deselecting).
-    const matched = candidates.filter((c) => c.mediaId);
-    const seedIncluded = matched.length
-      ? matched
-      : candidates.slice().sort((a, b) => b.size - a.size).slice(0, 1);
-    setIncluded(Object.fromEntries(seedIncluded.map((c) => [c.id, true])));
-  }, [candidates]);
+    seedFrom(candidates);
+  }, [candidates, seedFrom]);
 
+  // Reseed from what the refetch handed back rather than leaving it to the
+  // effect above: TanStack's structural sharing returns the SAME array
+  // reference when the response is unchanged, so an effect keyed on
+  // `candidates` would not rerun and the refresh would silently keep the edits
+  // it is meant to discard.
   const { refreshing, onRefresh } = useRefreshSpinner(async () => {
-    seeded.current = false;
-    await candidatesQuery.refetch();
+    const { data } = await candidatesQuery.refetch();
+    if (data?.length) seedFrom(data);
   });
 
   const flow = useModalFlow<PickerStep>();
