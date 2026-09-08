@@ -68,7 +68,7 @@ where its version comes from.
 |---|---|---|
 | `method` | `"GET" \| "POST"` | |
 | `path` | string | **Required.** Relative to the base URL. |
-| `body` | string | Request body, for `POST`. |
+| `body` | string | Request body, for `POST`. Content type is inferred: a body starting with `{` or `[` is sent as `application/json`, anything else as `application/x-www-form-urlencoded`. |
 | `statusPath` | string | Path into the response used to determine status. Leave empty to treat any 2xx response as online. |
 | `okValues` | string[] | Values at `statusPath` that mean "online". If both `okValues` and `warnValues` are empty, any non-empty value at `statusPath` (still gated on 2xx) counts as online and a missing or empty value is offline. When either list is set, a value that matches neither list is offline. |
 | `warnValues` | string[] | Values at `statusPath` that mean "degraded" rather than fully down. |
@@ -97,7 +97,7 @@ service:
 | `label` | string | Required. Button text. |
 | `method` | `"GET" \| "POST" \| "PUT" \| "DELETE"` | |
 | `path` | string | Required. Relative to the base URL. |
-| `body` | string | Request body. |
+| `body` | string | Request body. Content type is inferred: a body starting with `{` or `[` is sent as `application/json`, anything else as `application/x-www-form-urlencoded`. |
 | `confirm` | boolean | When true, the user is asked to confirm before the action runs. |
 
 ### `timeoutSeconds`
