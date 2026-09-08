@@ -18,6 +18,7 @@ import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/store
 import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
+import { validateCustomServiceDefinition } from "@/lib/custom-service";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
@@ -105,6 +106,19 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (v.tagAddedTorrents === true) {
     out.tagAddedTorrents = true;
   }
+  // v52 round-2 fix: an export → import round-trip was silently dropping a
+  // `custom` instance's definition because this coercer never copied the
+  // field through at all. Reuse the same pure validator the live
+  // isServiceInstance guard (config-store.ts) checks against; an invalid
+  // block is dropped like the other optional fields above rather than
+  // rejecting the whole instance — one stale custom.* sub-field shouldn't
+  // strand an otherwise-good instance.
+  if (v.custom !== undefined) {
+    const validated = validateCustomServiceDefinition(v.custom);
+    if (validated.ok) {
+      out.custom = validated.value;
+    }
+  }
   return out;
 }
 
@@ -115,11 +129,24 @@ function isPositiveInt(v: unknown): v is number {
 function coerceServiceSecrets(v: unknown): ServiceSecrets | null {
   if (!isPlainObject(v)) return null;
   const out: ServiceSecrets = {};
-  for (const key of ["apiKey", "username", "password"] as const) {
+  // v52 round-2 fix: customPassword/customToken are the auth.password/token
+  // strings pulled out of a `custom` instance's definition — same shape and
+  // cap as every other kind's password/apiKey, and stored in this same
+  // per-instance secrets record rather than left inline on the instance.
+  for (const key of ["apiKey", "username", "password", "customPassword", "customToken"] as const) {
     const raw = v[key];
     if (raw === undefined || raw === null) continue;
     if (typeof raw !== "string" || raw.length > 4096) return null;
     out[key] = raw;
+  }
+  // customLoginBody is a `custom` instance's login.body — potentially a full
+  // request payload (form-encoded or JSON), not just a short credential — so
+  // it gets a larger cap than the password/token-shaped fields above.
+  if (v.customLoginBody !== undefined && v.customLoginBody !== null) {
+    if (typeof v.customLoginBody !== "string" || v.customLoginBody.length > 65536) {
+      return null;
+    }
+    out.customLoginBody = v.customLoginBody;
   }
   if (v.customHeaders !== undefined && v.customHeaders !== null) {
     const headers = coerceHeaderMap(v.customHeaders);
