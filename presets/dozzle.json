@@ -1,0 +1,9 @@
+{
+  "auth": {
+    "mode": "none"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/healthcheck"
+  }
+}

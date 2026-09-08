@@ -1,0 +1,16 @@
+{
+  "auth": {
+    "mode": "header",
+    "headerName": "X-Api-Key"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/api/status",
+    "statusPath": "application.version",
+    "versionPath": "application.version"
+  },
+  "stats": [
+    { "label": "Uptime", "path": "application.upTime" },
+    { "label": "Memory MB", "path": "application.memoryUsageMB", "format": "number" }
+  ]
+}

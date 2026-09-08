@@ -1,0 +1,42 @@
+{
+  "auth": {
+    "mode": "none"
+  },
+  "login": {
+    "method": "POST",
+    "path": "/api/v2/auth/login",
+    "contentType": "application/x-www-form-urlencoded",
+    "body": "username={{username}}&password={{password}}",
+    "captureCookie": "SID",
+    "injectAs": "cookie"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/api/v2/transfer/info",
+    "statusPath": "connection_status",
+    "okValues": ["connected"],
+    "warnValues": ["firewalled"]
+  },
+  "stats": [
+    { "label": "Down", "path": "dl_info_speed", "format": "bytes" },
+    { "label": "Up", "path": "up_info_speed", "format": "bytes" },
+    { "label": "DHT nodes", "path": "dht_nodes", "format": "number" }
+  ],
+  "actions": [
+    {
+      "id": "pause-all",
+      "label": "Pause All",
+      "method": "POST",
+      "path": "/api/v2/torrents/stop",
+      "body": "hashes=all",
+      "confirm": true
+    },
+    {
+      "id": "resume-all",
+      "label": "Resume All",
+      "method": "POST",
+      "path": "/api/v2/torrents/start",
+      "body": "hashes=all"
+    }
+  ]
+}
