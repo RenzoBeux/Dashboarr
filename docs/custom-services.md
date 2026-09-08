@@ -54,7 +54,7 @@ expires or a request is rejected.
 | `path` | string | Relative to the service's base URL. |
 | `contentType` | string | e.g. `application/x-www-form-urlencoded` or `application/json`. |
 | `body` | string | Request body. May contain the placeholders `{{username}}` / `{{password}}`, which are substituted from `auth.username` / `auth.password`. |
-| `captureCookie` | string | Name of a `Set-Cookie` cookie to capture from the login response. |
+| `captureCookie` | string | Name of a `Set-Cookie` cookie to capture from the login response. Accepts `*` wildcards (glob) for services whose cookie name varies — whichever cookie actually matches is the one injected, under its real name. For example qBittorrent 5.1+ names its session cookie `QBT_SID_<port>` (port-suffixed), so use `*SID*` there instead of a literal `SID` (older qBittorrent builds that still set plain `SID` also match `*SID*`). |
 | `captureJSONPath` | string | Path (see [Path syntax](#path-syntax)) into the login response body to capture a token/value instead of a cookie. |
 | `injectAs` | `"header" \| "query" \| "cookie" \| "bearer"` | How the captured value is attached to later requests. |
 | `injectName` | string | Header or query parameter name to inject the captured value as, when relevant. |

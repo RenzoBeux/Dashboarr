@@ -7,7 +7,7 @@
     "path": "/api/v2/auth/login",
     "contentType": "application/x-www-form-urlencoded",
     "body": "username={{username}}&password={{password}}",
-    "captureCookie": "SID",
+    "captureCookie": "*SID*",
     "injectAs": "cookie"
   },
   "health": {
