@@ -323,6 +323,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "cleanuparr-stats",
   "pihole-status",
   "pihole-top-blocked",
+  "custom-stats",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

@@ -41,6 +41,13 @@ export function AuthCard({
   const usesUserPass = secretsShapeFor(entry.authShape) === "userPass";
   const usesPasswordOnly = entry.authShape === "passwordOnly";
 
+  // `custom` has no fixed credential form — auth mode, header/query names,
+  // username/password/token, and the optional login step are all part of the
+  // per-instance CustomServiceDefinition edited by CustomServiceEditor
+  // (components/integrations/custom-editor.tsx), which ServiceEditor renders
+  // in this card's place for that kind. Nothing to show here.
+  if (entry.authShape === "custom") return null;
+
   return (
     <Card className="gap-4 mb-4">
       <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
