@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native";
-import { Tabs, useRouter, usePathname } from "expo-router";
+import { Tabs, useRouter, useSegments } from "expo-router";
 import { Settings } from "lucide-react-native";
 import { useBottomInset } from "@/hooks/use-bottom-inset";
 import { lightHaptic } from "@/lib/haptics";
@@ -13,6 +13,9 @@ import { resolveTabIcon } from "@/lib/tab-icons";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   ALL_PICKABLE_TABS,
+  TAB_LABELS,
+  tabGroupName,
+  tabIdFromSegments,
   visiblePinnedTabs,
   type TabRouteId,
 } from "@/lib/tab-routes";
@@ -23,9 +26,10 @@ const INACTIVE_COLOR = "#71717a";
 export default function TabLayout() {
   const bottom = useBottomInset();
   const router = useRouter();
-  // The (tabs) group doesn't appear in the URL, so pathname looks like
-  // "/movies" or "/dashboard" — the first path segment is the route name.
-  const pathname = usePathname();
+  // Segments, not pathname: every tab is a group with its own stack (#330),
+  // so on a nested screen the pathname is "/series/1" and no longer says
+  // which tab owns it. Segments do: ["(tabs)", "(tv)", "series", "[id]"].
+  const segments = useSegments();
   const activeDashboard = useActiveDashboard();
   const attachedKinds = useAttachedKinds();
 
@@ -49,20 +53,18 @@ export default function TabLayout() {
   // hidden route with no way back.
   //
   // Trigger only on dashboard switch (or pin-set change), NOT on every
-  // pathname change. Non-pinned tabs still have a registered route (so cards
+  // route change. Non-pinned tabs still have a registered route (so cards
   // / service tiles can deep-link into them via router.push) — if we redirect
-  // on every pathname change, those deep links bounce back to /dashboard the
-  // instant they land. The pathname is read inside the effect via a ref so
-  // the latest value is used without the effect re-running when it changes.
-  const pathnameRef = useRef(pathname);
-  pathnameRef.current = pathname;
+  // on every route change, those deep links bounce back to /dashboard the
+  // instant they land. The segments are read inside the effect via a ref so
+  // the latest value is used without the effect re-running when they change.
+  const segmentsRef = useRef<readonly string[]>(segments);
+  segmentsRef.current = segments;
   useEffect(() => {
-    const current = pathnameRef.current;
-    if (!current) return;
-    const segment = current.split("/").filter(Boolean)[0];
-    if (!segment) return;
-    if (!ALL_PICKABLE_TABS.includes(segment as TabRouteId)) return;
-    if (pinnedTabs.includes(segment as TabRouteId)) return;
+    const tab = tabIdFromSegments(segmentsRef.current);
+    if (!tab) return;
+    if (!ALL_PICKABLE_TABS.includes(tab as TabRouteId)) return;
+    if (pinnedTabs.includes(tab as TabRouteId)) return;
     router.replace("/(tabs)/dashboard");
   }, [activeDashboard?.id, pinnedTabs.join(",")]);
 
@@ -72,6 +74,11 @@ export default function TabLayout() {
   // the bar we have to declare pinned routes first. Tabs not in the pinned
   // set are still declared (so the route exists for deep-links from widget
   // cards) but with `href: null`, which hides them from the bar.
+  //
+  // Each screen is the tab's group, "(tv)" rather than "tv": the group's
+  // shared _layout.tsx gives the tab its own stack (#330). Re-tapping the
+  // focused tab pops that stack to its root; native-stack does this itself,
+  // so the tabPress listeners must never call preventDefault().
   const pinnedSet = new Set<TabRouteId>(pinnedTabs);
   const middleTabs: TabRouteId[] = [
     ...pinnedTabs,
@@ -106,8 +113,15 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ href: null }} />
 
       <Tabs.Screen
-        name="dashboard"
+        name={tabGroupName("dashboard")}
         options={{
+          // The bar hides labels (`tabBarShowLabel: false`), so these two are
+          // a11y-only: `title` feeds the iOS Large Content Viewer, and
+          // `tabBarAccessibilityLabel` feeds VoiceOver and TalkBack. Without
+          // them React Navigation falls back to the route name, which since
+          // #330 is the group name "(dashboard)".
+          title: TAB_LABELS.dashboard,
+          tabBarAccessibilityLabel: TAB_LABELS.dashboard,
           // Raw lucide component (not the scaling <Icon> wrapper) — the tab
           // bar is deliberately excluded from UI scale per CLAUDE.md.
           tabBarIcon: ({ color }) =>
@@ -126,9 +140,11 @@ export default function TabLayout() {
         return (
           <Tabs.Screen
             key={name}
-            name={name}
+            name={tabGroupName(name)}
             options={{
               href: visible ? undefined : null,
+              title: TAB_LABELS[name],
+              tabBarAccessibilityLabel: TAB_LABELS[name],
               tabBarIcon: ({ color }) => (
                 <IconComponent size={TAB_ICON_SIZE} color={color} />
               ),
@@ -139,8 +155,10 @@ export default function TabLayout() {
       })}
 
       <Tabs.Screen
-        name="settings"
+        name={tabGroupName("settings")}
         options={{
+          title: TAB_LABELS.settings,
+          tabBarAccessibilityLabel: TAB_LABELS.settings,
           tabBarIcon: ({ color }) => (
             <Settings size={TAB_ICON_SIZE} color={color} />
           ),

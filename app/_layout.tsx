@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Stack, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
@@ -13,6 +13,7 @@ import { rem, vars } from "nativewind";
 import { hexToRgbChannels } from "@/lib/app-themes";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { BASE_REM } from "@/hooks/use-ui-scale";
+import { useStackScreenOptions } from "@/hooks/use-stack-screen-options";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { useSortStore } from "@/store/sort-store";
@@ -32,16 +33,23 @@ import { evaluateHomeNetwork } from "@/lib/network";
 import { pushConfigSnapshot } from "@/services/backend-api";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
+import { AppStack } from "@/components/navigation/app-stack";
 import { AnimatedSplash } from "@/components/common/animated-splash";
 import { AppUpdateChecker } from "@/components/common/app-update-checker";
 import { ToastContainer } from "@/components/ui/toast";
 import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
+import { DASHBOARD_STACK_PREFIX } from "@/lib/tab-routes";
 import "../global.css";
 
 // Keep the native splash up while stores hydrate; AnimatedSplash then takes
 // over with an identical frame and animates the reveal. Failure to prevent is
 // harmless (splash just auto-hides and the overlay still plays).
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Navigating to (tabs) while a root screen (dashboard-edit) is on top pops
+// back to the tab navigator instead of pushing a second one; the editor's
+// unsaved-changes guard still intercepts the pop. See lib/stack-router-rules.ts.
+const ROOT_POP_TO_ROOT: ReadonlySet<string> = new Set(["(tabs)"]);
 
 // Pause/resume polling based on app state
 function onAppStateChange(status: AppStateStatus) {
@@ -103,9 +111,8 @@ function torrentDetailRoute(
   rawInstanceId: unknown,
 ): string {
   const source = asInstanceId(rawInstanceId);
-  return source
-    ? `/${base}/${hash}?instanceId=${encodeURIComponent(source)}`
-    : `/${base}/${hash}`;
+  const path = `${DASHBOARD_STACK_PREFIX}/${base}/${hash}`;
+  return source ? `${path}?instanceId=${encodeURIComponent(source)}` : path;
 }
 
 // NZBGet's NZBID is a positive integer; accept either number or string forms
@@ -132,42 +139,48 @@ function NotificationRouter() {
         useConfigStore.getState().activateDashboardForInstance(instanceId);
       }
 
+      // Detail screens live inside the tab stacks (#330). This component has
+      // no tab context, so pin them to the Dashboard stack; `withAnchor`
+      // inserts the Dashboard root underneath when that stack has not
+      // mounted yet, so back always has somewhere to go.
+      const pushDetail = (href: string) => router.push(href, { withAnchor: true });
+
       switch (data.type) {
         case "radarr": {
           const id = asPositiveIntId(data.movieId);
-          if (id) router.push(`/movie/${id}`);
+          if (id) pushDetail(`${DASHBOARD_STACK_PREFIX}/movie/${id}`);
           break;
         }
         case "sonarr": {
           const id = asPositiveIntId(data.seriesId);
-          if (id) router.push(`/series/${id}`);
+          if (id) pushDetail(`${DASHBOARD_STACK_PREFIX}/series/${id}`);
           break;
         }
         case "torrent": {
           const hash = asTorrentHash(data.hash);
-          if (hash) router.push(torrentDetailRoute("torrent", hash, data.instanceId));
+          if (hash) pushDetail(torrentDetailRoute("torrent", hash, data.instanceId));
           break;
         }
         case "transmission": {
           const hash = asTorrentHash(data.hash);
           if (hash) {
-            router.push(torrentDetailRoute("transmission", hash, data.instanceId));
+            pushDetail(torrentDetailRoute("transmission", hash, data.instanceId));
           }
           break;
         }
         case "deluge": {
           const hash = asTorrentHash(data.hash);
-          if (hash) router.push(torrentDetailRoute("deluge", hash, data.instanceId));
+          if (hash) pushDetail(torrentDetailRoute("deluge", hash, data.instanceId));
           break;
         }
         case "sabnzbd": {
           const nzoId = asSabNzoId(data.nzoId);
-          if (nzoId) router.push(`/sab/${nzoId}`);
+          if (nzoId) pushDetail(`${DASHBOARD_STACK_PREFIX}/sab/${nzoId}`);
           break;
         }
         case "nzbget": {
           const nzbId = asNzbgetId(data.nzbId);
-          if (nzbId) router.push(`/nzb/${nzbId}`);
+          if (nzbId) pushDetail(`${DASHBOARD_STACK_PREFIX}/nzb/${nzbId}`);
           break;
         }
         case "overseerr":
@@ -336,7 +349,7 @@ export default function RootLayout() {
   const introSeen = useIntroStore((s) => s.workspaceIntroSeen);
   const introReplayVersion = useIntroStore((s) => s.showRequestVersion);
   const markIntroSeen = useIntroStore((s) => s.markWorkspaceIntroSeen);
-  const theme = useAppTheme();
+  const stackScreenOptions = useStackScreenOptions();
   const [splashDone, setSplashDone] = useState(false);
 
   // Backstop: if hydration ever hangs, don't leave the native splash stuck
@@ -428,12 +441,9 @@ export default function RootLayout() {
                   <AppUpdateChecker />
                 </SilentErrorBoundary>
                 <StatusBar style="light" />
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: { backgroundColor: theme.background },
-                    animation: "slide_from_right",
-                  }}
+                <AppStack
+                  popToRootNames={ROOT_POP_TO_ROOT}
+                  screenOptions={stackScreenOptions}
                 />
                 <WorkspaceIntroOverlay
                   visible={showIntro}
