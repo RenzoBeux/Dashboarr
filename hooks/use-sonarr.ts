@@ -27,7 +27,6 @@ import {
   searchAllMissingEpisodes,
   getQualityProfiles,
   getRootFolders,
-  getTags,
   getReleasesForEpisode,
   getReleasesForSeason,
   grabSonarrRelease,
@@ -40,6 +39,7 @@ import { describeGrabFailure } from "@/lib/download-client-error";
 import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useArrTags } from "@/hooks/use-arr-tags";
 
 // Per-instance cache keying: see use-qbittorrent.ts and use-radarr.ts for the
 // rationale. Each hook accepts an optional `instanceId`; omitted = active.
@@ -570,15 +570,10 @@ export function useSonarrRootFolders(instanceId?: string) {
   });
 }
 
-export function useSonarrTags(instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
-  return useQuery({
-    queryKey: ["sonarr", id, "tags"],
-    queryFn: () => getTags(id ?? undefined),
-    enabled: enabled && !!id,
-    staleTime: Infinity,
-  });
-}
+// Delegates to the shared *arr tag query so there is exactly one queryFn
+// behind the ["sonarr", instanceId, "tags"] key. Kept as a named export so
+// existing callers (detail screens, add-media sheets) read service-first.
+export const useSonarrTags = (instanceId?: string) => useArrTags("sonarr", instanceId);
 
 export function useSonarrReleasesForEpisode(
   episodeId: number,

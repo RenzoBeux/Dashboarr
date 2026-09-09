@@ -22,7 +22,6 @@ import {
   changeMovieRootFolder,
   getQualityProfiles,
   getRootFolders,
-  getTags,
   getReleasesForMovie,
   grabRadarrRelease,
 } from "@/services/radarr-api";
@@ -36,6 +35,7 @@ import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
 import { describeGrabFailure } from "@/lib/download-client-error";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useArrTags } from "@/hooks/use-arr-tags";
 
 // Per-instance cache keying: every hook accepts an optional `instanceId`. When
 // omitted the user's active Radarr is used (single-instance behavior); when
@@ -445,15 +445,10 @@ export function useRadarrRootFolders(instanceId?: string) {
   });
 }
 
-export function useRadarrTags(instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
-  return useQuery({
-    queryKey: ["radarr", id, "tags"],
-    queryFn: () => getTags(id ?? undefined),
-    enabled: enabled && !!id,
-    staleTime: Infinity,
-  });
-}
+// Delegates to the shared *arr tag query so there is exactly one queryFn
+// behind the ["radarr", instanceId, "tags"] key. Kept as a named export so
+// existing callers (detail screens, add-media sheets) read service-first.
+export const useRadarrTags = (instanceId?: string) => useArrTags("radarr", instanceId);
 
 // Interactive search is expensive (live indexer hit, often 30s+) — don't
 // auto-retry on transient failure, and keep completed results cached long

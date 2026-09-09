@@ -36,6 +36,8 @@ import {
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import { useLibraryTagFilter } from "@/hooks/use-library-tag-filter";
+import { tagLabelResolver } from "@/lib/library-tags";
 import {
   MonitoredLibraryGrid,
   MONITOR_FILTER_OPTIONS,
@@ -51,6 +53,7 @@ import { ICON } from "@/lib/constants";
 import {
   useSonarrSeries,
   useSonarrQueue,
+  useSonarrTags,
   useSonarrCalendar,
   sonarrCalendarKey,
   useSearchForSeries,
@@ -179,6 +182,7 @@ export const TvView = memo(function TvView({
   const sort = useSortStore((s) => s.series);
   const setSort = useSortStore((s) => s.setSeries);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
+  const tagFilter = useLibraryTagFilter("sonarr");
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   // All modal sequencing (sheet → confirm, sheet → push) goes through the
   // flow — see hooks/use-modal-flow.ts.
@@ -382,6 +386,7 @@ export const TvView = memo(function TvView({
                 ? (STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)
                     ?.label ?? "")
                 : null,
+              tagFilter.summary,
               SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
             ]
               .filter(Boolean)
@@ -390,7 +395,8 @@ export const TvView = memo(function TvView({
             active={
               monitorFilter !== "monitored" ||
               statusFilter !== "all" ||
-              sort !== SORT_DEFAULTS.series
+              sort !== SORT_DEFAULTS.series ||
+              tagFilter.active
             }
           />
         </View>
@@ -404,6 +410,7 @@ export const TvView = memo(function TvView({
         <SeriesLibrary
           monitorFilter={monitorFilter}
           statusFilter={statusFilter}
+          tagFilter={tagFilter.predicate}
           sort={sort}
           onLongPress={openSeriesSheet}
           listHeader={header}
@@ -447,6 +454,9 @@ export const TvView = memo(function TvView({
             value: statusFilter,
             onChange: (v) => setStatusFilter(v as SeriesStatusFilter),
           },
+          // Tags last: it is the section that can outgrow the search threshold,
+          // and extras render in array order.
+          ...(tagFilter.section ? [tagFilter.section] : []),
         ]}
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         sortValue={sort}
@@ -500,6 +510,7 @@ export const TvView = memo(function TvView({
 function SeriesLibrary({
   monitorFilter,
   statusFilter,
+  tagFilter,
   sort,
   onLongPress,
   listHeader,
@@ -508,6 +519,7 @@ function SeriesLibrary({
 }: {
   monitorFilter: MonitorFilter;
   statusFilter: SeriesStatusFilter;
+  tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
   sort: SeriesSortKey;
   onLongPress: (series: SonarrSeries) => void;
   listHeader: React.ReactElement;
@@ -518,6 +530,7 @@ function SeriesLibrary({
 }) {
   const { data: series, isLoading, error } = useSonarrSeries();
   const { data: queue } = useSonarrQueue();
+  const { data: tags } = useSonarrTags();
   const router = useRouter();
 
   const downloading = useMemo(
@@ -533,13 +546,27 @@ function SeriesLibrary({
     [statusFilter],
   );
 
+  // The grid has ONE extraFilter slot, so status and tags are ANDed here. Both
+  // inputs are memo-stable, so this is too — the grid's `sorted` memo (and with
+  // it a full re-sort of the library) survives every render. Returning the lone
+  // predicate rather than always wrapping keeps the identity stable when only
+  // one is active, and keeps it `undefined` when neither is, so the empty state
+  // still reads "No shows in library" instead of "No shows match filters".
+  const extraFilter = useMemo(() => {
+    if (!statusPredicate) return tagFilter;
+    if (!tagFilter) return statusPredicate;
+    return (s: SonarrSeries) => statusPredicate(s) && tagFilter(s);
+  }, [statusPredicate, tagFilter]);
+
+  const renderTags = useMemo(() => tagLabelResolver<SonarrSeries>(tags), [tags]);
+
   return (
     <MonitoredLibraryGrid
       data={series}
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
-      extraFilter={statusPredicate}
+      extraFilter={extraFilter}
       isMissing={sonarrIsMissing}
       sort={sort}
       compare={compareSeries}
@@ -555,6 +582,7 @@ function SeriesLibrary({
           0;
         return `${count} season${count !== 1 ? "s" : ""}`;
       }}
+      renderTags={renderTags}
       posterStatus={(s) => ({
         barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
         cornerColor: cornerColorFor(s.status),

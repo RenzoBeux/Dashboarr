@@ -594,13 +594,5 @@ export function getRootFolders(
   });
 }
 
-// --- Tags ---
-
-export interface SonarrTag {
-  id: number;
-  label: string;
-}
-
-export function getTags(instanceId?: string): Promise<SonarrTag[]> {
-  return serviceRequest<SonarrTag[]>("sonarr", "/tag", { instanceId });
-}
+// Tags live in services/arr-tags.ts — Radarr, Sonarr and Lidarr all
+// serve an identical { id, label } list at /tag, so one fetcher covers all three.

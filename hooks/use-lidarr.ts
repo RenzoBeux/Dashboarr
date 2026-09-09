@@ -25,12 +25,12 @@ import {
   getQualityProfiles,
   getMetadataProfiles,
   getRootFolders,
-  getTags,
 } from "@/services/lidarr-api";
 import { toast, toastError } from "@/components/ui/toast";
 import type { LidarrArtist, LidarrAlbum } from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useArrTags } from "@/hooks/use-arr-tags";
 
 // Per-instance cache keying: every hook accepts an optional `instanceId`. When
 // omitted the user's active Lidarr is used (single-instance behavior); when
@@ -409,12 +409,7 @@ export function useLidarrRootFolders(instanceId?: string) {
   });
 }
 
-export function useLidarrTags(instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("lidarr", instanceId);
-  return useQuery({
-    queryKey: ["lidarr", id, "tags"],
-    queryFn: () => getTags(id ?? undefined),
-    enabled: enabled && !!id,
-    staleTime: Infinity,
-  });
-}
+// Delegates to the shared *arr tag query so there is exactly one queryFn
+// behind the ["lidarr", instanceId, "tags"] key. Kept as a named export so
+// existing callers (detail screens, add-media sheets) read service-first.
+export const useLidarrTags = (instanceId?: string) => useArrTags("lidarr", instanceId);

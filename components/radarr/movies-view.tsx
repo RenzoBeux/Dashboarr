@@ -34,6 +34,8 @@ import { useSortStore, SORT_DEFAULTS, type MoviesSortKey } from "@/store/sort-st
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { ICON } from "@/lib/constants";
 import { formatRuntime } from "@/lib/utils";
+import { useLibraryTagFilter } from "@/hooks/use-library-tag-filter";
+import { tagLabelResolver } from "@/lib/library-tags";
 import {
   useRadarrMovies,
   useRadarrQueue,
@@ -42,6 +44,7 @@ import {
   useSearchAllMissingMovies,
   useToggleMovieMonitored,
   useDeleteMovie,
+  useRadarrTags,
 } from "@/hooks/use-radarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
@@ -175,6 +178,7 @@ export const MoviesView = memo(function MoviesView({
   const sort = useSortStore((s) => s.movies);
   const setSort = useSortStore((s) => s.setMovies);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
+  const tagFilter = useLibraryTagFilter("radarr");
   const [sheetTarget, setSheetTarget] = useState<MovieSheetTarget>(null);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -348,10 +352,19 @@ export const MoviesView = memo(function MoviesView({
       {tab === "library" && (
         <View className="mb-4">
           <FilterSortButton
-            summary={`${MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+            summary={[
+              MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)
+                ?.label ?? "",
+              tagFilter.summary,
+              SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
             onPress={() => setFilterSortOpen(true)}
             active={
-              monitorFilter !== "monitored" || sort !== SORT_DEFAULTS.movies
+              monitorFilter !== "monitored" ||
+              sort !== SORT_DEFAULTS.movies ||
+              tagFilter.active
             }
           />
         </View>
@@ -365,6 +378,7 @@ export const MoviesView = memo(function MoviesView({
         <MovieLibrary
           monitorFilter={monitorFilter}
           sort={sort}
+          tagFilter={tagFilter.predicate}
           onLongPress={openMovieSheet}
           listHeader={header}
           refreshControl={refreshCtl}
@@ -409,6 +423,7 @@ export const MoviesView = memo(function MoviesView({
         filterValue={monitorFilter}
         onFilterChange={setMonitorFilter}
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
+        extraSections={tagFilter.section ? [tagFilter.section] : undefined}
         sortValue={sort}
         onSortChange={setSort}
       />
@@ -453,6 +468,7 @@ export const MoviesView = memo(function MoviesView({
 function MovieLibrary({
   monitorFilter,
   sort,
+  tagFilter,
   onLongPress,
   listHeader,
   refreshControl,
@@ -460,6 +476,7 @@ function MovieLibrary({
 }: {
   monitorFilter: MonitorFilter;
   sort: MoviesSortKey;
+  tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
   onLongPress: (movie: RadarrMovie) => void;
   listHeader: React.ReactElement;
   refreshControl: React.ReactElement<RefreshControlProps>;
@@ -467,6 +484,7 @@ function MovieLibrary({
 }) {
   const { data: movies, isLoading, error } = useRadarrMovies();
   const { data: queue } = useRadarrQueue();
+  const { data: tags } = useRadarrTags();
   const router = useRouter();
 
   const downloading = useMemo(
@@ -474,12 +492,17 @@ function MovieLibrary({
     [queue],
   );
 
+  // Map once per tag-list change: the detail screens' per-item .find() would
+  // run for every visible cell on every render here.
+  const renderTags = useMemo(() => tagLabelResolver<RadarrMovie>(tags), [tags]);
+
   return (
     <MonitoredLibraryGrid
       data={movies}
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
+      extraFilter={tagFilter}
       isMissing={radarrIsMissing}
       sort={sort}
       compare={compareMovies}
@@ -487,6 +510,7 @@ function MovieLibrary({
       placeholderIcon={Film}
       nounPlural="movies"
       renderFooter={movieFooter}
+      renderTags={renderTags}
       posterStatus={(m) => ({
         barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
         cornerColor: cornerColorFor(m.status),
@@ -566,12 +590,18 @@ function MovieWanted({
 }) {
   const { data: wanted, isLoading, error } = useWantedMissing();
   const { data: queue } = useRadarrQueue();
+  const { data: tags } = useRadarrTags();
   const router = useRouter();
 
   const downloading = useMemo(
     () => new Set((queue?.records ?? []).map((r) => r.movieId)),
     [queue],
   );
+
+  // Badges only, no tag filter: the FilterSortButton is gated on the Library
+  // tab, so a filter here would silently empty the grid with no way to clear
+  // it. /wanted/missing returns full movie resources, so `tags` is present.
+  const renderTags = useMemo(() => tagLabelResolver<RadarrMovie>(tags), [tags]);
 
   const count = wanted?.totalRecords ?? 0;
   const header = (
@@ -600,6 +630,7 @@ function MovieWanted({
       placeholderIcon={Film}
       nounPlural="missing movies"
       renderFooter={movieFooter}
+      renderTags={renderTags}
       posterStatus={(m) => ({
         barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
         cornerColor: cornerColorFor(m.status),

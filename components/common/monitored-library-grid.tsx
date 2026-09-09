@@ -16,7 +16,8 @@ import { ErrorBanner } from "@/components/common/error-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
-import { useUiScale } from "@/hooks/use-ui-scale";
+import { useUiScale, BASE_REM } from "@/hooks/use-ui-scale";
+import { fitTagBadges } from "@/lib/library-tags";
 import { BAR_TRACK_COLOR } from "@/lib/arr-poster-status";
 import type { ServiceId } from "@/lib/constants";
 
@@ -90,6 +91,14 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
   /** Footer line under the poster title (e.g. year or season count). */
   renderFooter: (item: T) => string;
   /**
+   * Tag labels for the badge row under the footer (issue #343). Return an empty
+   * array — ideally a shared one, which `tagLabelResolver` does — for an
+   * untagged item; the tile then renders exactly as it did before this prop
+   * existed, with no reserved row. Optional because Lidarr albums and both
+   * Bindery grids have no tag concept at all.
+   */
+  renderTags?: (item: T) => string[];
+  /**
    * Sonarr/Radarr-style status overlay for each poster (bottom color bar +
    * corner triangle). Computed at the screen level since it needs the download
    * queue. Omit to render plain posters.
@@ -127,6 +136,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   nounPlural,
   posterCoverType = "poster",
   renderFooter,
+  renderTags,
   posterStatus,
   onItemPress,
   onItemLongPress,
@@ -206,6 +216,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
           posterCoverType={posterCoverType}
           placeholderIcon={placeholderIcon}
           footer={renderFooter(item)}
+          tags={renderTags?.(item)}
           status={posterStatus?.(item)}
           onPress={() => onItemPress(item)}
           onLongPress={() => onItemLongPress(item)}
@@ -232,6 +243,7 @@ function LibraryPoster<T extends MonitoredItem>({
   posterCoverType,
   placeholderIcon,
   footer,
+  tags,
   status,
   onPress,
   onLongPress,
@@ -241,6 +253,7 @@ function LibraryPoster<T extends MonitoredItem>({
   posterCoverType: string;
   placeholderIcon: LucideIcon;
   footer: string;
+  tags?: string[];
   status?: PosterStatus;
   onPress: () => void;
   onLongPress: () => void;
@@ -295,7 +308,58 @@ function LibraryPoster<T extends MonitoredItem>({
         {item.title}
       </Text>
       <Text className="text-zinc-600 text-xs">{footer}</Text>
+      {tags?.length ? <PosterTagBadges tags={tags} cellWidth={cellWidth} /> : null}
     </Pressable>
+  );
+}
+
+/**
+ * Tag chips under the poster footer (issue #343). Only rendered for an item
+ * that has tags, so an untagged tile is byte-identical to before — no reserved
+ * row, no layout shift.
+ *
+ * How many chips fit is decided by `fitTagBadges` rather than measured: an
+ * onLayout round-trip per cell inside a virtualized FlatList would cost two
+ * passes and re-measure on every recycle. The estimate errs wide, and `shrink`
+ * is what catches the cases no character average can model.
+ */
+function PosterTagBadges({ tags, cellWidth }: { tags: string[]; cellWidth: number }) {
+  const remPx = BASE_REM * useUiScale();
+  // Deliberately not memoized: `tags` is a fresh array on most renders, so a
+  // useMemo would pay a deps comparison and recompute anyway. The work is a few
+  // dozen character reads — noise next to the expo-image load in the same cell.
+  const { shown, overflow } = fitTagBadges(tags, cellWidth, remPx);
+
+  return (
+    <View
+      className="flex-row items-center gap-1 mt-1 overflow-hidden"
+      accessibilityLabel={`Tags: ${tags.join(", ")}`}
+    >
+      {shown.map((label, i) => (
+        // `shrink` is load-bearing: React Native defaults flexShrink to 0, so
+        // without it an under-estimated badge spills past the cell and gets
+        // clipped mid-glyph instead of ellipsizing. Keep px-1.5 / gap-1 /
+        // text-[0.65rem] in sync with TAG_BADGE_REM in lib/library-tags.ts.
+        // Same blue as the detail screens' <Badge variant="info"> tag chips.
+        <View
+          // Index in the key: *arr enforces unique tag labels, but the ids come
+          // off the wire and a duplicated one would otherwise collide here.
+          key={`${i}-${label}`}
+          className="shrink rounded-full bg-blue-600 px-1.5 py-0.5"
+        >
+          <Text className="text-white text-[0.65rem] font-medium" numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+      ))}
+      {overflow > 0 ? (
+        // shrink-0: the count must never ellipsize into "+…". Neutral rather
+        // than blue so it reads as a count, not as a tag literally named "+2".
+        <View className="shrink-0 rounded-full bg-zinc-700 px-1.5 py-0.5">
+          <Text className="text-white text-[0.65rem] font-medium">{`+${overflow}`}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
