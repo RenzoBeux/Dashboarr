@@ -388,6 +388,53 @@ const DEMO_NZBGET_STATUS = {
   FeedActive: false,
 };
 
+// --- Demo *arr tags ---
+// Each *arr numbers its tags independently, so the three lists below overlap in
+// id but not in meaning — which is exactly the per-instance behaviour the tag
+// filter has to cope with. Assignments are deliberately partial: the poster
+// grid's untagged path and the badge row's "+N" overflow both need to be
+// visible in demo mode, and one long label exercises the ellipsize fallback.
+const DEMO_RADARR_TAGS = [
+  { id: 1, label: "4k" },
+  { id: 2, label: "kids" },
+  { id: 3, label: "rewatch" },
+  { id: 4, label: "documentary" },
+  { id: 5, label: "director-commentary" },
+];
+
+const DEMO_RADARR_MOVIE_TAGS: Record<number, number[]> = {
+  1: [1, 3],
+  2: [1, 4, 3, 2],
+  3: [1],
+  4: [3],
+  5: [5],
+  7: [2],
+};
+
+const DEMO_SONARR_TAGS = [
+  { id: 1, label: "anime" },
+  { id: 2, label: "kids" },
+  { id: 3, label: "4k" },
+  { id: 4, label: "weekly" },
+];
+
+const DEMO_SONARR_SERIES_TAGS: Record<number, number[]> = {
+  1: [3, 4],
+  2: [3],
+  3: [4, 2, 3],
+  5: [1],
+};
+
+const DEMO_LIDARR_TAGS = [
+  { id: 1, label: "lossless" },
+  { id: 2, label: "live" },
+];
+
+const DEMO_LIDARR_ARTIST_TAGS: Record<number, number[]> = {
+  1: [1],
+  3: [1, 2],
+};
+
 // --- Radarr ---
 
 function makeMovie(id: number, title: string, year: number, tmdbId: number, hasFile: boolean) {
@@ -410,6 +457,7 @@ function makeMovie(id: number, title: string, year: number, tmdbId: number, hasF
     runtime: 138,
     qualityProfileId: 1,
     rootFolderPath: "/movies",
+    tags: DEMO_RADARR_MOVIE_TAGS[id] ?? [],
     ...(hasFile
       ? {
           movieFile: {
@@ -575,6 +623,7 @@ function makeSeries(id: number, title: string, year: number, tvdbId: number) {
     ],
     qualityProfileId: 1,
     rootFolderPath: "/tv",
+    tags: DEMO_SONARR_SERIES_TAGS[id] ?? [],
     statistics: { seasonCount: 2, episodeFileCount: 14, episodeCount: 14, totalEpisodeCount: 16, sizeOnDisk: 28991029248, percentOfEpisodes: 87.5 },
   };
 }
@@ -787,6 +836,7 @@ function makeArtist(
     metadataProfileId: 1,
     rootFolderPath: "/music",
     path: `/music/${name}`,
+    tags: DEMO_LIDARR_ARTIST_TAGS[id] ?? [],
     genres: ["Rock", "Electronic"],
     images: [],
     added: daysFromNowFull(-180),
@@ -3255,7 +3305,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/movies", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
-      if (normalized.startsWith("/tag")) return [];
+      if (normalized.startsWith("/tag")) return DEMO_RADARR_TAGS;
       if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/health")) return DEMO_RADARR_HEALTH;
@@ -3274,7 +3324,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
-      if (normalized.startsWith("/tag")) return [];
+      if (normalized.startsWith("/tag")) return DEMO_SONARR_TAGS;
       if (normalized.startsWith("/customfilter")) return [];
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized.startsWith("/health")) return DEMO_SONARR_HEALTH;
@@ -3322,7 +3372,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/metadataprofile")) return [{ id: 1, name: "Standard" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/music", freeSpace: 2199023255552 }];
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
-      if (normalized.startsWith("/tag")) return [];
+      if (normalized.startsWith("/tag")) return DEMO_LIDARR_TAGS;
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       // Lidarr intentionally healthy — exercises the no-badge path.
       if (normalized.startsWith("/health")) return [];

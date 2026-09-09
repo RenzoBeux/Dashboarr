@@ -23,6 +23,8 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
+import { useLibraryTagFilter } from "@/hooks/use-library-tag-filter";
+import { tagLabelResolver } from "@/lib/library-tags";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
   MonitoredLibraryGrid,
@@ -35,6 +37,7 @@ import { ICON } from "@/lib/constants";
 import {
   useLidarrArtists,
   useLidarrQueue,
+  useLidarrTags,
   useLidarrWantedMissing,
   useSearchArtist,
   useSearchAlbums,
@@ -118,6 +121,7 @@ export const MusicView = memo(function MusicView({
   const sort = useSortStore((s) => s.music);
   const setSort = useSortStore((s) => s.setMusic);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
+  const tagFilter = useLibraryTagFilter("lidarr");
   // Sheet data only — visibility lives in the flow. Deliberately never cleared
   // so sheet content stays correct during the dismiss animation.
   const [sheetArtist, setSheetArtist] = useState<ArtistItem | null>(null);
@@ -301,9 +305,20 @@ export const MusicView = memo(function MusicView({
       {tab === "library" && (
         <View className="mb-4">
           <FilterSortButton
-            summary={`${MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)?.label ?? ""} · ${SORT_OPTIONS.find((o) => o.key === sort)?.label ?? ""}`}
+            summary={[
+              MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)
+                ?.label ?? "",
+              tagFilter.summary,
+              SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
             onPress={() => setFilterSortOpen(true)}
-            active={monitorFilter !== "monitored" || sort !== SORT_DEFAULTS.music}
+            active={
+              monitorFilter !== "monitored" ||
+              sort !== SORT_DEFAULTS.music ||
+              tagFilter.active
+            }
           />
         </View>
       )}
@@ -316,6 +331,7 @@ export const MusicView = memo(function MusicView({
         <ArtistLibrary
           monitorFilter={monitorFilter}
           sort={sort}
+          tagFilter={tagFilter.predicate}
           onLongPress={openArtistSheet}
           listHeader={header}
           refreshControl={refreshCtl}
@@ -365,6 +381,7 @@ export const MusicView = memo(function MusicView({
         }))}
         filterValue={monitorFilter}
         onFilterChange={setMonitorFilter}
+        extraSections={tagFilter.section ? [tagFilter.section] : undefined}
         sortOptions={SORT_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         sortValue={sort}
         onSortChange={setSort}
@@ -418,6 +435,7 @@ export const MusicView = memo(function MusicView({
 function ArtistLibrary({
   monitorFilter,
   sort,
+  tagFilter,
   onLongPress,
   listHeader,
   refreshControl,
@@ -425,6 +443,7 @@ function ArtistLibrary({
 }: {
   monitorFilter: MonitorFilter;
   sort: ArtistsSortKey;
+  tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
   onLongPress: (artist: ArtistItem) => void;
   listHeader: React.ReactElement;
   refreshControl: React.ReactElement<RefreshControlProps>;
@@ -432,6 +451,7 @@ function ArtistLibrary({
 }) {
   const { data: artists, isLoading, error } = useLidarrArtists();
   const { data: queue } = useLidarrQueue();
+  const { data: tags } = useLidarrTags();
   const router = useRouter();
 
   const downloading = useMemo(
@@ -449,12 +469,15 @@ function ArtistLibrary({
     [artists],
   );
 
+  const renderTags = useMemo(() => tagLabelResolver<ArtistItem>(tags), [tags]);
+
   return (
     <MonitoredLibraryGrid
       data={items}
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
+      extraFilter={tagFilter}
       isMissing={lidarrArtistIsMissing}
       sort={sort}
       compare={compareArtists}
@@ -465,6 +488,7 @@ function ArtistLibrary({
         const count = a.statistics?.albumCount ?? 0;
         return `${count} album${count === 1 ? "" : "s"}`;
       }}
+      renderTags={renderTags}
       posterStatus={(a) => ({
         barColor: BAR_KIND_COLOR[lidarrArtistBarKind(a, downloading.has(a.id))],
         cornerColor: cornerColorFor(a.status),

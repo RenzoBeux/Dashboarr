@@ -626,6 +626,16 @@ export interface ArrDiskSpace {
   totalSpace: number; // bytes
 }
 
+// --- *arr tags (identical payload on Radarr v3, Sonarr v3, Lidarr v1) ---
+
+// `GET /tag` returns the instance's tag list. Ids are a PER-INSTANCE
+// auto-increment, so Radarr's #3 is unrelated to Sonarr's #3 (and to a second
+// Radarr's #3) — anything persisting a tag id must key it by instance.
+export interface ArrTag {
+  id: number;
+  label: string;
+}
+
 // --- Sonarr Types ---
 
 export type SonarrSeriesType = "standard" | "daily" | "anime";

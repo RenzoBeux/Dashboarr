@@ -8,7 +8,7 @@ import {
   Dimensions,
   StyleSheet,
 } from "react-native";
-import { X, Check, Circle, Search } from "lucide-react-native";
+import { X, Check, Circle, Search, Square, SquareCheck } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { TextInput } from "@/components/ui/text-input";
 import Animated, {
@@ -45,15 +45,37 @@ export interface SheetOption<K extends string> {
   label: string;
 }
 
-// An additional single-select radio section rendered between the status filter
-// and the sort section. Values are plain strings (e.g. dynamic qBittorrent
-// category names) so they don't need the string-literal generics.
-export interface SheetSection {
+// An additional section rendered after the status filter and the sort section.
+// Values are plain strings (e.g. dynamic qBittorrent category names, or
+// stringified *arr tag ids) so they don't need the string-literal generics.
+//
+// Single-select radio — the original shape. `multi` is optional and pinned to
+// `false` so every pre-existing call site keeps compiling unchanged while still
+// acting as the union discriminant.
+export interface SheetSingleSection {
+  multi?: false;
   label: string;
   options: SheetOption<string>[];
   value: string;
   onChange: (next: string) => void;
 }
+
+// Multi-select checkbox section (library tag filters, #343). `onToggle` rather
+// than `onChange(next[])` deliberately: the sheet has no opinion on ordering,
+// so the owner canonicalizes its stored array instead of it depending on the
+// order the user happened to tap.
+export interface SheetMultiSection {
+  multi: true;
+  label: string;
+  options: SheetOption<string>[];
+  /** Selected option keys. Empty = section inactive (nothing filtered out). */
+  values: string[];
+  onToggle: (key: string) => void;
+  /** Renders an "N selected · Clear" affordance in the section header. */
+  onClear?: () => void;
+}
+
+export type SheetSection = SheetSingleSection | SheetMultiSection;
 
 interface FilterSortSheetProps<F extends string, S extends string> {
   visible: boolean;
@@ -63,8 +85,9 @@ interface FilterSortSheetProps<F extends string, S extends string> {
   filterOptions: SheetOption<F>[];
   filterValue: F;
   onFilterChange: (next: F) => void;
-  // Optional extra radio sections (e.g. category) shown after the status
-  // filter. Omit or pass [] when the caller has none.
+  // Optional extra sections (e.g. category, tags) shown after the status filter
+  // and the sort section. Single- or multi-select, rendered in array order.
+  // Omit or pass [] when the caller has none.
   extraSections?: SheetSection[];
   sortLabel?: string;
   sortOptions: SheetOption<S>[];
@@ -252,10 +275,44 @@ export function FilterSortSheet<F extends string, S extends string>({
                         o.label.toLowerCase().includes(trimmed),
                       )
                     : section.options;
+                // Narrow into consts before the JSX: TypeScript keeps const
+                // narrowing inside the row callbacks below, but drops parameter
+                // narrowing, so `section.onToggle` in an onPress won't compile.
+                const multi = section.multi ? section : null;
+                const single = section.multi ? null : section;
+                const selectedSet = multi ? new Set(multi.values) : null;
+                const onClear = multi?.onClear;
+                // Anchored in the header rather than under the options: with the
+                // search box active the selected rows can scroll out of sight,
+                // so the count and the escape hatch must stay put.
+                const headerAction =
+                  multi && multi.values.length > 0 ? (
+                    <View className="flex-row items-center gap-3">
+                      <Text className="text-zinc-500 text-xs">
+                        {multi.values.length} selected
+                      </Text>
+                      {onClear ? (
+                        <Pressable
+                          onPress={() => {
+                            lightHaptic();
+                            onClear();
+                          }}
+                          hitSlop={8}
+                          className="active:opacity-60"
+                        >
+                          <Text className="text-primary text-xs font-bold uppercase tracking-wider">
+                            Clear
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null;
                 return (
                   <View key={section.label}>
                     <View className="h-2" />
-                    <SectionHeader>{section.label}</SectionHeader>
+                    <SectionHeader action={headerAction}>
+                      {section.label}
+                    </SectionHeader>
                     {searchable ? (
                       <View className="px-3 pb-1 flex-row items-center gap-2">
                         <Icon icon={Search} size={16} color="#71717a" />
@@ -278,18 +335,30 @@ export function FilterSortSheet<F extends string, S extends string>({
                         No matches
                       </Text>
                     ) : (
-                      visibleOptions.map((opt) => (
-                        <RadioRow
-                          key={opt.key}
-                          label={opt.label}
-                          selected={opt.key === section.value}
-                          onPress={() => {
-                            if (opt.key === section.value) return;
-                            lightHaptic();
-                            section.onChange(opt.key);
-                          }}
-                        />
-                      ))
+                      visibleOptions.map((opt) =>
+                        multi && selectedSet ? (
+                          <CheckboxRow
+                            key={opt.key}
+                            label={opt.label}
+                            selected={selectedSet.has(opt.key)}
+                            onPress={() => {
+                              lightHaptic();
+                              multi.onToggle(opt.key);
+                            }}
+                          />
+                        ) : single ? (
+                          <RadioRow
+                            key={opt.key}
+                            label={opt.label}
+                            selected={opt.key === single.value}
+                            onPress={() => {
+                              if (opt.key === single.value) return;
+                              lightHaptic();
+                              single.onChange(opt.key);
+                            }}
+                          />
+                        ) : null,
+                      )
                     )}
                   </View>
                 );
@@ -302,11 +371,65 @@ export function FilterSortSheet<F extends string, S extends string>({
   );
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
+function SectionHeader({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  const label = (
     <Text className="text-zinc-500 text-xs font-bold uppercase tracking-widest px-3 pt-3 pb-1">
       {children}
     </Text>
+  );
+  // Sections without an action render the untouched Text node — no wrapper, no
+  // layout delta for the sections that predate this.
+  if (!action) return label;
+  return (
+    <View className="flex-row items-center justify-between pr-3">
+      {label}
+      {action}
+    </View>
+  );
+}
+
+/**
+ * Multi-select sibling of RadioRow. Same padding, rounding and selected tint so
+ * the two kinds of section read as one list; the square-vs-circle icon is what
+ * tells the user this section accepts several answers.
+ *
+ * No re-select guard, unlike RadioRow: pressing a checked box is the deselect.
+ */
+function CheckboxRow({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center gap-3 px-3 py-3 rounded-xl active:bg-surface-light ${
+        selected ? "bg-primary/10" : ""
+      }`}
+    >
+      <Icon
+        icon={selected ? SquareCheck : Square}
+        size={18}
+        color={selected ? "#3b82f6" : "#52525b"}
+      />
+      <Text
+        className={`text-base flex-1 ${
+          selected ? "text-zinc-100 font-medium" : "text-zinc-300"
+        }`}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
