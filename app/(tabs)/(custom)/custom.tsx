@@ -19,7 +19,7 @@ import type { ServiceInstance } from "@/store/config-store";
 // The Custom tab lists every attached-and-enabled `custom` instance (they are
 // heterogeneous — each describes a different arbitrary API — so, unlike a
 // single-active-instance tab, all of them show at once). Tapping one opens
-// its full detail (health + stat tiles + actions) at /custom-stats.
+// its full detail (health + stat tiles + actions) at /custom/stats.
 export default function CustomScreen() {
   return (
     <WorkspaceServiceGuard kinds={["custom"]}>
@@ -92,7 +92,7 @@ function InstanceRow({
     <Card
       onPress={() => {
         lightHaptic();
-        router.push(`/custom-stats?instance=${instance.id}`);
+        router.push(`/custom/stats?instance=${instance.id}`);
       }}
     >
       <View className="flex-row items-center gap-3">

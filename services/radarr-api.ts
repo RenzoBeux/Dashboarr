@@ -1,5 +1,11 @@
 import { serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
+import {
+  autoRows,
+  radarrImportFiles,
+  toRadarrCandidates,
+  type RadarrManualImportFile,
+} from "@/lib/manual-import";
 import type {
   RadarrMovie,
   RadarrQueue,
@@ -11,6 +17,7 @@ import type {
   RadarrImage,
   RadarrRelease,
   RadarrCollection,
+  ArrQualityDefinition,
   ArrQueueRemoveOptions,
 } from "@/lib/types";
 
@@ -109,12 +116,14 @@ export function removeFromQueue(
   });
 }
 
-// --- Force import (#325) ---
+// --- Manual import (#325, #306) ---
 
-// The import candidates Radarr matched for a completed download — the same
-// list its own Manual Import screen shows. `filterExistingFiles: false` so
-// nothing the scan found is hidden from the eligibility check below.
-function getManualImportItems(
+/**
+ * The import candidates Radarr matched for a completed download — the same
+ * list its own Manual Import screen shows. `filterExistingFiles: false` so
+ * nothing the scan found is hidden, including files it could not map.
+ */
+export function getManualImportCandidates(
   downloadId: string,
   instanceId?: string,
 ): Promise<RadarrManualImportItem[]> {
@@ -125,44 +134,57 @@ function getManualImportItems(
 }
 
 /**
- * Imports a completed download Radarr refused to import ("Import blocked",
- * typically a grab-anyway release that isn't a quality upgrade), replacing the
- * existing movie file. The app-side equivalent of desktop Manual Import: fetch
- * Radarr's own candidates for the download, then issue a ManualImport command
- * for every file it identified — the command imports regardless of rejections,
- * which is the "force". File payload mirrors Radarr's web UI
- * (InteractiveImportModalContent). Only files Radarr matched to a movie with a
- * parsed quality qualify; anything unidentified needs the desktop screen's
- * manual mapping, so with no qualifying file this rejects instead of silently
- * importing nothing.
+ * Every quality this instance knows. The manual-import screen offers these
+ * when Radarr parsed no quality off the file name, which is exactly the case
+ * where the release is named in a way it can't read (#306).
  */
-export async function forceImportQueueItem(
-  downloadId: string,
+export function getQualityDefinitions(
+  instanceId?: string,
+): Promise<ArrQualityDefinition[]> {
+  return serviceRequest<ArrQualityDefinition[]>("radarr", "/qualitydefinition", {
+    instanceId,
+  });
+}
+
+/**
+ * Issues the ManualImport command for already-built file payloads. The command
+ * imports regardless of rejections, which is what makes it a *force*.
+ * `importMode: "auto"` matches Radarr's own default (copy vs. hardlink/move is
+ * decided from the download client's setting).
+ */
+export function runManualImport(
+  files: RadarrManualImportFile[],
   instanceId?: string,
 ): Promise<void> {
-  const candidates = await getManualImportItems(downloadId, instanceId);
-  const files = candidates
-    .filter((c) => c.path && c.movie && c.quality)
-    .map((c) => ({
-      path: c.path,
-      folderName: c.folderName,
-      movieId: c.movie!.id,
-      quality: c.quality,
-      languages: c.languages ?? [],
-      releaseGroup: c.releaseGroup,
-      indexerFlags: c.indexerFlags ?? 0,
-      downloadId,
-    }));
-  if (files.length === 0) {
-    throw new Error(
-      "Radarr couldn't match this download to a movie. Use Manual Import in Radarr to map it.",
-    );
-  }
   return serviceRequest<void>("radarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "ManualImport", files, importMode: "auto" }),
     instanceId,
   });
+}
+
+/**
+ * Imports a completed download Radarr refused to import ("Import blocked",
+ * typically a grab-anyway release that isn't a quality upgrade), replacing the
+ * existing movie file. The one-tap path: it sends only what Radarr already
+ * matched by itself. A release whose name Radarr can't parse resolves to no
+ * movie at all, so this rejects instead of silently importing nothing — that
+ * case needs the manual-import screen, where the mapping is chosen by hand.
+ */
+export async function forceImportQueueItem(
+  downloadId: string,
+  instanceId?: string,
+): Promise<void> {
+  const candidates = toRadarrCandidates(
+    await getManualImportCandidates(downloadId, instanceId),
+  );
+  const rows = autoRows("radarr", candidates);
+  if (rows.length === 0) {
+    throw new Error(
+      "Radarr couldn't match this download to a movie. Use Manual import to map the files yourself.",
+    );
+  }
+  return runManualImport(radarrImportFiles(rows, downloadId), instanceId);
 }
 
 // --- History ---

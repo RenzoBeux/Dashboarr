@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/text-input";
 import { toast, toastError } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useConfigStore } from "@/store/config-store";
 import { sendWakeOnLan } from "@/lib/wake-on-lan";
 import type { WakeOnLanDevice } from "@/store/config-store";
@@ -41,6 +42,26 @@ export default function WakeOnLanScreen() {
     setPort("");
     setEditingId(null);
   };
+
+  const closeForm = () => {
+    resetForm();
+    setMode("list");
+  };
+
+  // Typed-but-unsaved form input is easy to lose: the Android hardware back
+  // and the tab re-tap pop this whole screen, not just the form. Ask first
+  // when the add form has content or the edit form differs from the device.
+  const editing = editingId ? wolDevices.find((d) => d.id === editingId) : undefined;
+  const formDirty =
+    mode === "add"
+      ? [name, mac, broadcastAddress, port].some((v) => v.trim() !== "")
+      : mode === "edit" &&
+        editing !== undefined &&
+        (name !== editing.name ||
+          mac !== editing.mac ||
+          broadcastAddress !== (editing.broadcastAddress ?? "") ||
+          port !== (editing.port ? String(editing.port) : ""));
+  const guard = useUnsavedChangesGuard(formDirty, closeForm);
 
   const startAdd = () => {
     resetForm();
@@ -110,7 +131,7 @@ export default function WakeOnLanScreen() {
       <ScreenWrapper>
         <BackHeader
           title={mode === "add" ? "Add Device" : "Edit Device"}
-          onBack={() => { resetForm(); setMode("list"); }}
+          onBack={guard.leave}
         />
 
         <Card className="gap-4 mb-4">
@@ -146,7 +167,7 @@ export default function WakeOnLanScreen() {
         <View className="flex-row gap-3">
           <Button
             label="Cancel"
-            onPress={() => { resetForm(); setMode("list"); }}
+            onPress={closeForm}
             variant="outline"
             className="flex-1"
           />
@@ -156,6 +177,16 @@ export default function WakeOnLanScreen() {
             className="flex-1"
           />
         </View>
+
+        <ConfirmModal
+          {...guard.discardModalProps}
+          title="Discard changes?"
+          message="This device hasn't been saved yet."
+          tone="danger"
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          onConfirm={guard.confirmDiscard}
+        />
       </ScreenWrapper>
     );
   }

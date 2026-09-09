@@ -45,38 +45,13 @@ import {
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
+  TAB_LABELS,
   pickableTabIdsFor,
   type TabRouteId,
 } from "@/lib/tab-routes";
 import { DEFAULT_TAB_ICON_NAMES, resolveTabIcon } from "@/lib/tab-icons";
 import { toast } from "@/components/ui/toast";
 import { DashboardIconPickerSheet } from "@/components/dashboard/dashboard-icon-picker-sheet";
-
-const TAB_LABELS: Record<TabRouteId, string> = {
-  downloads: "Downloads",
-  calendar: "Calendar",
-  services: "Services",
-  movies: "Movies",
-  tv: "TV",
-  library: "Library",
-  music: "Music",
-  books: "Books",
-  requests: "Requests",
-  activity: "Activity",
-  indexers: "Indexers",
-  plex: "Plex",
-  jellyfin: "Jellyfin",
-  emby: "Emby",
-  navidrome: "Navidrome",
-  glances: "Glances",
-  bazarr: "Bazarr",
-  unraid: "unRAID",
-  tdarr: "Tdarr",
-  autobrr: "Autobrr",
-  cleanuparr: "Cleanuparr",
-  pihole: "Pi-hole",
-  custom: "Custom",
-};
 
 export default function DashboardEditScreen() {
   const router = useRouter();

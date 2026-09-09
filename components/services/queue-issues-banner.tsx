@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { View, Text, Pressable } from "react-native";
+import { useRouter } from "expo-router";
 import {
   AlertTriangle,
   ChevronRight,
   Ban,
   FolderInput,
+  ListChecks,
   Search,
   Trash2,
 } from "lucide-react-native";
@@ -103,7 +105,11 @@ export function QueueIssuesBanner({
   instanceId,
   className = "",
 }: QueueIssuesBannerProps) {
-  const { issues: fetched } = useArrQueueIssues(adapter, instanceId);
+  const router = useRouter();
+  const { issues: fetched, instanceId: queueInstanceId } = useArrQueueIssues(
+    adapter,
+    instanceId,
+  );
   const removeMutation = useRemoveFromArrQueue(adapter, instanceId);
   const forceImportMutation = useForceImportArrQueue(adapter, instanceId);
 
@@ -152,6 +158,33 @@ export function QueueIssuesBanner({
                     item: sheetItem,
                     mode: "forceImport" as const,
                   }),
+              },
+            ]
+          : []),
+        // The by-hand fallback (#306): the release is named in a way *arr
+        // can't parse, so it matched no episode/movie and Force import above
+        // would refuse. Offered on the same items, since which of the two is
+        // needed only becomes clear once the candidates are listed.
+        ...(sheetItem.canForceImport && adapter.supportsManualImport
+          ? [
+              {
+                label: "Manual import",
+                subtitle: "Map the files yourself",
+                icon: <Icon icon={ListChecks} size={18} color="#a1a1aa" />,
+                onPress: () => {
+                  const target = {
+                    pathname: "/manual-import" as const,
+                    params: {
+                      service: adapter.serviceId,
+                      downloadId: sheetItem.downloadId!,
+                      title: sheetItem.releaseTitle,
+                      ...(queueInstanceId ? { instanceId: queueInstanceId } : {}),
+                    },
+                  };
+                  // Pushing a route is a "present" for iOS's purposes, so it
+                  // waits for the sheet to be fully gone — see CLAUDE.md.
+                  flow.whenClear(() => router.push(target));
+                },
               },
             ]
           : []),

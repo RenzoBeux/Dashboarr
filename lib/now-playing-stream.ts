@@ -138,11 +138,77 @@ export function isLocalEndpoint(remote: string | undefined): boolean {
   return isPrivateHost(host);
 }
 
+// The three states Plex distinguishes, named the way Tautulli names them so the
+// Plex-direct path and the Tautulli path in lib/monitor-adapter.ts speak one
+// vocabulary. "copy" is what the UI calls Direct Stream (a remux, no re-encode).
+export type PlexPlayDecision = "direct play" | "copy" | "transcode";
+
+// Plex booleans arrive as `true` in JSON and "1" in XML-shaped payloads (some
+// proxies pass the number through). Covers `selected` and `live`.
+function isPlexTrue(v: boolean | number | string | undefined): boolean {
+  return v === true || v === 1 || v === "1";
+}
+
+// Plex flags the entry in play with `selected`; when nothing is flagged, the
+// first one is it (mirrors Tautulli's plexpy/pmsconnect.py).
+function pickSelected<T extends { selected?: boolean | number | string }>(
+  items: T[] | undefined,
+): T | undefined {
+  return items?.find((i) => isPlexTrue(i.selected)) ?? items?.[0];
+}
+
+/**
+ * The play decision for a Plex session, from the authoritative source.
+ *
+ * That source is the per-`Stream` `decision` on the selected `Media > Part` —
+ * absent means that stream is being played as-is. It is NOT the presence of a
+ * `TranscodeSession`: Plex attaches one whenever the client opened a transcode
+ * decision, and a pure container remux carries a full TranscodeSession with
+ * `videoDecision`/`audioDecision` both "copy" while nothing is re-encoded.
+ * Reading presence as "transcoding" is what made a Direct Play render as
+ * Transcode on the Plex tab (issue #407).
+ *
+ * Mirrors Tautulli's combined decision (plexpy/pmsconnect.py, "Generate a
+ * combined transcode decision value") including its Live TV override, with one
+ * deliberate divergence noted below.
+ */
+export function plexPlayDecision(session: PlexSession): PlexPlayDecision {
+  const ts = session.TranscodeSession;
+  const part = pickSelected(pickSelected(session.Media)?.Part);
+
+  const streamOfType = (type: number) =>
+    pickSelected(part?.Stream?.filter((st) => Number(st.streamType) === type));
+
+  let video = streamOfType(1)?.decision;
+  let audio = streamOfType(2)?.decision;
+  let subtitle = streamOfType(3)?.decision;
+
+  // Whether this server reports per-stream decisions at all. Older servers (and
+  // thin proxies) send the Media tree with no `decision` anywhere, and there
+  // "absent" cannot be read as direct play — TranscodeSession is all we have.
+  const reportsDecisions =
+    part?.decision != null || (part?.Stream?.some((st) => st.decision != null) ?? false);
+
+  if (ts && (!reportsDecisions || isPlexTrue(session.live))) {
+    video = ts.videoDecision === "directplay" ? undefined : ts.videoDecision;
+    audio = ts.audioDecision === "directplay" ? undefined : ts.audioDecision;
+    subtitle = subtitle ?? (ts.subtitleDecision === "directplay" ? undefined : ts.subtitleDecision);
+  }
+
+  if (video === "transcode" || audio === "transcode") return "transcode";
+  // Divergence from Tautulli, which folds only video and audio into the
+  // combined decision: a subtitle burn re-encodes the picture, so it is never a
+  // direct play. On a real server Plex sets videoDecision "transcode" alongside
+  // it, so this is a guard rather than a case we have seen on the wire.
+  if (subtitle === "burn") return "transcode";
+  if (video === "copy" || audio === "copy") return "copy";
+  // Everything else — an absent decision, or Plex's own "directplay" — is a
+  // direct play.
+  return "direct play";
+}
+
 function plexIsTranscoding(session: PlexSession): boolean {
-  return (
-    session.TranscodeSession?.videoDecision === "transcode" ||
-    session.TranscodeSession?.audioDecision === "transcode"
-  );
+  return plexPlayDecision(session) === "transcode";
 }
 
 // --- Mappers (one per server kind) ---

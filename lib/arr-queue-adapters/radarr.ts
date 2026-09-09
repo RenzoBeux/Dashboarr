@@ -61,4 +61,6 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
 
   forceImport: (instanceId, downloadId) =>
     forceImportQueueItem(downloadId, instanceId),
+
+  supportsManualImport: true,
 };

@@ -200,3 +200,85 @@ export function defaultPinnedTabsFromLegacy(
   }
   return defaultPinnedTabsForInstall(wrapped);
 }
+
+// ---------------------------------------------------------------------------
+// Tab groups (#330)
+//
+// Every tab is an expo-router group with its own native stack, so the bottom
+// bar stays visible on nested screens and each tab keeps its own position:
+//   app/(tabs)/(<id>)/<id>.tsx   the tab root; the URL stays /<id>
+//   app/(tabs)/(a,b,c)/...       screens shared by tabs a, b and c
+// lib/tab-route-tree.test.ts keeps the file tree in sync with this list.
+
+export type AnyTabRouteId = "dashboard" | TabRouteId | "settings";
+
+// Bar order: Dashboard, the pickable middle tabs, Settings.
+export const ALL_TAB_ROUTE_IDS: readonly AnyTabRouteId[] = [
+  "dashboard",
+  ...ALL_PICKABLE_TABS,
+  "settings",
+];
+
+export const ALL_TAB_ROUTE_ID_SET: ReadonlySet<string> = new Set(ALL_TAB_ROUTE_IDS);
+
+export function tabGroupName(id: AnyTabRouteId): string {
+  return `(${id})`;
+}
+
+// `unstable_settings` for the shared array-group layout. Keys are the group
+// names WITHOUT parentheses (expo-router reads settings[groupName]). This is
+// the only thing that anchors each group's stack on its tab root at runtime;
+// without it a stack would start on its shortest route name instead.
+export const TAB_STACK_ANCHORS: Readonly<Record<string, { anchor: string }>> =
+  Object.fromEntries(ALL_TAB_ROUTE_IDS.map((id) => [id, { anchor: id }]));
+
+// One human label per tab. React Navigation derives a tab's accessible name
+// from `title` / `tabBarAccessibilityLabel` and otherwise falls back to the
+// ROUTE NAME, which since #330 is the group name "(tv)". The bar hides labels
+// (`tabBarShowLabel: false`), so this map is the only name a screen reader
+// gets. It also drives the pin list in the dashboard editor. Typed as a full
+// Record on purpose: adding an id to PICKABLE_*_TABS is a compile error here
+// until a label is supplied.
+export const TAB_LABELS: Record<AnyTabRouteId, string> = {
+  dashboard: "Dashboard",
+  downloads: "Downloads",
+  calendar: "Calendar",
+  services: "Services",
+  movies: "Movies",
+  tv: "TV",
+  library: "Library",
+  music: "Music",
+  books: "Books",
+  requests: "Requests",
+  activity: "Activity",
+  indexers: "Indexers",
+  plex: "Plex",
+  jellyfin: "Jellyfin",
+  emby: "Emby",
+  navidrome: "Navidrome",
+  glances: "Glances",
+  bazarr: "Bazarr",
+  unraid: "unRAID",
+  tdarr: "Tdarr",
+  autobrr: "Autobrr",
+  cleanuparr: "Cleanuparr",
+  pihole: "Pi-hole",
+  settings: "Settings",
+  custom: "Custom",
+};
+
+// Notifications and OS deep links to content details land in the Dashboard
+// stack: it's the only tab that is always present and pinned, so the result
+// is the same cold and warm, and the user's other tab stacks stay untouched.
+export const DASHBOARD_STACK_PREFIX = "/(tabs)/(dashboard)";
+
+// The tab owning the focused route, from useSegments(), e.g.
+// ["(tabs)", "(tv)", "series", "[id]"] -> "tv". Null outside the tabs
+// (dashboard-edit lives on the root stack).
+export function tabIdFromSegments(
+  segments: readonly string[],
+): AnyTabRouteId | null {
+  if (segments[0] !== "(tabs)") return null;
+  const id = /^\((.+)\)$/.exec(segments[1] ?? "")?.[1];
+  return id && ALL_TAB_ROUTE_ID_SET.has(id) ? (id as AnyTabRouteId) : null;
+}
