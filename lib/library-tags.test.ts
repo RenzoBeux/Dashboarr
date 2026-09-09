@@ -190,6 +190,21 @@ describe("resolveTagIds", () => {
     expect(resolveTagIds([1], [])).toEqual([]);
   });
 
+  it("drops the selection once the tag fetch has failed", () => {
+    // Fails open rather than leaving the grid filtered by ids whose labels
+    // never arrive: the Tags section that owns the Clear action is hidden when
+    // there are no tags, so the filter would be unreachable.
+    expect(resolveTagIds([1, 2], undefined, true)).toEqual([]);
+    expect(resolveTagIds([1, 2], tags, true)).toEqual([]);
+  });
+
+  it("distinguishes a pending fetch from a failed one", () => {
+    // Same inputs, opposite answers — pending keeps the filter applied on the
+    // first frame, failed gives up on it.
+    expect(resolveTagIds([1], undefined, false)).toEqual([1]);
+    expect(resolveTagIds([1], undefined, true)).toEqual([]);
+  });
+
   it("keeps the same reference when nothing was dropped", () => {
     const stored = [1, 2];
     expect(resolveTagIds(stored, tags)).toBe(stored);

@@ -184,20 +184,32 @@ export function tagFilterKey(
   return `${service}:${instanceId ?? "default"}`;
 }
 
+/** Shared reference for "nothing selected", so callers keep memo identity. */
+const NO_IDS: number[] = [];
+
 /**
  * Project the persisted ids onto the tags the server actually has right now, so
  * a tag deleted upstream silently drops out instead of filtering on a dead id.
  *
- * While `tags` is undefined (query pending or failed) the stored ids pass
- * through unchanged: an item's `tags` array carries ids whether or not we know
- * their labels yet, so a persisted filter applies on the first frame rather
- * than flashing the unfiltered library — and a failed fetch never looks like
- * the user cleared their selection.
+ * Pending and failed are deliberately NOT the same case:
+ *
+ * - While the fetch is in flight the stored ids pass through unchanged. An
+ *   item's `tags` array carries ids whether or not we know their labels yet, so
+ *   a persisted filter applies on the first frame instead of flashing the
+ *   unfiltered library and then snapping.
+ * - Once the fetch has actually failed we fail OPEN and drop the selection for
+ *   this render. Nothing is written to storage, so it returns intact when the
+ *   fetch recovers. Without this the grid stays filtered by ids whose labels
+ *   never arrive, while the Tags section — which owns the only Clear action —
+ *   is hidden for having no options, leaving the user behind an invisible
+ *   filter they cannot see or remove.
  */
 export function resolveTagIds(
   stored: number[],
   tags: ArrTag[] | undefined,
+  tagsFailed = false,
 ): number[] {
+  if (tagsFailed) return NO_IDS;
   if (!tags) return stored;
   const known = new Set(tags.map((t) => t.id));
   const next = stored.filter((id) => known.has(id));

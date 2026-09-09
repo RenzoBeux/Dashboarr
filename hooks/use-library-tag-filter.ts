@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useArrTags } from "@/hooks/use-arr-tags";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useLibraryTagFilterStore } from "@/store/library-tag-filter-store";
+import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
 import {
   matchesTags,
   resolveTagIds,
@@ -51,7 +52,17 @@ export function useLibraryTagFilter(service: ArrTagService): LibraryTagFilter {
   // instance at a time and never aggregated, so this resolves the same instance
   // whose items the grid is showing.
   const { instanceId } = useInstanceTarget(service);
-  const { data: tags } = useArrTags(service);
+  const tagsQuery = useArrTags(service);
+  const { data: tags } = tagsQuery;
+
+  // Whether /tag has actually failed, as opposed to merely not having answered
+  // yet — the two must not be conflated, or a persisted selection keeps
+  // filtering the grid behind a Tags section that is hidden for having no
+  // options, with no Clear to reach. Reuses the aggregate helper because it
+  // already encodes the subtle part: TanStack resets a data-less query to
+  // "pending" the moment a retry starts, so `isError` alone reads as a first
+  // load between attempts.
+  const tagsFailed = aggregateMultiInstanceState([tagsQuery]).isAllErrored;
 
   const key = tagFilterKey(service, instanceId);
   // Subscribe to one bucket, not the whole record: the combined Library tab
@@ -65,8 +76,8 @@ export function useLibraryTagFilter(service: ArrTagService): LibraryTagFilter {
   const toggleTag = useLibraryTagFilterStore((s) => s.toggleTag);
 
   const selectedIds = useMemo(
-    () => resolveTagIds(storedIds, tags),
-    [storedIds, tags],
+    () => resolveTagIds(storedIds, tags, tagsFailed),
+    [storedIds, tags, tagsFailed],
   );
 
   const predicate = useMemo(() => {
