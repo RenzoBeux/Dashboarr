@@ -35,6 +35,7 @@ const mockState = {
   demoMode: false,
   instances: {} as Record<string, { authMode?: string; localUrl?: string; remoteUrl?: string }>,
 };
+const mockMarkStale = jest.fn();
 
 jest.mock("@/store/config-store", () => ({
   useConfigStore: {
@@ -55,6 +56,9 @@ jest.mock("@/store/config-store", () => ({
       getActiveUrl: () => "http://seerr.local:5055",
       getMergedHeaders: () => ({}),
       instanceSecrets: {},
+      markSeerrHostsStale: mockMarkStale,
+      clearSeerrStaleHost: jest.fn(),
+      isSeerrHostStale: () => false,
     }),
   },
 }));
@@ -68,9 +72,9 @@ import {
   serviceRequest,
 } from "@/lib/http-client";
 import {
+  dedupedSeerrLogin,
   isSeerrSessionEstablished,
   resetSeerrSessions,
-  seerrLoginMustBeFresh,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
@@ -82,6 +86,7 @@ const mockedFetchMe = seerrFetchMe as jest.MockedFunction<typeof seerrFetchMe>;
 const mockedLogout = seerrLogout as jest.MockedFunction<typeof seerrLogout>;
 
 const ID = "inst-active";
+const HOST = "seerr.local";
 const ME = { id: 7, displayName: "Sarah", permissions: 32 };
 const rejection = (status: number) => new HttpError(status, "Forbidden", "http://x", undefined);
 
@@ -129,8 +134,8 @@ describe("seerrRequest — session modes (#332)", () => {
   });
 
   it("re-logs in exactly once when the session is dead", async () => {
-    setSeerrSession(ID, ME);
-    const gen = seerrSessionGeneration(ID);
+    setSeerrSession(ID, HOST, ME);
+    const gen = seerrSessionGeneration(ID, HOST);
     mockedRequest.mockRejectedValueOnce(rejection(401)).mockResolvedValueOnce({ pending: 3 });
     mockedFetchMe.mockResolvedValueOnce(null);
 
@@ -138,29 +143,29 @@ describe("seerrRequest — session modes (#332)", () => {
     expect(mockedRequest).toHaveBeenCalledTimes(2);
     expect(mockedEnsure).toHaveBeenCalledTimes(2);
     // The dead session was invalidated so ensureSeerrSession logged in again.
-    expect(seerrSessionGeneration(ID)).toBe(gen + 1);
+    expect(seerrSessionGeneration(ID, HOST)).toBe(gen + 1);
   });
 
   // Seerr says 403 for "no permission" too. A live session means that is
   // what happened; re-logging in would only churn server-side sessions.
   it("rethrows a permission 403 when the session is still live, without re-login", async () => {
-    setSeerrSession(ID, ME);
-    const gen = seerrSessionGeneration(ID);
+    setSeerrSession(ID, HOST, ME);
+    const gen = seerrSessionGeneration(ID, HOST);
     mockedRequest.mockRejectedValueOnce(rejection(403));
     mockedFetchMe.mockResolvedValueOnce(ME);
 
     await expect(getRequestCount()).rejects.toBeInstanceOf(HttpError);
     expect(mockedRequest).toHaveBeenCalledTimes(1);
-    expect(seerrSessionGeneration(ID)).toBe(gen);
-    expect(isSeerrSessionEstablished(ID)).toBe(true);
+    expect(seerrSessionGeneration(ID, HOST)).toBe(gen);
+    expect(isSeerrSessionEstablished(ID, HOST)).toBe(true);
   });
 
   // A and B share a dead session and are rejected together. A refreshes it;
   // B then sees a LIVE session, but it is A's new one, not the one B's request
   // used. B must retry, not report a permission denial.
   it("retries when another caller refreshed the session in the meantime", async () => {
-    setSeerrSession(ID, ME);
-    const gen = seerrSessionGeneration(ID);
+    setSeerrSession(ID, HOST, ME);
+    const gen = seerrSessionGeneration(ID, HOST);
     mockedRequest
       .mockRejectedValueOnce(rejection(403)) // A
       .mockRejectedValueOnce(rejection(403)) // B
@@ -173,7 +178,7 @@ describe("seerrRequest — session modes (#332)", () => {
       { pending: 5 },
       { pending: 5 },
     ]);
-    expect(seerrSessionGeneration(ID)).toBe(gen + 1);
+    expect(seerrSessionGeneration(ID, HOST)).toBe(gen + 1);
     expect(mockedRequest).toHaveBeenCalledTimes(4);
   });
 
@@ -203,8 +208,8 @@ describe("seerrRequest — session modes (#332)", () => {
   // caller's generation matches and invalidates; the rest are stale no-ops,
   // so the shared cache is invalidated exactly once.
   it("invalidates once for concurrent rejections", async () => {
-    setSeerrSession(ID, ME);
-    const gen = seerrSessionGeneration(ID);
+    setSeerrSession(ID, HOST, ME);
+    const gen = seerrSessionGeneration(ID, HOST);
     mockedRequest
       .mockRejectedValueOnce(rejection(401))
       .mockRejectedValueOnce(rejection(401))
@@ -215,7 +220,7 @@ describe("seerrRequest — session modes (#332)", () => {
       { pending: 4 },
       { pending: 4 },
     ]);
-    expect(seerrSessionGeneration(ID)).toBe(gen + 1);
+    expect(seerrSessionGeneration(ID, HOST)).toBe(gen + 1);
   });
 
   it("falls back to plain serviceRequest in demo mode", async () => {
@@ -238,7 +243,7 @@ describe("getSeerrMe", () => {
     mockedRequest.mockResolvedValueOnce({ ...ME, id: 1, permissions: 2 });
     await expect(getSeerrMe()).resolves.toEqual({ id: 1, displayName: "Sarah", permissions: 2 });
     expect(mockedRequest).toHaveBeenCalledWith("overseerr", "/auth/me", { instanceId: ID });
-    expect(isSeerrSessionEstablished(ID)).toBe(true);
+    expect(isSeerrSessionEstablished(ID, HOST)).toBe(true);
   });
 
   it("rejects an unrecognised payload", async () => {
@@ -250,10 +255,10 @@ describe("getSeerrMe", () => {
 describe("seerrClearSession", () => {
   it("logs an established sign-in session out and forgets it", async () => {
     mockState.instances = { [ID]: { authMode: "local" } };
-    setSeerrSession(ID, ME);
+    setSeerrSession(ID, HOST, ME);
     await seerrClearSession(ID);
     expect(mockedLogout).toHaveBeenCalledWith("http://seerr.local:5055", {});
-    expect(isSeerrSessionEstablished(ID)).toBe(false);
+    expect(isSeerrSessionEstablished(ID, HOST)).toBe(false);
   });
 
   // The platform jar keeps the cookie across launches while the in-memory
@@ -293,18 +298,47 @@ describe("seerrClearSession", () => {
     expect(mockedLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("flags the next login as credential-only", async () => {
-    mockState.instances = { [ID]: { authMode: "local" } };
-    setSeerrSession(ID, ME);
+  it("marks every host stale, persisted through the store", async () => {
+    mockState.instances = {
+      [ID]: { authMode: "local", localUrl: "http://seerr.local:5055", remoteUrl: "https://seerr.example.com" },
+    };
+    setSeerrSession(ID, HOST, ME);
     await seerrClearSession(ID);
-    expect(seerrLoginMustBeFresh(ID)).toBe(true);
+    expect(mockMarkStale).toHaveBeenCalledWith(ID, ["seerr.local", "seerr.example.com"]);
+    expect(isSeerrSessionEstablished(ID, HOST)).toBe(false);
+  });
+
+  // A drop cannot cancel a login already on the wire, and its Set-Cookie will
+  // land when it answers. The clear must wait for it BEFORE logging out, or
+  // the old account's cookie lands after the logout meant to end it.
+  it("waits for a superseded in-flight login before logging out", async () => {
+    mockState.instances = { [ID]: { authMode: "local" } };
+    let finishLogin!: () => void;
+    const inFlight = new Promise<typeof ME>((resolve) => {
+      finishLogin = () => resolve(ME);
+    });
+    void dedupedSeerrLogin(ID, HOST, () => inFlight);
+
+    let cleared = false;
+    const clearing = seerrClearSession(ID).then(() => {
+      cleared = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockedLogout).not.toHaveBeenCalled();
+    expect(cleared).toBe(false);
+
+    finishLogin();
+    await clearing;
+    expect(mockedLogout).toHaveBeenCalledTimes(1);
+    expect(cleared).toBe(true);
   });
 
   it("skips the network in demo mode", async () => {
     mockState.demoMode = true;
-    setSeerrSession(ID, ME);
+    setSeerrSession(ID, HOST, ME);
     await seerrClearSession(ID);
     expect(mockedLogout).not.toHaveBeenCalled();
-    expect(isSeerrSessionEstablished(ID)).toBe(false);
+    expect(isSeerrSessionEstablished(ID, HOST)).toBe(false);
   });
 });

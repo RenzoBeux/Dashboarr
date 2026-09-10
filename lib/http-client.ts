@@ -42,6 +42,7 @@ import {
   readSeerrMe,
   seerrAuthMode,
   seerrHasCredential,
+  seerrHostOf,
   seerrSessionHostConflict,
   seerrUsesSession,
   type SeerrAuthMode,
@@ -52,7 +53,6 @@ import {
   getSeerrSessionMe,
   invalidateSeerrSession,
   isSeerrSessionEstablished,
-  seerrLoginMustBeFresh,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
@@ -1207,6 +1207,7 @@ export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
   const secrets = store.instanceSecrets[instanceId] ?? {};
   const customHeaders = store.getMergedHeaders("overseerr", instanceId);
   const mode = seerrAuthMode(inst);
+  const host = seerrHostOf(baseUrl);
 
   // The editor refuses this configuration, but an import can still carry it.
   // Failing loudly beats executing one instance's requests as the other.
@@ -1228,20 +1229,22 @@ export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
           message: "Invalid API key",
         });
       }
-      setSeerrSession(instanceId, me);
+      setSeerrSession(instanceId, host, me);
       return me;
     });
   }
 
-  return dedupedSeerrLogin(instanceId, async () => {
+  return dedupedSeerrLogin(instanceId, host, async () => {
     // Validate-first reuses the jar's 30-day cookie across launches. Not
-    // after a credential or URL change: the jar may hold the previous
-    // account's session on this host, and adopting it is exactly the bug.
-    if (!seerrLoginMustBeFresh(instanceId)) {
+    // while this host is marked stale (a credential or URL change happened,
+    // possibly before a restart): the jar may hold the previous account's
+    // session here, and adopting it is exactly the bug. The mark is per host
+    // and lifts only when a credential login succeeds on that host.
+    if (!store.isSeerrHostStale(instanceId, host)) {
       const existing = await seerrFetchMe(baseUrl, customHeaders);
       if (existing) return existing;
     }
-    return seerrLogin({
+    const me = await seerrLogin({
       baseUrl,
       mode,
       apiKey: secrets.apiKey,
@@ -1249,6 +1252,8 @@ export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
       password: secrets.password,
       customHeaders,
     });
+    store.clearSeerrStaleHost(instanceId, host);
+    return me;
   });
 }
 
@@ -1449,7 +1454,7 @@ async function runConnectionProbe(
         if (res.ok) {
           if (input.instanceId) {
             const me = readSeerrMe(await res.json().catch(() => null));
-            if (me) setSeerrSession(input.instanceId, me);
+            if (me) setSeerrSession(input.instanceId, seerrHostOf(baseUrl), me);
           }
           return { kind: "ok" };
         }
@@ -1464,27 +1469,35 @@ async function runConnectionProbe(
         return { kind: "auth_failed", message: SEERR_MISSING_CREDENTIAL_MESSAGE[mode] };
       }
       const id = input.instanceId;
+      const host = seerrHostOf(baseUrl);
       const login = () =>
         seerrLogin({ baseUrl, mode, apiKey, username, password, customHeaders, signal });
       try {
-        if (id && isSeerrSessionEstablished(id)) {
-          const generation = seerrSessionGeneration(id);
+        if (id && isSeerrSessionEstablished(id, host)) {
+          const generation = seerrSessionGeneration(id, host);
           const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
           if (existing) {
-            setSeerrSession(id, existing);
+            setSeerrSession(id, host, existing);
             return { kind: "ok" };
           }
           // Stale (expired, or the server forgot it). Conditional, so a
           // replacement another caller already published survives.
-          invalidateSeerrSession(id, generation);
+          invalidateSeerrSession(id, host, generation);
         }
         if (id) {
           // A SAVED instance: join or start the shared login. Its login
           // function re-checks the jar first for the not-yet-established
-          // cold-start case, then posts the stored credentials.
-          await dedupedSeerrLogin(id, async () => {
-            if (seerrLoginMustBeFresh(id)) return login();
-            return (await seerrFetchMe(baseUrl, customHeaders, signal)) ?? login();
+          // cold-start case, unless this host is marked stale after a
+          // credential change, then posts the stored credentials.
+          await dedupedSeerrLogin(id, host, async () => {
+            const store = useConfigStore.getState();
+            if (!store.isSeerrHostStale(id, host)) {
+              const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
+              if (existing) return existing;
+            }
+            const me = await login();
+            store.clearSeerrStaleHost(id, host);
+            return me;
           });
           return { kind: "ok" };
         }

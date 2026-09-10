@@ -400,6 +400,13 @@ interface ConfigState {
   dashboards: Dashboard[];
   activeDashboardId: string;
   wolDevices: WakeOnLanDevice[];
+  // Seerr sign-in (#332): instance id -> hosts that must be logged into with
+  // credentials before their jar cookie may be trusted again. Set for every
+  // host of an instance on a credential/URL change or removal; a host leaves
+  // the list only when a credential login succeeds there. Persisted, unlike
+  // the in-memory session cache, because the jar keeps its cookies across
+  // launches and a change saved just before a restart must still take.
+  seerrStaleHosts: Record<string, string[]>;
   hydrated: boolean;
   demoMode: boolean;
   hapticsEnabled: boolean;
@@ -569,6 +576,10 @@ interface ConfigActions {
 
   setServicesOrder: (order: ServiceId[]) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
+  markSeerrHostsStale: (instanceId: string, hosts: string[]) => void;
+  clearSeerrStaleHost: (instanceId: string, host: string) => void;
+  forgetSeerrStaleHosts: (instanceId: string) => void;
+  isSeerrHostStale: (instanceId: string, host: string) => boolean;
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
@@ -1038,6 +1049,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   dashboards: initialDashboards,
   activeDashboardId: initialDashboards[0].id,
   wolDevices: [],
+  seerrStaleHosts: {},
   hydrated: false,
   demoMode: false,
   hapticsEnabled: true,
@@ -1484,6 +1496,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     );
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
+    const seerrStaleHosts =
+      getJSON<Record<string, string[]>>(STORAGE_KEYS.seerrStaleHosts) ?? {};
     const globalCustomHeaders =
       getJSON<Record<string, string>>(STORAGE_KEYS.globalCustomHeaders) ?? {};
 
@@ -1600,6 +1614,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboards,
       activeDashboardId,
       wolDevices,
+      seerrStaleHosts,
       demoMode,
       hapticsEnabled,
       globalCustomHeaders,
@@ -1638,10 +1653,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // The cached HTTP Digest nonce is keyed by instance, so drop it with the
     // instance rather than leaving it in the map for the process lifetime.
     clearDigestSessions(instanceId);
-    // Same for Seerr's in-memory session entry (#332). The server-side logout
-    // is the caller's job (seerrClearSession runs before removal); this only
-    // stops a deleted id from keeping a cached `me` around.
+    // Same for Seerr's in-memory session entries and the persisted stale-host
+    // list (#332). The server-side logout is the caller's job (seerrClearSession
+    // runs before removal); this only stops a deleted id from lingering.
     forgetSeerrSession(instanceId);
+    get().forgetSeerrStaleHosts(instanceId);
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
@@ -2505,6 +2521,30 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
   },
 
+  markSeerrHostsStale: (instanceId, hosts) => {
+    const current = new Set(get().seerrStaleHosts[instanceId] ?? []);
+    for (const h of hosts) if (h) current.add(h);
+    const next = { ...get().seerrStaleHosts, [instanceId]: [...current] };
+    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    set({ seerrStaleHosts: next });
+  },
+  clearSeerrStaleHost: (instanceId, host) => {
+    const current = get().seerrStaleHosts[instanceId];
+    if (!current || !current.includes(host)) return;
+    const remaining = current.filter((h) => h !== host);
+    const { [instanceId]: _dropped, ...rest } = get().seerrStaleHosts;
+    const next = remaining.length > 0 ? { ...rest, [instanceId]: remaining } : rest;
+    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    set({ seerrStaleHosts: next });
+  },
+  forgetSeerrStaleHosts: (instanceId) => {
+    if (!(instanceId in get().seerrStaleHosts)) return;
+    const { [instanceId]: _dropped, ...next } = get().seerrStaleHosts;
+    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    set({ seerrStaleHosts: next });
+  },
+  isSeerrHostStale: (instanceId, host) =>
+    (get().seerrStaleHosts[instanceId] ?? []).includes(host),
   setWolDevices: (devices) => {
     setJSON(STORAGE_KEYS.wolDevices, devices);
     set({ wolDevices: devices });

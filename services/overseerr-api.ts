@@ -15,6 +15,7 @@ import {
   type SeerrMe,
 } from "@/lib/seerr-auth";
 import {
+  drainSeerrLogins,
   dropSeerrSession,
   invalidateSeerrSession,
   seerrSessionGeneration,
@@ -99,9 +100,12 @@ async function sessionRequest<T>(
     await ensureSeerrSession(id);
     return serviceRequest<T>("overseerr", path, { ...options, instanceId: id });
   };
+  // Sessions are per host (the jar's scope); this request goes to the active
+  // URL's host, the same one ensureSeerrSession resolves.
+  const host = seerrHostOf(useConfigStore.getState().getActiveUrl("overseerr", id));
   // Captured before the first attempt: if the session dies underneath us,
   // exactly one caller's generation matches and triggers the re-login.
-  const generation = seerrSessionGeneration(id);
+  const generation = seerrSessionGeneration(id, host);
   try {
     return await call();
   } catch (err) {
@@ -118,15 +122,15 @@ async function sessionRequest<T>(
       ? await seerrFetchMe(baseUrl, store.getMergedHeaders("overseerr", id)).catch(() => null)
       : null;
     if (live) {
-      setSeerrSession(id, live);
+      setSeerrSession(id, host, live);
       // A live session proves the rejection was a permission denial ONLY if
       // it is the same session this request used. If another caller already
       // replaced the dead one (generation advanced), this rejection was the
       // old session's and the request deserves its retry.
-      if (seerrSessionGeneration(id) !== generation) return call();
+      if (seerrSessionGeneration(id, host) !== generation) return call();
       throw err;
     }
-    invalidateSeerrSession(id, generation);
+    invalidateSeerrSession(id, host, generation);
     return call();
   }
 }
@@ -147,7 +151,9 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
   }
   const me = readSeerrMe(await seerrRequest<unknown>("/auth/me", { instanceId: id }));
   if (!me) throw new Error("Unrecognized /auth/me response from Seerr");
-  if (!store.demoMode) setSeerrSession(id, me);
+  if (!store.demoMode) {
+    setSeerrSession(id, seerrHostOf(store.getActiveUrl("overseerr", id)), me);
+  }
   return me;
 }
 
@@ -167,26 +173,41 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
  * It runs against EVERY configured URL, not just the active one: the jar
  * scopes cookies per host, so an instance whose local and remote URLs are
  * different hosts holds two independent sessions, and a network switch would
- * otherwise resurface the inactive host's old-account cookie. The drop that
- * follows also flags the next login as credential-only, which is the
- * backstop for anything the logout could not reach.
+ * otherwise resurface the inactive host's old-account cookie.
+ *
+ * Ordering is the whole point:
+ *  1. drop, then DRAIN: a drop supersedes an in-flight login but cannot cancel
+ *     its request, whose Set-Cookie still lands when it answers. Waiting for
+ *     it here is what stops an old-credential login from landing AFTER the
+ *     logout meant to end it (and after the new account's login).
+ *  2. log out of every host.
+ *  3. drop and drain once more, for anything that started during 1 and 2.
+ *  4. mark every host stale (persisted): until a credential login succeeds on
+ *     a host, nothing there trusts the jar. That is the backstop for a logout
+ *     the server never received (unreachable host, app killed mid-save,
+ *     restart before the change took), because the jar remembers what this
+ *     process forgets.
  */
 export async function seerrClearSession(instanceId?: string): Promise<void> {
   const store = useConfigStore.getState();
   const ids = instanceId ? [instanceId] : seerrSessionIds();
   for (const id of ids) {
     const inst = store.getInstance("overseerr", id);
+    const urlsByHost = new Map<string, string>();
+    for (const url of [inst?.localUrl ?? "", inst?.remoteUrl ?? ""]) {
+      const host = seerrHostOf(url);
+      if (host && !urlsByHost.has(host)) urlsByHost.set(host, url);
+    }
+
+    dropSeerrSession(id);
+    await drainSeerrLogins(id);
     if (!store.demoMode && inst) {
       const headers = store.getMergedHeaders("overseerr", id);
-      const seen = new Set<string>();
-      for (const url of [inst.localUrl, inst.remoteUrl]) {
-        const host = seerrHostOf(url);
-        if (!host || seen.has(host)) continue;
-        seen.add(host);
-        await seerrLogout(url, headers);
-      }
+      for (const url of urlsByHost.values()) await seerrLogout(url, headers);
     }
     dropSeerrSession(id);
+    await drainSeerrLogins(id);
+    if (urlsByHost.size > 0) store.markSeerrHostsStale(id, [...urlsByHost.keys()]);
   }
 }
 

@@ -363,6 +363,11 @@ export const STORAGE_KEYS = {
   dashboardOrderLegacy: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
   wolDevices: "app.wolDevices",
+  // Seerr sign-in (#332): per-instance list of hosts whose next login must
+  // post credentials instead of trusting the platform cookie jar. Persisted
+  // because the jar outlives the process while the in-memory session cache
+  // (lib/seerr-session.ts) does not.
+  seerrStaleHosts: "app.seerrStaleHosts",
   demoMode: "app.demoMode",
   hapticsEnabled: "app.hapticsEnabled",
   globalCustomHeaders: "app.globalCustomHeaders",

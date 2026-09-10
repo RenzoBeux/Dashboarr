@@ -1,5 +1,5 @@
 import { resetDigestSessions } from "@/lib/http-auth";
-import { dropSeerrSession, resetSeerrSessions, setSeerrSession } from "@/lib/seerr-session";
+import { resetSeerrSessions, setSeerrSession } from "@/lib/seerr-session";
 import { SEERR_CSRF_MESSAGE, SEERR_LOGIN_DISABLED_MESSAGE, SEERR_NO_JELLYFIN_ROUTE_MESSAGE } from "@/lib/seerr-auth";
 import {
   serviceRequest,
@@ -68,6 +68,11 @@ interface FakeState {
   // Active-instance projections kept in sync with the underlying maps.
   secrets: Record<string, FakeSecrets>;
   globalCustomHeaders: Record<string, string>;
+  // Seerr sign-in (#332): hosts whose next login must post credentials.
+  seerrStaleHosts: Record<string, string[]>;
+  isSeerrHostStale: (instanceId: string, host: string) => boolean;
+  clearSeerrStaleHost: (instanceId: string, host: string) => void;
+  markSeerrHostsStale: (instanceId: string, hosts: string[]) => void;
   getActiveInstanceId: (id: string) => string | null;
   getInstance: (id: string, instanceId: string) => FakeInstance | undefined;
   getActiveUrl: (id: string, instanceId?: string) => string;
@@ -115,6 +120,17 @@ function makeState(overrides: Partial<FakeState> = {}): FakeState {
     activeInstance,
     secrets,
     globalCustomHeaders: {},
+    seerrStaleHosts: {},
+    isSeerrHostStale(instanceId, host) {
+      return (this.seerrStaleHosts[instanceId] ?? []).includes(host);
+    },
+    clearSeerrStaleHost(instanceId, host) {
+      const rest = (this.seerrStaleHosts[instanceId] ?? []).filter((h) => h !== host);
+      this.seerrStaleHosts = { ...this.seerrStaleHosts, [instanceId]: rest };
+    },
+    markSeerrHostsStale(instanceId, hosts) {
+      this.seerrStaleHosts = { ...this.seerrStaleHosts, [instanceId]: hosts };
+    },
     getActiveInstanceId(id) {
       return this.activeInstance[id] ?? this.serviceInstances[id]?.[0]?.id ?? null;
     },
@@ -1704,7 +1720,7 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
   // The 30-second health poll: an established session is validated with one
   // GET and no login, so polling never churns server-side sessions.
   it("validates an established saved session with a single GET /auth/me", async () => {
-    setSeerrSession(SEERR_ID, SEERR_ME);
+    setSeerrSession(SEERR_ID, "seerr.local", SEERR_ME);
     fetchSpy.mockResolvedValueOnce(seerrResponse(200, SEERR_ME));
     const result = await testServiceConnection("overseerr", {
       url: SEERR_URL,
@@ -1722,7 +1738,7 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
   });
 
   it("re-logs in a saved instance whose session went stale, without logging out", async () => {
-    setSeerrSession(SEERR_ID, SEERR_ME);
+    setSeerrSession(SEERR_ID, "seerr.local", SEERR_ME);
     fetchSpy
       .mockResolvedValueOnce(noSession()) // validate: stale
       .mockResolvedValueOnce(noSession()) // shared login fn re-checks the jar
@@ -1771,10 +1787,10 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
   });
 
   // After a credential change the jar may still hold the previous account's
-  // cookie on this host; validate-first would adopt it. The drop that follows
-  // every clear forces the next login to post the stored credentials.
-  it("posts credentials without consulting the jar after a credential change", async () => {
-    dropSeerrSession(SEERR_ID);
+  // cookie on this host; validate-first would adopt it. The host is marked
+  // stale (persisted, per host) until a credential login succeeds there.
+  it("posts credentials without consulting the jar while the host is stale, then lifts the mark", async () => {
+    mockStateRef.current.seerrStaleHosts = { [SEERR_ID]: ["seerr.local", "seerr.example.com"] };
     fetchSpy.mockResolvedValueOnce(seerrResponse(200, SEERR_ME));
     const result = await testServiceConnection("overseerr", {
       url: SEERR_URL,
@@ -1788,6 +1804,8 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
     const login = requestOf(fetchSpy, 0);
     expect(login.method).toBe("POST");
     expect(login.url).toBe(`${SEERR_URL}/api/v1/auth/local`);
+    // Only THIS host is cleared; the remote host still needs its own login.
+    expect(mockStateRef.current.seerrStaleHosts[SEERR_ID]).toEqual(["seerr.example.com"]);
   });
 
   it("still probes /auth/me with the key in API-key mode", async () => {
