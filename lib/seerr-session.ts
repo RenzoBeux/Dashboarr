@@ -37,6 +37,15 @@ export interface SeerrSessionEntry {
    * generation cannot publish a superseded session.
    */
   generation: number;
+  /**
+   * Set by the credential-change path and cleared by the next published
+   * login. While set, a login must POST the stored credentials instead of
+   * first accepting whatever cookie the jar holds: the jar outlives this
+   * process and is scoped per host, so after a credential or URL change it
+   * can hold a live session for the PREVIOUS account on any of the
+   * instance's hosts, and "validate first" would adopt it.
+   */
+  forceLogin: boolean;
 }
 
 const sessions = new Map<string, SeerrSessionEntry>();
@@ -44,7 +53,7 @@ const sessions = new Map<string, SeerrSessionEntry>();
 export function seerrSessionEntry(instanceId: string): SeerrSessionEntry {
   let entry = sessions.get(instanceId);
   if (!entry) {
-    entry = { established: false, me: null, loginPromise: null, generation: 0 };
+    entry = { established: false, me: null, loginPromise: null, generation: 0, forceLogin: false };
     sessions.set(instanceId, entry);
   }
   return entry;
@@ -87,18 +96,25 @@ export function invalidateSeerrSession(instanceId: string, generation: number): 
 }
 
 /**
- * The credential-change path: unconditional, drops the in-flight login and
- * bumps the generation. Callers that want the server-side session gone log it
- * out first (seerrClearSession in services/overseerr-api.ts does); nothing
- * here touches the network.
+ * The credential-change path: unconditional, drops the in-flight login, bumps
+ * the generation and flags the next login as credential-only (see
+ * `forceLogin`). Callers that want the server-side session gone log it out
+ * first (seerrClearSession in services/overseerr-api.ts does); nothing here
+ * touches the network. Creates the entry if needed so the flag survives for
+ * an instance nothing has touched yet this launch.
  */
 export function dropSeerrSession(instanceId: string): void {
-  const entry = sessions.get(instanceId);
-  if (!entry) return;
+  const entry = seerrSessionEntry(instanceId);
   entry.established = false;
   entry.me = null;
   entry.loginPromise = null;
   entry.generation += 1;
+  entry.forceLogin = true;
+}
+
+/** True when the next login must post credentials rather than trust the jar. */
+export function seerrLoginMustBeFresh(instanceId: string): boolean {
+  return sessions.get(instanceId)?.forceLogin ?? false;
 }
 
 /**
@@ -120,6 +136,7 @@ export function dedupedSeerrLogin(
       if (entry.generation === generation) {
         entry.established = true;
         entry.me = me;
+        entry.forceLogin = false;
       }
       return me;
     })

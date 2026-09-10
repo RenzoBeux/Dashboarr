@@ -33,7 +33,7 @@ jest.mock("@/lib/http-client", () => {
 
 const mockState = {
   demoMode: false,
-  instances: {} as Record<string, { authMode?: string }>,
+  instances: {} as Record<string, { authMode?: string; localUrl?: string; remoteUrl?: string }>,
 };
 
 jest.mock("@/store/config-store", () => ({
@@ -42,7 +42,16 @@ jest.mock("@/store/config-store", () => ({
       demoMode: mockState.demoMode,
       getActiveInstanceId: () => "inst-active",
       getInstance: (_kind: string, id: string) =>
-        mockState.instances[id] ? { id, enabled: true, ...mockState.instances[id] } : undefined,
+        mockState.instances[id]
+          ? {
+              id,
+              enabled: true,
+              name: "Seerr",
+              localUrl: "http://seerr.local:5055",
+              remoteUrl: "",
+              ...mockState.instances[id],
+            }
+          : undefined,
       getActiveUrl: () => "http://seerr.local:5055",
       getMergedHeaders: () => ({}),
       instanceSecrets: {},
@@ -61,6 +70,7 @@ import {
 import {
   isSeerrSessionEstablished,
   resetSeerrSessions,
+  seerrLoginMustBeFresh,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
@@ -256,6 +266,38 @@ describe("seerrClearSession", () => {
     mockState.instances = { [ID]: { authMode: "local" } };
     await seerrClearSession(ID);
     expect(mockedLogout).toHaveBeenCalledTimes(2);
+  });
+
+  // The jar scopes cookies per host, so an instance with different local and
+  // remote hosts holds two sessions; a network switch would resurface the one
+  // the active-URL logout never reached.
+  it("logs out of every configured host, once per host", async () => {
+    mockState.instances = {
+      [ID]: {
+        authMode: "local",
+        localUrl: "http://seerr.local:5055",
+        remoteUrl: "https://seerr.example.com",
+      },
+    };
+    await seerrClearSession(ID);
+    expect(mockedLogout.mock.calls.map((c) => c[0])).toEqual([
+      "http://seerr.local:5055",
+      "https://seerr.example.com",
+    ]);
+
+    mockedLogout.mockClear();
+    mockState.instances = {
+      [ID]: { authMode: "local", localUrl: "http://seerr.local:5055", remoteUrl: "http://SEERR.local:5055/" },
+    };
+    await seerrClearSession(ID);
+    expect(mockedLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it("flags the next login as credential-only", async () => {
+    mockState.instances = { [ID]: { authMode: "local" } };
+    setSeerrSession(ID, ME);
+    await seerrClearSession(ID);
+    expect(seerrLoginMustBeFresh(ID)).toBe(true);
   });
 
   it("skips the network in demo mode", async () => {

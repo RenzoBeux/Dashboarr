@@ -48,7 +48,7 @@ import {
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { clearDigestSessions } from "@/lib/http-auth";
-import { dropSeerrSession } from "@/lib/seerr-session";
+import { forgetSeerrSession } from "@/lib/seerr-session";
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
@@ -1641,7 +1641,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Same for Seerr's in-memory session entry (#332). The server-side logout
     // is the caller's job (seerrClearSession runs before removal); this only
     // stops a deleted id from keeping a cached `me` around.
-    dropSeerrSession(instanceId);
+    forgetSeerrSession(instanceId);
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);

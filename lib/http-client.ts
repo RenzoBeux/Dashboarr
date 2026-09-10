@@ -52,6 +52,7 @@ import {
   getSeerrSessionMe,
   invalidateSeerrSession,
   isSeerrSessionEstablished,
+  seerrLoginMustBeFresh,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
@@ -1233,8 +1234,13 @@ export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
   }
 
   return dedupedSeerrLogin(instanceId, async () => {
-    const existing = await seerrFetchMe(baseUrl, customHeaders);
-    if (existing) return existing;
+    // Validate-first reuses the jar's 30-day cookie across launches. Not
+    // after a credential or URL change: the jar may hold the previous
+    // account's session on this host, and adopting it is exactly the bug.
+    if (!seerrLoginMustBeFresh(instanceId)) {
+      const existing = await seerrFetchMe(baseUrl, customHeaders);
+      if (existing) return existing;
+    }
     return seerrLogin({
       baseUrl,
       mode,
@@ -1476,10 +1482,10 @@ async function runConnectionProbe(
           // A SAVED instance: join or start the shared login. Its login
           // function re-checks the jar first for the not-yet-established
           // cold-start case, then posts the stored credentials.
-          await dedupedSeerrLogin(
-            id,
-            async () => (await seerrFetchMe(baseUrl, customHeaders, signal)) ?? login(),
-          );
+          await dedupedSeerrLogin(id, async () => {
+            if (seerrLoginMustBeFresh(id)) return login();
+            return (await seerrFetchMe(baseUrl, customHeaders, signal)) ?? login();
+          });
           return { kind: "ok" };
         }
         // Testing an UNSAVED form: the typed credentials are the thing under

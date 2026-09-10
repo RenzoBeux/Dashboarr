@@ -8,6 +8,7 @@ import {
   isSeerrSessionEstablished,
   resetSeerrSessions,
   seerrLoginInFlight,
+  seerrLoginMustBeFresh,
   seerrSessionGeneration,
   seerrSessionIds,
   setSeerrSession,
@@ -177,8 +178,34 @@ describe("dropSeerrSession", () => {
     resolve();
   });
 
-  it("is a no-op for an unknown instance", () => {
-    expect(() => dropSeerrSession("nope")).not.toThrow();
+  // The jar outlives the process and is scoped per host, so after a
+  // credential or URL change the next login must post credentials instead of
+  // adopting whatever old-account cookie is still live somewhere.
+  it("flags the next login as credential-only, even for an untouched instance", () => {
+    expect(seerrLoginMustBeFresh("fresh")).toBe(false);
+    dropSeerrSession("fresh");
+    expect(seerrLoginMustBeFresh("fresh")).toBe(true);
+  });
+
+  it("clears the flag once a login publishes, and a plain 401 never sets it", async () => {
+    dropSeerrSession(ID);
+    const { fn, resolve } = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, fn);
+    resolve();
+    await p;
+    expect(seerrLoginMustBeFresh(ID)).toBe(false);
+
+    invalidateSeerrSession(ID, seerrSessionGeneration(ID));
+    expect(seerrLoginMustBeFresh(ID)).toBe(false);
+  });
+
+  it("keeps the flag when the login it superseded tries to publish", async () => {
+    const { fn, resolve } = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, fn);
+    dropSeerrSession(ID);
+    resolve();
+    await p;
+    expect(seerrLoginMustBeFresh(ID)).toBe(true);
   });
 });
 

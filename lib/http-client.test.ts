@@ -1,5 +1,5 @@
 import { resetDigestSessions } from "@/lib/http-auth";
-import { resetSeerrSessions, setSeerrSession } from "@/lib/seerr-session";
+import { dropSeerrSession, resetSeerrSessions, setSeerrSession } from "@/lib/seerr-session";
 import { SEERR_CSRF_MESSAGE, SEERR_LOGIN_DISABLED_MESSAGE, SEERR_NO_JELLYFIN_ROUTE_MESSAGE } from "@/lib/seerr-auth";
 import {
   serviceRequest,
@@ -1768,6 +1768,26 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
     });
     expect(result.kind).toBe("ok");
     expect(requestOf(fetchSpy, 0).headers.get("X-Api-Key")).toBeNull();
+  });
+
+  // After a credential change the jar may still hold the previous account's
+  // cookie on this host; validate-first would adopt it. The drop that follows
+  // every clear forces the next login to post the stored credentials.
+  it("posts credentials without consulting the jar after a credential change", async () => {
+    dropSeerrSession(SEERR_ID);
+    fetchSpy.mockResolvedValueOnce(seerrResponse(200, SEERR_ME));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      instanceId: SEERR_ID,
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const login = requestOf(fetchSpy, 0);
+    expect(login.method).toBe("POST");
+    expect(login.url).toBe(`${SEERR_URL}/api/v1/auth/local`);
   });
 
   it("still probes /auth/me with the key in API-key mode", async () => {

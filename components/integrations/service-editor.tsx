@@ -427,6 +427,15 @@ export function ServiceEditor({
     } else {
       await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
     }
+    // The two writes above are not atomic: updateInstance invalidates this
+    // instance's queries, so a refetch can run against the NEW URL with the
+    // OLD credentials before the secrets land. Clear again now that both are
+    // in place. The drop flags the next login as credential-only, so even a
+    // login that slipped in between cannot leave the old account's cookie in
+    // charge of the new host.
+    if (showsSignIn) {
+      await seerrClearSession(instanceId);
+    }
     // Drop the cached session so the next request re-logs in with the new URL
     // or credentials. Only the session-bearing clients have one: glances,
     // nzbget, rtorrent and transmission reuse the same credential form but

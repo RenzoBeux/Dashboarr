@@ -16,12 +16,12 @@ import {
 } from "@/lib/seerr-auth";
 import {
   dropSeerrSession,
-  forgetSeerrSession,
   invalidateSeerrSession,
   seerrSessionGeneration,
   seerrSessionIds,
   setSeerrSession,
 } from "@/lib/seerr-session";
+import { seerrHostOf } from "@/lib/seerr-auth";
 import type {
   OverseerrMediaType,
   OverseerrMediaListResponse,
@@ -161,23 +161,32 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
  * The logout is unconditional, NOT gated on the in-memory `established`
  * flag or the stored mode: the platform jar keeps the cookie across launches
  * while this cache does not, so after a restart there can be a live session
- * nothing in memory knows about. Skipping the logout there would let the
- * validate-first login accept the OLD account's cookie without ever trying
- * the credentials just saved. POST /auth/logout answers 200 with or without
- * a session, so the cost of asking is one cheap call.
+ * nothing in memory knows about. POST /auth/logout answers 200 with or
+ * without a session, so the cost of asking is one cheap call.
+ *
+ * It runs against EVERY configured URL, not just the active one: the jar
+ * scopes cookies per host, so an instance whose local and remote URLs are
+ * different hosts holds two independent sessions, and a network switch would
+ * otherwise resurface the inactive host's old-account cookie. The drop that
+ * follows also flags the next login as credential-only, which is the
+ * backstop for anything the logout could not reach.
  */
 export async function seerrClearSession(instanceId?: string): Promise<void> {
   const store = useConfigStore.getState();
   const ids = instanceId ? [instanceId] : seerrSessionIds();
   for (const id of ids) {
-    if (!store.demoMode) {
-      const baseUrl = store.getActiveUrl("overseerr", id);
-      if (baseUrl) {
-        await seerrLogout(baseUrl, store.getMergedHeaders("overseerr", id));
+    const inst = store.getInstance("overseerr", id);
+    if (!store.demoMode && inst) {
+      const headers = store.getMergedHeaders("overseerr", id);
+      const seen = new Set<string>();
+      for (const url of [inst.localUrl, inst.remoteUrl]) {
+        const host = seerrHostOf(url);
+        if (!host || seen.has(host)) continue;
+        seen.add(host);
+        await seerrLogout(url, headers);
       }
     }
     dropSeerrSession(id);
-    forgetSeerrSession(id);
   }
 }
 
