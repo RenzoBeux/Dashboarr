@@ -72,6 +72,11 @@ import {
   workspaceForcesRemote,
 } from "@/lib/url-validation";
 import { generateInstanceId } from "@/lib/uuid";
+import {
+  validateCustomServiceDefinition,
+  redactCustomServiceDefinition,
+  type CustomServiceDefinition,
+} from "@/lib/custom-service";
 
 export interface WakeOnLanDevice {
   id: string;
@@ -118,6 +123,11 @@ export interface ServiceConfig {
   // Off by default (absent/undefined behaves like false) because enabling it
   // writes a tag into the user's qBittorrent config on first use.
   tagAddedTorrents?: boolean;
+  // v52 — custom-only: the user-authored request/auth/health/stats/actions
+  // definition for a `custom` kind instance (see lib/custom-service.ts).
+  // Absent for every other kind, and absent here too until the (sibling-owned)
+  // editor UI writes one.
+  custom?: CustomServiceDefinition;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
@@ -136,6 +146,16 @@ export interface ServiceSecrets {
   // auth). Stored alongside other secrets in SecureStore because values often
   // contain bearer tokens.
   customHeaders?: Record<string, string>;
+  // v52 round-2 fix: the credential-shaped fields inside a `custom` instance's
+  // definition (auth.password, auth.token, login.body) live here — the same
+  // per-instance SecureStore record as every other kind's apiKey/username/
+  // password — instead of riding along on the ServiceInstance record itself,
+  // which persists to plain AsyncStorage. See redactInstanceForStorage /
+  // mergeCustomSecretsIntoInstance below for where these are split out and
+  // merged back in.
+  customPassword?: string;
+  customToken?: string;
+  customLoginBody?: string;
 }
 
 // Per-slot settings live as an opaque record on the slot itself. The widget
@@ -938,14 +958,204 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 function isServiceInstance(v: unknown): v is ServiceInstance {
   if (!isPlainObject(v)) return false;
-  return (
-    typeof v.id === "string" &&
-    typeof v.enabled === "boolean" &&
-    typeof v.name === "string" &&
-    typeof v.localUrl === "string" &&
-    typeof v.remoteUrl === "string" &&
-    typeof v.useRemote === "boolean"
-  );
+  if (
+    !(
+      typeof v.id === "string" &&
+      typeof v.enabled === "boolean" &&
+      typeof v.name === "string" &&
+      typeof v.localUrl === "string" &&
+      typeof v.remoteUrl === "string" &&
+      typeof v.useRemote === "boolean"
+    )
+  ) {
+    return false;
+  }
+  // custom is optional, but when present it must be a valid definition — an
+  // instance with a corrupt/hand-edited custom block is dropped whole rather
+  // than silently kept with garbage in it (mirrors how every other field here
+  // is a hard reject, not a best-effort coercion).
+  if (v.custom !== undefined && !validateCustomServiceDefinition(v.custom).ok) {
+    return false;
+  }
+  return true;
+}
+
+// --- v52 round-2 fix: custom-kind secrets never touch AsyncStorage --------
+//
+// A `custom` instance's auth.password / auth.token / login.body are
+// credential-shaped exactly like apiKey/username/password, which never land
+// in AsyncStorage — they live only in SecureStore, addressed by instance
+// UUID (ServiceSecrets / instanceSecrets below). `custom` itself is a field
+// ON the ServiceInstance record though, so without this extra step those
+// three strings would ride along with every setJSON(...) write of the
+// instance list. The helpers below mirror the existing split exactly:
+// extract the three strings into the per-instance ServiceSecrets record,
+// persist only a redacted `custom` to AsyncStorage, and merge the real
+// values back into the in-memory ServiceInstance.custom on load/import — so
+// `instance.custom` in the running app stays fully populated (request-time
+// consumers depend on this) while nothing outside SecureStore ever carries a
+// plaintext credential.
+
+type CustomSecretFields = Pick<
+  ServiceSecrets,
+  "customPassword" | "customToken" | "customLoginBody"
+>;
+
+function extractCustomSecrets(
+  custom: CustomServiceDefinition | undefined,
+): CustomSecretFields {
+  const out: CustomSecretFields = {};
+  if (custom?.auth?.password) out.customPassword = custom.auth.password;
+  if (custom?.auth?.token) out.customToken = custom.auth.token;
+  if (custom?.login?.body) out.customLoginBody = custom.login.body;
+  return out;
+}
+
+// Writes/clears exactly the 3 custom-secret SecureStore entries for one
+// instance. Delete-if-empty, same semantics as updateInstanceSecrets below,
+// so clearing a credential in `custom` actually clears it in SecureStore too
+// (writeSecretsForKey, used only for the one-shot v12→v13 migration copy
+// below, is additive-only and doesn't need that).
+async function syncCustomSecrets(
+  instanceId: string,
+  secrets: CustomSecretFields,
+): Promise<void> {
+  const fields = ["customPassword", "customToken", "customLoginBody"] as const;
+  for (const field of fields) {
+    const storageKey = `${SECRET_PREFIX}.${instanceId}.${field}`;
+    const value = secrets[field];
+    if (value) {
+      await setSecret(storageKey, value);
+    } else {
+      await deleteSecret(storageKey);
+    }
+  }
+}
+
+// Applies known secret values onto a `custom` definition (typically an
+// already-redacted one freshly loaded from AsyncStorage/an import payload).
+// Only overwrites a field when `secrets` actually carries a value for it, so
+// a partial/absent ServiceSecrets record never blanks a field the caller
+// didn't mean to touch.
+function mergeCustomSecretsIntoDefinition(
+  custom: CustomServiceDefinition,
+  secrets: CustomSecretFields | undefined,
+): CustomServiceDefinition {
+  if (!secrets) return custom;
+  let out = custom;
+  if (out.auth && (secrets.customPassword !== undefined || secrets.customToken !== undefined)) {
+    const auth = { ...out.auth };
+    if (secrets.customPassword !== undefined) auth.password = secrets.customPassword;
+    if (secrets.customToken !== undefined) auth.token = secrets.customToken;
+    out = { ...out, auth };
+  }
+  if (out.login && secrets.customLoginBody !== undefined) {
+    out = { ...out, login: { ...out.login, body: secrets.customLoginBody } };
+  }
+  return out;
+}
+
+// Returns a copy of `secrets` with instanceId's three custom-secret fields
+// reset to exactly what `custom` currently carries — deleted entirely when
+// `custom` is undefined or carries no secret-shaped values. `instance.custom`
+// is always the authoritative source for these three fields, never whatever
+// `secrets[instanceId]` happened to hold before — so a field the user just
+// cleared in `custom` is removed here too, not left behind as a stale value.
+// Used both to keep the live `state.instanceSecrets` in sync on every
+// add/update (round-2 review finding: it wasn't, so a cleared custom
+// password kept re-appearing in exports) and, belt-and-braces, inside
+// buildExportServicesAndSecrets so an export can never carry a stale value
+// even if some future call site forgets the sync.
+function withCustomSecretsSynced(
+  secrets: Record<string, ServiceSecrets>,
+  instanceId: string,
+  custom: CustomServiceDefinition | undefined,
+): Record<string, ServiceSecrets> {
+  const rest = { ...secrets[instanceId] };
+  delete rest.customPassword;
+  delete rest.customToken;
+  delete rest.customLoginBody;
+  const merged: ServiceSecrets = { ...rest, ...extractCustomSecrets(custom) };
+  if (Object.keys(merged).length === 0) {
+    if (!(instanceId in secrets)) return secrets;
+    const { [instanceId]: _drop, ...others } = secrets;
+    return others;
+  }
+  return { ...secrets, [instanceId]: merged };
+}
+
+// Extracts + (optionally) fires a SecureStore sync for an instance's custom
+// secrets, and always returns a copy of the instance safe to write to
+// AsyncStorage. `syncSecrets` must be false when `inst.custom` is itself
+// already a redacted/from-disk snapshot (hydrate's migration re-persist,
+// importConfig's initial persist) — otherwise extractCustomSecrets sees {}
+// and syncCustomSecrets (delete-if-empty) wipes SecureStore for a credential
+// that is real, just not present on THIS copy of the instance yet (v52
+// round-4 fix: this exact call, unconditional, deleted every custom
+// instance's secrets on any hydrate where needsServicesPersist was true —
+// proved with a stateful SecureStore mock). Callers whose `inst.custom` is
+// live in-memory state (add/update/move/removeInstance) keep the default
+// `true` so a genuinely cleared field still gets deleted (v52 round-3 fix).
+// The instance object passed in (and the live ConfigStore state built from
+// it) is never mutated — only the returned copy is redacted.
+function redactInstanceForStorage(inst: ServiceInstance, syncSecrets: boolean): ServiceInstance {
+  if (!inst.custom) return inst;
+  if (syncSecrets) {
+    void syncCustomSecrets(inst.id, extractCustomSecrets(inst.custom));
+  }
+  return { ...inst, custom: redactCustomServiceDefinition(inst.custom) };
+}
+
+// Persists one kind's instance list to AsyncStorage, redacting any `custom`
+// block first. Every write of `STORAGE_KEYS.services.<id>` goes through this
+// so a custom instance's credentials can never land there. `syncSecrets`
+// (default true) controls whether that redaction also pushes/clears the
+// extracted secrets in SecureStore — see redactInstanceForStorage above for
+// when it must be false.
+function persistServiceInstanceList(
+  id: ServiceId,
+  list: ServiceInstance[],
+  options?: { syncSecrets?: boolean },
+): void {
+  const syncSecrets = options?.syncSecrets ?? true;
+  const forStorage = list.some((inst) => inst.custom)
+    ? list.map((inst) => redactInstanceForStorage(inst, syncSecrets))
+    : list;
+  setJSON(`${STORAGE_KEYS.services}.${id}`, forStorage);
+}
+
+// Builds the `services`/`secrets` pair for an ExportPayload from live state.
+// Same split as persistServiceInstanceList: `services` gets a redacted
+// `custom` (matching the AsyncStorage shape) while the extracted
+// customPassword/customToken/customLoginBody are folded into `secrets` —
+// exactly how apiKey/username/password already work, since those never
+// exist on ServiceInstance at all and only ever live in `secrets`. Goes
+// through withCustomSecretsSynced (not a plain merge over `instanceSecrets`)
+// so a field the live instance.custom no longer carries can never survive
+// into the export just because a stale value was still sitting in
+// `instanceSecrets` — belt-and-braces on top of addInstance/updateInstance
+// keeping instanceSecrets synced in the first place.
+// Exported for unit testing (see config-store.test.ts) — same rationale as
+// repairOrphanedHomeNetworkSelection/stripImportedBssids below: a pure
+// function is easier to pin down directly than by driving the full
+// exportConfig action (biometric auth, file sharing, encryption) end to end.
+export function buildExportServicesAndSecrets(
+  serviceInstances: Record<ServiceId, ServiceInstance[]>,
+  instanceSecrets: Record<string, ServiceSecrets>,
+): {
+  services: Record<ServiceId, ServiceInstance[]>;
+  secrets: Record<string, ServiceSecrets>;
+} {
+  const services = {} as Record<ServiceId, ServiceInstance[]>;
+  let secrets = instanceSecrets;
+  for (const id of SERVICE_IDS) {
+    services[id] = (serviceInstances[id] ?? []).map((inst) => {
+      if (!inst.custom) return inst;
+      secrets = withCustomSecretsSynced(secrets, inst.id, inst.custom);
+      return { ...inst, custom: redactCustomServiceDefinition(inst.custom) };
+    });
+  }
+  return { services, secrets };
 }
 
 const VALID_SERVICE_IDS = new Set<string>(SERVICE_IDS);
@@ -1105,8 +1315,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     if (needsServicesPersist) {
+      // v52 round-4 fix: `instances[id]` here is what was just loaded from
+      // AsyncStorage (or a fresh makeInstance()) — a custom instance's
+      // `custom` is already redacted at this point, and the real secrets
+      // haven't been read from SecureStore yet (that happens in the loop
+      // below). syncSecrets:false stops this write from misreading "no
+      // secret on this copy" as "the user cleared it" and deleting the real
+      // value out from under the read that's about to restore it.
       for (const id of SERVICE_IDS) {
-        setJSON(`${STORAGE_KEYS.services}.${id}`, instances[id]);
+        persistServiceInstanceList(id, instances[id], { syncSecrets: false });
       }
     }
 
@@ -1122,6 +1339,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const apiKey = await getSecret(`${SECRET_PREFIX}.${key}.apiKey`);
       const username = await getSecret(`${SECRET_PREFIX}.${key}.username`);
       const password = await getSecret(`${SECRET_PREFIX}.${key}.password`);
+      // v52 round-2 fix: the credential-shaped fields pulled out of a
+      // `custom` instance's definition live in this same per-instance
+      // SecureStore record — see the block comment above
+      // persistServiceInstanceList.
+      const customPassword = await getSecret(`${SECRET_PREFIX}.${key}.customPassword`);
+      const customToken = await getSecret(`${SECRET_PREFIX}.${key}.customToken`);
+      const customLoginBody = await getSecret(`${SECRET_PREFIX}.${key}.customLoginBody`);
       const customHeadersRaw = await getSecret(
         `${SECRET_PREFIX}.${key}.customHeaders`,
       );
@@ -1140,10 +1364,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ...(apiKey ? { apiKey } : {}),
         ...(username ? { username } : {}),
         ...(password ? { password } : {}),
+        ...(customPassword ? { customPassword } : {}),
+        ...(customToken ? { customToken } : {}),
+        ...(customLoginBody ? { customLoginBody } : {}),
         ...(customHeaders ? { customHeaders } : {}),
       };
       const empty =
-        !out.apiKey && !out.username && !out.password && !out.customHeaders;
+        !out.apiKey &&
+        !out.username &&
+        !out.password &&
+        !out.customPassword &&
+        !out.customToken &&
+        !out.customLoginBody &&
+        !out.customHeaders;
       return empty ? null : out;
     }
 
@@ -1151,6 +1384,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       await deleteSecret(`${SECRET_PREFIX}.${key}.apiKey`);
       await deleteSecret(`${SECRET_PREFIX}.${key}.username`);
       await deleteSecret(`${SECRET_PREFIX}.${key}.password`);
+      await deleteSecret(`${SECRET_PREFIX}.${key}.customPassword`);
+      await deleteSecret(`${SECRET_PREFIX}.${key}.customToken`);
+      await deleteSecret(`${SECRET_PREFIX}.${key}.customLoginBody`);
       await deleteSecret(`${SECRET_PREFIX}.${key}.customHeaders`);
     }
 
@@ -1163,6 +1399,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         await setSecret(`${SECRET_PREFIX}.${key}.username`, s.username);
       if (s.password)
         await setSecret(`${SECRET_PREFIX}.${key}.password`, s.password);
+      if (s.customPassword)
+        await setSecret(`${SECRET_PREFIX}.${key}.customPassword`, s.customPassword);
+      if (s.customToken)
+        await setSecret(`${SECRET_PREFIX}.${key}.customToken`, s.customToken);
+      if (s.customLoginBody)
+        await setSecret(`${SECRET_PREFIX}.${key}.customLoginBody`, s.customLoginBody);
       if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
         await setSecret(
           `${SECRET_PREFIX}.${key}.customHeaders`,
@@ -1182,11 +1424,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       await deleteSecretsForKey(id);
     }
 
-    // Then load secrets for every known instance UUID across all kinds.
+    // Then load secrets for every known instance UUID across all kinds, and
+    // (v52 round-2 fix) merge any custom-kind secrets back onto the loaded
+    // instance's `custom` block — it was persisted redacted, so this is what
+    // restores `instance.custom.auth.password`/`.token`/`login.body` for
+    // in-memory/request-time consumers.
     for (const id of SERVICE_IDS) {
       for (const inst of instances[id]) {
         const s = await readSecretsForKey(inst.id);
         if (s) instanceSecrets[inst.id] = s;
+        if (inst.custom) {
+          inst.custom = mergeCustomSecretsIntoDefinition(inst.custom, s ?? undefined);
+        }
       }
     }
 
@@ -1602,18 +1851,24 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set((state) => {
       const list = [...(state.serviceInstances[id] ?? []), inst];
       const serviceInstances = { ...state.serviceInstances, [id]: list };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, list);
+      persistServiceInstanceList(id, list);
       // v22: no explicit "make this the active instance" write — the resolver
       // picks the new instance up automatically if the active workspace had
       // no pin for this kind (or its pin became invalid). When the kind has
       // an existing pin, that pin is preserved.
+      // v52 round-3 fix: a caller can pass a `custom` block (with secrets)
+      // straight into `init` — keep instanceSecrets in sync from the start
+      // rather than only ever populating it on the next hydrate.
+      const instanceSecrets = inst.custom
+        ? withCustomSecretsSynced(state.instanceSecrets, inst.id, inst.custom)
+        : state.instanceSecrets;
       const derived = recomputeDerivedFromActive(
         state.dashboards,
         state.activeDashboardId,
         serviceInstances,
-        state.instanceSecrets,
+        instanceSecrets,
       );
-      return { serviceInstances, ...derived };
+      return { serviceInstances, instanceSecrets, ...derived };
     });
     return inst;
   },
@@ -1627,13 +1882,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.username`);
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.password`);
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customPassword`);
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customToken`);
+    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customLoginBody`);
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customHeaders`);
 
     set((state) => {
       const list = (state.serviceInstances[id] ?? []).filter((i) => i.id !== instanceId);
       const serviceInstances = { ...state.serviceInstances, [id]: list };
       const { [instanceId]: _removed, ...instanceSecrets } = state.instanceSecrets;
-      setJSON(`${STORAGE_KEYS.services}.${id}`, list);
+      persistServiceInstanceList(id, list);
 
       // v22: prune the deleted UUID from every dashboard's `attachedInstances`
       // and `activeInstance[kind]` so storage doesn't accumulate orphans.
@@ -1721,7 +1979,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const next = [...list];
       next[idx] = { ...prev, ...patch, id: prev.id };
       const serviceInstances = { ...state.serviceInstances, [id]: next };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      persistServiceInstanceList(id, next);
+      // v52 round-3 fix: only a `custom` patch can change what belongs in
+      // instanceSecrets for this instance — sync it from the live
+      // instance.custom (the source of truth) rather than leaving the old
+      // customPassword/customToken/customLoginBody sitting there stale. Bug
+      // this fixed: clearing a custom password via updateInstance deleted it
+      // from SecureStore but left it in state.instanceSecrets, so an export
+      // taken afterward still emitted the cleared value.
+      const instanceSecrets =
+        "custom" in patch
+          ? withCustomSecretsSynced(state.instanceSecrets, instanceId, next[idx].custom)
+          : state.instanceSecrets;
       // v22: toggling `enabled` can flip the resolver's fallback (a freshly
       // disabled active pin needs to give way to the next attached+enabled
       // sibling). Other field edits don't affect resolution, but the
@@ -1732,9 +2001,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           state.dashboards,
           state.activeDashboardId,
           serviceInstances,
-          state.instanceSecrets,
+          instanceSecrets,
         );
-        return { serviceInstances, ...derived };
+        return { serviceInstances, instanceSecrets, ...derived };
       }
       // Field edit that doesn't affect resolution — re-derive `services`/
       // `secrets` against the unchanged `state.activeInstance` so legacy
@@ -1742,10 +2011,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const services = deriveLegacyServices(serviceInstances, state.activeInstance);
       const secrets = deriveLegacySecrets(
         serviceInstances,
-        state.instanceSecrets,
+        instanceSecrets,
         state.activeInstance,
       );
-      return { serviceInstances, services, secrets };
+      return { serviceInstances, instanceSecrets, services, secrets };
     });
     // A URL edit changes the resolved base URL without changing the instance id
     // (the query key), so staleTime:Infinity reads wouldn't refetch (#4).
@@ -1780,7 +2049,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const next = [...list];
       [next[idx], next[target]] = [next[target], next[idx]];
       const serviceInstances = { ...state.serviceInstances, [id]: next };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      persistServiceInstanceList(id, next);
       const services = deriveLegacyServices(serviceInstances, state.activeInstance);
       return { serviceInstances, services };
     });
@@ -2745,11 +3014,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     } = get();
     const { url, sharedSecret, deviceId, ignoreCertErrors } = useBackendStore.getState();
 
+    // v52 round-2 fix: don't export a custom instance's auth.password/token
+    // or login.body inline on `services` — split them into `secrets` the
+    // same way apiKey/username/password already are.
+    const { services: exportServices, secrets: exportSecrets } =
+      buildExportServicesAndSecrets(serviceInstances, instanceSecrets);
+
     const payload: ExportPayload = {
       version: CURRENT_CONFIG_VERSION,
       exportedAt: new Date().toISOString(),
-      services: serviceInstances,
-      secrets: instanceSecrets,
+      services: exportServices,
+      secrets: exportSecrets,
       // v22: activeInstance is now per-dashboard, serialized inside the
       // `dashboards` array — no top-level field.
       autoSwitchNetwork,
@@ -2855,18 +3130,33 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       await deleteSecret(`${SECRET_PREFIX}.${oldId}.apiKey`);
       await deleteSecret(`${SECRET_PREFIX}.${oldId}.username`);
       await deleteSecret(`${SECRET_PREFIX}.${oldId}.password`);
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.customPassword`);
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.customToken`);
+      await deleteSecret(`${SECRET_PREFIX}.${oldId}.customLoginBody`);
       await deleteSecret(`${SECRET_PREFIX}.${oldId}.customHeaders`);
     }
 
     // Merge imported services over fresh defaults so every kind keeps a slot
-    // in settings even if the backup omits one.
+    // in settings even if the backup omits one. persistServiceInstanceList
+    // (rather than a bare setJSON) redacts any `custom` block before writing
+    // to AsyncStorage — a well-formed export already keeps custom-instance
+    // secrets out of `services` (see exportConfig). syncSecrets:false here
+    // (v52 round-4 fix): `payload.services[id].custom` is redacted by
+    // definition at this point, so extracting from it would see "no secret"
+    // and delete whatever's in SecureStore — including the very values the
+    // "Restore secrets" loop right below is about to (re)write from
+    // `payload.secrets`. That explicit, awaited loop — plus the unconditional
+    // SecureStore wipe above for every instance id that existed before this
+    // import — is already the correct, deterministic way secrets get synced
+    // during import; this persist call only needs to produce the redacted
+    // on-disk copy.
     const mergedInstances = defaultInstances();
     for (const id of SERVICE_IDS) {
       const list = payload.services[id];
       if (Array.isArray(list) && list.length > 0) {
         mergedInstances[id] = list;
       }
-      setJSON(`${STORAGE_KEYS.services}.${id}`, mergedInstances[id]);
+      persistServiceInstanceList(id, mergedInstances[id], { syncSecrets: false });
     }
 
     // Restore secrets keyed by instance UUID.
@@ -2877,12 +3167,32 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${uuid}.apiKey`, s.apiKey);
       if (s.username) await setSecret(`${SECRET_PREFIX}.${uuid}.username`, s.username);
       if (s.password) await setSecret(`${SECRET_PREFIX}.${uuid}.password`, s.password);
+      if (s.customPassword)
+        await setSecret(`${SECRET_PREFIX}.${uuid}.customPassword`, s.customPassword);
+      if (s.customToken)
+        await setSecret(`${SECRET_PREFIX}.${uuid}.customToken`, s.customToken);
+      if (s.customLoginBody)
+        await setSecret(`${SECRET_PREFIX}.${uuid}.customLoginBody`, s.customLoginBody);
       if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
         await setSecret(
           `${SECRET_PREFIX}.${uuid}.customHeaders`,
           JSON.stringify(s.customHeaders),
         );
       }
+    }
+
+    // v52 round-2 fix: `payload.services[id].custom` is redacted (a
+    // well-formed export never puts auth.password/token or login.body
+    // there — see exportConfig), so merge the real values back in from
+    // `mergedSecrets` here, same as hydrate does on every normal launch.
+    // Keeps the in-memory ServiceInstance.custom fully populated for
+    // request-time consumers immediately after an import.
+    for (const id of SERVICE_IDS) {
+      mergedInstances[id] = mergedInstances[id].map((inst) =>
+        inst.custom
+          ? { ...inst, custom: mergeCustomSecretsIntoDefinition(inst.custom, mergedSecrets[inst.id]) }
+          : inst,
+      );
     }
 
     // v22: active instance per kind is carried inside each dashboard's

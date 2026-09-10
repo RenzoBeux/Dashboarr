@@ -1,0 +1,11 @@
+{
+  "auth": {
+    "mode": "none"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/api/status",
+    "statusPath": "online",
+    "okValues": ["true"]
+  }
+}

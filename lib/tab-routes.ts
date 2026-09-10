@@ -28,6 +28,7 @@ export const PICKABLE_SERVICE_TABS = [
   "autobrr",
   "cleanuparr",
   "pihole",
+  "custom",
 ] as const;
 export type PickableServiceTab = (typeof PICKABLE_SERVICE_TABS)[number];
 
@@ -71,6 +72,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   autobrr: "autobrr",
   cleanuparr: "cleanuparr",
   pihole: "pihole",
+  custom: "custom",
 };
 
 // Inverse — the service kind(s) that back each tab. Used to decide pickability
@@ -107,6 +109,7 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   autobrr: ["autobrr"],
   cleanuparr: ["cleanuparr"],
   pihole: ["pihole"],
+  custom: ["custom"],
 };
 
 export function tabForServiceId(id: ServiceId): PickableServiceTab | null {
@@ -261,6 +264,7 @@ export const TAB_LABELS: Record<AnyTabRouteId, string> = {
   cleanuparr: "Cleanuparr",
   pihole: "Pi-hole",
   settings: "Settings",
+  custom: "Custom",
 };
 
 // Notifications and OS deep links to content details land in the Dashboard

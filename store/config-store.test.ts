@@ -20,15 +20,33 @@ jest.mock("expo-secure-store", () => ({
   setItemAsync: jest.fn(async () => {}),
   deleteItemAsync: jest.fn(async () => {}),
 }));
+// importConfig (exercised below for the v52 round-2 custom-secrets fix) reads
+// the picked file via expo-document-picker + expo-file-system's `File`. Both
+// are otherwise-unused native modules in this test file, so stub just the
+// surface importConfig touches.
+jest.mock("expo-document-picker", () => ({
+  getDocumentAsync: jest.fn(),
+}));
+jest.mock("expo-file-system", () => ({
+  File: jest.fn(),
+  Paths: { cache: "file:///cache" },
+}));
 
 import {
   useConfigStore,
   stripImportedBssids,
   repairOrphanedHomeNetworkSelection,
+  buildExportServicesAndSecrets,
 } from "./config-store";
 import { setJSON } from "./storage";
-import { STORAGE_KEYS } from "@/lib/constants";
+import { STORAGE_KEYS, SECRET_PREFIX, SERVICE_IDS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
+import { CURRENT_CONFIG_VERSION } from "@/store/config-migrations";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
+import type { CustomServiceDefinition } from "@/lib/custom-service";
 
 // Smoke-test that getActiveUrl always returns a fetch-safe URL, even when the
 // persisted value lacks a scheme. See #106 — health probes were failing on
@@ -361,6 +379,487 @@ describe("updateInstanceSecrets — invalidates on credential change (#4)", () =
       filters?.predicate?.({ queryKey: ["radarr", "other", "tags"] } as never),
     ).toBe(false);
     spy.mockRestore();
+  });
+});
+
+// v52 round-2 fix: a `custom` instance's auth.password/auth.token/
+// login.body are credential-shaped exactly like apiKey/username/password,
+// which never land in AsyncStorage — only SecureStore. `custom` itself is a
+// field on the ServiceInstance record though, so persisting it verbatim
+// would have written those secrets straight into plain AsyncStorage. These
+// tests pin the fix at every layer: the AsyncStorage record is redacted, the
+// values move to SecureStore, hydrate restores them, and importConfig
+// round-trips the whole definition.
+describe("custom service secrets — split between AsyncStorage and SecureStore (v52 round-2 fix)", () => {
+  const fullCustom: CustomServiceDefinition = {
+    auth: { mode: "basic", username: "u", password: "secret-pw" },
+    login: {
+      method: "POST",
+      path: "/login",
+      injectAs: "cookie",
+      body: "pw=secret-pw",
+    },
+  };
+
+  function flush(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  function lastAsyncStorageWrite(key: string): Array<{ id: string; custom?: CustomServiceDefinition }> {
+    const calls = (AsyncStorage.setItem as jest.Mock).mock.calls as [string, string][];
+    const matching = calls.filter(([k]) => k === key);
+    const last = matching[matching.length - 1];
+    return last ? JSON.parse(last[1]) : [];
+  }
+
+  beforeEach(() => {
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (SecureStore.setItemAsync as jest.Mock).mockClear();
+    (SecureStore.getItemAsync as jest.Mock).mockReset();
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    (SecureStore.getItemAsync as jest.Mock).mockReset();
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("addInstance persists a redacted custom block to AsyncStorage", async () => {
+    const inst = useConfigStore
+      .getState()
+      .addInstance("custom", { name: "My API", custom: fullCustom });
+    await flush();
+
+    const persisted = lastAsyncStorageWrite(`${STORAGE_KEYS.services}.custom`);
+    const persistedInst = persisted.find((i) => i.id === inst.id);
+    expect(persistedInst?.custom?.auth?.password).toBe("");
+    expect(persistedInst?.custom?.login?.body).toBe("");
+
+    // The in-memory record stays fully populated — a sibling feature reads
+    // instance.custom with secrets present to make the actual request.
+    const live = useConfigStore
+      .getState()
+      .serviceInstances.custom.find((i) => i.id === inst.id);
+    expect(live?.custom?.auth?.password).toBe("secret-pw");
+    expect(live?.custom?.login?.body).toBe("pw=secret-pw");
+  });
+
+  it("addInstance writes the extracted secrets to SecureStore", async () => {
+    const inst = useConfigStore
+      .getState()
+      .addInstance("custom", { name: "My API", custom: fullCustom });
+    await flush();
+
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      `${SECRET_PREFIX}.${inst.id}.customPassword`,
+      "secret-pw",
+    );
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      `${SECRET_PREFIX}.${inst.id}.customLoginBody`,
+      "pw=secret-pw",
+    );
+  });
+
+  it("updateInstance also redacts the persisted record and syncs SecureStore", async () => {
+    const inst = useConfigStore.getState().addInstance("custom", { name: "My API" });
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (SecureStore.setItemAsync as jest.Mock).mockClear();
+
+    useConfigStore.getState().updateInstance("custom", inst.id, { custom: fullCustom });
+    await flush();
+
+    const persisted = lastAsyncStorageWrite(`${STORAGE_KEYS.services}.custom`);
+    const persistedInst = persisted.find((i) => i.id === inst.id);
+    expect(persistedInst?.custom?.auth?.password).toBe("");
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      `${SECRET_PREFIX}.${inst.id}.customPassword`,
+      "secret-pw",
+    );
+  });
+
+  it("hydrate restores customPassword/customLoginBody onto instance.custom", async () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000cccc";
+    setJSON(`${STORAGE_KEYS.services}.custom`, [
+      {
+        id: INST_ID,
+        enabled: true,
+        name: "My API",
+        localUrl: "",
+        remoteUrl: "",
+        useRemote: false,
+        custom: {
+          auth: { mode: "basic", username: "u", password: "" },
+          login: { method: "POST", path: "/login", injectAs: "cookie", body: "" },
+        },
+      },
+    ]);
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === `${SECRET_PREFIX}.${INST_ID}.customPassword`) return "secret-pw";
+      if (key === `${SECRET_PREFIX}.${INST_ID}.customLoginBody`) return "pw=secret-pw";
+      return null;
+    });
+
+    await useConfigStore.getState().hydrate();
+
+    const restored = useConfigStore
+      .getState()
+      .serviceInstances.custom.find((i) => i.id === INST_ID);
+    expect(restored?.custom?.auth?.password).toBe("secret-pw");
+    expect(restored?.custom?.login?.body).toBe("pw=secret-pw");
+    expect(useConfigStore.getState().instanceSecrets[INST_ID]?.customPassword).toBe(
+      "secret-pw",
+    );
+  });
+
+  it("importConfig round-trips the full custom definition (redacted at rest, restored in memory)", async () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000dddd";
+    const DASH_ID = "00000000-0000-0000-0000-00000000dash";
+    const exportPayload = {
+      version: CURRENT_CONFIG_VERSION,
+      exportedAt: "2026-09-08T00:00:00.000Z",
+      services: {
+        custom: [
+          {
+            id: INST_ID,
+            enabled: true,
+            name: "My API",
+            localUrl: "",
+            remoteUrl: "",
+            useRemote: false,
+            // A well-formed export already redacts these — matching what
+            // exportConfig now produces.
+            custom: {
+              auth: { mode: "basic", username: "u", password: "" },
+              login: { method: "POST", path: "/login", injectAs: "cookie", body: "" },
+            },
+          },
+        ],
+      },
+      secrets: {
+        [INST_ID]: {
+          customPassword: "secret-pw",
+          customLoginBody: "pw=secret-pw",
+        },
+      },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [{ id: DASH_ID, name: "Default", widgets: [] }],
+      activeDashboardId: DASH_ID,
+    };
+
+    (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "file:///fake-config.json" }],
+    });
+    (File as unknown as jest.Mock).mockImplementation(() => ({
+      text: async () => JSON.stringify(exportPayload),
+    }));
+
+    const ok = await useConfigStore
+      .getState()
+      .importConfig(async () => null, () => {});
+    expect(ok).toBe(true);
+    await flush();
+
+    // In-memory: instance.custom is fully populated again.
+    const restored = useConfigStore
+      .getState()
+      .serviceInstances.custom.find((i) => i.id === INST_ID);
+    expect(restored?.custom?.auth?.password).toBe("secret-pw");
+    expect(restored?.custom?.login?.body).toBe("pw=secret-pw");
+
+    // On disk: still redacted.
+    const persisted = lastAsyncStorageWrite(`${STORAGE_KEYS.services}.custom`);
+    const persistedInst = persisted.find((i) => i.id === INST_ID);
+    expect(persistedInst?.custom?.auth?.password).toBe("");
+    expect(persistedInst?.custom?.login?.body).toBe("");
+
+    // SecureStore got the real values.
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      `${SECRET_PREFIX}.${INST_ID}.customPassword`,
+      "secret-pw",
+    );
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      `${SECRET_PREFIX}.${INST_ID}.customLoginBody`,
+      "pw=secret-pw",
+    );
+  });
+});
+
+// v52 round-3 fix (review finding): state.instanceSecrets diverged from
+// SecureStore for custom secrets. Hydrate populated
+// instanceSecrets[id].customPassword/customToken/customLoginBody, but
+// addInstance/updateInstance never kept it in sync afterward — so clearing a
+// custom password via updateInstance deleted it from SecureStore but left
+// the stale value sitting in instanceSecrets, and buildExportServicesAndSecrets
+// (which only overrides truthy freshly-extracted values) let that stale value
+// leak straight into an export. Fixed by making the live instance.custom
+// authoritative: addInstance/updateInstance now resync instanceSecrets via
+// withCustomSecretsSynced, and buildExportServicesAndSecrets rebuilds the
+// three fields from scratch (belt-and-braces) instead of merging over
+// whatever instanceSecrets already had.
+describe("custom service secrets — instanceSecrets stays in sync with instance.custom (v52 round-3 fix)", () => {
+  function flush(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  beforeEach(() => {
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (SecureStore.setItemAsync as jest.Mock).mockClear();
+    (SecureStore.getItemAsync as jest.Mock).mockReset();
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    (SecureStore.getItemAsync as jest.Mock).mockReset();
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("a cleared custom password is absent from instanceSecrets after updateInstance", async () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000eeee";
+    // Seed via hydrate, exactly as the review finding describes: hydrate
+    // with customPassword "old" restores it onto instance.custom AND
+    // populates instanceSecrets[INST_ID].customPassword.
+    setJSON(`${STORAGE_KEYS.services}.custom`, [
+      {
+        id: INST_ID,
+        enabled: true,
+        name: "My API",
+        localUrl: "",
+        remoteUrl: "",
+        useRemote: false,
+        custom: {
+          auth: { mode: "basic", username: "u", password: "" },
+        },
+      },
+    ]);
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === `${SECRET_PREFIX}.${INST_ID}.customPassword`) return "old";
+      return null;
+    });
+    await useConfigStore.getState().hydrate();
+    expect(useConfigStore.getState().instanceSecrets[INST_ID]?.customPassword).toBe(
+      "old",
+    );
+
+    // User clears the password via updateInstance.
+    useConfigStore.getState().updateInstance("custom", INST_ID, {
+      custom: { auth: { mode: "basic", username: "u", password: "" } },
+    });
+    await flush();
+
+    expect(
+      useConfigStore.getState().instanceSecrets[INST_ID]?.customPassword,
+    ).toBeUndefined();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(
+      `${SECRET_PREFIX}.${INST_ID}.customPassword`,
+    );
+  });
+
+  it("buildExportServicesAndSecrets emits no customPassword for a since-cleared secret", async () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000ffff";
+    setJSON(`${STORAGE_KEYS.services}.custom`, [
+      {
+        id: INST_ID,
+        enabled: true,
+        name: "My API",
+        localUrl: "",
+        remoteUrl: "",
+        useRemote: false,
+        custom: {
+          auth: { mode: "basic", username: "u", password: "" },
+        },
+      },
+    ]);
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === `${SECRET_PREFIX}.${INST_ID}.customPassword`) return "old";
+      return null;
+    });
+    await useConfigStore.getState().hydrate();
+    expect(useConfigStore.getState().instanceSecrets[INST_ID]?.customPassword).toBe(
+      "old",
+    );
+
+    useConfigStore.getState().updateInstance("custom", INST_ID, {
+      custom: { auth: { mode: "basic", username: "u", password: "" } },
+    });
+    await flush();
+
+    const { secrets } = buildExportServicesAndSecrets(
+      useConfigStore.getState().serviceInstances,
+      useConfigStore.getState().instanceSecrets,
+    );
+    expect(secrets[INST_ID]?.customPassword).toBeUndefined();
+  });
+
+  it("buildExportServicesAndSecrets ignores a stale customPassword left over in instanceSecrets (belt-and-braces)", () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000ab12";
+    const serviceInstances = {
+      ...useConfigStore.getState().serviceInstances,
+      custom: [
+        {
+          id: INST_ID,
+          enabled: true,
+          name: "My API",
+          localUrl: "",
+          remoteUrl: "",
+          useRemote: false,
+          custom: { auth: { mode: "basic" as const, username: "u", password: "" } },
+        },
+      ],
+    };
+    // Simulate a stale instanceSecrets entry that was never resynced —
+    // buildExportServicesAndSecrets must not trust it once instance.custom
+    // no longer carries a password.
+    const staleInstanceSecrets = { [INST_ID]: { customPassword: "old" } };
+
+    const { secrets } = buildExportServicesAndSecrets(
+      serviceInstances,
+      staleInstanceSecrets,
+    );
+    expect(secrets[INST_ID]?.customPassword).toBeUndefined();
+  });
+});
+
+// v52 round-4 fix (review finding): redactInstanceForStorage's round-3 fix
+// made it ALWAYS call syncCustomSecrets (delete-if-empty). That's correct
+// when `inst.custom` is live in-memory state, but hydrate's migration
+// re-persist and importConfig's initial persist both call
+// persistServiceInstanceList on an instance whose `custom` was just loaded
+// from disk / an import payload — already redacted, so extractCustomSecrets
+// sees {} and the "delete cleared keys" behavior wiped a REAL secret out of
+// SecureStore before the secrets-load/merge-back step (which runs later)
+// ever got to read it back. This only shows up with a STATEFUL SecureStore
+// mock: the file's default mock at the top of this file is stateless
+// (getItemAsync always resolves null, setItemAsync/deleteItemAsync are
+// no-ops), so it can't distinguish "value present" from "value deleted".
+describe("custom service secrets — survive a needsServicesPersist rewrite (v52 round-4 fix)", () => {
+  let secureStoreMap: Map<string, string>;
+
+  beforeEach(() => {
+    secureStoreMap = new Map();
+    (SecureStore.getItemAsync as jest.Mock).mockReset();
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation(async (key: string) =>
+      secureStoreMap.has(key) ? (secureStoreMap.get(key) as string) : null,
+    );
+    (SecureStore.setItemAsync as jest.Mock).mockReset();
+    (SecureStore.setItemAsync as jest.Mock).mockImplementation(
+      async (key: string, value: string) => {
+        secureStoreMap.set(key, value);
+      },
+    );
+    (SecureStore.deleteItemAsync as jest.Mock).mockReset();
+    (SecureStore.deleteItemAsync as jest.Mock).mockImplementation(async (key: string) => {
+      secureStoreMap.delete(key);
+    });
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+  });
+
+  afterEach(() => {
+    // Restore the file's default stateless mocks so later describe blocks
+    // aren't affected by this one's map-backed behavior.
+    (SecureStore.getItemAsync as jest.Mock).mockReset();
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+    (SecureStore.setItemAsync as jest.Mock).mockReset();
+    (SecureStore.setItemAsync as jest.Mock).mockResolvedValue(undefined);
+    (SecureStore.deleteItemAsync as jest.Mock).mockReset();
+    (SecureStore.deleteItemAsync as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it("hydrate's needsServicesPersist rewrite does not delete a custom instance's secrets", async () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000ba11";
+    // Pre-seed SecureStore with a real, already-saved password for this
+    // instance — this is what a genuine prior session would have left there.
+    secureStoreMap.set(`${SECRET_PREFIX}.${INST_ID}.customPassword`, "keep-me");
+
+    // Seed ONLY services.custom (redacted, as it would be on disk) and force
+    // every OTHER kind's stored list to empty so hydrate's normal
+    // fresh-install/backfill path (makeInstance per kind) sets
+    // needsServicesPersist = true — which rewrites EVERY kind's list,
+    // `custom` included, via persistServiceInstanceList BEFORE the
+    // secrets-load/merge-back loop runs.
+    for (const id of SERVICE_IDS) {
+      if (id !== "custom") setJSON(`${STORAGE_KEYS.services}.${id}`, []);
+    }
+    setJSON(`${STORAGE_KEYS.services}.custom`, [
+      {
+        id: INST_ID,
+        enabled: true,
+        name: "My API",
+        localUrl: "",
+        remoteUrl: "",
+        useRemote: false,
+        custom: { auth: { mode: "basic", username: "u", password: "" } },
+      },
+    ]);
+
+    await useConfigStore.getState().hydrate();
+
+    // The secret must still be in SecureStore — not deleted by the
+    // migration re-persist that ran before the secrets read.
+    expect(secureStoreMap.get(`${SECRET_PREFIX}.${INST_ID}.customPassword`)).toBe(
+      "keep-me",
+    );
+    // ...and merged back onto the in-memory instance, same as any normal
+    // hydrate.
+    const restored = useConfigStore
+      .getState()
+      .serviceInstances.custom.find((i) => i.id === INST_ID);
+    expect(restored?.custom?.auth?.password).toBe("keep-me");
+  });
+
+  it("importConfig does not delete a custom instance's secrets it just restored", async () => {
+    const INST_ID = "00000000-0000-0000-0000-00000000ba22";
+    const DASH_ID = "00000000-0000-0000-0000-00000000da22";
+    const exportPayload = {
+      version: CURRENT_CONFIG_VERSION,
+      exportedAt: "2026-09-08T00:00:00.000Z",
+      services: {
+        custom: [
+          {
+            id: INST_ID,
+            enabled: true,
+            name: "My API",
+            localUrl: "",
+            remoteUrl: "",
+            useRemote: false,
+            // A well-formed export already redacts these.
+            custom: { auth: { mode: "basic", username: "u", password: "" } },
+          },
+        ],
+      },
+      secrets: {
+        [INST_ID]: { customPassword: "keep-me" },
+      },
+      autoSwitchNetwork: false,
+      homeNetworks: [],
+      dashboards: [{ id: DASH_ID, name: "Default", widgets: [] }],
+      activeDashboardId: DASH_ID,
+    };
+
+    (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: "file:///fake-config.json" }],
+    });
+    (File as unknown as jest.Mock).mockImplementation(() => ({
+      text: async () => JSON.stringify(exportPayload),
+    }));
+
+    const ok = await useConfigStore
+      .getState()
+      .importConfig(async () => null, () => {});
+    expect(ok).toBe(true);
+
+    // The value the "Restore secrets" loop just wrote must still be there —
+    // not deleted by the initial (syncSecrets:false) persist that runs
+    // before it.
+    expect(secureStoreMap.get(`${SECRET_PREFIX}.${INST_ID}.customPassword`)).toBe(
+      "keep-me",
+    );
+    const restored = useConfigStore
+      .getState()
+      .serviceInstances.custom.find((i) => i.id === INST_ID);
+    expect(restored?.custom?.auth?.password).toBe("keep-me");
   });
 });
 

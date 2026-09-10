@@ -15,6 +15,12 @@ import { buildUrl } from "@/lib/url-builder";
 import { applyMediaServerAuth } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+// Definition-driven status/version extraction for the "custom" probe below —
+// pure, dependency-free, shared verbatim with services/custom-api.ts's real
+// (non-test) requests. Type-only concerns aside, importing this here (rather
+// than services/custom-api.ts itself) keeps this file free of any services/
+// import, avoiding the cycle that module has back into serviceRequest.
+import { getPath } from "@/lib/json-path";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
 // service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
 // the same envelope the same way. Pure string/object helpers — no cycle.
@@ -152,11 +158,21 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
 // error toast, and in formatErrorForCopy's clipboard payload.
 const REDACT_PARAMS = ["x-plex-token", "apikey", "api_key", "token", "sid"];
 
-export function redactUrl(url: string): string {
+/**
+ * `extraParams` covers the "custom" service kind: its query-string auth param
+ * name (auth.queryParam) and login-capture inject name (login.injectName,
+ * when injectAs is "query") are user-defined per instance, so they can't live
+ * in the fixed REDACT_PARAMS list above — a queryParam literally named "key"
+ * or "access_token" would otherwise land in clear in HttpError.message, which
+ * flows into checkHealth's `message` and from there into a UI toast.
+ */
+export function redactUrl(url: string, extraParams: string[] = []): string {
   try {
     const u = new URL(url);
+    const extra = extraParams.map((p) => p.toLowerCase());
     for (const key of Array.from(u.searchParams.keys())) {
-      if (REDACT_PARAMS.includes(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (REDACT_PARAMS.includes(lower) || extra.includes(lower)) {
         u.searchParams.set(key, "***");
       }
     }
@@ -177,8 +193,12 @@ export class HttpError extends Error {
     public statusText: string,
     public url: string,
     body?: unknown,
+    // See redactUrl's `extraParams` doc — passed for a "custom" instance's
+    // own query-string auth/capture param name(s), which the fixed
+    // REDACT_PARAMS list can't know about ahead of time.
+    extraRedactParams?: string[],
   ) {
-    const safe = redactUrl(url);
+    const safe = redactUrl(url, extraRedactParams);
     super(`HTTP ${status} ${statusText} — ${safe}`);
     this.url = safe;
     this.name = "HttpError";
@@ -201,8 +221,14 @@ export const AUTH_PROXY_MESSAGE =
   "the service settings.";
 
 export class AuthProxyResponseError extends HttpError {
-  constructor(status: number, statusText: string, url: string, body?: unknown) {
-    super(status, statusText, url, body);
+  constructor(
+    status: number,
+    statusText: string,
+    url: string,
+    body?: unknown,
+    extraRedactParams?: string[],
+  ) {
+    super(status, statusText, url, body, extraRedactParams);
     this.name = "AuthProxyResponseError";
     // Override the bare "HTTP 200 …" message HttpError builds with an actionable
     // one. ErrorBanner/ErrorBoundary fall back to error.message (an HTML body is
@@ -427,6 +453,47 @@ export async function serviceRequest<T>(
     // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
     // (store/config-store.ts) — so a stale apiKey left on an instance id would
     // be sent to Pi-hole on every request forever.
+  } else if (serviceId === "custom") {
+    // Auth comes entirely from the per-instance `custom` definition
+    // (lib/custom-service.ts) — never send secrets.apiKey here. This branch
+    // exists for the same reason the pihole one above does:
+    // `secretsShapeFor("custom")` resolves to "apiKey" (lib/service-
+    // catalog.ts) so the service editor's generic apiKey field CAN write
+    // into instanceSecrets for a custom instance (e.g. left over from
+    // switching a service's kind) — without this branch that stale key would
+    // fall to the X-Api-Key else below on every request, silently
+    // overwriting a definition header literally named X-Api-Key and leaking
+    // the store secret alongside the definition's own auth.
+    //
+    // services/custom-api.ts already builds this same header/param set (so
+    // its request options are independently assertable in tests against a
+    // mocked serviceRequest), but re-applying it here — AFTER the custom-
+    // header merge above — is what makes definition auth win a name
+    // collision with a user's global/instance custom header, the same
+    // guarantee every other kind gets from its branch running at this point.
+    // The login-capture header/param (services/custom-api.ts's own cache) is
+    // NOT re-applied here — only the primary def.auth is.
+    const cAuth = inst.custom?.auth;
+    if (cAuth && cAuth.mode !== "none") {
+      switch (cAuth.mode) {
+        case "header":
+          if (cAuth.headerName && cAuth.token) headers.set(cAuth.headerName, cAuth.token);
+          break;
+        case "query":
+          if (cAuth.queryParam && cAuth.token) {
+            authParams = { ...(authParams ?? {}), [cAuth.queryParam]: cAuth.token };
+          }
+          break;
+        case "basic": {
+          const basic = basicAuthHeader(cAuth.username, cAuth.password);
+          if (basic) headers.set("Authorization", basic);
+          break;
+        }
+        case "bearer":
+          if (cAuth.token) headers.set("Authorization", `Bearer ${cAuth.token}`);
+          break;
+      }
+    }
   } else {
     // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
     // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
@@ -454,6 +521,19 @@ export async function serviceRequest<T>(
           : params;
 
   const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
+
+  // A "custom" instance's query-string auth param (auth.queryParam) and any
+  // query-injected login capture (login.injectName when injectAs is "query")
+  // are user-defined per instance, so redactUrl's fixed REDACT_PARAMS list
+  // can't mask them — pass them through explicitly for every kind else this
+  // stays an empty (no-op) array.
+  const customExtraRedactParams: string[] =
+    serviceId === "custom"
+      ? [
+          inst.custom?.auth?.mode === "query" ? inst.custom.auth.queryParam : undefined,
+          inst.custom?.login?.injectAs === "query" ? inst.custom.login.injectName : undefined,
+        ].filter((v): v is string => Boolean(v))
+      : [];
 
   // FormData bodies (SAB addfile upload) must keep fetch's own multipart
   // Content-Type — the boundary parameter is generated per-request and a
@@ -506,9 +586,16 @@ export async function serviceRequest<T>(
           response.statusText,
           url,
           errorBody,
+          customExtraRedactParams,
         );
       }
-      throw new HttpError(response.status, response.statusText, url, errorBody);
+      throw new HttpError(
+        response.status,
+        response.statusText,
+        url,
+        errorBody,
+        customExtraRedactParams,
+      );
     }
 
     if (contentType?.includes("application/json")) {
@@ -528,6 +615,7 @@ export async function serviceRequest<T>(
         response.statusText,
         url,
         body,
+        customExtraRedactParams,
       );
     }
     return body as unknown as T;
@@ -946,6 +1034,129 @@ class ProbeVerdict extends Error {
     this.name = "ProbeVerdict";
     this.result = result;
   }
+}
+
+// Cookie-attribute names (RFC 6265bis + the still-widely-used non-standard
+// ones), lowercase — a piece of a Set-Cookie header whose name matches one of
+// these is an attribute (Path=/, SameSite=Lax, ...), never a cookie itself,
+// so matchCaptureCookie's candidate scan below skips it. This is what makes
+// `expires=Tue, 08-Sep-2026 18:21:35 GMT` harmless even though it contains a
+// comma and looks like its own `key=value` pair.
+const COOKIE_ATTRIBUTE_NAMES = new Set([
+  "expires",
+  "path",
+  "domain",
+  "max-age",
+  "samesite",
+  "secure",
+  "httponly",
+  "priority",
+  "partitioned",
+]);
+
+/**
+ * Case-sensitive glob match: `*` matches any run of characters (including
+ * zero) in `text`; every other character of `pattern` must match literally.
+ * No `*` in `pattern` degrades to a plain exact-equality check, same as
+ * before wildcards existed.
+ *
+ * Deliberately NOT implemented as a compiled RegExp — `pattern` is
+ * user-typed and `text` (a cookie name candidate, itself parsed out of a
+ * server-controlled Set-Cookie header) is untrusted, and a RegExp built from
+ * either is a ReDoS vector (a pattern like `*a*a*a*a*a*` against a long run
+ * of `a`s made the previous `.*?`-per-star version take >10s). This is the
+ * standard iterative two-pointer wildcard matcher: one pass over `text` with
+ * backtracking bounded by `pattern.length * text.length` (re-trying a `*`
+ * one character later, never re-scanning from the start), so it can't blow
+ * up the way regex backtracking can.
+ */
+function globMatch(pattern: string, text: string): boolean {
+  let pIdx = 0;
+  let tIdx = 0;
+  let starIdx = -1;
+  let starMatchIdx = 0;
+
+  while (tIdx < text.length) {
+    if (pIdx < pattern.length && pattern[pIdx] === "*") {
+      starIdx = pIdx;
+      starMatchIdx = tIdx;
+      pIdx++;
+    } else if (pIdx < pattern.length && pattern[pIdx] === text[tIdx]) {
+      pIdx++;
+      tIdx++;
+    } else if (starIdx !== -1) {
+      pIdx = starIdx + 1;
+      starMatchIdx++;
+      tIdx = starMatchIdx;
+    } else {
+      return false;
+    }
+  }
+  while (pIdx < pattern.length && pattern[pIdx] === "*") pIdx++;
+  return pIdx === pattern.length;
+}
+
+/**
+ * Split a raw Set-Cookie header value into (name, value) candidates. The
+ * fetch polyfill this app runs under joins MULTIPLE Set-Cookie response
+ * headers with `, ` into one string (there is no way to read them
+ * separately from JS), so a header full of both `;`-separated attributes and
+ * `,`-joined cookies is split on EITHER — `other=1; Path=/, QBT_SID_8080=abc`
+ * is 3 pieces: "other=1", "Path=/", "QBT_SID_8080=abc". Each piece is
+ * trimmed, then split on its first `=`; pieces with no `=`, a name
+ * containing whitespace, or a name that's a cookie attribute
+ * (COOKIE_ATTRIBUTE_NAMES) are skipped — the rest are real cookie
+ * candidates, in header order (so "first match wins" naturally falls out of
+ * scanning this list in order).
+ */
+function parseCookieCandidates(setCookie: string): Array<{ name: string; value: string }> {
+  const candidates: Array<{ name: string; value: string }> = [];
+  for (const rawPiece of setCookie.split(/[;,]/)) {
+    const piece = rawPiece.trim();
+    const eq = piece.indexOf("=");
+    if (eq === -1) continue;
+    const name = piece.slice(0, eq).trim();
+    if (name.length === 0 || /\s/.test(name)) continue;
+    if (COOKIE_ATTRIBUTE_NAMES.has(name.toLowerCase())) continue;
+    candidates.push({ name, value: piece.slice(eq + 1) });
+  }
+  return candidates;
+}
+
+/**
+ * Match `login.captureCookie` (glob — see globMatch) against a raw
+ * Set-Cookie header value, returning the ACTUAL name the server used
+ * alongside the captured value — first match wins (header order, via
+ * parseCookieCandidates). Null when nothing matches.
+ */
+function matchCaptureCookie(
+  setCookie: string,
+  pattern: string,
+): { name: string; value: string } | null {
+  for (const candidate of parseCookieCandidates(setCookie)) {
+    if (globMatch(pattern, candidate.name)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Infer a Content-Type for a "custom" health probe body — the definition's
+ * `health` block carries no `contentType` field (only `login` does, and that
+ * keeps using its own explicit value unchanged). Live-proof: qBittorrent
+ * v5.2.3's `POST /api/v2/torrents/stop` with body `hashes=all` returns 400
+ * sent as `application/json` and 200 as `application/x-www-form-urlencoded`
+ * — most hand-authored health bodies are form-encoded `key=value` pairs, not
+ * JSON, so defaulting to JSON (the old behavior) broke exactly this shape. A
+ * trimmed body starting with `{` or `[` is JSON; anything else defaults to
+ * form-urlencoded. No body → no inferred type (undefined), same as before.
+ * Mirrors services/custom-api.ts's inferContentType.
+ */
+function inferContentType(body: string | undefined): string | undefined {
+  if (!body) return undefined;
+  const trimmed = body.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[")
+    ? "application/json"
+    : "application/x-www-form-urlencoded";
 }
 
 async function runConnectionProbe(
@@ -1866,6 +2077,204 @@ async function runConnectionProbe(
           message: message || "Pi-hole authentication failed",
         };
       }
+    }
+
+    case "custom": {
+      // Every part of this request — auth, an optional login exchange, and
+      // the health probe itself — is defined by the per-instance `custom`
+      // block (lib/custom-service.ts) rather than any fixed shape this
+      // switch could special-case, so it's read straight from the saved
+      // instance. There is no unsaved-form path yet (the dedicated editor is
+      // a sibling item), so testing before saving reports unreachable rather
+      // than guessing at a shape services/custom-api.ts's real (non-test)
+      // requests don't need to.
+      if (!input.instanceId) {
+        return {
+          kind: "unreachable",
+          message: "Save the service before testing its connection",
+        };
+      }
+      const def = useConfigStore.getState().getInstance("custom", input.instanceId)?.custom;
+      if (!def) {
+        return { kind: "unreachable", message: "No custom service definition configured" };
+      }
+      const health = def.health;
+      if (!health) {
+        return { kind: "unreachable", message: "No health check configured" };
+      }
+
+      // Primary auth (def.auth): none/header/query/basic/bearer.
+      const authHeaders: Record<string, string> = {};
+      const authParams: Record<string, string> = {};
+      const custAuth = def.auth;
+      if (custAuth && custAuth.mode !== "none") {
+        switch (custAuth.mode) {
+          case "header":
+            if (custAuth.headerName && custAuth.token) authHeaders[custAuth.headerName] = custAuth.token;
+            break;
+          case "query":
+            if (custAuth.queryParam && custAuth.token) authParams[custAuth.queryParam] = custAuth.token;
+            break;
+          case "basic": {
+            const basic = basicAuthHeader(custAuth.username, custAuth.password);
+            if (basic) authHeaders["Authorization"] = basic;
+            break;
+          }
+          case "bearer":
+            if (custAuth.token) authHeaders["Authorization"] = `Bearer ${custAuth.token}`;
+            break;
+        }
+      }
+
+      // Optional login exchange: capture from a JSON body path first, then a
+      // Set-Cookie header, then inject the captured value per injectAs — the
+      // same rules services/custom-api.ts applies for real requests.
+      // {{username}}/{{password}} in the login body come from auth.username/
+      // auth.password regardless of auth.mode (a "none" primary mode can
+      // still pair with a login step that posts credentials in its body).
+      const captureHeaders: Record<string, string> = {};
+      const captureParams: Record<string, string> = {};
+      if (def.login) {
+        const login = def.login;
+        const loginUrl = buildUrl(baseUrl, defaults.apiBasePath, login.path);
+        const loginHeaders = makeHeaders(authHeaders);
+        if (login.contentType) loginHeaders.set("Content-Type", login.contentType);
+        const username = custAuth?.username ?? "";
+        const password = custAuth?.password ?? "";
+        const loginBody = login.body
+          ?.replace(/\{\{username\}\}/g, username)
+          .replace(/\{\{password\}\}/g, password);
+
+        let loginRes: Response;
+        try {
+          loginRes = await fetch(loginUrl, {
+            method: login.method,
+            headers: loginHeaders,
+            body: loginBody,
+            signal,
+          });
+        } catch {
+          return { kind: "unreachable", message: "Login request failed" };
+        }
+
+        let captured: string | null = null;
+        // Only set when `captured` came from matching captureCookie (possibly
+        // through a `*` wildcard) — the REAL cookie name the server used,
+        // which the "cookie" injection below falls back to when injectName
+        // is empty, never the (possibly wildcarded) pattern itself.
+        let capturedCookieName: string | undefined;
+        if (login.captureJSONPath) {
+          try {
+            const json = await loginRes.clone().json();
+            const value = getPath(json, login.captureJSONPath);
+            if (value !== undefined && value !== null) captured = String(value);
+          } catch {
+            // Not JSON, or the path didn't resolve — fall through.
+          }
+        }
+        if (!captured && login.captureCookie) {
+          const setCookie = loginRes.headers.get("set-cookie");
+          if (setCookie) {
+            const found = matchCaptureCookie(setCookie, login.captureCookie);
+            if (found) {
+              captured = found.value;
+              capturedCookieName = found.name;
+            }
+          }
+        }
+
+        if (!loginRes.ok && !captured) {
+          if (loginRes.status === 401 || loginRes.status === 403) {
+            return {
+              kind: "auth_failed",
+              message: "Login rejected — check the configured credentials",
+            };
+          }
+          return { kind: "unreachable", message: `Login failed (HTTP ${loginRes.status})` };
+        }
+
+        if (captured) {
+          const name = login.injectName;
+          switch (login.injectAs) {
+            case "header":
+              if (name) captureHeaders[name] = captured;
+              break;
+            case "query":
+              if (name) captureParams[name] = captured;
+              break;
+            case "cookie":
+              captureHeaders["Cookie"] = `${name || capturedCookieName || "session"}=${captured}`;
+              break;
+            case "bearer":
+              captureHeaders["Authorization"] = `Bearer ${captured}`;
+              break;
+          }
+        }
+      }
+
+      const healthParams = { ...authParams, ...captureParams };
+      const healthUrl = buildUrl(
+        baseUrl,
+        defaults.apiBasePath,
+        health.path,
+        Object.keys(healthParams).length > 0 ? healthParams : undefined,
+      );
+      const healthHeaders = makeHeaders({ ...authHeaders, ...captureHeaders });
+      const healthContentType = inferContentType(health.body);
+      if (healthContentType) healthHeaders.set("Content-Type", healthContentType);
+
+      let res: Response;
+      try {
+        res = await fetch(healthUrl, {
+          method: health.method,
+          headers: healthHeaders,
+          body: health.body,
+          signal,
+        });
+      } catch {
+        return { kind: "unreachable", message: "Network error — check URL and connectivity" };
+      }
+
+      if (res.status === 401 || res.status === 403)
+        return { kind: "auth_failed", message: "Invalid credentials" };
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (!res.ok)
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        body = undefined;
+      }
+
+      const okValues = (health.okValues ?? []).map((v) => v.toLowerCase());
+      const warnValues = (health.warnValues ?? []).map((v) => v.toLowerCase());
+      if (health.statusPath) {
+        const statusValue = getPath(body, health.statusPath);
+        const statusStr =
+          statusValue === undefined || statusValue === null
+            ? undefined
+            : String(statusValue).toLowerCase();
+        const hasConfiguredValues = okValues.length > 0 || warnValues.length > 0;
+        // Same rule services/custom-api.ts's checkHealth applies: with no
+        // ok/warn values configured, fall back to plain reachability — any
+        // non-empty status value reads as healthy, but a missing, null, or
+        // empty-string one does not.
+        const unhealthy = hasConfiguredValues
+          ? statusStr === undefined ||
+            (!okValues.includes(statusStr) && !warnValues.includes(statusStr))
+          : statusStr === undefined || statusStr === "";
+        if (unhealthy) {
+          return {
+            kind: "unreachable",
+            message: "Reached the server, but its reported status is not healthy",
+          };
+        }
+      }
+
+      return { kind: "ok" };
     }
 
     default: {

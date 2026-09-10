@@ -33,7 +33,7 @@ export type ServiceCategory =
  * instead. Collapsing the two sets breaks auth for both of those clients.
  * lib/service-catalog.test.ts locks the inequality.
  */
-export type ServiceAuthShape = "apiKey" | "userPass" | "passwordOnly";
+export type ServiceAuthShape = "apiKey" | "userPass" | "passwordOnly" | "custom";
 
 export interface ServiceCatalogEntry {
   category: ServiceCategory;
@@ -225,6 +225,19 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
   },
 
   // --- Monitoring ---
+  // The user-described arbitrary JSON API (lib/custom-service.ts). Its real
+  // credential form is whatever `custom.auth.mode` says (none/header/query/
+  // basic/bearer), configured per-instance rather than through the generic
+  // ServiceSecrets apiKey/userPass fields the other kinds share — a sibling
+  // item owns that dedicated editor. `authShape: "custom"` exists so the
+  // browse/search UI and secretsShapeFor have somewhere to route it; it
+  // deliberately does not offer a manual apiKey/userPass field here.
+  custom: {
+    category: "monitoring",
+    tagline: "Any JSON API",
+    keywords: ["generic", "custom", "api"],
+    authShape: "custom",
+  },
   tautulli: {
     category: "monitoring",
     tagline: "Plex activity and stats",
@@ -319,11 +332,16 @@ export function servicesInCategory(category: ServiceCategory): ServiceId[] {
  * This is the ONLY place that mapping lives. The editor uses it for the form
  * branch, the initial-configured snapshot, the dirty check and the secrets
  * write — a second inline copy is how a credential silently stops saving.
+ *
+ * `custom` doesn't store through ServiceSecrets at all (its credentials live
+ * inside the per-instance `custom.auth` block, see lib/custom-service.ts), so
+ * it falls through to the "apiKey" default here — same as any future shape —
+ * rather than being lumped in with the userPass services.
  */
 export function secretsShapeFor(
   shape: ServiceAuthShape,
 ): "userPass" | "apiKey" {
-  return shape === "apiKey" ? "apiKey" : "userPass";
+  return shape === "userPass" || shape === "passwordOnly" ? "userPass" : "apiKey";
 }
 
 /**

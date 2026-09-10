@@ -27,6 +27,7 @@ export const SERVICE_IDS = [
   "autobrr",
   "cleanuparr",
   "pihole",
+  "custom",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -251,6 +252,16 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/api",
     pingPath: "/info/login",
   },
+  // A user-described arbitrary JSON API (see lib/custom-service.ts for the
+  // definition schema). There is no fixed port or path convention to default
+  // to — every request path, including the health probe, comes from the
+  // per-instance `custom` block, so apiBasePath/pingPath are both empty.
+  custom: {
+    name: "Custom service",
+    defaultPort: 0,
+    apiBasePath: "",
+    pingPath: "",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -312,6 +323,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "cleanuparr-stats",
   "pihole-status",
   "pihole-top-blocked",
+  "custom-stats",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

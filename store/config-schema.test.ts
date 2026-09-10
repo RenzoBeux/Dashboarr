@@ -398,6 +398,135 @@ describe("validateExportPayload — service secrets", () => {
   });
 });
 
+// v52 round-2 fix: coerceServiceInstance built an explicit field allowlist
+// and never copied `custom` through at all, so an export → import round-trip
+// of a v52 config silently dropped a custom instance's definition. These
+// tests pin the fix: `custom` is copied when it validates, and dropped (not
+// a whole-instance rejection) when it doesn't — matching the drop-invalid
+// style used for the other optional fields above (defaultQualityProfileId,
+// tagAddedTorrents, etc).
+describe("validateExportPayload — custom service definition (v52 round-2 fix)", () => {
+  const fullCustomDef = {
+    auth: { mode: "basic", username: "u", password: "p" },
+    login: {
+      method: "POST",
+      path: "/login",
+      injectAs: "cookie",
+      body: "user=u&pass=p",
+    },
+    health: {
+      method: "GET",
+      path: "/health",
+      statusPath: "status",
+      okValues: ["ok"],
+    },
+    stats: [{ label: "CPU", path: "cpu.percent", format: "percent" }],
+    actions: [
+      { id: "restart", label: "Restart", method: "POST", path: "/restart", confirm: true },
+    ],
+    timeoutSeconds: 10,
+  };
+
+  it("round-trips a fully-populated custom definition", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        custom: [validInstance({ id: "custom-uuid", name: "My API", custom: fullCustomDef })],
+      },
+    });
+    expect(result.services.custom).toHaveLength(1);
+    expect(result.services.custom[0].custom).toEqual(fullCustomDef);
+  });
+
+  it("drops an invalid custom block without rejecting the instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        custom: [
+          validInstance({
+            id: "custom-uuid",
+            name: "My API",
+            custom: { auth: { mode: "not-a-real-mode" } },
+          }),
+        ],
+      },
+    });
+    expect(result.services.custom).toHaveLength(1);
+    expect(result.services.custom[0].custom).toBeUndefined();
+  });
+
+  it("omits custom entirely when the instance never had one", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { custom: [validInstance({ id: "custom-uuid" })] },
+    });
+    expect(result.services.custom[0].custom).toBeUndefined();
+  });
+});
+
+// v52 round-2 fix: a custom instance's auth.password/auth.token/login.body
+// are credential-shaped exactly like apiKey/username/password, so they get
+// the same per-instance secrets-record treatment (and the same length caps,
+// aside from customLoginBody which can be a full request body).
+describe("validateExportPayload — custom service secrets (v52 round-2 fix)", () => {
+  const withInstance = (s: Record<string, unknown>) => ({
+    ...baseValid(),
+    services: { custom: [validInstance({ id: TEST_INSTANCE_ID })] },
+    secrets: { [TEST_INSTANCE_ID]: s },
+  });
+
+  it("round-trips customPassword, customToken and customLoginBody", () => {
+    const result = validateExportPayload(
+      withInstance({
+        customPassword: "pw",
+        customToken: "tok",
+        customLoginBody: "user=u&pass=pw",
+      }),
+    );
+    expect(result.secrets[TEST_INSTANCE_ID]).toEqual({
+      customPassword: "pw",
+      customToken: "tok",
+      customLoginBody: "user=u&pass=pw",
+    });
+  });
+
+  it("rejects a customPassword longer than 4096 chars", () => {
+    expect(() =>
+      validateExportPayload(withInstance({ customPassword: "x".repeat(4097) })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
+  });
+
+  it("rejects a customToken longer than 4096 chars", () => {
+    expect(() =>
+      validateExportPayload(withInstance({ customToken: "x".repeat(4097) })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
+  });
+
+  it("accepts a customLoginBody well beyond the password/token cap", () => {
+    const result = validateExportPayload(
+      withInstance({ customLoginBody: "x".repeat(20000) }),
+    );
+    expect(result.secrets[TEST_INSTANCE_ID]?.customLoginBody).toHaveLength(20000);
+  });
+
+  it("rejects a customLoginBody longer than 65536 chars", () => {
+    expect(() =>
+      validateExportPayload(withInstance({ customLoginBody: "x".repeat(65537) })),
+    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
+  });
+
+  it("drops null/undefined customPassword/customToken/customLoginBody", () => {
+    const result = validateExportPayload(
+      withInstance({
+        customPassword: null,
+        customToken: undefined,
+        customLoginBody: null,
+      } as any),
+    );
+    expect(result.secrets[TEST_INSTANCE_ID]).toEqual({});
+  });
+});
+
 describe("validateExportPayload — dashboard.activeInstance (v22)", () => {
   it("omits dashboard.activeInstance when not provided", () => {
     const result = validateExportPayload(baseValid());

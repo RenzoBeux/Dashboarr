@@ -34,6 +34,10 @@ interface FakeInstance {
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+  // Only populated for a "custom" kind instance — the per-instance
+  // request/auth/health/stats/actions definition (lib/custom-service.ts).
+  // Loosely typed here since these tests only care about the `auth` shape.
+  custom?: unknown;
 }
 
 interface FakeSecrets {
@@ -277,6 +281,440 @@ describe("serviceRequest — custom header injection", () => {
     await serviceRequest("glances", "/cpu");
     const auth = getSentHeaders().get("Authorization");
     expect(auth?.startsWith("Basic ")).toBe(true);
+  });
+
+  // The "custom" kind stores its auth on instance.custom (lib/custom-
+  // service.ts), not the generic ServiceSecrets apiKey/username/password
+  // every other kind shares — but secretsShapeFor("custom") still resolves
+  // to "apiKey" (lib/service-catalog.ts) so the editor's generic apiKey
+  // field, or a leftover value from switching a service's kind, CAN write
+  // into instanceSecrets for a custom instance. Before the guard branch, that
+  // stale secrets.apiKey fell to the default X-Api-Key else and silently
+  // overwrote a definition header of the same name.
+  it("never sends secrets.apiKey for 'custom' and preserves a definition header of the same name", async () => {
+    mockStateRef.current.serviceInstances.custom = [
+      {
+        id: "custom-uuid",
+        enabled: true,
+        name: "custom",
+        localUrl: "http://custom.local",
+        remoteUrl: "",
+        useRemote: false,
+        custom: { auth: { mode: "header", headerName: "X-Api-Key", token: "definition-token" } },
+      },
+    ];
+    mockStateRef.current.instanceSecrets["custom-uuid"] = { apiKey: "leaked-secret" };
+    mockStateRef.current.activeInstance.custom = "custom-uuid";
+    mockStateRef.current.secrets.custom = mockStateRef.current.instanceSecrets["custom-uuid"];
+
+    await serviceRequest("custom", "/status");
+
+    const sent = getSentHeaders().get("X-Api-Key");
+    expect(sent).toBe("definition-token");
+    expect(sent).not.toBe("leaked-secret");
+  });
+});
+
+describe("serviceRequest — 'custom' query-auth param redaction", () => {
+  let originalFetch: typeof global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // A custom definition's queryParam (or a query-injected login capture
+  // name) is user-defined per instance, so redactUrl's fixed REDACT_PARAMS
+  // list can't know about it ahead of time — without threading it through,
+  // a param literally named "key" or "access_token" lands in clear in
+  // HttpError.message, which flows into checkHealth's `message` and from
+  // there into a UI toast.
+  it("masks a custom query-auth param in a thrown HttpError's message", async () => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ error: "bad key" }),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    }) as any;
+
+    mockStateRef.current = makeState();
+    mockStateRef.current.serviceInstances.custom = [
+      {
+        id: "custom-uuid",
+        enabled: true,
+        name: "custom",
+        localUrl: "http://custom.local",
+        remoteUrl: "",
+        useRemote: false,
+        custom: { auth: { mode: "query", queryParam: "key", token: "SECRET" } },
+      },
+    ];
+    mockStateRef.current.instanceSecrets["custom-uuid"] = {};
+    mockStateRef.current.activeInstance.custom = "custom-uuid";
+    mockStateRef.current.secrets.custom = mockStateRef.current.instanceSecrets["custom-uuid"];
+
+    let message = "";
+    try {
+      await serviceRequest("custom", "/status");
+      throw new Error("expected serviceRequest to reject");
+    } catch (err) {
+      message = err instanceof HttpError ? err.message : String(err);
+    }
+
+    expect(message).not.toContain("SECRET");
+    expect(message).toContain("***");
+  });
+});
+
+// Live-proof: qBittorrent 5.2.3 sets its session cookie as `QBT_SID_8080`
+// (port-suffixed), so a `captureCookie: "SID"` exact match never fires.
+describe("testServiceConnection — 'custom' captureCookie wildcard (qBittorrent 5.2.3 live-proof)", () => {
+  let originalFetch: typeof global.fetch;
+
+  function jsonResponse(): unknown {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({}),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function loginResponse(setCookie: string | null): unknown {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: (n: string) => (n.toLowerCase() === "set-cookie" ? setCookie : null) },
+      json: async () => ({}),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function setCustomInstance(captureCookie: string | undefined) {
+    mockStateRef.current = makeState();
+    mockStateRef.current.serviceInstances.custom = [
+      {
+        id: "custom-uuid",
+        enabled: true,
+        name: "custom",
+        localUrl: "http://qbit.local:8080",
+        remoteUrl: "",
+        useRemote: false,
+        custom: {
+          login: {
+            method: "POST",
+            path: "/api/v2/auth/login",
+            captureCookie,
+            injectAs: "cookie",
+          },
+          health: { method: "GET", path: "/api/v2/app/version" },
+        },
+      },
+    ];
+  }
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("captures the real cookie name through a * wildcard and carries it on the health request", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("*SID*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("QBT_SID_8080=abc; HttpOnly"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    const result = await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    expect(result.kind).toBe("ok");
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("QBT_SID_8080=abc");
+  });
+
+  it("leaves an exact (non-wildcard) captureCookie name's behavior unchanged", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("SID");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("SID=abc123; HttpOnly"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("SID=abc123");
+  });
+
+  it("sends no cookie when the pattern matches nothing in Set-Cookie", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("*NOPE*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("QBT_SID_8080=abc; HttpOnly"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.has("Cookie")).toBe(false);
+  });
+
+  it("treats special regex characters in the pattern literally, never as a regex", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("SID.ID");
+    const fetchSpy = jest
+      .fn()
+      // As a raw regex /SID.ID/ (`.` = any char) this WOULD match — must not
+      // when the pattern is escaped and treated literally.
+      .mockResolvedValueOnce(loginResponse("SIDXID=wrong; HttpOnly"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.has("Cookie")).toBe(false);
+  });
+
+  // The fetch polyfill this app runs under joins MULTIPLE Set-Cookie response
+  // headers with ", " into one string — there is no way to read them
+  // separately from JS. A pattern must still find the right cookie's name
+  // among the comma-joined pieces.
+  it("finds the right cookie among multiple comma-joined Set-Cookie headers", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("*SID*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("other=1; Path=/, QBT_SID_8080=abc; HttpOnly"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("QBT_SID_8080=abc");
+  });
+
+  it("matches the right cookie among comma-joined headers with a prefix wildcard", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("QBT_SID_*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("csrf=t; Path=/, QBT_SID_8080=abc"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("QBT_SID_8080=abc");
+  });
+
+  it("picks the first matching cookie in header order when more than one candidate matches", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("*SID*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("SID=first; Path=/, QBT_SID_8080=second"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("SID=first");
+  });
+
+  it("matches qBittorrent's real Set-Cookie header shape (attributes, comma-bearing expires)", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("*SID*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(
+        loginResponse(
+          "QBT_SID_8080=abc; HttpOnly; SameSite=Lax; expires=Tue, 08-Sep-2026 18:21:35 GMT; path=/",
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("QBT_SID_8080=abc");
+  });
+
+  it("still matches an exact (non-wildcard) captureCookie name unchanged", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("SID");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("SID=exactvalue; Path=/"))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[1][1] as { headers: Headers };
+    expect(healthInit.headers.get("Cookie")).toBe("SID=exactvalue");
+  });
+
+  // ReDoS regression: the previous RegExp-based matcher (`.*?`-per-`*`
+  // compiled against the raw header) took >10s on node 22 for a many-star
+  // pattern against a long run of a repeated character. `pattern` is
+  // user-typed and the header is server-controlled, so both sides of the
+  // match are untrusted — this must stay linear-time with no RegExp built
+  // from either.
+  it("resolves a pathological captureCookie pattern against a long header without ReDoS", async () => {
+    originalFetch = global.fetch;
+    setCustomInstance("*a*a*a*a*a*");
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce(loginResponse("a".repeat(5000)))
+      .mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    const start = Date.now();
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(50);
+  });
+});
+
+// Live-proof: qBittorrent v5.2.3's POST /api/v2/torrents/stop with body
+// "hashes=all" returns 400 sent as application/json and 200 as
+// application/x-www-form-urlencoded — the definition's health block has no
+// contentType field, so it must be inferred from the body's own shape.
+describe("testServiceConnection — 'custom' health body content-type inference", () => {
+  let originalFetch: typeof global.fetch;
+
+  function jsonResponse(): unknown {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({}),
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    };
+  }
+
+  function setHealthOnlyInstance(body: string | undefined) {
+    mockStateRef.current = makeState();
+    mockStateRef.current.serviceInstances.custom = [
+      {
+        id: "custom-uuid",
+        enabled: true,
+        name: "custom",
+        localUrl: "http://qbit.local:8080",
+        remoteUrl: "",
+        useRemote: false,
+        custom: {
+          health: { method: "POST", path: "/api/v2/torrents/stop", body },
+        },
+      },
+    ];
+  }
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("infers form-urlencoded for a non-JSON health body (hashes=all)", async () => {
+    originalFetch = global.fetch;
+    setHealthOnlyInstance("hashes=all");
+    const fetchSpy = jest.fn().mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[0][1] as { headers: Headers };
+    expect(healthInit.headers.get("Content-Type")).toBe("application/x-www-form-urlencoded");
+  });
+
+  it("infers application/json for a JSON-shaped health body", async () => {
+    originalFetch = global.fetch;
+    setHealthOnlyInstance('{"a":1}');
+    const fetchSpy = jest.fn().mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[0][1] as { headers: Headers };
+    expect(healthInit.headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("sends no Content-Type when the health check has no body", async () => {
+    originalFetch = global.fetch;
+    setHealthOnlyInstance(undefined);
+    const fetchSpy = jest.fn().mockResolvedValueOnce(jsonResponse());
+    global.fetch = fetchSpy as any;
+
+    await testServiceConnection("custom", {
+      url: "http://qbit.local:8080",
+      instanceId: "custom-uuid",
+    });
+
+    const healthInit = fetchSpy.mock.calls[0][1] as { headers: Headers };
+    expect(healthInit.headers.has("Content-Type")).toBe(false);
   });
 });
 

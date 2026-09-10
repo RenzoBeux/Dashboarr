@@ -1,0 +1,11 @@
+{
+  "auth": {
+    "mode": "bearer"
+  },
+  "health": {
+    "method": "GET",
+    "path": "/api/",
+    "statusPath": "message",
+    "okValues": ["API running."]
+  }
+}
