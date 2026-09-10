@@ -3120,6 +3120,14 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       for (const release of seerrReleases) release();
     }
 
+    // Backups preserve instance UUIDs, so every query keyed by instance id
+    // (including ["overseerr", id, "me"], whose permissions gate the Seerr
+    // UI) would otherwise keep serving the PRE-import account for its
+    // staleTime. Clearing after the barrier lifts means the refetches that
+    // follow start from the imported configuration. Same call demo-mode
+    // toggling makes, for the same reason: nothing cached predates this.
+    queryClient.clear();
+
     return true;
   },
 }));
