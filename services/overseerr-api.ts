@@ -21,6 +21,7 @@ import {
   seerrSessionGeneration,
   seerrSessionIds,
   setSeerrSession,
+  suspendSeerrLogins,
 } from "@/lib/seerr-session";
 import { seerrHostOf } from "@/lib/seerr-auth";
 import type {
@@ -195,27 +196,35 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
  *     the server never received (unreachable host, app killed mid-save,
  *     restart before the change took), because the jar remembers what this
  *     process forgets.
+ * The whole span runs behind suspendSeerrLogins, so no NEW login (health
+ * poll, a refetch) can start between the drain and the stale mark and escape
+ * both.
  */
 export async function seerrClearSession(instanceId?: string): Promise<void> {
   const store = useConfigStore.getState();
   const ids = instanceId ? [instanceId] : seerrSessionIds();
   for (const id of ids) {
-    const inst = store.getInstance("overseerr", id);
-    const urlsByHost = new Map<string, string>();
-    for (const url of [inst?.localUrl ?? "", inst?.remoteUrl ?? ""]) {
-      const host = seerrHostOf(url);
-      if (host && !urlsByHost.has(host)) urlsByHost.set(host, url);
-    }
+    const release = suspendSeerrLogins(id);
+    try {
+      const inst = store.getInstance("overseerr", id);
+      const urlsByHost = new Map<string, string>();
+      for (const url of [inst?.localUrl ?? "", inst?.remoteUrl ?? ""]) {
+        const host = seerrHostOf(url);
+        if (host && !urlsByHost.has(host)) urlsByHost.set(host, url);
+      }
 
-    dropSeerrSession(id);
-    await drainSeerrLogins(id);
-    if (!store.demoMode && inst) {
-      const headers = store.getMergedHeaders("overseerr", id);
-      for (const url of urlsByHost.values()) await seerrLogout(url, headers);
+      dropSeerrSession(id);
+      await drainSeerrLogins(id);
+      if (!store.demoMode && inst) {
+        const headers = store.getMergedHeaders("overseerr", id);
+        for (const url of urlsByHost.values()) await seerrLogout(url, headers);
+      }
+      dropSeerrSession(id);
+      await drainSeerrLogins(id);
+      if (urlsByHost.size > 0) store.markSeerrHostsStale(id, [...urlsByHost.keys()]);
+    } finally {
+      release();
     }
-    dropSeerrSession(id);
-    await drainSeerrLogins(id);
-    if (urlsByHost.size > 0) store.markSeerrHostsStale(id, [...urlsByHost.keys()]);
   }
 }
 

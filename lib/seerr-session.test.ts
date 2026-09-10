@@ -11,7 +11,10 @@ import {
   seerrLoginInFlight,
   seerrSessionGeneration,
   seerrSessionIds,
+  seerrLoginsSuspended,
   setSeerrSession,
+  suspendSeerrLogins,
+  SeerrLoginSuspendedError,
 } from "@/lib/seerr-session";
 
 /**
@@ -262,5 +265,49 @@ describe("bookkeeping", () => {
     expect(seerrSessionIds()).toEqual(["inst-2"]);
     expect(getSeerrSessionMe(ID)).toBeNull();
     expect(isSeerrSessionEstablished(ID, WAN)).toBe(false);
+  });
+});
+
+describe("suspendSeerrLogins", () => {
+  // Draining only covers what was already on the wire; without the barrier
+  // the health poll can start a brand-new old-credential login mid-change.
+  it("rejects new logins while suspended and allows them after release", async () => {
+    const release = suspendSeerrLogins(ID);
+    expect(seerrLoginsSuspended(ID)).toBe(true);
+    const fn = jest.fn();
+    await expect(dedupedSeerrLogin(ID, LAN, fn)).rejects.toBeInstanceOf(SeerrLoginSuspendedError);
+    expect(fn).not.toHaveBeenCalled();
+
+    release();
+    release(); // idempotent
+    expect(seerrLoginsSuspended(ID)).toBe(false);
+    const { fn: ok, resolve } = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, LAN, ok);
+    resolve();
+    await expect(p).resolves.toEqual(ME);
+  });
+
+  it("composes: the barrier lifts only when every suspension is released", () => {
+    const a = suspendSeerrLogins(ID);
+    const b = suspendSeerrLogins(ID);
+    a();
+    expect(seerrLoginsSuspended(ID)).toBe(true);
+    b();
+    expect(seerrLoginsSuspended(ID)).toBe(false);
+  });
+
+  it("does not block a cached session or other instances", async () => {
+    setSeerrSession(ID, LAN, ME);
+    const release = suspendSeerrLogins(ID);
+    // A cached account is still refused: the suspension exists precisely
+    // because the cache is about to be wrong.
+    await expect(dedupedSeerrLogin(ID, LAN, jest.fn())).rejects.toBeInstanceOf(
+      SeerrLoginSuspendedError,
+    );
+    const { fn, resolve } = deferredLogin(OTHER);
+    const p = dedupedSeerrLogin("inst-2", LAN, fn);
+    resolve();
+    await expect(p).resolves.toEqual(OTHER);
+    release();
   });
 });

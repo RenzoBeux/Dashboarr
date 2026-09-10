@@ -75,6 +75,7 @@ import {
   dedupedSeerrLogin,
   isSeerrSessionEstablished,
   resetSeerrSessions,
+  seerrLoginsSuspended,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
@@ -334,10 +335,15 @@ describe("seerrClearSession", () => {
     expect(mockedLogout).not.toHaveBeenCalled();
     expect(cleared).toBe(false);
 
+    // Meanwhile no NEW login may start: the barrier is up for the whole span.
+    expect(seerrLoginsSuspended(ID)).toBe(true);
+    await expect(dedupedSeerrLogin(ID, HOST, jest.fn())).rejects.toThrow(/paused/);
+
     finishLogin();
     await clearing;
     expect(mockedLogout).toHaveBeenCalledTimes(1);
     expect(cleared).toBe(true);
+    expect(seerrLoginsSuspended(ID)).toBe(false);
   });
 
   it("skips the network in demo mode", async () => {

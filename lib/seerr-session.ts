@@ -55,6 +55,42 @@ export interface SeerrSessionEntry {
 
 const sessions = new Map<string, SeerrSessionEntry>();
 
+/**
+ * Instances whose logins are suspended, with a depth so nested suspensions
+ * compose. While an instance is suspended, dedupedSeerrLogin REJECTS instead
+ * of starting a login. Draining alone is not enough during a credential or
+ * configuration change: it only awaits what was already on the wire, and the
+ * health poll or any query can start a new login with the OLD credentials in
+ * the middle of the change, whose Set-Cookie would then land after the new
+ * account's. The barrier closes that window; callers lift it once the new
+ * configuration and its stale-host marks are installed.
+ */
+const suspended = new Map<string, number>();
+
+export class SeerrLoginSuspendedError extends Error {
+  constructor() {
+    super("Seerr sign-in is paused while its settings change");
+    this.name = "SeerrLoginSuspendedError";
+  }
+}
+
+/** Suspend logins for an instance; returns the (idempotent) release. */
+export function suspendSeerrLogins(instanceId: string): () => void {
+  suspended.set(instanceId, (suspended.get(instanceId) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const depth = (suspended.get(instanceId) ?? 1) - 1;
+    if (depth <= 0) suspended.delete(instanceId);
+    else suspended.set(instanceId, depth);
+  };
+}
+
+export function seerrLoginsSuspended(instanceId: string): boolean {
+  return (suspended.get(instanceId) ?? 0) > 0;
+}
+
 // Printable on purpose: a raw control character in source makes git treat the
 // file as binary. Neither a UUID nor a hostname can contain "|".
 const SEP = "|";
@@ -171,6 +207,9 @@ export function dedupedSeerrLogin(
   host: string,
   loginFn: () => Promise<SeerrMe>,
 ): Promise<SeerrMe> {
+  if (seerrLoginsSuspended(instanceId)) {
+    return Promise.reject(new SeerrLoginSuspendedError());
+  }
   const entry = seerrSessionEntry(instanceId, host);
   if (entry.established && entry.me) return Promise.resolve(entry.me);
   if (entry.loginPromise) return entry.loginPromise;
@@ -213,4 +252,5 @@ export function forgetSeerrSession(instanceId: string): void {
 /** Test-only, mirroring resetPiholeSessions. */
 export function resetSeerrSessions(): void {
   sessions.clear();
+  suspended.clear();
 }

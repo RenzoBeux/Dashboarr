@@ -48,7 +48,12 @@ import {
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { clearDigestSessions } from "@/lib/http-auth";
-import { drainSeerrLogins, dropSeerrSession, forgetSeerrSession } from "@/lib/seerr-session";
+import {
+  drainSeerrLogins,
+  dropSeerrSession,
+  forgetSeerrSession,
+  suspendSeerrLogins,
+} from "@/lib/seerr-session";
 import { seerrHostOf } from "@/lib/seerr-auth";
 import {
   ALL_PICKABLE_TABS,
@@ -3059,10 +3064,21 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // pre-import login could finish after the imported account's login and
     // put the old account's cookie back in charge of the host. Same rule as
     // seerrClearSession.
+    // The drain only covers logins already on the wire. The old configuration
+    // stays live until the set() below, and during these awaits the health
+    // poll or any query could start a NEW login with the old credentials, so
+    // every involved instance is suspended (dedupedSeerrLogin rejects) until
+    // the new configuration and its stale-host marks are installed. Released
+    // in a finally so a failed import cannot leave Seerr sign-in blocked.
     const preImportSeerrIds = (get().serviceInstances.overseerr ?? []).map((i) => i.id);
+    const importedSeerrIds = (mergedInstances.overseerr ?? []).map((i) => i.id);
+    const seerrReleases = [...new Set([...preImportSeerrIds, ...importedSeerrIds])].map(
+      suspendSeerrLogins,
+    );
+    const importedSeerrStaleHosts: Record<string, string[]> = {};
+    try {
     for (const id of preImportSeerrIds) dropSeerrSession(id);
     for (const id of preImportSeerrIds) await drainSeerrLogins(id);
-    const importedSeerrStaleHosts: Record<string, string[]> = {};
     for (const inst of mergedInstances.overseerr ?? []) {
       dropSeerrSession(inst.id);
       const hosts = [...new Set([inst.localUrl, inst.remoteUrl].map(seerrHostOf).filter(Boolean))];
@@ -3100,6 +3116,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       weekStart: importedWeekStart,
       notificationSettings: importedNotificationSettings,
     });
+    } finally {
+      for (const release of seerrReleases) release();
+    }
 
     return true;
   },
