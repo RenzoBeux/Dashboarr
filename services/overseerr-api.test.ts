@@ -87,6 +87,7 @@ const mockedLogout = seerrLogout as jest.MockedFunction<typeof seerrLogout>;
 
 const ID = "inst-active";
 const HOST = "seerr.local";
+const URL = "http://seerr.local:5055";
 const ME = { id: 7, displayName: "Sarah", permissions: 32 };
 const rejection = (status: number) => new HttpError(status, "Forbidden", "http://x", undefined);
 
@@ -124,12 +125,14 @@ describe("seerrRequest — session modes (#332)", () => {
   it("establishes the session before the request", async () => {
     mockedRequest.mockResolvedValueOnce({ pending: 2 });
     await expect(getRequestCount()).resolves.toEqual({ pending: 2 });
-    expect(mockedEnsure).toHaveBeenCalledWith(ID);
+    expect(mockedEnsure).toHaveBeenCalledWith(ID, URL);
     expect(mockedEnsure.mock.invocationCallOrder[0]).toBeLessThan(
       mockedRequest.mock.invocationCallOrder[0],
     );
+    // The session and the request are pinned to the same URL.
     expect(mockedRequest).toHaveBeenCalledWith("overseerr", "/request/count", {
       instanceId: ID,
+      baseUrl: URL,
     });
   });
 
@@ -235,14 +238,17 @@ describe("getSeerrMe", () => {
   it("uses the session in a sign-in mode", async () => {
     mockState.instances = { [ID]: { authMode: "plex" } };
     await expect(getSeerrMe()).resolves.toEqual(ME);
-    expect(mockedEnsure).toHaveBeenCalledWith(ID);
+    expect(mockedEnsure).toHaveBeenCalledWith(ID, URL);
     expect(mockedRequest).not.toHaveBeenCalled();
   });
 
   it("reads /auth/me with the key in API-key mode and caches the account", async () => {
     mockedRequest.mockResolvedValueOnce({ ...ME, id: 1, permissions: 2 });
     await expect(getSeerrMe()).resolves.toEqual({ id: 1, displayName: "Sarah", permissions: 2 });
-    expect(mockedRequest).toHaveBeenCalledWith("overseerr", "/auth/me", { instanceId: ID });
+    expect(mockedRequest).toHaveBeenCalledWith("overseerr", "/auth/me", {
+      instanceId: ID,
+      baseUrl: URL,
+    });
     expect(isSeerrSessionEstablished(ID, HOST)).toBe(true);
   });
 

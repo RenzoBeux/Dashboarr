@@ -96,43 +96,48 @@ async function sessionRequest<T>(
   path: string,
   options: SeerrRequestOptions,
 ): Promise<T> {
-  const call = async (): Promise<T> => {
-    await ensureSeerrSession(id);
-    return serviceRequest<T>("overseerr", path, { ...options, instanceId: id });
-  };
-  // Sessions are per host (the jar's scope); this request goes to the active
-  // URL's host, the same one ensureSeerrSession resolves.
-  const host = seerrHostOf(useConfigStore.getState().getActiveUrl("overseerr", id));
-  // Captured before the first attempt: if the session dies underneath us,
-  // exactly one caller's generation matches and triggers the re-login.
-  const generation = seerrSessionGeneration(id, host);
-  try {
-    return await call();
-  } catch (err) {
-    if (
-      !(err instanceof HttpError) ||
-      err instanceof AuthProxyResponseError ||
-      !isSeerrSessionRejection(err.status)
-    ) {
-      throw err;
-    }
+  // One target URL per attempt, used for the session, the request and the
+  // post-mortem alike. Sessions are per host (the jar's scope), and with
+  // auto-switch the active URL can change between any two awaits; resolving
+  // it once here is what keeps a session established on host A from being
+  // followed by a request to host B carrying whatever cookie B has.
+  const attempt = async (retried: boolean): Promise<T> => {
     const store = useConfigStore.getState();
     const baseUrl = store.getActiveUrl("overseerr", id);
-    const live = baseUrl
-      ? await seerrFetchMe(baseUrl, store.getMergedHeaders("overseerr", id)).catch(() => null)
-      : null;
-    if (live) {
-      setSeerrSession(id, host, live);
-      // A live session proves the rejection was a permission denial ONLY if
-      // it is the same session this request used. If another caller already
-      // replaced the dead one (generation advanced), this rejection was the
-      // old session's and the request deserves its retry.
-      if (seerrSessionGeneration(id, host) !== generation) return call();
-      throw err;
+    if (!baseUrl) throw new Error("No URL configured for overseerr");
+    const host = seerrHostOf(baseUrl);
+    // Captured before the attempt: if the session dies underneath us, exactly
+    // one caller's generation matches and triggers the re-login.
+    const generation = seerrSessionGeneration(id, host);
+    try {
+      await ensureSeerrSession(id, baseUrl);
+      return await serviceRequest<T>("overseerr", path, { ...options, instanceId: id, baseUrl });
+    } catch (err) {
+      if (
+        retried ||
+        !(err instanceof HttpError) ||
+        err instanceof AuthProxyResponseError ||
+        !isSeerrSessionRejection(err.status)
+      ) {
+        throw err;
+      }
+      const live = await seerrFetchMe(baseUrl, store.getMergedHeaders("overseerr", id)).catch(
+        () => null,
+      );
+      if (live) {
+        setSeerrSession(id, host, live);
+        // A live session proves the rejection was a permission denial ONLY if
+        // it is the same session this request used. If another caller already
+        // replaced the dead one (generation advanced), this rejection was the
+        // old session's and the request deserves its retry.
+        if (seerrSessionGeneration(id, host) !== generation) return attempt(true);
+        throw err;
+      }
+      invalidateSeerrSession(id, host, generation);
+      return attempt(true);
     }
-    invalidateSeerrSession(id, host, generation);
-    return call();
-  }
+  };
+  return attempt(false);
 }
 
 /**
@@ -146,14 +151,17 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
   const id = instanceId ?? store.getActiveInstanceId("overseerr");
   if (!id) throw new Error("Service overseerr has no configured instance");
   const inst = store.getInstance("overseerr", id);
+  // Resolved once so the session, the request and the cache entry all name
+  // the same host.
+  const baseUrl = store.demoMode ? undefined : store.getActiveUrl("overseerr", id);
   if (!store.demoMode && inst && seerrUsesSession(seerrAuthMode(inst))) {
-    return ensureSeerrSession(id);
+    return ensureSeerrSession(id, baseUrl);
   }
-  const me = readSeerrMe(await seerrRequest<unknown>("/auth/me", { instanceId: id }));
+  const me = readSeerrMe(
+    await seerrRequest<unknown>("/auth/me", { instanceId: id, ...(baseUrl ? { baseUrl } : {}) }),
+  );
   if (!me) throw new Error("Unrecognized /auth/me response from Seerr");
-  if (!store.demoMode) {
-    setSeerrSession(id, seerrHostOf(store.getActiveUrl("overseerr", id)), me);
-  }
+  if (!store.demoMode && baseUrl) setSeerrSession(id, seerrHostOf(baseUrl), me);
   return me;
 }
 

@@ -48,7 +48,8 @@ import {
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { clearDigestSessions } from "@/lib/http-auth";
-import { forgetSeerrSession } from "@/lib/seerr-session";
+import { dropSeerrSession, forgetSeerrSession } from "@/lib/seerr-session";
+import { seerrHostOf } from "@/lib/seerr-auth";
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
@@ -3044,10 +3045,27 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         mergedSecrets,
       );
 
+    // Seerr sign-in (#332): an import replaces URLs, modes and credentials
+    // under instance ids that may already have a live session in memory, and
+    // the platform cookie jar may hold a cookie for any imported host from
+    // before. Neither may vouch for the imported credentials, so every Seerr
+    // session is dropped and every imported host is marked stale until a
+    // credential login succeeds there. The pre-import instances are dropped
+    // too, in case their ids survive the import.
+    for (const inst of get().serviceInstances.overseerr ?? []) dropSeerrSession(inst.id);
+    const importedSeerrStaleHosts: Record<string, string[]> = {};
+    for (const inst of mergedInstances.overseerr ?? []) {
+      dropSeerrSession(inst.id);
+      const hosts = [...new Set([inst.localUrl, inst.remoteUrl].map(seerrHostOf).filter(Boolean))];
+      if (hosts.length > 0) importedSeerrStaleHosts[inst.id] = hosts;
+    }
+    setJSON(STORAGE_KEYS.seerrStaleHosts, importedSeerrStaleHosts);
+
     // Reload everything into the store
     set({
       serviceInstances: mergedInstances,
       instanceSecrets: mergedSecrets,
+      seerrStaleHosts: importedSeerrStaleHosts,
       activeInstance: derivedActiveInstance,
       services: derivedServices,
       secrets: derivedSecrets,

@@ -168,6 +168,12 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   // External abort signal (e.g. TanStack Query's queryFn signal). Composed
   // with the internal timeout controller: the fetch aborts when either fires.
   signal?: AbortSignal;
+  // Pin the base URL for this one call instead of resolving the active URL
+  // at send time. Used by the Seerr session wrapper (#332), which must
+  // establish the session and send the request against the SAME host: with
+  // auto-switch, the active URL can flip between the two awaits, and the
+  // request would then go to the other host with whatever cookie it holds.
+  baseUrl?: string;
 }
 
 // "sid" is Pi-hole's session id. We always send it as the X-FTL-SID header and
@@ -332,6 +338,7 @@ export async function serviceRequest<T>(
     params,
     instanceId,
     signal: externalSignal,
+    baseUrl: pinnedBaseUrl,
     ...fetchOptions
   } = options;
   const store = useConfigStore.getState();
@@ -361,7 +368,7 @@ export async function serviceRequest<T>(
     throw new Error(`Service ${serviceId} is not enabled`);
   }
 
-  const baseUrl = store.getActiveUrl(serviceId, targetId);
+  const baseUrl = pinnedBaseUrl ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) {
     throw new Error(`No URL configured for ${serviceId}`);
   }
@@ -1194,7 +1201,7 @@ export async function seerrLogout(
  * when that comes back empty. API-key mode just reads /auth/me with the key;
  * it is what makes permissions a uniform source for the UI in every mode.
  */
-export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
+export function ensureSeerrSession(instanceId: string, pinnedBaseUrl?: string): Promise<SeerrMe> {
   const store = useConfigStore.getState();
   if (store.demoMode) {
     const demo = readSeerrMe(getDemoResponse("overseerr", "/auth/me"));
@@ -1202,7 +1209,9 @@ export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
   }
   const inst = store.getInstance("overseerr", instanceId);
   if (!inst) return Promise.reject(new Error(`Instance ${instanceId} for overseerr not found`));
-  const baseUrl = store.getActiveUrl("overseerr", instanceId);
+  // Callers that go on to send a request pass the URL they will send it to,
+  // so the session is established on that exact host (see RequestOptions.baseUrl).
+  const baseUrl = pinnedBaseUrl ?? store.getActiveUrl("overseerr", instanceId);
   if (!baseUrl) return Promise.reject(new Error("No URL configured for overseerr"));
   const secrets = store.instanceSecrets[instanceId] ?? {};
   const customHeaders = store.getMergedHeaders("overseerr", instanceId);
