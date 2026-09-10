@@ -48,7 +48,7 @@ import {
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { clearDigestSessions } from "@/lib/http-auth";
-import { dropSeerrSession, forgetSeerrSession } from "@/lib/seerr-session";
+import { drainSeerrLogins, dropSeerrSession, forgetSeerrSession } from "@/lib/seerr-session";
 import { seerrHostOf } from "@/lib/seerr-auth";
 import {
   ALL_PICKABLE_TABS,
@@ -3052,13 +3052,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // session is dropped and every imported host is marked stale until a
     // credential login succeeds there. The pre-import instances are dropped
     // too, in case their ids survive the import.
-    for (const inst of get().serviceInstances.overseerr ?? []) dropSeerrSession(inst.id);
+    //
+    // Drop, then DRAIN, before anything is installed: a drop supersedes an
+    // in-flight login but cannot cancel its request, and that request's
+    // Set-Cookie still lands when it answers. Without waiting for it here, a
+    // pre-import login could finish after the imported account's login and
+    // put the old account's cookie back in charge of the host. Same rule as
+    // seerrClearSession.
+    const preImportSeerrIds = (get().serviceInstances.overseerr ?? []).map((i) => i.id);
+    for (const id of preImportSeerrIds) dropSeerrSession(id);
+    for (const id of preImportSeerrIds) await drainSeerrLogins(id);
     const importedSeerrStaleHosts: Record<string, string[]> = {};
     for (const inst of mergedInstances.overseerr ?? []) {
       dropSeerrSession(inst.id);
       const hosts = [...new Set([inst.localUrl, inst.remoteUrl].map(seerrHostOf).filter(Boolean))];
       if (hosts.length > 0) importedSeerrStaleHosts[inst.id] = hosts;
     }
+    for (const inst of mergedInstances.overseerr ?? []) await drainSeerrLogins(inst.id);
     setJSON(STORAGE_KEYS.seerrStaleHosts, importedSeerrStaleHosts);
 
     // Reload everything into the store
