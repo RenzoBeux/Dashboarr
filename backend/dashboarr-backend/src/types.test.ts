@@ -126,3 +126,22 @@ test("isQbtCategoryMuted matches exactly and treats missing category as uncatego
   assert.equal(isQbtCategoryMuted(undefined, "uuid-1", "cross-seed-link"), false);
   assert.equal(isQbtCategoryMuted({ "uuid-1": [] }, "uuid-1", "cross-seed-link"), false);
 });
+
+/**
+ * A Seerr the app signed into as a user (#332) is pushed WITHOUT any secret:
+ * its credential is a person's Plex token or media-server password and the
+ * backend has no session client to use it with. The payload must still
+ * validate, so the instance keeps its webhooks and offline checks.
+ */
+test("a Seerr instance with no secrets at all validates", () => {
+  const result = configPayloadSchema.safeParse({
+    instances: [
+      { id: "s", kind: "overseerr", enabled: true, name: "Seerr", localUrl: "http://192.168.0.5:5055" },
+    ],
+    notifications: DEFAULT_NOTIFICATION_SETTINGS,
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.instances?.[0]?.apiKey, undefined);
+  assert.equal(result.data.instances?.[0]?.username, undefined);
+});

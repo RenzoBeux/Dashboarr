@@ -1310,6 +1310,34 @@ export interface OverseerrRequest {
   };
 }
 
+/**
+ * A Seerr account, as returned by `GET /user`.
+ *
+ * `displayName` is not declared in either fork's OpenAPI schema, but the User
+ * entity sets it in an @AfterLoad hook (username || plexUsername ||
+ * jellyfinUsername || email) and `filter()` copies every own property, so it is
+ * always on the wire — the same field `OverseerrRequest.requestedBy` already
+ * relies on. `email` only comes back when the caller has MANAGE_USERS (an API
+ * key does), so treat it as optional and never render it as the primary label.
+ */
+export interface OverseerrUser {
+  id: number;
+  displayName: string;
+  email?: string;
+  avatar?: string;
+  requestCount?: number;
+}
+
+export interface OverseerrUsersResponse {
+  pageInfo: {
+    pages: number;
+    pageSize: number;
+    results: number;
+    page: number;
+  };
+  results: OverseerrUser[];
+}
+
 export interface OverseerrRequestsResponse {
   pageInfo: {
     pages: number;

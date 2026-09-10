@@ -325,6 +325,67 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.qbittorrent[0].tagAddedTorrents).toBeUndefined();
     expect(result.services.qbittorrent[1].tagAddedTorrents).toBeUndefined();
   });
+
+  // v52 shipped without a coercer entry, so the "Request As" default vanished
+  // on every export/import round-trip. Pinned here so it cannot regress.
+  it("round-trips requestAsUserId (v52)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { overseerr: [validInstance({ requestAsUserId: 3 })] },
+    });
+    expect(result.services.overseerr[0].requestAsUserId).toBe(3);
+  });
+
+  it("drops an invalid requestAsUserId without rejecting the instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        overseerr: [
+          validInstance({ requestAsUserId: "3" }),
+          validInstance({ id: "uuid-2", requestAsUserId: 0 }),
+        ],
+      },
+    });
+    expect(result.services.overseerr[0].requestAsUserId).toBeUndefined();
+    expect(result.services.overseerr[1].requestAsUserId).toBeUndefined();
+  });
+
+  it("round-trips the Seerr session sign-in modes (v53)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        overseerr: [
+          validInstance({ authMode: "plex" }),
+          validInstance({ id: "uuid-2", authMode: "mediaServer" }),
+          validInstance({ id: "uuid-3", authMode: "local" }),
+        ],
+      },
+    });
+    expect(result.services.overseerr.map((i) => i.authMode)).toEqual([
+      "plex",
+      "mediaServer",
+      "local",
+    ]);
+  });
+
+  // "apiKey" is the meaning of an absent field; storing it explicitly would
+  // make two spellings of the default. Garbage is dropped, not fatal.
+  it("normalizes authMode apiKey and garbage to absent", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        overseerr: [
+          validInstance({ authMode: "apiKey" }),
+          validInstance({ id: "uuid-2", authMode: "emby" }),
+          validInstance({ id: "uuid-3", authMode: 2 }),
+        ],
+      },
+    });
+    expect(result.services.overseerr).toHaveLength(3);
+    for (const inst of result.services.overseerr) {
+      expect(inst.authMode).toBeUndefined();
+    }
+  });
 });
 
 describe("validateExportPayload — service IDs (forward-compat silent drop)", () => {

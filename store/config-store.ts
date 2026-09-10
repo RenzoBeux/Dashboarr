@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SeerrAuthMode } from "@/lib/seerr-auth";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
@@ -47,6 +48,7 @@ import {
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { clearDigestSessions } from "@/lib/http-auth";
+import { dropSeerrSession } from "@/lib/seerr-session";
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
@@ -118,6 +120,20 @@ export interface ServiceConfig {
   // Off by default (absent/undefined behaves like false) because enabling it
   // writes a tag into the user's qBittorrent config on first use.
   tagAddedTorrents?: boolean;
+  // v52 (#332): Seerr-only — file every request from this instance on behalf of
+  // another Seerr account, so a household sharing one admin API key can still
+  // see who asked for what. Absent/undefined keeps the previous behavior: the
+  // request is attributed to the API key's own identity (the admin). A stale id
+  // (user deleted upstream) makes Seerr reject the request rather than silently
+  // fall back, so the settings card re-resolves the id against the live user
+  // list and shows it as unknown when it no longer matches.
+  requestAsUserId?: number;
+  // v53 (#332): Seerr-only sign-in mode. Absent/undefined means the admin
+  // API key (the pre-v53 behavior). The three session values ride Seerr's
+  // login cookie instead; see lib/seerr-auth.ts for what each one posts and
+  // which secret slot it reads. Only the editor writes this, and it writes
+  // `undefined` rather than "apiKey" so exports keep the absent shape.
+  authMode?: SeerrAuthMode;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
@@ -1622,6 +1638,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // The cached HTTP Digest nonce is keyed by instance, so drop it with the
     // instance rather than leaving it in the map for the process lifetime.
     clearDigestSessions(instanceId);
+    // Same for Seerr's in-memory session entry (#332). The server-side logout
+    // is the caller's job (seerrClearSession runs before removal); this only
+    // stops a deleted id from keeping a cached `me` around.
+    dropSeerrSession(instanceId);
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);

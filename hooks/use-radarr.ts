@@ -28,6 +28,7 @@ import {
 import { toast, toastError } from "@/components/ui/toast";
 import type { RadarrMovie } from "@/lib/types";
 import { getMovieDetails, deleteMedia } from "@/services/overseerr-api";
+import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
 import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { radarrQueueQuery } from "@/lib/arr-queue-query";
@@ -177,6 +178,9 @@ export function useDeleteMovie(instanceId?: string) {
   // Overseerr cleanup runs against the active Overseerr instance; cross-stack
   // deletion is a UX nicety, not a contract.
   const overseerrEnabled = useConfigStore((s) => s.services.overseerr.enabled);
+  // DELETE /media needs MANAGE_REQUESTS; a Seerr signed in as a plain member
+  // (#332) would only 403, so skip the round trip silently for that account.
+  const seerrCaps = useSeerrCapabilities();
   return useMutation({
     mutationFn: async ({
       id: movieId,
@@ -189,7 +193,7 @@ export function useDeleteMovie(instanceId?: string) {
     }) => {
       await deleteMovie(movieId, deleteFiles, id ?? undefined);
       // Clear Overseerr media entry so the movie can be re-requested
-      if (tmdbId && overseerrEnabled) {
+      if (tmdbId && overseerrEnabled && seerrCaps.canManageRequests) {
         try {
           const details = await getMovieDetails(tmdbId);
           if (details.mediaInfo?.id) {

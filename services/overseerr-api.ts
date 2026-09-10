@@ -1,4 +1,28 @@
-import { serviceRequest } from "@/lib/http-client";
+import {
+  AuthProxyResponseError,
+  HttpError,
+  ensureSeerrSession,
+  seerrFetchMe,
+  seerrLogout,
+  serviceRequest,
+} from "@/lib/http-client";
+import { useConfigStore } from "@/store/config-store";
+import {
+  isSeerrSessionRejection,
+  readSeerrMe,
+  seerrAuthMode,
+  seerrUsesSession,
+  type SeerrMe,
+} from "@/lib/seerr-auth";
+import {
+  dropSeerrSession,
+  forgetSeerrSession,
+  invalidateSeerrSession,
+  isSeerrSessionEstablished,
+  seerrSessionGeneration,
+  seerrSessionIds,
+  setSeerrSession,
+} from "@/lib/seerr-session";
 import type {
   OverseerrMediaType,
   OverseerrMediaListResponse,
@@ -13,6 +37,7 @@ import type {
   OverseerrTVDetails,
   OverseerrServerInfo,
   OverseerrServerDetails,
+  OverseerrUsersResponse,
   OverseerrRelatedVideo,
   DiscoverSlider,
   DiscoverSliderInput,
@@ -27,6 +52,121 @@ export interface OverseerrRequestOptions {
   // When true, the request targets the 4K Radarr/Sonarr server. Seerr resolves
   // the default 4K server when serverId is omitted.
   is4k?: boolean;
+  // File the request on behalf of another Seerr account (#332). `requestedBy`
+  // becomes that user; permitted because the API key authenticates as the admin,
+  // who holds MANAGE_USERS/MANAGE_REQUESTS. This is the same field Seerr's own
+  // "Request As" dropdown sends, and it is declared in both forks' schemas.
+  //
+  // Note the split: `requestedBy` and the quota check follow this user, but the
+  // approval decision is taken from the CALLER. Since `hasPermission` returns
+  // true outright for ADMIN, an admin API key always yields an APPROVED
+  // request, whatever the target account's own permissions say — this cannot
+  // be used to route requests into someone's pending queue.
+  userId?: number;
+}
+
+type SeerrRequestOptions = NonNullable<Parameters<typeof serviceRequest>[2]>;
+
+/**
+ * Every Seerr call goes through here instead of serviceRequest directly (#332).
+ *
+ * In API-key mode (and demo mode) this IS serviceRequest. In a sign-in mode it
+ * establishes the session first, then retries exactly once when Seerr rejects
+ * the request as unauthenticated. The shape is services/navidrome-api.ts's
+ * `native()` wrapper with one extra step: Seerr answers 403 both for "no
+ * session" and for "no permission", so before re-logging in it asks
+ * GET /auth/me whether the session is still alive. A live session means the
+ * 403 was a permission denial, which is rethrown as-is (the UI gates those
+ * calls on the account's permissions anyway) instead of churning a fresh
+ * server-side session for nothing.
+ */
+function seerrRequest<T>(path: string, options: SeerrRequestOptions = {}): Promise<T> {
+  const store = useConfigStore.getState();
+  const id = options.instanceId ?? store.getActiveInstanceId("overseerr");
+  const inst = id ? store.getInstance("overseerr", id) : undefined;
+  if (!id || !inst || store.demoMode || !seerrUsesSession(seerrAuthMode(inst))) {
+    return serviceRequest<T>("overseerr", path, options);
+  }
+  return sessionRequest<T>(id, path, options);
+}
+
+async function sessionRequest<T>(
+  id: string,
+  path: string,
+  options: SeerrRequestOptions,
+): Promise<T> {
+  const call = async (): Promise<T> => {
+    await ensureSeerrSession(id);
+    return serviceRequest<T>("overseerr", path, { ...options, instanceId: id });
+  };
+  // Captured before the first attempt: if the session dies underneath us,
+  // exactly one caller's generation matches and triggers the re-login.
+  const generation = seerrSessionGeneration(id);
+  try {
+    return await call();
+  } catch (err) {
+    if (
+      !(err instanceof HttpError) ||
+      err instanceof AuthProxyResponseError ||
+      !isSeerrSessionRejection(err.status)
+    ) {
+      throw err;
+    }
+    const store = useConfigStore.getState();
+    const baseUrl = store.getActiveUrl("overseerr", id);
+    const live = baseUrl
+      ? await seerrFetchMe(baseUrl, store.getMergedHeaders("overseerr", id)).catch(() => null)
+      : null;
+    if (live) {
+      setSeerrSession(id, live);
+      throw err;
+    }
+    invalidateSeerrSession(id, generation);
+    return call();
+  }
+}
+
+/**
+ * The account this instance acts as. In a sign-in mode that is the signed-in
+ * user; in API-key mode it is whoever the key belongs to (the admin). Either
+ * way the payload's `permissions` bitfield is what lib/seerr-permissions.ts
+ * turns into UI capabilities.
+ */
+export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
+  const store = useConfigStore.getState();
+  const id = instanceId ?? store.getActiveInstanceId("overseerr");
+  if (!id) throw new Error("Service overseerr has no configured instance");
+  const inst = store.getInstance("overseerr", id);
+  if (!store.demoMode && inst && seerrUsesSession(seerrAuthMode(inst))) {
+    return ensureSeerrSession(id);
+  }
+  const me = readSeerrMe(await seerrRequest<unknown>("/auth/me", { instanceId: id }));
+  if (!me) throw new Error("Unrecognized /auth/me response from Seerr");
+  if (!store.demoMode) setSeerrSession(id, me);
+  return me;
+}
+
+/**
+ * Log the instance's session out (best effort) and forget it, so the next
+ * request signs in again with whatever credentials are stored by then. Called
+ * before a credential save and before instance removal, the piholeClearSession
+ * precedent: it resolves the host from the store at call time, so it has to
+ * run BEFORE updateInstance rewrites the URL.
+ */
+export async function seerrClearSession(instanceId?: string): Promise<void> {
+  const store = useConfigStore.getState();
+  const ids = instanceId ? [instanceId] : seerrSessionIds();
+  for (const id of ids) {
+    if (!store.demoMode && isSeerrSessionEstablished(id)) {
+      const inst = store.getInstance("overseerr", id);
+      const baseUrl = store.getActiveUrl("overseerr", id);
+      if (inst && baseUrl && seerrUsesSession(seerrAuthMode(inst))) {
+        await seerrLogout(baseUrl, store.getMergedHeaders("overseerr", id));
+      }
+    }
+    dropSeerrSession(id);
+    forgetSeerrSession(id);
+  }
 }
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -47,7 +187,7 @@ export function getRequests(
   sort: "added" | "modified" = "added",
   instanceId?: string,
 ): Promise<OverseerrRequestsResponse> {
-  return serviceRequest<OverseerrRequestsResponse>("overseerr", "/request", {
+  return seerrRequest<OverseerrRequestsResponse>("/request", {
     params: {
       take: pageSize,
       skip: (page - 1) * pageSize,
@@ -59,7 +199,7 @@ export function getRequests(
 }
 
 export function getRequestCount(instanceId?: string): Promise<OverseerrRequestCount> {
-  return serviceRequest<OverseerrRequestCount>("overseerr", "/request/count", {
+  return seerrRequest<OverseerrRequestCount>("/request/count", {
     instanceId,
   });
 }
@@ -71,7 +211,7 @@ export function searchMedia(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/search", {
+  return seerrRequest<OverseerrSearchResponse>("/search", {
     params: { query, page },
     instanceId,
   });
@@ -83,7 +223,7 @@ export function getTrending(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/trending", {
+  return seerrRequest<OverseerrSearchResponse>("/discover/trending", {
     params: { page },
     instanceId,
   });
@@ -93,7 +233,7 @@ export function getPopularMovies(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/movies", {
+  return seerrRequest<OverseerrSearchResponse>("/discover/movies", {
     params: { page },
     instanceId,
   });
@@ -103,7 +243,7 @@ export function getPopularTV(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/tv", {
+  return seerrRequest<OverseerrSearchResponse>("/discover/tv", {
     params: { page },
     instanceId,
   });
@@ -113,7 +253,7 @@ export function getUpcomingMovies(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/movies/upcoming", {
+  return seerrRequest<OverseerrSearchResponse>("/discover/movies/upcoming", {
     params: { page },
     instanceId,
   });
@@ -129,7 +269,7 @@ export function getUpcomingMovies(
 export async function getRecentlyAdded(
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  const media = await serviceRequest<OverseerrMediaListResponse>("overseerr", "/media", {
+  const media = await seerrRequest<OverseerrMediaListResponse>("/media", {
     params: { filter: "allavailable", take: 20, sort: "mediaAdded" },
     instanceId,
   });
@@ -187,7 +327,7 @@ export function getNetworkContent(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", `/discover/tv/network/${networkId}`, {
+  return seerrRequest<OverseerrSearchResponse>(`/discover/tv/network/${networkId}`, {
     params: { page },
     instanceId,
   });
@@ -198,7 +338,7 @@ export function getStudioContent(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", `/discover/movies/studio/${studioId}`, {
+  return seerrRequest<OverseerrSearchResponse>(`/discover/movies/studio/${studioId}`, {
     params: { page },
     instanceId,
   });
@@ -216,7 +356,7 @@ export function getGenreContent(
     mediaType === "movie"
       ? `/discover/movies/genre/${genreId}`
       : `/discover/tv/genre/${genreId}`;
-  return serviceRequest<OverseerrSearchResponse>("overseerr", path, {
+  return seerrRequest<OverseerrSearchResponse>(path, {
     params: { page },
     instanceId,
   });
@@ -226,7 +366,7 @@ export function getGenreSlider(
   mediaType: OverseerrMediaType,
   instanceId?: string,
 ): Promise<OverseerrGenreSliderItem[]> {
-  return serviceRequest<OverseerrGenreSliderItem[]>("overseerr", `/discover/genreslider/${mediaType}`, {
+  return seerrRequest<OverseerrGenreSliderItem[]>(`/discover/genreslider/${mediaType}`, {
     instanceId,
   });
 }
@@ -235,7 +375,7 @@ export function getUpcomingTv(
   page = 1,
   instanceId?: string,
 ): Promise<OverseerrSearchResponse> {
-  return serviceRequest<OverseerrSearchResponse>("overseerr", "/discover/tv/upcoming", {
+  return seerrRequest<OverseerrSearchResponse>("/discover/tv/upcoming", {
     params: { page },
     instanceId,
   });
@@ -264,7 +404,7 @@ export function getDiscover(
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") clean[key] = value;
   }
-  return serviceRequest<OverseerrSearchResponse>("overseerr", path, {
+  return seerrRequest<OverseerrSearchResponse>(path, {
     params: clean,
     instanceId,
   });
@@ -276,7 +416,7 @@ export function getDiscover(
 // GET, which the Discover tab handles by falling back to its built-in layout.
 
 export function getDiscoverSliders(instanceId?: string): Promise<DiscoverSlider[]> {
-  return serviceRequest<DiscoverSlider[]>("overseerr", "/settings/discover", {
+  return seerrRequest<DiscoverSlider[]>("/settings/discover", {
     instanceId,
   });
 }
@@ -287,7 +427,7 @@ export function saveDiscoverSliders(
   sliders: DiscoverSliderInput[],
   instanceId?: string,
 ): Promise<DiscoverSlider[]> {
-  return serviceRequest<DiscoverSlider[]>("overseerr", "/settings/discover", {
+  return seerrRequest<DiscoverSlider[]>("/settings/discover", {
     method: "POST",
     body: JSON.stringify(sliders),
     instanceId,
@@ -298,7 +438,7 @@ export function addDiscoverSlider(
   body: DiscoverSliderCreate,
   instanceId?: string,
 ): Promise<DiscoverSlider> {
-  return serviceRequest<DiscoverSlider>("overseerr", "/settings/discover/add", {
+  return seerrRequest<DiscoverSlider>("/settings/discover/add", {
     method: "POST",
     body: JSON.stringify(body),
     instanceId,
@@ -310,7 +450,7 @@ export function updateDiscoverSlider(
   body: DiscoverSliderCreate,
   instanceId?: string,
 ): Promise<DiscoverSlider> {
-  return serviceRequest<DiscoverSlider>("overseerr", `/settings/discover/${sliderId}`, {
+  return seerrRequest<DiscoverSlider>(`/settings/discover/${sliderId}`, {
     method: "PUT",
     body: JSON.stringify(body),
     instanceId,
@@ -321,7 +461,7 @@ export function deleteDiscoverSlider(
   sliderId: number,
   instanceId?: string,
 ): Promise<void> {
-  return serviceRequest<void>("overseerr", `/settings/discover/${sliderId}`, {
+  return seerrRequest<void>(`/settings/discover/${sliderId}`, {
     method: "DELETE",
     instanceId,
   });
@@ -330,7 +470,7 @@ export function deleteDiscoverSlider(
 // Resets all sliders to the built-in defaults. GET per Overseerr's route
 // definition; returns 204 (empty body).
 export function resetDiscoverSliders(instanceId?: string): Promise<void> {
-  return serviceRequest<void>("overseerr", "/settings/discover/reset", {
+  return seerrRequest<void>("/settings/discover/reset", {
     instanceId,
   });
 }
@@ -342,7 +482,7 @@ export function requestMovie(
   options?: OverseerrRequestOptions,
   instanceId?: string,
 ): Promise<OverseerrRequest> {
-  return serviceRequest<OverseerrRequest>("overseerr", "/request", {
+  return seerrRequest<OverseerrRequest>("/request", {
     method: "POST",
     body: JSON.stringify({
       mediaType: "movie",
@@ -361,7 +501,7 @@ export function requestTV(
   options?: OverseerrRequestOptions,
   instanceId?: string,
 ): Promise<OverseerrRequest> {
-  return serviceRequest<OverseerrRequest>("overseerr", "/request", {
+  return seerrRequest<OverseerrRequest>("/request", {
     method: "POST",
     body: JSON.stringify({
       mediaType: "tv",
@@ -379,7 +519,7 @@ export function approveRequest(
   requestId: number,
   instanceId?: string,
 ): Promise<OverseerrRequest> {
-  return serviceRequest<OverseerrRequest>("overseerr", `/request/${requestId}/approve`, {
+  return seerrRequest<OverseerrRequest>(`/request/${requestId}/approve`, {
     method: "POST",
     instanceId,
   });
@@ -389,7 +529,7 @@ export function declineRequest(
   requestId: number,
   instanceId?: string,
 ): Promise<OverseerrRequest> {
-  return serviceRequest<OverseerrRequest>("overseerr", `/request/${requestId}/decline`, {
+  return seerrRequest<OverseerrRequest>(`/request/${requestId}/decline`, {
     method: "POST",
     instanceId,
   });
@@ -402,8 +542,34 @@ export function deleteRequest(
   requestId: number,
   instanceId?: string,
 ): Promise<void> {
-  return serviceRequest<void>("overseerr", `/request/${requestId}`, {
+  return seerrRequest<void>(`/request/${requestId}`, {
     method: "DELETE",
+    instanceId,
+  });
+}
+
+// --- Users ---
+
+// The accounts on this Seerr, used by the "Request As" picker (#332).
+//
+// Only `take`, `skip` and `sort` may be sent. Seerr also accepts
+// `sortDirection`, `q` and `includeIds`, but Overseerr's schema declares none
+// of them, and express-openapi-validator rejects undeclared QUERY params with a
+// 500 (the same trap as `sortDirection` on /request above) — so the request has
+// to stay inside the intersection of both forks. `displayname` is in both
+// enums. Body properties are not affected: those schemas set no
+// `additionalProperties: false`, which is why the `tags` we send on /request is
+// accepted despite being undeclared.
+//
+// `take` is NOT optional in practice: omitted, the server defaults the page
+// size to 10, so a household with more accounts than that would silently lose
+// the rest.
+export function getOverseerrUsers(
+  take = 100,
+  instanceId?: string,
+): Promise<OverseerrUsersResponse> {
+  return seerrRequest<OverseerrUsersResponse>("/user", {
+    params: { take, skip: 0, sort: "displayname" },
     instanceId,
   });
 }
@@ -414,7 +580,7 @@ export function getMovieDetails(
   tmdbId: number,
   instanceId?: string,
 ): Promise<OverseerrMovieDetails> {
-  return serviceRequest<OverseerrMovieDetails>("overseerr", `/movie/${tmdbId}`, {
+  return seerrRequest<OverseerrMovieDetails>(`/movie/${tmdbId}`, {
     instanceId,
   });
 }
@@ -423,7 +589,7 @@ export function getTVDetails(
   tmdbId: number,
   instanceId?: string,
 ): Promise<OverseerrTVDetails> {
-  return serviceRequest<OverseerrTVDetails>("overseerr", `/tv/${tmdbId}`, {
+  return seerrRequest<OverseerrTVDetails>(`/tv/${tmdbId}`, {
     instanceId,
   });
 }
@@ -431,7 +597,7 @@ export function getTVDetails(
 // --- Delete Media (resets Overseerr status so it can be re-requested) ---
 
 export function deleteMedia(mediaId: number, instanceId?: string): Promise<void> {
-  return serviceRequest<void>("overseerr", `/media/${mediaId}`, {
+  return seerrRequest<void>(`/media/${mediaId}`, {
     method: "DELETE",
     instanceId,
   });
@@ -442,7 +608,7 @@ export function deleteMedia(mediaId: number, instanceId?: string): Promise<void>
 export function getOverseerrRadarrServers(
   instanceId?: string,
 ): Promise<OverseerrServerInfo[]> {
-  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/radarr", {
+  return seerrRequest<OverseerrServerInfo[]>("/service/radarr", {
     instanceId,
   });
 }
@@ -450,7 +616,7 @@ export function getOverseerrRadarrServers(
 export function getOverseerrSonarrServers(
   instanceId?: string,
 ): Promise<OverseerrServerInfo[]> {
-  return serviceRequest<OverseerrServerInfo[]>("overseerr", "/service/sonarr", {
+  return seerrRequest<OverseerrServerInfo[]>("/service/sonarr", {
     instanceId,
   });
 }
@@ -459,7 +625,7 @@ export function getOverseerrRadarrServerDetails(
   id: number,
   instanceId?: string,
 ): Promise<OverseerrServerDetails> {
-  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/radarr/${id}`, {
+  return seerrRequest<OverseerrServerDetails>(`/service/radarr/${id}`, {
     instanceId,
   });
 }
@@ -468,7 +634,7 @@ export function getOverseerrSonarrServerDetails(
   id: number,
   instanceId?: string,
 ): Promise<OverseerrServerDetails> {
-  return serviceRequest<OverseerrServerDetails>("overseerr", `/service/sonarr/${id}`, {
+  return seerrRequest<OverseerrServerDetails>(`/service/sonarr/${id}`, {
     instanceId,
   });
 }

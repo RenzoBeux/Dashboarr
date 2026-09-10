@@ -146,6 +146,19 @@ describe("auth shapes", () => {
     }
   });
 
+  // Same rule for session sign-in (#332): the mode picker is additive. Seerr's
+  // session modes reuse the apiKey/username/password slots, so the stored
+  // shape must stay apiKey or the dirty check and the secrets write would
+  // silently follow the wrong branch for every instance still on the key.
+  it("only offers session sign-in alongside the apiKey shape", () => {
+    for (const id of SERVICE_IDS) {
+      const entry = SERVICE_CATALOG[id];
+      if (entry.signIn) expect({ id, authShape: entry.authShape }).toEqual({ id, authShape: "apiKey" });
+    }
+    expect(SERVICE_CATALOG.overseerr.signIn).toBe("seerr");
+    expect(secretsShapeFor(SERVICE_CATALOG.overseerr.authShape)).toBe("apiKey");
+  });
+
   // Guard rail: authShape and SERVICE_DEFAULTS.httpAuth look interchangeable
   // and are not. httpAuth is a transport flag (send HTTP Basic/Digest per
   // request); authShape is the credential form. They diverge on qBittorrent

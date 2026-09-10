@@ -22,6 +22,7 @@ import type { HealthStatusKind } from "@/lib/types";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
+import { seerrClearSession } from "@/services/overseerr-api";
 import { SERVICE_IDS, type ServiceId } from "@/lib/constants";
 
 /**
@@ -119,6 +120,10 @@ function KindInstances({
       // Log the Pi-hole session out before dropping it, so its seat goes back
       // to the pool of 16 instead of idling for thirty minutes.
       await piholeClearSession(instanceId);
+    }
+    if (kind === "overseerr") {
+      // Log a signed-in Seerr account out before its credentials go away.
+      await seerrClearSession(instanceId);
     }
     await removeInstance(kind, instanceId);
   };

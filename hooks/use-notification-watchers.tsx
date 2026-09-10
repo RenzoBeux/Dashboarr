@@ -9,6 +9,7 @@ import { useRadarrHistory } from "@/hooks/use-radarr";
 import { useSonarrHistory } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
+import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNzbgetHistory } from "@/hooks/use-nzbget";
 import { useConfigStore } from "@/store/config-store";
@@ -620,12 +621,19 @@ function OverseerrRequestWatcher({
   instanceId: string;
   active: boolean;
 }) {
+  // Without MANAGE_REQUESTS the pending list is the account's OWN requests,
+  // so "new request" would only ever announce what this person just asked
+  // for (#332). Watch only when the account moderates requests. The baseline
+  // reset below runs while inactive, so the first fetch after /auth/me lands
+  // seeds silently instead of firing for every pre-existing request.
+  const caps = useSeerrCapabilities(instanceId);
+  const effective = active && caps.loaded && caps.canManageRequests;
   const { data: overseerrRequests } = useOverseerrRequests(
     1,
     "pending",
     "added",
     instanceId,
-    active,
+    effective,
   );
   const prevRequestIds = useRef<Set<number> | null>(null);
   const overseerrShapeWarned = useRef(false);
@@ -646,7 +654,7 @@ function OverseerrRequestWatcher({
   }, [overseerrRequests]);
 
   useEffect(() => {
-    if (!active) {
+    if (!effective) {
       prevRequestIds.current = null;
       return;
     }
@@ -665,7 +673,7 @@ function OverseerrRequestWatcher({
       }
     }
     prevRequestIds.current = currentIds;
-  }, [overseerrRequests, active, instanceId]);
+  }, [overseerrRequests, effective, instanceId]);
 
   return null;
 }

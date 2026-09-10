@@ -1801,3 +1801,45 @@ describe("v42 → v43 (bindery service stamp)", () => {
     });
   });
 });
+
+describe("v52 → v53 (Seerr sign-in mode stamp)", () => {
+  it("stamps a v52 payload up to the current version", () => {
+    const result: any = migrateConfig({
+      version: 52,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+  });
+
+  it("carries a v52 Seerr instance through untouched, with no authMode invented", () => {
+    // Pure stamp: absence means the admin API key, which is exactly what every
+    // pre-v53 instance was using.
+    const result: any = migrateConfig({
+      version: 52,
+      services: {
+        overseerr: [
+          {
+            id: "seerr-1",
+            enabled: true,
+            name: "Seerr",
+            localUrl: "http://s",
+            remoteUrl: "",
+            useRemote: false,
+            requestAsUserId: 3,
+          },
+        ],
+      },
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.overseerr[0].authMode).toBeUndefined();
+    expect(result.services.overseerr[0].requestAsUserId).toBe(3);
+  });
+});

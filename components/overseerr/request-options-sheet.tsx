@@ -23,11 +23,20 @@ import {
   useOverseerrMediaDetails,
   useRequestMovie,
   useRequestTV,
+  useOverseerrUsers,
 } from "@/hooks/use-overseerr";
 import type { OverseerrMediaResult, OverseerrTVDetails } from "@/lib/types";
 import { formatBytes } from "@/lib/utils";
 import { useModalClosed } from "@/hooks/use-modal-closed";
+import { useTargetInstance } from "@/hooks/use-instance-target";
+import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
+import { canRequest4kMedia } from "@/lib/seerr-permissions";
+import { SeerrPermissionNotice } from "@/components/overseerr/seerr-permission-notice";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
+
+// Matches components/settings/seerr-request-user-card.tsx: Seerr user ids are
+// auto-increment and always >= 1, so a negative sentinel means "no override".
+const API_KEY_OWNER_ID = -1;
 
 interface RequestOptionsSheetProps {
   item: OverseerrMediaResult | null;
@@ -64,12 +73,23 @@ export function RequestOptionsSheet({
   const serversQuery = isTv ? sonarrServersQuery : radarrServersQuery;
   const servers = serversQuery.data ?? [];
 
+  // Permission gates (#332). Server, profile, root folder and tags are only
+  // honoured by Seerr for accounts with MANAGE_REQUESTS; for anyone else the
+  // server discards them and applies the account's defaults, so the pickers
+  // are hidden rather than rendered as decoration. The 4K tier needs its own
+  // request permission.
+  const caps = useSeerrCapabilities();
+  const canManage = caps.loaded && caps.canManageRequests;
+  const may4k = caps.loaded && canRequest4kMedia(caps, isTv ? "tv" : "movie");
+
   // Seerr models 4K as separate Radarr/Sonarr servers (each flagged is4k). The
   // active quality tier picks which bucket the server/profile/root come from.
   const [is4k, setIs4k] = useState(initialIs4k);
   const servers4k = useMemo(() => servers.filter((s) => s.is4k), [servers]);
   const serversHd = useMemo(() => servers.filter((s) => !s.is4k), [servers]);
-  const has4kServer = servers4k.length > 0;
+  // "No permission" behaves exactly like "no 4K server": the toggle hides and
+  // the tier clamp below keeps is4k off.
+  const has4kServer = servers4k.length > 0 && may4k;
   const activeServers = useMemo(
     () => (is4k ? servers4k : serversHd),
     [is4k, servers4k, serversHd],
@@ -102,10 +122,10 @@ export function RequestOptionsSheet({
   }, [activeServers, serverId]);
 
   const radarrDetailsQuery = useOverseerrRadarrServerDetails(
-    !isTv ? serverId : undefined,
+    !isTv && canManage ? serverId : undefined,
   );
   const sonarrDetailsQuery = useOverseerrSonarrServerDetails(
-    isTv ? serverId : undefined,
+    isTv && canManage ? serverId : undefined,
   );
   const detailsQuery = isTv ? sonarrDetailsQuery : radarrDetailsQuery;
   const details = detailsQuery.data;
@@ -114,6 +134,20 @@ export function RequestOptionsSheet({
   const [rootFolder, setRootFolder] = useState<string | undefined>();
   const [tags, setTags] = useState<number[]>([]);
   const [seasonSelection, setSeasonSelection] = useState<"all" | number[]>("all");
+
+  // "Request As" (#332): per-request override of the account the request is
+  // attributed to. Seeded from the instance's stored default so the picker
+  // always shows what will actually happen, and re-seeded on every open so a
+  // one-off override never leaks into the next title.
+  const storedRequestAsUserId = useTargetInstance("overseerr")?.requestAsUserId;
+  const usersQuery = useOverseerrUsers(undefined, caps.canRequestAs);
+  const users = usersQuery.data?.results ?? [];
+  const [requestAsUserId, setRequestAsUserId] = useState<number | undefined>(
+    storedRequestAsUserId,
+  );
+  useEffect(() => {
+    if (visible) setRequestAsUserId(storedRequestAsUserId);
+  }, [visible, item?.id, storedRequestAsUserId]);
 
   useEffect(() => {
     if (!details) return;
@@ -173,19 +207,29 @@ export function RequestOptionsSheet({
 
   const canSubmit =
     !!item &&
+    caps.loaded &&
     !serversQuery.isLoading &&
     !detailsQuery.isLoading &&
     seasonsValid &&
-    (servers.length === 0 || (!!profileId && !!rootFolder));
+    (!canManage || servers.length === 0 || (!!profileId && !!rootFolder));
 
   const handleSubmit = async () => {
     if (!item) return;
     setSubmitError(null);
     const baseOptions =
-      servers.length > 0 ? { serverId, profileId, rootFolder, tags } : undefined;
-    const options = is4k
-      ? { ...(baseOptions ?? {}), is4k: true }
-      : baseOptions;
+      canManage && servers.length > 0
+        ? { serverId, profileId, rootFolder, tags }
+        : undefined;
+    const with4k = is4k ? { ...(baseOptions ?? {}), is4k: true } : baseOptions;
+    // Always set the key, even when the value is undefined: this sheet owns the
+    // choice, and an absent key would let the instance's stored default win
+    // (see resolveRequestUser in lib/overseerr-request-user.ts), making the
+    // picker's "API key owner" option a no-op. An account that cannot request
+    // on behalf of another sends no key at all; the hook's fallback is gated
+    // on the same capability.
+    const options = caps.canRequestAs
+      ? { ...(with4k ?? {}), userId: requestAsUserId }
+      : with4k;
 
     try {
       if (isTv) {
@@ -283,7 +327,33 @@ export function RequestOptionsSheet({
             </View>
           ) : null}
 
-          {servers.length === 0 ? (
+          {users.length > 1 && caps.canRequestAs ? (
+            <Select<number>
+              label="Request As"
+              value={requestAsUserId ?? API_KEY_OWNER_ID}
+              options={[
+                {
+                  value: API_KEY_OWNER_ID,
+                  label: "API key owner",
+                  description: "Attribute this request to the admin account",
+                },
+                ...users.map((u) => ({ value: u.id, label: u.displayName })),
+              ]}
+              onChange={(v) =>
+                setRequestAsUserId(v === API_KEY_OWNER_ID ? undefined : v)
+              }
+              containerClassName="mb-4"
+            />
+          ) : null}
+
+          {caps.loaded && !caps.canManageRequests ? (
+            <SeerrPermissionNotice
+              className="mb-4"
+              message="Server, quality profile and folder are chosen by your Seerr admin's defaults for your account."
+            />
+          ) : null}
+
+          {canManage && servers.length === 0 ? (
             <View className="rounded-xl border border-border bg-surface-light px-4 py-3 mb-4">
               <Text className="text-zinc-300 text-sm">
                 No {isTv ? "Sonarr" : "Radarr"} server is configured in Seerr.
@@ -292,7 +362,7 @@ export function RequestOptionsSheet({
             </View>
           ) : null}
 
-          {activeServers.length > 1 ? (
+          {canManage && activeServers.length > 1 ? (
             <Select
               label={isTv ? "Sonarr Server" : "Radarr Server"}
               value={serverId}
@@ -307,7 +377,7 @@ export function RequestOptionsSheet({
             />
           ) : null}
 
-          {details ? (
+          {canManage && details ? (
             <>
               <Select
                 label="Root Folder"
@@ -350,7 +420,7 @@ export function RequestOptionsSheet({
                 </View>
               ) : null}
             </>
-          ) : detailsQuery.isLoading ? (
+          ) : canManage && detailsQuery.isLoading ? (
             <Text className="text-zinc-500 text-sm mb-4">Loading server settings…</Text>
           ) : null}
 

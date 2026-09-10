@@ -54,6 +54,9 @@ import {
   useRequestTV,
   useDeleteMedia,
 } from "@/hooks/use-overseerr";
+import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
+import { canRequest4kMedia, canRequestMedia } from "@/lib/seerr-permissions";
+import { SeerrPermissionNotice } from "@/components/overseerr/seerr-permission-notice";
 import type {
   OverseerrMediaResult,
   OverseerrMovieDetails,
@@ -165,6 +168,11 @@ export function MediaDetailModal({
     }
   }, [visible]);
 
+  // Permission gates (#332): a signed-in account may lack REQUEST (or the
+  // per-type / 4K variants). Read here, above the early return below, so the
+  // hook count is stable whether or not a title is open.
+  const caps = useSeerrCapabilities();
+
   if (!item) return null;
 
   const title = item.title || item.name || "Unknown";
@@ -188,14 +196,23 @@ export function MediaDetailModal({
   const isAvailableHd = statusHd === 5;
   const isPartialHd = statusHd === 4;
   const isPendingHd = statusHd === 2 || statusHd === 3;
+  const mediaKind = isTv ? "tv" : "movie";
+  // Nothing renders as requestable until /auth/me has answered, so a
+  // non-admin never sees a button that would 403.
+  const mayRequest = caps.loaded && canRequestMedia(caps, mediaKind);
+  const mayRequest4k = caps.loaded && canRequest4kMedia(caps, mediaKind);
   const canRequestHd =
-    !isAvailableHd && !isPendingHd && (!isPartialHd || isTv);
+    mayRequest && !isAvailableHd && !isPendingHd && (!isPartialHd || isTv);
 
   const isAvailable4k = status4k === 5;
   const isPartial4k = status4k === 4;
   const isPending4k = status4k === 2 || status4k === 3;
   const canRequest4k =
-    has4kServer && !isAvailable4k && !isPending4k && (!isPartial4k || isTv);
+    mayRequest4k &&
+    has4kServer &&
+    !isAvailable4k &&
+    !isPending4k &&
+    (!isPartial4k || isTv);
 
   const trailer = pickTrailer(detailsData?.relatedVideos);
   const submitting = quickKind !== null;
@@ -396,7 +413,7 @@ export function MediaDetailModal({
                   icon={Check}
                   label="Partially Available"
                 />
-              ) : !canRequestHd ? (
+              ) : isPendingHd ? (
                 <StatusPill tone="warning" icon={Clock} label="Requested" />
               ) : null}
               {canRequestHd ? (
@@ -426,7 +443,7 @@ export function MediaDetailModal({
                       icon={Check}
                       label="Partially Available in 4K"
                     />
-                  ) : !canRequest4k ? (
+                  ) : isPending4k ? (
                     <StatusPill
                       tone="warning"
                       icon={Clock}
@@ -458,8 +475,15 @@ export function MediaDetailModal({
                 </>
               ) : null}
 
-              {/* Advanced options */}
-              {canRequestHd || canRequest4k ? (
+              {caps.loaded && !mayRequest && !isAvailableHd && !isPendingHd ? (
+                <SeerrPermissionNotice message="Your Seerr account can't request titles." />
+              ) : null}
+
+              {/* Advanced options. For a non-manager the sheet only offers
+                  seasons and the 4K tier, so a movie without a 4K option has
+                  nothing left to customize. */}
+              {(canRequestHd || canRequest4k) &&
+              (isTv || caps.canManageRequests || canRequest4k) ? (
                 <Pressable
                   onPress={openCustomize}
                   disabled={submitting}
@@ -478,7 +502,7 @@ export function MediaDetailModal({
 
               {/* Remove from Seerr — untracks the media so it can be requested
                   again. Only shown once the title is tracked. */}
-              {isTracked ? (
+              {isTracked && caps.canManageRequests ? (
                 <Pressable
                   onPress={() => setRemoveConfirmVisible(true)}
                   disabled={submitting || removeMedia.isPending}

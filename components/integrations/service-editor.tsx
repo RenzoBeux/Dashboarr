@@ -22,6 +22,14 @@ import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
+import { seerrClearSession } from "@/services/overseerr-api";
+import {
+  availableSeerrSignInModes,
+  seerrAuthMode,
+  seerrUsesSession,
+  type SeerrAuthMode,
+} from "@/lib/seerr-auth";
+import { useSeerrPublicSettings } from "@/hooks/use-seerr-public-settings";
 import { getPlexClientId } from "@/lib/plex-client-id";
 import {
   requestPin,
@@ -49,6 +57,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { ArrDefaultsCard } from "@/components/settings/arr-defaults-card";
+import { SeerrRequestUserCard } from "@/components/settings/seerr-request-user-card";
 import { QbtMutedCategories } from "@/components/settings/qbt-muted-categories";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
@@ -114,6 +123,9 @@ export function ServiceEditor({
   const [apiKey, setApiKey] = useState(secrets.apiKey ?? "");
   const [username, setUsername] = useState(secrets.username ?? "");
   const [password, setPassword] = useState(secrets.password ?? "");
+  // Seerr sign-in mode (#332). Only meaningful for a kind whose catalog entry
+  // carries `signIn`; for everything else it stays "apiKey" and is never read.
+  const [authMode, setAuthMode] = useState<SeerrAuthMode>(() => seerrAuthMode(config));
   const [customHeaders, setCustomHeaders] = useState<Record<string, string>>(
     secrets.customHeaders ?? {},
   );
@@ -157,6 +169,28 @@ export function ServiceEditor({
   // two sets differ. See the warning on ServiceAuthShape in lib/service-catalog.ts.
   const catalogEntry = SERVICE_CATALOG[serviceId];
   const usesUserPass = secretsShapeFor(catalogEntry.authShape) === "userPass";
+  // Seerr's session modes (#332) reuse the same four secret slots, so the
+  // catalog shape stays apiKey while the FIELDS follow the picked mode:
+  // Jellyfin/Emby and email sign-in edit username + password, Plex and the
+  // admin key edit apiKey. `credsUseUserPass` is the mode-aware form shape and
+  // is what the dirty check, the blank snapshot and the save branch read.
+  const showsSignIn = catalogEntry.signIn === "seerr";
+  const modeUsesUserPass =
+    showsSignIn && (authMode === "local" || authMode === "mediaServer");
+  const credsUseUserPass = usesUserPass || modeUsesUserPass;
+  // Which sign-in methods this Seerr offers, read from the anonymous
+  // /settings/public on whichever form URL is filled in. A failed read offers
+  // every mode; the current mode is always kept so a proxy hiccup can never
+  // hide what the user already picked.
+  const publicSettings = useSeerrPublicSettings(
+    normalizeServiceUrl(localUrl) || normalizeServiceUrl(remoteUrl),
+    customHeaders,
+    showsSignIn,
+  );
+  const signInModes = (() => {
+    const offered = availableSeerrSignInModes(publicSettings.data ?? null);
+    return offered.includes(authMode) ? offered : [...offered, authMode];
+  })();
   // AuthCard owns the username/password vs API-key split; this component still
   // needs the shape for the dirty check, the configured snapshot and the write.
   const defaultPort = SERVICE_DEFAULTS[serviceId].defaultPort;
@@ -174,10 +208,10 @@ export function ServiceEditor({
   // Re-configuring an already-set-up instance (URL or creds present) won't
   // trigger the prompt — the snapshot stays false through the session.
   const [wasInitiallyUnconfigured] = useState(() =>
-    isBlankInstance(config, secrets, usesUserPass),
+    isBlankInstance(config, secrets, credsUseUserPass),
   );
 
-  const isBlank = isBlankInstance(config, secrets, usesUserPass);
+  const isBlank = isBlankInstance(config, secrets, credsUseUserPass);
 
   // Live equivalent of the snapshot above. `handleAdd` writes the new instance
   // to the store before navigating here, so backing out of one you never filled
@@ -209,7 +243,8 @@ export function ServiceEditor({
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
-    (usesUserPass
+    (showsSignIn && authMode !== seerrAuthMode(config)) ||
+    (credsUseUserPass
       ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
       : apiKey !== (secrets.apiKey ?? ""));
 
@@ -321,13 +356,49 @@ export function ServiceEditor({
     if (serviceId === "pihole") {
       await piholeClearSession(instanceId);
     }
+    // Same ordering for Seerr's session (#332): the logout resolves the host
+    // from the store, so it has to hit the OLD URL and the OLD mode before
+    // either is rewritten below. It is a no-op in API-key mode.
+    if (showsSignIn) {
+      await seerrClearSession(instanceId);
+    }
 
     updateInstance(serviceId, instanceId, {
       name: trimmedName,
       localUrl: normLocal,
       remoteUrl: normRemote,
+      ...(showsSignIn
+        ? {
+            // "apiKey" is stored as absence so exports keep the pre-v53 shape.
+            authMode: authMode === "apiKey" ? undefined : authMode,
+            // A "Request As" default is filed with the admin key's authority;
+            // a signed-in account cannot use it (Seerr rejects the whole
+            // request), so leaving API-key mode drops it.
+            requestAsUserId: authMode === "apiKey" ? config.requestAsUserId : undefined,
+          }
+        : {}),
     });
-    if (usesUserPass) {
+    // The empty strings are deliberate for Seerr: updateInstanceSecrets merges
+    // and deletes on empty, and that is the only way to purge the slot the
+    // previous mode used. Otherwise a stale admin key sits next to a person's
+    // password (or the reverse) in SecureStore for the life of the instance.
+    if (showsSignIn) {
+      if (modeUsesUserPass) {
+        await updateInstanceSecrets(instanceId, {
+          username,
+          password,
+          apiKey: "",
+          customHeaders,
+        });
+      } else {
+        await updateInstanceSecrets(instanceId, {
+          apiKey,
+          username: "",
+          password: "",
+          customHeaders,
+        });
+      }
+    } else if (usesUserPass) {
       await updateInstanceSecrets(instanceId, {
         username,
         password,
@@ -362,7 +433,7 @@ export function ServiceEditor({
     // and the hint that widgets are added separately.
     if ((isNew || wasInitiallyUnconfigured) && !promptShown) {
       const hasUrl = normLocal.length > 0 || normRemote.length > 0;
-      const hasCreds = usesUserPass
+      const hasCreds = credsUseUserPass
         ? username.length > 0 || password.length > 0
         : apiKey.length > 0;
       if (hasUrl && hasCreds) {
@@ -445,6 +516,7 @@ export function ServiceEditor({
       username,
       password,
       customHeaders,
+      seerrAuthMode: showsSignIn ? authMode : undefined,
     });
     setTesting(false);
 
@@ -577,6 +649,14 @@ export function ServiceEditor({
         );
         return;
       }
+      if (showsSignIn) {
+        // Seerr's Plex sign-in (#332): the account token is the credential
+        // Seerr exchanges at POST /auth/plex. No server discovery: the URLs
+        // here are Seerr's, not a Plex server's.
+        setApiKey(outcome.token);
+        toast("Signed in with Plex. Test the connection, then save.", "success");
+        return;
+      }
       await finishPlexConnect(outcome.token, clientId);
     } catch (e) {
       toastError("Plex sign-in failed", e);
@@ -608,6 +688,9 @@ export function ServiceEditor({
         }
         if (serviceId === "pihole") {
           await piholeClearSession(instanceId);
+        }
+        if (serviceId === "overseerr") {
+          await seerrClearSession(instanceId);
         }
         await removeInstance(serviceId, instanceId);
         // Every kind must keep at least one slot. Leaving the array empty
@@ -710,6 +793,9 @@ export function ServiceEditor({
         onPasswordChange={setPassword}
         onConnectPlex={() => void handleConnectPlex()}
         connecting={connecting}
+        signInMode={showsSignIn ? authMode : undefined}
+        signInModes={showsSignIn ? signInModes : undefined}
+        onSignInModeChange={showsSignIn ? setAuthMode : undefined}
       />
 
       <Card className="gap-4 mb-4">
@@ -800,6 +886,8 @@ export function ServiceEditor({
       ) : null}
 
       <ArrDefaultsCard serviceId={serviceId} instanceId={instanceId} />
+
+      <SeerrRequestUserCard serviceId={serviceId} instanceId={instanceId} />
 
       <InstanceNotificationsCard serviceId={serviceId} instanceId={instanceId} />
 

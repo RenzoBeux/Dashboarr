@@ -1,4 +1,6 @@
 import { resetDigestSessions } from "@/lib/http-auth";
+import { resetSeerrSessions, setSeerrSession } from "@/lib/seerr-session";
+import { SEERR_CSRF_MESSAGE, SEERR_LOGIN_DISABLED_MESSAGE, SEERR_NO_JELLYFIN_ROUTE_MESSAGE } from "@/lib/seerr-auth";
 import {
   serviceRequest,
   pingService,
@@ -25,6 +27,7 @@ jest.mock("@/store/config-store", () => ({
 // session (and so ordering stops being load-bearing).
 beforeEach(() => {
   resetDigestSessions();
+  resetSeerrSessions();
 });
 
 interface FakeInstance {
@@ -34,6 +37,8 @@ interface FakeInstance {
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+  // Seerr sign-in mode (#332); absent means the admin API key.
+  authMode?: "apiKey" | "plex" | "mediaServer" | "local";
 }
 
 interface FakeSecrets {
@@ -1403,5 +1408,349 @@ describe("serviceRequest — Digest nonce reuse (#352)", () => {
     fetchSpy.mockResolvedValueOnce(xmlOk());
     await serviceRequest<string>("rtorrent", "", { method: "POST", body: "<methodCall/>" });
     expect(authOf(fetchSpy.mock.calls[2])).toMatch(/^Basic /);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Seerr sign-in modes (#332)
+// ---------------------------------------------------------------------------
+
+const SEERR_ID = "seerr-uuid";
+const SEERR_URL = "http://seerr.local:5055";
+const SEERR_ME = { id: 7, displayName: "Sarah", permissions: 32 };
+
+/** A state with one Seerr instance in the given mode holding the given secrets. */
+function withSeerr(
+  authMode: FakeInstance["authMode"],
+  secrets: FakeSecrets,
+): FakeState {
+  const base = makeState();
+  return makeState({
+    serviceInstances: {
+      ...base.serviceInstances,
+      overseerr: [
+        {
+          id: SEERR_ID,
+          enabled: true,
+          name: "Seerr",
+          localUrl: SEERR_URL,
+          remoteUrl: "",
+          useRemote: false,
+          ...(authMode ? { authMode } : {}),
+        },
+      ],
+    },
+    instanceSecrets: { ...base.instanceSecrets, [SEERR_ID]: { ...secrets } },
+    activeInstance: { ...base.activeInstance, overseerr: SEERR_ID },
+  });
+}
+
+function seerrResponse(
+  status: number,
+  body: unknown,
+  contentType = "application/json",
+) {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: String(status),
+    headers: new Headers({ "content-type": contentType }),
+    json: async () => {
+      if (typeof body === "string") throw new SyntaxError("not json");
+      return body;
+    },
+    text: async () => text,
+    clone() {
+      return this;
+    },
+  };
+}
+
+const requestOf = (spy: jest.Mock, n: number) => {
+  const [url, init] = spy.mock.calls[n] as [string, RequestInit];
+  const headers = init.headers as Headers;
+  return {
+    url,
+    method: init.method ?? "GET",
+    headers,
+    body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+  };
+};
+
+describe("serviceRequest — Seerr session modes (#332)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("keeps sending X-Api-Key in the default (API key) mode", async () => {
+    mockStateRef.current = withSeerr(undefined, { apiKey: "admin-key" });
+    await serviceRequest("overseerr", "/request");
+    expect(requestOf(fetchSpy, 0).headers.get("X-Api-Key")).toBe("admin-key");
+  });
+
+  // Seerr's checkUser gives X-API-Key precedence over the session, and
+  // updateInstanceSecrets merges, so a key left behind from before the mode
+  // switch would silently turn a signed-in user back into the admin.
+  it("never sends X-Api-Key in a session mode, even with a stale key stored", async () => {
+    mockStateRef.current = withSeerr("local", {
+      apiKey: "stale-admin-key",
+      username: "me@example.com",
+      password: "pw",
+    });
+    await serviceRequest("overseerr", "/request");
+    expect(requestOf(fetchSpy, 0).headers.get("X-Api-Key")).toBeNull();
+  });
+
+  it("treats the Plex token in the apiKey slot as a token, not a key", async () => {
+    mockStateRef.current = withSeerr("plex", { apiKey: "plex-token" });
+    await serviceRequest("overseerr", "/request");
+    expect(requestOf(fetchSpy, 0).headers.get("X-Api-Key")).toBeNull();
+  });
+
+  it("drops a user-supplied Cookie header so the jar's session wins", async () => {
+    mockStateRef.current = withSeerr("local", {
+      username: "me@example.com",
+      password: "pw",
+      customHeaders: { Cookie: "connect.sid=stale", "X-Proxy": "1" },
+    });
+    await serviceRequest("overseerr", "/request");
+    const { headers } = requestOf(fetchSpy, 0);
+    expect(headers.get("Cookie")).toBeNull();
+    expect(headers.get("X-Proxy")).toBe("1");
+  });
+});
+
+describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = withSeerr("local", {});
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const noSession = () => seerrResponse(403, { status: 403, error: "Please sign in." });
+
+  it("signs in with email + password from an unsaved form, then logs out", async () => {
+    // No instanceId: the typed credentials are what is under test, so the
+    // probe must not consult the jar first (a cookie from another account
+    // would make a wrong password look right). Login, then logout.
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME))
+      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      apiKey: "stale-admin-key",
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    const login = requestOf(fetchSpy, 0);
+    expect(login.url).toBe(`${SEERR_URL}/api/v1/auth/local`);
+    expect(login.method).toBe("POST");
+    expect(login.body).toEqual({ email: "me@example.com", password: "pw" });
+    expect(login.headers.get("X-Api-Key")).toBeNull();
+    const logout = requestOf(fetchSpy, 1);
+    expect(logout.url).toBe(`${SEERR_URL}/api/v1/auth/logout`);
+    expect(logout.method).toBe("POST");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("posts exactly username + password for Jellyfin and Emby", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME))
+      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "sarah",
+      password: "pw",
+      seerrAuthMode: "mediaServer",
+    });
+    expect(result.kind).toBe("ok");
+    const login = requestOf(fetchSpy, 0);
+    expect(login.url).toBe(`${SEERR_URL}/api/v1/auth/jellyfin`);
+    expect(Object.keys(login.body).sort()).toEqual(["password", "username"]);
+  });
+
+  it("posts the plex.tv token as authToken", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME))
+      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      apiKey: "plex-token",
+      seerrAuthMode: "plex",
+    });
+    expect(result.kind).toBe("ok");
+    const login = requestOf(fetchSpy, 0);
+    expect(login.url).toBe(`${SEERR_URL}/api/v1/auth/plex`);
+    expect(login.body).toEqual({ authToken: "plex-token" });
+  });
+
+  it("asks for the credential before touching the network", async () => {
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      seerrAuthMode: "local",
+    });
+    expect(result).toEqual({ kind: "auth_failed", message: "Enter your Seerr email and password" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports wrong credentials on a 403", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      seerrResponse(403, { status: 403, message: "Access denied." }),
+    );
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "nope",
+      seerrAuthMode: "local",
+    });
+    expect(result).toEqual({ kind: "auth_failed", message: "Wrong email or password" });
+  });
+
+  // csurf sits before the session middleware and answers with express's HTML
+  // error page. That must not read as an auth proxy or as a bad password.
+  it("recognises a CSRF rejection and names the fix", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      seerrResponse(
+        403,
+        "<html><body><pre>ForbiddenError: invalid csrf token</pre></body></html>",
+        "text/html; charset=utf-8",
+      ),
+    );
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      seerrAuthMode: "local",
+    });
+    expect(result).toEqual({ kind: "unreachable", message: SEERR_CSRF_MESSAGE });
+  });
+
+  it("maps a disabled sign-in method to an actionable failure", async () => {
+    fetchSpy.mockResolvedValueOnce(seerrResponse(500, { error: "Jellyfin login is disabled" }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "sarah",
+      password: "pw",
+      seerrAuthMode: "mediaServer",
+    });
+    expect(result).toEqual({
+      kind: "auth_failed",
+      message: SEERR_LOGIN_DISABLED_MESSAGE.mediaServer,
+    });
+  });
+
+  it("explains a 404 on /auth/jellyfin as an Overseerr server", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      seerrResponse(404, "<html>Cannot POST /api/v1/auth/jellyfin</html>", "text/html"),
+    );
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "sarah",
+      password: "pw",
+      seerrAuthMode: "mediaServer",
+    });
+    expect(result).toEqual({ kind: "auth_failed", message: SEERR_NO_JELLYFIN_ROUTE_MESSAGE });
+  });
+
+  it("reports an auth proxy when the login answers with an HTML page", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      seerrResponse(200, "<html><form>proxy login</form></html>", "text/html"),
+    );
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("unreachable");
+  });
+
+  // The 30-second health poll: an established session is validated with one
+  // GET and no login, so polling never churns server-side sessions.
+  it("validates an established saved session with a single GET /auth/me", async () => {
+    setSeerrSession(SEERR_ID, SEERR_ME);
+    fetchSpy.mockResolvedValueOnce(seerrResponse(200, SEERR_ME));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      instanceId: SEERR_ID,
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const me = requestOf(fetchSpy, 0);
+    expect(me.url).toBe(`${SEERR_URL}/api/v1/auth/me`);
+    expect(me.method).toBe("GET");
+    expect(me.headers.get("X-Api-Key")).toBeNull();
+  });
+
+  it("re-logs in a saved instance whose session went stale, without logging out", async () => {
+    setSeerrSession(SEERR_ID, SEERR_ME);
+    fetchSpy
+      .mockResolvedValueOnce(noSession()) // validate: stale
+      .mockResolvedValueOnce(noSession()) // shared login fn re-checks the jar
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME)); // POST /auth/local
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      instanceId: SEERR_ID,
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(requestOf(fetchSpy, 2).url).toBe(`${SEERR_URL}/api/v1/auth/local`);
+  });
+
+  it("reuses a jar cookie on a cold start instead of logging in again", async () => {
+    // Not established in memory (fresh launch), but the platform jar still
+    // holds a live cookie: the first GET answers with the user.
+    fetchSpy.mockResolvedValueOnce(seerrResponse(200, SEERR_ME));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      instanceId: SEERR_ID,
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(requestOf(fetchSpy, 0).method).toBe("GET");
+  });
+
+  it("still probes /auth/me with the key in API-key mode", async () => {
+    fetchSpy.mockResolvedValueOnce(seerrResponse(200, { ...SEERR_ME, id: 1, permissions: 2 }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      apiKey: "admin-key",
+      instanceId: SEERR_ID,
+    });
+    expect(result.kind).toBe("ok");
+    const me = requestOf(fetchSpy, 0);
+    expect(me.headers.get("X-Api-Key")).toBe("admin-key");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

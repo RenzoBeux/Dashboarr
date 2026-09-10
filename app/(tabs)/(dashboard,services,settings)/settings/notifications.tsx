@@ -78,6 +78,7 @@ export default function NotificationsSettingsScreen() {
         {notifEnabled ? (
           <SettingsToggleRow
             label="New Seerr request"
+            description="Only for Seerr instances signed in as an admin or an account that can manage requests."
             value={overseerrNewRequest}
             onValueChange={(v) => setNotifSetting("overseerrNewRequest", v)}
           />
