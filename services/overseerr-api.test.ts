@@ -145,6 +145,28 @@ describe("seerrRequest — session modes (#332)", () => {
     expect(isSeerrSessionEstablished(ID)).toBe(true);
   });
 
+  // A and B share a dead session and are rejected together. A refreshes it;
+  // B then sees a LIVE session, but it is A's new one, not the one B's request
+  // used. B must retry, not report a permission denial.
+  it("retries when another caller refreshed the session in the meantime", async () => {
+    setSeerrSession(ID, ME);
+    const gen = seerrSessionGeneration(ID);
+    mockedRequest
+      .mockRejectedValueOnce(rejection(403)) // A
+      .mockRejectedValueOnce(rejection(403)) // B
+      .mockResolvedValue({ pending: 5 });
+    mockedFetchMe
+      .mockResolvedValueOnce(null) // A: dead -> invalidate + re-login
+      .mockResolvedValueOnce(ME); // B: live, but generation has advanced
+
+    await expect(Promise.all([getRequestCount(), getRequestCount()])).resolves.toEqual([
+      { pending: 5 },
+      { pending: 5 },
+    ]);
+    expect(seerrSessionGeneration(ID)).toBe(gen + 1);
+    expect(mockedRequest).toHaveBeenCalledTimes(4);
+  });
+
   it("gives up after a second rejection", async () => {
     mockedRequest.mockRejectedValueOnce(rejection(401)).mockRejectedValueOnce(rejection(401));
     mockedFetchMe.mockResolvedValue(null);
@@ -224,16 +246,23 @@ describe("seerrClearSession", () => {
     expect(isSeerrSessionEstablished(ID)).toBe(false);
   });
 
-  it("does not log out in API-key mode, but still drops the cached account", async () => {
+  // The platform jar keeps the cookie across launches while the in-memory
+  // cache does not: after a restart there can be a live session nothing here
+  // knows about, and a credential change must end it or the validate-first
+  // login would keep the OLD account. So the logout never consults memory.
+  it("logs out even with no in-memory session and even in API-key mode", async () => {
+    await seerrClearSession(ID);
+    expect(mockedLogout).toHaveBeenCalledTimes(1);
+    mockState.instances = { [ID]: { authMode: "local" } };
+    await seerrClearSession(ID);
+    expect(mockedLogout).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips the network in demo mode", async () => {
+    mockState.demoMode = true;
     setSeerrSession(ID, ME);
     await seerrClearSession(ID);
     expect(mockedLogout).not.toHaveBeenCalled();
     expect(isSeerrSessionEstablished(ID)).toBe(false);
-  });
-
-  it("is a no-op for an instance with no session", async () => {
-    mockState.instances = { [ID]: { authMode: "local" } };
-    await seerrClearSession(ID);
-    expect(mockedLogout).not.toHaveBeenCalled();
   });
 });

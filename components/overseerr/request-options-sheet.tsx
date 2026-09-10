@@ -104,11 +104,14 @@ export function RequestOptionsSheet({
 
   // Clamp the tier to what's actually configured: fall back to 4K if only 4K
   // servers exist, and off if no 4K server exists.
+  // Both branches key on has4kServer, which already folds in the 4K request
+  // permission: on a 4K-only setup a user WITHOUT that permission would
+  // otherwise be flipped off by the first branch and back on by the second,
+  // forever.
   useEffect(() => {
     if (is4k && !has4kServer) setIs4k(false);
-    else if (!is4k && serversHd.length === 0 && servers4k.length > 0)
-      setIs4k(true);
-  }, [is4k, has4kServer, serversHd.length, servers4k.length]);
+    else if (!is4k && has4kServer && serversHd.length === 0) setIs4k(true);
+  }, [is4k, has4kServer, serversHd.length]);
 
   useEffect(() => {
     if (activeServers.length === 0) {

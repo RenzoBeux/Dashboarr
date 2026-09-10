@@ -42,6 +42,7 @@ import {
   readSeerrMe,
   seerrAuthMode,
   seerrHasCredential,
+  seerrSessionHostConflict,
   seerrUsesSession,
   type SeerrAuthMode,
   type SeerrMe,
@@ -460,7 +461,11 @@ export async function serviceRequest<T>(
       //    key presence is what keeps a lingering admin key off the wire.
       //  - drop a user-supplied Cookie header, which would clobber the jar's
       //    connect.sid. Same rule as qbLogin in services/qbittorrent-api.ts.
+      //  - drop a user-supplied X-Api-Key too: custom headers are merged
+      //    first, and one pasted there would authenticate as the admin and
+      //    bypass every permission the signed-in account is supposed to have.
       headers.delete("Cookie");
+      headers.delete("X-Api-Key");
     } else if (secrets.apiKey) {
       headers.set("X-Api-Key", secrets.apiKey);
     }
@@ -659,6 +664,7 @@ export async function pingService(
     // A sign-in mode (#332): pingPath (/status) is anonymous, and the only
     // credential on the instance is a Plex token or a password that must not
     // be sent as X-Api-Key. Reachability only; the probe validates the session.
+    headers.delete("X-Api-Key");
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -1027,10 +1033,12 @@ export interface SeerrLoginInput {
 const SEERR_API_BASE = SERVICE_DEFAULTS.overseerr.apiBasePath;
 
 /**
- * Custom headers first (reverse-proxy credentials), then ours. A user-supplied
- * Cookie header is dropped on every Seerr session call: it would replace the
- * jar's connect.sid and the login would appear to succeed while every later
- * request went out unauthenticated.
+ * Custom headers first (reverse-proxy credentials), then ours. Two names are
+ * dropped on every Seerr session call: a Cookie header would replace the
+ * jar's connect.sid (the login would appear to succeed while every later
+ * request went out unauthenticated), and an X-Api-Key header would make Seerr
+ * authenticate the session calls as the admin, since its checkUser gives the
+ * key precedence over the cookie.
  */
 function seerrHeaders(
   customHeaders: Record<string, string>,
@@ -1038,7 +1046,8 @@ function seerrHeaders(
 ): Headers {
   const h = new Headers();
   for (const [k, v] of Object.entries(customHeaders)) {
-    if (k.toLowerCase() === "cookie") continue;
+    const name = k.toLowerCase();
+    if (name === "cookie" || name === "x-api-key") continue;
     h.set(k, v);
   }
   for (const [k, v] of Object.entries(extra)) h.set(k, v);
@@ -1197,6 +1206,17 @@ export function ensureSeerrSession(instanceId: string): Promise<SeerrMe> {
   const secrets = store.instanceSecrets[instanceId] ?? {};
   const customHeaders = store.getMergedHeaders("overseerr", instanceId);
   const mode = seerrAuthMode(inst);
+
+  // The editor refuses this configuration, but an import can still carry it.
+  // Failing loudly beats executing one instance's requests as the other.
+  const conflict = seerrSessionHostConflict(inst, store.serviceInstances.overseerr ?? []);
+  if (conflict) {
+    return Promise.reject(
+      new Error(
+        `Seerr instances "${inst.name}" and "${conflict.name}" are both signed in on the same host and would share one session. Switch one of them to the API key.`,
+      ),
+    );
+  }
 
   if (!seerrUsesSession(mode)) {
     const cached = getSeerrSessionMe(instanceId);

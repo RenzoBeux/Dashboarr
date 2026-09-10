@@ -26,6 +26,7 @@ import { seerrClearSession } from "@/services/overseerr-api";
 import {
   availableSeerrSignInModes,
   seerrAuthMode,
+  seerrSessionHostConflict,
   seerrUsesSession,
   type SeerrAuthMode,
 } from "@/lib/seerr-auth";
@@ -356,9 +357,28 @@ export function ServiceEditor({
     if (serviceId === "pihole") {
       await piholeClearSession(instanceId);
     }
+    // Two signed-in Seerr instances on one host would share the platform
+    // jar's single cookie and silently act as each other (#332). Refuse it
+    // rather than let it half-work; an API-key instance on that host is fine.
+    if (showsSignIn && seerrUsesSession(authMode)) {
+      const conflict = seerrSessionHostConflict(
+        { id: instanceId, authMode, localUrl: normLocal, remoteUrl: normRemote },
+        instancesForKind,
+      );
+      if (conflict) {
+        toast(
+          `"${conflict.name}" is already signed in to this same Seerr host. Two signed-in instances on one host share a single session. Use the API key on one of them, or remove the other.`,
+          "error",
+        );
+        return "aborted";
+      }
+    }
+
     // Same ordering for Seerr's session (#332): the logout resolves the host
-    // from the store, so it has to hit the OLD URL and the OLD mode before
-    // either is rewritten below. It is a no-op in API-key mode.
+    // from the store, so it has to hit the OLD URL before it is rewritten
+    // below. Unconditional: the jar's cookie outlives this process, so a
+    // credential change saved after a restart has an old session to end that
+    // no in-memory state knows about.
     if (showsSignIn) {
       await seerrClearSession(instanceId);
     }

@@ -18,7 +18,6 @@ import {
   dropSeerrSession,
   forgetSeerrSession,
   invalidateSeerrSession,
-  isSeerrSessionEstablished,
   seerrSessionGeneration,
   seerrSessionIds,
   setSeerrSession,
@@ -54,8 +53,9 @@ export interface OverseerrRequestOptions {
   is4k?: boolean;
   // File the request on behalf of another Seerr account (#332). `requestedBy`
   // becomes that user; permitted because the API key authenticates as the admin,
-  // who holds MANAGE_USERS/MANAGE_REQUESTS. This is the same field Seerr's own
-  // "Request As" dropdown sends, and it is declared in both forks' schemas.
+  // who holds both MANAGE_USERS and MANAGE_REQUESTS (an AND check upstream).
+  // This is the same field Seerr's own "Request As" dropdown sends, and it is
+  // declared in both forks' schemas.
   //
   // Note the split: `requestedBy` and the quota check follow this user, but the
   // approval decision is taken from the CALLER. Since `hasPermission` returns
@@ -119,6 +119,11 @@ async function sessionRequest<T>(
       : null;
     if (live) {
       setSeerrSession(id, live);
+      // A live session proves the rejection was a permission denial ONLY if
+      // it is the same session this request used. If another caller already
+      // replaced the dead one (generation advanced), this rejection was the
+      // old session's and the request deserves its retry.
+      if (seerrSessionGeneration(id) !== generation) return call();
       throw err;
     }
     invalidateSeerrSession(id, generation);
@@ -152,15 +157,22 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
  * before a credential save and before instance removal, the piholeClearSession
  * precedent: it resolves the host from the store at call time, so it has to
  * run BEFORE updateInstance rewrites the URL.
+ *
+ * The logout is unconditional, NOT gated on the in-memory `established`
+ * flag or the stored mode: the platform jar keeps the cookie across launches
+ * while this cache does not, so after a restart there can be a live session
+ * nothing in memory knows about. Skipping the logout there would let the
+ * validate-first login accept the OLD account's cookie without ever trying
+ * the credentials just saved. POST /auth/logout answers 200 with or without
+ * a session, so the cost of asking is one cheap call.
  */
 export async function seerrClearSession(instanceId?: string): Promise<void> {
   const store = useConfigStore.getState();
   const ids = instanceId ? [instanceId] : seerrSessionIds();
   for (const id of ids) {
-    if (!store.demoMode && isSeerrSessionEstablished(id)) {
-      const inst = store.getInstance("overseerr", id);
+    if (!store.demoMode) {
       const baseUrl = store.getActiveUrl("overseerr", id);
-      if (inst && baseUrl && seerrUsesSession(seerrAuthMode(inst))) {
+      if (baseUrl) {
         await seerrLogout(baseUrl, store.getMergedHeaders("overseerr", id));
       }
     }

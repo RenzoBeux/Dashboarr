@@ -101,17 +101,22 @@ describe("deriveSeerrCapabilities", () => {
     expect(viewer.canManageRequests).toBe(false);
     expect(viewer.canRequestAs).toBe(false);
 
+    // "Request As" (the userId body field) is an AND check upstream: either
+    // bit alone shows Seerr's own picker but the submission 403s.
     const userManager = deriveSeerrCapabilities(me(P.MANAGE_USERS));
-    expect(userManager.canRequestAs).toBe(true);
+    expect(userManager.canRequestAs).toBe(false);
     expect(userManager.canManageUsers).toBe(true);
     expect(userManager.canManageRequests).toBe(false);
 
     const manager = deriveSeerrCapabilities(me(P.MANAGE_REQUESTS));
     expect(manager.canManageRequests).toBe(true);
     expect(manager.canViewAllRequests).toBe(true);
-    expect(manager.canRequestAs).toBe(true);
+    expect(manager.canRequestAs).toBe(false);
     expect(manager.canManageDiscover).toBe(false);
     expect(manager.isAdmin).toBe(false);
+
+    const both = deriveSeerrCapabilities(me(P.MANAGE_USERS | P.MANAGE_REQUESTS));
+    expect(both.canRequestAs).toBe(true);
   });
 
   it("selects by media type", () => {

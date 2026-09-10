@@ -84,7 +84,9 @@ export function hasSeerrPermission(
  *  - canViewAllRequests: GET /request self-scopes without MANAGE_REQUESTS or
  *    REQUEST_VIEW, and GET /request/count is server-wide for everyone.
  *  - canRequestAs: the `userId` body field ("Request As") needs
- *    MANAGE_USERS or MANAGE_REQUESTS.
+ *    MANAGE_USERS AND MANAGE_REQUESTS. MediaRequest.createRequest passes
+ *    both to hasPermission without options, and both forks default array
+ *    checks to AND (server/lib/permissions.ts).
  */
 export interface SeerrCapabilities {
   loaded: boolean;
@@ -132,7 +134,7 @@ export function deriveSeerrCapabilities(me: SeerrMe | undefined | null): SeerrCa
     canManageUsers: has(SeerrPermission.MANAGE_USERS),
     canManageDiscover: has(SeerrPermission.ADMIN),
     canViewAllRequests: has([SeerrPermission.MANAGE_REQUESTS, SeerrPermission.REQUEST_VIEW]),
-    canRequestAs: has([SeerrPermission.MANAGE_USERS, SeerrPermission.MANAGE_REQUESTS]),
+    canRequestAs: has([SeerrPermission.MANAGE_USERS, SeerrPermission.MANAGE_REQUESTS], "and"),
     canRequestMovie: has([SeerrPermission.REQUEST, SeerrPermission.REQUEST_MOVIE]),
     canRequestTv: has([SeerrPermission.REQUEST, SeerrPermission.REQUEST_TV]),
     canRequest4kMovie: has([SeerrPermission.REQUEST_4K, SeerrPermission.REQUEST_4K_MOVIE]),

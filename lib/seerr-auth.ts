@@ -374,3 +374,52 @@ export const SEERR_AUTH_MODE_LABELS: Record<SeerrAuthMode, string> = {
   mediaServer: "Jellyfin / Emby account",
   local: "Seerr email and password",
 };
+
+// ---------------------------------------------------------------------------
+// Same-host conflicts
+// ---------------------------------------------------------------------------
+
+/** Lower-cased hostname of a URL (no scheme, port, path), or "" if unparseable. */
+export function seerrHostOf(url: string): string {
+  const stripped = url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  const end = stripped.search(/[/?#]/);
+  const authority = end === -1 ? stripped : stripped.slice(0, end);
+  const host = authority.replace(/^[^@]*@/, "").replace(/:\d+$/, "");
+  return host.toLowerCase();
+}
+
+export interface SeerrInstanceLike {
+  id: string;
+  authMode?: SeerrAuthMode;
+  localUrl: string;
+  remoteUrl: string;
+}
+
+/**
+ * Another instance whose session would collide with this one, or null.
+ *
+ * The session cookie lives in the platform jar, which scopes it by host
+ * (never by port, path or instance), while lib/seerr-session.ts keys its
+ * cache by instance id. Two sign-in-mode instances on one host would
+ * therefore share one real cookie: each login replaces the other's, and a
+ * request for instance A could silently execute as instance B. There is no
+ * way to isolate them from JS, so the configuration is refused instead. An
+ * API-key instance on the same host is fine: the header wins over the cookie.
+ */
+export function seerrSessionHostConflict<T extends SeerrInstanceLike>(
+  instance: SeerrInstanceLike,
+  others: readonly T[],
+): T | null {
+  if (!seerrUsesSession(seerrAuthMode(instance))) return null;
+  const hosts = new Set(
+    [instance.localUrl, instance.remoteUrl].map(seerrHostOf).filter((h) => h.length > 0),
+  );
+  if (hosts.size === 0) return null;
+  for (const other of others) {
+    if (other.id === instance.id) continue;
+    if (!seerrUsesSession(seerrAuthMode(other))) continue;
+    const shared = [other.localUrl, other.remoteUrl].map(seerrHostOf).some((h) => h && hosts.has(h));
+    if (shared) return other;
+  }
+  return null;
+}

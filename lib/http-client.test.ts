@@ -1518,6 +1518,20 @@ describe("serviceRequest — Seerr session modes (#332)", () => {
     expect(requestOf(fetchSpy, 0).headers.get("X-Api-Key")).toBeNull();
   });
 
+  // Custom headers merge first. One named X-Api-Key would authenticate every
+  // session-mode call as the admin, bypassing the signed-in account entirely.
+  it("drops a user-supplied X-Api-Key header in a session mode", async () => {
+    mockStateRef.current = withSeerr("local", {
+      username: "me@example.com",
+      password: "pw",
+      customHeaders: { "X-Api-Key": "pasted-admin-key", "X-Proxy": "1" },
+    });
+    await serviceRequest("overseerr", "/request");
+    const { headers } = requestOf(fetchSpy, 0);
+    expect(headers.get("X-Api-Key")).toBeNull();
+    expect(headers.get("X-Proxy")).toBe("1");
+  });
+
   it("drops a user-supplied Cookie header so the jar's session wins", async () => {
     mockStateRef.current = withSeerr("local", {
       username: "me@example.com",
@@ -1739,6 +1753,21 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
     expect(result.kind).toBe("ok");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(requestOf(fetchSpy, 0).method).toBe("GET");
+  });
+
+  it("never lets a custom X-Api-Key header reach a sign-in probe", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME))
+      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "me@example.com",
+      password: "pw",
+      customHeaders: { "x-api-key": "pasted-admin-key" },
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(requestOf(fetchSpy, 0).headers.get("X-Api-Key")).toBeNull();
   });
 
   it("still probes /auth/me with the key in API-key mode", async () => {

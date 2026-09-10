@@ -22,8 +22,8 @@ const API_KEY_OWNER_ID = -1;
  * in Seerr's own requests list is useless.
  *
  * Seerr supports this natively — `userId` on POST /request is what its own
- * "Request As" dropdown sends, permitted for callers holding MANAGE_USERS or
- * MANAGE_REQUESTS. The admin API key has both; an instance signed in as a
+ * "Request As" dropdown sends, permitted for callers holding BOTH MANAGE_USERS
+ * and MANAGE_REQUESTS. The admin API key has both; an instance signed in as a
  * household member usually has neither, in which case this card says who the
  * requests are filed as instead of offering a picker Seerr would reject.
  * Renders nothing for other service kinds so the caller can drop it in
@@ -76,7 +76,7 @@ function RequestUserBody({ instanceId }: { instanceId: string }) {
       <Card className="gap-4 mb-4">
         {header}
         <SeerrPermissionNotice
-          message={`Requests from this app are filed as ${caps.displayName ?? "the signed-in account"}. Choosing another account needs the admin API key, or an account that can manage requests.`}
+          message={`Requests from this app are filed as ${caps.displayName ?? "the signed-in account"}. Choosing another account needs the admin API key, or an account that can manage both users and requests.`}
         />
       </Card>
     );

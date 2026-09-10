@@ -1,4 +1,6 @@
 import {
+  seerrHostOf,
+  seerrSessionHostConflict,
   availableSeerrSignInModes,
   buildSeerrLoginRequest,
   classifySeerrLoginFailure,
@@ -316,5 +318,38 @@ describe("availableSeerrSignInModes", () => {
     ).toEqual({ localLogin: true, mediaServerType: 2, applicationTitle: "Seerr" });
     expect(readSeerrPublicSettings("<html>")).toBeNull();
     expect(readSeerrPublicSettings(null)).toBeNull();
+  });
+});
+
+describe("seerrHostOf", () => {
+  it("reduces a URL to its cookie-scoping host", () => {
+    expect(seerrHostOf("http://Seerr.local:5055/api")).toBe("seerr.local");
+    expect(seerrHostOf("https://user:pw@seerr.example.com/")).toBe("seerr.example.com");
+    expect(seerrHostOf("seerr.local")).toBe("seerr.local");
+    expect(seerrHostOf("")).toBe("");
+  });
+});
+
+describe("seerrSessionHostConflict", () => {
+  const me = { id: "a", authMode: "local" as const, localUrl: "http://seerr.local:5055", remoteUrl: "https://seerr.example.com" };
+
+  // The platform jar scopes connect.sid by host, so two signed-in instances
+  // on one host would share one real session and act as each other.
+  it("flags another signed-in instance on the same host, on either URL slot", () => {
+    const other = { id: "b", name: "Cabin", authMode: "plex" as const, localUrl: "", remoteUrl: "http://SEERR.LOCAL:5055/" };
+    expect(seerrSessionHostConflict(me, [me, other])).toBe(other);
+    const viaRemote = { ...other, remoteUrl: "https://seerr.example.com:443" };
+    expect(seerrSessionHostConflict(me, [viaRemote])).toBe(viaRemote);
+  });
+
+  it("ignores API-key instances, other hosts, and itself", () => {
+    expect(seerrSessionHostConflict(me, [{ id: "b", localUrl: "http://seerr.local:5055", remoteUrl: "" }])).toBeNull();
+    expect(seerrSessionHostConflict(me, [{ id: "b", authMode: "local", localUrl: "http://other.local:5055", remoteUrl: "" }])).toBeNull();
+    expect(seerrSessionHostConflict(me, [me])).toBeNull();
+  });
+
+  it("never flags an API-key instance", () => {
+    const keyed = { ...me, authMode: undefined };
+    expect(seerrSessionHostConflict(keyed, [{ id: "b", authMode: "local", localUrl: "http://seerr.local", remoteUrl: "" }])).toBeNull();
   });
 });
