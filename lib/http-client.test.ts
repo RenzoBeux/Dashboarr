@@ -1,4 +1,5 @@
 import { resetDigestSessions } from "@/lib/http-auth";
+import { queryClient } from "@/lib/query-client";
 import {
   isSeerrSessionEstablished,
   resetSeerrSessions,
@@ -36,6 +37,13 @@ jest.mock("@/store/config-store", () => ({
 beforeEach(() => {
   resetDigestSessions();
   resetSeerrSessions();
+});
+
+// The Seerr probe hands fresh /auth/me data to the identity query; the cache
+// entry that creates carries a gc timer, which would otherwise keep the jest
+// worker alive after the last test.
+afterAll(() => {
+  queryClient.clear();
 });
 
 interface FakeInstance {
@@ -1840,22 +1848,49 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
     expect(result.kind).toBe("unreachable");
   });
 
-  // The Test button's unsaved-form path logs the HOST out, which empties the
-  // jar for every instance whose cookie lived there; the cache must not keep
-  // claiming a session the server no longer has.
-  it("tells the cache the host was logged out after an unsaved-form test", async () => {
+  // Testing edited credentials logs the typed account in, which takes over
+  // the host's cookie. The saved instance that had a session there gets it
+  // back with a credential login of its own (never validate-first, which
+  // would adopt the typed account), and nothing is logged out: in
+  // mediaServer mode a logout also deletes a Jellyfin/Emby device.
+  it("hands the host back to the saved instance after an unsaved-form test", async () => {
+    mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "saved-pw" });
     setSeerrSession(SEERR_ID, "seerr.local", SEERR_ME);
     fetchSpy
-      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME))
-      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+      .mockResolvedValueOnce(seerrResponse(200, { ...SEERR_ME, id: 9 })) // typed account
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME)); // saved account, restored
     const result = await testServiceConnection("overseerr", {
       url: SEERR_URL,
       username: "other@example.com",
-      password: "pw",
+      password: "typed-pw",
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(requestOf(fetchSpy, 0).body).toEqual({ email: "other@example.com", password: "typed-pw" });
+    const restore = requestOf(fetchSpy, 1);
+    expect(restore.url).toBe(`${SEERR_URL}/api/v1/auth/local`);
+    expect(restore.body).toEqual({ email: "me@example.com", password: "saved-pw" });
+    expect(fetchSpy.mock.calls.some((c) => String(c[0]).endsWith("/auth/logout"))).toBe(false);
+    expect(isSeerrSessionEstablished(SEERR_ID, "seerr.local")).toBe(true);
+    expect(mockStateRef.current.seerrStaleHosts[SEERR_ID]).toEqual([]);
+  });
+
+  it("still marks the host stale when the restore fails, so the next login posts credentials", async () => {
+    mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "saved-pw" });
+    setSeerrSession(SEERR_ID, "seerr.local", SEERR_ME);
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, { ...SEERR_ME, id: 9 }))
+      .mockRejectedValueOnce(new TypeError("Network request failed"));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "other@example.com",
+      password: "typed-pw",
       seerrAuthMode: "local",
     });
     expect(result.kind).toBe("ok");
     expect(isSeerrSessionEstablished(SEERR_ID, "seerr.local")).toBe(false);
+    expect(mockStateRef.current.seerrStaleHosts[SEERR_ID]).toEqual(["seerr.local"]);
   });
 
   it("marks a refused credential so the query retry policy stops (status 401)", () => {

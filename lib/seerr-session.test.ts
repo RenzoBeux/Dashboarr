@@ -1,14 +1,15 @@
 import type { SeerrMe } from "@/lib/seerr-auth";
 import {
-  SEERR_LOGIN_FAILURE_COOLDOWN_MS,
   dedupedSeerrLogin,
   drainSeerrLogins,
   dropSeerrSession,
+  forgetSeerrLoginFailures,
   forgetSeerrSession,
   getSeerrSessionMe,
   invalidateSeerrSession,
   invalidateSeerrSessionsOnHost,
   isSeerrSessionEstablished,
+  seerrEstablishedInstancesOnHost,
   resetSeerrSessions,
   seerrLoginInFlight,
   seerrSessionGeneration,
@@ -149,7 +150,7 @@ const unreachable = () =>
     result: { kind: "unreachable", message: "Server error 502" },
   });
 
-describe("dedupedSeerrLogin — credential rejection cooldown", () => {
+describe("dedupedSeerrLogin — remembered credential rejection", () => {
   afterEach(() => {
     jest.useRealTimers();
   });
@@ -173,19 +174,32 @@ describe("dedupedSeerrLogin — credential rejection cooldown", () => {
     expect(loginFn).toHaveBeenCalledTimes(2);
   });
 
-  it("tries again once the cooldown has passed", async () => {
+  // Jellyfin/Emby count failed attempts cumulatively, so a rejection that
+  // expired on its own would still lock the account, just later.
+  it("never forgets on its own, however much time passes", async () => {
     jest.useFakeTimers();
     const loginFn = jest.fn(() => Promise.reject(credentialRejection()));
     await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
-    jest.advanceTimersByTime(SEERR_LOGIN_FAILURE_COOLDOWN_MS - 1);
+    jest.advanceTimersByTime(24 * 60 * 60_000);
     await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
     expect(loginFn).toHaveBeenCalledTimes(1);
-    jest.advanceTimersByTime(2);
+  });
+
+  it("tries again when the user asks (forgetSeerrLoginFailures)", async () => {
+    const loginFn = jest.fn(() => Promise.reject(credentialRejection()));
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
+    await expect(dedupedSeerrLogin("inst-2", LAN, loginFn)).rejects.toThrow();
+    forgetSeerrLoginFailures(ID);
     const ok = deferredLogin(ME);
     const p = dedupedSeerrLogin(ID, LAN, ok.fn);
     ok.resolve();
     await expect(p).resolves.toEqual(ME);
-    expect(ok.fn).toHaveBeenCalledTimes(1);
+    // Scoped to the instance asked for.
+    await expect(dedupedSeerrLogin("inst-2", LAN, loginFn)).rejects.toThrow();
+    expect(loginFn).toHaveBeenCalledTimes(2);
+    forgetSeerrLoginFailures();
+    await expect(dedupedSeerrLogin("inst-2", LAN, loginFn)).rejects.toThrow();
+    expect(loginFn).toHaveBeenCalledTimes(3);
   });
 
   // A credential save is the one thing that should be tried at once.
@@ -224,6 +238,19 @@ describe("dedupedSeerrLogin — credential rejection cooldown", () => {
     const q = dedupedSeerrLogin(ID, LAN, ok.fn);
     ok.resolve();
     await expect(q).resolves.toEqual(ME);
+  });
+});
+
+describe("seerrEstablishedInstancesOnHost", () => {
+  it("lists the instances holding a session on that host only", async () => {
+    setSeerrSession(ID, LAN, ME);
+    setSeerrSession("inst-2", LAN, OTHER);
+    setSeerrSession("inst-3", WAN, ME);
+    const { fn } = deferredLogin(ME);
+    void dedupedSeerrLogin("inst-4", LAN, fn).catch(() => undefined);
+    expect(seerrEstablishedInstancesOnHost(LAN).sort()).toEqual([ID, "inst-2"]);
+    invalidateSeerrSessionsOnHost(LAN);
+    expect(seerrEstablishedInstancesOnHost(LAN)).toEqual([]);
   });
 });
 

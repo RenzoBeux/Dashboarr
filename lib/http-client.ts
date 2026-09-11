@@ -55,10 +55,12 @@ import {
   invalidateSeerrSession,
   invalidateSeerrSessionsOnHost,
   isSeerrSessionEstablished,
+  seerrEstablishedInstancesOnHost,
   seerrLoginsSuspended,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
+import { queryClient } from "@/lib/query-client";
 import {
   basicAuthHeader,
   digestSessionKey,
@@ -1070,6 +1072,18 @@ export interface SeerrLoginInput {
 const SEERR_API_BASE = SERVICE_DEFAULTS.overseerr.apiBasePath;
 
 /**
+ * A fresh /auth/me the probe just read, recorded in the session cache AND
+ * handed to the identity query (hooks/use-overseerr.ts useSeerrMe) under its
+ * own key. The health poll validates the session every 30 seconds anyway,
+ * so a permission the admin changed reaches the UI on the next poll instead
+ * of the identity query's own, much slower, refresh.
+ */
+function publishSeerrMe(instanceId: string, host: string, me: SeerrMe): void {
+  setSeerrSession(instanceId, host, me);
+  queryClient.setQueryData(["overseerr", instanceId, "me"], me);
+}
+
+/**
  * Custom headers first (reverse-proxy credentials), then ours. Two names are
  * dropped on every Seerr session call: a Cookie header would replace the
  * jar's connect.sid (the login would appear to succeed while every later
@@ -1498,7 +1512,7 @@ async function runConnectionProbe(
           // screen asks.
           const me = await seerrFetchMe(baseUrl, customHeaders, signal, apiKey);
           if (!me) return { kind: "auth_failed", message: "Invalid API key" };
-          if (id) setSeerrSession(id, host, me);
+          if (id) publishSeerrMe(id, host, me);
           return { kind: "ok" };
         }
 
@@ -1515,7 +1529,7 @@ async function runConnectionProbe(
           const generation = seerrSessionGeneration(id, host);
           const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
           if (existing) {
-            setSeerrSession(id, host, existing);
+            publishSeerrMe(id, host, existing);
             return { kind: "ok" };
           }
           // Stale (expired, or the server forgot it). Conditional, so a
@@ -1527,7 +1541,7 @@ async function runConnectionProbe(
           // function re-checks the jar first for the not-yet-established
           // cold-start case, unless this host is marked stale after a
           // credential change, then posts the stored credentials.
-          await dedupedSeerrLogin(id, host, async () => {
+          const me = await dedupedSeerrLogin(id, host, async () => {
             const store = useConfigStore.getState();
             if (!store.isSeerrHostStale(id, host)) {
               const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
@@ -1537,18 +1551,38 @@ async function runConnectionProbe(
             store.clearSeerrStaleHost(id, host);
             return me;
           });
+          queryClient.setQueryData(["overseerr", id, "me"], me);
           return { kind: "ok" };
         }
         // Testing an UNSAVED form: the typed credentials are the thing under
-        // test, so never trust a cookie some other account left in the jar,
-        // and never leave a session behind for a URL that may not be saved.
-        // The logout empties the jar for this HOST, whichever instance's
-        // cookie was there, so the cache is told (the editor passes the
-        // instance id when the form matches what is saved, which takes the
-        // branch above instead and leaves the live session alone).
+        // test, so never trust a cookie some other account left in the jar.
+        // (The editor passes the instance id when the form matches what is
+        // saved, which takes the branch above and leaves the session alone.)
         await login();
-        await seerrLogout(baseUrl, customHeaders);
+        // The jar's cookie for this HOST now belongs to the typed account,
+        // whichever instance's it was. A saved instance that had a session
+        // here gets it back through a credential login with its stored
+        // secrets on its own URL (marked stale first: validate-first would
+        // adopt the typed account), rather than a logout, which in
+        // mediaServer mode also deletes a Jellyfin/Emby device and would
+        // leave the app to sign in again on its next request anyway. With
+        // nothing to restore, log out so no session is left behind for a
+        // URL that may never be saved.
+        const store = useConfigStore.getState();
+        const restore = seerrEstablishedInstancesOnHost(host)
+          .map((otherId) => store.getInstance("overseerr", otherId))
+          .filter((inst): inst is NonNullable<typeof inst> => !!inst)
+          .filter((inst) => seerrUsesSession(seerrAuthMode(inst)));
         invalidateSeerrSessionsOnHost(host);
+        if (restore.length === 0) {
+          await seerrLogout(baseUrl, customHeaders);
+          return { kind: "ok" };
+        }
+        for (const inst of restore) {
+          store.markSeerrHostsStale(inst.id, [host]);
+          const ownUrl = [inst.localUrl, inst.remoteUrl].find((u) => seerrHostOf(u) === host);
+          await ensureSeerrSession(inst.id, ownUrl ?? baseUrl).catch(() => undefined);
+        }
         return { kind: "ok" };
       } catch (err) {
         if (err instanceof SeerrLoginError) return err.result;

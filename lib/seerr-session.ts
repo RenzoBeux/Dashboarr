@@ -52,22 +52,21 @@ export interface SeerrSessionEntry {
    */
   draining: Set<Promise<unknown>>;
   /**
-   * The last credential rejection on this host, held for
-   * SEERR_LOGIN_FAILURE_COOLDOWN_MS. While it stands, dedupedSeerrLogin
-   * rejects with it instead of posting the credentials again: the 30-second
-   * health poll, every query's retries and every refetch would otherwise
-   * each re-submit a wrong password, and in mediaServer mode Seerr forwards
-   * each attempt to Jellyfin/Emby, whose lockout counts them all. Cleared by
-   * a credential change (dropSeerrSession) so a fixed password is tried at
-   * once, and by the cooldown so a server-side fix is picked up unattended.
+   * The last credential rejection on this host. While it stands,
+   * dedupedSeerrLogin rejects with it instead of posting the credentials
+   * again: the 30-second health poll, every query's retries and every
+   * refetch would otherwise each re-submit a wrong password, and in
+   * mediaServer mode Seerr forwards each attempt to Jellyfin/Emby, whose
+   * lockout counts them cumulatively, so even a slow retry eventually locks
+   * the account. There is deliberately no timeout. It is cleared by a
+   * credential, URL or mode change (dropSeerrSession, via the save path) and
+   * by an explicit user retry (forgetSeerrLoginFailures: Test Connection,
+   * pull-to-refresh), never by the clock.
    */
-  failure: { error: unknown; until: number } | null;
+  failure: { error: unknown } | null;
 }
 
 const sessions = new Map<string, SeerrSessionEntry>();
-
-/** How long a rejected credential is remembered before it is posted again. */
-export const SEERR_LOGIN_FAILURE_COOLDOWN_MS = 5 * 60_000;
 
 /**
  * Whether a login rejection means the CREDENTIALS were refused, as opposed
@@ -260,10 +259,7 @@ export function dedupedSeerrLogin(
   const entry = seerrSessionEntry(instanceId, host);
   if (entry.established && entry.me) return Promise.resolve(entry.me);
   if (entry.loginPromise) return entry.loginPromise;
-  if (entry.failure) {
-    if (Date.now() < entry.failure.until) return Promise.reject(entry.failure.error);
-    entry.failure = null;
-  }
+  if (entry.failure) return Promise.reject(entry.failure.error);
 
   const generation = entry.generation;
   const attempt: Promise<SeerrMe> = loginFn()
@@ -278,7 +274,7 @@ export function dedupedSeerrLogin(
       },
       (err: unknown) => {
         if (isCredentialRejection(err) && entry.generation === generation) {
-          entry.failure = { error: err, until: Date.now() + SEERR_LOGIN_FAILURE_COOLDOWN_MS };
+          entry.failure = { error: err };
         }
         throw err;
       },
@@ -289,6 +285,26 @@ export function dedupedSeerrLogin(
     });
   entry.loginPromise = attempt;
   return attempt;
+}
+
+/**
+ * The user asked for another try (Test Connection, pull-to-refresh): forget
+ * the remembered credential rejections, for one instance or for all of them,
+ * so the next login posts the credentials again.
+ */
+export function forgetSeerrLoginFailures(instanceId?: string): void {
+  const entries = instanceId ? entriesOf(instanceId) : [...sessions.values()];
+  for (const entry of entries) entry.failure = null;
+}
+
+/** Instances whose cache says they hold a session on `host`. */
+export function seerrEstablishedInstancesOnHost(host: string): string[] {
+  const suffix = `${SEP}${host}`;
+  const ids: string[] = [];
+  for (const [k, entry] of sessions) {
+    if (k.endsWith(suffix) && entry.established) ids.push(k.slice(0, k.length - suffix.length));
+  }
+  return ids;
 }
 
 /** The login already in flight for this host, if any. */

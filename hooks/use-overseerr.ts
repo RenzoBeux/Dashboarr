@@ -98,6 +98,8 @@ export function useOverseerrRequestCount(instanceId?: string, active = true) {
  * reads the session cache the probe and the login already filled, so a screen
  * mounted after either renders with its controls in place, no spinner.
  */
+const SEERR_ME_REFRESH_MS = 5 * 60_000;
+
 export function useSeerrMe(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
   return useQuery<SeerrMe>({
@@ -105,13 +107,17 @@ export function useSeerrMe(instanceId?: string, active = true) {
     queryFn: () => getSeerrMe(id ?? undefined),
     enabled: enabled && !!id && active,
     staleTime: 5 * 60_000,
-    // Focus/reconnect refetches are off app-wide, so a failed identity read
-    // (host down at launch, LAN guard, wrong password) would otherwise stay
-    // failed until something else re-keys it. Poll only while errored: a
-    // refused credential is answered from lib/seerr-session's cooldown
-    // without touching the network, so this costs nothing in the bad case.
+    // Focus/reconnect refetches are off app-wide and staleTime schedules
+    // nothing, so without an interval a mounted screen would keep the
+    // permissions it loaded at mount for as long as it stays mounted. Poll
+    // slowly while healthy (the health probe also feeds fresh /auth/me data
+    // into this key every 30s, see publishSeerrMe in lib/http-client.ts) and
+    // faster while errored so a failed read (host down at launch, LAN guard,
+    // wrong password) self-heals. A refused credential is answered from
+    // lib/seerr-session's memory without touching the network, so the fast
+    // interval costs nothing in the bad case.
     refetchInterval: (query) =>
-      query.state.status === "error" ? POLLING_INTERVALS.queue : false,
+      query.state.status === "error" ? POLLING_INTERVALS.queue : SEERR_ME_REFRESH_MS,
     initialData: () => (id ? (getSeerrSessionMe(id) ?? undefined) : undefined),
   });
 }

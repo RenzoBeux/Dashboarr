@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -75,7 +76,8 @@ import {
   type DiscoverCollectionKind,
 } from "@/lib/overseerr-discover";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
+import { forgetSeerrLoginFailures } from "@/lib/seerr-session";
 import {
   DiscoverSliderType,
   type OverseerrRequest,
@@ -183,7 +185,16 @@ export default function RequestsScreen() {
   const [selectedMedia, setSelectedMedia] =
     useState<OverseerrMediaResult | null>(null);
   const { data: healthData } = useServiceHealth();
-  const { refreshing, onRefresh } = usePullToRefresh([["overseerr"]]);
+  // A pull is the user's "try again": lift any remembered Seerr credential
+  // rejection (lib/seerr-session.ts) before the refetch, or the identity
+  // query would just be answered with the same error from memory.
+  const queryClient = useQueryClient();
+  const { refreshing, onRefresh } = useRefreshSpinner(
+    useCallback(() => {
+      forgetSeerrLoginFailures();
+      return queryClient.invalidateQueries({ queryKey: ["overseerr"] });
+    }, [queryClient]),
+  );
 
   const overseerrHealth = healthData?.find((s) => s.id === "overseerr");
 

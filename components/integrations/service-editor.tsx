@@ -23,7 +23,11 @@ import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
 import { seerrClearSession } from "@/services/overseerr-api";
-import { dropSeerrSession, suspendSeerrLogins } from "@/lib/seerr-session";
+import {
+  dropSeerrSession,
+  forgetSeerrLoginFailures,
+  suspendSeerrLogins,
+} from "@/lib/seerr-session";
 import { queryClient } from "@/lib/query-client";
 import {
   availableSeerrSignInModes,
@@ -602,6 +606,9 @@ export function ServiceEditor({
       }
       return;
     }
+    // Tapping Test is the explicit "try those credentials again" that lifts a
+    // remembered rejection (lib/seerr-session.ts); nothing else but a save does.
+    if (showsSignIn) forgetSeerrLoginFailures(instanceId);
     const result = await testServiceConnection(serviceId, {
       url: testUrl,
       apiKey,
