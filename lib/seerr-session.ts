@@ -51,9 +51,34 @@ export interface SeerrSessionEntry {
    * superseded login can never land after the logout that was meant to end it.
    */
   draining: Set<Promise<unknown>>;
+  /**
+   * The last credential rejection on this host, held for
+   * SEERR_LOGIN_FAILURE_COOLDOWN_MS. While it stands, dedupedSeerrLogin
+   * rejects with it instead of posting the credentials again: the 30-second
+   * health poll, every query's retries and every refetch would otherwise
+   * each re-submit a wrong password, and in mediaServer mode Seerr forwards
+   * each attempt to Jellyfin/Emby, whose lockout counts them all. Cleared by
+   * a credential change (dropSeerrSession) so a fixed password is tried at
+   * once, and by the cooldown so a server-side fix is picked up unattended.
+   */
+  failure: { error: unknown; until: number } | null;
 }
 
 const sessions = new Map<string, SeerrSessionEntry>();
+
+/** How long a rejected credential is remembered before it is posted again. */
+export const SEERR_LOGIN_FAILURE_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * Whether a login rejection means the CREDENTIALS were refused, as opposed
+ * to the host being unreachable. Duck-typed on http-client's SeerrLoginError
+ * (`result.kind`) because this module cannot import it (cycle); the retry
+ * policy in lib/query-client.ts reads errors the same way.
+ */
+function isCredentialRejection(err: unknown): boolean {
+  const kind = (err as { result?: { kind?: unknown } } | null)?.result?.kind;
+  return kind === "auth_failed";
+}
 
 /**
  * Instances whose logins are suspended, with a depth so nested suspensions
@@ -113,6 +138,7 @@ export function seerrSessionEntry(instanceId: string, host: string): SeerrSessio
       loginPromise: null,
       generation: 0,
       draining: new Set(),
+      failure: null,
     };
     sessions.set(k, entry);
   }
@@ -140,6 +166,7 @@ export function setSeerrSession(instanceId: string, host: string, me: SeerrMe): 
   const entry = seerrSessionEntry(instanceId, host);
   entry.established = true;
   entry.me = me;
+  entry.failure = null;
 }
 
 /**
@@ -164,6 +191,25 @@ export function invalidateSeerrSession(
 }
 
 /**
+ * The jar lost its cookie for `host` (POST /auth/logout was sent there on
+ * behalf of no instance in particular, as the editor's Test button does for
+ * an unsaved form). Every instance whose cache still says it is established
+ * there is now wrong: unconditional, generation-bumping, so the next request
+ * logs in cleanly instead of paying a 401 and a post-mortem first. In-flight
+ * logins are left alone: their Set-Cookie is still coming and will be valid.
+ */
+export function invalidateSeerrSessionsOnHost(host: string): void {
+  const suffix = `${SEP}${host}`;
+  for (const [k, entry] of sessions) {
+    if (!k.endsWith(suffix)) continue;
+    if (!entry.established) continue;
+    entry.established = false;
+    entry.me = null;
+    entry.generation += 1;
+  }
+}
+
+/**
  * The credential-change path, for every host of the instance: unconditional,
  * bumps the generation and supersedes any in-flight login (it is moved to
  * `draining` so nobody joins it, but it is NOT forgotten, because its
@@ -175,6 +221,7 @@ export function dropSeerrSession(instanceId: string): void {
   for (const entry of entriesOf(instanceId)) {
     entry.established = false;
     entry.me = null;
+    entry.failure = null;
     if (entry.loginPromise) {
       entry.draining.add(entry.loginPromise);
       entry.loginPromise = null;
@@ -213,16 +260,29 @@ export function dedupedSeerrLogin(
   const entry = seerrSessionEntry(instanceId, host);
   if (entry.established && entry.me) return Promise.resolve(entry.me);
   if (entry.loginPromise) return entry.loginPromise;
+  if (entry.failure) {
+    if (Date.now() < entry.failure.until) return Promise.reject(entry.failure.error);
+    entry.failure = null;
+  }
 
   const generation = entry.generation;
   const attempt: Promise<SeerrMe> = loginFn()
-    .then((me) => {
-      if (entry.generation === generation) {
-        entry.established = true;
-        entry.me = me;
-      }
-      return me;
-    })
+    .then(
+      (me) => {
+        if (entry.generation === generation) {
+          entry.established = true;
+          entry.me = me;
+          entry.failure = null;
+        }
+        return me;
+      },
+      (err: unknown) => {
+        if (isCredentialRejection(err) && entry.generation === generation) {
+          entry.failure = { error: err, until: Date.now() + SEERR_LOGIN_FAILURE_COOLDOWN_MS };
+        }
+        throw err;
+      },
+    )
     .finally(() => {
       if (entry.loginPromise === attempt) entry.loginPromise = null;
       entry.draining.delete(attempt);

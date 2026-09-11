@@ -1,11 +1,13 @@
 import type { SeerrMe } from "@/lib/seerr-auth";
 import {
+  SEERR_LOGIN_FAILURE_COOLDOWN_MS,
   dedupedSeerrLogin,
   drainSeerrLogins,
   dropSeerrSession,
   forgetSeerrSession,
   getSeerrSessionMe,
   invalidateSeerrSession,
+  invalidateSeerrSessionsOnHost,
   isSeerrSessionEstablished,
   resetSeerrSessions,
   seerrLoginInFlight,
@@ -134,6 +136,119 @@ describe("dedupedSeerrLogin", () => {
     await p;
     expect(isSeerrSessionEstablished(ID, LAN)).toBe(false);
     expect(getSeerrSessionMe(ID)).toBeNull();
+  });
+});
+
+/** What http-client's SeerrLoginError looks like from here (duck-typed). */
+const credentialRejection = () =>
+  Object.assign(new Error("Wrong password"), {
+    result: { kind: "auth_failed", message: "Wrong password" },
+  });
+const unreachable = () =>
+  Object.assign(new Error("Server error 502"), {
+    result: { kind: "unreachable", message: "Server error 502" },
+  });
+
+describe("dedupedSeerrLogin — credential rejection cooldown", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  // Every 30s poll, every retry and every refetch would otherwise post the
+  // same wrong password again; in mediaServer mode each attempt reaches
+  // Jellyfin/Emby, whose lockout counts them.
+  it("re-throws a refused credential without calling the login again", async () => {
+    const loginFn = jest.fn(() => Promise.reject(credentialRejection()));
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow("Wrong password");
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow("Wrong password");
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow("Wrong password");
+    expect(loginFn).toHaveBeenCalledTimes(1);
+    expect(seerrLoginInFlight(ID, LAN)).toBeNull();
+  });
+
+  it("does not remember an unreachable host (that is a transient failure)", async () => {
+    const loginFn = jest.fn(() => Promise.reject(unreachable()));
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow("502");
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow("502");
+    expect(loginFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("tries again once the cooldown has passed", async () => {
+    jest.useFakeTimers();
+    const loginFn = jest.fn(() => Promise.reject(credentialRejection()));
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
+    jest.advanceTimersByTime(SEERR_LOGIN_FAILURE_COOLDOWN_MS - 1);
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
+    expect(loginFn).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(2);
+    const ok = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, LAN, ok.fn);
+    ok.resolve();
+    await expect(p).resolves.toEqual(ME);
+    expect(ok.fn).toHaveBeenCalledTimes(1);
+  });
+
+  // A credential save is the one thing that should be tried at once.
+  it("forgets the rejection when the credentials change", async () => {
+    const loginFn = jest.fn(() => Promise.reject(credentialRejection()));
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
+    dropSeerrSession(ID);
+    const ok = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, LAN, ok.fn);
+    ok.resolve();
+    await expect(p).resolves.toEqual(ME);
+  });
+
+  it("keeps the cooldown per host", async () => {
+    const loginFn = jest.fn(() => Promise.reject(credentialRejection()));
+    await expect(dedupedSeerrLogin(ID, LAN, loginFn)).rejects.toThrow();
+    const ok = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, WAN, ok.fn);
+    ok.resolve();
+    await expect(p).resolves.toEqual(ME);
+  });
+
+  it("does not record a rejection for a login a drop already superseded", async () => {
+    let reject!: (err: unknown) => void;
+    const loginFn = jest.fn(
+      () =>
+        new Promise<SeerrMe>((_, rej) => {
+          reject = rej;
+        }),
+    );
+    const p = dedupedSeerrLogin(ID, LAN, loginFn);
+    dropSeerrSession(ID);
+    reject(credentialRejection());
+    await expect(p).rejects.toThrow();
+    const ok = deferredLogin(ME);
+    const q = dedupedSeerrLogin(ID, LAN, ok.fn);
+    ok.resolve();
+    await expect(q).resolves.toEqual(ME);
+  });
+});
+
+describe("invalidateSeerrSessionsOnHost", () => {
+  // POST /auth/logout from an unsaved-form Test empties the jar for the host,
+  // for whichever instance's cookie was there.
+  it("clears every instance established on that host and bumps their generation", () => {
+    setSeerrSession(ID, LAN, ME);
+    setSeerrSession("inst-2", LAN, OTHER);
+    setSeerrSession(ID, WAN, ME);
+    const gen = seerrSessionGeneration(ID, LAN);
+    invalidateSeerrSessionsOnHost(LAN);
+    expect(isSeerrSessionEstablished(ID, LAN)).toBe(false);
+    expect(isSeerrSessionEstablished("inst-2", LAN)).toBe(false);
+    expect(seerrSessionGeneration(ID, LAN)).toBe(gen + 1);
+    expect(isSeerrSessionEstablished(ID, WAN)).toBe(true);
+  });
+
+  it("leaves an in-flight login alone (its cookie is still coming)", async () => {
+    const { fn, resolve } = deferredLogin(ME);
+    const p = dedupedSeerrLogin(ID, LAN, fn);
+    invalidateSeerrSessionsOnHost(LAN);
+    resolve();
+    await p;
+    expect(isSeerrSessionEstablished(ID, LAN)).toBe(true);
   });
 });
 

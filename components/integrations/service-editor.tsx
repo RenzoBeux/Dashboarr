@@ -23,9 +23,12 @@ import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
 import { seerrClearSession } from "@/services/overseerr-api";
+import { dropSeerrSession, suspendSeerrLogins } from "@/lib/seerr-session";
+import { queryClient } from "@/lib/query-client";
 import {
   availableSeerrSignInModes,
   seerrAuthMode,
+  seerrHostOf,
   seerrSessionHostConflict,
   seerrUsesSession,
   type SeerrAuthMode,
@@ -131,6 +134,7 @@ export function ServiceEditor({
     secrets.customHeaders ?? {},
   );
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   // "Connect with Plex" PIN-OAuth flow (Plex-only). The poll loop is cancelled
   // on browser-dismiss and on editor unmount via this controller.
   const [connecting, setConnecting] = useState(false);
@@ -239,15 +243,34 @@ export function ServiceEditor({
   const headersJson = JSON.stringify(customHeaders);
   const savedHeadersJson = JSON.stringify(secrets.customHeaders ?? {});
 
-  const isDirty =
-    name !== config.name ||
+  const savedSignInMode = seerrAuthMode(config);
+  const credsDirty = credsUseUserPass
+    ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
+    : apiKey !== (secrets.apiKey ?? "");
+  // Everything the connection probe and the session depend on. Test passes
+  // the instance id only while this is false, so a saved instance is probed
+  // as itself (its live session validated, not logged out from under it),
+  // while edited values are probed as the unsaved form they are.
+  const connectionDirty =
     localUrl !== config.localUrl ||
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
-    (showsSignIn && authMode !== seerrAuthMode(config)) ||
-    (credsUseUserPass
-      ? username !== (secrets.username ?? "") || password !== (secrets.password ?? "")
-      : apiKey !== (secrets.apiKey ?? ""));
+    (showsSignIn && authMode !== savedSignInMode) ||
+    credsDirty;
+  const isDirty = name !== config.name || connectionDirty;
+
+  // The Seerr modes share the four secret slots (`apiKey` is the admin key
+  // in one mode and the plex.tv token in another), so a mode switch must not
+  // carry the field values across: the admin key would render as a Plex
+  // sign-in and be posted to /auth/plex as the token. Blank them, except
+  // when switching back to the saved mode, which restores what is stored.
+  const handleSignInModeChange = (mode: SeerrAuthMode) => {
+    setAuthMode(mode);
+    const restore = mode === savedSignInMode;
+    setApiKey(restore ? (secrets.apiKey ?? "") : "");
+    setUsername(restore ? (secrets.username ?? "") : "");
+    setPassword(restore ? (secrets.password ?? "") : "");
+  };
 
   // Unsaved-changes guard. usePreventRemove intercepts the Android hardware
   // back, the iOS edge swipe and our own header arrow through ONE code path,
@@ -305,6 +328,15 @@ export function ServiceEditor({
    * "aborted"  — validation failed or the user backed out; stay put.
    */
   const handleSave = async (): Promise<"saved" | "prompted" | "aborted"> => {
+    setSaving(true);
+    try {
+      return await performSave();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const performSave = async (): Promise<"saved" | "prompted" | "aborted"> => {
     if (!inst) return "aborted";
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -376,65 +408,96 @@ export function ServiceEditor({
 
     // Same ordering for Seerr's session (#332): the logout resolves the host
     // from the store, so it has to hit the OLD URL before it is rewritten
-    // below. Unconditional: the jar's cookie outlives this process, so a
-    // credential change saved after a restart has an old session to end that
-    // no in-memory state knows about.
-    if (showsSignIn) {
-      await seerrClearSession(instanceId);
-    }
+    // below. Only when something the session depends on changed: a rename
+    // or a header edit must not log a working account out (and in
+    // mediaServer mode delete its Jellyfin device), nor block Save for a
+    // logout round-trip per host. When it did change the clear is
+    // unconditional on in-memory state: the jar's cookie outlives this
+    // process, so a credential change saved after a restart has an old
+    // session to end that no in-memory state knows about.
+    //
+    // The two writes below are not atomic: updateInstance invalidates this
+    // instance's queries, so a refetch can run against the NEW URL with the
+    // OLD credentials before the secrets land. Logins stay suspended across
+    // both writes (the refetch is rejected rather than served), then the
+    // cache is dropped and the new hosts are marked stale, so the first
+    // login after the release posts the new credentials to the new host.
+    const seerrSessionChanged =
+      showsSignIn &&
+      (authMode !== savedSignInMode ||
+        normLocal !== config.localUrl ||
+        normRemote !== config.remoteUrl ||
+        credsDirty);
+    const releaseSeerrLogins = seerrSessionChanged
+      ? suspendSeerrLogins(instanceId)
+      : null;
+    try {
+      if (seerrSessionChanged) {
+        await seerrClearSession(instanceId);
+      }
 
-    updateInstance(serviceId, instanceId, {
-      name: trimmedName,
-      localUrl: normLocal,
-      remoteUrl: normRemote,
-      ...(showsSignIn
-        ? {
-            // "apiKey" is stored as absence so exports keep the pre-v53 shape.
-            authMode: authMode === "apiKey" ? undefined : authMode,
-            // A "Request As" default is filed with the admin key's authority;
-            // a signed-in account cannot use it (Seerr rejects the whole
-            // request), so leaving API-key mode drops it.
-            requestAsUserId: authMode === "apiKey" ? config.requestAsUserId : undefined,
-          }
-        : {}),
-    });
-    // The empty strings are deliberate for Seerr: updateInstanceSecrets merges
-    // and deletes on empty, and that is the only way to purge the slot the
-    // previous mode used. Otherwise a stale admin key sits next to a person's
-    // password (or the reverse) in SecureStore for the life of the instance.
-    if (showsSignIn) {
-      if (modeUsesUserPass) {
+      updateInstance(serviceId, instanceId, {
+        name: trimmedName,
+        localUrl: normLocal,
+        remoteUrl: normRemote,
+        ...(showsSignIn
+          ? {
+              // "apiKey" is stored as absence so exports keep the pre-v53 shape.
+              authMode: authMode === "apiKey" ? undefined : authMode,
+              // A "Request As" default is filed with the admin key's authority;
+              // a signed-in account cannot use it (Seerr rejects the whole
+              // request), so leaving API-key mode drops it.
+              requestAsUserId: authMode === "apiKey" ? config.requestAsUserId : undefined,
+            }
+          : {}),
+      });
+      // The empty strings are deliberate for Seerr: updateInstanceSecrets merges
+      // and deletes on empty, and that is the only way to purge the slot the
+      // previous mode used. Otherwise a stale admin key sits next to a person's
+      // password (or the reverse) in SecureStore for the life of the instance.
+      if (showsSignIn) {
+        if (modeUsesUserPass) {
+          await updateInstanceSecrets(instanceId, {
+            username,
+            password,
+            apiKey: "",
+            customHeaders,
+          });
+        } else {
+          await updateInstanceSecrets(instanceId, {
+            apiKey,
+            username: "",
+            password: "",
+            customHeaders,
+          });
+        }
+      } else if (usesUserPass) {
         await updateInstanceSecrets(instanceId, {
           username,
           password,
-          apiKey: "",
           customHeaders,
         });
       } else {
-        await updateInstanceSecrets(instanceId, {
-          apiKey,
-          username: "",
-          password: "",
-          customHeaders,
-        });
+        await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
       }
-    } else if (usesUserPass) {
-      await updateInstanceSecrets(instanceId, {
-        username,
-        password,
-        customHeaders,
-      });
-    } else {
-      await updateInstanceSecrets(instanceId, { apiKey, customHeaders });
+      if (seerrSessionChanged) {
+        dropSeerrSession(instanceId);
+        const hosts = [
+          ...new Set([normLocal, normRemote].map(seerrHostOf).filter(Boolean)),
+        ];
+        if (hosts.length > 0) {
+          useConfigStore.getState().markSeerrHostsStale(instanceId, hosts);
+        }
+      }
+    } finally {
+      releaseSeerrLogins?.();
     }
-    // The two writes above are not atomic: updateInstance invalidates this
-    // instance's queries, so a refetch can run against the NEW URL with the
-    // OLD credentials before the secrets land. Clear again now that both are
-    // in place. The drop flags the next login as credential-only, so even a
-    // login that slipped in between cannot leave the old account's cookie in
-    // charge of the new host.
-    if (showsSignIn) {
-      await seerrClearSession(instanceId);
+    if (seerrSessionChanged) {
+      // Whatever refetched during the suspension was rejected; ask again now
+      // that the new configuration is in, and re-probe the health dot, which
+      // repeated its last verdict while the logins were suspended.
+      void queryClient.invalidateQueries({ queryKey: ["overseerr", instanceId] });
+      void queryClient.invalidateQueries({ queryKey: ["serviceHealth"] });
     }
     // Drop the cached session so the next request re-logs in with the new URL
     // or credentials. Only the session-bearing clients have one: glances,
@@ -545,6 +608,11 @@ export function ServiceEditor({
       username,
       password,
       customHeaders,
+      // A form that matches what is saved is the saved instance: probe it as
+      // such, so a Seerr sign-in validates the live session (and shares the
+      // Digest nonce cache elsewhere) instead of logging in and then logging
+      // the real session out from under the app.
+      instanceId: connectionDirty ? undefined : instanceId,
       seerrAuthMode: showsSignIn ? authMode : undefined,
     });
     setTesting(false);
@@ -824,7 +892,7 @@ export function ServiceEditor({
         connecting={connecting}
         signInMode={showsSignIn ? authMode : undefined}
         signInModes={showsSignIn ? signInModes : undefined}
-        onSignInModeChange={showsSignIn ? setAuthMode : undefined}
+        onSignInModeChange={showsSignIn ? handleSignInModeChange : undefined}
       />
 
       <Card className="gap-4 mb-4">
@@ -848,6 +916,7 @@ export function ServiceEditor({
         />
         <Button
           label="Save"
+          loading={saving}
           onPress={() => {
             // Not a guard-intercepted gesture, so drop any action a cancelled
             // unsaved sheet left behind and just go back.

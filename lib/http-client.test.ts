@@ -1,13 +1,21 @@
 import { resetDigestSessions } from "@/lib/http-auth";
-import { resetSeerrSessions, setSeerrSession } from "@/lib/seerr-session";
+import {
+  isSeerrSessionEstablished,
+  resetSeerrSessions,
+  setSeerrSession,
+  suspendSeerrLogins,
+} from "@/lib/seerr-session";
 import { SEERR_CSRF_MESSAGE, SEERR_LOGIN_DISABLED_MESSAGE, SEERR_NO_JELLYFIN_ROUTE_MESSAGE } from "@/lib/seerr-auth";
 import {
   serviceRequest,
   pingService,
   lanGuardBlockReason,
   testServiceConnection,
+  checkInstanceHealth,
+  ensureSeerrSession,
   AuthProxyResponseError,
   HttpError,
+  SeerrLoginError,
   isAbortError,
   type ConnectionTestResult,
 } from "./http-client";
@@ -1819,5 +1827,130 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
     const me = requestOf(fetchSpy, 0);
     expect(me.headers.get("X-Api-Key")).toBe("admin-key");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports an auth proxy in API-key mode instead of a green dot over an HTML 200", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      seerrResponse(200, "<!doctype html><html><body>Sign in</body></html>", "text/html"),
+    );
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      apiKey: "admin-key",
+    });
+    expect(result.kind).toBe("unreachable");
+  });
+
+  // The Test button's unsaved-form path logs the HOST out, which empties the
+  // jar for every instance whose cookie lived there; the cache must not keep
+  // claiming a session the server no longer has.
+  it("tells the cache the host was logged out after an unsaved-form test", async () => {
+    setSeerrSession(SEERR_ID, "seerr.local", SEERR_ME);
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME))
+      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "other@example.com",
+      password: "pw",
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(isSeerrSessionEstablished(SEERR_ID, "seerr.local")).toBe(false);
+  });
+
+  it("marks a refused credential so the query retry policy stops (status 401)", () => {
+    expect(new SeerrLoginError({ kind: "auth_failed", message: "no" }).status).toBe(401);
+    expect(new SeerrLoginError({ kind: "unreachable", message: "no" }).status).toBeUndefined();
+  });
+});
+
+describe("ensureSeerrSession — guards (#332)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // The session bootstrap runs BEFORE serviceRequest and what it sends is
+  // the account's password or Plex token, so serviceRequest's LAN guard has
+  // to hold here too: local URLs are for the home network only.
+  it("never posts credentials to a private address off Wi-Fi", async () => {
+    mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "pw" });
+    mockStateRef.current.serviceInstances.overseerr[0].localUrl = "http://192.168.1.10:5055";
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = false;
+    await expect(ensureSeerrSession(SEERR_ID)).rejects.toThrow(
+      "private LAN address not reachable off Wi-Fi",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for a disabled instance", async () => {
+    mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "pw" });
+    mockStateRef.current.serviceInstances.overseerr[0].enabled = false;
+    await expect(ensureSeerrSession(SEERR_ID)).rejects.toThrow("not enabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkInstanceHealth — Seerr logins suspended (#332)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "pw" });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // A save or import holds the logins suspended for its span; a probe that
+  // lands then must not turn the dot red (the health watcher would push a
+  // "Service offline" notification for a settings edit).
+  it("repeats the last verdict instead of reporting offline", async () => {
+    fetchSpy.mockResolvedValueOnce(seerrResponse(200, SEERR_ME));
+    const before = await checkInstanceHealth("overseerr", SEERR_ID);
+    expect(before.kind).toBe("ok");
+
+    const release = suspendSeerrLogins(SEERR_ID);
+    try {
+      const during = await checkInstanceHealth("overseerr", SEERR_ID);
+      expect(during.kind).toBe("ok");
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+    }
+  });
+
+  it("maps a login rejected mid-probe by the suspension the same way", async () => {
+    // Not established, jar empty: the probe needs a login, which the
+    // suspension refuses. No prior verdict, so the honest answer is the
+    // suspension's own message, not a fabricated ok.
+    fetchSpy.mockResolvedValueOnce(seerrResponse(403, { error: "Please sign in." }));
+    const release = suspendSeerrLogins("other-instance");
+    try {
+      const result = await testServiceConnection("overseerr", {
+        url: SEERR_URL,
+        username: "me@example.com",
+        password: "pw",
+        instanceId: SEERR_ID,
+        seerrAuthMode: "local",
+      });
+      // Only "other-instance" is suspended: this one logs in normally.
+      expect(result.kind).not.toBe("ok");
+    } finally {
+      release();
+    }
   });
 });

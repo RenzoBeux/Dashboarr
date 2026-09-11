@@ -98,13 +98,20 @@ export function useOverseerrRequestCount(instanceId?: string, active = true) {
  * reads the session cache the probe and the login already filled, so a screen
  * mounted after either renders with its controls in place, no spinner.
  */
-export function useSeerrMe(instanceId?: string) {
+export function useSeerrMe(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
   return useQuery<SeerrMe>({
     queryKey: ["overseerr", id, "me"],
     queryFn: () => getSeerrMe(id ?? undefined),
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
     staleTime: 5 * 60_000,
+    // Focus/reconnect refetches are off app-wide, so a failed identity read
+    // (host down at launch, LAN guard, wrong password) would otherwise stay
+    // failed until something else re-keys it. Poll only while errored: a
+    // refused credential is answered from lib/seerr-session's cooldown
+    // without touching the network, so this costs nothing in the bad case.
+    refetchInterval: (query) =>
+      query.state.status === "error" ? POLLING_INTERVALS.queue : false,
     initialData: () => (id ? (getSeerrSessionMe(id) ?? undefined) : undefined),
   });
 }

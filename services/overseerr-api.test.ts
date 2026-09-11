@@ -25,6 +25,7 @@ jest.mock("@/lib/http-client", () => {
     ensureSeerrSession: jest.fn(),
     seerrFetchMe: jest.fn(),
     seerrLogout: jest.fn(async () => undefined),
+    lanGuardBlockReason: jest.fn(() => null),
     HttpError,
     AuthProxyResponseError,
     buildUrl: jest.requireActual("@/lib/url-builder").buildUrl,
@@ -67,12 +68,14 @@ import {
   AuthProxyResponseError,
   HttpError,
   ensureSeerrSession,
+  lanGuardBlockReason,
   seerrFetchMe,
   seerrLogout,
   serviceRequest,
 } from "@/lib/http-client";
 import {
   dedupedSeerrLogin,
+  getSeerrSessionMe,
   isSeerrSessionEstablished,
   resetSeerrSessions,
   seerrLoginsSuspended,
@@ -85,6 +88,7 @@ const mockedRequest = serviceRequest as jest.MockedFunction<typeof serviceReques
 const mockedEnsure = ensureSeerrSession as jest.MockedFunction<typeof ensureSeerrSession>;
 const mockedFetchMe = seerrFetchMe as jest.MockedFunction<typeof seerrFetchMe>;
 const mockedLogout = seerrLogout as jest.MockedFunction<typeof seerrLogout>;
+const mockedLanGuard = lanGuardBlockReason as jest.MockedFunction<typeof lanGuardBlockReason>;
 
 const ID = "inst-active";
 const HOST = "seerr.local";
@@ -236,11 +240,24 @@ describe("seerrRequest — session modes (#332)", () => {
 });
 
 describe("getSeerrMe", () => {
-  it("uses the session in a sign-in mode", async () => {
+  // The login already returns the account, but answering from that cache
+  // would freeze the permissions at login time: a bit the admin grants later
+  // must reach the UI on the next refetch, so every read is a live GET.
+  it("establishes the session, then re-reads /auth/me live in a sign-in mode", async () => {
     mockState.instances = { [ID]: { authMode: "plex" } };
-    await expect(getSeerrMe()).resolves.toEqual(ME);
+    const updated = { ...ME, permissions: 32 | 16 };
+    mockedRequest.mockResolvedValueOnce(updated);
+    await expect(getSeerrMe()).resolves.toEqual(updated);
     expect(mockedEnsure).toHaveBeenCalledWith(ID, URL);
-    expect(mockedRequest).not.toHaveBeenCalled();
+    expect(mockedRequest).toHaveBeenCalledWith("overseerr", "/auth/me", {
+      instanceId: ID,
+      baseUrl: URL,
+    });
+    // The session cache follows the live answer, so initialData sees it too.
+    setSeerrSession(ID, HOST, ME);
+    mockedRequest.mockResolvedValueOnce(updated);
+    await getSeerrMe();
+    expect(getSeerrSessionMe(ID)).toEqual(updated);
   });
 
   it("reads /auth/me with the key in API-key mode and caches the account", async () => {
@@ -303,6 +320,21 @@ describe("seerrClearSession", () => {
     };
     await seerrClearSession(ID);
     expect(mockedLogout).toHaveBeenCalledTimes(1);
+  });
+
+  // Off the home network a private address must not be contacted at all,
+  // and a logout there would only hang for its timeout. The stale mark makes
+  // the skip safe: the next login on that host posts credentials.
+  it("skips the logout for a host the LAN guard blocks, but still marks it stale", async () => {
+    mockState.instances = {
+      [ID]: { authMode: "local", localUrl: "http://192.168.1.10:5055", remoteUrl: "https://seerr.example.com" },
+    };
+    mockedLanGuard.mockImplementation((url) => (url.startsWith("http://192.") ? "no VPN detected" : null));
+    await seerrClearSession(ID);
+    expect(mockedLogout.mock.calls.map((c) => c[0])).toEqual(["https://seerr.example.com"]);
+    expect(mockMarkStale).toHaveBeenCalledWith(ID, ["192.168.1.10", "seerr.example.com"]);
+    mockedLanGuard.mockReset();
+    mockedLanGuard.mockReturnValue(null);
   });
 
   it("marks every host stale, persisted through the store", async () => {

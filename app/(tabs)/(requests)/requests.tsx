@@ -846,10 +846,10 @@ function RequestsList() {
         <Text className="text-zinc-500 text-xs mb-3">Showing only your requests.</Text>
       ) : null}
 
-      {isLoading || !caps.loaded ? (
+      {isLoading || (!caps.loaded && !caps.error) ? (
         <SkeletonCardContent rows={4} />
-      ) : error ? (
-        <ErrorBanner error={error} title="Failed to load requests" />
+      ) : error || caps.error ? (
+        <ErrorBanner error={error ?? caps.error} title="Failed to load requests" />
       ) : requests.length === 0 ? (
         <EmptyState
           title="No requests"

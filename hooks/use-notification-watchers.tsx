@@ -10,6 +10,7 @@ import { useSonarrHistory } from "@/hooks/use-sonarr";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useOverseerrRequests } from "@/hooks/use-overseerr";
 import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
+import { seerrAuthMode, seerrUsesSession } from "@/lib/seerr-auth";
 import { useSabHistory } from "@/hooks/use-sabnzbd";
 import { useNzbgetHistory } from "@/hooks/use-nzbget";
 import { useConfigStore } from "@/store/config-store";
@@ -623,11 +624,21 @@ function OverseerrRequestWatcher({
 }) {
   // Without MANAGE_REQUESTS the pending list is the account's OWN requests,
   // so "new request" would only ever announce what this person just asked
-  // for (#332). Watch only when the account moderates requests. The baseline
-  // reset below runs while inactive, so the first fetch after /auth/me lands
-  // seeds silently instead of firing for every pre-existing request.
-  const caps = useSeerrCapabilities(instanceId);
-  const effective = active && caps.loaded && caps.canManageRequests;
+  // for (#332). In a sign-in mode, watch only once /auth/me says the account
+  // moderates requests; the baseline reset below runs while inactive, so the
+  // first fetch after it lands seeds silently instead of firing for every
+  // pre-existing request. The admin API key needs no such check (it IS the
+  // admin), and must not depend on one: an identity read that fails at cold
+  // start while GET /request works would otherwise silence every
+  // notification until some Seerr screen happens to refetch it. The query is
+  // left unmounted in that mode (and while the toggle is off) so nothing is
+  // fetched at launch for it.
+  const inst = useConfigStore((s) =>
+    (s.serviceInstances.overseerr ?? []).find((i) => i.id === instanceId),
+  );
+  const sessionMode = seerrUsesSession(seerrAuthMode(inst));
+  const caps = useSeerrCapabilities(instanceId, active && sessionMode);
+  const effective = active && (!sessionMode || (caps.loaded && caps.canManageRequests));
   const { data: overseerrRequests } = useOverseerrRequests(
     1,
     "pending",

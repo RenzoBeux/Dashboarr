@@ -2,6 +2,7 @@ import {
   AuthProxyResponseError,
   HttpError,
   ensureSeerrSession,
+  lanGuardBlockReason,
   seerrFetchMe,
   seerrLogout,
   serviceRequest,
@@ -146,18 +147,20 @@ async function sessionRequest<T>(
  * user; in API-key mode it is whoever the key belongs to (the admin). Either
  * way the payload's `permissions` bitfield is what lib/seerr-permissions.ts
  * turns into UI capabilities.
+ *
+ * Always a live GET /auth/me, in every mode. In a sign-in mode the session
+ * wrapper establishes the session first (which already returns the account),
+ * so the first read costs one extra round-trip; what that buys is that a
+ * refetch actually re-reads the account instead of answering from the
+ * login-time cache, so a permission the admin grants or revokes reaches the
+ * UI on the next refetch rather than the next app launch.
  */
 export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
   const store = useConfigStore.getState();
   const id = instanceId ?? store.getActiveInstanceId("overseerr");
   if (!id) throw new Error("Service overseerr has no configured instance");
-  const inst = store.getInstance("overseerr", id);
-  // Resolved once so the session, the request and the cache entry all name
-  // the same host.
+  // Resolved once so the request and the cache entry name the same host.
   const baseUrl = store.demoMode ? undefined : store.getActiveUrl("overseerr", id);
-  if (!store.demoMode && inst && seerrUsesSession(seerrAuthMode(inst))) {
-    return ensureSeerrSession(id, baseUrl);
-  }
   const me = readSeerrMe(
     await seerrRequest<unknown>("/auth/me", { instanceId: id, ...(baseUrl ? { baseUrl } : {}) }),
   );
@@ -182,7 +185,11 @@ export async function getSeerrMe(instanceId?: string): Promise<SeerrMe> {
  * It runs against EVERY configured URL, not just the active one: the jar
  * scopes cookies per host, so an instance whose local and remote URLs are
  * different hosts holds two independent sessions, and a network switch would
- * otherwise resurface the inactive host's old-account cookie.
+ * otherwise resurface the inactive host's old-account cookie. Except a
+ * private address while off the home network: that is the one request the
+ * LAN guard exists to stop (and it would only hang for its 5s timeout); the
+ * stale mark in step 4 makes the skipped logout safe, because the next login
+ * on that host posts credentials instead of trusting the leftover cookie.
  *
  * Ordering is the whole point:
  *  1. drop, then DRAIN: a drop supersedes an in-flight login but cannot cancel
@@ -217,7 +224,10 @@ export async function seerrClearSession(instanceId?: string): Promise<void> {
       await drainSeerrLogins(id);
       if (!store.demoMode && inst) {
         const headers = store.getMergedHeaders("overseerr", id);
-        for (const url of urlsByHost.values()) await seerrLogout(url, headers);
+        for (const url of urlsByHost.values()) {
+          if (lanGuardBlockReason(url, inst)) continue;
+          await seerrLogout(url, headers);
+        }
       }
       dropSeerrSession(id);
       await drainSeerrLogins(id);

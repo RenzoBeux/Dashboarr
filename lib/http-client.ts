@@ -49,10 +49,13 @@ import {
   type SeerrMe,
 } from "@/lib/seerr-auth";
 import {
+  SeerrLoginSuspendedError,
   dedupedSeerrLogin,
   getSeerrSessionMe,
   invalidateSeerrSession,
+  invalidateSeerrSessionsOnHost,
   isSeerrSessionEstablished,
+  seerrLoginsSuspended,
   seerrSessionGeneration,
   setSeerrSession,
 } from "@/lib/seerr-session";
@@ -926,7 +929,14 @@ export async function checkInstanceHealth(
     };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};
-  return testServiceConnection(serviceId, {
+  // A Seerr save or import holds its logins suspended for the span of the
+  // change (#332); probing now would be answered "unreachable" and flip the
+  // dot (and fire an offline push) for a settings edit. Repeat the last
+  // verdict; the editor re-keys the health query once the change is in.
+  if (serviceId === "overseerr" && seerrLoginsSuspended(instanceId)) {
+    return seerrHealthWhileSuspended(instanceId);
+  }
+  const result = await testServiceConnection(serviceId, {
     url,
     apiKey: secrets.apiKey,
     username: secrets.username,
@@ -935,6 +945,16 @@ export async function checkInstanceHealth(
     instanceId,
     seerrAuthMode: serviceId === "overseerr" ? seerrAuthMode(inst) : undefined,
   });
+  if (serviceId === "overseerr") seerrLastHealth.set(instanceId, result);
+  return result;
+}
+
+/** The last health verdict per Seerr instance, replayed while its logins are suspended. */
+const seerrLastHealth = new Map<string, ConnectionTestResult>();
+
+function seerrHealthWhileSuspended(instanceId: string | undefined): ConnectionTestResult {
+  const last = instanceId ? seerrLastHealth.get(instanceId) : undefined;
+  return last ?? { kind: "unreachable", message: new SeerrLoginSuspendedError().message };
 }
 
 type ProbeOutcome =
@@ -1018,13 +1038,22 @@ class ProbeVerdict extends Error {
 // both paths or the health dot and the Requests screen disagree about whether
 // the account works.
 
-/** A classified login failure; `result` is a ready-made probe verdict. */
+/**
+ * A classified login failure; `result` is a ready-made probe verdict.
+ *
+ * `status` is set (401) only for a credential rejection, so the query retry
+ * policy in lib/query-client.ts (which stops on 401/403 by duck-typing) does
+ * not re-post a refused password twice more with backoff. An unreachable
+ * host carries no status and keeps the transient-error retries.
+ */
 export class SeerrLoginError extends Error {
   result: ConnectionTestResult;
+  status?: number;
   constructor(result: { kind: "auth_failed" | "unreachable"; message: string }) {
     super(result.message);
     this.name = "SeerrLoginError";
     this.result = result;
+    if (result.kind === "auth_failed") this.status = 401;
   }
 }
 
@@ -1048,9 +1077,9 @@ const SEERR_API_BASE = SERVICE_DEFAULTS.overseerr.apiBasePath;
  * authenticate the session calls as the admin, since its checkUser gives the
  * key precedence over the cookie.
  */
-function seerrHeaders(
+export function seerrHeaders(
   customHeaders: Record<string, string>,
-  extra: Record<string, string>,
+  extra: Record<string, string> = {},
 ): Headers {
   const h = new Headers();
   for (const [k, v] of Object.entries(customHeaders)) {
@@ -1209,10 +1238,20 @@ export function ensureSeerrSession(instanceId: string, pinnedBaseUrl?: string): 
   }
   const inst = store.getInstance("overseerr", instanceId);
   if (!inst) return Promise.reject(new Error(`Instance ${instanceId} for overseerr not found`));
+  if (!inst.enabled) return Promise.reject(new Error("Service overseerr is not enabled"));
   // Callers that go on to send a request pass the URL they will send it to,
   // so the session is established on that exact host (see RequestOptions.baseUrl).
   const baseUrl = pinnedBaseUrl ?? store.getActiveUrl("overseerr", instanceId);
   if (!baseUrl) return Promise.reject(new Error("No URL configured for overseerr"));
+  // The same guard serviceRequest applies, and it has to run HERE too: this
+  // runs before serviceRequest, and what it would send to a private address
+  // off the home network is not an API call but the account's password or
+  // Plex token. Local URLs are for the home network only.
+  if (lanUnreachableOffWifi(baseUrl, inst)) {
+    return Promise.reject(
+      new Error(`overseerr: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`),
+    );
+  }
   const secrets = store.instanceSecrets[instanceId] ?? {};
   const customHeaders = store.getMergedHeaders("overseerr", instanceId);
   const mode = seerrAuthMode(inst);
@@ -1448,40 +1487,30 @@ async function runConnectionProbe(
 
     case "overseerr": {
       const mode: SeerrAuthMode = input.seerrAuthMode ?? "apiKey";
-
-      if (mode === "apiKey") {
-        // /auth/me returns the API key's user; 403 for bad key. The user is
-        // cached so the permissions hook has data before any screen asks.
-        const url = buildUrl(baseUrl, defaults.apiBasePath, "/auth/me");
-        const headers = makeHeaders({ Accept: "application/json" });
-        if (apiKey) headers.set("X-Api-Key", apiKey);
-        const res = await fetch(url, { method: "GET", headers, signal });
-        if (res.status === 401 || res.status === 403)
-          return { kind: "auth_failed", message: "Invalid API key" };
-        if (res.status >= 500)
-          return { kind: "unreachable", message: `Server error ${res.status}` };
-        if (res.ok) {
-          if (input.instanceId) {
-            const me = readSeerrMe(await res.json().catch(() => null));
-            if (me) setSeerrSession(input.instanceId, seerrHostOf(baseUrl), me);
-          }
-          return { kind: "ok" };
-        }
-        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
-      }
-
-      // A sign-in mode (#332). Same shape as the Pi-hole case: validate what
-      // the jar already holds (free, creates nothing), log in only when that
-      // comes back empty, and share the login with the data layer through
-      // lib/seerr-session so a cold start yields one session, not two.
-      if (!seerrHasCredential(mode, input)) {
-        return { kind: "auth_failed", message: SEERR_MISSING_CREDENTIAL_MESSAGE[mode] };
-      }
       const id = input.instanceId;
       const host = seerrHostOf(baseUrl);
-      const login = () =>
-        seerrLogin({ baseUrl, mode, apiKey, username, password, customHeaders, signal });
       try {
+        if (mode === "apiKey") {
+          // /auth/me returns the API key's user; 401/403 for a bad key. The
+          // same reader the data layer uses, so an auth proxy's HTML 200 is
+          // "unreachable" here too instead of a green dot over a dead key.
+          // The user is cached so the permissions hook has data before any
+          // screen asks.
+          const me = await seerrFetchMe(baseUrl, customHeaders, signal, apiKey);
+          if (!me) return { kind: "auth_failed", message: "Invalid API key" };
+          if (id) setSeerrSession(id, host, me);
+          return { kind: "ok" };
+        }
+
+        // A sign-in mode (#332). Same shape as the Pi-hole case: validate what
+        // the jar already holds (free, creates nothing), log in only when that
+        // comes back empty, and share the login with the data layer through
+        // lib/seerr-session so a cold start yields one session, not two.
+        if (!seerrHasCredential(mode, input)) {
+          return { kind: "auth_failed", message: SEERR_MISSING_CREDENTIAL_MESSAGE[mode] };
+        }
+        const login = () =>
+          seerrLogin({ baseUrl, mode, apiKey, username, password, customHeaders, signal });
         if (id && isSeerrSessionEstablished(id, host)) {
           const generation = seerrSessionGeneration(id, host);
           const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
@@ -1513,11 +1542,20 @@ async function runConnectionProbe(
         // Testing an UNSAVED form: the typed credentials are the thing under
         // test, so never trust a cookie some other account left in the jar,
         // and never leave a session behind for a URL that may not be saved.
+        // The logout empties the jar for this HOST, whichever instance's
+        // cookie was there, so the cache is told (the editor passes the
+        // instance id when the form matches what is saved, which takes the
+        // branch above instead and leaves the live session alone).
         await login();
         await seerrLogout(baseUrl, customHeaders);
+        invalidateSeerrSessionsOnHost(host);
         return { kind: "ok" };
       } catch (err) {
         if (err instanceof SeerrLoginError) return err.result;
+        // A save or an import is mid-flight; the answer is whatever it was
+        // last time, not "offline" (the health watcher would push a
+        // "Service offline" notification for a settings change).
+        if (err instanceof SeerrLoginSuspendedError) return seerrHealthWhileSuspended(id);
         if (err instanceof AuthProxyResponseError)
           return { kind: "unreachable", message: AUTH_PROXY_MESSAGE };
         if (err instanceof HttpError)

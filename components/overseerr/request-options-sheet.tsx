@@ -355,6 +355,12 @@ export function RequestOptionsSheet({
               message="Server, quality profile and folder are chosen by your Seerr admin's defaults for your account."
             />
           ) : null}
+          {!caps.loaded && caps.error ? (
+            <SeerrPermissionNotice
+              className="mb-4"
+              message={`Couldn't check your Seerr account: ${caps.error.message}`}
+            />
+          ) : null}
 
           {canManage && servers.length === 0 ? (
             <View className="rounded-xl border border-border bg-surface-light px-4 py-3 mb-4">

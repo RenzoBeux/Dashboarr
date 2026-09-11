@@ -478,6 +478,14 @@ export function MediaDetailModal({
               {caps.loaded && !mayRequest && !isAvailableHd && !isPendingHd ? (
                 <SeerrPermissionNotice message="Your Seerr account can't request titles." />
               ) : null}
+              {/* The other reason nothing is requestable: the account could
+                  not be read at all. Say so; a title with no button and no
+                  explanation reads as a bug. */}
+              {!caps.loaded && caps.error ? (
+                <SeerrPermissionNotice
+                  message={`Couldn't check your Seerr account: ${caps.error.message}`}
+                />
+              ) : null}
 
               {/* Advanced options. For a non-manager the sheet only offers
                   seasons and the 4K tier, so a movie without a 4K option has
