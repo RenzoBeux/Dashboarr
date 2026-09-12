@@ -17,7 +17,7 @@ import {
   useMaintainerrHealth,
   useMaintainerrVersion,
 } from "@/hooks/use-maintainerr";
-import { maintainerrActionLabel, summarizeCollections } from "@/services/maintainerr-api";
+import { maintainerrActionLabel, maintainerrHealthTone, summarizeCollections } from "@/services/maintainerr-api";
 import type { MaintainerrActionIcon } from "@/services/maintainerr-api";
 import type { MaintainerrCollection } from "@/lib/types";
 
@@ -53,7 +53,10 @@ function OverviewCard() {
   const { data: collections } = useMaintainerrCollections();
 
   const summary = collections ? summarizeCollections(collections) : null;
-  const degraded = health?.status === "degraded" || health?.database === "unreachable";
+  // Single source of truth: any health payload that is not exactly ok/ok is
+  // degraded (unknown states like "initializing" included). "down" means no
+  // payload yet, which the ServiceHeader already reflects, so no banner then.
+  const degraded = maintainerrHealthTone(health) === "degraded";
 
   return (
     <Card>
