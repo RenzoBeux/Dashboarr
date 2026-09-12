@@ -53,9 +53,9 @@ function OverviewCard() {
   const { data: collections } = useMaintainerrCollections();
 
   const summary = collections ? summarizeCollections(collections) : null;
-  // Single source of truth: any health payload that is not exactly ok/ok is
-  // degraded (unknown states like "initializing" included). "down" means no
-  // payload yet, which the ServiceHeader already reflects, so no banner then.
+  // Drive the banner from maintainerrHealthTone so the screen and the helper
+  // cannot disagree: a null/absent payload is "down" (no banner), any non-ok
+  // health is "degraded".
   const degraded = maintainerrHealthTone(health) === "degraded";
 
   return (
