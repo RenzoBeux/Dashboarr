@@ -27,6 +27,8 @@ interface AddDefaultsStore {
   hydrate: () => void;
   /** Remember the config just used to add for one `${serviceId}:${instanceId}` key. */
   remember: (key: string, config: LastUsedAdd) => void;
+  /** Drop one instance's remembered config when that instance is deleted. */
+  prune: (key: string) => void;
 }
 
 /** Cache key for one service instance's last-used add config. */
@@ -46,6 +48,16 @@ export const useAddDefaultsStore = create<AddDefaultsStore>((set, get) => ({
 
   remember: (key, config) => {
     const lastUsed = { ...get().lastUsed, [key]: config };
+    set({ lastUsed });
+    setJSON(STORAGE_KEY, lastUsed);
+  },
+
+  // Drop a deleted instance's entry, like removeInstance prunes its other
+  // per-instance keys.
+  prune: (key) => {
+    const current = get().lastUsed;
+    if (!(key in current)) return;
+    const { [key]: _removed, ...lastUsed } = current;
     set({ lastUsed });
     setJSON(STORAGE_KEY, lastUsed);
   },

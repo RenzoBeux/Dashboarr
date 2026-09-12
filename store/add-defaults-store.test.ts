@@ -81,6 +81,29 @@ describe("useAddDefaultsStore (#341)", () => {
   });
 });
 
+describe("prune orphaned keys on instance delete (#402)", () => {
+  it("drops the deleted instance's entry and persists the removal", () => {
+    const store = useAddDefaultsStore.getState();
+    store.remember(addDefaultsKey("radarr", "gone"), { qualityProfileId: 1 });
+    store.remember(addDefaultsKey("radarr", "stay"), { qualityProfileId: 2 });
+
+    store.prune(addDefaultsKey("radarr", "gone"));
+
+    const all = useAddDefaultsStore.getState().lastUsed;
+    expect(all["radarr:gone"]).toBeUndefined();
+    expect(all["radarr:stay"]?.qualityProfileId).toBe(2);
+    expect(getJSON<Record<string, LastUsedAdd>>(STORAGE_KEY)?.["radarr:gone"]).toBeUndefined();
+    expect(getJSON<Record<string, LastUsedAdd>>(STORAGE_KEY)?.["radarr:stay"]?.qualityProfileId).toBe(2);
+  });
+
+  it("is a no-op for a key that was never stored", () => {
+    const store = useAddDefaultsStore.getState();
+    store.remember(addDefaultsKey("radarr", "a"), { qualityProfileId: 1 });
+    store.prune(addDefaultsKey("radarr", "never"));
+    expect(useAddDefaultsStore.getState().lastUsed["radarr:a"]?.qualityProfileId).toBe(1);
+  });
+});
+
 describe("validRememberedTags (#402)", () => {
   const tags = [{ id: 1 }, { id: 2 }, { id: 3 }];
 
@@ -88,8 +111,12 @@ describe("validRememberedTags (#402)", () => {
     expect(validRememberedTags([1, 2, 99], tags)).toEqual([1, 2]);
   });
 
-  it("is empty when tags haven't loaded or nothing was remembered", () => {
+  it("is empty for both undefined (no list yet) and [] (empty list)", () => {
+    // No remembered id can be validated against a missing or empty server list,
+    // so this returns []. It is the value used only once Add is allowed (a
+    // still-loading query keeps Add gated, so nothing is submitted then).
     expect(validRememberedTags([1, 2], undefined)).toEqual([]);
+    expect(validRememberedTags([1, 2], [])).toEqual([]);
     expect(validRememberedTags(undefined, tags)).toEqual([]);
   });
 });

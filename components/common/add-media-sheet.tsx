@@ -143,8 +143,10 @@ export function AddMediaSheet({
     });
   };
 
-  // Require tags to have loaded so submit cannot send [] while the persist branch
-  // below still reports the remembered tags: the two halves must agree (#341).
+  // tags is undefined only when there is no list to show yet and no error (still
+  // loading, or the query is disabled). The call sites pass any cached list
+  // through and [] only on a hard failure, so Add is gated only while genuinely
+  // waiting and never blocked by a failed fetch (#402).
   const canSubmit =
     !!effectiveQualityProfileId && !!effectiveRootFolderPath && !!result && tags !== undefined;
 
@@ -159,9 +161,8 @@ export function AddMediaSheet({
       rememberLastUsed(lastUsedKey, {
         qualityProfileId: qualityProfileId ?? lastUsed?.qualityProfileId,
         rootFolderPath: rootFolderPath ?? lastUsed?.rootFolderPath,
-        // Only rewrite remembered tags once the server list has loaded; adding
-        // before it loads must not wipe them with the filtered-to-empty value.
-        tags: tags ? effectiveTags : lastUsed?.tags,
+        // Same value submit sends, so what's remembered matches what was added.
+        tags: effectiveTags,
         searchOnAdd: effectiveSearchOnAdd,
       });
     }
