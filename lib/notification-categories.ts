@@ -69,6 +69,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // "blocking disabled" toggle would be a switch nothing emits. Offline is the
   // only category with a real source — the rtorrent/Lidarr/Bindery stance.
   pihole:      ["serviceOffline"],
+  // Maintainerr's deletions run on its own schedule and it exposes no webhook
+  // receiver we could subscribe to, so a "media deleted" toggle would be a
+  // switch nothing emits. Offline is the only category with a real source.
+  maintainerr: ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

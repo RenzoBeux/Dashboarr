@@ -34,6 +34,10 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   // Shield but not ShieldBan/ShieldOff/Network, and adding one would also put
   // it in the user-facing dashboard icon picker.
   pihole: "Shield",
+  // Maintainerr deletes collection members after a per-collection countdown, so
+  // the calendar reads as its scheduled-retention nature. The registry has no
+  // trash/recycle mark, and CalendarDays is the closest curated fit.
+  maintainerr: "CalendarDays",
 };
 
 // Resolve the icon component for a tab, honoring a per-workspace override

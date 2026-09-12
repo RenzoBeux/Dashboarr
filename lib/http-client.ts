@@ -178,6 +178,13 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   // auto-switch, the active URL can flip between the two awaits, and the
   // request would then go to the other host with whatever cookie it holds.
   baseUrl?: string;
+  // Accept a text/* body as a real payload instead of treating it as an auth
+  // proxy's HTML login page. Some services answer a JSON payload with a
+  // text/html content type (Maintainerr's /api/app/status returns
+  // JSON.stringify(...), which Express res.send stamps as text/html), so the
+  // content-type short-circuit in looksLikeHtml would misfire. With this set,
+  // an actual login page is still caught by the body-head sniff.
+  allowTextBody?: boolean;
 }
 
 // "sid" is Pi-hole's session id. We always send it as the X-FTL-SID header and
@@ -251,8 +258,19 @@ export class AuthProxyResponseError extends HttpError {
 // the body head so a proxy that mislabels or omits the content-type is still
 // caught. rtorrent's XML-RPC responses start with "<?xml" and never match here,
 // so the one legitimate non-JSON caller is unaffected.
-function looksLikeHtml(contentType: string | null, body: unknown): boolean {
-  if (contentType && contentType.toLowerCase().includes("text/html")) return true;
+//
+// allowTextBody skips the content-type short-circuit for callers that expect a
+// text/* payload (e.g. Maintainerr answers JSON with a text/html content type),
+// so the body-head sniff alone decides. A genuine proxy login page still trips
+// the sniff, so an HTML response is caught either way.
+function looksLikeHtml(
+  contentType: string | null,
+  body: unknown,
+  allowTextBody = false,
+): boolean {
+  if (!allowTextBody && contentType && contentType.toLowerCase().includes("text/html")) {
+    return true;
+  }
   if (typeof body !== "string") return false;
   const head = body.slice(0, 256).trimStart().toLowerCase();
   return head.startsWith("<!doctype html") || head.startsWith("<html");
@@ -343,6 +361,7 @@ export async function serviceRequest<T>(
     instanceId,
     signal: externalSignal,
     baseUrl: pinnedBaseUrl,
+    allowTextBody = false,
     ...fetchOptions
   } = options;
   const store = useConfigStore.getState();
@@ -554,7 +573,7 @@ export async function serviceRequest<T>(
         .catch(() => clone.text().catch(() => undefined));
       // A failing status whose body is an HTML login page is an auth proxy in
       // front of the service, not the service itself — surface that.
-      if (looksLikeHtml(contentType, errorBody)) {
+      if (looksLikeHtml(contentType, errorBody, allowTextBody)) {
         throw new AuthProxyResponseError(
           response.status,
           response.statusText,
@@ -576,7 +595,7 @@ export async function serviceRequest<T>(
     // on it and crash with "undefined is not a function"; throw instead. Genuine
     // non-JSON payloads (rtorrent's XML-RPC, which starts with <?xml) pass through.
     const body = await response.text();
-    if (looksLikeHtml(contentType, body)) {
+    if (looksLikeHtml(contentType, body, allowTextBody)) {
       throw new AuthProxyResponseError(
         response.status,
         response.statusText,
@@ -2334,6 +2353,32 @@ async function runConnectionProbe(
           message: message || "Pi-hole authentication failed",
         };
       }
+    }
+
+    case "maintainerr": {
+      // Maintainerr's own API is unauthenticated, so /api/health/live answers
+      // 200 on any reachable instance. A 401/403 therefore comes from a reverse
+      // proxy in front of it: send optional Basic (upgrading to Digest) and
+      // treat a rejection as an auth failure, mirroring Glances.
+      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const extra: Record<string, string> = {};
+      const basic = basicAuthHeader(username, password);
+      if (basic) extra["Authorization"] = basic;
+      const res = await fetchWithDigestRetry(
+        url,
+        { method: "GET", signal },
+        makeHeaders(extra),
+        username,
+        password,
+        digestSessionKey(input.instanceId, baseUrl),
+      );
+      if (res.status === 401 || res.status === 403) {
+        return classifyUnauthorized(res, username, password);
+      }
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }
 
     default: {
