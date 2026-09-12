@@ -54,7 +54,7 @@ export function AddMovieSheet({
 }: AddMovieSheetProps) {
   const { data: profiles } = useRadarrQualityProfiles(instanceId);
   const { data: folders } = useRadarrRootFolders(instanceId);
-  const { data: tags } = useRadarrTags(instanceId);
+  const { data: tags, isError: tagsError } = useRadarrTags(instanceId);
   const addMovie = useAddMovie(instanceId);
 
   const [minimumAvailability, setMinimumAvailability] =
@@ -83,7 +83,7 @@ export function AddMovieSheet({
       }
       profiles={profiles}
       folders={folders}
-      tags={tags}
+      tags={tags ?? (tagsError ? [] : undefined)}
       isSubmitting={addMovie.isPending}
       searchToggleDescription="Trigger an automatic search once the movie is added"
       onSubmit={({ qualityProfileId, rootFolderPath, selectedTags, searchOnAdd }) => {
