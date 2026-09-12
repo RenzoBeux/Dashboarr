@@ -1024,3 +1024,45 @@ describe("repairOrphanedHomeNetworkSelection (#168)", () => {
     expect("homeNetworkIds" in d).toBe(false);
   });
 });
+
+// Seerr sign-in (#332): hosts whose next login must post credentials. Per host
+// and persisted, because the platform cookie jar keeps cookies across launches
+// while the in-memory session cache (lib/seerr-session.ts) does not.
+describe("seerrStaleHosts", () => {
+  beforeEach(() => {
+    useConfigStore.setState({ seerrStaleHosts: {} });
+  });
+
+  it("marks hosts per instance, cumulatively and without duplicates", () => {
+    useConfigStore.getState().markSeerrHostsStale("i1", ["seerr.local", "seerr.example.com"]);
+    useConfigStore.getState().markSeerrHostsStale("i1", ["seerr.example.com", "other.host", ""]);
+    expect([...useConfigStore.getState().seerrStaleHosts.i1].sort()).toEqual([
+      "other.host",
+      "seerr.example.com",
+      "seerr.local",
+    ]);
+    expect(useConfigStore.getState().isSeerrHostStale("i1", "seerr.local")).toBe(true);
+    expect(useConfigStore.getState().isSeerrHostStale("i1", "nope")).toBe(false);
+    expect(useConfigStore.getState().isSeerrHostStale("i2", "seerr.local")).toBe(false);
+  });
+
+  // Lifting is per host: a credential login on the LAN host says nothing
+  // about the remote host's cookie.
+  it("clears one host at a time and drops the entry when empty", () => {
+    useConfigStore.getState().markSeerrHostsStale("i1", ["seerr.local", "seerr.example.com"]);
+    useConfigStore.getState().clearSeerrStaleHost("i1", "seerr.local");
+    expect(useConfigStore.getState().isSeerrHostStale("i1", "seerr.local")).toBe(false);
+    expect(useConfigStore.getState().isSeerrHostStale("i1", "seerr.example.com")).toBe(true);
+    useConfigStore.getState().clearSeerrStaleHost("i1", "seerr.example.com");
+    expect(useConfigStore.getState().seerrStaleHosts.i1).toBeUndefined();
+    expect(() => useConfigStore.getState().clearSeerrStaleHost("i1", "gone")).not.toThrow();
+  });
+
+  it("forgets an instance on removal", () => {
+    useConfigStore.getState().markSeerrHostsStale("i1", ["seerr.local"]);
+    useConfigStore.getState().markSeerrHostsStale("i2", ["seerr.local"]);
+    useConfigStore.getState().forgetSeerrStaleHosts("i1");
+    expect(useConfigStore.getState().seerrStaleHosts).toEqual({ i2: ["seerr.local"] });
+    expect(() => useConfigStore.getState().forgetSeerrStaleHosts("i1")).not.toThrow();
+  });
+});

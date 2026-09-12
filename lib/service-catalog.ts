@@ -49,6 +49,14 @@ export interface ServiceCatalogEntry {
    * manual field would strand anyone who cannot complete the browser flow.
    */
   oauth?: "plex";
+  /**
+   * A session sign-in offered IN ADDITION TO `authShape`, like `oauth`. Seerr
+   * is `apiKey` + `signIn: "seerr"`: the editor shows a per-instance mode
+   * picker (API key, Plex, Jellyfin/Emby, email + password) and the session
+   * modes reuse the same four secret slots, so the stored shape and every
+   * `secretsShapeFor` caller stay exactly as they were. See lib/seerr-auth.ts.
+   */
+  signIn?: "seerr";
   /** Where to find the key in the service's own UI. Omitted when unverified. */
   apiKeyHint?: string;
 }
@@ -207,6 +215,9 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     // both spellings plus the Jellyfin fork have to match.
     keywords: ["seerr", "overseerr", "jellyseerr", "requests"],
     authShape: "apiKey",
+    // Per-instance sign-in modes (#332): the admin key stays the default and
+    // the stored shape; Plex, Jellyfin/Emby and email sign-in ride a session.
+    signIn: "seerr",
     apiKeyHint: "Settings > General > API Key",
   },
   autobrr: {

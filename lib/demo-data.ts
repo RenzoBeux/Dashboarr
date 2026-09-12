@@ -997,6 +997,30 @@ const DEMO_OVERSEERR_REQUESTS = {
   ],
 };
 
+// The accounts behind the requests above, for the "Request As" pickers (#332).
+const DEMO_OVERSEERR_USERS = {
+  pageInfo: { pages: 1, pageSize: 100, results: 3, page: 1 },
+  results: [
+    { id: 1, displayName: "John Smith", requestCount: 12 },
+    { id: 2, displayName: "Sarah Connor", requestCount: 5 },
+    { id: 3, displayName: "Alex Johnson", requestCount: 3 },
+  ],
+};
+
+// The account demo mode acts as (#332). ADMIN (bit 2) short-circuits every
+// permission check upstream, so demo keeps every control visible.
+const DEMO_SEERR_ME = { id: 1, displayName: "John Smith", permissions: 2, avatar: "" };
+
+// GET /settings/public is anonymous and tells the editor which sign-in
+// methods the server offers; a Jellyfin-backed Seerr with everything on.
+const DEMO_SEERR_PUBLIC_SETTINGS = {
+  localLogin: true,
+  mediaServerLogin: true,
+  mediaServerType: 2,
+  newPlexLogin: true,
+  applicationTitle: "Seerr",
+};
+
 const DEMO_OVERSEERR_REQUEST_COUNT = {
   total: 3,
   movie: 2,
@@ -3438,6 +3462,11 @@ export function getDemoResponse(
       return undefined;
     }
     case "overseerr": {
+      if (normalized.startsWith("/auth/me")) return DEMO_SEERR_ME;
+      if (normalized.startsWith("/auth/logout")) return { status: "ok" };
+      // Every login route answers with the user (Seerr returns user.filter()).
+      if (normalized.startsWith("/auth/")) return DEMO_SEERR_ME;
+      if (normalized.startsWith("/settings/public")) return DEMO_SEERR_PUBLIC_SETTINGS;
       if (normalized.startsWith("/request/count")) return DEMO_OVERSEERR_REQUEST_COUNT;
       if (normalized.startsWith("/request")) return DEMO_OVERSEERR_REQUESTS;
       if (normalized.startsWith("/search")) return DEMO_OVERSEERR_SEARCH;
@@ -3445,6 +3474,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/movie/")) return { id: 779782, title: "Deadpool & Wolverine", posterPath: "", releaseDate: "2024-07-26" };
       if (normalized.startsWith("/tv/")) return { id: 114472, name: "Fallout", posterPath: "", firstAirDate: "2024-04-11" };
       if (normalized.startsWith("/status")) return { version: "2.2.0", commitTag: "HEAD" };
+      if (normalized.startsWith("/user")) return DEMO_OVERSEERR_USERS;
       return undefined;
     }
     case "prowlarr": {

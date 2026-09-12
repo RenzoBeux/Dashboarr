@@ -1,6 +1,7 @@
 import { useBackendStore } from "@/store/backend-store";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_IDS } from "@/lib/constants";
+import { seerrAuthMode, seerrUsesSession } from "@/lib/seerr-auth";
 import { isPrivateHost } from "@/lib/url-validation";
 import { describeBackendTransportError } from "@/lib/backend-error";
 
@@ -209,13 +210,20 @@ export function pushConfigSnapshot(): Promise<void> {
 
   const instances = SERVICE_IDS.flatMap((kind) => {
     const list = configState.serviceInstances[kind] ?? [];
-    // Pi-hole's password is not a read-only stats key: it grants
-    // PUT /api/config/*, i.e. rewriting the DNS of the whole household. There
-    // is no Pi-hole poller on the backend, so sending it would copy that
-    // credential into a second host's SQLite for nothing. Send the instance so
-    // the backend's offline poller still watches it, but never the secret.
-    const shareSecrets = kind !== "pihole";
     return list.map((inst) => {
+      // Pi-hole's password is not a read-only stats key: it grants
+      // PUT /api/config/*, i.e. rewriting the DNS of the whole household. There
+      // is no Pi-hole poller on the backend, so sending it would copy that
+      // credential into a second host's SQLite for nothing. Send the instance so
+      // the backend's offline poller still watches it, but never the secret.
+      //
+      // A Seerr signed in as a user (#332) is the same story: its secret is a
+      // person's Plex token or media-server password, and the backend has no
+      // session client to use it with. The backend skips its pending-request
+      // poller for a Seerr instance without an API key; webhooks need none.
+      const shareSecrets =
+        kind !== "pihole" &&
+        !(kind === "overseerr" && seerrUsesSession(seerrAuthMode(inst)));
       const secrets = configState.instanceSecrets[inst.id] ?? {
         apiKey: "",
         username: "",

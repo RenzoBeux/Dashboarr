@@ -18,6 +18,7 @@ import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/store
 import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
+import { isSeerrAuthMode } from "@/lib/seerr-auth";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
@@ -104,6 +105,17 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   // when explicitly enabled — absence (or garbage) means off.
   if (v.tagAddedTorrents === true) {
     out.tagAddedTorrents = true;
+  }
+  // v52 (#332): optional Seerr "Request As" default. Seerr user ids are
+  // positive auto-increment integers. This was missing from the coercer when
+  // v52 shipped, so an export/import round-trip silently dropped it.
+  if (isPositiveInt(v.requestAsUserId)) {
+    out.requestAsUserId = v.requestAsUserId;
+  }
+  // v53 (#332): optional Seerr sign-in mode. "apiKey" is dropped on purpose so
+  // the stored shape stays "absent means API key"; garbage is dropped too.
+  if (isSeerrAuthMode(v.authMode) && v.authMode !== "apiKey") {
+    out.authMode = v.authMode;
   }
   return out;
 }

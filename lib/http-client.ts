@@ -32,6 +32,34 @@ import {
   getPiholeSid,
   invalidatePiholeSid,
 } from "@/lib/pihole-session";
+// Seerr's sign-in modes (#332). Same arrangement as Pi-hole: the pure
+// request/verdict helpers live in lib/seerr-auth.ts and the session cache the
+// probe shares with services/overseerr-api.ts lives in lib/seerr-session.ts.
+import {
+  SEERR_MISSING_CREDENTIAL_MESSAGE,
+  buildSeerrLoginRequest,
+  classifySeerrLoginFailure,
+  readSeerrMe,
+  seerrAuthMode,
+  seerrHasCredential,
+  seerrHostOf,
+  seerrSessionHostConflict,
+  seerrUsesSession,
+  type SeerrAuthMode,
+  type SeerrMe,
+} from "@/lib/seerr-auth";
+import {
+  SeerrLoginSuspendedError,
+  dedupedSeerrLogin,
+  getSeerrSessionMe,
+  invalidateSeerrSession,
+  invalidateSeerrSessionsOnHost,
+  isSeerrSessionEstablished,
+  seerrLoginsSuspended,
+  seerrSessionGeneration,
+  setSeerrSession,
+} from "@/lib/seerr-session";
+import { queryClient } from "@/lib/query-client";
 import {
   basicAuthHeader,
   digestSessionKey,
@@ -144,6 +172,12 @@ interface RequestOptions extends Omit<RequestInit, "signal"> {
   // External abort signal (e.g. TanStack Query's queryFn signal). Composed
   // with the internal timeout controller: the fetch aborts when either fires.
   signal?: AbortSignal;
+  // Pin the base URL for this one call instead of resolving the active URL
+  // at send time. Used by the Seerr session wrapper (#332), which must
+  // establish the session and send the request against the SAME host: with
+  // auto-switch, the active URL can flip between the two awaits, and the
+  // request would then go to the other host with whatever cookie it holds.
+  baseUrl?: string;
 }
 
 // "sid" is Pi-hole's session id. We always send it as the X-FTL-SID header and
@@ -308,6 +342,7 @@ export async function serviceRequest<T>(
     params,
     instanceId,
     signal: externalSignal,
+    baseUrl: pinnedBaseUrl,
     ...fetchOptions
   } = options;
   const store = useConfigStore.getState();
@@ -337,7 +372,7 @@ export async function serviceRequest<T>(
     throw new Error(`Service ${serviceId} is not enabled`);
   }
 
-  const baseUrl = store.getActiveUrl(serviceId, targetId);
+  const baseUrl = pinnedBaseUrl ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) {
     throw new Error(`No URL configured for ${serviceId}`);
   }
@@ -427,8 +462,27 @@ export async function serviceRequest<T>(
     // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
     // (store/config-store.ts) — so a stale apiKey left on an instance id would
     // be sent to Pi-hole on every request forever.
+  } else if (serviceId === "overseerr") {
+    if (seerrUsesSession(seerrAuthMode(inst))) {
+      // A sign-in mode (#332): the session rides the platform cookie jar,
+      // established by ensureSeerrSession below. Two rules, both load-bearing:
+      //  - never send X-Api-Key. Seerr's checkUser middleware gives the header
+      //    precedence over the session, and in plex mode `secrets.apiKey` is
+      //    the plex.tv token, not an API key. updateInstanceSecrets also MERGES
+      //    (see the pihole branch above), so keying on mode rather than on
+      //    key presence is what keeps a lingering admin key off the wire.
+      //  - drop a user-supplied Cookie header, which would clobber the jar's
+      //    connect.sid. Same rule as qbLogin in services/qbittorrent-api.ts.
+      //  - drop a user-supplied X-Api-Key too: custom headers are merged
+      //    first, and one pasted there would authenticate as the admin and
+      //    bypass every permission the signed-in account is supposed to have.
+      headers.delete("Cookie");
+      headers.delete("X-Api-Key");
+    } else if (secrets.apiKey) {
+      headers.set("X-Api-Key", secrets.apiKey);
+    }
   } else {
-    // Radarr, Sonarr, Overseerr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
+    // Radarr, Sonarr, Tautulli, Prowlarr, Bazarr, unRAID, Tdarr use
     // X-Api-Key (unRAID/Tdarr document lowercase x-api-key; header names are
     // case-insensitive so this one branch covers it). Tdarr's auth is
     // optional server-side — an empty header value is harmless when unset.
@@ -618,6 +672,11 @@ export async function pingService(
     // validate them — that is the probe's job, and the probe uses /auth.
     // Deliberately no X-FTL-SID here: a reachability ping must not depend on,
     // or consume, one of the sixteen available session seats.
+  } else if (serviceId === "overseerr" && seerrUsesSession(seerrAuthMode(inst))) {
+    // A sign-in mode (#332): pingPath (/status) is anonymous, and the only
+    // credential on the instance is a Plex token or a password that must not
+    // be sent as X-Api-Key. Reachability only; the probe validates the session.
+    headers.delete("X-Api-Key");
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -733,6 +792,10 @@ export interface ConnectionTestInput {
   // way serviceRequest does, so a health check and the real requests that
   // follow it share one server nonce instead of each paying a 401.
   instanceId?: string;
+  // Seerr only (#332): which sign-in the credentials above belong to. The
+  // editor passes the form's mode; checkInstanceHealth passes the stored one.
+  // Absent means the admin API key.
+  seerrAuthMode?: SeerrAuthMode;
 }
 
 /** Hostname of a probe URL, for naming what we couldn't reach. Null if unparseable. */
@@ -867,14 +930,32 @@ export async function checkInstanceHealth(
     };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};
-  return testServiceConnection(serviceId, {
+  // A Seerr save or import holds its logins suspended for the span of the
+  // change (#332); probing now would be answered "unreachable" and flip the
+  // dot (and fire an offline push) for a settings edit. Repeat the last
+  // verdict; the editor re-keys the health query once the change is in.
+  if (serviceId === "overseerr" && seerrLoginsSuspended(instanceId)) {
+    return seerrHealthWhileSuspended(instanceId);
+  }
+  const result = await testServiceConnection(serviceId, {
     url,
     apiKey: secrets.apiKey,
     username: secrets.username,
     password: secrets.password,
     customHeaders: secrets.customHeaders,
     instanceId,
+    seerrAuthMode: serviceId === "overseerr" ? seerrAuthMode(inst) : undefined,
   });
+  if (serviceId === "overseerr") seerrLastHealth.set(instanceId, result);
+  return result;
+}
+
+/** The last health verdict per Seerr instance, replayed while its logins are suspended. */
+const seerrLastHealth = new Map<string, ConnectionTestResult>();
+
+function seerrHealthWhileSuspended(instanceId: string | undefined): ConnectionTestResult {
+  const last = instanceId ? seerrLastHealth.get(instanceId) : undefined;
+  return last ?? { kind: "unreachable", message: new SeerrLoginSuspendedError().message };
 }
 
 type ProbeOutcome =
@@ -946,6 +1027,295 @@ class ProbeVerdict extends Error {
     this.name = "ProbeVerdict";
     this.result = result;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Seerr sign-in (#332)
+// ---------------------------------------------------------------------------
+//
+// Shared by the probe below and services/overseerr-api.ts, which is why they
+// are exported from here rather than living in the API module: the probe
+// cannot import services/ (cycle), and the login shape must be identical on
+// both paths or the health dot and the Requests screen disagree about whether
+// the account works.
+
+/**
+ * A classified login failure; `result` is a ready-made probe verdict.
+ *
+ * `status` is set (401) only for a credential rejection, so the query retry
+ * policy in lib/query-client.ts (which stops on 401/403 by duck-typing) does
+ * not re-post a refused password twice more with backoff. An unreachable
+ * host carries no status and keeps the transient-error retries.
+ */
+export class SeerrLoginError extends Error {
+  result: ConnectionTestResult;
+  status?: number;
+  constructor(result: { kind: "auth_failed" | "unreachable"; message: string }) {
+    super(result.message);
+    this.name = "SeerrLoginError";
+    this.result = result;
+    if (result.kind === "auth_failed") this.status = 401;
+  }
+}
+
+export interface SeerrLoginInput {
+  baseUrl: string;
+  mode: SeerrAuthMode;
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  customHeaders: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+const SEERR_API_BASE = SERVICE_DEFAULTS.overseerr.apiBasePath;
+
+/**
+ * A fresh /auth/me the probe just read, recorded in the session cache AND
+ * handed to the identity query (hooks/use-overseerr.ts useSeerrMe) under its
+ * own key. The health poll validates the session every 30 seconds anyway,
+ * so a permission the admin changed reaches the UI on the next poll instead
+ * of the identity query's own, much slower, refresh.
+ */
+function publishSeerrMe(instanceId: string, host: string, me: SeerrMe): void {
+  setSeerrSession(instanceId, host, me);
+  queryClient.setQueryData(["overseerr", instanceId, "me"], me);
+}
+
+/**
+ * Custom headers first (reverse-proxy credentials), then ours. Two names are
+ * dropped on every Seerr session call: a Cookie header would replace the
+ * jar's connect.sid (the login would appear to succeed while every later
+ * request went out unauthenticated), and an X-Api-Key header would make Seerr
+ * authenticate the session calls as the admin, since its checkUser gives the
+ * key precedence over the cookie.
+ */
+export function seerrHeaders(
+  customHeaders: Record<string, string>,
+  extra: Record<string, string> = {},
+): Headers {
+  const h = new Headers();
+  for (const [k, v] of Object.entries(customHeaders)) {
+    const name = k.toLowerCase();
+    if (name === "cookie" || name === "x-api-key") continue;
+    h.set(k, v);
+  }
+  for (const [k, v] of Object.entries(extra)) h.set(k, v);
+  return h;
+}
+
+/** A caller-supplied signal, or a fresh DEFAULT_TIMEOUT one. */
+function seerrSignal(signal: AbortSignal | undefined): { signal: AbortSignal; done: () => void } {
+  if (signal) return { signal, done: () => undefined };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
+  return { signal: controller.signal, done: () => clearTimeout(timer) };
+}
+
+/**
+ * GET /auth/me riding whatever the jar holds (or, in API-key mode, the key).
+ * 200 with a user => that account; 401/403 => no session; anything else
+ * throws. This is the free validation step: it creates nothing server-side,
+ * which is what lets a cold start reuse the 30-day cookie instead of minting
+ * a new Seerr session on every launch.
+ */
+export async function seerrFetchMe(
+  baseUrl: string,
+  customHeaders: Record<string, string>,
+  signal?: AbortSignal,
+  apiKey?: string,
+): Promise<SeerrMe | null> {
+  const url = buildUrl(baseUrl, SEERR_API_BASE, "/auth/me");
+  const headers = seerrHeaders(customHeaders, { Accept: "application/json" });
+  if (apiKey) headers.set("X-Api-Key", apiKey);
+  const { signal: sig, done } = seerrSignal(signal);
+  try {
+    const res = await fetch(url, { method: "GET", headers, signal: sig });
+    if (res.status === 401 || res.status === 403) return null;
+    const contentType = res.headers.get("content-type");
+    const clone = res.clone();
+    const body: unknown = await res.json().catch(() => clone.text().catch(() => undefined));
+    if (looksLikeHtml(contentType, body)) {
+      throw new AuthProxyResponseError(res.status, res.statusText, url, body);
+    }
+    if (!res.ok) throw new HttpError(res.status, res.statusText, url, body);
+    const me = readSeerrMe(body);
+    if (!me) throw new HttpError(res.status, res.statusText, url, body);
+    return me;
+  } finally {
+    done();
+  }
+}
+
+/**
+ * One login round-trip for a session mode. The response is the User object
+ * (Seerr answers every login route with `user.filter()`), so no second
+ * /auth/me call is needed. Every failure is thrown as a SeerrLoginError whose
+ * verdict already went through classifySeerrLoginFailure.
+ */
+export async function seerrLogin(input: SeerrLoginInput): Promise<SeerrMe> {
+  const request = buildSeerrLoginRequest(input.mode, input);
+  if (!request) {
+    throw new SeerrLoginError({ kind: "unreachable", message: "API-key mode has no sign-in" });
+  }
+  const url = buildUrl(input.baseUrl, SEERR_API_BASE, request.path);
+  const headers = seerrHeaders(input.customHeaders, {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  });
+  const { signal, done } = seerrSignal(input.signal);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request.body),
+      signal,
+    });
+    const contentType = res.headers.get("content-type");
+    const clone = res.clone();
+    const body: unknown = await res.json().catch(() => clone.text().catch(() => undefined));
+    const text = typeof body === "string" ? body : "";
+    if (!res.ok) {
+      // Two HTML failure pages come from Seerr itself, not a proxy in front of
+      // it, and looksLikeHtml would otherwise misread both: csurf's 403 (its
+      // text is the tell) and express's 404 page for a route Overseerr never
+      // registered (/auth/jellyfin). Let the classifier name those.
+      const csrf = res.status === 403 && /invalid csrf token/i.test(text);
+      const missingRoute = res.status === 404 && input.mode === "mediaServer";
+      if (!csrf && !missingRoute && looksLikeHtml(contentType, body)) {
+        throw new SeerrLoginError({ kind: "unreachable", message: AUTH_PROXY_MESSAGE });
+      }
+      throw new SeerrLoginError(
+        classifySeerrLoginFailure(
+          res.status,
+          body,
+          input.mode,
+          seerrHasCredential(input.mode, input),
+        ),
+      );
+    }
+    if (looksLikeHtml(contentType, body)) {
+      throw new SeerrLoginError({ kind: "unreachable", message: AUTH_PROXY_MESSAGE });
+    }
+    const me = readSeerrMe(body);
+    if (!me) {
+      throw new SeerrLoginError({
+        kind: "unreachable",
+        message: "Unrecognized sign-in response from Seerr",
+      });
+    }
+    return me;
+  } finally {
+    done();
+  }
+}
+
+/**
+ * Best-effort POST /auth/logout; never throws. For Jellyfin/Emby accounts Seerr
+ * also deletes the account's Seerr device on the media server, which is its
+ * own web UI's behavior on sign-out and harmless here.
+ */
+export async function seerrLogout(
+  baseUrl: string,
+  customHeaders: Record<string, string>,
+): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    await fetch(buildUrl(baseUrl, SEERR_API_BASE, "/auth/logout"), {
+      method: "POST",
+      headers: seerrHeaders(customHeaders, { Accept: "application/json" }),
+      signal: controller.signal,
+    });
+  } catch {
+    // Logging out is a courtesy; the session expires on its own in 30 days.
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The account behind a SAVED instance, establishing the session on demand.
+ *
+ * Session modes go through lib/seerr-session's shared in-flight promise so the
+ * health poll and the Requests screen cannot log in twice on a cold start. The
+ * login function validates the jar's cookie first and only posts credentials
+ * when that comes back empty. API-key mode just reads /auth/me with the key;
+ * it is what makes permissions a uniform source for the UI in every mode.
+ */
+export function ensureSeerrSession(instanceId: string, pinnedBaseUrl?: string): Promise<SeerrMe> {
+  const store = useConfigStore.getState();
+  if (store.demoMode) {
+    const demo = readSeerrMe(getDemoResponse("overseerr", "/auth/me"));
+    return Promise.resolve(demo ?? { id: 1, displayName: "Demo", permissions: 2 });
+  }
+  const inst = store.getInstance("overseerr", instanceId);
+  if (!inst) return Promise.reject(new Error(`Instance ${instanceId} for overseerr not found`));
+  if (!inst.enabled) return Promise.reject(new Error("Service overseerr is not enabled"));
+  // Callers that go on to send a request pass the URL they will send it to,
+  // so the session is established on that exact host (see RequestOptions.baseUrl).
+  const baseUrl = pinnedBaseUrl ?? store.getActiveUrl("overseerr", instanceId);
+  if (!baseUrl) return Promise.reject(new Error("No URL configured for overseerr"));
+  // The same guard serviceRequest applies, and it has to run HERE too: this
+  // runs before serviceRequest, and what it would send to a private address
+  // off the home network is not an API call but the account's password or
+  // Plex token. Local URLs are for the home network only.
+  if (lanUnreachableOffWifi(baseUrl, inst)) {
+    return Promise.reject(
+      new Error(`overseerr: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`),
+    );
+  }
+  const secrets = store.instanceSecrets[instanceId] ?? {};
+  const customHeaders = store.getMergedHeaders("overseerr", instanceId);
+  const mode = seerrAuthMode(inst);
+  const host = seerrHostOf(baseUrl);
+
+  // The editor refuses this configuration, but an import can still carry it.
+  // Failing loudly beats executing one instance's requests as the other.
+  const conflict = seerrSessionHostConflict(inst, store.serviceInstances.overseerr ?? []);
+  if (conflict) {
+    return Promise.reject(
+      new Error(
+        `Seerr instances "${inst.name}" and "${conflict.name}" are both signed in on the same host and would share one session. Switch one of them to the API key.`,
+      ),
+    );
+  }
+
+  if (!seerrUsesSession(mode)) {
+    const cached = getSeerrSessionMe(instanceId);
+    if (cached) return Promise.resolve(cached);
+    return seerrFetchMe(baseUrl, customHeaders, undefined, secrets.apiKey).then((me) => {
+      if (!me) {
+        throw new HttpError(403, "Forbidden", buildUrl(baseUrl, SEERR_API_BASE, "/auth/me"), {
+          message: "Invalid API key",
+        });
+      }
+      setSeerrSession(instanceId, host, me);
+      return me;
+    });
+  }
+
+  return dedupedSeerrLogin(instanceId, host, async () => {
+    // Validate-first reuses the jar's 30-day cookie across launches. Not
+    // while this host is marked stale (a credential or URL change happened,
+    // possibly before a restart): the jar may hold the previous account's
+    // session here, and adopting it is exactly the bug. The mark is per host
+    // and lifts only when a credential login succeeds on that host.
+    if (!store.isSeerrHostStale(instanceId, host)) {
+      const existing = await seerrFetchMe(baseUrl, customHeaders);
+      if (existing) return existing;
+    }
+    const me = await seerrLogin({
+      baseUrl,
+      mode,
+      apiKey: secrets.apiKey,
+      username: secrets.username,
+      password: secrets.password,
+      customHeaders,
+    });
+    store.clearSeerrStaleHost(instanceId, host);
+    return me;
+  });
 }
 
 async function runConnectionProbe(
@@ -1129,17 +1499,115 @@ async function runConnectionProbe(
     }
 
     case "overseerr": {
-      // /auth/me returns the API key's user; 403 for bad key.
-      const url = buildUrl(baseUrl, defaults.apiBasePath, "/auth/me");
-      const headers = makeHeaders({ Accept: "application/json" });
-      if (apiKey) headers.set("X-Api-Key", apiKey);
-      const res = await fetch(url, { method: "GET", headers, signal });
-      if (res.status === 401 || res.status === 403)
-        return { kind: "auth_failed", message: "Invalid API key" };
-      if (res.status >= 500)
-        return { kind: "unreachable", message: `Server error ${res.status}` };
-      if (res.ok) return { kind: "ok" };
-      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      const mode: SeerrAuthMode = input.seerrAuthMode ?? "apiKey";
+      const id = input.instanceId;
+      const host = seerrHostOf(baseUrl);
+      try {
+        if (mode === "apiKey") {
+          // /auth/me returns the API key's user; 401/403 for a bad key. The
+          // same reader the data layer uses, so an auth proxy's HTML 200 is
+          // "unreachable" here too instead of a green dot over a dead key.
+          // The user is cached so the permissions hook has data before any
+          // screen asks.
+          const me = await seerrFetchMe(baseUrl, customHeaders, signal, apiKey);
+          if (!me) return { kind: "auth_failed", message: "Invalid API key" };
+          if (id) publishSeerrMe(id, host, me);
+          return { kind: "ok" };
+        }
+
+        // A sign-in mode (#332). Same shape as the Pi-hole case: validate what
+        // the jar already holds (free, creates nothing), log in only when that
+        // comes back empty, and share the login with the data layer through
+        // lib/seerr-session so a cold start yields one session, not two.
+        if (!seerrHasCredential(mode, input)) {
+          return { kind: "auth_failed", message: SEERR_MISSING_CREDENTIAL_MESSAGE[mode] };
+        }
+        const login = () =>
+          seerrLogin({ baseUrl, mode, apiKey, username, password, customHeaders, signal });
+        if (id && isSeerrSessionEstablished(id, host)) {
+          const generation = seerrSessionGeneration(id, host);
+          const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
+          if (existing) {
+            publishSeerrMe(id, host, existing);
+            return { kind: "ok" };
+          }
+          // Stale (expired, or the server forgot it). Conditional, so a
+          // replacement another caller already published survives.
+          invalidateSeerrSession(id, host, generation);
+        }
+        if (id) {
+          // A SAVED instance: join or start the shared login. Its login
+          // function re-checks the jar first for the not-yet-established
+          // cold-start case, unless this host is marked stale after a
+          // credential change, then posts the stored credentials.
+          const me = await dedupedSeerrLogin(id, host, async () => {
+            const store = useConfigStore.getState();
+            if (!store.isSeerrHostStale(id, host)) {
+              const existing = await seerrFetchMe(baseUrl, customHeaders, signal);
+              if (existing) return existing;
+            }
+            const me = await login();
+            store.clearSeerrStaleHost(id, host);
+            return me;
+          });
+          queryClient.setQueryData(["overseerr", id, "me"], me);
+          return { kind: "ok" };
+        }
+        // Testing an UNSAVED form: the typed credentials are the thing under
+        // test, so never trust a cookie some other account left in the jar.
+        // (The editor passes the instance id when the form matches what is
+        // saved, which takes the branch above and leaves the session alone.)
+        await login();
+        // The jar's cookie for this HOST now belongs to the typed account,
+        // whichever instance's it was. A saved instance that signs in here
+        // gets it back through a credential login with its stored secrets
+        // on its own URL (marked stale first: validate-first would adopt
+        // the typed account), rather than a logout, which in mediaServer
+        // mode also deletes a Jellyfin/Emby device and would leave the app
+        // to sign in again on its next request anyway. The targets come
+        // from the CONFIGURATION, not the session cache: the jar outlives
+        // the process, so after a cold start a saved instance can be
+        // running on a live cookie the cache has never heard of, and a
+        // cache-driven restore would find nothing and log it out. Only
+        // with no saved sign-in instance on this host (or none that holds
+        // a credential to sign back in with) log out, so no session is
+        // left behind for a URL that may never be saved.
+        const store = useConfigStore.getState();
+        const restore = (store.serviceInstances.overseerr ?? []).filter((inst) => {
+          const instMode = seerrAuthMode(inst);
+          if (!seerrUsesSession(instMode)) return false;
+          if (![inst.localUrl, inst.remoteUrl].some((u) => seerrHostOf(u) === host)) return false;
+          return seerrHasCredential(instMode, store.instanceSecrets[inst.id] ?? {});
+        });
+        invalidateSeerrSessionsOnHost(host);
+        if (restore.length === 0) {
+          await seerrLogout(baseUrl, customHeaders);
+          return { kind: "ok" };
+        }
+        for (const inst of restore) {
+          store.markSeerrHostsStale(inst.id, [host]);
+          const ownUrl = [inst.localUrl, inst.remoteUrl].find((u) => seerrHostOf(u) === host);
+          await ensureSeerrSession(inst.id, ownUrl ?? baseUrl).catch(() => undefined);
+        }
+        return { kind: "ok" };
+      } catch (err) {
+        if (err instanceof SeerrLoginError) return err.result;
+        // A save or an import is mid-flight; the answer is whatever it was
+        // last time, not "offline" (the health watcher would push a
+        // "Service offline" notification for a settings change).
+        if (err instanceof SeerrLoginSuspendedError) return seerrHealthWhileSuspended(id);
+        if (err instanceof AuthProxyResponseError)
+          return { kind: "unreachable", message: AUTH_PROXY_MESSAGE };
+        if (err instanceof HttpError)
+          return {
+            kind: "unreachable",
+            message:
+              err.status >= 500
+                ? `Server error ${err.status}`
+                : `Unexpected status ${err.status}`,
+          };
+        throw err;
+      }
     }
 
     case "glances": {

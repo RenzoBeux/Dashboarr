@@ -40,6 +40,8 @@ import {
   useResetDiscoverSliders,
 } from "@/hooks/use-overseerr";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
+import { SeerrPermissionNotice } from "@/components/overseerr/seerr-permission-notice";
 import { BUILTIN_SLIDER_LABELS } from "@/lib/overseerr-discover";
 import {
   DiscoverSliderType,
@@ -101,6 +103,10 @@ export default function CustomizeDiscoverScreen() {
   const saveSliders = useSaveDiscoverSliders();
   const deleteSlider = useDeleteDiscoverSlider();
   const resetSliders = useResetDiscoverSliders();
+  // Reading the layout is open to any signed-in account; every write here is
+  // ADMIN-only upstream (#332). The Discover tab hides its Customize entry
+  // for non-admins, but the route is still reachable by deep link.
+  const caps = useSeerrCapabilities();
 
   const [draft, setDraft] = useState<DraftSlider[]>([]);
   // Latest draft for stable callbacks/renderItem to read without changing
@@ -337,10 +343,10 @@ export default function CustomizeDiscoverScreen() {
         right={
           <Pressable
             onPress={handleSave}
-            disabled={!dirty || isSaving}
+            disabled={!dirty || isSaving || !caps.canManageDiscover}
             hitSlop={6}
             className="px-4 py-1.5 rounded-xl bg-primary active:opacity-70"
-            style={{ opacity: dirty && !isSaving ? 1 : 0.4 }}
+            style={{ opacity: dirty && !isSaving && caps.canManageDiscover ? 1 : 0.4 }}
           >
             <Text className="text-white text-sm font-semibold">
               {isSaving ? "Saving…" : "Save"}
@@ -349,11 +355,15 @@ export default function CustomizeDiscoverScreen() {
         }
       />
 
-      {isError ? (
+      {caps.loaded && !caps.canManageDiscover ? (
+        <View className="gap-3">
+          <SeerrPermissionNotice message="Customizing Discover needs a Seerr admin account, or the admin API key. Your account can browse the layout but not change it." />
+        </View>
+      ) : isError ? (
         <View className="gap-3">
           <ErrorBanner error={error} title="Couldn't load Discover settings" />
           <Text className="text-zinc-500 text-sm">
-            Customizing Discover needs a Seerr admin API key.
+            Customizing Discover needs a Seerr admin account or the admin API key.
           </Text>
         </View>
       ) : isLoading && draft.length === 0 ? (

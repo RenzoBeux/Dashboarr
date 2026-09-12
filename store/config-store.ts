@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SeerrAuthMode } from "@/lib/seerr-auth";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
@@ -47,6 +48,13 @@ import {
 } from "@/lib/dashboard-icons";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { clearDigestSessions } from "@/lib/http-auth";
+import {
+  drainSeerrLogins,
+  dropSeerrSession,
+  forgetSeerrSession,
+  suspendSeerrLogins,
+} from "@/lib/seerr-session";
+import { seerrHostOf } from "@/lib/seerr-auth";
 import {
   ALL_PICKABLE_TABS,
   MAX_PINNED_TABS,
@@ -118,6 +126,20 @@ export interface ServiceConfig {
   // Off by default (absent/undefined behaves like false) because enabling it
   // writes a tag into the user's qBittorrent config on first use.
   tagAddedTorrents?: boolean;
+  // v52 (#332): Seerr-only — file every request from this instance on behalf of
+  // another Seerr account, so a household sharing one admin API key can still
+  // see who asked for what. Absent/undefined keeps the previous behavior: the
+  // request is attributed to the API key's own identity (the admin). A stale id
+  // (user deleted upstream) makes Seerr reject the request rather than silently
+  // fall back, so the settings card re-resolves the id against the live user
+  // list and shows it as unknown when it no longer matches.
+  requestAsUserId?: number;
+  // v53 (#332): Seerr-only sign-in mode. Absent/undefined means the admin
+  // API key (the pre-v53 behavior). The three session values ride Seerr's
+  // login cookie instead; see lib/seerr-auth.ts for what each one posts and
+  // which secret slot it reads. Only the editor writes this, and it writes
+  // `undefined` rather than "apiKey" so exports keep the absent shape.
+  authMode?: SeerrAuthMode;
 }
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
@@ -384,6 +406,13 @@ interface ConfigState {
   dashboards: Dashboard[];
   activeDashboardId: string;
   wolDevices: WakeOnLanDevice[];
+  // Seerr sign-in (#332): instance id -> hosts that must be logged into with
+  // credentials before their jar cookie may be trusted again. Set for every
+  // host of an instance on a credential/URL change or removal; a host leaves
+  // the list only when a credential login succeeds there. Persisted, unlike
+  // the in-memory session cache, because the jar keeps its cookies across
+  // launches and a change saved just before a restart must still take.
+  seerrStaleHosts: Record<string, string[]>;
   hydrated: boolean;
   demoMode: boolean;
   hapticsEnabled: boolean;
@@ -553,6 +582,10 @@ interface ConfigActions {
 
   setServicesOrder: (order: ServiceId[]) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
+  markSeerrHostsStale: (instanceId: string, hosts: string[]) => void;
+  clearSeerrStaleHost: (instanceId: string, host: string) => void;
+  forgetSeerrStaleHosts: (instanceId: string) => void;
+  isSeerrHostStale: (instanceId: string, host: string) => boolean;
   setHapticsEnabled: (enabled: boolean) => void;
   setGlobalCustomHeaders: (headers: Record<string, string>) => void;
   setUiScale: (scale: UiScale) => void;
@@ -1022,6 +1055,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   dashboards: initialDashboards,
   activeDashboardId: initialDashboards[0].id,
   wolDevices: [],
+  seerrStaleHosts: {},
   hydrated: false,
   demoMode: false,
   hapticsEnabled: true,
@@ -1468,6 +1502,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     );
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
+    const seerrStaleHosts =
+      getJSON<Record<string, string[]>>(STORAGE_KEYS.seerrStaleHosts) ?? {};
     const globalCustomHeaders =
       getJSON<Record<string, string>>(STORAGE_KEYS.globalCustomHeaders) ?? {};
 
@@ -1584,6 +1620,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboards,
       activeDashboardId,
       wolDevices,
+      seerrStaleHosts,
       demoMode,
       hapticsEnabled,
       globalCustomHeaders,
@@ -1622,6 +1659,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // The cached HTTP Digest nonce is keyed by instance, so drop it with the
     // instance rather than leaving it in the map for the process lifetime.
     clearDigestSessions(instanceId);
+    // Same for Seerr's in-memory session entries and the persisted stale-host
+    // list (#332). The server-side logout is the caller's job (seerrClearSession
+    // runs before removal); this only stops a deleted id from lingering.
+    forgetSeerrSession(instanceId);
+    get().forgetSeerrStaleHosts(instanceId);
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
@@ -2485,6 +2527,30 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
   },
 
+  markSeerrHostsStale: (instanceId, hosts) => {
+    const current = new Set(get().seerrStaleHosts[instanceId] ?? []);
+    for (const h of hosts) if (h) current.add(h);
+    const next = { ...get().seerrStaleHosts, [instanceId]: [...current] };
+    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    set({ seerrStaleHosts: next });
+  },
+  clearSeerrStaleHost: (instanceId, host) => {
+    const current = get().seerrStaleHosts[instanceId];
+    if (!current || !current.includes(host)) return;
+    const remaining = current.filter((h) => h !== host);
+    const { [instanceId]: _dropped, ...rest } = get().seerrStaleHosts;
+    const next = remaining.length > 0 ? { ...rest, [instanceId]: remaining } : rest;
+    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    set({ seerrStaleHosts: next });
+  },
+  forgetSeerrStaleHosts: (instanceId) => {
+    if (!(instanceId in get().seerrStaleHosts)) return;
+    const { [instanceId]: _dropped, ...next } = get().seerrStaleHosts;
+    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    set({ seerrStaleHosts: next });
+  },
+  isSeerrHostStale: (instanceId, host) =>
+    (get().seerrStaleHosts[instanceId] ?? []).includes(host),
   setWolDevices: (devices) => {
     setJSON(STORAGE_KEYS.wolDevices, devices);
     set({ wolDevices: devices });
@@ -2984,10 +3050,48 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         mergedSecrets,
       );
 
+    // Seerr sign-in (#332): an import replaces URLs, modes and credentials
+    // under instance ids that may already have a live session in memory, and
+    // the platform cookie jar may hold a cookie for any imported host from
+    // before. Neither may vouch for the imported credentials, so every Seerr
+    // session is dropped and every imported host is marked stale until a
+    // credential login succeeds there. The pre-import instances are dropped
+    // too, in case their ids survive the import.
+    //
+    // Drop, then DRAIN, before anything is installed: a drop supersedes an
+    // in-flight login but cannot cancel its request, and that request's
+    // Set-Cookie still lands when it answers. Without waiting for it here, a
+    // pre-import login could finish after the imported account's login and
+    // put the old account's cookie back in charge of the host. Same rule as
+    // seerrClearSession.
+    // The drain only covers logins already on the wire. The old configuration
+    // stays live until the set() below, and during these awaits the health
+    // poll or any query could start a NEW login with the old credentials, so
+    // every involved instance is suspended (dedupedSeerrLogin rejects) until
+    // the new configuration and its stale-host marks are installed. Released
+    // in a finally so a failed import cannot leave Seerr sign-in blocked.
+    const preImportSeerrIds = (get().serviceInstances.overseerr ?? []).map((i) => i.id);
+    const importedSeerrIds = (mergedInstances.overseerr ?? []).map((i) => i.id);
+    const seerrReleases = [...new Set([...preImportSeerrIds, ...importedSeerrIds])].map(
+      suspendSeerrLogins,
+    );
+    const importedSeerrStaleHosts: Record<string, string[]> = {};
+    try {
+    for (const id of preImportSeerrIds) dropSeerrSession(id);
+    for (const id of preImportSeerrIds) await drainSeerrLogins(id);
+    for (const inst of mergedInstances.overseerr ?? []) {
+      dropSeerrSession(inst.id);
+      const hosts = [...new Set([inst.localUrl, inst.remoteUrl].map(seerrHostOf).filter(Boolean))];
+      if (hosts.length > 0) importedSeerrStaleHosts[inst.id] = hosts;
+    }
+    for (const inst of mergedInstances.overseerr ?? []) await drainSeerrLogins(inst.id);
+    setJSON(STORAGE_KEYS.seerrStaleHosts, importedSeerrStaleHosts);
+
     // Reload everything into the store
     set({
       serviceInstances: mergedInstances,
       instanceSecrets: mergedSecrets,
+      seerrStaleHosts: importedSeerrStaleHosts,
       activeInstance: derivedActiveInstance,
       services: derivedServices,
       secrets: derivedSecrets,
@@ -3012,6 +3116,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       weekStart: importedWeekStart,
       notificationSettings: importedNotificationSettings,
     });
+    } finally {
+      for (const release of seerrReleases) release();
+    }
+
+    // Backups preserve instance UUIDs, so every query keyed by instance id
+    // (including ["overseerr", id, "me"], whose permissions gate the Seerr
+    // UI) would otherwise keep serving the PRE-import account for its
+    // staleTime. Clearing after the barrier lifts means the refetches that
+    // follow start from the imported configuration. Same call demo-mode
+    // toggling makes, for the same reason: nothing cached predates this.
+    queryClient.clear();
 
     return true;
   },

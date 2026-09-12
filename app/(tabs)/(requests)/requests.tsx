@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -65,6 +66,8 @@ import {
   useDeleteMedia,
 } from "@/hooks/use-overseerr";
 import { getPosterUrl, getBackdropUrl } from "@/services/overseerr-api";
+import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
+import { canDeleteSeerrRequest } from "@/lib/seerr-permissions";
 import {
   NETWORKS,
   STUDIOS,
@@ -73,7 +76,9 @@ import {
   type DiscoverCollectionKind,
 } from "@/lib/overseerr-discover";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
+import { forgetSeerrLoginFailures } from "@/lib/seerr-session";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 import {
   DiscoverSliderType,
   type OverseerrRequest,
@@ -181,7 +186,22 @@ export default function RequestsScreen() {
   const [selectedMedia, setSelectedMedia] =
     useState<OverseerrMediaResult | null>(null);
   const { data: healthData } = useServiceHealth();
-  const { refreshing, onRefresh } = usePullToRefresh([["overseerr"]]);
+  // A pull is the user's "try again" for THIS instance: lift its remembered
+  // Seerr credential rejection (lib/seerr-session.ts) before the refetch, or
+  // the identity query would just be answered with the same error from
+  // memory. Scoped to the instance on screen: an app-wide reset would send
+  // every other instance with known-bad credentials back to posting them on
+  // its next poll, which in mediaServer mode counts toward a Jellyfin/Emby
+  // lockout.
+  const queryClient = useQueryClient();
+  const { instanceId: seerrInstanceId } = useInstanceTarget("overseerr");
+  const { refreshing, onRefresh } = useRefreshSpinner(
+    useCallback(() => {
+      if (!seerrInstanceId) return Promise.resolve();
+      forgetSeerrLoginFailures(seerrInstanceId);
+      return queryClient.invalidateQueries({ queryKey: ["overseerr", seerrInstanceId] });
+    }, [queryClient, seerrInstanceId]),
+  );
 
   const overseerrHealth = healthData?.find((s) => s.id === "overseerr");
 
@@ -233,9 +253,11 @@ type OpenCollection = (
 
 // The Discover layout is driven by Seerr's own discover-settings (the same
 // sliders the Seerr/Jellyseerr web UI shows). We fetch the slider config and
-// render each enabled slider in order, mapping its type to a renderer. When the
-// config is unavailable (non-admin key, older Seerr, or still loading) we fall
-// back to the built-in layout so the tab is never blank.
+// render each enabled slider in order, mapping its type to a renderer. Reading
+// the config is open to any signed-in account; only editing it needs ADMIN,
+// so the Customize entry point is gated on the account's permissions (#332).
+// When the config is unavailable (older Seerr that 403s non-admin reads, or
+// still loading) we fall back to the built-in layout so the tab is never blank.
 function DiscoverTab({
   onItemPress,
 }: {
@@ -243,6 +265,7 @@ function DiscoverTab({
 }) {
   const router = useRouter();
   const { data: sliders, isLoading } = useOverseerrDiscoverSliders();
+  const caps = useSeerrCapabilities();
 
   const enabledSliders = useMemo(
     () =>
@@ -272,9 +295,10 @@ function DiscoverTab({
     return <DiscoverSkeleton />;
   }
 
-  // Query settled without usable config — the instance is disabled, the key
-  // isn't an admin key (403), or the server returned nothing. Render the
-  // built-in layout (with its own skeletons) so the tab is never blank.
+  // Query settled without usable config — the instance is disabled, an older
+  // server refused a non-admin read (403), or the server returned nothing.
+  // Render the built-in layout (with its own skeletons) so the tab is never
+  // blank.
   if (!sliders || sliders.length === 0) {
     return (
       <LegacyDiscoverLayout
@@ -286,22 +310,31 @@ function DiscoverTab({
 
   return (
     <View>
-      <View className="flex-row justify-end mb-2">
-        <Pressable
-          onPress={() => router.push("/overseerr/customize-discover")}
-          hitSlop={8}
-          className="flex-row items-center gap-1.5 active:opacity-70"
-        >
-          <Icon icon={SlidersHorizontal} size={16} color="#a1a1aa" />
-          <Text className="text-zinc-400 text-sm">Customize</Text>
-        </Pressable>
-      </View>
+      {/* Editing the layout is ADMIN-only upstream; hide the entry point
+          until /auth/me has confirmed the account may, so a signed-in
+          member never lands on a screen whose Save would 403. */}
+      {caps.loaded && caps.canManageDiscover ? (
+        <View className="flex-row justify-end mb-2">
+          <Pressable
+            onPress={() => router.push("/overseerr/customize-discover")}
+            hitSlop={8}
+            className="flex-row items-center gap-1.5 active:opacity-70"
+          >
+            <Icon icon={SlidersHorizontal} size={16} color="#a1a1aa" />
+            <Text className="text-zinc-400 text-sm">Customize</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {enabledSliders.length === 0 ? (
         <EmptyState
           icon={<Icon icon={Compass} size={32} color="#71717a" />}
           title="No sections shown"
-          message="Every Discover section is hidden. Tap Customize to turn some back on."
+          message={
+            caps.canManageDiscover
+              ? "Every Discover section is hidden. Tap Customize to turn some back on."
+              : "Every Discover section is hidden. Ask your Seerr admin to enable some."
+          }
         />
       ) : (
         enabledSliders.map((slider) => (
@@ -703,6 +736,10 @@ type RowTarget = {
   mediaId: number;
   mediaStatus: OverseerrMediaStatus;
   title: string;
+  // Request status and requester, so canDeleteSeerrRequest can decide whether
+  // a non-manager may delete this row (own + pending only, #332).
+  status: number;
+  requestedById: number;
 };
 type ConfirmIntent = RowTarget & { mode: "deleteRequest" | "removeMedia" };
 
@@ -713,7 +750,24 @@ function RequestsList() {
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const { sort: apiSort } = sortToParams(sort);
   const { data, isLoading, error } = useOverseerrRequests(1, filter, apiSort);
-  const { data: counts } = useOverseerrRequestCount();
+  const caps = useSeerrCapabilities();
+  // GET /request/count is server-wide for everyone, so it only means
+  // something to an account that sees every request. Anyone else gets their
+  // own pending total from the (self-scoped) list instead.
+  const { data: counts } = useOverseerrRequestCount(
+    undefined,
+    caps.loaded && caps.canViewAllRequests,
+  );
+  const ownPending = useOverseerrRequests(
+    1,
+    "pending",
+    "added",
+    undefined,
+    caps.loaded && !caps.canViewAllRequests,
+  );
+  const pendingCount = caps.canViewAllRequests
+    ? counts?.pending
+    : ownPending.data?.pageInfo.results;
   const approve = useApproveRequest();
   const decline = useDeclineRequest();
   const del = useDeleteRequest();
@@ -742,17 +796,21 @@ function RequestsList() {
   const actions: ActionSheetAction[] = useMemo(() => {
     if (!sheetTarget) return [];
     const t = sheetTarget;
-    const list: ActionSheetAction[] = [
-      {
+    const list: ActionSheetAction[] = [];
+    // Managers delete anything; anyone else only their own pending request
+    // (upstream answers 401 otherwise).
+    if (canDeleteSeerrRequest(caps, { status: t.status, requestedBy: { id: t.requestedById } })) {
+      list.push({
         label: "Delete request",
         icon: <Icon icon={Trash2} size={ICON.MD} color="#ef4444" />,
         variant: "danger",
         onPress: () => flow.open("confirm", { ...t, mode: "deleteRequest" }),
-      },
-    ];
+      });
+    }
     // "Remove media" only applies once media exists (processing / partial /
-    // available); pending or declined requests have nothing to untrack.
-    if (t.mediaStatus >= 3) {
+    // available); pending or declined requests have nothing to untrack. And
+    // DELETE /media needs MANAGE_REQUESTS.
+    if (caps.canManageRequests && t.mediaStatus >= 3) {
       list.push({
         label: "Remove media",
         icon: <Icon icon={Film} size={ICON.MD} color="#ef4444" />,
@@ -761,7 +819,7 @@ function RequestsList() {
       });
     }
     return list;
-  }, [sheetTarget, flow]);
+  }, [sheetTarget, flow, caps]);
 
   const pending = flow.payload("confirm");
   const onConfirm = () => {
@@ -786,7 +844,7 @@ function RequestsList() {
     ["all", "pending", "approved", "processing"] as RequestFilter[]
   ).map((f) => ({
     key: f,
-    label: `${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && counts?.pending ? ` (${counts.pending})` : ""}`,
+    label: `${f.charAt(0).toUpperCase() + f.slice(1)}${f === "pending" && pendingCount ? ` (${pendingCount})` : ""}`,
   }));
 
   return (
@@ -799,14 +857,25 @@ function RequestsList() {
         />
       </View>
 
-      {isLoading ? (
+      {/* Without MANAGE_REQUESTS or REQUEST_VIEW the server returns only the
+          caller's own requests; say so rather than let a short list read as
+          a quiet household. */}
+      {caps.loaded && !caps.canViewAllRequests ? (
+        <Text className="text-zinc-500 text-xs mb-3">Showing only your requests.</Text>
+      ) : null}
+
+      {isLoading || (!caps.loaded && !caps.error) ? (
         <SkeletonCardContent rows={4} />
-      ) : error ? (
-        <ErrorBanner error={error} title="Failed to load requests" />
+      ) : error || caps.error ? (
+        <ErrorBanner error={error ?? caps.error} title="Failed to load requests" />
       ) : requests.length === 0 ? (
         <EmptyState
           title="No requests"
-          message={`No ${filter} requests found`}
+          message={
+            caps.canViewAllRequests
+              ? `No ${filter} requests found`
+              : `You have no ${filter} requests`
+          }
         />
       ) : (
         <View className="gap-3">
@@ -822,9 +891,17 @@ function RequestsList() {
                   mediaId: req.media.id,
                   mediaStatus: req.media.status,
                   title,
+                  status: req.status,
+                  requestedById: req.requestedBy.id,
                 })
               }
               busy={busy}
+              canModerate={caps.canManageRequests}
+              showRequester={caps.canViewAllRequests}
+              canOpenActions={
+                canDeleteSeerrRequest(caps, req) ||
+                (caps.canManageRequests && req.media.status >= 3)
+              }
             />
           ))}
         </View>
@@ -873,12 +950,21 @@ function RequestCard({
   onDecline,
   onMore,
   busy,
+  canModerate,
+  showRequester,
+  canOpenActions,
 }: {
   request: OverseerrRequest;
   onApprove: () => void;
   onDecline: () => void;
   onMore: (title: string) => void;
   busy?: boolean;
+  /** MANAGE_REQUESTS: Approve / Decline are offered on pending rows. */
+  canModerate: boolean;
+  /** The list is server-wide, so the requester is worth naming. */
+  showRequester: boolean;
+  /** At least one row action (delete / remove media) is permitted. */
+  canOpenActions: boolean;
 }) {
   const isPending = request.status === 1;
   const { data: mediaDetails } = useOverseerrMediaDetails(
@@ -938,25 +1024,27 @@ function RequestCard({
             </Text>
             <View className="flex-row items-center gap-1">
               <Badge label={statusLabel} variant={statusVariant} />
-              <Pressable
-                onPress={() => onMore(title)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Request actions"
-                className="p-0.5 active:opacity-70"
-              >
-                <Icon icon={MoreHorizontal} size={ICON.MD} color="#a1a1aa" />
-              </Pressable>
+              {canOpenActions ? (
+                <Pressable
+                  onPress={() => onMore(title)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Request actions"
+                  className="p-0.5 active:opacity-70"
+                >
+                  <Icon icon={MoreHorizontal} size={ICON.MD} color="#a1a1aa" />
+                </Pressable>
+              ) : null}
             </View>
           </View>
 
           <Text className="text-zinc-500 text-xs">
             {request.media.mediaType === "movie" ? "Movie" : "TV"} ·{" "}
-            {request.requestedBy.displayName} ·{" "}
+            {showRequester ? `${request.requestedBy.displayName} · ` : ""}
             {new Date(request.createdAt).toLocaleDateString()}
           </Text>
 
-          {isPending && (
+          {isPending && canModerate && (
             <View className="flex-row gap-2 mt-1">
               <Pressable
                 onPress={() => {

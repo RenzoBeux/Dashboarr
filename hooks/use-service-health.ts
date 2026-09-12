@@ -98,8 +98,11 @@ export function buildHealthProbeSignature(inputs: HealthProbeInputs): string {
       ]
         .sort()
         .join(",");
+      // Seerr's sign-in mode (#332) changes which credential the probe posts
+      // and where, so a mode switch without a credential change must re-probe.
+      const mode = inst.authMode ?? "";
       parts.push(
-        `${id}:${inst.id}:${url}:${hasCreds}:${inst.ignoreCertErrors ? 1 : 0}:${headerKeys}`,
+        `${id}:${inst.id}:${url}:${hasCreds}:${inst.ignoreCertErrors ? 1 : 0}:${headerKeys}:${mode}`,
       );
     }
   }

@@ -11,7 +11,10 @@ import {
   getMovieDetails,
   getTVDetails,
   getPosterUrl,
+  getSeerrMe,
 } from "@/services/overseerr-api";
+import { deriveSeerrCapabilities } from "@/lib/seerr-permissions";
+import type { SeerrMe } from "@/lib/seerr-auth";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
@@ -86,11 +89,27 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
     })),
   });
 
-  const countQueries = useQueries({
+  // Who each instance acts as (#332). Same key as useSeerrMe so the cache is
+  // shared with the Requests screen. Drives two things below: whether the
+  // server-wide /request/count means anything for this account, and whether
+  // naming the requester is worth a subtitle.
+  const meQueries = useQueries({
     queries: instances.map((inst) => ({
+      queryKey: ["overseerr", inst.id, "me"] as const,
+      queryFn: (): Promise<SeerrMe> => getSeerrMe(inst.id),
+      staleTime: 5 * 60_000,
+    })),
+  });
+  const capsByIndex = meQueries.map((q) => deriveSeerrCapabilities(q.data));
+
+  const countQueries = useQueries({
+    queries: instances.map((inst, i) => ({
       queryKey: ["overseerr", inst.id, "requestCount"] as const,
       queryFn: () => getRequestCount(inst.id),
       refetchInterval: POLLING_INTERVALS.queue,
+      // GET /request/count is server-wide and unchecked; only an account that
+      // sees every request should read it.
+      enabled: capsByIndex[i].loaded && capsByIndex[i].canViewAllRequests,
     })),
   });
 
@@ -98,16 +117,24 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
   // The pending-count summary just contributes 0 from a failing instance.
   const { isInitialLoading } = aggregateMultiInstanceState(requestQueries);
   const allResults = requestQueries.flatMap((q, i) =>
-    (q.data?.results ?? []).map((req) => ({ request: req, instanceId: instances[i].id })),
+    (q.data?.results ?? []).map((req) => ({
+      request: req,
+      instanceId: instances[i].id,
+      // A self-scoped list is all "you"; naming the requester adds nothing.
+      showRequester: settings.showRequester && capsByIndex[i].canViewAllRequests,
+    })),
   );
   const filtered = allResults.filter(({ request }) =>
     statusMatches(request.status, settings.statusFilter),
   );
   const display = filtered.slice(0, settings.maxItems);
-  const pendingCount = countQueries.reduce(
-    (acc, q) => acc + (q.data?.pending ?? 0),
-    0,
-  );
+  // For a self-scoped account the count comes from its own (paged) list, so
+  // it is bounded by the page size (20). Fine for a personal request list.
+  const pendingCount = countQueries.reduce((acc, q, i) => {
+    if (capsByIndex[i].canViewAllRequests) return acc + (q.data?.pending ?? 0);
+    const own = requestQueries[i]?.data?.results ?? [];
+    return acc + own.filter((r) => r.status === 1).length;
+  }, 0);
 
   const goToRequests = () => router.push("/(tabs)/requests?tab=requests");
 
@@ -148,12 +175,12 @@ export function OverseerrRequestsCard({ slotId }: WidgetComponentProps) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 12 }}
         >
-          {display.map(({ request, instanceId }) => (
+          {display.map(({ request, instanceId, showRequester }) => (
             <RequestPosterCard
               key={`${instanceId}:${request.id}`}
               request={request}
               instanceId={instanceId}
-              showRequester={settings.showRequester}
+              showRequester={showRequester}
               onPress={goToRequests}
             />
           ))}

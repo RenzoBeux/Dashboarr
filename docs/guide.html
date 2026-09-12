@@ -545,7 +545,7 @@
               <tr><td><strong>Prowlarr</strong></td><td>9696</td><td>API key</td><td>No webhook integration, so it is poll-only on the backend.</td></tr>
               <tr><td><strong>Jackett</strong></td><td>9117</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Jackett's admin password protects its indexer management endpoints, so the app cannot add, configure or disable indexers; listing them, per-indexer Search and Test, search and grab all work with just the API key.</td></tr>
               <tr><td><strong>NZBHydra2</strong></td><td>5076</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Indexers, Stats and History additionally need <strong>API stats access</strong> left on in NZBHydra2 under Config &rarr; Auth &mdash; with it off those three say so and search keeps working. Enabling/disabling an indexer is not possible from the app: NZBHydra2 only exposes that to a logged-in browser session, so the indexer list is read-only. If you restrict search, stats <em>and</em> admin in NZBHydra2's auth settings, even the API needs a login &mdash; add an <code>Authorization</code> header under Custom headers.</td></tr>
-              <tr><td><strong>Seerr</strong></td><td>5055</td><td>API key</td><td>If CSRF protection is enabled in Seerr, the API is read-only and submitting a request fails with 403 "invalid csrf token". Turn CSRF protection off.</td></tr>
+              <tr><td><strong>Seerr</strong></td><td>5055</td><td>API key, or sign in with Plex / Jellyfin / Emby / Seerr password</td><td>The API key gives full admin access. Signing in with your own account instead (Settings &rarr; the Seerr instance &rarr; Sign in with) keeps the admin key off that phone: the app then acts as that account, with its permissions, so requests land as pending for the admin to approve and Approve / Decline / Remove media / Customize Discover hide when the account cannot use them. Overseerr offers only Plex and password sign-in. If CSRF protection is enabled in Seerr, the API is read-only, submitting a request fails with 403 "invalid csrf token", and signing in fails the same way. Turn CSRF protection off. Backend push polling for new requests needs the API key; Seerr's webhooks work in every mode.</td></tr>
               <tr><td><strong>Tautulli</strong></td><td>8181</td><td>API key</td><td>Key travels in the query string, same proxy caveat as SABnzbd. Webhooks are ingested but do not raise a push yet.</td></tr>
               <tr><td><strong>Tracearr</strong></td><td>3000</td><td>API key (<code>trr_pub_</code> token)</td><td>Webhook-only for notifications, and its webhook URL must carry <code>?instance=&lt;id&gt;</code> or its per-instance toggles are ignored.</td></tr>
               <tr><td><strong>Jellystat</strong></td><td>3000</td><td>API key</td><td>At least one API key must exist in Jellystat itself. With none configured the server answers 404.</td></tr>
@@ -1264,7 +1264,7 @@
         </p>
 
         <h3>Seerr requests fail with HTTP 403 "invalid csrf token".</h3>
-        <p>Turn off CSRF protection in Seerr, which otherwise limits the API to read-only.</p>
+        <p>Turn off CSRF protection in Seerr, which otherwise limits the API to read-only. The same setting blocks signing in with a Plex, Jellyfin, Emby or Seerr account from the app.</p>
 
         <h3>Glances shows no disks.</h3>
         <p>

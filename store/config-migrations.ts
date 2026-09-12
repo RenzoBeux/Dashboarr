@@ -197,8 +197,14 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() iterates SERVICE_IDS and backfills a disabled
  *         tdarr instance at import time, so older exports just need the
  *         version field bumped.
+ *   v52 — optional per-instance `requestAsUserId` on ServiceConfig (Seerr
+ *         "Request As", #332). Pure version stamp — the field is optional and
+ *         absence means "request as the API key's own identity".
+ *   v53 — optional per-instance `authMode` on ServiceConfig (Seerr sign-in
+ *         mode, #332). Pure version stamp — absence means the admin API key,
+ *         which is the pre-v53 behavior.
  */
-export const CURRENT_CONFIG_VERSION = 51;
+export const CURRENT_CONFIG_VERSION = 53;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -748,6 +754,13 @@ const migrations: Record<number, (payload: any) => any> = {
   // v50 → v51: added the tdarr service entry. Pure version stamp —
   // defaultInstances() backfills a disabled tdarr instance at import.
   50: (payload) => ({ ...payload, version: 51 }),
+  // v51 → v52: optional per-instance `requestAsUserId` on ServiceConfig (Seerr
+  // "Request As", #332). Pure version stamp — absence means the request is
+  // attributed to the API key's own identity, which is the pre-v52 behavior.
+  51: (payload) => ({ ...payload, version: 52 }),
+  // v52 → v53: optional per-instance `authMode` on ServiceConfig (Seerr
+  // sign-in mode, #332). Pure version stamp — absence means the admin API key.
+  52: (payload) => ({ ...payload, version: 53 }),
 };
 
 /**

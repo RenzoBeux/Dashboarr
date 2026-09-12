@@ -14,6 +14,7 @@ import { pollOverseerr } from "./pollers/overseerr.js";
 import { pollProwlarr } from "./pollers/prowlarr.js";
 import { pollGlances } from "./pollers/glances.js";
 import { pollServiceHealth } from "./pollers/service-health.js";
+import { skipsPollerWithoutApiKey } from "./poller-eligibility.js";
 
 type PollerFn = (instance: StoredServiceInstance) => Promise<void>;
 
@@ -63,6 +64,8 @@ interface ActivePoller {
 class Scheduler {
   private active = new Map<string /* instanceId */, ActivePoller>();
   private healthHandle: NodeJS.Timeout | null = null;
+  /** Instance ids already warned about running without an API key. */
+  private warnedNoKey = new Set<string>();
 
   start(): void {
     this.reload();
@@ -87,6 +90,21 @@ class Scheduler {
     for (const inst of instances) {
       const def = POLLER_BY_KIND.get(inst.serviceId);
       if (!def) continue;
+      // A Seerr the app signed into as a user (#332) has no API key to give
+      // us, and the pending-request poller cannot run without one. Skip it
+      // rather than 403 every minute; its webhooks and offline checks still
+      // work. Logged once per instance, not per tick.
+      if (skipsPollerWithoutApiKey(inst.serviceId, inst)) {
+        if (!this.warnedNoKey.has(inst.id)) {
+          this.warnedNoKey.add(inst.id);
+          console.warn(
+            `[poller:${def.kind}:${inst.id}] no API key (the app signs in as a user); ` +
+              "pending-request polling disabled, webhooks still work",
+          );
+        }
+        continue;
+      }
+      this.warnedNoKey.delete(inst.id);
       const intervalMs = inst.pollMs && inst.pollMs > 0 ? inst.pollMs : def.defaultIntervalMs;
       this.spawn(def, inst, intervalMs);
     }

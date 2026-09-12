@@ -37,6 +37,8 @@ import {
   getOverseerrSonarrServers,
   getOverseerrRadarrServerDetails,
   getOverseerrSonarrServerDetails,
+  getOverseerrUsers,
+  getSeerrMe,
   type OverseerrRequestOptions,
 } from "@/services/overseerr-api";
 import {
@@ -51,7 +53,11 @@ import {
 } from "@/lib/types";
 import type { DiscoverCollectionKind } from "@/lib/overseerr-discover";
 import { POLLING_INTERVALS } from "@/lib/constants";
-import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useInstanceTarget, useTargetInstance } from "@/hooks/use-instance-target";
+import { resolveRequestUser } from "@/lib/overseerr-request-user";
+import { getSeerrSessionMe } from "@/lib/seerr-session";
+import { deriveSeerrCapabilities } from "@/lib/seerr-permissions";
+import type { SeerrMe } from "@/lib/seerr-auth";
 
 export function useOverseerrRequests(
   page = 1,
@@ -69,13 +75,50 @@ export function useOverseerrRequests(
   });
 }
 
-export function useOverseerrRequestCount(instanceId?: string) {
+// `active` (#332): GET /request/count has no permission check and is not
+// scoped to the caller, so for an account that only sees its own requests the
+// number is server-wide and misleading. Callers pass `canViewAllRequests`.
+export function useOverseerrRequestCount(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
   return useQuery({
     queryKey: ["overseerr", id, "requestCount"],
     queryFn: () => getRequestCount(id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
+  });
+}
+
+/**
+ * The account this instance acts as (#332): the signed-in user in a sign-in
+ * mode, the admin in API-key mode. Its `permissions` bitfield is what every
+ * Seerr surface gates on, through hooks/use-seerr-capabilities.ts.
+ *
+ * Slot 1 of the key is the instance id, so updateInstanceSecrets's predicate
+ * invalidation refetches identity on every credential save. `initialData`
+ * reads the session cache the probe and the login already filled, so a screen
+ * mounted after either renders with its controls in place, no spinner.
+ */
+const SEERR_ME_REFRESH_MS = 5 * 60_000;
+
+export function useSeerrMe(instanceId?: string, active = true) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useQuery<SeerrMe>({
+    queryKey: ["overseerr", id, "me"],
+    queryFn: () => getSeerrMe(id ?? undefined),
+    enabled: enabled && !!id && active,
+    staleTime: 5 * 60_000,
+    // Focus/reconnect refetches are off app-wide and staleTime schedules
+    // nothing, so without an interval a mounted screen would keep the
+    // permissions it loaded at mount for as long as it stays mounted. Poll
+    // slowly while healthy (the health probe also feeds fresh /auth/me data
+    // into this key every 30s, see publishSeerrMe in lib/http-client.ts) and
+    // faster while errored so a failed read (host down at launch, LAN guard,
+    // wrong password) self-heals. A refused credential is answered from
+    // lib/seerr-session's memory without touching the network, so the fast
+    // interval costs nothing in the bad case.
+    refetchInterval: (query) =>
+      query.state.status === "error" ? POLLING_INTERVALS.queue : SEERR_ME_REFRESH_MS,
+    initialData: () => (id ? (getSeerrSessionMe(id) ?? undefined) : undefined),
   });
 }
 
@@ -191,9 +234,47 @@ export function useOverseerrGenreSlider(
   });
 }
 
+/**
+ * The Seerr accounts on this instance, for the "Request As" pickers (#332).
+ *
+ * Long staleTime: a household's user list changes about never, and this is
+ * queried from both the settings card and the request sheet.
+ */
+export function useOverseerrUsers(instanceId?: string, active = true) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useQuery({
+    queryKey: ["overseerr", id, "users"],
+    queryFn: () => getOverseerrUsers(100, id ?? undefined),
+    // Only worth fetching for an account that may file requests on behalf of
+    // another (MANAGE_USERS or MANAGE_REQUESTS); callers pass `canRequestAs`.
+    enabled: enabled && !!id && active,
+    staleTime: 3600000, // 1 hour
+  });
+}
+
+/**
+ * The instance's stored "Request As" default, or undefined to let Seerr
+ * attribute requests to the API key's own identity.
+ *
+ * Read here rather than at each call site so every request surface picks the
+ * preference up — including the one-tap request in the media detail modal,
+ * which has no picker of its own. `resolveRequestUser` decides how it combines
+ * with a per-request choice.
+ */
+function useRequestAsUserId(instanceId?: string): number | undefined {
+  const stored = useTargetInstance("overseerr", instanceId)?.requestAsUserId;
+  // A stored default only applies to an account that may request on behalf
+  // of another (#332). The editor clears it when leaving API-key mode, but an
+  // export from before the switch can bring it back, and sending it from a
+  // plain user account makes Seerr reject the whole request.
+  const { data: me } = useSeerrMe(instanceId);
+  return deriveSeerrCapabilities(me).canRequestAs ? stored : undefined;
+}
+
 export function useRequestMovie(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  const defaultUserId = useRequestAsUserId(instanceId);
   return useMutation({
     mutationFn: ({
       tmdbId,
@@ -201,7 +282,7 @@ export function useRequestMovie(instanceId?: string) {
     }: {
       tmdbId: number;
       options?: OverseerrRequestOptions;
-    }) => requestMovie(tmdbId, options, id ?? undefined),
+    }) => requestMovie(tmdbId, resolveRequestUser(options, defaultUserId), id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
@@ -211,6 +292,7 @@ export function useRequestMovie(instanceId?: string) {
 export function useRequestTV(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("overseerr", instanceId);
+  const defaultUserId = useRequestAsUserId(instanceId);
   return useMutation({
     mutationFn: ({
       tmdbId,
@@ -220,7 +302,13 @@ export function useRequestTV(instanceId?: string) {
       tmdbId: number;
       seasons?: number[] | "all";
       options?: OverseerrRequestOptions;
-    }) => requestTV(tmdbId, seasons, options, id ?? undefined),
+    }) =>
+      requestTV(
+        tmdbId,
+        seasons,
+        resolveRequestUser(options, defaultUserId),
+        id ?? undefined,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
@@ -336,8 +424,10 @@ export function useOverseerrDiscoverSliders(instanceId?: string) {
     queryFn: () => getDiscoverSliders(id ?? undefined),
     enabled: enabled && !!id,
     staleTime: 300000, // 5 min — config rarely changes
-    // A non-admin key 403s here; fail fast so the Discover tab falls back to its
-    // built-in layout instead of retrying a request that can't succeed.
+    // Reading the slider config is plain isAuthenticated upstream, so any
+    // signed-in account gets the real layout (#332); only WRITING needs ADMIN.
+    // Older servers still 403 non-admin reads, so fail fast and let the
+    // Discover tab fall back to its built-in layout rather than retrying.
     retry: 1,
   });
 }
