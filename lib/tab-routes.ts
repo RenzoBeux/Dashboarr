@@ -263,6 +263,7 @@ export const TAB_LABELS: Record<AnyTabRouteId, string> = {
   autobrr: "Autobrr",
   cleanuparr: "Cleanuparr",
   pihole: "Pi-hole",
+  maintainerr: "Maintainerr",
   settings: "Settings",
 };
 
