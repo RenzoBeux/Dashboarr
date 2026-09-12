@@ -1876,6 +1876,48 @@ describe("testServiceConnection — Seerr sign-in modes (#332)", () => {
     expect(mockStateRef.current.seerrStaleHosts[SEERR_ID]).toEqual([]);
   });
 
+  // The jar outlives the process while the session cache does not. After a
+  // cold start the saved instance is typically running on a cookie the cache
+  // has never seen, and a cache-driven restore would find nothing and log
+  // the host out (in mediaServer mode: delete the Jellyfin/Emby device). The
+  // targets therefore come from the saved configuration.
+  it("restores a saved instance on the host after a cold start, when the cache is empty", async () => {
+    mockStateRef.current = withSeerr("mediaServer", { username: "sarah", password: "saved-pw" });
+    expect(isSeerrSessionEstablished(SEERR_ID, "seerr.local")).toBe(false);
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, { ...SEERR_ME, id: 9 })) // typed account
+      .mockResolvedValueOnce(seerrResponse(200, SEERR_ME)); // saved account, restored
+    const result = await testServiceConnection("overseerr", {
+      url: SEERR_URL,
+      username: "other",
+      password: "typed-pw",
+      seerrAuthMode: "mediaServer",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const restore = requestOf(fetchSpy, 1);
+    expect(restore.url).toBe(`${SEERR_URL}/api/v1/auth/jellyfin`);
+    expect(restore.body).toEqual({ username: "sarah", password: "saved-pw" });
+    expect(fetchSpy.mock.calls.some((c) => String(c[0]).endsWith("/auth/logout"))).toBe(false);
+    expect(isSeerrSessionEstablished(SEERR_ID, "seerr.local")).toBe(true);
+  });
+
+  it("logs out when the saved sign-in instance lives on another host", async () => {
+    mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "saved-pw" });
+    fetchSpy
+      .mockResolvedValueOnce(seerrResponse(200, { ...SEERR_ME, id: 9 }))
+      .mockResolvedValueOnce(seerrResponse(200, { status: "ok" }));
+    const result = await testServiceConnection("overseerr", {
+      url: "http://other.example.com:5055",
+      username: "other@example.com",
+      password: "typed-pw",
+      seerrAuthMode: "local",
+    });
+    expect(result.kind).toBe("ok");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(requestOf(fetchSpy, 1).url).toBe("http://other.example.com:5055/api/v1/auth/logout");
+  });
+
   it("still marks the host stale when the restore fails, so the next login posts credentials", async () => {
     mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "saved-pw" });
     setSeerrSession(SEERR_ID, "seerr.local", SEERR_ME);

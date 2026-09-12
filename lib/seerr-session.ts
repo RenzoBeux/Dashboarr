@@ -297,16 +297,6 @@ export function forgetSeerrLoginFailures(instanceId?: string): void {
   for (const entry of entries) entry.failure = null;
 }
 
-/** Instances whose cache says they hold a session on `host`. */
-export function seerrEstablishedInstancesOnHost(host: string): string[] {
-  const suffix = `${SEP}${host}`;
-  const ids: string[] = [];
-  for (const [k, entry] of sessions) {
-    if (k.endsWith(suffix) && entry.established) ids.push(k.slice(0, k.length - suffix.length));
-  }
-  return ids;
-}
-
 /** The login already in flight for this host, if any. */
 export function seerrLoginInFlight(instanceId: string, host: string): Promise<SeerrMe> | null {
   return sessions.get(keyOf(instanceId, host))?.loginPromise ?? null;

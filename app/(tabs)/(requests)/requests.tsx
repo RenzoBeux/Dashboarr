@@ -78,6 +78,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
 import { forgetSeerrLoginFailures } from "@/lib/seerr-session";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 import {
   DiscoverSliderType,
   type OverseerrRequest,
@@ -185,15 +186,21 @@ export default function RequestsScreen() {
   const [selectedMedia, setSelectedMedia] =
     useState<OverseerrMediaResult | null>(null);
   const { data: healthData } = useServiceHealth();
-  // A pull is the user's "try again": lift any remembered Seerr credential
-  // rejection (lib/seerr-session.ts) before the refetch, or the identity
-  // query would just be answered with the same error from memory.
+  // A pull is the user's "try again" for THIS instance: lift its remembered
+  // Seerr credential rejection (lib/seerr-session.ts) before the refetch, or
+  // the identity query would just be answered with the same error from
+  // memory. Scoped to the instance on screen: an app-wide reset would send
+  // every other instance with known-bad credentials back to posting them on
+  // its next poll, which in mediaServer mode counts toward a Jellyfin/Emby
+  // lockout.
   const queryClient = useQueryClient();
+  const { instanceId: seerrInstanceId } = useInstanceTarget("overseerr");
   const { refreshing, onRefresh } = useRefreshSpinner(
     useCallback(() => {
-      forgetSeerrLoginFailures();
-      return queryClient.invalidateQueries({ queryKey: ["overseerr"] });
-    }, [queryClient]),
+      if (!seerrInstanceId) return Promise.resolve();
+      forgetSeerrLoginFailures(seerrInstanceId);
+      return queryClient.invalidateQueries({ queryKey: ["overseerr", seerrInstanceId] });
+    }, [queryClient, seerrInstanceId]),
   );
 
   const overseerrHealth = healthData?.find((s) => s.id === "overseerr");

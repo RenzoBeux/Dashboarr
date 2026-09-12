@@ -55,7 +55,6 @@ import {
   invalidateSeerrSession,
   invalidateSeerrSessionsOnHost,
   isSeerrSessionEstablished,
-  seerrEstablishedInstancesOnHost,
   seerrLoginsSuspended,
   seerrSessionGeneration,
   setSeerrSession,
@@ -1560,19 +1559,26 @@ async function runConnectionProbe(
         // saved, which takes the branch above and leaves the session alone.)
         await login();
         // The jar's cookie for this HOST now belongs to the typed account,
-        // whichever instance's it was. A saved instance that had a session
-        // here gets it back through a credential login with its stored
-        // secrets on its own URL (marked stale first: validate-first would
-        // adopt the typed account), rather than a logout, which in
-        // mediaServer mode also deletes a Jellyfin/Emby device and would
-        // leave the app to sign in again on its next request anyway. With
-        // nothing to restore, log out so no session is left behind for a
-        // URL that may never be saved.
+        // whichever instance's it was. A saved instance that signs in here
+        // gets it back through a credential login with its stored secrets
+        // on its own URL (marked stale first: validate-first would adopt
+        // the typed account), rather than a logout, which in mediaServer
+        // mode also deletes a Jellyfin/Emby device and would leave the app
+        // to sign in again on its next request anyway. The targets come
+        // from the CONFIGURATION, not the session cache: the jar outlives
+        // the process, so after a cold start a saved instance can be
+        // running on a live cookie the cache has never heard of, and a
+        // cache-driven restore would find nothing and log it out. Only
+        // with no saved sign-in instance on this host (or none that holds
+        // a credential to sign back in with) log out, so no session is
+        // left behind for a URL that may never be saved.
         const store = useConfigStore.getState();
-        const restore = seerrEstablishedInstancesOnHost(host)
-          .map((otherId) => store.getInstance("overseerr", otherId))
-          .filter((inst): inst is NonNullable<typeof inst> => !!inst)
-          .filter((inst) => seerrUsesSession(seerrAuthMode(inst)));
+        const restore = (store.serviceInstances.overseerr ?? []).filter((inst) => {
+          const instMode = seerrAuthMode(inst);
+          if (!seerrUsesSession(instMode)) return false;
+          if (![inst.localUrl, inst.remoteUrl].some((u) => seerrHostOf(u) === host)) return false;
+          return seerrHasCredential(instMode, store.instanceSecrets[inst.id] ?? {});
+        });
         invalidateSeerrSessionsOnHost(host);
         if (restore.length === 0) {
           await seerrLogout(baseUrl, customHeaders);

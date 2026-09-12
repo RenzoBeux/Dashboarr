@@ -9,7 +9,6 @@ import {
   invalidateSeerrSession,
   invalidateSeerrSessionsOnHost,
   isSeerrSessionEstablished,
-  seerrEstablishedInstancesOnHost,
   resetSeerrSessions,
   seerrLoginInFlight,
   seerrSessionGeneration,
@@ -238,19 +237,6 @@ describe("dedupedSeerrLogin — remembered credential rejection", () => {
     const q = dedupedSeerrLogin(ID, LAN, ok.fn);
     ok.resolve();
     await expect(q).resolves.toEqual(ME);
-  });
-});
-
-describe("seerrEstablishedInstancesOnHost", () => {
-  it("lists the instances holding a session on that host only", async () => {
-    setSeerrSession(ID, LAN, ME);
-    setSeerrSession("inst-2", LAN, OTHER);
-    setSeerrSession("inst-3", WAN, ME);
-    const { fn } = deferredLogin(ME);
-    void dedupedSeerrLogin("inst-4", LAN, fn).catch(() => undefined);
-    expect(seerrEstablishedInstancesOnHost(LAN).sort()).toEqual([ID, "inst-2"]);
-    invalidateSeerrSessionsOnHost(LAN);
-    expect(seerrEstablishedInstancesOnHost(LAN)).toEqual([]);
   });
 });
 
