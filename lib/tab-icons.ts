@@ -38,6 +38,10 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   // the calendar reads as its scheduled-retention nature. The registry has no
   // trash/recycle mark, and CalendarDays is the closest curated fit.
   maintainerr: "CalendarDays",
+  // Wifi rather than Shield: a household running both Pi-hole and AdGuard Home
+  // (migrating between them, or one on each network segment) would otherwise
+  // see the same icon on two tabs. The registry has no Router/Network mark.
+  adguard: "Wifi",
 };
 
 // Resolve the icon component for a tab, honoring a per-workspace override

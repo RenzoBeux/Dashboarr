@@ -165,6 +165,17 @@ function applyAuth(
     // no concept of.
     return;
   }
+  if (id === "adguard") {
+    // AdGuard Home's credential is a username+password session (POST
+    // /control/login -> agh_session cookie), handled the same way Deluge's and
+    // qBittorrent's cookie sessions are: nowhere near this stateless header
+    // injector. The backend only ever pings /control/status for reachability
+    // (tolerating the 401/403 a configured instance answers with), never a
+    // real authenticated call, so there is nothing to send here — and it must
+    // NOT fall through to the X-Api-Key default below, which AGH has no
+    // concept of.
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }

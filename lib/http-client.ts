@@ -481,6 +481,14 @@ export async function serviceRequest<T>(
     // passwordOnly kind, updateInstanceSecrets MERGES rather than replaces
     // (store/config-store.ts) — so a stale apiKey left on an instance id would
     // be sent to Pi-hole on every request forever.
+  } else if (serviceId === "adguard") {
+    // AdGuard Home's credential is a cookie session, not a key: like
+    // qBittorrent, services/adguard-api.ts owns login and the Cookie header
+    // entirely and never routes requests through this generic apiFetch path.
+    // This branch exists only so a stale apiKey merged onto a userPass
+    // instance (store/config-store.ts's updateInstanceSecrets MERGES rather
+    // than replaces) never falls through to the X-Api-Key default below —
+    // same reasoning as the Pi-hole branch above.
   } else if (serviceId === "overseerr") {
     if (seerrUsesSession(seerrAuthMode(inst))) {
       // A sign-in mode (#332): the session rides the platform cookie jar,
@@ -696,6 +704,13 @@ export async function pingService(
     // credential on the instance is a Plex token or a password that must not
     // be sent as X-Api-Key. Reachability only; the probe validates the session.
     headers.delete("X-Api-Key");
+  } else if (serviceId === "adguard") {
+    // Unlike Pi-hole's dedicated anonymous ping, AGH's /status sits behind the
+    // same global auth as every other route (no credential-free reachability
+    // endpoint exists), so this generic path can't validate or attach a cookie
+    // session anyway — and must not send a stale X-Api-Key. Health for AdGuard
+    // Home goes through adguardHealthCheck (services/adguard-api.ts) instead,
+    // the same bypass hooks/use-service-health.ts already does for qBittorrent.
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -2377,6 +2392,65 @@ async function runConnectionProbe(
       }
       if (res.status >= 500)
         return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "adguard": {
+      // No username/password on the form means the user intends a "userless"
+      // instance (AGH's own auth middleware is fully bypassed when zero users
+      // are configured server-side — internal/home/auth.go), not an
+      // unconfigured one. Probe with a credential-free GET instead of POSTing
+      // an empty login, which would 403 against a real (credentialed) AGH.
+      if (!username && !password) {
+        const res = await fetch(buildUrl(baseUrl, defaults.apiBasePath, "/status"), {
+          method: "GET",
+          headers: makeHeaders(),
+          signal,
+        });
+        if (res.status >= 500)
+          return { kind: "unreachable", message: `Server error ${res.status}` };
+        if (res.status === 401 || res.status === 403) {
+          return {
+            kind: "auth_failed",
+            message:
+              "This AdGuard Home requires a username and password — enter the admin credentials you use to sign into its web UI.",
+          };
+        }
+        if (res.ok) return { kind: "ok" };
+        return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+      }
+
+      // Cookie-session auth (the qBittorrent shape): POST /control/login and
+      // read the plain-text/empty body, never a JSON envelope like Pi-hole's.
+      const res = await fetch(buildUrl(baseUrl, defaults.apiBasePath, "/login"), {
+        method: "POST",
+        headers: makeHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ name: username, password }),
+        signal,
+      });
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.status === 429) {
+        // Login rate limiter (internal/home/authratelimiter.go) — distinct
+        // from a wrong password, same reasoning as Pi-hole's api_seats_exceeded
+        // split: telling the user "wrong password" here would send them to
+        // change a working one, which does not fix a rate limit.
+        const retryAfter = res.headers.get("retry-after");
+        return {
+          kind: "auth_failed",
+          message: retryAfter
+            ? `Too many login attempts — AdGuard Home is rate-limiting for ${retryAfter}s`
+            : "Too many login attempts — AdGuard Home is rate-limiting",
+        };
+      }
+      if (res.status === 401 || res.status === 403) {
+        const body = await res.text().catch(() => "");
+        return {
+          kind: "auth_failed",
+          message: body.trim() || "Wrong username or password",
+        };
+      }
       if (res.ok) return { kind: "ok" };
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };
     }

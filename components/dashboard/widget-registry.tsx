@@ -67,6 +67,8 @@ import { CleanuparrCard } from "@/components/dashboard/cleanuparr-card";
 import { NavidromeLibraryCard } from "@/components/dashboard/navidrome-library-card";
 import { PiholeStatusCard } from "@/components/dashboard/pihole-status-card";
 import { PiholeTopBlockedCard } from "@/components/dashboard/pihole-top-blocked-card";
+import { AdguardStatusCard } from "@/components/dashboard/adguard-status-card";
+import { AdguardTopBlockedCard } from "@/components/dashboard/adguard-top-blocked-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -226,6 +228,16 @@ import {
   PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
   type PiholeTopBlockedSettingsValue,
 } from "@/components/dashboard/widget-settings/pihole-top-blocked-settings";
+import {
+  AdguardStatusSettings,
+  ADGUARD_STATUS_DEFAULT_SETTINGS,
+  type AdguardStatusSettingsValue,
+} from "@/components/dashboard/widget-settings/adguard-status-settings";
+import {
+  AdguardTopBlockedSettings,
+  ADGUARD_TOP_BLOCKED_DEFAULT_SETTINGS,
+  type AdguardTopBlockedSettingsValue,
+} from "@/components/dashboard/widget-settings/adguard-top-blocked-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -650,6 +662,26 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: PiholeTopBlockedSettings,
     defaultSettings: PIHOLE_TOP_BLOCKED_DEFAULT_SETTINGS,
   },
+  "adguard-status": {
+    id: "adguard-status",
+    label: "AdGuard Home",
+    description: "Protection state with one-tap disable, plus this-window query stats",
+    icon: ShieldCheck,
+    service: "adguard",
+    component: AdguardStatusCard,
+    settingsComponent: AdguardStatusSettings,
+    defaultSettings: ADGUARD_STATUS_DEFAULT_SETTINGS,
+  },
+  "adguard-top-blocked": {
+    id: "adguard-top-blocked",
+    label: "Top Blocked Domains (AdGuard)",
+    description: "The domains AdGuard Home blocks most often",
+    icon: Ban,
+    service: "adguard",
+    component: AdguardTopBlockedCard,
+    settingsComponent: AdguardTopBlockedSettings,
+    defaultSettings: ADGUARD_TOP_BLOCKED_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -692,4 +724,6 @@ export type {
   NavidromeLibrarySettingsValue,
   PiholeStatusSettingsValue,
   PiholeTopBlockedSettingsValue,
+  AdguardStatusSettingsValue,
+  AdguardTopBlockedSettingsValue,
 };

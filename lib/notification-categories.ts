@@ -73,6 +73,9 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // receiver we could subscribe to, so a "media deleted" toggle would be a
   // switch nothing emits. Offline is the only category with a real source.
   maintainerr: ["serviceOffline"],
+  // Same story as Pi-hole: no protection/blocking watcher and no backend
+  // poller for query-log events, so only offline has a real source.
+  adguard:     ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

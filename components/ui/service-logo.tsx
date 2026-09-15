@@ -18,6 +18,10 @@ import UnraidLogo from "@/assets/services/unraid.svg";
 // apply reliably, and its viewBox is tall while ServiceLogo renders a square —
 // the copy in assets/ inlines those fills and pads the viewBox to square.
 import PiholeLogo from "@/assets/services/pihole.svg";
+// AdGuard Home's own favicon mark (GPL-3.0). Already a square viewBox with no
+// <style>/CSS-class styling, so it needed no edits before landing here — see
+// the comment on assets/services/adguard.svg.
+import AdguardLogo from "@/assets/services/adguard.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
@@ -30,6 +34,7 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   plex: PlexLogo,
   unraid: UnraidLogo,
   pihole: PiholeLogo,
+  adguard: AdguardLogo,
 };
 
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {

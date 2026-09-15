@@ -22,6 +22,7 @@ import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
+import { adguardClearSession } from "@/services/adguard-api";
 import { seerrClearSession } from "@/services/overseerr-api";
 import {
   dropSeerrSession,
@@ -518,6 +519,12 @@ export function ServiceEditor({
     if (serviceId === "navidrome") {
       navidromeClearSession(instanceId);
     }
+    if (serviceId === "adguard") {
+      // Unlike Pi-hole's clear, this makes no network call (see
+      // adguardClearSession) — it just drops the local cookie cache, so
+      // ordering relative to the URL/credential rewrite above doesn't matter.
+      await adguardClearSession(instanceId);
+    }
 
     // First-save dashboard prompt. Fires once per editor session when the
     // instance was unconfigured on entry (either freshly added via "Add
@@ -792,6 +799,9 @@ export function ServiceEditor({
         }
         if (serviceId === "pihole") {
           await piholeClearSession(instanceId);
+        }
+        if (serviceId === "adguard") {
+          await adguardClearSession(instanceId);
         }
         if (serviceId === "overseerr") {
           await seerrClearSession(instanceId);

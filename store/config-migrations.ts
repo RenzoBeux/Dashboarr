@@ -206,7 +206,7 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v54 — added the maintainerr service entry. Pure version stamp —
  *         defaultInstances() backfills a disabled maintainerr instance at import.
  */
-export const CURRENT_CONFIG_VERSION = 54;
+export const CURRENT_CONFIG_VERSION = 55;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -766,6 +766,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v53 → v54: added the maintainerr service entry. Pure version stamp —
   // defaultInstances() backfills a disabled maintainerr instance at import.
   53: (payload) => ({ ...payload, version: 54 }),
+  // v54 → v55: added the adguard service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled adguard instance at import.
+  54: (payload) => ({ ...payload, version: 55 }),
 };
 
 /**

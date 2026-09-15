@@ -297,6 +297,21 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     // so they can be left blank on a trusted LAN.
     authShape: "userPass",
   },
+  // AdGuard Home needs BOTH a username and a password at POST /control/login
+  // (internal/home/authhttp.go), unlike Pi-hole's single web password — the
+  // qBittorrent/Sonarr shape, so userPass, NOT passwordOnly. The credential
+  // rides back as the `agh_session` cookie, never HTTP Basic, so this is NOT
+  // httpAuth either — see the ServiceAuthShape warning above.
+  adguard: {
+    category: "network",
+    tagline: "Network-wide ad & tracker blocking",
+    keywords: ["dns", "adblock", "ads", "blocklist", "agh", "adguard home"],
+    authShape: "userPass",
+    // Same admin account used to sign into the AGH web UI. Leave both fields
+    // blank for an instance with no users configured ("userless" mode) — see
+    // the SERVICE_DEFAULTS.adguard comment in lib/constants.ts.
+    apiKeyHint: "The username/password you use to sign into the AdGuard Home web UI",
+  },
 };
 
 /** Display order of the category sections on the browse screen. */

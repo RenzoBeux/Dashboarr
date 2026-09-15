@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { checkInstanceHealth } from "@/lib/http-client";
 import { qbHealthCheck } from "@/services/qbittorrent-api";
+import { adguardHealthCheck } from "@/services/adguard-api";
 import { useConfigStore } from "@/store/config-store";
 import type { ServiceInstance, ServiceSecrets } from "@/store/config-store";
 import { SERVICE_IDS, POLLING_INTERVALS, SERVICE_DEFAULTS } from "@/lib/constants";
@@ -197,6 +198,21 @@ export function useServiceHealth() {
                 if (id === "qbittorrent") {
                   const start = Date.now();
                   const status = await qbHealthCheck(inst.id);
+                  return {
+                    instanceId: inst.id,
+                    instanceName: inst.name,
+                    online: status !== "offline",
+                    status,
+                    responseTime: status === "ok" ? Date.now() - start : undefined,
+                  };
+                }
+                // AdGuard Home has no anonymous reachability endpoint (unlike
+                // Pi-hole's /info/login), so the poll must reuse the cached
+                // cookie session rather than probe credential-free — same
+                // reasoning as qBittorrent above.
+                if (id === "adguard") {
+                  const start = Date.now();
+                  const status = await adguardHealthCheck(inst.id);
                   return {
                     instanceId: inst.id,
                     instanceName: inst.name,

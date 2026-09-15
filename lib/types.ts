@@ -3386,6 +3386,213 @@ export interface PiholePadd {
   took?: number;
 }
 
+// --- AdGuard Home Types ---
+//
+// Every shape here is the control API's wire format (openapi/openapi.yaml +
+// internal/home/*.go on AdguardTeam/AdGuardHome); derived shapes (chart
+// series, top-list rows) live in lib/adguard-normalize.ts instead, because
+// they are ours, not AdGuard Home's.
+
+export interface AdguardLoginRequest {
+  name: string;
+  password: string;
+}
+
+/**
+ * POST /control/login sets the session as an `agh_session` cookie
+ * (internal/home/authhttp.go) and answers 200 with an EMPTY body on success —
+ * unlike Pi-hole, there is no JSON session object to parse. A wrong
+ * username/password answers 403 with a PLAIN-TEXT body ("invalid username or
+ * password"), and repeated failures answer 429 with a plain-text body
+ * ("auth: blocked for <duration>") plus a `Retry-After` header — never treat a
+ * 429 as "wrong password", it means the login rate limiter has kicked in.
+ */
+export type AdguardLoginResponse = void;
+
+export interface AdguardServerStatus {
+  dns_addresses: string[];
+  dns_port: number;
+  http_port: number;
+  protection_enabled: boolean;
+  /**
+   * REMAINING milliseconds until protection automatically re-enables — a
+   * timestamp-free duration, like Pi-hole's `timer`, so anchor countdowns to
+   * React Query's `dataUpdatedAt` rather than decrementing in place. 0 means
+   * disabled indefinitely (or not disabled at all — check `protection_enabled`
+   * first).
+   */
+  protection_disabled_duration: number;
+  dhcp_available?: boolean;
+  running: boolean;
+  version: string;
+  language: string;
+  /** Unix MILLISECONDS (not seconds — Pi-hole's gravity.last_update is seconds). */
+  start_time?: number;
+}
+
+export interface AdguardProtectionRequest {
+  enabled: boolean;
+  /** Milliseconds. 0 (with enabled: false) disables protection indefinitely. */
+  duration: number;
+}
+
+/**
+ * Every "top" list in /control/stats is an array of single-key objects
+ * (`[{"example.com": 42}, ...]`), not an array of {name, count} rows — the
+ * normalizer flattens these into TopListRow-shaped data.
+ */
+export type AdguardTopArrayEntry = Record<string, number>;
+
+export interface AdguardStats {
+  time_units: "hours" | "days";
+  num_dns_queries: number;
+  num_blocked_filtering: number;
+  num_replaced_safebrowsing: number;
+  num_replaced_safesearch: number;
+  num_replaced_parental: number;
+  avg_processing_time: number;
+  top_queried_domains: AdguardTopArrayEntry[];
+  top_clients: AdguardTopArrayEntry[];
+  top_blocked_domains: AdguardTopArrayEntry[];
+  top_upstreams_responses: AdguardTopArrayEntry[];
+  top_upstreams_avg_time: AdguardTopArrayEntry[];
+  /** One bucket per hour (24) or per day (90), oldest first. */
+  dns_queries: number[];
+  blocked_filtering: number[];
+  replaced_safebrowsing: number[];
+  replaced_parental: number[];
+}
+
+export interface AdguardDnsQuestion {
+  host: string;
+  type: string;
+  class: string;
+}
+
+export interface AdguardDnsAnswer {
+  ttl: number;
+  type: string;
+  value: string;
+}
+
+export interface AdguardQueryLogItemClient {
+  name?: string;
+  disallowed?: boolean;
+  disallowed_rule?: string;
+  whois?: Record<string, string>;
+}
+
+export interface AdguardResultRule {
+  filter_list_id?: number;
+  text?: string;
+}
+
+export interface AdguardQueryLogItem {
+  answer?: AdguardDnsAnswer[];
+  original_answer?: AdguardDnsAnswer[];
+  cached?: boolean;
+  upstream?: string;
+  answer_dnssec?: boolean;
+  client: string;
+  client_id?: string;
+  client_info?: AdguardQueryLogItemClient;
+  client_proto?: "" | "dot" | "doh" | "doq" | "dnscrypt";
+  ecs?: string;
+  /** A formatted string ("1.23ms"), not a number — same trap as Tdarr's ETA field. */
+  elapsedMs: string;
+  question: AdguardDnsQuestion;
+  rules?: AdguardResultRule[];
+  /**
+   * One of AGH's FilteringReason enum values (NotFilteredNotFound,
+   * FilteredBlackList, FilteredSafeBrowsing, Rewrite, ...) — kept as `string`
+   * since the normalizer only distinguishes the handful the UI renders
+   * differently, not the full enum.
+   */
+  reason: string;
+  service_name?: string;
+  status?: string;
+  /** ISO 8601 timestamp, e.g. "2018-11-26T00:02:41+03:00". */
+  time: string;
+}
+
+export interface AdguardQueryLogResponse {
+  data: AdguardQueryLogItem[];
+  /** ISO 8601 timestamp — pass back as `older_than` to page further into the past. */
+  oldest?: string;
+}
+
+export interface AdguardQueryLogFilters {
+  olderThan?: string;
+  offset?: number;
+  limit?: number;
+  search?: string;
+  /** Repeated `reason=` query params, one per value. */
+  reason?: string[];
+}
+
+export interface AdguardQueryLogConfig {
+  enabled: boolean;
+  interval: number;
+  anonymize_client_ip: boolean;
+}
+
+export interface AdguardFilter {
+  enabled: boolean;
+  id: number;
+  last_updated?: string;
+  name: string;
+  rules_count: number;
+  url: string;
+}
+
+export interface AdguardFilterStatus {
+  enabled: boolean;
+  interval: number;
+  filters: AdguardFilter[];
+  whitelist_filters: AdguardFilter[];
+  user_rules: string[];
+}
+
+export interface AdguardRewriteEntry {
+  domain: string;
+  answer: string;
+  enabled?: boolean;
+}
+
+export interface AdguardVersionInfo {
+  disabled: boolean;
+  new_version?: string;
+  announcement?: string;
+  announcement_url?: string;
+  can_autoupdate?: boolean;
+}
+
+export interface AdguardDnsConfig {
+  bootstrap_dns?: string[];
+  upstream_dns?: string[];
+  fallback_dns?: string[];
+  upstream_dns_file?: string;
+  protection_enabled?: boolean;
+  ratelimit?: number;
+  blocking_mode?: "default" | "refused" | "nxdomain" | "null_ip" | "custom_ip";
+  blocking_ipv4?: string;
+  blocking_ipv6?: string;
+  blocked_response_ttl?: number;
+  protection_disabled_until?: string;
+  disable_ipv6?: boolean;
+  dnssec_enabled?: boolean;
+  cache_size?: number;
+  cache_ttl_min?: number;
+  cache_ttl_max?: number;
+  cache_enabled?: boolean;
+  cache_optimistic?: boolean;
+  upstream_mode?: "" | "fastest_addr" | "load_balance" | "parallel";
+  use_private_ptr_resolvers?: boolean;
+  resolve_clients?: boolean;
+  local_ptr_upstreams?: string[];
+  upstream_timeout?: number;
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:

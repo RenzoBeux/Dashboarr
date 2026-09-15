@@ -28,6 +28,7 @@ export const SERVICE_IDS = [
   "cleanuparr",
   "pihole",
   "maintainerr",
+  "adguard",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -263,6 +264,35 @@ export const SERVICE_DEFAULTS: Record<
     pingPath: "/api/health/live",
     httpAuth: true,
   },
+  // AdGuard Home's API is served by the same process as its web UI, root-
+  // mounted under /control (never /admin — that's Pi-hole's mount, not this
+  // one). Auth is a username + password exchanged at POST /control/login for a
+  // session carried in the `agh_session` cookie (internal/home/authhttp.go) —
+  // the qBittorrent shape (login endpoint + cookie), not an API key and not
+  // Pi-hole's header-SID, so no httpAuth flag. See services/adguard-api.ts.
+  //
+  // When an instance has zero users configured ("userless" mode), AGH's auth
+  // middleware is bypassed entirely and every /control/* route answers with no
+  // credentials at all — services/adguard-api.ts skips login in that case
+  // rather than calling /control/login (which would 403 since there is no user
+  // to match against).
+  //
+  // pingPath answers 401/403 rather than 200 when auth is required (unlike
+  // Pi-hole's dedicated anonymous /info/login) — every /control/* route sits
+  // behind the same global auth, per the OpenAPI security scheme. That's fine
+  // for the generic <500-is-alive reachability check, but useless as a
+  // credential probe; the actual session/health logic lives in
+  // adguardHealthCheck (services/adguard-api.ts), mirroring how qBittorrent's
+  // pingPath is bypassed by qbHealthCheck in hooks/use-service-health.ts.
+  //
+  // defaultPort is AGH's default web UI port (3000; first-run setup often
+  // moves it to 80/443, which the user then sets explicitly).
+  adguard: {
+    name: "AdGuard Home",
+    defaultPort: 3000,
+    apiBasePath: "/control",
+    pingPath: "/status",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -324,6 +354,8 @@ export const DASHBOARD_WIDGET_IDS = [
   "cleanuparr-stats",
   "pihole-status",
   "pihole-top-blocked",
+  "adguard-status",
+  "adguard-top-blocked",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
