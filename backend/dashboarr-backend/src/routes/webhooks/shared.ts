@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { safeEqual } from "../../auth/safe-equal.js";
 import { getWebhookSecret } from "../../db/repos/settings.js";
 import {
   countEnabledInstancesByKind,
@@ -8,13 +8,6 @@ import {
   type StoredServiceInstance,
 } from "../../db/repos/service-instance.js";
 import type { ServiceId } from "../../types.js";
-
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
-}
 
 interface WebhookParams {
   secret?: string;

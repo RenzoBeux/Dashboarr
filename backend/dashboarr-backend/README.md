@@ -129,6 +129,9 @@ npm run build
 npm start
 ```
 
+`npm run build` compiles the server and bundles the web UI (Vite), which needs
+Node 20.19+ or 22+. The Docker image builds on Node 22.
+
 Or for development with hot-reload:
 
 ```sh
@@ -137,6 +140,50 @@ npm run dev
 
 The server boots on `:4000`, prints a QR in the logs, and creates
 `./data/dashboarr.db` next to `package.json`.
+
+### Web UI (optional, read-only)
+
+The backend serves a small status page at `http://<backend>/`. Set
+`WEB_UI_PASSWORD` (8+ characters) to enable it:
+
+```yaml
+environment:
+  - WEB_UI_PASSWORD=change-me-please
+```
+
+It shows what the backend already knows, so you can check on the stack without
+the phone in hand:
+
+- **Instances** synced from the app: kind, name, local/remote URL (the one the
+  pollers use is highlighted), whether an API key / credentials are present,
+  poller interval, last run, last error and how long it has been failing, plus
+  the online/offline state from the health poller.
+- **Paired devices**: platform, app version, pairing and last-seen times, and
+  whether Expo has rejected the push token.
+- **Recent webhooks**: the last 50 with source, event type and a one-line
+  summary (movie/series title, Seerr subject).
+
+It is read-only and deliberately never shows API keys, usernames, passwords,
+device secrets, push tokens or raw webhook payloads (those carry file paths and,
+for Tautulli, viewer IPs). URLs embedded in error messages have any userinfo
+and query string stripped.
+
+Auth details: the password is separate from the device bearer on purpose (the
+bearer can rewrite the whole config and lives on the phone, which is the thing
+you do not have when you open this page). Login sets an `HttpOnly`,
+`SameSite=Strict` cookie scoped to `/ui/api`, valid 24 h and held in memory, so
+a restart logs you out. The cookie is only marked `Secure` when the request
+arrived over HTTPS, which behind a TLS-terminating proxy requires
+`TRUST_PROXY=true`. Login is limited to 5 attempts per minute per IP. Without
+`WEB_UI_PASSWORD` the page is still served but shows a setup hint and every
+`/ui/api/*` call answers `403 {"error":"ui_disabled"}`.
+
+For development run the API and the Vite dev server side by side:
+
+```sh
+WEB_UI_PASSWORD=correct-horse-battery npm run dev   # API on :4000
+npm run dev:web                                     # UI on :5173, proxies /ui/api
+```
 
 ### Building the Docker image manually
 
@@ -166,6 +213,7 @@ docker run -d --name dashboarr-backend \
 | `TRUST_PROXY`   | `false`       | Honor `X-Forwarded-*` headers; enable when behind a reverse proxy you control |
 | `OFFLINE_THRESHOLD` | `3`       | Consecutive failed health checks (30s each) before a "service offline" push is sent. Raise to `10` (~5 min) if your DDNS is slow to update |
 | `BACKEND_USE_REMOTE` | `false`  | Route polls via each service's `remoteUrl` instead of `localUrl`. The app's own `useRemote` flag is always ignored server-side; flip this to `true` only if the backend lives off-LAN from your stack |
+| `WEB_UI_PASSWORD` | (unset) | Enables the read-only web UI at `/` (paired devices, instances, poller status, recent webhooks). 8+ chars. Unset = the page shows a setup hint and its data API answers 403 |
 | `CONFIG_ENCRYPTION_KEY` | (unset) | When set, per-service `apiKey` / `username` / `password` columns are AES-256-GCM encrypted at rest (key = SHA-256 of this value). Unset = plaintext (back-compat for existing deployments). **Losing this value makes previously-encrypted secrets unrecoverable** — services fail to poll and a warning appears in logs |
 
 ---
@@ -181,6 +229,11 @@ docker run -d --name dashboarr-backend \
 | `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers. Accepts the multi-instance shape `{ instances: [{ id, kind, … }], notifications }` and the legacy `{ services: [{ id, … }], notifications }` shape for back-compat. `notifications` may include an optional `apprise: { enabled, url, tags }` block (see Apprise below) |
 | `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices (also fans out to Apprise when enabled) |
 | `POST` | `/notifications/apprise/test` | bearer | Send a test notification to Apprise only; returns the real success/failure |
+| `GET`  | `/` | none | The web UI bundle (public code; the data behind it is gated). Hashed assets under `/assets/` |
+| `POST` | `/ui/api/login` | `WEB_UI_PASSWORD` in body | `{ "password": "…" }` → sets the `dashboarr_ui_session` cookie. 5/min per IP. `403 ui_disabled` when the var is unset |
+| `GET`  | `/ui/api/session` | none | `{ enabled, authenticated }` — lets the page pick login / setup hint / dashboard |
+| `POST` | `/ui/api/logout` | UI cookie | Revokes the session and clears the cookie |
+| `GET`  | `/ui/api/overview` | UI cookie | Everything the page renders in one redacted JSON document (`version`, `uptimeMs`, `encryptionEnabled`, `devices[]`, `instances[]`, `webhooks[]`). Never credentials or payloads |
 | `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred). Optional `?instance=<uuid>` for per-instance attribution |
 | `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
 | `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook. Optional `?instance=<uuid>` |
@@ -405,6 +458,16 @@ On **v1.4.0 and newer** an unauthenticated `GET /health` returns
 Either way it was never a reverse-proxy problem — your proxy was forwarding the
 request correctly and the backend was answering it. Adding `^/health` to an
 Authentik or Authelia Unauthenticated Paths list does not change it.
+
+### The web UI shows a setup hint, or `/` returns `{"error":"not_found"}`
+
+- The setup hint means `WEB_UI_PASSWORD` is unset (or shorter than 8 chars,
+  which fails env validation at boot). Set it and restart.
+- A JSON 404 on `/` means the bundle is missing: the image always ships it, so
+  this only happens on a Node.js install where `npm run build` was not run
+  (the startup log says `web UI bundle not found`).
+- `429` on login is the 5/min rate limit. Behind a reverse proxy without
+  `TRUST_PROXY=true` every visitor shares the proxy's IP and the limit.
 
 ### The container is permanently "unhealthy"
 

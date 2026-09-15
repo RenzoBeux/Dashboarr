@@ -56,6 +56,8 @@ interface ActivePoller {
   intervalMs: number;
   lastRunAt: number | null;
   lastError: string | null;
+  /** When the current unbroken run of failures started; null while healthy. */
+  firstErrorAt: number | null;
   handle: NodeJS.Timeout;
   /** Guards against setInterval stacking concurrent runs when a tick takes longer than intervalMs. */
   running: boolean;
@@ -130,8 +132,10 @@ class Scheduler {
       try {
         await def.run(instance);
         poller.lastError = null;
+        poller.firstErrorAt = null;
       } catch (err) {
         poller.lastError = err instanceof Error ? err.message : String(err);
+        if (poller.firstErrorAt === null) poller.firstErrorAt = Date.now();
         console.warn(`[poller:${def.kind}:${instance.id}] ${poller.lastError}`);
       } finally {
         poller.running = false;
@@ -146,6 +150,7 @@ class Scheduler {
       intervalMs,
       lastRunAt: null,
       lastError: null,
+      firstErrorAt: null,
       handle,
       running: false,
     });
@@ -170,14 +175,7 @@ class Scheduler {
     void run();
   }
 
-  status(): {
-    id: string;
-    kind: ServiceId;
-    name: string;
-    intervalMs: number;
-    lastRunAt: number | null;
-    lastError: string | null;
-  }[] {
+  status(): PollerStatus[] {
     return Array.from(this.active.values()).map((p) => ({
       id: p.instanceId,
       kind: p.kind,
@@ -185,8 +183,21 @@ class Scheduler {
       intervalMs: p.intervalMs,
       lastRunAt: p.lastRunAt,
       lastError: p.lastError,
+      failingSince: p.firstErrorAt,
     }));
   }
+}
+
+/** One entry per instance poller, as exposed on /health and /ui/api/overview. */
+export interface PollerStatus {
+  id: string;
+  kind: ServiceId;
+  name: string;
+  intervalMs: number;
+  lastRunAt: number | null;
+  lastError: string | null;
+  /** Start of the current unbroken run of failures; null while healthy. */
+  failingSince: number | null;
 }
 
 let instance: Scheduler | null = null;

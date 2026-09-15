@@ -23,6 +23,21 @@ export function getState<T>(key: string): T | null {
   }
 }
 
+/** Like getState, but also returns when the row was last written. */
+export function getStateEntry<T>(key: string): { value: T; updatedAt: number } | null {
+  const row = getDb()
+    .prepare<[string], { value: string; updated_at: number }>(
+      "SELECT value, updated_at FROM seen_state WHERE key = ?",
+    )
+    .get(key);
+  if (!row) return null;
+  try {
+    return { value: JSON.parse(row.value) as T, updatedAt: row.updated_at };
+  } catch {
+    return null;
+  }
+}
+
 export function setState(key: string, value: unknown): void {
   getDb()
     .prepare(

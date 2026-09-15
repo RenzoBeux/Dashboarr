@@ -106,6 +106,14 @@ export function listActiveDevices(): Device[] {
   return rows.map(mapRow);
 }
 
+/** Every paired device, including ones whose push token Expo rejected. */
+export function listAllDevices(): Device[] {
+  const rows = getDb()
+    .prepare<[], DeviceRow>("SELECT * FROM devices ORDER BY created_at ASC")
+    .all();
+  return rows.map(mapRow);
+}
+
 export function markDeviceInvalidByToken(expoPushToken: string): void {
   getDb()
     .prepare("UPDATE devices SET invalid = 1 WHERE expo_push_token = ?")
