@@ -76,3 +76,21 @@ export function validRememberedTags(
   if (!rememberedTags) return [];
   return rememberedTags.filter((id) => currentTags?.some((t) => t.id === id));
 }
+
+/**
+ * What the add sheet's handleAdd persists for tags: the raw pick made this
+ * time, falling back to whatever was already remembered. Mirrors the
+ * qualityProfileId/rootFolderPath persist idiom (`picked ?? lastUsed?.x`).
+ *
+ * Deliberately NOT validRememberedTags's filtered result: that collapses to
+ * [] whenever the current tag list is empty, which includes a failed fetch
+ * (the call sites pass tags=[] on error so Add stays usable, #402 review).
+ * Persisting that [] on a passive add (no explicit pick) would erase real
+ * remembered tags just because one GET happened to 502.
+ */
+export function tagsToRemember(
+  selectedTags: number[] | undefined,
+  rememberedTags: number[] | undefined,
+): number[] | undefined {
+  return selectedTags ?? rememberedTags;
+}

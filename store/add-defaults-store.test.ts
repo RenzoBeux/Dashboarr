@@ -25,6 +25,7 @@ import {
   useAddDefaultsStore,
   addDefaultsKey,
   validRememberedTags,
+  tagsToRemember,
   type LastUsedAdd,
 } from "./add-defaults-store";
 import { getJSON, setJSON, deleteKey } from "./storage";
@@ -113,10 +114,36 @@ describe("validRememberedTags (#402)", () => {
 
   it("is empty for both undefined (no list yet) and [] (empty list)", () => {
     // No remembered id can be validated against a missing or empty server list,
-    // so this returns []. It is the value used only once Add is allowed (a
-    // still-loading query keeps Add gated, so nothing is submitted then).
+    // so this returns []. That [] is what the add sheet DISPLAYS and SUBMITS
+    // on a failed tag fetch (the call sites pass tags=[] on error so Add stays
+    // usable); it is not what gets PERSISTED, since the sheet remembers the
+    // raw pick (selectedTags ?? lastUsed?.tags), not this filtered value.
     expect(validRememberedTags([1, 2], undefined)).toEqual([]);
     expect(validRememberedTags([1, 2], [])).toEqual([]);
     expect(validRememberedTags(undefined, tags)).toEqual([]);
+  });
+});
+
+describe("tagsToRemember (#402)", () => {
+  it("keeps the remembered tags on a passive add after a failed tag fetch", () => {
+    // Reproduces the bug: remembered tags [3, 7], the tag fetch failed (call
+    // sites pass tags=[] on error, #402), and the user passively adds without
+    // touching Tags (no explicit pick). The old persist line used effectiveTags,
+    // which is validRememberedTags(remembered, current) and collapses to []
+    // whenever current is empty, wiping the remembered tags for good.
+    const rememberedTags = [3, 7];
+    const currentTags: { id: number }[] = [];
+    const selectedTags = undefined;
+
+    expect(validRememberedTags(rememberedTags, currentTags)).toEqual([]);
+    expect(tagsToRemember(selectedTags, rememberedTags)).toEqual([3, 7]);
+  });
+
+  it("still prefers an explicit pick made this time", () => {
+    expect(tagsToRemember([9], [3, 7])).toEqual([9]);
+  });
+
+  it("is undefined when nothing was ever picked or remembered", () => {
+    expect(tagsToRemember(undefined, undefined)).toBeUndefined();
   });
 });

@@ -11,7 +11,12 @@ import { SheetHeader } from "@/components/ui/sheet-header";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useTargetInstance } from "@/hooks/use-instance-target";
-import { useAddDefaultsStore, addDefaultsKey, validRememberedTags } from "@/store/add-defaults-store";
+import {
+  useAddDefaultsStore,
+  addDefaultsKey,
+  validRememberedTags,
+  tagsToRemember,
+} from "@/store/add-defaults-store";
 import { formatBytes } from "@/lib/utils";
 
 export interface AddMediaSheetCommonState {
@@ -161,8 +166,8 @@ export function AddMediaSheet({
       rememberLastUsed(lastUsedKey, {
         qualityProfileId: qualityProfileId ?? lastUsed?.qualityProfileId,
         rootFolderPath: rootFolderPath ?? lastUsed?.rootFolderPath,
-        // Same value submit sends, so what's remembered matches what was added.
-        tags: effectiveTags,
+        // Raw pick, not effectiveTags: see tagsToRemember (#402).
+        tags: tagsToRemember(selectedTags, lastUsed?.tags),
         searchOnAdd: effectiveSearchOnAdd,
       });
     }
