@@ -129,8 +129,9 @@ npm run build
 npm start
 ```
 
-`npm run build` compiles the server and bundles the web UI (Vite), which needs
-Node 20.19+ or 22+. The Docker image builds on Node 22.
+`npm run build` compiles the server and bundles the web UI (Vite), so the
+package's `engines` field requires Node `^20.19.0 || >=22.12.0`. The Docker
+image builds on Node 22.
 
 Or for development with hot-reload:
 
@@ -171,12 +172,19 @@ and query string stripped.
 Auth details: the password is separate from the device bearer on purpose (the
 bearer can rewrite the whole config and lives on the phone, which is the thing
 you do not have when you open this page). Login sets an `HttpOnly`,
-`SameSite=Strict` cookie scoped to `/ui/api`, valid 24 h and held in memory, so
-a restart logs you out. The cookie is only marked `Secure` when the request
+`SameSite=Strict` cookie scoped to the `ui/api` path, valid 24 h and held in
+memory, so a restart logs you out. The cookie is only marked `Secure` when the request
 arrived over HTTPS, which behind a TLS-terminating proxy requires
 `TRUST_PROXY=true`. Login is limited to 5 attempts per minute per IP. Without
 `WEB_UI_PASSWORD` the page is still served but shows a setup hint and every
 `/ui/api/*` call answers `403 {"error":"ui_disabled"}`.
+
+Behind a reverse proxy the page can live at the root or under a path prefix
+such as `https://host/dashboarr/`: assets and API calls are resolved relative
+to the page, and the cookie follows the same prefix. Two rules apply: the proxy
+must strip the prefix before forwarding (Caddy `handle_path`, nginx `location
+/dashboarr/ { proxy_pass http://backend:4000/; }`), and the page must be opened
+with the trailing slash.
 
 For development run the API and the Vite dev server side by side:
 

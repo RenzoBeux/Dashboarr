@@ -45,7 +45,7 @@ function Dashboard({ onSignedOut }: { onSignedOut: () => void }) {
       />
       {data ? (
         <>
-          <InstancesSection instances={data.instances} backendUseRemote={data.backendUseRemote} now={now} />
+          <InstancesSection instances={data.instances} now={now} />
           <DevicesSection devices={data.devices} now={now} />
           <WebhooksSection webhooks={data.webhooks} now={now} />
         </>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildOverview, redactErrorText, stripUserinfo, type OverviewInputs } from "./overview.js";
+import { buildOverview, displayUrl, redactErrorText, type OverviewInputs } from "./overview.js";
 import type { StoredServiceInstance } from "../db/repos/service-instance.js";
 
 function instance(over: Partial<StoredServiceInstance> = {}): StoredServiceInstance {
@@ -39,18 +39,37 @@ function inputs(over: Partial<OverviewInputs> = {}): OverviewInputs {
   };
 }
 
-test("stripUserinfo removes user:pass@ and leaves other URLs alone", () => {
-  assert.equal(stripUserinfo("http://alice:pw@10.0.0.5:7878"), "http://10.0.0.5:7878/");
-  assert.equal(stripUserinfo("https://radarr.example.com/base"), "https://radarr.example.com/base");
-  assert.equal(stripUserinfo(""), "");
-  assert.equal(stripUserinfo("not a url"), "not a url");
+test("displayUrl keeps scheme, host and path only", () => {
+  assert.equal(displayUrl("http://alice:pw@10.0.0.5:7878"), "http://10.0.0.5:7878/");
+  assert.equal(displayUrl("https://radarr.example.com/base"), "https://radarr.example.com/base");
+  assert.equal(displayUrl("https://sab.example.com/api?apikey=SECRET#frag"), "https://sab.example.com/api");
+  assert.equal(displayUrl(""), "");
+  assert.equal(displayUrl("not a url"), "");
+});
+
+test("activeUrl mirrors the poller fallback when the preferred URL is empty", () => {
+  const remoteOnly = instance({ localUrl: "", remoteUrl: "https://radarr.example.com" });
+  const both = instance({ id: "b", localUrl: "http://10.0.0.5:7878", remoteUrl: "https://radarr.example.com" });
+  const none = instance({ id: "n", localUrl: "", remoteUrl: "" });
+  const local = buildOverview(inputs({ instances: [remoteOnly, both, none], backendUseRemote: false }));
+  assert.deepEqual(local.instances.map((i) => i.activeUrl), ["remote", "local", null]);
+  const remote = buildOverview(inputs({ instances: [remoteOnly, both, none], backendUseRemote: true }));
+  assert.deepEqual(remote.instances.map((i) => i.activeUrl), ["remote", "remote", null]);
+});
+
+test("publicUrl is sanitised like every other URL", () => {
+  assert.equal(
+    buildOverview(inputs({ publicUrl: "https://u:p@dashboarr.example.com/base?x=1" })).publicUrl,
+    "https://dashboarr.example.com/base",
+  );
+  assert.equal(buildOverview(inputs({ publicUrl: null })).publicUrl, null);
 });
 
 test("instances carry booleans for credentials and never the values", () => {
   const out = buildOverview(
     inputs({
       instances: [
-        instance({ localUrl: "http://alice:pw@10.0.0.5:7878", username: "u", password: "hunter2" }),
+        instance({ localUrl: "http://alice:pw@10.0.0.5:7878?apikey=SUPERSECRET-KEY", username: "u", password: "hunter2" }),
       ],
     }),
   );

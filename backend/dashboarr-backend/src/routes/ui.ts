@@ -20,8 +20,9 @@ import { getScheduler } from "../workers/scheduler.js";
  * can replace the whole config and fire pushes, and it lives on the phone,
  * which is exactly the thing the operator does not have in hand when they
  * open this page. Login mints an in-memory session token delivered as an
- * httpOnly, SameSite=Strict cookie scoped to /ui/api, so nothing outside
- * this API ever sees it and cross-site requests never carry it.
+ * httpOnly, SameSite=Strict cookie whose path defaults to the login request's
+ * directory (see UI_COOKIE), so nothing outside this API ever sees it and
+ * cross-site requests never carry it.
  *
  * Every route here is a read (or the login/logout pair). If a mutating route
  * is ever added under /ui/api, `requireUiSession` must additionally check
@@ -33,7 +34,11 @@ import { getScheduler } from "../workers/scheduler.js";
  */
 
 export const UI_COOKIE = "dashboarr_ui_session";
-const COOKIE_PATH = "/ui/api";
+// No explicit Path on the cookie: per RFC 6265 the browser then defaults it to
+// the directory of the request that set it, i.e. `/ui/api` when the backend
+// is at the root and `/dashboarr/ui/api` when a reverse proxy mounts it under
+// a prefix and strips it. A hardcoded `/ui/api` would never match behind a
+// prefix, and the backend cannot know the prefix.
 const SESSION_MAX_AGE_S = 24 * 60 * 60;
 const RECENT_WEBHOOKS = 50;
 
@@ -85,7 +90,6 @@ export async function uiLoginRoutes(app: FastifyInstance, opts: UiRouteOptions):
     reply.setCookie(UI_COOKIE, token, {
       httpOnly: true,
       sameSite: "strict",
-      path: COOKIE_PATH,
       maxAge: SESSION_MAX_AGE_S,
       // request.protocol honours X-Forwarded-Proto only when TRUST_PROXY is
       // set; behind a TLS proxy without it the cookie is simply not Secure.
@@ -108,7 +112,7 @@ export async function uiDataRoutes(app: FastifyInstance, opts: UiRouteOptions): 
     noStore(reply);
     const token = sessionToken(request);
     if (token) opts.sessions.revoke(token);
-    reply.clearCookie(UI_COOKIE, { path: COOKIE_PATH });
+    reply.clearCookie(UI_COOKIE);
     return { ok: true };
   });
 

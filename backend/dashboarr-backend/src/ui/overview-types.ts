@@ -39,9 +39,11 @@ export interface OverviewInstance {
   name: string;
   enabled: boolean;
   useRemote: boolean;
-  /** Userinfo (user:pass@) stripped. Empty string when unset. */
+  /** Origin + path only: userinfo, query string and fragment are stripped. Empty string when unset. */
   localUrl: string;
   remoteUrl: string;
+  /** Which of the two the backend pollers actually use (BACKEND_USE_REMOTE plus the empty-URL fallback); null when both are empty. */
+  activeUrl: "local" | "remote" | null;
   hasApiKey: boolean;
   hasCredentials: boolean;
   pollMs: number | null;
@@ -64,8 +66,9 @@ export interface Overview {
   version: string;
   uptimeMs: number;
   encryptionEnabled: boolean;
+  /** PUBLIC_URL with userinfo, query string and fragment stripped. */
   publicUrl: string | null;
-  /** Which URL the pollers actually use (BACKEND_USE_REMOTE); the app's useRemote is ignored server-side. */
+  /** BACKEND_USE_REMOTE; the app's useRemote is ignored server-side. Per instance, see `activeUrl`. */
   backendUseRemote: boolean;
   generatedAt: number;
   devices: OverviewDevice[];

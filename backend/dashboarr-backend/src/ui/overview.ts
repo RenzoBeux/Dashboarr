@@ -1,4 +1,5 @@
 import type { Device } from "../db/repos/devices.js";
+import { activeUrlSide } from "../services/active-url.js";
 import type { WebhookEventRow } from "../db/repos/events.js";
 import type { StoredServiceInstance } from "../db/repos/service-instance.js";
 import type { PollerStatus } from "../workers/scheduler.js";
@@ -32,20 +33,23 @@ export interface OverviewInputs {
 }
 
 /**
- * Drops `user:pass@` from a URL so a proxy-auth URL never reaches the page.
- * Returns the input unchanged when it does not parse (the page shows whatever
- * the app stored; validation already happened at PUT /config).
+ * Reduces a URL to scheme + host + path for display. Userinfo (`user:pass@`),
+ * the query string and the fragment are all dropped: config validation only
+ * requires an http(s) URL, so a base URL like `https://host/api?apikey=…` is
+ * accepted and must not reach the page. Unparseable input is replaced by an
+ * empty string rather than echoed, for the same reason.
  */
-export function stripUserinfo(url: string): string {
-  if (!url) return url;
+export function displayUrl(url: string): string {
+  if (!url) return "";
   try {
     const u = new URL(url);
-    if (!u.username && !u.password) return url;
     u.username = "";
     u.password = "";
+    u.search = "";
+    u.hash = "";
     return u.toString();
   } catch {
-    return url;
+    return "";
   }
 }
 
@@ -86,8 +90,9 @@ export function buildOverview(input: OverviewInputs): Overview {
         name: inst.name,
         enabled: inst.enabled,
         useRemote: inst.useRemote,
-        localUrl: stripUserinfo(inst.localUrl),
-        remoteUrl: stripUserinfo(inst.remoteUrl),
+        localUrl: displayUrl(inst.localUrl),
+        remoteUrl: displayUrl(inst.remoteUrl),
+        activeUrl: activeUrlSide(inst.localUrl, inst.remoteUrl, input.backendUseRemote),
         hasApiKey: !!inst.apiKey,
         hasCredentials: !!inst.username || !!inst.password,
         pollMs: inst.pollMs,
@@ -128,7 +133,7 @@ export function buildOverview(input: OverviewInputs): Overview {
     version: input.version,
     uptimeMs: input.uptimeMs,
     encryptionEnabled: input.encryptionEnabled,
-    publicUrl: input.publicUrl,
+    publicUrl: input.publicUrl === null ? null : displayUrl(input.publicUrl) || null,
     backendUseRemote: input.backendUseRemote,
     generatedAt: input.now,
     devices,

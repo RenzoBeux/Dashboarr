@@ -1,5 +1,6 @@
 import type { StoredServiceConfig } from "../db/repos/config.js";
 import { getEnv } from "../env.js";
+import { activeUrlSide } from "./active-url.js";
 import { SERVICE_API_BASE, SERVICE_PING_PATH } from "../types.js";
 import type { ServiceId } from "../types.js";
 
@@ -29,10 +30,9 @@ export function activeBaseUrl(config: StoredServiceConfig): string {
   // Fall back to the other URL when the preferred one is empty, so a user who
   // only filled in one of the two doesn't end up with every service stuck
   // unreachable from the backend.
-  const preferRemote = getEnv().BACKEND_USE_REMOTE;
-  const primary = preferRemote ? config.remoteUrl : config.localUrl;
-  const secondary = preferRemote ? config.localUrl : config.remoteUrl;
-  return primary || secondary;
+  const side = activeUrlSide(config.localUrl, config.remoteUrl, getEnv().BACKEND_USE_REMOTE);
+  if (side === null) return "";
+  return side === "local" ? config.localUrl : config.remoteUrl;
 }
 
 // `new URL("/api/v3", base)` discards base.pathname per spec, which breaks

@@ -5,7 +5,6 @@ import { StatusPill, type Tone } from "./StatusPill";
 
 interface Props {
   instances: OverviewInstance[];
-  backendUseRemote: boolean;
   now: number;
 }
 
@@ -53,10 +52,13 @@ function errorCell(inst: OverviewInstance, now: number) {
   );
 }
 
-function urlCell(inst: OverviewInstance, backendUseRemote: boolean) {
+function urlCell(inst: OverviewInstance) {
+  // `activeUrl` is computed server-side with the same fallback the pollers
+  // use, so a remote-only instance highlights its remote URL even when
+  // BACKEND_USE_REMOTE is off.
   const rows: { label: string; url: string; active: boolean }[] = [
-    { label: "local", url: inst.localUrl, active: !backendUseRemote },
-    { label: "remote", url: inst.remoteUrl, active: backendUseRemote },
+    { label: "local", url: inst.localUrl, active: inst.activeUrl === "local" },
+    { label: "remote", url: inst.remoteUrl, active: inst.activeUrl === "remote" },
   ];
   return (
     <div className="stack">
@@ -85,7 +87,7 @@ function credentialsCell(inst: OverviewInstance) {
   );
 }
 
-export function InstancesSection({ instances, backendUseRemote, now }: Props) {
+export function InstancesSection({ instances, now }: Props) {
   return (
     <Section
       title="Instances"
@@ -114,7 +116,7 @@ export function InstancesSection({ instances, backendUseRemote, now }: Props) {
               </td>
               <td>{serviceLabel(inst.kind)}</td>
               <td>{healthPill(inst)}</td>
-              <td>{urlCell(inst, backendUseRemote)}</td>
+              <td>{urlCell(inst)}</td>
               <td>{credentialsCell(inst)}</td>
               <td>{pollerCell(inst, now)}</td>
               <td className="error-cell">{errorCell(inst, now)}</td>

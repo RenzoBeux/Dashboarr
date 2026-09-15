@@ -6,7 +6,9 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   root: here,
-  base: "/",
+  // Relative asset URLs so the bundle works both at the root and behind a
+  // reverse-proxy path prefix such as https://host/dashboarr/ (see api.ts).
+  base: "./",
   plugins: [react()],
   build: {
     // Lands next to the server build; routes/ui-static.ts serves it from there.

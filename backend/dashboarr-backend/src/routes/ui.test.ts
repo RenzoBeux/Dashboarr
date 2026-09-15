@@ -72,7 +72,7 @@ test("login rejects malformed bodies and wrong passwords without a cookie", asyn
   await app.close();
 });
 
-test("login sets an httpOnly, strict, /ui/api-scoped cookie (not Secure over http)", async () => {
+test("login sets an httpOnly, strict cookie with no explicit Path (not Secure over http)", async () => {
   const app = await buildApp(PASSWORD);
   const res = await app.inject({ method: "POST", url: "/ui/api/login", payload: { password: PASSWORD } });
   assert.equal(res.statusCode, 200);
@@ -81,7 +81,9 @@ test("login sets an httpOnly, strict, /ui/api-scoped cookie (not Secure over htt
   assert.match(c.value, /^[0-9a-f]{64}$/);
   assert.equal(c.httpOnly, true);
   assert.equal(c.sameSite, "Strict");
-  assert.equal(c.path, "/ui/api");
+  // No Path attribute: the browser defaults it to the request directory,
+  // which keeps the cookie working behind a reverse-proxy path prefix.
+  assert.equal(c.path, undefined);
   assert.equal(c.secure, undefined);
   assert.equal(c.maxAge, 86400);
 
@@ -106,7 +108,7 @@ test("overview requires a session and never leaks secrets", async () => {
     kind: "radarr",
     enabled: true,
     name: "Radarr",
-    localUrl: "http://alice:pw@10.0.0.5:7878",
+    localUrl: "http://alice:pw@10.0.0.5:7878/?apikey=SUPERSECRET-API-KEY-123",
     remoteUrl: "",
     useRemote: false,
     apiKey: API_KEY,
