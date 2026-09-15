@@ -203,8 +203,10 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v53 — optional per-instance `authMode` on ServiceConfig (Seerr sign-in
  *         mode, #332). Pure version stamp — absence means the admin API key,
  *         which is the pre-v53 behavior.
+ *   v54 — added the maintainerr service entry. Pure version stamp —
+ *         defaultInstances() backfills a disabled maintainerr instance at import.
  */
-export const CURRENT_CONFIG_VERSION = 53;
+export const CURRENT_CONFIG_VERSION = 54;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -761,6 +763,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v52 → v53: optional per-instance `authMode` on ServiceConfig (Seerr
   // sign-in mode, #332). Pure version stamp — absence means the admin API key.
   52: (payload) => ({ ...payload, version: 53 }),
+  // v53 → v54: added the maintainerr service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled maintainerr instance at import.
+  53: (payload) => ({ ...payload, version: 54 }),
 };
 
 /**
