@@ -114,10 +114,10 @@ describe("validRememberedTags (#402)", () => {
 
   it("is empty for both undefined (no list yet) and [] (empty list)", () => {
     // No remembered id can be validated against a missing or empty server list,
-    // so this returns []. That [] is what the add sheet DISPLAYS and SUBMITS
-    // on a failed tag fetch (the call sites pass tags=[] on error so Add stays
-    // usable); it is not what gets PERSISTED, since the sheet remembers the
-    // raw pick (selectedTags ?? lastUsed?.tags), not this filtered value.
+    // so this returns []. That [] is what the add sheet DISPLAYS and SUBMITS on
+    // a failed tag fetch (the call sites pass tags=[] on error so Add stays
+    // usable); it is not what gets PERSISTED, which goes through
+    // tagsToRemember instead, below.
     expect(validRememberedTags([1, 2], undefined)).toEqual([]);
     expect(validRememberedTags([1, 2], [])).toEqual([]);
     expect(validRememberedTags(undefined, tags)).toEqual([]);
@@ -141,6 +141,10 @@ describe("tagsToRemember (#402)", () => {
 
   it("still prefers an explicit pick made this time", () => {
     expect(tagsToRemember([9], [3, 7])).toEqual([9]);
+  });
+
+  it("an explicit clear-all ([], not undefined) persists as no tags, not the old remembered ones", () => {
+    expect(tagsToRemember([], [3, 7])).toEqual([]);
   });
 
   it("is undefined when nothing was ever picked or remembered", () => {
