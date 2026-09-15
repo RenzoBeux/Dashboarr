@@ -132,7 +132,7 @@ export default function AdguardQueriesScreen() {
 
       <FlatList
         data={rows}
-        keyExtractor={(q) => `${q.time}-${q.question.host}`}
+        keyExtractor={(q) => `${q.time}-${q.question.name}`}
         renderItem={({ item }) => (
           <QueryRow query={item} onPress={() => setSheetQuery(item)} />
         )}
@@ -179,14 +179,14 @@ export default function AdguardQueriesScreen() {
       <ActionSheet
         visible={sheetQuery !== null}
         onClose={() => setSheetQuery(null)}
-        title={sheetQuery?.question.host}
+        title={sheetQuery?.question.name}
         subtitle={sheetQuery?.client_info?.name || sheetQuery?.client}
         actions={
           sheetQuery
             ? [
                 {
                   label: "Filter by this domain",
-                  onPress: () => setSearch(sheetQuery.question.host),
+                  onPress: () => setSearch(sheetQuery.question.name),
                 },
               ]
             : []

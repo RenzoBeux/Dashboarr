@@ -3400,12 +3400,14 @@ export interface AdguardLoginRequest {
 
 /**
  * POST /control/login sets the session as an `agh_session` cookie
- * (internal/home/authhttp.go) and answers 200 with an EMPTY body on success —
- * unlike Pi-hole, there is no JSON session object to parse. A wrong
- * username/password answers 403 with a PLAIN-TEXT body ("invalid username or
- * password"), and repeated failures answer 429 with a plain-text body
- * ("auth: blocked for <duration>") plus a `Retry-After` header — never treat a
- * 429 as "wrong password", it means the login rate limiter has kicked in.
+ * (internal/home/authhttp.go) and answers 200 with a short plain-text body
+ * ("OK", verified against a live instance — NOT empty, and NOT JSON) on
+ * success — unlike Pi-hole, there is no session object to parse, so the body
+ * is not worth reading either way. A wrong username/password answers 403 with
+ * a PLAIN-TEXT body ("invalid username or password"), and repeated failures
+ * answer 429 with a plain-text body ("auth: blocked for <duration>") plus a
+ * `Retry-After` header — never treat a 429 as "wrong password", it means the
+ * login rate limiter has kicked in.
  */
 export type AdguardLoginResponse = void;
 
@@ -3464,7 +3466,8 @@ export interface AdguardStats {
 }
 
 export interface AdguardDnsQuestion {
-  host: string;
+  /** The queried domain. Confirmed against a live instance — `name`, NOT `host`. */
+  name: string;
   type: string;
   class: string;
 }

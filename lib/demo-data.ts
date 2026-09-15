@@ -3488,10 +3488,10 @@ const DEMO_ADGUARD_QUERYLOG = (() => {
       answer_dnssec: false,
       client: row.client,
       client_id: row.client,
-      client_info: { name: null, disallowed: false, disallowed_rule: "" },
+      client_info: { name: "", disallowed: false, disallowed_rule: "" },
       client_proto: "" as const,
       elapsedMs: (0.1 + (i % 7) * 4.3).toFixed(2),
-      question: { host: row.domain, type: row.type, class: "IN" },
+      question: { name: row.domain, type: row.type, class: "IN" },
       reason: row.reason,
       status: "NOERROR",
       time: new Date(timeMs).toISOString(),
@@ -4168,7 +4168,7 @@ export function getDemoResponse(
 
         let rows = DEMO_ADGUARD_QUERYLOG;
         if (search) {
-          rows = rows.filter((q) => q.question.host.toLowerCase().includes(search));
+          rows = rows.filter((q) => q.question.name.toLowerCase().includes(search));
         }
         const start = olderThan
           ? rows.findIndex((q) => q.time === olderThan)

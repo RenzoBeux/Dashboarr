@@ -107,7 +107,7 @@ describe("query log", () => {
   it("filters by search", () => {
     const filtered = page("?limit=100&search=ads.example-network.com");
     expect(filtered.data.length).toBeGreaterThan(0);
-    expect(filtered.data.every((q) => q.question.host.includes("ads.example-network.com"))).toBe(
+    expect(filtered.data.every((q) => q.question.name.includes("ads.example-network.com"))).toBe(
       true,
     );
   });

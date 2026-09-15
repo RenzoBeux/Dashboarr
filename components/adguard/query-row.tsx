@@ -23,7 +23,7 @@ export function QueryRow({ query, onPress }: QueryRowProps) {
       <View className={`w-1.5 h-1.5 rounded-full mt-1.5 ${meta.dotClass}`} />
       <View className="flex-1 min-w-0">
         <Text className="text-zinc-200 text-sm" numberOfLines={1}>
-          {query.question.host}
+          {query.question.name}
         </Text>
         <View className="flex-row items-center gap-2 flex-wrap">
           <Text className="text-zinc-500 text-xs" numberOfLines={1}>

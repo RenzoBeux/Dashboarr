@@ -300,7 +300,7 @@ function RecentQueriesCard() {
       ) : (
         <View className="gap-3">
           {rows.map((q) => (
-            <QueryRow key={`${q.time}-${q.question.host}`} query={q} />
+            <QueryRow key={`${q.time}-${q.question.name}`} query={q} />
           ))}
         </View>
       )}
