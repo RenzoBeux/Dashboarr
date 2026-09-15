@@ -33,7 +33,7 @@ export interface CalendarEventRowProps {
   service: "sonarr" | "radarr";
   title: string;
   subtitle: string;
-  /** Optional pill beside the title, e.g. the "New Season" marker (#354). */
+  /** Optional pill above the title, e.g. the "New Season" marker (#354). */
   badge?: { label: string; variant?: BadgeVariant };
   /** Drives the status indicators: green when downloaded, gray when missing. */
   hasFile: boolean;
@@ -161,19 +161,25 @@ export function CalendarEventRow({
         </View>
 
         <View className="flex-1">
-          <View className="flex-row items-center gap-1.5">
-            {/* `shrink` so a long series title truncates instead of pushing
-                the badge out — RN defaults flexShrink to 0. */}
-            <Text
-              className="text-zinc-50 text-sm font-semibold shrink"
-              numberOfLines={1}
-            >
-              {title}
-            </Text>
-            {badge ? (
-              <Badge label={badge.label} variant={badge.variant} />
-            ) : null}
-          </View>
+          {/* Eyebrow line, not a pill beside the title: the badge is a View
+              (flexShrink 0 in RN), so sharing the title's row let it claim its
+              full width first and truncated short titles like "South Park" to
+              "South…" inside the narrow dashboard card at uiScale 1.3 (issue
+              #417). The row has the vertical slack for a third line at every
+              scale — 64/74/83dp of row against a ~51/58/66dp text block — so
+              the badge gets its own, and the title keeps the full width.
+              `self-start` because a View child of this column would otherwise
+              stretch the pill edge to edge. */}
+          {badge ? (
+            <Badge
+              label={badge.label}
+              variant={badge.variant}
+              className="self-start mb-0.5"
+            />
+          ) : null}
+          <Text className="text-zinc-50 text-sm font-semibold" numberOfLines={1}>
+            {title}
+          </Text>
           <Text className="text-zinc-300 text-xs" numberOfLines={1}>
             {subtitle}
           </Text>
