@@ -37,6 +37,7 @@ export const SERVICE_IDS = [
   "pihole",
   "tdarr",
   "maintainerr",
+  "adguard",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -366,6 +367,9 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   pihole: "/api",
   tdarr: "/api/v2",
   maintainerr: "",
+  // AdGuard Home's API is root-mounted under /control on the same process as
+  // its web UI (never /admin — that's Pi-hole's mount).
+  adguard: "/control",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -432,6 +436,11 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   pihole: "/info/login",
   tdarr: "/status",
   maintainerr: "/api/health/live",
+  // /control/status sits behind AGH's global auth like every other route (no
+  // dedicated anonymous ping the way Pi-hole has), so this answers 401/403
+  // when the instance has users configured. That is still <500 — fine for
+  // pingService's reachability-only check, which never validates credentials.
+  adguard: "/status",
 };
 
 // Notification category labels sent to the device as `data.type`

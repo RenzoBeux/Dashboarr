@@ -3355,6 +3355,181 @@ const DEMO_MAINTAINERR_COLLECTIONS = [
   },
 ];
 
+// --- AdGuard Home ------------------------------------------------------------
+// Domains are the same recognisable-but-generic tracker names Pi-hole's demo
+// data uses, for the same reason: this screen is one people screenshot.
+
+const DEMO_ADGUARD_STATUS = {
+  dns_addresses: ["192.168.1.5"],
+  dns_port: 53,
+  http_port: 3000,
+  protection_enabled: true,
+  protection_disabled_duration: 0,
+  dhcp_available: false,
+  running: true,
+  version: "v0.107.55",
+  language: "en",
+  start_time: 1756300000000,
+};
+
+/**
+ * 24 hourly buckets, shaped like a real day: quiet overnight, a morning ramp,
+ * an evening peak. Generated rather than written out so the chart has
+ * something honest to draw, and fully deterministic — no Math.random, so demo
+ * screenshots are reproducible. Mirrors lib/demo-data.ts's DEMO_PIHOLE_HISTORY
+ * generator, just on AGH's flat parallel-arrays shape instead of Pi-hole's
+ * bucket objects.
+ */
+const DEMO_ADGUARD_HOURLY = (() => {
+  const HOURS = 24;
+  const dns: number[] = [];
+  const blocked: number[] = [];
+  const safebrowsing: number[] = [];
+  const parental: number[] = [];
+  for (let hour = 0; hour < HOURS; hour++) {
+    const shape =
+      0.18 +
+      0.55 * Math.exp(-(((hour - 9) / 3.2) ** 2)) +
+      0.85 * Math.exp(-(((hour - 21) / 2.6) ** 2));
+    const wobble = 1 + 0.12 * Math.sin(hour * 1.7);
+    const total = Math.round(2500 * shape * wobble);
+    dns.push(total);
+    blocked.push(Math.round(total * (0.17 + 0.06 * Math.sin(hour / 9))));
+    safebrowsing.push(Math.round(total * 0.003));
+    parental.push(Math.round(total * 0.01));
+  }
+  return { dns, blocked, safebrowsing, parental };
+})();
+
+const DEMO_ADGUARD_STATS = {
+  time_units: "hours" as const,
+  num_dns_queries: DEMO_ADGUARD_HOURLY.dns.reduce((a, b) => a + b, 0),
+  num_blocked_filtering: DEMO_ADGUARD_HOURLY.blocked.reduce((a, b) => a + b, 0),
+  num_replaced_safebrowsing: DEMO_ADGUARD_HOURLY.safebrowsing.reduce((a, b) => a + b, 0),
+  num_replaced_safesearch: 412,
+  num_replaced_parental: DEMO_ADGUARD_HOURLY.parental.reduce((a, b) => a + b, 0),
+  avg_processing_time: 0.0184,
+  top_queried_domains: [
+    { "example-video.com": 3921 },
+    { "cdn.example-static.net": 2874 },
+    { "api.example-service.io": 2103 },
+    { "updates.example-os.com": 1655 },
+    { "mail.example-host.net": 1288 },
+  ],
+  top_clients: [
+    { "192.168.1.24": 11204 },
+    { "192.168.1.11": 9873 },
+    { "192.168.1.42": 7311 },
+    { "192.168.1.7": 5622 },
+    { "192.168.1.90": 3044 },
+  ],
+  top_blocked_domains: [
+    { "ads.example-network.com": 1842 },
+    { "telemetry.example-app.net": 1317 },
+    { "metrics.example-cdn.io": 964 },
+    { "track.example-analytics.com": 758 },
+    { "beacon.example-media.net": 611 },
+  ],
+  top_upstreams_responses: [
+    { "1.1.1.1:53": 18422 },
+    { "9.9.9.9:53": 5888 },
+  ],
+  top_upstreams_avg_time: [
+    { "1.1.1.1:53": 0.0241 },
+    { "9.9.9.9:53": 0.0318 },
+  ],
+  dns_queries: DEMO_ADGUARD_HOURLY.dns,
+  blocked_filtering: DEMO_ADGUARD_HOURLY.blocked,
+  replaced_safebrowsing: DEMO_ADGUARD_HOURLY.safebrowsing,
+  replaced_parental: DEMO_ADGUARD_HOURLY.parental,
+};
+
+/** Every `reason` below is a real AGH FilteringReason value, verified against
+ * internal/filtering/reason.go — lib/demo-data.adguard.test.ts asserts that
+ * against the classifier so a typo cannot make the demo render everything as
+ * "other". */
+const DEMO_ADGUARD_QUERY_ROWS: {
+  domain: string;
+  reason: string;
+  type: string;
+  client: string;
+  cached: boolean;
+  upstream: string | null;
+}[] = [
+  { domain: "ads.example-network.com", reason: "FilteredBlackList", type: "A", client: "192.168.1.42", cached: false, upstream: "1.1.1.1:53" },
+  { domain: "api.example-service.io", reason: "NotFilteredNotFound", type: "A", client: "192.168.1.11", cached: false, upstream: "1.1.1.1:53" },
+  { domain: "cdn.example-static.net", reason: "NotFilteredNotFound", type: "AAAA", client: "192.168.1.24", cached: true, upstream: null },
+  { domain: "telemetry.example-app.net", reason: "FilteredBlackList", type: "A", client: "192.168.1.63", cached: false, upstream: "9.9.9.9:53" },
+  { domain: "nas.lan", reason: "RewriteEtcHosts", type: "A", client: "192.168.1.11", cached: false, upstream: null },
+  { domain: "example-video.com", reason: "NotFilteredNotFound", type: "HTTPS", client: "192.168.1.24", cached: false, upstream: "1.1.1.1:53" },
+  { domain: "metrics.example-cdn.io", reason: "FilteredBlockedService", type: "A", client: "192.168.1.90", cached: false, upstream: null },
+  { domain: "malware.example-bad.net", reason: "FilteredSafeBrowsing", type: "A", client: "192.168.1.7", cached: false, upstream: null },
+  { domain: "track.example-analytics.com", reason: "FilteredBlackList", type: "A", client: "192.168.1.42", cached: false, upstream: null },
+  { domain: "sync.example-cloud.io", reason: "NotFilteredNotFound", type: "AAAA", client: "192.168.1.7", cached: false, upstream: "1.1.1.1:53" },
+  { domain: "internal.dev.lan", reason: "RewriteRule", type: "A", client: "192.168.1.24", cached: false, upstream: null },
+  { domain: "beacon.example-media.net", reason: "FilteredBlackList", type: "A", client: "192.168.1.24", cached: false, upstream: null },
+];
+
+/**
+ * 120 rows (page size 100), newest first, so the log paginates and the second
+ * page is short — the same shape lib/demo-data.pihole.test.ts's Pi-hole
+ * fixture exercises for getNextPageParam's stop conditions.
+ */
+const DEMO_ADGUARD_QUERYLOG = (() => {
+  const TOTAL = 120;
+  const newestMs = 1756300000000;
+  return Array.from({ length: TOTAL }, (_, i) => {
+    const row = DEMO_ADGUARD_QUERY_ROWS[i % DEMO_ADGUARD_QUERY_ROWS.length]!;
+    const timeMs = newestMs - i * 7000;
+    return {
+      answer: row.cached || row.reason.startsWith("Filtered") ? [] : [{ ttl: 300, type: row.type, value: "203.0.113.10" }],
+      cached: row.cached,
+      upstream: row.upstream,
+      answer_dnssec: false,
+      client: row.client,
+      client_id: row.client,
+      client_info: { name: "", disallowed: false, disallowed_rule: "" },
+      client_proto: "" as const,
+      elapsedMs: (0.1 + (i % 7) * 4.3).toFixed(2),
+      question: { name: row.domain, type: row.type, class: "IN" },
+      reason: row.reason,
+      status: "NOERROR",
+      time: new Date(timeMs).toISOString(),
+    };
+  });
+})();
+
+const DEMO_ADGUARD_FILTER_STATUS = {
+  enabled: true,
+  interval: 24,
+  filters: [
+    {
+      enabled: true,
+      id: 1,
+      name: "AdGuard DNS filter",
+      url: "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
+      rules_count: 172502,
+      last_updated: "2026-08-27T04:00:00+00:00",
+    },
+    {
+      enabled: true,
+      id: 2,
+      name: "AdAway Default Blocklist",
+      url: "https://adaway.org/hosts.txt",
+      rules_count: 47225,
+      last_updated: "2026-08-27T04:00:00+00:00",
+    },
+  ],
+  whitelist_filters: [],
+  user_rules: ["@@||example-video.com^"],
+};
+
+const DEMO_ADGUARD_REWRITES = [
+  { domain: "nas.lan", answer: "192.168.1.7", enabled: true },
+  { domain: "*.dev.lan", answer: "192.168.1.11", enabled: true },
+  { domain: "internal.dev.lan", answer: "workstation.dev.lan", enabled: true },
+];
+
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -3951,6 +4126,43 @@ export function getDemoResponse(
           recordsTotal: DEMO_PIHOLE_QUERIES.length,
           recordsFiltered: rows.length,
           earliest_timestamp: DEMO_PIHOLE_QUERIES.at(-1)?.time,
+        };
+      }
+      return undefined;
+    }
+    case "adguard": {
+      // The rewrite delete path carries the record in the body, not the URL
+      // (unlike Pi-hole's CNAME delete), so no path special-case is needed
+      // beyond the generic DELETE short-circuit above.
+      if (normalized === "/status") return DEMO_ADGUARD_STATUS;
+      if (normalized === "/stats") return DEMO_ADGUARD_STATS;
+      if (normalized === "/filtering/status") return DEMO_ADGUARD_FILTER_STATUS;
+      if (normalized === "/rewrite/list") return DEMO_ADGUARD_REWRITES;
+      if (normalized === "/filtering/refresh") return { updated: DEMO_ADGUARD_FILTER_STATUS.filters.length };
+
+      if (normalized === "/querylog") {
+        // Real "older_than" pagination, so the infinite list's stop conditions
+        // get exercised in demo mode rather than only against a live AGH.
+        const query = new URLSearchParams(path.split("?")[1] ?? "");
+        const limit = query.has("limit") ? Number(query.get("limit")) : 100;
+        const olderThan = query.get("older_than");
+        const search = query.get("search")?.toLowerCase();
+
+        let rows = DEMO_ADGUARD_QUERYLOG;
+        if (search) {
+          rows = rows.filter((q) => q.question.name.toLowerCase().includes(search));
+        }
+        const start = olderThan
+          ? rows.findIndex((q) => q.time === olderThan)
+          : 0;
+        const from = start < 0 ? rows.length : start;
+        const page = rows.slice(from, from + limit);
+        const next = rows[from + limit];
+        return {
+          data: page,
+          // undefined on the last page, one of getNextPageParam's three stop
+          // conditions.
+          oldest: next?.time,
         };
       }
       return undefined;

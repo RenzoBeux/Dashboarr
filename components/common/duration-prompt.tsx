@@ -7,53 +7,76 @@ import { Card } from "@/components/ui/card";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { TextInput } from "@/components/ui/text-input";
 import { useModalClosed } from "@/hooks/use-modal-closed";
-import { MAX_DISABLE_SECONDS } from "@/lib/pihole-format";
 
 cssInterop(KeyboardAwareScrollView, {
   className: "style",
   contentContainerClassName: "contentContainerStyle",
 });
 
-const UNITS = [
-  { label: "Minutes", seconds: 60 },
-  { label: "Hours", seconds: 3600 },
-  { label: "Days", seconds: 86400 },
-] as const;
+export interface DurationUnit {
+  label: string;
+  /** Multiplier from the typed amount to the unit `onSubmit` reports in
+   * (seconds for Pi-hole, milliseconds for AdGuard — whatever the caller's
+   * API expects). */
+  value: number;
+}
 
 interface DurationPromptProps {
   visible: boolean;
-  onSubmit: (seconds: number) => void;
+  /** What the timer disables, e.g. "Blocking" / "Protection" — drives the
+   * subtitle and the max-length error copy. */
+  subject: string;
+  /** In the same unit as `units[].value` and the value `onSubmit` reports. */
+  maxValue: number;
+  /** How `maxValue` reads in the "Maximum is ..." error, e.g. "7 days". Spelled
+   * out by the caller because only it knows what unit `maxValue` counts. */
+  maxLabel: string;
+  units: readonly DurationUnit[];
+  onSubmit: (value: number) => void;
   onCancel: () => void;
   /** Fired once the modal is fully dismissed — wired by useModalFlow. */
   onClosed?: () => void;
 }
 
 /**
- * "Disable blocking for a custom length of time".
+ * "Disable [subject] for a custom length of time" — shared by Pi-hole and
+ * AdGuard Home's disable flows. They differ only in their duration unit
+ * (seconds vs milliseconds) and cap, both parameterized here rather than
+ * forked into two near-identical components.
  *
  * Keyboard pattern: centered card with KeyboardAwareScrollView as the modal
- * ROOT, copied from components/common/passphrase-prompt.tsx. That is the repo's
- * existing "flow step with a text input" solution — it cannot clip the way a
- * plain KeyboardAvoidingView can, and it is already flow.bind-compatible.
+ * ROOT, copied from components/common/passphrase-prompt.tsx. That is the
+ * repo's existing "flow step with a text input" solution — it cannot clip the
+ * way a plain KeyboardAvoidingView can, and it is already flow.bind-compatible.
  */
 export function DurationPrompt({
   visible,
+  subject,
+  maxValue,
+  maxLabel,
+  units,
   onSubmit,
   onCancel,
   onClosed,
 }: DurationPromptProps) {
   const [amount, setAmount] = useState("");
-  const [unitSeconds, setUnitSeconds] = useState<number>(UNITS[0].seconds);
+  const [unitValue, setUnitValue] = useState<number>(units[0]!.value);
   const [error, setError] = useState<string | null>(null);
   const handleDismiss = useModalClosed(visible, onClosed);
 
+  // Depend on the PRIMITIVE, never on the `units` array itself. A caller
+  // passing an inline array literal mints a new identity every render, so
+  // `[visible, units]` would re-run this mid-typing and loop setAmount("")
+  // forever. Both current callers hoist their table to module scope, but the
+  // component must not depend on them remembering to.
+  const firstUnitValue = units[0]!.value;
   useEffect(() => {
     if (visible) {
       setAmount("");
-      setUnitSeconds(UNITS[0].seconds);
+      setUnitValue(firstUnitValue);
       setError(null);
     }
-  }, [visible]);
+  }, [visible, firstUnitValue]);
 
   const handleSubmit = () => {
     const trimmed = amount.trim();
@@ -70,12 +93,12 @@ export function DurationPrompt({
       setError("Must be at least 1");
       return;
     }
-    const seconds = parsed * unitSeconds;
-    if (seconds > MAX_DISABLE_SECONDS) {
-      setError("Maximum is 7 days");
+    const value = parsed * unitValue;
+    if (value > maxValue) {
+      setError(`Maximum is ${maxLabel}`);
       return;
     }
-    onSubmit(seconds);
+    onSubmit(value);
   };
 
   return (
@@ -99,7 +122,7 @@ export function DurationPrompt({
             Disable for how long?
           </Text>
           <Text className="text-zinc-400 text-sm leading-5">
-            Blocking resumes automatically when the timer ends.
+            {subject} resumes automatically when the timer ends.
           </Text>
 
           <TextInput
@@ -123,12 +146,12 @@ export function DurationPrompt({
             showsHorizontalScrollIndicator={false}
             contentContainerClassName="gap-2"
           >
-            {UNITS.map((unit) => (
+            {units.map((unit) => (
               <FilterChip
                 key={unit.label}
                 label={unit.label}
-                selected={unitSeconds === unit.seconds}
-                onPress={() => setUnitSeconds(unit.seconds)}
+                selected={unitValue === unit.value}
+                onPress={() => setUnitValue(unit.value)}
               />
             ))}
           </ScrollView>

@@ -42,8 +42,13 @@ const LEGACY_USES_PASSWORD_ONLY = new Set<ServiceId>(["deluge"]);
  *   maintainerr - its own API is unauthenticated (it expects reverse-proxy
  *   protection), so the username/password are optional HTTP Basic/Digest creds
  *   for that proxy. Like Glances it is userPass AND httpAuth.
+ *
+ *   adguard - AdGuard Home's POST /control/login takes {name, password} and
+ *   returns an agh_session cookie (internal/home/authhttp.go), unlike
+ *   Pi-hole's single web password. userPass but NOT httpAuth: the credential
+ *   goes to a login endpoint and comes back as a cookie, never HTTP Basic.
  */
-const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome", "maintainerr"]);
+const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome", "maintainerr", "adguard"]);
 
 /**
  * Post-catalog kinds whose credential is a bare password with no username.
