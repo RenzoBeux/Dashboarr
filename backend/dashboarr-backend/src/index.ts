@@ -21,6 +21,7 @@ import { configRoutes } from "./routes/config.js";
 import { configBackupRoutes } from "./routes/config-backup.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { uiDataRoutes, uiLoginRoutes } from "./routes/ui.js";
+import { uiBackupRoutes } from "./routes/ui-backups.js";
 import { registerWebStatic } from "./routes/ui-static.js";
 import { createUiSessionStore } from "./auth/ui-session.js";
 import { radarrWebhook } from "./routes/webhooks/radarr.js";
@@ -207,6 +208,7 @@ async function main(): Promise<void> {
   await app.register(async (scope) => {
     await scope.register(rateLimit, { max: 120, timeWindow: "1 minute" });
     await uiDataRoutes(scope, uiOpts);
+    await uiBackupRoutes(scope, uiOpts);
   });
   const webUiServed = await registerWebStatic(app);
 
@@ -233,7 +235,7 @@ async function main(): Promise<void> {
   await printStartupPairing(publicUrl, hasPublicUrl, env.DATA_DIR);
 
   if (!env.WEB_UI_PASSWORD) {
-    console.log("Web UI disabled: set WEB_UI_PASSWORD (8+ chars) to enable the read-only status page at /");
+    console.log("Web UI disabled: set WEB_UI_PASSWORD (8+ chars) to enable the status page and config editor at /");
   } else if (webUiServed) {
     console.log(`Web UI: ${publicUrl}/`);
   }

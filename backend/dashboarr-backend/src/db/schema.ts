@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS config_backup (
   exported_at    INTEGER NOT NULL,
   platform       TEXT NOT NULL,
   app_version    TEXT,
-  updated_at     INTEGER NOT NULL
+  updated_at     INTEGER NOT NULL,
+  revision       INTEGER NOT NULL DEFAULT 0
 );
 `;

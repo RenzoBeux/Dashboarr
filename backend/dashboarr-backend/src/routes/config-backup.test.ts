@@ -80,8 +80,9 @@ test("PUT stores the caller's own slot and a second PUT replaces it", async () =
   const app = await buildApp();
   const first = await app.inject({ method: "PUT", url: "/config/backup", headers: bearer(phoneA.sharedSecret), payload: putBody() });
   assert.equal(first.statusCode, 200);
-  const body = first.json() as { ok: boolean; updatedAt: number; sizeBytes: number };
+  const body = first.json() as { ok: boolean; updatedAt: number; sizeBytes: number; revision: number };
   assert.equal(body.ok, true);
+  assert.equal(body.revision, 1);
   assert.equal(typeof body.updatedAt, "number");
   assert.ok(body.sizeBytes > 100);
 
@@ -92,6 +93,7 @@ test("PUT stores the caller's own slot and a second PUT replaces it", async () =
     payload: putBody({ envelope: envelope("cd".repeat(64)), configVersion: 55 }),
   });
   assert.equal(second.statusCode, 200);
+  assert.equal((second.json() as { revision: number }).revision, 2);
 
   const list = await app.inject({ method: "GET", url: "/config/backups", headers: bearer(phoneA.sharedSecret) });
   const { backups } = list.json() as { backups: Record<string, unknown>[] };
@@ -145,6 +147,9 @@ test("unknown or malformed ids are 404 / 400", async () => {
   assert.equal(missing.statusCode, 404);
   const malformed = await app.inject({ method: "GET", url: "/config/backups/not-a-uuid", headers: bearer(phoneA.sharedSecret) });
   assert.equal(malformed.statusCode, 400);
+  // The reserved web slot id is accepted by the bearer routes (404 here: nothing written yet).
+  const web = await app.inject({ method: "GET", url: "/config/backups/web", headers: bearer(phoneA.sharedSecret) });
+  assert.equal(web.statusCode, 404);
   const delMissing = await app.inject({ method: "DELETE", url: "/config/backups/00000000-0000-4000-8000-000000000000", headers: bearer(phoneA.sharedSecret) });
   assert.equal(delMissing.statusCode, 404);
   await app.close();

@@ -29,8 +29,10 @@ services:
       # useRemote flag is always ignored server-side. Default false (backend
       # on LAN). Flip to true only if the backend lives off-LAN.
       # - BACKEND_USE_REMOTE=false
-      # Password for the read-only web UI at http://<backend>/ (paired
-      # devices, instances, poller status, recent webhooks). 8+ chars.
+      # Password for the web UI at http://<backend>/ (status page: paired
+      # devices, instances, poller status, recent webhooks; plus the config
+      # editor, which decrypts a backup with its passphrase in the browser).
+      # 8+ chars.
       # Unset = the page shows a setup hint and its data API is disabled.
       # - WEB_UI_PASSWORD=change-me-please
 

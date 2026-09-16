@@ -141,6 +141,7 @@ export function buildOverview(input: OverviewInputs): Overview {
     configVersion: b.configVersion,
     exportedAt: b.exportedAt,
     updatedAt: b.updatedAt,
+    revision: b.revision,
   }));
 
   return {

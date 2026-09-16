@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WEB_SLOT_ID } from "./ui/overview-types.js";
 
 // Keep this list in sync with the app's SERVICE_IDS (lib/constants.ts). The app
 // pushes a config entry for every kind it knows about, so any kind missing here
@@ -294,6 +295,22 @@ export const configBackupPutSchema = z
   .strict();
 
 export type ConfigBackupPutRequest = z.infer<typeof configBackupPutSchema>;
+
+/** A phone's slot (its device UUID) or the web editor's reserved slot. */
+export const backupSlotIdSchema = z.union([z.literal(WEB_SLOT_ID), z.string().uuid()]);
+
+/**
+ * The web editor's write. `expectedRevision` is the slot revision the editor
+ * loaded (null = the slot must not exist yet); the write is refused with 409
+ * when the stored revision differs, so two tabs cannot silently overwrite
+ * each other. `appVersion` is fixed server-side to "web".
+ */
+export const uiBackupPutSchema = configBackupPutSchema
+  .omit({ appVersion: true })
+  .extend({ expectedRevision: z.number().int().min(0).nullable() })
+  .strict();
+
+export type UiBackupPutRequest = z.infer<typeof uiBackupPutSchema>;
 
 export const pairClaimSchema = z.object({
   token: z.string().min(1),

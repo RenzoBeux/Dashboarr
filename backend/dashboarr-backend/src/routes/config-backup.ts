@@ -7,7 +7,7 @@ import {
   listBackupMeta,
   upsertBackup,
 } from "../db/repos/config-backup.js";
-import { configBackupPutSchema, MAX_BACKUP_CIPHERTEXT_CHARS } from "../types.js";
+import { backupSlotIdSchema, configBackupPutSchema, MAX_BACKUP_CIPHERTEXT_CHARS } from "../types.js";
 
 /**
  * Per-device config backup slots (Refs #385) — security model
@@ -23,7 +23,9 @@ import { configBackupPutSchema, MAX_BACKUP_CIPHERTEXT_CHARS } from "../types.js"
  * guessing target for the passphrase, which the README documents.
  *
  * Slots are keyed by devices.id and outlive the device row on purpose (see
- * db/repos/config-backup.ts). PUT always writes the caller's own slot.
+ * db/repos/config-backup.ts). PUT always writes the caller's own slot. The
+ * reserved "web" slot (routes/ui-backups.ts) is readable and deletable here
+ * like any other, so a phone can apply or discard what was edited on the web.
  *
  * The 1 MB global bodyLimit is raised per route here: a large real config is
  * a few hundred KB once hex-encoded, so 4 MB is generous and still bounded.
@@ -31,10 +33,10 @@ import { configBackupPutSchema, MAX_BACKUP_CIPHERTEXT_CHARS } from "../types.js"
  * because each one is a full-row SQLite write.
  */
 
-const BODY_LIMIT = MAX_BACKUP_CIPHERTEXT_CHARS + 64 * 1024;
-const WRITE_LIMIT = { max: 10, timeWindow: "1 minute" };
+export const BODY_LIMIT = MAX_BACKUP_CIPHERTEXT_CHARS + 64 * 1024;
+export const WRITE_LIMIT = { max: 10, timeWindow: "1 minute" };
 
-const deviceIdParam = z.object({ deviceId: z.string().uuid() });
+const deviceIdParam = z.object({ deviceId: backupSlotIdSchema });
 
 export async function configBackupRoutes(app: FastifyInstance): Promise<void> {
   app.put(
@@ -60,7 +62,7 @@ export async function configBackupRoutes(app: FastifyInstance): Promise<void> {
         { deviceId: device.id, bytes: result.sizeBytes, configVersion },
         "config backup stored",
       );
-      return { ok: true, updatedAt: result.updatedAt, sizeBytes: result.sizeBytes };
+      return { ok: true, updatedAt: result.updatedAt, sizeBytes: result.sizeBytes, revision: result.revision };
     },
   );
 

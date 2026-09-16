@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -10,7 +14,32 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": ["vite/client"]
+    "types": [
+      "vite/client"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "../../../*"
+      ],
+      "@noble/ciphers/*": [
+        "../node_modules/@noble/ciphers/*"
+      ],
+      "@noble/hashes/*": [
+        "../node_modules/@noble/hashes/*"
+      ]
+    }
   },
-  "include": ["src", "vite.config.ts", "../src/ui/overview-types.ts"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "../src/ui/overview-types.ts",
+    "../../../store/config-schema.ts",
+    "../../../store/config-migrations.ts",
+    "../../../lib/config-crypto-core.ts",
+    "../../../lib/config-defaults.ts",
+    "../../../lib/service-catalog.ts",
+    "../../../lib/url-validation.ts",
+    "../../../lib/notification-categories.ts"
+  ]
 }

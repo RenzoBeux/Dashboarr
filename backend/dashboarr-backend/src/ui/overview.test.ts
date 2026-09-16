@@ -222,6 +222,7 @@ test("backups are mapped field by field and never carry the envelope", () => {
           platform: "ios",
           appVersion: "1.19.0",
           updatedAt: 20,
+          revision: 3,
           paired: false,
           lastSeenAt: null,
           // A future column that must not leak by accident.
@@ -240,6 +241,7 @@ test("backups are mapped field by field and never carry the envelope", () => {
       configVersion: 54,
       exportedAt: 10,
       updatedAt: 20,
+      revision: 3,
     },
   ]);
   assert.equal(JSON.stringify(out).includes("SECRET-ENVELOPE"), false);
