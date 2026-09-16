@@ -107,7 +107,8 @@ test("PUT web: same-origin required, strict schema, creates then conflicts then 
   const created = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body() });
   assert.equal(created.statusCode, 200);
   const first = created.json() as { ok: boolean; revision: number; sizeBytes: number };
-  assert.equal(first.revision, 1);
+  // The counter is shared by every slot: the phone slot seeded above took 1.
+  assert.equal(first.revision, 2);
   const stored = getBackup(WEB_SLOT_ID);
   assert.equal(stored?.meta.platform, "web");
   assert.equal(stored?.meta.appVersion, "web");
@@ -117,17 +118,17 @@ test("PUT web: same-origin required, strict schema, creates then conflicts then 
   const again = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body() });
   assert.equal(again.statusCode, 409);
   const conflict = again.json() as { error: string; current: { revision: number; platform: string } };
-  assert.equal(conflict.current.revision, 1);
+  assert.equal(conflict.current.revision, 2);
   assert.equal(conflict.current.platform, "web");
 
-  const overwritten = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ envelope: envelope("ef".repeat(64)), expectedRevision: 1 }) });
+  const overwritten = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ envelope: envelope("ef".repeat(64)), expectedRevision: 2 }) });
   assert.equal(overwritten.statusCode, 200);
-  assert.equal((overwritten.json() as { revision: number }).revision, 2);
+  assert.equal((overwritten.json() as { revision: number }).revision, 3);
   assert.deepEqual(JSON.parse(getBackup(WEB_SLOT_ID)!.envelope), envelope("ef".repeat(64)));
 
   const overview = await app.inject({ method: "GET", url: "/ui/api/overview", cookies });
   const web = (overview.json() as { backups: { deviceId: string; paired: boolean; revision: number }[] }).backups.find((b) => b.deviceId === WEB_SLOT_ID);
-  assert.deepEqual(web && [web.paired, web.revision], [false, 2]);
+  assert.deepEqual(web && [web.paired, web.revision], [false, 3]);
   assert.equal(overview.body.includes("efef"), false);
   await app.close();
 });
@@ -135,24 +136,28 @@ test("PUT web: same-origin required, strict schema, creates then conflicts then 
 test("PUT web over the limit is a named 413", async () => {
   const app = await buildApp();
   const cookies = await login(app);
-  const res = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ envelope: envelope("ef".repeat(2_200_000)), expectedRevision: 2 }) });
+  const res = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ envelope: envelope("ef".repeat(2_200_000)), expectedRevision: 3 }) });
   assert.equal(res.statusCode, 413);
   assert.deepEqual(res.json(), { error: "payload_too_large" });
   await app.close();
 });
 
-test("DELETE web: stale revision conflicts, matching one deletes, then 404", async () => {
+test("DELETE web: stale revision conflicts, matching one deletes, then 404; a recreated slot never reuses a revision", async () => {
   const app = await buildApp();
   const cookies = await login(app);
-  const stale = await app.inject({ method: "DELETE", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: { expectedRevision: 1 } });
+  const stale = await app.inject({ method: "DELETE", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: { expectedRevision: 2 } });
   assert.equal(stale.statusCode, 409);
-  const ok = await app.inject({ method: "DELETE", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: { expectedRevision: 2 } });
+  const ok = await app.inject({ method: "DELETE", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: { expectedRevision: 3 } });
   assert.equal(ok.statusCode, 200);
   const gone = await app.inject({ method: "DELETE", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN });
   assert.equal(gone.statusCode, 404);
-  // A deleted slot is "absent" again: a writer expecting revision 2 conflicts with current null.
-  const deletedMeanwhile = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ expectedRevision: 2 }) });
+  // A deleted slot is "absent" again: a writer expecting revision 3 conflicts with current null.
+  const deletedMeanwhile = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ expectedRevision: 3 }) });
   assert.equal(deletedMeanwhile.statusCode, 409);
   assert.deepEqual(deletedMeanwhile.json(), { error: "conflict", current: null });
+  // Recreating it continues the global sequence (no ABA against the old 3).
+  const recreated = await app.inject({ method: "PUT", url: `/ui/api/backups/${WEB_SLOT_ID}`, cookies, headers: SAME_ORIGIN, payload: body({ expectedRevision: null }) });
+  assert.equal(recreated.statusCode, 200);
+  assert.ok((recreated.json() as { revision: number }).revision > 3);
   await app.close();
 });

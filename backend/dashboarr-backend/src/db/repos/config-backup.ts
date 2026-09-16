@@ -11,10 +11,14 @@ import { getDb } from "../client.js";
  * must survive all three for the restore flow to have anything to offer.
  * `platform` is copied at upload time so an orphaned slot still displays.
  *
- * `revision` is a per-slot counter bumped on every write. The web editor
- * sends the revision it loaded and `upsertBackupIfRevision` refuses the write
- * when it no longer matches, inside one transaction (better-sqlite3 is
- * synchronous, so the check and the write cannot interleave).
+ * `revision` comes from one counter shared by every slot (kv row
+ * `config_backup:revision_seq`), so it is globally monotonic: a slot that is
+ * deleted and recreated gets a revision higher than anything seen before,
+ * which is what lets a stale editor tab be refused and a phone notice the
+ * recreated web slot. The web editor sends the revision it loaded and
+ * `upsertBackupIfRevision` refuses the write when it no longer matches, inside
+ * one transaction (better-sqlite3 is synchronous, so the check and the write
+ * cannot interleave).
  */
 
 interface ConfigBackupMetaRow {
@@ -82,14 +86,29 @@ function mapMeta(row: ConfigBackupMetaRow): ConfigBackupMeta {
   };
 }
 
+const REVISION_SEQ_KEY = "config_backup:revision_seq";
+
+/** Next value of the shared revision counter. Callers hold the transaction. */
+function nextRevision(): number {
+  const db = getDb();
+  const row = db
+    .prepare<[string], { value: string }>("SELECT value FROM kv WHERE key = ?")
+    .get(REVISION_SEQ_KEY);
+  const current = row ? Number(row.value) : 0;
+  const next = (Number.isFinite(current) ? current : 0) + 1;
+  db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)").run(REVISION_SEQ_KEY, String(next));
+  return next;
+}
+
 function writeRow(input: BackupWriteInput): BackupWriteResult {
   const updatedAt = Date.now();
   const sizeBytes = Buffer.byteLength(input.envelope, "utf8");
+  const revision = nextRevision();
   getDb()
     .prepare(
       `INSERT INTO config_backup
          (device_id, envelope, size_bytes, config_version, exported_at, platform, app_version, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(device_id) DO UPDATE SET
          envelope       = excluded.envelope,
          size_bytes     = excluded.size_bytes,
@@ -98,7 +117,7 @@ function writeRow(input: BackupWriteInput): BackupWriteResult {
          platform       = excluded.platform,
          app_version    = excluded.app_version,
          updated_at     = excluded.updated_at,
-         revision       = config_backup.revision + 1`,
+         revision       = excluded.revision`,
     )
     .run(
       input.deviceId,
@@ -109,11 +128,9 @@ function writeRow(input: BackupWriteInput): BackupWriteResult {
       input.platform,
       input.appVersion ?? null,
       updatedAt,
+      revision,
     );
-  const row = getDb()
-    .prepare<[string], { revision: number }>("SELECT revision FROM config_backup WHERE device_id = ?")
-    .get(input.deviceId);
-  return { updatedAt, sizeBytes, revision: row?.revision ?? 1 };
+  return { updatedAt, sizeBytes, revision };
 }
 
 /** Unconditional write: a phone always owns its own slot. */

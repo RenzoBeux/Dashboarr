@@ -147,3 +147,14 @@ describe("uploadConfigBackup", () => {
     expect(putMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("pairing changes", () => {
+  it("pairing a different backend drops the cached backup key; re-pairing the same one keeps it", async () => {
+    await useBackendStore.getState().pair({ url: "http://backend.local:4000", sharedSecret: "s".repeat(64), deviceId: "dev-1" });
+    expect(useBackendStore.getState().backupEnabled).toBe(true);
+    await useBackendStore.getState().pair({ url: "http://other:4000", sharedSecret: "o".repeat(64), deviceId: "dev-2" });
+    const b = useBackendStore.getState();
+    expect([b.backupEnabled, b.backupKeyHex, b.backupSaltHex, b.webSlotAppliedRevision]).toEqual([false, null, null, null]);
+    await expect(uploadConfigBackup({ force: true })).resolves.toBe("skipped");
+  });
+});

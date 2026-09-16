@@ -157,6 +157,10 @@ export default function BackendScreen() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupSupported, setBackupSupported] = useState<boolean | null>(null);
   const [slots, setSlots] = useState<BackupMeta[]>([]);
+  // Something to open once the ProgressModal has fully dismissed. The modal
+  // is not a flow step (it has no cancel path), so a follow-up modal must
+  // wait for its onClosed rather than present over its dismiss animation.
+  const afterProgressRef = useRef<(() => void) | null>(null);
   const webSlot = slots.find((s) => s.deviceId === WEB_SLOT_ID);
 
   // Every chained modal on this screen goes through the flow (see
@@ -527,7 +531,8 @@ export default function BackendScreen() {
         });
         void refreshSlots();
         if (!useBackendStore.getState().backupEnabled) {
-          flow.open("offerEnableAfterRestore", result.passphrase);
+          const passphrase = result.passphrase;
+          afterProgressRef.current = () => flow.open("offerEnableAfterRestore", passphrase);
         }
       } catch (err) {
         toastError("Restore failed", err);
@@ -1051,6 +1056,11 @@ export default function BackendScreen() {
         visible={backupStage !== null}
         title={backupStage ? BACKUP_STAGE_COPY[backupStage].title : ""}
         subtitle={backupStage ? BACKUP_STAGE_COPY[backupStage].subtitle : undefined}
+        onClosed={() => {
+          const next = afterProgressRef.current;
+          afterProgressRef.current = null;
+          next?.();
+        }}
       />
     </ScreenWrapper>
   );

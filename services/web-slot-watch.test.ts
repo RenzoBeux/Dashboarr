@@ -20,8 +20,12 @@ jest.mock("@/services/backend-api", () => ({
   listConfigBackups: jest.fn(),
   WEB_SLOT_ID: "web",
 }));
+jest.mock("@/services/backend-backup", () => ({
+  uploadConfigBackup: jest.fn(async () => "uploaded"),
+}));
 
 import { listConfigBackups } from "@/services/backend-api";
+import { uploadConfigBackup } from "@/services/backend-backup";
 import type { BackupMeta } from "@/services/backend-api";
 import { isWebSlotPending, useBackendStore } from "@/store/backend-store";
 import { STORAGE_KEYS } from "@/lib/constants";
@@ -29,6 +33,7 @@ import { getString } from "@/store/storage";
 import { checkWebSlot, loadWebSlotStatus, markWebSlotApplied, resetWebSlotWatch } from "./web-slot-watch";
 
 const listMock = listConfigBackups as jest.MockedFunction<typeof listConfigBackups>;
+const uploadMock = uploadConfigBackup as jest.MockedFunction<typeof uploadConfigBackup>;
 
 function slot(over: Partial<BackupMeta>): BackupMeta {
   return { deviceId: "web", platform: "web", appVersion: "web", paired: false, sizeBytes: 1, configVersion: 54, exportedAt: 1, updatedAt: 2, revision: 3, lastSeenAt: null, mine: false, ...over };
@@ -36,8 +41,9 @@ function slot(over: Partial<BackupMeta>): BackupMeta {
 
 beforeEach(() => {
   listMock.mockReset();
+  uploadMock.mockClear();
   resetWebSlotWatch();
-  useBackendStore.setState({ hydrated: true, url: "http://b:4000", sharedSecret: "s", webSlotRevision: null, webSlotAppliedRevision: null });
+  useBackendStore.setState({ hydrated: true, url: "http://b:4000", sharedSecret: "s", backupEnabled: false, webSlotRevision: null, webSlotAppliedRevision: null });
 });
 
 describe("checkWebSlot", () => {
@@ -91,5 +97,22 @@ describe("checkWebSlot", () => {
     useBackendStore.setState({ webSlotAppliedRevision: null });
     loadWebSlotStatus();
     expect(useBackendStore.getState().webSlotAppliedRevision).toBe(12);
+  });
+});
+
+describe("own slot reconciliation", () => {
+  it("forces a re-upload when backup is on but the authoritative list has no slot of ours", async () => {
+    useBackendStore.setState({ backupEnabled: true });
+    listMock.mockResolvedValue({ backups: [slot({ deviceId: "web" })] });
+    await checkWebSlot({ force: true });
+    expect(uploadMock).toHaveBeenCalledWith({ force: true });
+    uploadMock.mockClear();
+    listMock.mockResolvedValue({ backups: [slot({ deviceId: "11111111-1111-4111-8111-111111111111", platform: "ios", mine: true })] });
+    await checkWebSlot({ force: true });
+    expect(uploadMock).not.toHaveBeenCalled();
+    useBackendStore.setState({ backupEnabled: false });
+    listMock.mockResolvedValue({ backups: [] });
+    await checkWebSlot({ force: true });
+    expect(uploadMock).not.toHaveBeenCalled();
   });
 });

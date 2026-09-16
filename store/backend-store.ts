@@ -147,11 +147,26 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   },
 
   pair: async ({ url, sharedSecret, deviceId }) => {
+    const prev = get();
+    const samePairing = prev.url === url && prev.sharedSecret === sharedSecret && prev.deviceId === deviceId;
     await Promise.all([
       setSecret(SECRET_KEYS.url, url),
       setSecret(SECRET_KEYS.sharedSecret, sharedSecret),
       setSecret(SECRET_KEYS.deviceId, deviceId),
     ]);
+    // A different pairing is a different backend identity: the backup key
+    // was chosen for the old backend's slot and must not follow us (a file
+    // import calls pair() without unpair(), see importConfigFromPayload).
+    // Same for the web-slot revisions. Enabling backup again is explicit.
+    if (!samePairing) {
+      await Promise.all([
+        deleteSecret(SECRET_KEYS.backupEnabled),
+        deleteSecret(SECRET_KEYS.backupSalt),
+        deleteSecret(SECRET_KEYS.backupKey),
+        deleteSecret(SECRET_KEYS.backupKeyIterations),
+      ]);
+      deleteKey(STORAGE_KEYS.backendWebSlotAppliedRevision);
+    }
     // `url` now carries the host, so the draft has done its job.
     set({
       url,
@@ -161,6 +176,19 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       isHealthy: true,
       lastHealthAt: Date.now(),
       consecutiveFailures: 0,
+      ...(samePairing
+        ? {}
+        : {
+            backupEnabled: false,
+            backupSaltHex: null,
+            backupKeyHex: null,
+            backupKeyIterations: null,
+            lastBackupAt: null,
+            lastBackupError: null,
+            backupInFlight: false,
+            webSlotRevision: null,
+            webSlotAppliedRevision: null,
+          }),
     });
   },
 

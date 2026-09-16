@@ -1,10 +1,10 @@
-import type { ExportPayload, NotificationSettings } from "@/lib/config-types";
+import type { AppriseConfig, NotificationSettings } from "@/lib/config-types";
 import { CATEGORY_LABELS, NOTIF_CATEGORIES } from "@/lib/notification-categories";
 
 interface Props {
   settings: NotificationSettings;
   onToggle: (key: Exclude<keyof NotificationSettings, "perInstance" | "apprise" | "qbtMutedCategories">, value: boolean) => void;
-  onApprise: (patch: Partial<NonNullable<ExportPayload["notificationSettings"]>["apprise"]>) => void;
+  onApprise: (patch: Partial<AppriseConfig>) => void;
 }
 
 export function NotificationsPane({ settings, onToggle, onApprise }: Props) {

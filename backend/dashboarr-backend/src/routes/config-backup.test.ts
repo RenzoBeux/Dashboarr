@@ -82,7 +82,7 @@ test("PUT stores the caller's own slot and a second PUT replaces it", async () =
   assert.equal(first.statusCode, 200);
   const body = first.json() as { ok: boolean; updatedAt: number; sizeBytes: number; revision: number };
   assert.equal(body.ok, true);
-  assert.equal(body.revision, 1);
+  assert.equal(body.revision, 1); // first write in this database
   assert.equal(typeof body.updatedAt, "number");
   assert.ok(body.sizeBytes > 100);
 

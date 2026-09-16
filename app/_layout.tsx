@@ -38,6 +38,7 @@ import {
   flushPendingConfigBackup,
   loadBackupStatus,
   scheduleConfigBackup,
+  uploadConfigBackup,
 } from "@/services/backend-backup";
 import { checkWebSlot, loadWebSlotStatus } from "@/services/web-slot-watch";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
@@ -330,6 +331,12 @@ function ConfigSyncBridge() {
     loadWebSlotStatus();
     void checkWebSlot({ force: true });
     if (!backupEnabled) return;
+    // Reconcile once at startup: a change made in the last seconds before the
+    // app was killed never got past the debounce. Hash-checked, so a config
+    // that is already backed up costs nothing.
+    void uploadConfigBackup().catch((err) => {
+      console.warn("[backend-backup] startup upload failed", err);
+    });
     const unsub = useConfigStore.subscribe(scheduleConfigBackup);
     return () => {
       unsub();

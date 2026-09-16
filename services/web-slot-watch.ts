@@ -2,6 +2,7 @@ import { STORAGE_KEYS } from "@/lib/constants";
 import { listConfigBackups, WEB_SLOT_ID } from "@/services/backend-api";
 import type { BackupMeta } from "@/services/backend-api";
 import { useBackendStore } from "@/store/backend-store";
+import { uploadConfigBackup } from "@/services/backend-backup";
 import { deleteKey, getString, setString } from "@/store/storage";
 
 /**
@@ -21,8 +22,18 @@ let lastCheckedAt = 0;
 let inflight: Promise<void> | null = null;
 
 export function noteBackupList(backups: BackupMeta[]): void {
+  const state = useBackendStore.getState();
   const web = backups.find((b) => b.deviceId === WEB_SLOT_ID);
-  useBackendStore.getState().setWebSlot({ webSlotRevision: web ? web.revision : null });
+  state.setWebSlot({ webSlotRevision: web ? web.revision : null });
+  // Authoritative list with no slot of our own while backup is on: the slot
+  // was deleted or the backend reset. The unchanged-hash skip would otherwise
+  // keep us unbacked forever, so force one upload.
+  if (state.backupEnabled && !backups.some((b) => b.mine)) {
+    deleteKey(STORAGE_KEYS.backendBackupLastHash);
+    void uploadConfigBackup({ force: true }).catch((err) => {
+      console.warn("[backend-backup] re-upload after missing slot failed", err);
+    });
+  }
 }
 
 function isUnsupported(err: unknown): boolean {
