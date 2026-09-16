@@ -374,39 +374,6 @@ export function getFilterStatus(instanceId?: string): Promise<AdguardFilterStatu
   return adguardRequest<AdguardFilterStatus>("/filtering/status", undefined, instanceId);
 }
 
-export function addFilterUrl(
-  name: string,
-  url: string,
-  whitelist: boolean,
-  instanceId?: string,
-): Promise<void> {
-  return adguardRequest(
-    "/filtering/add_url",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, url, whitelist }),
-    },
-    instanceId,
-  );
-}
-
-export function removeFilterUrl(
-  url: string,
-  whitelist: boolean,
-  instanceId?: string,
-): Promise<void> {
-  return adguardRequest(
-    "/filtering/remove_url",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, whitelist }),
-    },
-    instanceId,
-  );
-}
-
 // Returns { updated: number }.
 export function refreshFilters(
   whitelist: boolean,

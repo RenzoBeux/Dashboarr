@@ -118,6 +118,7 @@ export function usePiholeDisableFlow(instanceId?: string): PiholeDisableFlow {
         {...flow.bind("customDuration")}
         subject="Blocking"
         maxValue={MAX_DISABLE_SECONDS}
+        maxLabel="7 days"
         units={DURATION_UNITS}
         onSubmit={(seconds) => {
           flow.close();

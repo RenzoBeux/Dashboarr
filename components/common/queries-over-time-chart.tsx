@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import Svg, { Rect, Text as SvgText } from "react-native-svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -12,10 +12,11 @@ export interface QueryBucket {
 
 interface QueriesOverTimeChartProps {
   /**
-   * Given the measured pixel width, return the buckets to draw. Called on
-   * every render, so it stays cheap: Pi-hole downsamples its 144 ten-minute
-   * points to fit the width, AdGuard's own stats arrays are already small
-   * (24 hourly or ~90 daily buckets) and ignore the argument entirely.
+   * Given the measured pixel width, return the buckets to draw. MUST be
+   * useCallback'd by the caller: it is this component's only memo key, so an
+   * inline closure would re-derive every bucket on every render (Pi-hole
+   * downsamples 144 ten-minute points here; AdGuard's own stats arrays are
+   * already small and ignore the argument entirely).
    */
   getBuckets: (width: number) => QueryBucket[];
   maxLabels?: number;
@@ -47,7 +48,10 @@ export function QueriesOverTimeChart({
   const fontSize = 10 * uiScale;
   const plotHeight = chartHeight - labelBand - topPad;
 
-  const buckets = width > 0 ? getBuckets(width) : [];
+  const buckets = useMemo(
+    () => (width > 0 ? getBuckets(width) : []),
+    [getBuckets, width],
+  );
   const n = buckets.length;
   const max = Math.max(1, ...buckets.map((b) => b.total));
   const empty = n === 0 || buckets.every((b) => b.total === 0);

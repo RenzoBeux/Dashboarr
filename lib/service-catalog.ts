@@ -310,7 +310,8 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     // Same admin account used to sign into the AGH web UI. Leave both fields
     // blank for an instance with no users configured ("userless" mode) — see
     // the SERVICE_DEFAULTS.adguard comment in lib/constants.ts.
-    apiKeyHint: "the admin account you use to sign into the AdGuard Home web UI",
+    apiKeyHint:
+      "the AdGuard Home web UI, as the admin username and password you sign in with",
   },
 };
 

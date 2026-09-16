@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
   QueriesOverTimeChart as SharedQueriesOverTimeChart,
   type QueryBucket,
@@ -24,13 +25,16 @@ interface QueriesOverTimeChartProps {
  * (blocked vs everything else) doesn't double-count.
  */
 export function QueriesOverTimeChart({ history, maxLabels }: QueriesOverTimeChartProps) {
-  const getBuckets = (width: number): QueryBucket[] =>
-    downsampleHistory(history, historyChunkForWidth(history.length, width)).map((b) => ({
-      key: b.timestampMs,
-      total: b.total,
-      blocked: b.blocked,
-      label: formatClockTime(b.timestampMs),
-    }));
+  const getBuckets = useCallback(
+    (width: number): QueryBucket[] =>
+      downsampleHistory(history, historyChunkForWidth(history.length, width)).map((b) => ({
+        key: b.timestampMs,
+        total: b.total,
+        blocked: b.blocked,
+        label: formatClockTime(b.timestampMs),
+      })),
+    [history],
+  );
 
   return <SharedQueriesOverTimeChart getBuckets={getBuckets} maxLabels={maxLabels} />;
 }

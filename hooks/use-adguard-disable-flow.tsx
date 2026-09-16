@@ -119,6 +119,7 @@ export function useAdguardDisableFlow(instanceId?: string): AdguardDisableFlow {
         {...flow.bind("customDuration")}
         subject="Protection"
         maxValue={MAX_DISABLE_MS}
+        maxLabel="7 days"
         units={DURATION_UNITS}
         onSubmit={(ms) => {
           flow.close();

@@ -5,6 +5,7 @@ import {
   formatCountdown,
   formatIsoAgo,
   formatLogTime,
+  formatShortDate,
   msUntilLocalMidnight,
   queryReasonMeta,
 } from "@/lib/adguard-format";
@@ -62,6 +63,25 @@ describe("formatCountdown", () => {
 describe("formatClockTime", () => {
   it("pads to HH:MM", () => {
     expect(formatClockTime(new Date(2026, 0, 1, 9, 5))).toBe("09:05");
+  });
+});
+
+describe("formatShortDate", () => {
+  // Exists because the chart's x-axis labels collapsed when `time_units` is
+  // "days": every daily bucket went through formatClockTime and printed the
+  // same HH:MM. The property that matters is that adjacent days differ, in
+  // whatever locale the device runs.
+  it("renders adjacent days as distinct labels", () => {
+    const a = formatShortDate(new Date(2026, 8, 15, 4, 0));
+    const b = formatShortDate(new Date(2026, 8, 16, 4, 0));
+    expect(a).not.toBe(b);
+    expect(a).toContain("15");
+    expect(b).toContain("16");
+  });
+
+  it("accepts a ms timestamp as well as a Date", () => {
+    const d = new Date(2026, 8, 15, 4, 0);
+    expect(formatShortDate(d.getTime())).toBe(formatShortDate(d));
   });
 });
 

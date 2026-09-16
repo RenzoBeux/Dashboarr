@@ -28,6 +28,9 @@ interface DurationPromptProps {
   subject: string;
   /** In the same unit as `units[].value` and the value `onSubmit` reports. */
   maxValue: number;
+  /** How `maxValue` reads in the "Maximum is ..." error, e.g. "7 days". Spelled
+   * out by the caller because only it knows what unit `maxValue` counts. */
+  maxLabel: string;
   units: readonly DurationUnit[];
   onSubmit: (value: number) => void;
   onCancel: () => void;
@@ -50,6 +53,7 @@ export function DurationPrompt({
   visible,
   subject,
   maxValue,
+  maxLabel,
   units,
   onSubmit,
   onCancel,
@@ -60,13 +64,19 @@ export function DurationPrompt({
   const [error, setError] = useState<string | null>(null);
   const handleDismiss = useModalClosed(visible, onClosed);
 
+  // Depend on the PRIMITIVE, never on the `units` array itself. A caller
+  // passing an inline array literal mints a new identity every render, so
+  // `[visible, units]` would re-run this mid-typing and loop setAmount("")
+  // forever. Both current callers hoist their table to module scope, but the
+  // component must not depend on them remembering to.
+  const firstUnitValue = units[0]!.value;
   useEffect(() => {
     if (visible) {
       setAmount("");
-      setUnitValue(units[0]!.value);
+      setUnitValue(firstUnitValue);
       setError(null);
     }
-  }, [visible, units]);
+  }, [visible, firstUnitValue]);
 
   const handleSubmit = () => {
     const trimmed = amount.trim();
@@ -85,7 +95,7 @@ export function DurationPrompt({
     }
     const value = parsed * unitValue;
     if (value > maxValue) {
-      setError("Maximum is 7 days");
+      setError(`Maximum is ${maxLabel}`);
       return;
     }
     onSubmit(value);
