@@ -257,6 +257,13 @@ must strip the prefix before forwarding (Caddy `handle_path`, nginx `location
 /dashboarr/ { proxy_pass http://backend:4000/; }`), and the page must be opened
 with the trailing slash.
 
+The web bundle compiles the app's pure config modules from the repository's
+`lib/` and `store/`, and Vite reads the repository's root `tsconfig.json` for
+them, which extends Expo's base config. So `npm run typecheck`, `npm test` and
+`npm run build` in this directory need the app's dependencies installed once at
+the repository root (`pnpm install`). The Docker image does not: it copies the
+two folders without the root tsconfig.
+
 For development run the API and the Vite dev server side by side:
 
 ```sh
