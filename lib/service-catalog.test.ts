@@ -47,8 +47,17 @@ const LEGACY_USES_PASSWORD_ONLY = new Set<ServiceId>(["deluge"]);
  *   returns an agh_session cookie (internal/home/authhttp.go), unlike
  *   Pi-hole's single web password. userPass but NOT httpAuth: the credential
  *   goes to a login endpoint and comes back as a cookie, never HTTP Basic.
+ *
+ *   beszel - the hub's PocketBase auth-with-password endpoint takes
+ *   {identity, password} and returns a bearer token (lib/beszel-session.ts).
+ *   userPass but NOT httpAuth: never sent as HTTP Basic.
  */
-const POST_CATALOG_USER_PASS = new Set<ServiceId>(["navidrome", "maintainerr", "adguard"]);
+const POST_CATALOG_USER_PASS = new Set<ServiceId>([
+  "navidrome",
+  "maintainerr",
+  "adguard",
+  "beszel",
+]);
 
 /**
  * Post-catalog kinds whose credential is a bare password with no username.

@@ -42,6 +42,9 @@ export const DEFAULT_TAB_ICON_NAMES: Record<TabRouteId, DashboardIconName> = {
   // (migrating between them, or one on each network segment) would otherwise
   // see the same icon on two tabs. The registry has no Router/Network mark.
   adguard: "Wifi",
+  // Gauge rather than Cpu/Server (Glances/unraid already own those) — also
+  // echoes Beszel's own speedometer-style branding.
+  beszel: "Gauge",
 };
 
 // Resolve the icon component for a tab, honoring a per-workspace override

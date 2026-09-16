@@ -2952,6 +2952,142 @@ const DEMO_CLEANUPARR_EVENTS = (() => {
   });
 })();
 
+// --- Beszel ---
+// Wire shapes use Beszel's real terse `info`/`stats` keys (see the "---
+// Beszel Types ---" section of lib/types.ts) so lib/beszel-normalize.ts is
+// exercised in demo mode too, not just against a live hub.
+
+const DEMO_BESZEL_SYSTEM_A = {
+  id: "demo-beszel-sys-a",
+  name: "media-server",
+  status: "up",
+  host: "192.168.1.20",
+  port: "45876",
+  info: {
+    t: 8,
+    u: 452_113,
+    cpu: 32.4,
+    mp: 61.2,
+    dp: 54.8,
+    v: "0.19.0",
+    p: false,
+    g: 18.6,
+    dt: 62,
+    os: 0,
+    bb: 8_234_112,
+    la: [2.1, 1.8, 1.5],
+    ct: 1,
+    efs: { data: 71.3 },
+  },
+  created: "2026-01-04T10:00:00.000Z",
+  updated: new Date().toISOString(),
+};
+
+const DEMO_BESZEL_SYSTEM_B = {
+  id: "demo-beszel-sys-b",
+  name: "backup-nas",
+  status: "paused",
+  host: "192.168.1.30",
+  port: "45876",
+  info: {
+    t: 4,
+    u: 1_893_004,
+    cpu: 8.1,
+    mp: 34.9,
+    dp: 88.2,
+    v: "0.19.0",
+    p: true,
+    os: 0,
+    bb: 512_044,
+    la: [0.4, 0.3, 0.2],
+    ct: 2,
+  },
+  created: "2026-02-10T10:00:00.000Z",
+  updated: new Date().toISOString(),
+};
+
+const DEMO_BESZEL_SYSTEMS = [DEMO_BESZEL_SYSTEM_A, DEMO_BESZEL_SYSTEM_B];
+
+const DEMO_BESZEL_CONTAINERS = [
+  {
+    id: "demo-beszel-c1",
+    system: DEMO_BESZEL_SYSTEM_A.id,
+    name: "radarr",
+    status: "Up 2 days",
+    health: 2,
+    cpu: 1.4,
+    memory: 210.5,
+    net: 50213,
+    image: "ghcr.io/hotio/radarr:latest",
+    ports: "7878",
+    updated: Date.now(),
+  },
+  {
+    id: "demo-beszel-c2",
+    system: DEMO_BESZEL_SYSTEM_A.id,
+    name: "sonarr",
+    status: "Up 2 days",
+    health: 2,
+    cpu: 2.1,
+    memory: 245.9,
+    net: 68321,
+    image: "ghcr.io/hotio/sonarr:latest",
+    ports: "8989",
+    updated: Date.now(),
+  },
+  {
+    id: "demo-beszel-c3",
+    system: DEMO_BESZEL_SYSTEM_A.id,
+    name: "jellyfin",
+    status: "Up 2 days",
+    health: 2,
+    cpu: 12.8,
+    memory: 892.1,
+    net: 1_245_332,
+    image: "ghcr.io/hotio/jellyfin:latest",
+    ports: "8096",
+    updated: Date.now(),
+  },
+  {
+    id: "demo-beszel-c4",
+    system: DEMO_BESZEL_SYSTEM_B.id,
+    name: "duplicati",
+    status: "Up 5 hours",
+    health: 0,
+    cpu: 0.3,
+    memory: 88.4,
+    net: 1023,
+    image: "duplicati/duplicati:latest",
+    ports: "8200",
+    updated: Date.now(),
+  },
+];
+
+// A synthetic 12-point 1m rollup, generated at request time so it always
+// reads as "recent" instead of drifting stale like a frozen fixture would.
+function demoBeszelStats() {
+  const now = Date.now();
+  return Array.from({ length: 12 }, (_, i) => {
+    const t = i / 11;
+    return {
+      id: `demo-beszel-stat-${i}`,
+      system: DEMO_BESZEL_SYSTEM_A.id,
+      type: "1m",
+      created: new Date(now - (11 - i) * 60_000).toISOString(),
+      stats: {
+        cpu: 20 + Math.sin(t * Math.PI * 2) * 15 + 20,
+        m: 15.36,
+        mu: 6 + t * 3,
+        mp: 40 + t * 15,
+        d: 467.35,
+        du: 260 + t * 5,
+        dp: 55 + t,
+        la: [1.5 + t, 1.2, 1.0],
+      },
+    };
+  }).reverse(); // newest first, matching the real sort=-created
+}
+
 // --- Navidrome ---
 // Wire shapes are upstream-exact: the Subsonic `subsonic-response` envelope
 // (so lib/navidrome-normalize.ts's unwrap runs for real), an ISO lastScan, and
@@ -4164,6 +4300,16 @@ export function getDemoResponse(
           // conditions.
           oldest: next?.time,
         };
+      }
+      return undefined;
+    }
+    case "beszel": {
+      if (normalized === "/collections/systems/records") return DEMO_BESZEL_SYSTEMS;
+      if (normalized === "/collections/system_stats/records") return demoBeszelStats();
+      if (normalized === "/collections/containers/records") {
+        const filter = typeof params?.filter === "string" ? params.filter : "";
+        const systemId = filter.match(/system='([^']+)'/)?.[1];
+        return DEMO_BESZEL_CONTAINERS.filter((c) => !systemId || c.system === systemId);
       }
       return undefined;
     }

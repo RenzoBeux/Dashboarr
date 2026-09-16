@@ -30,6 +30,7 @@ export const PICKABLE_SERVICE_TABS = [
   "pihole",
   "maintainerr",
   "adguard",
+  "beszel",
 ] as const;
 export type PickableServiceTab = (typeof PICKABLE_SERVICE_TABS)[number];
 
@@ -75,6 +76,7 @@ const SERVICE_TO_TAB: Partial<Record<ServiceId, PickableServiceTab>> = {
   pihole: "pihole",
   maintainerr: "maintainerr",
   adguard: "adguard",
+  beszel: "beszel",
 };
 
 // Inverse — the service kind(s) that back each tab. Used to decide pickability
@@ -113,6 +115,7 @@ const TAB_TO_SERVICES: Partial<Record<PickableServiceTab, ServiceId[]>> = {
   pihole: ["pihole"],
   maintainerr: ["maintainerr"],
   adguard: ["adguard"],
+  beszel: ["beszel"],
 };
 
 export function tabForServiceId(id: ServiceId): PickableServiceTab | null {
@@ -268,6 +271,7 @@ export const TAB_LABELS: Record<AnyTabRouteId, string> = {
   pihole: "Pi-hole",
   maintainerr: "Maintainerr",
   adguard: "AdGuard Home",
+  beszel: "Beszel",
   settings: "Settings",
 };
 

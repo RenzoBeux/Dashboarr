@@ -23,6 +23,7 @@ import {
   Radar,
   RefreshCw,
   Server,
+  ServerCog,
   ShieldAlert,
   ShieldCheck,
   Ban,
@@ -69,6 +70,7 @@ import { PiholeStatusCard } from "@/components/dashboard/pihole-status-card";
 import { PiholeTopBlockedCard } from "@/components/dashboard/pihole-top-blocked-card";
 import { AdguardStatusCard } from "@/components/dashboard/adguard-status-card";
 import { AdguardTopBlockedCard } from "@/components/dashboard/adguard-top-blocked-card";
+import { BeszelSystemsCard } from "@/components/dashboard/beszel-systems-card";
 import {
   ServerStatsSettings,
   SERVER_STATS_DEFAULT_SETTINGS,
@@ -238,6 +240,11 @@ import {
   ADGUARD_TOP_BLOCKED_DEFAULT_SETTINGS,
   type AdguardTopBlockedSettingsValue,
 } from "@/components/dashboard/widget-settings/adguard-top-blocked-settings";
+import {
+  BeszelSystemsSettings,
+  BESZEL_SYSTEMS_DEFAULT_SETTINGS,
+  type BeszelSystemsSettingsValue,
+} from "@/components/dashboard/widget-settings/beszel-systems-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -682,6 +689,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     settingsComponent: AdguardTopBlockedSettings,
     defaultSettings: ADGUARD_TOP_BLOCKED_DEFAULT_SETTINGS,
   },
+  "beszel-systems": {
+    id: "beszel-systems",
+    label: "Beszel Systems",
+    description: "Status and live CPU for every system a Beszel hub monitors",
+    icon: ServerCog,
+    service: "beszel",
+    component: BeszelSystemsCard,
+    settingsComponent: BeszelSystemsSettings,
+    defaultSettings: BESZEL_SYSTEMS_DEFAULT_SETTINGS,
+  },
 };
 
 // Lists widgets the user can still add. With per-slot dashboards a user can
@@ -726,4 +743,5 @@ export type {
   PiholeTopBlockedSettingsValue,
   AdguardStatusSettingsValue,
   AdguardTopBlockedSettingsValue,
+  BeszelSystemsSettingsValue,
 };

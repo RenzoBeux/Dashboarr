@@ -38,6 +38,7 @@ export const SERVICE_IDS = [
   "tdarr",
   "maintainerr",
   "adguard",
+  "beszel",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -370,6 +371,7 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
   // AdGuard Home's API is root-mounted under /control on the same process as
   // its web UI (never /admin — that's Pi-hole's mount).
   adguard: "/control",
+  beszel: "/api",
 };
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
@@ -441,6 +443,12 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   // when the instance has users configured. That is still <500 — fine for
   // pingService's reachability-only check, which never validates credentials.
   adguard: "/status",
+  // PocketBase's own anonymous health route — reachable with or without
+  // credentials, so this can't validate them either. That's fine for
+  // pingService's reachability-only check; credential validation happens in
+  // the dedicated Beszel poller (workers/pollers/beszel.ts), which performs
+  // an actual login.
+  beszel: "/health",
 };
 
 // Notification category labels sent to the device as `data.type`
