@@ -70,6 +70,12 @@ export function formatClockTime(value: Date | number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** "Sep 15" for a Date or ms timestamp, in the device's timezone. */
+export function formatShortDate(value: Date | number): string {
+  const d = typeof value === "number" ? new Date(value) : value;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 /** "14:03:27" from the query log's ISO 8601 timestamp string. */
 export function formatLogTime(iso: string): string {
   const d = new Date(iso);

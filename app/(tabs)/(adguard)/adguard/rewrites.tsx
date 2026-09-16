@@ -177,18 +177,26 @@ export default function AdguardRewritesScreen() {
               deleteRewrite.isPending &&
               deleteRewrite.variables?.domain === record.domain &&
               deleteRewrite.variables?.answer === record.answer;
+            const disabled = record.enabled === false;
             return (
               <View
                 key={`${record.domain}-${record.answer}`}
-                className="flex-row items-center gap-3"
+                className={`flex-row items-center gap-3 ${disabled ? "opacity-50" : ""}`}
               >
                 <View className="flex-1 min-w-0">
-                  <Text
-                    className="text-zinc-100 text-sm font-medium"
-                    numberOfLines={1}
-                  >
-                    {record.domain}
-                  </Text>
+                  <View className="flex-row items-center gap-2">
+                    <Text
+                      className="text-zinc-100 text-sm font-medium"
+                      numberOfLines={1}
+                    >
+                      {record.domain}
+                    </Text>
+                    {disabled ? (
+                      <Text className="text-zinc-500 text-[0.65rem] uppercase">
+                        Disabled
+                      </Text>
+                    ) : null}
+                  </View>
                   <View className="flex-row items-center gap-2">
                     <Icon icon={ArrowRight} size={ICON.XS} color="#52525b" />
                     <Text className="text-zinc-500 text-xs" numberOfLines={1}>

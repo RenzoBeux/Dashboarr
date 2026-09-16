@@ -1,16 +1,25 @@
 import { ShieldOff } from "lucide-react-native";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
-import { DurationPrompt } from "@/components/adguard/duration-prompt";
+import { DurationPrompt } from "@/components/common/duration-prompt";
 import { toast, toastError } from "@/components/ui/toast";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useSetAdguardProtection } from "@/hooks/use-adguard";
 import {
   ADGUARD_DISABLE_PRESETS,
+  MAX_DISABLE_MS,
   formatClockTime,
   formatCountdown,
   msUntilLocalMidnight,
 } from "@/lib/adguard-format";
+
+// Unlike lib/pihole-format.ts's units (which resolve to seconds), these
+// resolve to MILLISECONDS — AGH's /control/protection takes duration in ms.
+const DURATION_UNITS = [
+  { label: "Minutes", value: 60_000 },
+  { label: "Hours", value: 3_600_000 },
+  { label: "Days", value: 86_400_000 },
+] as const;
 
 export interface AdguardDisableFlow {
   /** Open the duration picker. Safe to call from anywhere. */
@@ -108,6 +117,9 @@ export function useAdguardDisableFlow(instanceId?: string): AdguardDisableFlow {
       />
       <DurationPrompt
         {...flow.bind("customDuration")}
+        subject="Protection"
+        maxValue={MAX_DISABLE_MS}
+        units={DURATION_UNITS}
         onSubmit={(ms) => {
           flow.close();
           disable(ms);

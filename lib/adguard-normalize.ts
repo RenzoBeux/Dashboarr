@@ -150,9 +150,11 @@ export interface RewriteValidationErrors {
 
 /**
  * Validate the add-record form. Returns a field -> message map; empty is valid.
- * `existing` is the current entry list, used for the duplicate check (AGH
- * allows multiple answers per domain, e.g. round-robin A records, but the app
- * only offers to add one at a time and warns before creating a second).
+ * `existing` is the current entry list, used for the duplicate check: it only
+ * rejects an exact domain+answer pair that already exists. AGH allows
+ * multiple distinct answers per domain (e.g. round-robin A records), and the
+ * app does not warn before adding a second one — see the "does not warn"
+ * assertion in lib/adguard-normalize.test.ts.
  */
 export function validateRewriteInput(
   domain: string,

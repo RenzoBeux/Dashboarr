@@ -64,10 +64,11 @@ export default function AdguardQueriesScreen() {
     ? (liveQuery.data?.data ?? [])
     : (log.data?.pages.flatMap((p) => p.data) ?? []);
 
-  // AGH's `reason` filter takes ONE FilteringReason value, not a coarse
-  // umbrella, so the verdict chips filter the loaded page client-side. The
-  // caption below says so rather than letting the counts be misread as
-  // server-wide.
+  // AGH's `reason` filter accepts multiple FilteringReason values (repeated
+  // `reason=` params — see queryLogParams), but the verdict chips here are a
+  // coarse umbrella over several reasons each, so filtering stays
+  // client-side on the loaded page. The caption below says so rather than
+  // letting the counts be misread as server-wide.
   const rows = useMemo(() => {
     if (verdict === "all") return rawRows;
     return rawRows.filter((q) => classifyQueryReason(q.reason) === verdict);

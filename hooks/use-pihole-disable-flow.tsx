@@ -1,16 +1,23 @@
 import { ShieldOff } from "lucide-react-native";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
-import { DurationPrompt } from "@/components/pihole/duration-prompt";
+import { DurationPrompt } from "@/components/common/duration-prompt";
 import { toast, toastError } from "@/components/ui/toast";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useSetPiholeBlocking } from "@/hooks/use-pihole";
 import {
   PIHOLE_DISABLE_PRESETS,
+  MAX_DISABLE_SECONDS,
   formatClockTime,
   formatCountdown,
   secondsUntilLocalMidnight,
 } from "@/lib/pihole-format";
+
+const DURATION_UNITS = [
+  { label: "Minutes", value: 60 },
+  { label: "Hours", value: 3600 },
+  { label: "Days", value: 86400 },
+] as const;
 import { piholeErrorMessage } from "@/lib/pihole-normalize";
 
 export interface PiholeDisableFlow {
@@ -109,6 +116,9 @@ export function usePiholeDisableFlow(instanceId?: string): PiholeDisableFlow {
       />
       <DurationPrompt
         {...flow.bind("customDuration")}
+        subject="Blocking"
+        maxValue={MAX_DISABLE_SECONDS}
+        units={DURATION_UNITS}
         onSubmit={(seconds) => {
           flow.close();
           disable(seconds);

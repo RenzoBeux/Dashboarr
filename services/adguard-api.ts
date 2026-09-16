@@ -10,11 +10,8 @@ import type {
   AdguardStats,
   AdguardQueryLogResponse,
   AdguardQueryLogFilters,
-  AdguardQueryLogConfig,
   AdguardFilterStatus,
   AdguardRewriteEntry,
-  AdguardVersionInfo,
-  AdguardDnsConfig,
 } from "@/lib/types";
 
 // iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
@@ -299,10 +296,11 @@ export async function adguardHealthCheck(
     return "offline";
   } catch (err) {
     if (err instanceof AdguardRateLimitedError) return "auth_failed";
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("authentication failed") || msg.includes(": 401") || msg.includes(": 403")) {
+    if (err instanceof AdguardHttpError && (err.status === 401 || err.status === 403)) {
       return "auth_failed";
     }
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("authentication failed")) return "auth_failed";
     return "offline";
   }
 }
@@ -345,10 +343,6 @@ export function getStats(recentMs?: number, instanceId?: string): Promise<Adguar
   return adguardRequest<AdguardStats>(`/stats${query}`, undefined, instanceId);
 }
 
-export function resetStats(instanceId?: string): Promise<void> {
-  return adguardRequest("/stats_reset", { method: "POST" }, instanceId);
-}
-
 // --- Query log ---
 
 function queryLogParams(filters: AdguardQueryLogFilters): string {
@@ -372,14 +366,6 @@ export function getQueryLog(
     undefined,
     instanceId,
   );
-}
-
-export function clearQueryLog(instanceId?: string): Promise<void> {
-  return adguardRequest("/querylog_clear", { method: "POST" }, instanceId);
-}
-
-export function getQueryLogConfig(instanceId?: string): Promise<AdguardQueryLogConfig> {
-  return adguardRequest<AdguardQueryLogConfig>("/querylog/config", undefined, instanceId);
 }
 
 // --- Filtering ---
@@ -437,18 +423,6 @@ export function refreshFilters(
   );
 }
 
-export function setUserRules(rules: string[], instanceId?: string): Promise<void> {
-  return adguardRequest(
-    "/filtering/set_rules",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rules }),
-    },
-    instanceId,
-  );
-}
-
 // --- DNS rewrites (custom records) ---
 
 export function getRewrites(instanceId?: string): Promise<AdguardRewriteEntry[]> {
@@ -465,22 +439,6 @@ export function addRewrite(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry),
-    },
-    instanceId,
-  );
-}
-
-export function updateRewrite(
-  target: AdguardRewriteEntry,
-  update: AdguardRewriteEntry,
-  instanceId?: string,
-): Promise<void> {
-  return adguardRequest(
-    "/rewrite/update",
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target, update }),
     },
     instanceId,
   );
@@ -504,40 +462,3 @@ export function deleteRewrite(
   );
 }
 
-// --- DNS config ---
-
-export function getDnsConfig(instanceId?: string): Promise<AdguardDnsConfig> {
-  return adguardRequest<AdguardDnsConfig>("/dns_info", undefined, instanceId);
-}
-
-export function setDnsConfig(
-  config: Partial<AdguardDnsConfig>,
-  instanceId?: string,
-): Promise<void> {
-  return adguardRequest(
-    "/dns_config",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    },
-    instanceId,
-  );
-}
-
-// --- Version ---
-
-export function getVersionInfo(
-  recheckNow = false,
-  instanceId?: string,
-): Promise<AdguardVersionInfo> {
-  return adguardRequest<AdguardVersionInfo>(
-    "/version.json",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recheck_now: recheckNow }),
-    },
-    instanceId,
-  );
-}

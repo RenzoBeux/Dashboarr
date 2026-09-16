@@ -22,10 +22,8 @@ describe("routing", () => {
     "/status",
     "/stats",
     "/filtering/status",
+    "/filtering/refresh",
     "/rewrite/list",
-    "/dns_info",
-    "/version.json",
-    "/querylog/config",
     "/querylog",
   ];
 

@@ -9,24 +9,16 @@ import {
 import {
   addRewrite,
   deleteRewrite,
-  getDnsConfig,
   getFilterStatus,
   getQueryLog,
-  getQueryLogConfig,
   getRewrites,
   getStats,
   getStatus,
-  getVersionInfo,
   refreshFilters,
-  resetStats,
-  setDnsConfig,
   setProtection,
-  setUserRules,
-  updateRewrite,
 } from "@/services/adguard-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import type {
-  AdguardDnsConfig,
   AdguardQueryLogFilters,
   AdguardRewriteEntry,
   AdguardServerStatus,
@@ -57,10 +49,6 @@ export const adguardKeys = {
   filterStatus: (id: string | null | undefined) =>
     ["adguard", id, "filterStatus"] as const,
   rewrites: (id: string | null | undefined) => ["adguard", id, "rewrites"] as const,
-  dnsConfig: (id: string | null | undefined) => ["adguard", id, "dnsConfig"] as const,
-  version: (id: string | null | undefined) => ["adguard", id, "version"] as const,
-  queryLogConfig: (id: string | null | undefined) =>
-    ["adguard", id, "queryLogConfig"] as const,
   liveQueryLog: (id: string | null | undefined, filterKey: string) =>
     ["adguard", id, "querylog", "live", filterKey] as const,
   queryLogPage: (id: string | null | undefined, filterKey: string) =>
@@ -101,7 +89,8 @@ export function useAdguardStatus(instanceId?: string) {
     enabled: enabled && !!id,
     staleTime: 0,
     refetchInterval: (query) =>
-      query.state.data?.protection_enabled === false
+      query.state.data?.protection_enabled === false &&
+      (query.state.data.protection_disabled_duration ?? 0) > 0
         ? PROTECTION_TIMER_POLL_MS
         : STATUS_POLL_MS,
   });
@@ -128,6 +117,7 @@ export function useSetAdguardProtection(instanceId?: string) {
             protection_disabled_duration: confirmed.duration,
           },
       );
+      invalidateAdguardStats(queryClient, id);
     },
   });
 }
@@ -142,15 +132,6 @@ export function useAdguardStats(instanceId?: string) {
     enabled: enabled && !!id,
     staleTime: STATS_POLL_MS,
     refetchInterval: STATS_POLL_MS,
-  });
-}
-
-export function useResetAdguardStats(instanceId?: string) {
-  const queryClient = useQueryClient();
-  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
-  return useMutation({
-    mutationFn: () => resetStats(id ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: adguardKeys.stats(id) }),
   });
 }
 
@@ -175,7 +156,8 @@ export function useAdguardLiveQueryLog(
   const { instanceId: id, enabled } = useInstanceTarget("adguard", instanceId);
   return useQuery({
     queryKey: adguardKeys.liveQueryLog(id, adguardFilterKey(filters)),
-    queryFn: () => getQueryLog({ ...filters, limit: QUERY_PAGE_SIZE }, id ?? undefined),
+    queryFn: () =>
+      getQueryLog({ ...filters, limit: filters.limit ?? QUERY_PAGE_SIZE }, id ?? undefined),
     enabled: enabled && !!id && live,
     staleTime: 0,
     refetchInterval: live ? intervalMs : false,
@@ -210,16 +192,6 @@ export function useAdguardQueryLog(filters: AdguardQueryLogFilters, instanceId?:
   });
 }
 
-export function useAdguardQueryLogConfig(instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("adguard", instanceId);
-  return useQuery({
-    queryKey: adguardKeys.queryLogConfig(id),
-    queryFn: () => getQueryLogConfig(id ?? undefined),
-    enabled: enabled && !!id,
-    staleTime: 300_000,
-  });
-}
-
 // --- Filtering -----------------------------------------------------------
 
 export function useAdguardFilterStatus(instanceId?: string) {
@@ -237,16 +209,6 @@ export function useRefreshAdguardFilters(instanceId?: string) {
   const { instanceId: id } = useInstanceTarget("adguard", instanceId);
   return useMutation({
     mutationFn: (whitelist: boolean) => refreshFilters(whitelist, id ?? undefined),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: adguardKeys.filterStatus(id) }),
-  });
-}
-
-export function useSetAdguardUserRules(instanceId?: string) {
-  const queryClient = useQueryClient();
-  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
-  return useMutation({
-    mutationFn: (rules: string[]) => setUserRules(rules, id ?? undefined),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: adguardKeys.filterStatus(id) }),
   });
@@ -273,55 +235,12 @@ export function useAddAdguardRewrite(instanceId?: string) {
   });
 }
 
-export function useUpdateAdguardRewrite(instanceId?: string) {
-  const queryClient = useQueryClient();
-  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
-  return useMutation({
-    mutationFn: (vars: { target: AdguardRewriteEntry; update: AdguardRewriteEntry }) =>
-      updateRewrite(vars.target, vars.update, id ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: adguardKeys.rewrites(id) }),
-  });
-}
-
 export function useDeleteAdguardRewrite(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("adguard", instanceId);
   return useMutation({
     mutationFn: (entry: AdguardRewriteEntry) => deleteRewrite(entry, id ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: adguardKeys.rewrites(id) }),
-  });
-}
-
-// --- DNS config ---------------------------------------------------------
-
-export function useAdguardDnsConfig(instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("adguard", instanceId);
-  return useQuery({
-    queryKey: adguardKeys.dnsConfig(id),
-    queryFn: () => getDnsConfig(id ?? undefined),
-    enabled: enabled && !!id,
-    staleTime: 60_000,
-  });
-}
-
-export function useSetAdguardDnsConfig(instanceId?: string) {
-  const queryClient = useQueryClient();
-  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
-  return useMutation({
-    mutationFn: (config: Partial<AdguardDnsConfig>) => setDnsConfig(config, id ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: adguardKeys.dnsConfig(id) }),
-  });
-}
-
-// --- Version -------------------------------------------------------------
-
-export function useAdguardVersion(instanceId?: string) {
-  const { instanceId: id, enabled } = useInstanceTarget("adguard", instanceId);
-  return useQuery({
-    queryKey: adguardKeys.version(id),
-    queryFn: () => getVersionInfo(false, id ?? undefined),
-    enabled: enabled && !!id,
-    staleTime: 3_600_000,
   });
 }
 

@@ -3501,7 +3501,7 @@ export interface AdguardQueryLogItem {
   client_info?: AdguardQueryLogItemClient;
   client_proto?: "" | "dot" | "doh" | "doq" | "dnscrypt";
   ecs?: string;
-  /** A formatted string ("1.23ms"), not a number — same trap as Tdarr's ETA field. */
+  /** A numeric string of milliseconds ("54.023928"), not a number — same trap as Tdarr's ETA field. */
   elapsedMs: string;
   question: AdguardDnsQuestion;
   rules?: AdguardResultRule[];
@@ -3533,12 +3533,6 @@ export interface AdguardQueryLogFilters {
   reason?: string[];
 }
 
-export interface AdguardQueryLogConfig {
-  enabled: boolean;
-  interval: number;
-  anonymize_client_ip: boolean;
-}
-
 export interface AdguardFilter {
   enabled: boolean;
   id: number;
@@ -3560,40 +3554,6 @@ export interface AdguardRewriteEntry {
   domain: string;
   answer: string;
   enabled?: boolean;
-}
-
-export interface AdguardVersionInfo {
-  disabled: boolean;
-  new_version?: string;
-  announcement?: string;
-  announcement_url?: string;
-  can_autoupdate?: boolean;
-}
-
-export interface AdguardDnsConfig {
-  bootstrap_dns?: string[];
-  upstream_dns?: string[];
-  fallback_dns?: string[];
-  upstream_dns_file?: string;
-  protection_enabled?: boolean;
-  ratelimit?: number;
-  blocking_mode?: "default" | "refused" | "nxdomain" | "null_ip" | "custom_ip";
-  blocking_ipv4?: string;
-  blocking_ipv6?: string;
-  blocked_response_ttl?: number;
-  protection_disabled_until?: string;
-  disable_ipv6?: boolean;
-  dnssec_enabled?: boolean;
-  cache_size?: number;
-  cache_ttl_min?: number;
-  cache_ttl_max?: number;
-  cache_enabled?: boolean;
-  cache_optimistic?: boolean;
-  upstream_mode?: "" | "fastest_addr" | "load_balance" | "parallel";
-  use_private_ptr_resolvers?: boolean;
-  resolve_clients?: boolean;
-  local_ptr_upstreams?: string[];
-  upstream_timeout?: number;
 }
 
 // --- Shared Types ---

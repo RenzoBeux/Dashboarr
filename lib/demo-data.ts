@@ -3530,20 +3530,6 @@ const DEMO_ADGUARD_REWRITES = [
   { domain: "internal.dev.lan", answer: "workstation.dev.lan", enabled: true },
 ];
 
-const DEMO_ADGUARD_VERSION = { disabled: false, can_autoupdate: true };
-
-const DEMO_ADGUARD_DNS_CONFIG = {
-  bootstrap_dns: ["9.9.9.10", "1.1.1.1"],
-  upstream_dns: ["https://dns.cloudflare.com/dns-query", "https://dns.quad9.net/dns-query"],
-  protection_enabled: true,
-  ratelimit: 20,
-  blocking_mode: "default" as const,
-  cache_size: 4194304,
-  cache_ttl_min: 0,
-  cache_ttl_max: 0,
-  dnssec_enabled: false,
-};
-
 export function getDemoResponse(
   serviceId: ServiceId,
   path: string,
@@ -4152,11 +4138,7 @@ export function getDemoResponse(
       if (normalized === "/stats") return DEMO_ADGUARD_STATS;
       if (normalized === "/filtering/status") return DEMO_ADGUARD_FILTER_STATUS;
       if (normalized === "/rewrite/list") return DEMO_ADGUARD_REWRITES;
-      if (normalized === "/dns_info") return DEMO_ADGUARD_DNS_CONFIG;
-      if (normalized === "/version.json") return DEMO_ADGUARD_VERSION;
-      if (normalized === "/querylog/config") {
-        return { enabled: true, interval: 90, anonymize_client_ip: false };
-      }
+      if (normalized === "/filtering/refresh") return { updated: DEMO_ADGUARD_FILTER_STATUS.filters.length };
 
       if (normalized === "/querylog") {
         // Real "older_than" pagination, so the infinite list's stop conditions

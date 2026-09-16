@@ -7,56 +7,66 @@ import { Card } from "@/components/ui/card";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { TextInput } from "@/components/ui/text-input";
 import { useModalClosed } from "@/hooks/use-modal-closed";
-import { MAX_DISABLE_MS } from "@/lib/adguard-format";
 
 cssInterop(KeyboardAwareScrollView, {
   className: "style",
   contentContainerClassName: "contentContainerStyle",
 });
 
-// Unlike lib/pihole-format.ts's UNITS (which resolve to seconds), these
-// resolve to MILLISECONDS — AGH's /control/protection takes duration in ms.
-const UNITS = [
-  { label: "Minutes", ms: 60_000 },
-  { label: "Hours", ms: 3_600_000 },
-  { label: "Days", ms: 86_400_000 },
-] as const;
+export interface DurationUnit {
+  label: string;
+  /** Multiplier from the typed amount to the unit `onSubmit` reports in
+   * (seconds for Pi-hole, milliseconds for AdGuard — whatever the caller's
+   * API expects). */
+  value: number;
+}
 
 interface DurationPromptProps {
   visible: boolean;
-  onSubmit: (ms: number) => void;
+  /** What the timer disables, e.g. "Blocking" / "Protection" — drives the
+   * subtitle and the max-length error copy. */
+  subject: string;
+  /** In the same unit as `units[].value` and the value `onSubmit` reports. */
+  maxValue: number;
+  units: readonly DurationUnit[];
+  onSubmit: (value: number) => void;
   onCancel: () => void;
   /** Fired once the modal is fully dismissed — wired by useModalFlow. */
   onClosed?: () => void;
 }
 
 /**
- * "Disable protection for a custom length of time".
+ * "Disable [subject] for a custom length of time" — shared by Pi-hole and
+ * AdGuard Home's disable flows. They differ only in their duration unit
+ * (seconds vs milliseconds) and cap, both parameterized here rather than
+ * forked into two near-identical components.
  *
  * Keyboard pattern: centered card with KeyboardAwareScrollView as the modal
- * ROOT, copied from components/pihole/duration-prompt.tsx (itself copied from
- * components/common/passphrase-prompt.tsx) — the repo's existing "flow step
- * with a text input" solution. It cannot clip the way a plain
- * KeyboardAvoidingView can, and it is already flow.bind-compatible.
+ * ROOT, copied from components/common/passphrase-prompt.tsx. That is the
+ * repo's existing "flow step with a text input" solution — it cannot clip the
+ * way a plain KeyboardAvoidingView can, and it is already flow.bind-compatible.
  */
 export function DurationPrompt({
   visible,
+  subject,
+  maxValue,
+  units,
   onSubmit,
   onCancel,
   onClosed,
 }: DurationPromptProps) {
   const [amount, setAmount] = useState("");
-  const [unitMs, setUnitMs] = useState<number>(UNITS[0].ms);
+  const [unitValue, setUnitValue] = useState<number>(units[0]!.value);
   const [error, setError] = useState<string | null>(null);
   const handleDismiss = useModalClosed(visible, onClosed);
 
   useEffect(() => {
     if (visible) {
       setAmount("");
-      setUnitMs(UNITS[0].ms);
+      setUnitValue(units[0]!.value);
       setError(null);
     }
-  }, [visible]);
+  }, [visible, units]);
 
   const handleSubmit = () => {
     const trimmed = amount.trim();
@@ -73,12 +83,12 @@ export function DurationPrompt({
       setError("Must be at least 1");
       return;
     }
-    const ms = parsed * unitMs;
-    if (ms > MAX_DISABLE_MS) {
+    const value = parsed * unitValue;
+    if (value > maxValue) {
       setError("Maximum is 7 days");
       return;
     }
-    onSubmit(ms);
+    onSubmit(value);
   };
 
   return (
@@ -102,7 +112,7 @@ export function DurationPrompt({
             Disable for how long?
           </Text>
           <Text className="text-zinc-400 text-sm leading-5">
-            Protection resumes automatically when the timer ends.
+            {subject} resumes automatically when the timer ends.
           </Text>
 
           <TextInput
@@ -126,12 +136,12 @@ export function DurationPrompt({
             showsHorizontalScrollIndicator={false}
             contentContainerClassName="gap-2"
           >
-            {UNITS.map((unit) => (
+            {units.map((unit) => (
               <FilterChip
                 key={unit.label}
                 label={unit.label}
-                selected={unitMs === unit.ms}
-                onPress={() => setUnitMs(unit.ms)}
+                selected={unitValue === unit.value}
+                onPress={() => setUnitValue(unit.value)}
               />
             ))}
           </ScrollView>
