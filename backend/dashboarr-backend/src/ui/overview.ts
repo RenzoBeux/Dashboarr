@@ -1,10 +1,12 @@
 import type { Device } from "../db/repos/devices.js";
 import { activeUrlSide } from "../services/active-url.js";
+import type { ConfigBackupMeta } from "../db/repos/config-backup.js";
 import type { WebhookEventRow } from "../db/repos/events.js";
 import type { StoredServiceInstance } from "../db/repos/service-instance.js";
 import type { PollerStatus } from "../workers/scheduler.js";
 import type {
   Overview,
+  OverviewBackup,
   OverviewDevice,
   OverviewInstance,
   OverviewWebhook,
@@ -29,6 +31,7 @@ export interface OverviewInputs {
   /** Lookup of the persisted health row for an instance, or null when never observed. */
   health: (instanceId: string) => { value: HealthState; updatedAt: number } | null;
   webhooks: WebhookEventRow[];
+  backups: ConfigBackupMeta[];
   now: number;
 }
 
@@ -129,6 +132,18 @@ export function buildOverview(input: OverviewInputs): Overview {
     return { id: w.id, source: w.source, receivedAt: w.receivedAt, eventType, summary };
   });
 
+  const backups: OverviewBackup[] = input.backups.map((b) => ({
+    deviceId: b.deviceId,
+    platform: b.platform,
+    appVersion: b.appVersion,
+    paired: b.paired,
+    sizeBytes: b.sizeBytes,
+    configVersion: b.configVersion,
+    exportedAt: b.exportedAt,
+    updatedAt: b.updatedAt,
+    revision: b.revision,
+  }));
+
   return {
     version: input.version,
     uptimeMs: input.uptimeMs,
@@ -139,5 +154,6 @@ export function buildOverview(input: OverviewInputs): Overview {
     devices,
     instances,
     webhooks,
+    backups,
   };
 }

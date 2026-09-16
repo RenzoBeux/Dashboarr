@@ -42,6 +42,10 @@ function legacyToInstance(c: ServiceConfigPayload): ServiceInstancePayload {
  * and exposing every API key / password back over HTTP would turn any bearer
  * into a secret-exfil primitive. If a diagnostic view is ever added, it must
  * redact all credential fields.
+ *
+ * The one read path that does exist is routes/config-backup.ts, which hands
+ * back a passphrase-encrypted envelope the backend cannot open — ciphertext
+ * only, never this table.
  */
 export async function configRoutes(app: FastifyInstance): Promise<void> {
   app.put("/config", { preHandler: requireBearer }, async (request, reply) => {

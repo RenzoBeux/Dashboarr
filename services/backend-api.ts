@@ -4,6 +4,7 @@ import { SERVICE_IDS } from "@/lib/constants";
 import { seerrAuthMode, seerrUsesSession } from "@/lib/seerr-auth";
 import { isPrivateHost } from "@/lib/url-validation";
 import { describeBackendTransportError } from "@/lib/backend-error";
+import type { EncryptedEnvelope } from "@/lib/config-crypto";
 
 const DEFAULT_TIMEOUT = 10000;
 
@@ -193,6 +194,59 @@ export function testPush(): Promise<void> {
  */
 export function testApprise(): Promise<void> {
   return request<void>("/notifications/apprise/test", { method: "POST" });
+}
+
+// --- Config backup slots (Refs #385, backend 1.6+) ---
+
+export interface BackupMeta {
+  deviceId: string;
+  platform: string;
+  appVersion: string | null;
+  /** The device row still exists on the backend (false after unpair / rotate). */
+  paired: boolean;
+  sizeBytes: number;
+  configVersion: number;
+  exportedAt: number;
+  updatedAt: number;
+  /** Monotonic per-slot counter, bumped on every write (backend 1.7+; 0 on older rows). */
+  revision: number;
+  lastSeenAt: number | null;
+  /** This slot belongs to the calling device. */
+  mine: boolean;
+}
+
+/** The backend's reserved slot written by its web editor (Refs #385). */
+export const WEB_SLOT_ID = "web";
+
+export interface BackupPutBody {
+  envelope: EncryptedEnvelope;
+  configVersion: number;
+  exportedAt: number;
+  appVersion: string;
+}
+
+const BACKUP_TIMEOUT = 30000;
+
+export function putConfigBackup(
+  body: BackupPutBody,
+): Promise<{ ok: true; updatedAt: number; sizeBytes: number }> {
+  return request("/config/backup", {
+    method: "PUT",
+    body: JSON.stringify(body),
+    timeout: BACKUP_TIMEOUT,
+  });
+}
+
+export function listConfigBackups(): Promise<{ backups: BackupMeta[] }> {
+  return request("/config/backups");
+}
+
+export function getConfigBackup(deviceId: string): Promise<BackupMeta & { envelope: EncryptedEnvelope }> {
+  return request(`/config/backups/${encodeURIComponent(deviceId)}`, { timeout: BACKUP_TIMEOUT });
+}
+
+export function deleteConfigBackup(deviceId: string): Promise<void> {
+  return request(`/config/backups/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
 }
 
 /**

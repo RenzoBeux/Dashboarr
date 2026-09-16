@@ -3,6 +3,7 @@ import { z } from "zod";
 import { safeEqual } from "../auth/safe-equal.js";
 import type { UiSessionStore } from "../auth/ui-session.js";
 import { isEncryptionEnabled } from "../crypto/secrets.js";
+import { listBackupMeta } from "../db/repos/config-backup.js";
 import { listAllDevices } from "../db/repos/devices.js";
 import { listRecentWebhookEvents } from "../db/repos/events.js";
 import { getStateEntry } from "../db/repos/seen-state.js";
@@ -14,7 +15,7 @@ import { VERSION } from "../version.js";
 import { getScheduler } from "../workers/scheduler.js";
 
 /**
- * Read-only web UI data API — security model
+ * Web UI data API — security model
  * -------------------------------------------
  * Authenticated with WEB_UI_PASSWORD, never with a device bearer: the bearer
  * can replace the whole config and fire pushes, and it lives on the phone,
@@ -24,9 +25,10 @@ import { getScheduler } from "../workers/scheduler.js";
  * directory (see UI_COOKIE), so nothing outside this API ever sees it and
  * cross-site requests never carry it.
  *
- * Every route here is a read (or the login/logout pair). If a mutating route
- * is ever added under /ui/api, `requireUiSession` must additionally check
- * `Origin` / `Sec-Fetch-Site` (or a CSRF token) before this model is safe.
+ * Every route in this file is a read (or the login/logout pair). The web
+ * editor's writes live in routes/ui-backups.ts and add `requireSameOrigin`
+ * (auth/same-origin.ts) on top of the session; any future mutating route
+ * under /ui/api must do the same.
  *
  * The password and session store are injected rather than read from
  * `getEnv()` so tests can exercise both the enabled and disabled paths in a
@@ -139,6 +141,7 @@ export async function uiDataRoutes(app: FastifyInstance, opts: UiRouteOptions): 
       pollers: getScheduler()?.status() ?? [],
       health: (id) => getStateEntry<HealthState>(`health:${id}:online`),
       webhooks: listRecentWebhookEvents(RECENT_WEBHOOKS),
+      backups: listBackupMeta(),
       now: Date.now(),
     });
   });

@@ -1,0 +1,37 @@
+# Build context for backend/dashboarr-backend/Dockerfile (built from the repo
+# root so the web editor can bundle lib/ and store/). Keep it small: nothing
+# from the native app, no installed modules, no local data.
+**/node_modules
+**/dist
+.git
+.github
+.expo
+.claude
+.pnpm-store
+android
+ios
+app
+assets
+components
+docs
+hooks
+modules
+services
+ideas
+coverage
+release-notes
+backend/dashboarr-backend/data*
+backend/dashboarr-backend/README.md
+backend/dashboarr-backend/docker-compose*.yml
+**/.env
+**/.env.*
+**/*.log
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+google-services.json
+*-firebase-adminsdk-*.json
+play-service-account.json

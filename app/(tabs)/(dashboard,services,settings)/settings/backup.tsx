@@ -12,20 +12,19 @@ import type { ExportStage, ImportStage } from "@/store/config-store";
 import { ProgressModal } from "@/components/common/progress-modal";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
-import type { PassphraseMode, PassphraseResult } from "@/components/common/passphrase-prompt";
+import type { PassphraseResult } from "@/components/common/passphrase-prompt";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { reevaluateHomeNetworkAfterImport } from "@/lib/network";
 import {
-  forgetRememberedPassphrase,
-  hasRememberedPassphrase,
-  loadRememberedPassphrase,
-  saveRememberedPassphrase,
-} from "@/lib/config-passphrase";
+  EXPORT_STAGE_COPY,
+  IMPORT_STAGE_COPY,
+  usePassphrasePrompt,
+} from "@/hooks/use-passphrase-prompt";
+import type { PassphraseRequest } from "@/hooks/use-passphrase-prompt";
 
 export default function BackupSettingsScreen() {
   const [exportStage, setExportStage] = useState<ExportStage | null>(null);
   const [importStage, setImportStage] = useState<ImportStage | null>(null);
-  const [hasRemembered, setHasRemembered] = useState(() => hasRememberedPassphrase());
 
   const exportConfig = useConfigStore((s) => s.exportConfig);
   const importConfig = useConfigStore((s) => s.importConfig);
@@ -40,28 +39,11 @@ export default function BackupSettingsScreen() {
   const flow = useModalFlow<{
     confirmClearCache: void;
     confirmImport: void;
-    passphrase: {
-      mode: PassphraseMode;
-      resolve: (value: PassphraseResult | null) => void;
-    };
+    passphrase: PassphraseRequest;
   }>();
 
-  const requestPassphrase = (mode: PassphraseMode) =>
-    new Promise<PassphraseResult | null>((resolve) => {
-      flow.open("passphrase", { mode, resolve });
-    });
-
-  // After a successful op, reflect the user's "Remember" choice to the
-  // Keychain/Keystore-backed store (save, or forget if they turned it off).
-  const syncRememberedState = async (result: PassphraseResult) => {
-    if (result.remember) {
-      await saveRememberedPassphrase(result.passphrase);
-      setHasRemembered(true);
-    } else if (hasRemembered) {
-      await forgetRememberedPassphrase();
-      setHasRemembered(false);
-    }
-  };
+  const { hasRemembered, requestPassphrase, syncRememberedState, useRemembered } =
+    usePassphrasePrompt((request) => flow.open("passphrase", request));
 
   const handleExport = async () => {
     const result = await requestPassphrase("export");
@@ -86,23 +68,6 @@ export default function BackupSettingsScreen() {
     } finally {
       setExportStage(null);
     }
-  };
-
-  const exportStageContent: Record<ExportStage, { title: string; subtitle?: string }> = {
-    preparing: { title: "Preparing backup…" },
-    encrypting: {
-      title: "Encrypting…",
-      subtitle: "Deriving a key from your passphrase. This takes a moment on mobile.",
-    },
-    finalizing: { title: "Almost done…" },
-  };
-
-  const importStageContent: Record<ImportStage, { title: string; subtitle?: string }> = {
-    decrypting: {
-      title: "Decrypting…",
-      subtitle: "Deriving a key from your passphrase. This takes a moment on mobile.",
-    },
-    restoring: { title: "Restoring settings…" },
   };
 
   const performClearImageCache = async () => {
@@ -202,14 +167,14 @@ export default function BackupSettingsScreen() {
 
       <ProgressModal
         visible={exportStage !== null}
-        title={exportStage ? exportStageContent[exportStage].title : ""}
-        subtitle={exportStage ? exportStageContent[exportStage].subtitle : undefined}
+        title={exportStage ? EXPORT_STAGE_COPY[exportStage].title : ""}
+        subtitle={exportStage ? EXPORT_STAGE_COPY[exportStage].subtitle : undefined}
       />
 
       <ProgressModal
         visible={importStage !== null}
-        title={importStage ? importStageContent[importStage].title : ""}
-        subtitle={importStage ? importStageContent[importStage].subtitle : undefined}
+        title={importStage ? IMPORT_STAGE_COPY[importStage].title : ""}
+        subtitle={importStage ? IMPORT_STAGE_COPY[importStage].subtitle : undefined}
       />
 
       <ConfirmModal
@@ -239,11 +204,7 @@ export default function BackupSettingsScreen() {
         visible={flow.isOpen("passphrase")}
         mode={flow.payload("passphrase")?.mode ?? "import"}
         hasRemembered={hasRemembered}
-        onUseRemembered={async () => {
-          const saved = await loadRememberedPassphrase();
-          if (!saved) setHasRemembered(false);
-          return saved;
-        }}
+        onUseRemembered={useRemembered}
         onSubmit={(result) => {
           const request = flow.payload("passphrase");
           flow.close();

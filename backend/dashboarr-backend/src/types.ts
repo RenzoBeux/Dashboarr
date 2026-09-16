@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WEB_SLOT_ID } from "./ui/overview-types.js";
 
 // Keep this list in sync with the app's SERVICE_IDS (lib/constants.ts). The app
 // pushes a config entry for every kind it knows about, so any kind missing here
@@ -249,6 +250,67 @@ export const configPayloadSchema = z
   });
 
 export type ConfigPayload = z.infer<typeof configPayloadSchema>;
+
+/**
+ * The app's passphrase-encrypted export envelope (lib/config-crypto.ts in the
+ * app). Validated structurally only: the backend never decrypts it. Bounds
+ * mirror the app's own limits (iterations 10k..10M) plus a ciphertext cap
+ * that matches the per-route bodyLimit on PUT /config/backup.
+ */
+export const MAX_BACKUP_CIPHERTEXT_CHARS = 4 * 1024 * 1024;
+
+export const encryptedEnvelopeSchema = z
+  .object({
+    format: z.literal("dashboarr-encrypted-v1"),
+    kdf: z
+      .object({
+        name: z.literal("pbkdf2-sha256"),
+        iterations: z.number().int().min(10_000).max(10_000_000),
+        salt: z.string().regex(/^[0-9a-f]{32}$/),
+      })
+      .strict(),
+    cipher: z
+      .object({
+        name: z.literal("aes-256-gcm"),
+        nonce: z.string().regex(/^[0-9a-f]{24}$/),
+        ciphertext: z
+          .string()
+          .min(32)
+          .max(MAX_BACKUP_CIPHERTEXT_CHARS)
+          .regex(/^(?:[0-9a-f]{2})+$/),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type EncryptedEnvelope = z.infer<typeof encryptedEnvelopeSchema>;
+
+export const configBackupPutSchema = z
+  .object({
+    envelope: encryptedEnvelopeSchema,
+    configVersion: z.number().int().min(1).max(100_000),
+    exportedAt: z.number().int().positive(),
+    appVersion: z.string().max(64).optional(),
+  })
+  .strict();
+
+export type ConfigBackupPutRequest = z.infer<typeof configBackupPutSchema>;
+
+/** A phone's slot (its device UUID) or the web editor's reserved slot. */
+export const backupSlotIdSchema = z.union([z.literal(WEB_SLOT_ID), z.string().uuid()]);
+
+/**
+ * The web editor's write. `expectedRevision` is the slot revision the editor
+ * loaded (null = the slot must not exist yet); the write is refused with 409
+ * when the stored revision differs, so two tabs cannot silently overwrite
+ * each other. `appVersion` is fixed server-side to "web".
+ */
+export const uiBackupPutSchema = configBackupPutSchema
+  .omit({ appVersion: true })
+  .extend({ expectedRevision: z.number().int().min(0).nullable() })
+  .strict();
+
+export type UiBackupPutRequest = z.infer<typeof uiBackupPutSchema>;
 
 export const pairClaimSchema = z.object({
   token: z.string().min(1),

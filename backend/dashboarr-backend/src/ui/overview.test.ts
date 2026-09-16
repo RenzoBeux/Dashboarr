@@ -34,6 +34,7 @@ function inputs(over: Partial<OverviewInputs> = {}): OverviewInputs {
     pollers: [],
     health: () => null,
     webhooks: [],
+    backups: [],
     now: 123456,
     ...over,
   };
@@ -207,4 +208,41 @@ test("poller lastError is redacted in the overview", () => {
     }),
   );
   assert.equal(out.instances[0]!.poller?.lastError, "radarr HTTP 401 — http://10.0.0.5:7878/api/v3/queue");
+});
+
+test("backups are mapped field by field and never carry the envelope", () => {
+  const out = buildOverview(
+    inputs({
+      backups: [
+        {
+          deviceId: "dev-1",
+          sizeBytes: 4096,
+          configVersion: 54,
+          exportedAt: 10,
+          platform: "ios",
+          appVersion: "1.19.0",
+          updatedAt: 20,
+          revision: 3,
+          paired: false,
+          lastSeenAt: null,
+          // A future column that must not leak by accident.
+          ...({ envelope: "SECRET-ENVELOPE" } as object),
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(out.backups, [
+    {
+      deviceId: "dev-1",
+      platform: "ios",
+      appVersion: "1.19.0",
+      paired: false,
+      sizeBytes: 4096,
+      configVersion: 54,
+      exportedAt: 10,
+      updatedAt: 20,
+      revision: 3,
+    },
+  ]);
+  assert.equal(JSON.stringify(out).includes("SECRET-ENVELOPE"), false);
 });

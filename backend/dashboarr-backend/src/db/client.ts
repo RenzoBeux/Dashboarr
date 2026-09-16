@@ -20,8 +20,28 @@ export function getDb(): Database.Database {
   db.pragma("busy_timeout = 5000");
 
   db.exec(INIT_SCHEMA);
+  ensureColumns(db);
   runOneTimeMigrations(db);
   return db;
+}
+
+/**
+ * Columns added after a table first shipped. CREATE TABLE IF NOT EXISTS does
+ * not alter an existing table, so each one is checked against PRAGMA
+ * table_info and added when missing — idempotent, no flag to keep.
+ */
+const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
+  // backend 1.7: optimistic-concurrency token for the web editor's slot writes.
+  { table: "config_backup", column: "revision", ddl: "revision INTEGER NOT NULL DEFAULT 0" },
+];
+
+function ensureColumns(database: Database.Database): void {
+  for (const { table, column, ddl } of ADDED_COLUMNS) {
+    const cols = database.prepare<[], { name: string }>(`PRAGMA table_info(${table})`).all();
+    if (!cols.some((c) => c.name === column)) {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    }
+  }
 }
 
 /**

@@ -43,8 +43,12 @@ export async function getSecret(key: string): Promise<string | null> {
   return SecureStore.getItemAsync(key);
 }
 
-export async function setSecret(key: string, value: string): Promise<void> {
-  await SecureStore.setItemAsync(key, value);
+export async function setSecret(
+  key: string,
+  value: string,
+  options?: SecureStore.SecureStoreOptions,
+): Promise<void> {
+  await SecureStore.setItemAsync(key, value, options);
 }
 
 export async function deleteSecret(key: string): Promise<void> {

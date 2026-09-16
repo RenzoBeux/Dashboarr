@@ -41,7 +41,8 @@ const envSchema = z.object({
   // and you'll see a warning in the logs on startup.
   CONFIG_ENCRYPTION_KEY: z.string().min(16).optional(),
 
-  // Optional password for the read-only web UI served at "/". Unset = the
+  // Optional password for the web UI (status page + config editor) served at
+  // "/". Unset = the
   // page is still served but its data API answers 403 ui_disabled and the
   // page shows a setup hint. Deliberately separate from the device bearer,
   // which is a full-privilege secret that should never be typed into a

@@ -20,6 +20,8 @@ module.exports = {
     "lib/config-crypto.ts",
     "lib/utils.ts",
     "lib/wake-on-lan.ts",
+    "lib/device-auth.ts",
+    "services/backend-backup.ts",
   ],
   testTimeout: 15_000,
 };

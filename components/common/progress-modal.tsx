@@ -13,14 +13,23 @@ import Animated, {
 } from "react-native-reanimated";
 import { Loader2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { useModalClosed } from "@/hooks/use-modal-closed";
 
 interface ProgressModalProps {
   visible: boolean;
   title: string;
   subtitle?: string;
+  /**
+   * Fired once the modal is fully dismissed (see `useModalClosed`). A screen
+   * that wants to open another modal right after the work finishes must wait
+   * for this instead of opening it while the spinner is still animating away,
+   * which hangs iOS on the New Architecture (the #83 class of bug).
+   */
+  onClosed?: () => void;
 }
 
-export function ProgressModal({ visible, title, subtitle }: ProgressModalProps) {
+export function ProgressModal({ visible, title, subtitle, onClosed }: ProgressModalProps) {
+  const handleDismiss = useModalClosed(visible, onClosed);
   const rotation = useSharedValue(0);
   const pulse = useSharedValue(1);
 
@@ -76,7 +85,13 @@ export function ProgressModal({ visible, title, subtitle }: ProgressModalProps) 
   }));
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onDismiss={handleDismiss}
+    >
       <View className="flex-1 bg-black/85 items-center justify-center px-8">
         <View className="items-center gap-7">
           <View className="w-20 h-20 items-center justify-center">

@@ -1593,3 +1593,11 @@ describe("validateExportPayload — slot settings", () => {
     expect(result.dashboards[0].widgets[0].settings).toBeUndefined();
   });
 });
+
+describe("validateExportPayload — weekStart", () => {
+  it("keeps a valid value, omits an absent one, rejects garbage", () => {
+    expect(validateExportPayload({ ...baseValid(), weekStart: "monday" }).weekStart).toBe("monday");
+    expect(validateExportPayload(baseValid())).not.toHaveProperty("weekStart");
+    expect(() => validateExportPayload({ ...baseValid(), weekStart: "tuesday" })).toThrow(/weekStart/);
+  });
+});

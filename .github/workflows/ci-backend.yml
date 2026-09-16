@@ -10,12 +10,18 @@ on:
   pull_request:
     paths:
       - 'backend/dashboarr-backend/**'
+      - 'lib/**'
+      - 'store/**'
+      - '.dockerignore'
       - '.github/workflows/ci-backend.yml'
   push:
     branches:
       - main
     paths:
       - 'backend/dashboarr-backend/**'
+      - 'lib/**'
+      - 'store/**'
+      - '.dockerignore'
       - '.github/workflows/ci-backend.yml'
 
 # Cancel in-progress runs when a new commit lands on the same PR/branch.
@@ -50,6 +56,26 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # The web editor compiles the app's pure config modules from lib/ and
+      # store/. Vite resolves the nearest tsconfig for those files, which is the
+      # repo root's `extends: "expo/tsconfig.base"`, so the app's dependencies
+      # must be present for the web typecheck, tests and build in this checkout.
+      # The Docker image is unaffected: it copies lib/ and store/ without the
+      # root tsconfig.
+      - name: Set up pnpm (app toolchain)
+        uses: pnpm/action-setup@v4
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Install app dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Typecheck
         run: npm run typecheck
@@ -87,7 +113,8 @@ jobs:
       - name: Build image (no push)
         uses: docker/build-push-action@v7
         with:
-          context: backend/dashboarr-backend
+          # Repo root: the Dockerfile copies lib/ and store/ for the web editor.
+          context: .
           file: backend/dashboarr-backend/Dockerfile
           platforms: ${{ matrix.platform }}
           push: false

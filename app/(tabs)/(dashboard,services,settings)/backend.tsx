@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, Pressable, ActivityIndicator, Platform } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react-native";
+import { Bell, QrCode, Unlink, Cloud, CloudOff, RefreshCw, CloudUpload, CloudDownload, Trash2 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
@@ -11,21 +11,75 @@ import { TextInput } from "@/components/ui/text-input";
 import { BackendStatusPill } from "@/components/ui/backend-status-pill";
 import { toast, toastError } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
+import { ActionSheet } from "@/components/ui/action-sheet";
+import { PassphrasePrompt } from "@/components/common/passphrase-prompt";
+import { ProgressModal } from "@/components/common/progress-modal";
+import { useModalFlow } from "@/hooks/use-modal-flow";
+import { IMPORT_STAGE_COPY, usePassphrasePrompt } from "@/hooks/use-passphrase-prompt";
+import type { PassphraseRequest } from "@/hooks/use-passphrase-prompt";
 import { useBackendStore } from "@/store/backend-store";
 import { useConfigStore } from "@/store/config-store";
+import type { ImportStage } from "@/store/config-store";
+import { CURRENT_CONFIG_VERSION } from "@/store/config-migrations";
 import {
+  deleteConfigBackup,
   getBackendHealth,
+  getConfigBackup,
+  listConfigBackups,
   pairClaim,
   pushConfigSnapshot,
   testApprise,
   testPush,
   unregisterDevice,
 } from "@/services/backend-api";
+import type { BackupMeta } from "@/services/backend-api";
+import { uploadConfigBackup } from "@/services/backend-backup";
+import { WEB_SLOT_ID } from "@/services/backend-api";
+import { markWebSlotApplied, noteBackupList } from "@/services/web-slot-watch";
+import { isWebSlotPending } from "@/store/backend-store";
 import { getExpoPushToken, hasProjectId } from "@/lib/expo-push";
 import { normalizeServiceUrl } from "@/lib/url-validation";
+import { requireDeviceAuth } from "@/lib/device-auth";
+import { deriveKeyHex, generateSaltHex, PBKDF2_ITERATIONS } from "@/lib/config-crypto";
+import { NATIVE_VERSION } from "@/lib/app-version";
+import { reevaluateHomeNetworkAfterImport } from "@/lib/network";
+import { formatBytes, formatTimeAgo } from "@/lib/utils";
 import { Toggle } from "@/components/ui/toggle";
 
 type Mode = "summary" | "scanning" | "manual";
+type BackupStage = "deriving" | ImportStage;
+
+const BACKUP_STAGE_COPY: Record<BackupStage, { title: string; subtitle?: string }> = {
+  deriving: {
+    title: "Preparing backup key…",
+    subtitle: "Deriving a key from your passphrase. This takes a moment on mobile.",
+  },
+  ...IMPORT_STAGE_COPY,
+};
+
+function slotLabel(slot: BackupMeta): string {
+  if (slot.deviceId === WEB_SLOT_ID) return "Web editor";
+  if (slot.mine) return "This device";
+  const platform = slot.platform === "ios" ? "iPhone" : slot.platform === "android" ? "Android" : slot.platform;
+  return `${platform} · ${slot.deviceId.slice(0, 8)}`;
+}
+
+function slotSubtitle(slot: BackupMeta): string {
+  const isWeb = slot.deviceId === WEB_SLOT_ID;
+  const parts = [
+    isWeb ? "edited in the backend's web UI" : `app ${slot.appVersion ?? "?"}`,
+    formatTimeAgo(new Date(slot.updatedAt).toISOString()),
+    formatBytes(slot.sizeBytes),
+  ];
+  if (!slot.paired && !isWeb) parts.push("unpaired");
+  if (slot.configVersion > CURRENT_CONFIG_VERSION) parts.push("needs a newer app");
+  return parts.join(" · ");
+}
+
+/** A backend that predates the backup endpoints answers 404 to the list. */
+function isUnsupported(err: unknown): boolean {
+  return (err as { status?: number } | null)?.status === 404;
+}
 
 /**
  * Opts the backend's hostname into the app's per-host TLS bypass (#357).
@@ -85,12 +139,48 @@ export default function BackendScreen() {
   const setIgnoreCertErrors = useBackendStore((s) => s.setIgnoreCertErrors);
   const setDraftUrl = useBackendStore((s) => s.setDraftUrl);
   const draftUrl = useBackendStore((s) => s.draftUrl);
+  const deviceId = useBackendStore((s) => s.deviceId);
+  const backupEnabled = useBackendStore((s) => s.backupEnabled);
+  const enableBackup = useBackendStore((s) => s.enableBackup);
+  const disableBackup = useBackendStore((s) => s.disableBackup);
+  const lastBackupAt = useBackendStore((s) => s.lastBackupAt);
+  const lastBackupError = useBackendStore((s) => s.lastBackupError);
+  const backupInFlight = useBackendStore((s) => s.backupInFlight);
+  const importConfigFromEnvelope = useConfigStore((s) => s.importConfigFromEnvelope);
+  const webSlotPending = useBackendStore((s) => isWebSlotPending(s));
 
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
-  const [confirmUnpair, setConfirmUnpair] = useState(false);
-  const [confirmRotate, setConfirmRotate] = useState(false);
   const [backendUrl, setBackendUrl] = useState("");
+  // Config backup (Refs #385)
+  const [backupStage, setBackupStage] = useState<BackupStage | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupSupported, setBackupSupported] = useState<boolean | null>(null);
+  const [slots, setSlots] = useState<BackupMeta[]>([]);
+  // Something to open once the ProgressModal has fully dismissed. The modal
+  // is not a flow step (it has no cancel path), so a follow-up modal must
+  // wait for its onClosed rather than present over its dismiss animation.
+  const afterProgressRef = useRef<(() => void) | null>(null);
+  const webSlot = slots.find((s) => s.deviceId === WEB_SLOT_ID);
+
+  // Every chained modal on this screen goes through the flow (see
+  // hooks/use-modal-flow.ts): confirm → sheet → passphrase → progress, and the
+  // post-pair restore prompt. `offerEnableAfterRestore` carries the passphrase
+  // the user just typed so enabling backup on this phone needs no second
+  // prompt (device auth still applies).
+  const flow = useModalFlow<{
+    confirmUnpair: void;
+    confirmRotate: void;
+    confirmRestore: BackupMeta[];
+    pickSlot: BackupMeta[];
+    manageSlots: BackupMeta[];
+    confirmDeleteSlot: BackupMeta;
+    confirmDisableBackup: void;
+    offerEnableAfterRestore: string;
+    passphrase: PassphraseRequest;
+  }>();
+  const { hasRemembered, requestPassphrase, syncRememberedState, useRemembered } =
+    usePassphrasePrompt((request) => flow.open("passphrase", request));
   const [manualToken, setManualToken] = useState("");
   const [permission, requestPermission] = useCameraPermissions();
   // Synchronous guard — camera onBarcodeScanned can fire multiple times before
@@ -126,7 +216,7 @@ export default function BackendScreen() {
           return;
         }
         const platform: "ios" | "android" = Platform.OS === "ios" ? "ios" : "android";
-        const result = await pairClaim(trimmedUrl, token, expoPushToken, platform);
+        const result = await pairClaim(trimmedUrl, token, expoPushToken, platform, NATIVE_VERSION);
         // Persist the URL that actually answered. pairClaim may have upgraded a
         // public http:// host to https:// to dodge the edge redirect that breaks
         // pairing (#218); persisting it keeps later calls off that downgrade.
@@ -143,7 +233,10 @@ export default function BackendScreen() {
           /* ignore, debounced bridge will retry on next change */
         }
         toast("Backend paired", "success");
+        // Leave scanning mode first so the camera is unmounted before any
+        // modal presents over the summary.
         setMode("summary");
+        void openRestore("pair");
       } catch (err) {
         console.warn("pair failed", err);
         toastError("Pairing failed", err);
@@ -156,6 +249,7 @@ export default function BackendScreen() {
         setBusy(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [backendUrl, pair, setDraftUrl],
   );
 
@@ -247,10 +341,9 @@ export default function BackendScreen() {
     }
   }, [appriseEnabled, appriseUrl, appriseTags, commitApprise]);
 
-  const handleUnpair = useCallback(() => setConfirmUnpair(true), []);
+  const handleUnpair = useCallback(() => flow.open("confirmUnpair"), [flow]);
 
   const performUnpair = useCallback(async () => {
-    setConfirmUnpair(false);
     setBusy(true);
     try {
       try {
@@ -265,10 +358,9 @@ export default function BackendScreen() {
     }
   }, [unpair]);
 
-  const handleRotate = useCallback(() => setConfirmRotate(true), []);
+  const handleRotate = useCallback(() => flow.open("confirmRotate"), [flow]);
 
   const performRotate = useCallback(async () => {
-    setConfirmRotate(false);
     setBusy(true);
     try {
       try {
@@ -283,6 +375,217 @@ export default function BackendScreen() {
       setBusy(false);
     }
   }, [unpair]);
+
+  // --- Config backup (Refs #385) ---
+
+  // Probe once per pairing so the card can say "update the backend" instead
+  // of failing on first use. Also refreshes the own-slot knowledge: with no
+  // own slot the next upload must not be skipped by a stale hash.
+  useEffect(() => {
+    if (!url || !sharedSecret) {
+      setBackupSupported(null);
+      return;
+    }
+    let cancelled = false;
+    listConfigBackups()
+      .then(({ backups }) => {
+        if (cancelled) return;
+        setBackupSupported(true);
+        setSlots(backups);
+        noteBackupList(backups);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setBackupSupported(isUnsupported(err) ? false : null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url, sharedSecret]);
+
+  const refreshSlots = useCallback(async () => {
+    try {
+      const { backups } = await listConfigBackups();
+      setSlots(backups);
+      noteBackupList(backups);
+    } catch {
+      /* the next probe or resume will retry */
+    }
+  }, []);
+
+  /** Derive the key from a passphrase, store it, upload once. Shared by the toggle and the post-restore offer. */
+  const enableBackupWith = useCallback(
+    async (passphrase: string) => {
+      setBackupStage("deriving");
+      try {
+        const saltHex = generateSaltHex();
+        const keyHex = await deriveKeyHex(passphrase, saltHex, PBKDF2_ITERATIONS);
+        await enableBackup({ saltHex, keyHex, iterations: PBKDF2_ITERATIONS });
+        await uploadConfigBackup({ force: true });
+        toast("Backup enabled and uploaded", "success");
+      } finally {
+        setBackupStage(null);
+      }
+    },
+    [enableBackup],
+  );
+
+  const handleEnableBackup = useCallback(async () => {
+    try {
+      if ((await requireDeviceAuth("Authenticate to enable backend backup")) === "cancelled") return;
+      const result = await requestPassphrase("export");
+      if (!result) return;
+      await enableBackupWith(result.passphrase);
+      try {
+        await syncRememberedState(result);
+      } catch (err) {
+        console.warn("Failed to persist remembered passphrase", err);
+      }
+    } catch (err) {
+      toastError("Could not enable backup", err);
+    }
+  }, [enableBackupWith, requestPassphrase, syncRememberedState]);
+
+  const performDisableBackup = useCallback(async () => {
+    setBackupBusy(true);
+    try {
+      await disableBackup();
+      if (deviceId) {
+        try {
+          await deleteConfigBackup(deviceId);
+        } catch {
+          /* best effort — the slot can be removed from Manage later */
+        }
+      }
+      toast("Backup disabled", "success");
+    } finally {
+      setBackupBusy(false);
+    }
+  }, [disableBackup, deviceId]);
+
+  const handleBackupNow = useCallback(async () => {
+    setBackupBusy(true);
+    try {
+      await uploadConfigBackup({ force: true });
+      toast("Backup uploaded", "success");
+    } catch (err) {
+      toastError("Backup failed", err);
+    } finally {
+      setBackupBusy(false);
+    }
+  }, []);
+
+  const openRestore = useCallback(
+    async (source: "pair" | "button") => {
+      let slots: BackupMeta[];
+      try {
+        slots = (await listConfigBackups()).backups;
+      } catch (err) {
+        if (source === "button") {
+          toastError(
+            isUnsupported(err) ? "Update the backend to 1.6 or newer to use config backups" : "Could not list backups",
+            err,
+          );
+        }
+        return;
+      }
+      if (slots.length === 0) {
+        if (source === "button") toast("No backup on this backend yet", "info");
+        return;
+      }
+      flow.open("confirmRestore", slots);
+    },
+    [flow],
+  );
+
+  const restoreFromSlot = useCallback(
+    async (slot: BackupMeta) => {
+      if (slot.configVersion > CURRENT_CONFIG_VERSION) {
+        toast("This backup needs a newer app version", "error");
+        return;
+      }
+      const result = await requestPassphrase("import");
+      if (!result) return;
+      setBackupStage("downloading");
+      try {
+        const downloaded = await getConfigBackup(slot.deviceId);
+        await importConfigFromEnvelope(downloaded.envelope, result.passphrase, setBackupStage);
+        // Applied = the revision of the envelope actually restored, not the
+        // list we showed earlier and not this phone's clock.
+        if (slot.deviceId === WEB_SLOT_ID) markWebSlotApplied(downloaded.revision);
+        try {
+          await syncRememberedState(result);
+        } catch (err) {
+          console.warn("Failed to persist remembered passphrase", err);
+        }
+        toast("Configuration restored", "success");
+        // Same follow-up as the file import (#168): re-confirm the home
+        // network so local URLs come back, and say so if we stay away.
+        void reevaluateHomeNetworkAfterImport().then(() => {
+          const st = useConfigStore.getState();
+          if (st.autoSwitchNetwork && st.networkAwayFromHome) {
+            toast(
+              "Services are using remote URLs until your home WiFi is confirmed. Open Settings → Network → Home Networks to finish setup.",
+              "info",
+            );
+          }
+        });
+        void refreshSlots();
+        if (!useBackendStore.getState().backupEnabled) {
+          const passphrase = result.passphrase;
+          afterProgressRef.current = () => flow.open("offerEnableAfterRestore", passphrase);
+        }
+      } catch (err) {
+        toastError("Restore failed", err);
+      } finally {
+        setBackupStage(null);
+      }
+    },
+    [flow, importConfigFromEnvelope, requestPassphrase, syncRememberedState, refreshSlots],
+  );
+
+  const applyWebSlot = useCallback(async () => {
+    // Re-read so Apply acts on the newest web revision, not a stale list.
+    let target = webSlot;
+    try {
+      const { backups } = await listConfigBackups();
+      setSlots(backups);
+      noteBackupList(backups);
+      target = backups.find((s) => s.deviceId === WEB_SLOT_ID);
+    } catch {
+      /* fall back to what we have */
+    }
+    if (!target) {
+      toast("The web configuration is no longer on the backend", "info");
+      return;
+    }
+    flow.open("confirmRestore", [target]);
+  }, [flow, webSlot]);
+
+  const openManage = useCallback(async () => {
+    try {
+      const { backups } = await listConfigBackups();
+      if (backups.length === 0) {
+        toast("No backup on this backend yet", "info");
+        return;
+      }
+      flow.open("manageSlots", backups);
+    } catch (err) {
+      toastError("Could not list backups", err);
+    }
+  }, [flow]);
+
+  const performDeleteSlot = useCallback(
+    async (slot: BackupMeta) => {
+      try {
+        await deleteConfigBackup(slot.deviceId);
+        toast("Backup deleted", "success");
+        void refreshSlots();
+      } catch (err) {
+        toastError("Could not delete backup", err);
+      }
+    },
+    [refreshSlots],
+  );
 
   useEffect(() => {
     if (mode === "scanning" && !permission?.granted) {
@@ -414,6 +717,71 @@ export default function BackendScreen() {
                 ) : null}
               </Card>
 
+              <Card className="gap-3 mb-3">
+                <Toggle
+                  label="Keep an encrypted backup on the backend"
+                  description="Your whole configuration, encrypted on this phone with a passphrase you choose. The backend cannot read it. A new phone that pairs with this backend can restore it with the passphrase."
+                  value={backupEnabled}
+                  disabled={backupBusy || backupStage !== null || backupSupported === false}
+                  onValueChange={(v) => {
+                    if (v) void handleEnableBackup();
+                    else flow.open("confirmDisableBackup");
+                  }}
+                />
+                {backupSupported === false ? (
+                  <Text className="text-amber-400 text-xs">
+                    Update the backend to 1.6 or newer to use config backups.
+                  </Text>
+                ) : backupEnabled ? (
+                  <Text className={lastBackupError ? "text-amber-400 text-xs" : "text-zinc-500 text-xs"}>
+                    {lastBackupError
+                      ? `Last backup failed: ${lastBackupError}`
+                      : backupInFlight
+                        ? "Uploading…"
+                        : lastBackupAt
+                          ? `Last backup ${formatTimeAgo(new Date(lastBackupAt).toISOString())}`
+                          : "No backup uploaded yet"}
+                  </Text>
+                ) : null}
+                {webSlotPending && webSlot ? (
+                  <View className="bg-amber-950/60 border border-amber-900/60 rounded-xl px-3 py-2 flex-row items-center justify-between gap-3">
+                    <View className="flex-1">
+                      <Text className="text-amber-300 text-sm font-medium">Configuration edited on the web</Text>
+                      <Text className="text-amber-200/70 text-xs">
+                        {formatTimeAgo(new Date(webSlot.updatedAt).toISOString())} · replaces this phone's settings
+                      </Text>
+                    </View>
+                    <Button label="Apply" onPress={() => void applyWebSlot()} disabled={backupBusy || backupStage !== null} />
+                  </View>
+                ) : null}
+                <View className="flex-row gap-3">
+                  <Button
+                    label="Back up now"
+                    onPress={handleBackupNow}
+                    loading={backupBusy || backupInFlight}
+                    disabled={!backupEnabled || backupStage !== null}
+                    className="flex-1"
+                  />
+                  <Button
+                    label="Restore…"
+                    variant="outline"
+                    onPress={() => void openRestore("button")}
+                    disabled={backupBusy || backupStage !== null || backupSupported === false}
+                    className="flex-1"
+                  />
+                </View>
+                <Pressable
+                  onPress={() => void openManage()}
+                  disabled={backupBusy || backupStage !== null || backupSupported === false}
+                  className="active:opacity-80"
+                >
+                  <View className="flex-row items-center justify-center gap-2 py-1">
+                    <Icon icon={Trash2} size={14} color="#a1a1aa" />
+                    <Text className="text-zinc-400 text-sm">Manage backend backups…</Text>
+                  </View>
+                </Pressable>
+              </Card>
+
               <Pressable onPress={handleRotate} disabled={busy} className="active:opacity-80 mb-3">
                 <Card className="flex-row items-center justify-center gap-2">
                   <Icon icon={RefreshCw} size={16} color="#a1a1aa" />
@@ -543,25 +911,156 @@ export default function BackendScreen() {
       )}
 
       <ConfirmModal
-        visible={confirmUnpair}
+        {...flow.bind("confirmUnpair")}
         title="Unpair backend"
         message="This will stop push notifications from this backend. Continue?"
         icon={Unlink}
         tone="danger"
         confirmLabel="Unpair"
-        onConfirm={performUnpair}
-        onCancel={() => setConfirmUnpair(false)}
+        onConfirm={() => {
+          flow.close();
+          void performUnpair();
+        }}
       />
 
       <ConfirmModal
-        visible={confirmRotate}
+        {...flow.bind("confirmRotate")}
         title="Rotate backend secret"
         message="This unpairs the current shared secret. Scan a fresh pairing QR from your backend to get a new one. Push notifications will stop until you re-pair."
         icon={RefreshCw}
         tone="danger"
         confirmLabel="Rotate"
-        onConfirm={performRotate}
-        onCancel={() => setConfirmRotate(false)}
+        onConfirm={() => {
+          flow.close();
+          void performRotate();
+        }}
+      />
+
+      <ConfirmModal
+        {...flow.bind("confirmDisableBackup")}
+        title="Stop backing up to the backend"
+        message="The backup key on this phone and this device's backup on the backend will be removed. Other devices' backups are not affected."
+        icon={CloudUpload}
+        tone="danger"
+        confirmLabel="Stop"
+        onConfirm={() => {
+          flow.close();
+          void performDisableBackup();
+        }}
+      />
+
+      <ConfirmModal
+        {...flow.bind("confirmRestore")}
+        title="Restore configuration from backend"
+        message={
+          (flow.payload("confirmRestore")?.length ?? 0) > 1
+            ? "A configuration backup is available on this backend. Restoring replaces every setting on this phone (services, dashboards, credentials). This phone stays paired. You will pick a backup and enter its passphrase next."
+            : "A configuration backup is available on this backend. Restoring replaces every setting on this phone (services, dashboards, credentials). This phone stays paired. You will enter the backup passphrase next."
+        }
+        icon={CloudDownload}
+        tone="danger"
+        confirmLabel="Restore"
+        onConfirm={() => {
+          const slots = flow.payload("confirmRestore") ?? [];
+          flow.close();
+          flow.whenClear(() => {
+            if (slots.length === 1) void restoreFromSlot(slots[0]);
+            else flow.open("pickSlot", slots);
+          });
+        }}
+      />
+
+      <ActionSheet
+        {...flow.bind("pickSlot")}
+        title="Choose a backup"
+        subtitle="Any device's backup, or the one edited on the backend's web UI, can be restored with its passphrase."
+        actions={(flow.payload("pickSlot") ?? []).map((slot) => ({
+          label: slotLabel(slot),
+          subtitle: slotSubtitle(slot),
+          icon: <Icon icon={CloudDownload} size={18} color="#a1a1aa" />,
+          disabled: slot.configVersion > CURRENT_CONFIG_VERSION,
+          onPress: () => void restoreFromSlot(slot),
+        }))}
+      />
+
+      <ActionSheet
+        {...flow.bind("manageSlots")}
+        title="Backend backups"
+        subtitle="Delete a backup slot. Unpaired slots belong to devices that rotated or unpaired."
+        actions={(flow.payload("manageSlots") ?? []).map((slot) => ({
+          label: `Delete ${slotLabel(slot).toLowerCase()}`,
+          subtitle: slotSubtitle(slot),
+          icon: <Icon icon={Trash2} size={18} color="#f87171" />,
+          variant: "danger" as const,
+          onPress: () => flow.open("confirmDeleteSlot", slot),
+        }))}
+      />
+
+      <ConfirmModal
+        {...flow.bind("confirmDeleteSlot")}
+        title="Delete backup"
+        message={`Delete the backup from ${flow.payload("confirmDeleteSlot") ? slotLabel(flow.payload("confirmDeleteSlot")!).toLowerCase() : "this device"}? This cannot be undone.`}
+        icon={Trash2}
+        tone="danger"
+        confirmLabel="Delete"
+        onConfirm={() => {
+          const slot = flow.payload("confirmDeleteSlot");
+          flow.close();
+          if (slot) void performDeleteSlot(slot);
+        }}
+      />
+
+      <ConfirmModal
+        {...flow.bind("offerEnableAfterRestore")}
+        title="Keep this phone backed up too?"
+        message="Changes made on this phone will be encrypted with the same passphrase and uploaded to the backend, so every paired phone can restore the latest configuration."
+        icon={CloudUpload}
+        confirmLabel="Enable"
+        cancelLabel="Not now"
+        onConfirm={() => {
+          const passphrase = flow.payload("offerEnableAfterRestore");
+          flow.close();
+          flow.whenClear(() => {
+            if (!passphrase) return;
+            void (async () => {
+              try {
+                if ((await requireDeviceAuth("Authenticate to enable backend backup")) === "cancelled") return;
+                await enableBackupWith(passphrase);
+              } catch (err) {
+                toastError("Could not enable backup", err);
+              }
+            })();
+          });
+        }}
+      />
+
+      <PassphrasePrompt
+        visible={flow.isOpen("passphrase")}
+        mode={flow.payload("passphrase")?.mode ?? "import"}
+        hasRemembered={hasRemembered}
+        onUseRemembered={useRemembered}
+        onSubmit={(result) => {
+          const request = flow.payload("passphrase");
+          flow.close();
+          flow.whenClear(() => request?.resolve(result));
+        }}
+        onCancel={() => {
+          const request = flow.payload("passphrase");
+          flow.close();
+          flow.whenClear(() => request?.resolve(null));
+        }}
+        onClosed={flow.onClosed}
+      />
+
+      <ProgressModal
+        visible={backupStage !== null}
+        title={backupStage ? BACKUP_STAGE_COPY[backupStage].title : ""}
+        subtitle={backupStage ? BACKUP_STAGE_COPY[backupStage].subtitle : undefined}
+        onClosed={() => {
+          const next = afterProgressRef.current;
+          afterProgressRef.current = null;
+          next?.();
+        }}
       />
     </ScreenWrapper>
   );

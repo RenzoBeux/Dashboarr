@@ -7,6 +7,7 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
 import { APP_THEMES } from "@/lib/app-themes";
 import { useConfigStore } from "@/store/config-store";
+import { isWebSlotPending, useBackendStore } from "@/store/backend-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { lanGuardBlockReason } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
@@ -33,6 +34,7 @@ const NOTIF_CATEGORY_KEYS = [
 
 export default function SettingsScreen() {
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
+  const webSlotPending = useBackendStore((s) => isWebSlotPending(s));
   const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
@@ -135,10 +137,13 @@ export default function SettingsScreen() {
           icon={Bell}
           label="Notifications"
           subtitle={
-            notifEnabled
-              ? `On · ${notifOnCount} of ${NOTIF_CATEGORY_KEYS.length} alerts`
-              : "Off"
+            webSlotPending
+              ? "Backend: configuration edited on the web"
+              : notifEnabled
+                ? `On · ${notifOnCount} of ${NOTIF_CATEGORY_KEYS.length} alerts`
+                : "Off"
           }
+          subtitleTone={webSlotPending ? "warn" : "default"}
           onPress={() => router.push("/settings/notifications")}
         />
         <SettingsRow

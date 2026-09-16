@@ -1,13 +1,21 @@
 /**
- * Wire types for the read-only web UI (`GET /ui/api/overview` and
- * `GET /ui/api/session`). Deliberately import-free so `web/` can consume them
- * with a type-only import and stay decoupled from server code.
+ * Wire types for the web UI (`GET /ui/api/overview`, `GET /ui/api/session`,
+ * the backup routes). Deliberately import-free so `web/` can consume them
+ * and stay decoupled from server code.
  *
  * Redaction contract: nothing here ever carries an API key, username,
  * password, WoL MAC, device shared secret, Expo push token or raw webhook
  * payload. `buildOverview` constructs every object field by field so a new
  * column on a stored row cannot leak by accident.
  */
+
+/**
+ * Reserved backup slot id written by the web editor (Refs #385). Phones read it
+ * like any other slot; `platform` is "web" and it never has a device row.
+ * Defined here, import-free, so the backend routes and the web bundle share
+ * one definition.
+ */
+export const WEB_SLOT_ID = "web";
 
 export interface OverviewDevice {
   id: string;
@@ -62,6 +70,20 @@ export interface OverviewWebhook {
   summary: string | null;
 }
 
+export interface OverviewBackup {
+  deviceId: string;
+  platform: string;
+  appVersion: string | null;
+  /** The device row still exists; false after unpair / rotate. */
+  paired: boolean;
+  sizeBytes: number;
+  configVersion: number;
+  exportedAt: number;
+  updatedAt: number;
+  /** Monotonic per-slot counter, bumped on every write; the editor's optimistic-concurrency token. */
+  revision: number;
+}
+
 export interface Overview {
   version: string;
   uptimeMs: number;
@@ -74,6 +96,8 @@ export interface Overview {
   devices: OverviewDevice[];
   instances: OverviewInstance[];
   webhooks: OverviewWebhook[];
+  /** Passphrase-encrypted config backups, metadata only. The envelope never leaves /config/backups. */
+  backups: OverviewBackup[];
 }
 
 export interface UiSession {

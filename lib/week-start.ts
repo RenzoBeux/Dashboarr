@@ -1,16 +1,12 @@
 import { getCalendars } from "expo-localization";
+import type { WeekStart } from "@/lib/week-start-values";
 
-// First-day-of-week preference for the calendar grid (#320). "auto" follows
-// the device — on iOS that's Settings > General > Language & Region > First
-// Day of Week; on Android it's derived from the locale.
-export const WEEK_STARTS = ["auto", "sunday", "monday"] as const;
-export type WeekStart = (typeof WEEK_STARTS)[number];
-
-export const DEFAULT_WEEK_START: WeekStart = "auto";
-
-export function isValidWeekStart(value: unknown): value is WeekStart {
-  return (WEEK_STARTS as readonly unknown[]).includes(value);
-}
+// The values and validator live in lib/week-start-values.ts (pure); this
+// module adds the device-dependent resolver. "auto" follows the device — on
+// iOS that's Settings > General > Language & Region > First Day of Week; on
+// Android it's derived from the locale.
+export { WEEK_STARTS, DEFAULT_WEEK_START, isValidWeekStart } from "@/lib/week-start-values";
+export type { WeekStart } from "@/lib/week-start-values";
 
 /**
  * Resolve the preference to a JS day-of-week number (0 = Sunday … 6 =

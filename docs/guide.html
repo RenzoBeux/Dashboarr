@@ -903,20 +903,21 @@
               <tr><td><code>TRUST_PROXY</code></td><td>false</td><td></td></tr>
               <tr><td><code>OFFLINE_THRESHOLD</code></td><td>3</td><td>Consecutive failed 30-second health checks before a "service offline" push. 3 is about 90 seconds; use 10 for about 5 minutes if your DDNS is slow.</td></tr>
               <tr><td><code>BACKEND_USE_REMOTE</code></td><td>false</td><td>Poll services over their local URLs (default) or remote URLs. The app's own local/remote toggle is always ignored server-side.</td></tr>
-              <tr><td><code>WEB_UI_PASSWORD</code></td><td>unset</td><td>At least 8 characters. Enables the read-only web status page (see below). Unset means the page only shows a setup hint.</td></tr>
+              <tr><td><code>WEB_UI_PASSWORD</code></td><td>unset</td><td>At least 8 characters. Enables the web status page and config editor (see below). Unset means the page only shows a setup hint.</td></tr>
               <tr><td><code>CONFIG_ENCRYPTION_KEY</code></td><td>unset</td><td>At least 16 characters. Encrypts stored service credentials at rest with AES-256-GCM. A shorter value makes the process refuse to start. Losing an in-use key means re-pushing config from the app.</td></tr>
             </tbody>
           </table>
         </div>
 
-        <h4>Web status page</h4>
+        <h4>Web status page and config editor</h4>
         <p>
-          With <code>WEB_UI_PASSWORD</code> set, opening the backend URL in a browser shows a
-          <strong>read-only</strong> status page: the instances synced from the app with their poller
-          state and last error, the paired phones, and the last 50 webhooks received. It is meant for the
-          moment a notification did not arrive and your phone is not in front of you. It never shows API
-          keys, passwords, device secrets or raw webhook payloads, and it cannot change anything. Pairing
-          still happens from the log and the app, not from this page.
+          With <code>WEB_UI_PASSWORD</code> set, opening the backend URL in a browser shows a status
+          page: the instances synced from the app with their poller state and last error, the paired
+          phones, and the last 50 webhooks received. It is meant for the moment a notification did not
+          arrive and your phone is not in front of you. It never shows API keys, passwords, device
+          secrets or raw webhook payloads. Pairing still happens from the log and the app, not from this
+          page. It also lists each device's encrypted backup slot with its size and age, never its
+          contents, and from there you can <a href="#web-editor">edit a configuration from your PC</a>.
         </p>
 
         <h3>Pairing</h3>
@@ -1064,12 +1065,48 @@
         </ul>
         <p>
           Backend push must be re-paired on the new phone, since the push token belongs to the
-          physical device. Restart the backend for a fresh pairing token.
+          physical device. Restart the backend for a fresh pairing token. If the old phone kept a
+          backend backup (below), the new phone is offered it right after pairing, so the file
+          export is not needed for that move.
         </p>
         <p>
           The same screen also holds <strong>Clear image cache</strong>, for when cached posters and
           backdrops add up, and the <strong>Demo Mode</strong> toggle under Advanced.
         </p>
+
+        <h3 id="backend-backup">Backend backup and sharing <a class="anchor" href="#backend-backup" aria-label="Permalink to Backend backup">#</a></h3>
+        <p>
+          With a paired backend (1.6 or newer), <strong>Settings, Notifications, Backend</strong> has a
+          <strong>Keep an encrypted backup on the backend</strong> switch. Turning it on asks for your
+          device biometric or passcode, then for a backup passphrase (the same rules as the file
+          export). From then on every configuration change is encrypted on the phone and uploaded a
+          few seconds later; <strong>Back up now</strong> forces one.
+        </p>
+        <ul>
+          <li>The upload is the same encrypted envelope as the export file, minus this phone's backend pairing. The backend stores it as-is and <strong>cannot read it</strong>; the passphrase never leaves the phone. What the phone keeps is a key derived from the passphrase, so uploads do not ask for anything.</li>
+          <li>Each paired device has its own backup slot. The slot survives <strong>Unpair</strong>, <strong>Rotate secret</strong> and a reinstall: it shows as <em>unpaired</em> on the backend's web page until that phone pairs again or someone deletes it.</li>
+          <li><strong>Restoring.</strong> When a phone pairs with the backend, the app lists the available backups and offers to restore one. <strong>Restore…</strong> on the Backend screen does the same later. A restore replaces every setting on the phone, like a file import, but keeps that phone's own pairing. It asks for the backup's passphrase, and then offers to keep the new phone backed up with the same passphrase.</li>
+          <li><strong>Sharing.</strong> That is also how a second phone or a family member gets your whole setup: they pair with the same backend, pick your backup ("iPhone · app 1.19 · 2h ago"), and type the passphrase you gave them. Nothing else changes hands.</li>
+          <li><strong>Manage backend backups…</strong> lists every slot and lets you delete one, including stale unpaired ones.</li>
+          <li>Anyone paired with the backend can download any slot, so the passphrase is what protects it. Pick one you would not use for a file you post publicly. Demo Mode never uploads.</li>
+        </ul>
+
+        <h3 id="web-editor">Editing from your PC <a class="anchor" href="#web-editor" aria-label="Permalink to Editing from your PC">#</a></h3>
+        <p>
+          The backend's web page (backend 1.7 or newer) has an <strong>Edit</strong> button on every
+          backup. It downloads the encrypted backup, asks for its passphrase and decrypts it
+          <strong>in your browser</strong>; the passphrase is never sent to the backend. You can add,
+          edit and remove service instances (name, URLs, credentials, certificate bypass, Seerr sign-in
+          mode) and change the notification toggles and Apprise settings. Dashboards, widgets, home
+          networks, Wake-on-LAN devices and appearance stay as they were and are still edited on the
+          phone.
+        </p>
+        <ul>
+          <li><strong>Save to backend</strong> re-encrypts with the same passphrase and writes a separate <em>web</em> slot. It never touches a phone's own backup. If someone saved from another tab in the meantime, you are asked before overwriting.</li>
+          <li>On the phone, the Backend screen then shows <strong>Configuration edited on the web</strong> with an <strong>Apply</strong> button, and the Settings rows leading there turn amber. Apply is a normal restore: it replaces every setting, asks for the passphrase, keeps the phone's pairing, and the prompt clears. Nothing is applied without you tapping it; whatever you apply or upload last is the configuration.</li>
+          <li><strong>Starting from zero.</strong> <strong>New configuration</strong> asks for a passphrase and opens a blank configuration with the app's defaults. Save it, pair the phone, and the restore prompt after pairing offers it, so a first-time setup can be done entirely on a keyboard.</li>
+          <li>Over plain <code>http://</code> the page itself is only as trustworthy as the network that delivered it, so the editor shows a notice on LAN addresses. Use HTTPS for anything beyond your own network.</li>
+        </ul>
 
         <h3 id="config-file">Writing a config file on your PC <a class="anchor" href="#config-file" aria-label="Permalink to Writing a config file on your PC">#</a></h3>
         <p>

@@ -7,7 +7,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - **Repository:** public on GitHub (`renzobeux/dashboarr`)
 - **Android:** available on Google Play Store (production)
 - **iOS:** available on the Apple App Store
-- **Backend:** optional self-hosted companion server for push notifications (Docker or Node.js), with an optional password-protected read-only web status page
+- **Backend:** optional self-hosted companion server for push notifications (Docker or Node.js), with an optional password-protected web UI: status page plus a browser-side config editor
 
 ## My Active Stack (Priority Order)
 1. qBittorrent — torrent client (core)
@@ -29,7 +29,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 - Local/remote URL switching per service (WiFi-based auto-detection via expo-location, or manual toggle)
 - SSL/TLS and reverse proxy support for all connections
 - Every service communicates via its official REST API using API keys
-- Optional backend (`backend/dashboarr-backend`) is a standalone Node.js service for push notification relay — not required for core functionality. It also serves an optional read-only web status page (`web/`, Vite + React, gated by `WEB_UI_PASSWORD`); the page never surfaces credentials or raw webhook payloads and the app never depends on it
+- Optional backend (`backend/dashboarr-backend`) is a standalone Node.js service for push notification relay — not required for core functionality. It also serves an optional web UI (`web/`, Vite + React, gated by `WEB_UI_PASSWORD`): a status page that never surfaces credentials or raw webhook payloads, and a config editor that decrypts a backup slot in the browser and writes a dedicated `web` slot the phone applies explicitly. The app never depends on it
 
 ## Service API Documentation (sources of truth)
 Upstream API docs and per-service gotchas live in the `service-apis` skill (`.claude/skills/service-apis/SKILL.md`). Load it before implementing or debugging any service integration, and prefer fetching the relevant doc page over guessing endpoint shapes.
@@ -115,7 +115,8 @@ When adding a new `Modal`, sheet, or screen with a text input, decide which of t
 - No index files — import directly from source files
 
 ## Config Export/Import & Versioned Migrations
-- Config backup lives in `store/config-store.ts` (export/import) + `store/config-migrations.ts` (migration chain)
+- Config backup lives in `store/config-store.ts` (export/import) + `store/config-migrations.ts` (migration chain).
+- **Pure config modules, MUST stay free of React Native, Expo and store imports** (bare imports other than `@noble/*` are also off limits): `lib/config-types.ts`, `lib/config-defaults.ts`, `lib/instance-id.ts`, `lib/week-start-values.ts`, `lib/dashboard-defaults.ts`, `lib/config-crypto-core.ts`, `store/config-schema.ts`, `store/config-migrations.ts`, `lib/service-catalog.ts`, `lib/url-validation.ts`, `lib/notification-categories.ts`. The backend's web editor bundles them (Vite alias `@/` → repo root, `@noble/*` → the backend's node_modules), and the backend Docker image is built from the **repo root** (`docker build -f backend/dashboarr-backend/Dockerfile .`) so they are in the build context. Bind Expo through a facade (`lib/uuid.ts`, `lib/config-crypto.ts`) instead of importing it in the shared file. The backend backup (`services/backend-backup.ts`, Refs #385) uploads the same envelope with `backend` stripped, encrypted with a key cached in SecureStore; restore goes through `importConfigFromEnvelope`, so the two paths never diverge
 - `CURRENT_CONFIG_VERSION` in `config-migrations.ts` is the source of truth for the schema version
 - Export always writes `CURRENT_CONFIG_VERSION`; import detects the version and chains migrations up
 - Migration functions live in a `migrations` record keyed by source version: `N: (payload) => ({ ...transformed, version: N+1 })`
