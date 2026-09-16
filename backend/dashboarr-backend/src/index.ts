@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import Fastify from "fastify";
 import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
+import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import QRCode from "qrcode";
 import { getEnv } from "./env.js";
@@ -17,6 +18,9 @@ import { pairRoutes } from "./routes/pair.js";
 import { deviceRoutes } from "./routes/device.js";
 import { configRoutes } from "./routes/config.js";
 import { notificationRoutes } from "./routes/notifications.js";
+import { uiDataRoutes, uiLoginRoutes } from "./routes/ui.js";
+import { registerWebStatic } from "./routes/ui-static.js";
+import { createUiSessionStore } from "./auth/ui-session.js";
 import { radarrWebhook } from "./routes/webhooks/radarr.js";
 import { sonarrWebhook } from "./routes/webhooks/sonarr.js";
 import { overseerrWebhook } from "./routes/webhooks/overseerr.js";
@@ -204,6 +208,22 @@ async function main(): Promise<void> {
     await notificationRoutes(scope);
   });
 
+  // Web UI (routes/ui.ts). Cookie parsing is registered on the root instance
+  // so both scopes below see request.cookies / reply.setCookie. Login gets the
+  // same tight cap as pairing; the rest shares the app-traffic ceiling. The
+  // static bundle is registered last, on the root, outside every rate limit.
+  await app.register(cookie);
+  const uiOpts = { password: env.WEB_UI_PASSWORD, sessions: createUiSessionStore() };
+  await app.register(async (scope) => {
+    await scope.register(rateLimit, { max: 5, timeWindow: "1 minute" });
+    await uiLoginRoutes(scope, uiOpts);
+  });
+  await app.register(async (scope) => {
+    await scope.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+    await uiDataRoutes(scope, uiOpts);
+  });
+  const webUiServed = await registerWebStatic(app);
+
   // Start the polling scheduler. Will pick up whatever config has been synced.
   initScheduler();
 
@@ -225,6 +245,12 @@ async function main(): Promise<void> {
   const hasPublicUrl = !!env.PUBLIC_URL;
   const publicUrl = env.PUBLIC_URL?.replace(/\/$/, "") ?? address;
   await printStartupPairing(publicUrl, hasPublicUrl, env.DATA_DIR);
+
+  if (!env.WEB_UI_PASSWORD) {
+    console.log("Web UI disabled: set WEB_UI_PASSWORD (8+ chars) to enable the read-only status page at /");
+  } else if (webUiServed) {
+    console.log(`Web UI: ${publicUrl}/`);
+  }
 
   const shutdown = async (signal: string) => {
     console.log(`\n${signal} received — shutting down`);
