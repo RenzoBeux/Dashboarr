@@ -170,7 +170,7 @@ npm run dev
 The server boots on `:4000`, prints a QR in the logs, and creates
 `./data/dashboarr.db` next to `package.json`.
 
-### Web UI (optional, read-only)
+### Web UI (optional): status page and config editor
 
 The backend serves a small status page at `http://<backend>/`. Set
 `WEB_UI_PASSWORD` (8+ characters) to enable it:
@@ -192,8 +192,45 @@ the phone in hand:
 - **Recent webhooks**: the last 50 with source, event type and a one-line
   summary (movie/series title, Seerr subject).
 - **Config backups**: one row per device slot with platform, app and config
-  version, size and times, plus an *unpaired* badge for slots whose device is
-  gone. Metadata only; the encrypted blob is never shown or downloadable here.
+  version, size, times and revision, plus an *unpaired* badge for slots whose
+  device is gone and a *web editor* badge for the slot written from the browser.
+
+#### Editing from the browser (backend 1.7+)
+
+Every backup row has an **Edit** button. The page downloads the encrypted
+envelope, asks for its passphrase, and decrypts it **in the browser** with the
+same code the app uses; the passphrase is never sent anywhere. The editor
+covers service instances (add, edit, remove: name, URLs, credentials per
+service, certificate bypass, Seerr sign-in mode) and the notification toggles
+and Apprise settings. Dashboards, widgets, home networks, Wake-on-LAN and
+appearance pass through untouched and stay phone-only.
+
+**Save to backend** re-encrypts with the same passphrase and writes a
+dedicated `web` slot; it never overwrites a phone's own slot. The save carries
+the slot revision the editor loaded, so two tabs cannot silently overwrite each
+other: a stale save gets a 409 and an explicit *Overwrite* choice.
+
+On the phone, the Backend screen (and the Settings rows leading to it) then
+shows **Configuration edited on the web** with an **Apply** button. Applying is
+the same full restore as any other backup, keeps the phone's pairing, and
+records which revision was applied so the prompt clears. Nothing is ever pushed
+into a phone silently; last applied wins.
+
+#### Starting from zero
+
+**New configuration** asks for a passphrase and opens the editor on a blank
+configuration with the app's own defaults. Save it, pair the phone, and the
+post-pairing restore prompt offers it. The whole first-time setup can happen on
+a keyboard.
+
+#### What "the backend never sees the passphrase" means
+
+It holds for the untampered bundle this image serves. A compromised backend,
+or an attacker on the network when the page is loaded over plain HTTP, can
+serve a modified page and capture the passphrase. The editor shows a notice on
+non-localhost `http://` origins. Use HTTPS (the Caddy snippet below) for
+anything beyond your own LAN. Nothing about the passphrase is stored in the
+browser: the derived key lives in the tab's memory until you close the editor.
 
 It is read-only and deliberately never shows API keys, usernames, passwords,
 device secrets, push tokens or raw webhook payloads (those carry file paths and,
@@ -204,7 +241,10 @@ Auth details: the password is separate from the device bearer on purpose (the
 bearer can rewrite the whole config and lives on the phone, which is the thing
 you do not have when you open this page). Login sets an `HttpOnly`,
 `SameSite=Strict` cookie scoped to the `ui/api` path, valid 24 h and held in
-memory, so a restart logs you out. The cookie is only marked `Secure` when the request
+memory, so a restart logs you out. The editor's writes additionally require a
+same-origin request (`Sec-Fetch-Site: same-origin`, or a matching `Origin` on
+older browsers; behind nginx that fallback needs `TRUST_PROXY=true` and
+`X-Forwarded-Host`). The cookie is only marked `Secure` when the request
 arrived over HTTPS, which behind a TLS-terminating proxy requires
 `TRUST_PROXY=true`. Login is limited to 5 attempts per minute per IP. Without
 `WEB_UI_PASSWORD` the page is still served but shows a setup hint and every
@@ -226,9 +266,12 @@ npm run dev:web                                     # UI on :5173, proxies /ui/a
 
 ### Building the Docker image manually
 
+The image is built from the **repository root**, because the web editor
+bundles the app's pure config modules from `lib/` and `store/`:
+
 ```sh
-cd backend/dashboarr-backend
-docker build -t dashboarr-backend .
+git clone https://github.com/RenzoBeux/Dashboarr.git && cd Dashboarr
+docker build -f backend/dashboarr-backend/Dockerfile -t dashboarr-backend .
 docker run -d --name dashboarr-backend \
   -p 4000:4000 \
   -v dashboarr-data:/data \
@@ -236,6 +279,9 @@ docker run -d --name dashboarr-backend \
   -e PUBLIC_URL=https://dashboarr.yourdomain.com \
   dashboarr-backend
 ```
+
+`backend/dashboarr-backend/docker-compose.yml` already points its `build` at
+the repository root.
 
 ---
 
@@ -270,13 +316,16 @@ docker run -d --name dashboarr-backend \
 | `POST` | `/notifications/apprise/test` | bearer | Send a test notification to Apprise only; returns the real success/failure |
 | `PUT`  | `/config/backup` | bearer | Store the caller's passphrase-encrypted config envelope in its own per-device slot. Body `{ envelope, configVersion, exportedAt, appVersion? }`; envelope shape is validated, never decrypted. 4 MB limit (`413 payload_too_large`), 10/min |
 | `GET`  | `/config/backups` | bearer | Metadata for every slot (`deviceId`, `platform`, `appVersion`, `paired`, `sizeBytes`, `configVersion`, `exportedAt`, `updatedAt`, `mine`). Never the envelope |
-| `GET`  | `/config/backups/:deviceId` | bearer | Metadata plus the envelope for one slot. Any paired device may read any slot — that is the sharing flow; the passphrase is the only secret |
+| `GET`  | `/config/backups/:deviceId` | bearer | Metadata plus the envelope for one slot (`:deviceId` may be `web`). Any paired device may read any slot — that is the sharing flow; the passphrase is the only secret |
 | `DELETE` | `/config/backups/:deviceId` | bearer | Remove a slot (yours or a stale one). 10/min |
 | `GET`  | `/` | none | The web UI bundle (public code; the data behind it is gated). Hashed assets under `/assets/` |
 | `POST` | `/ui/api/login` | `WEB_UI_PASSWORD` in body | `{ "password": "…" }` → sets the `dashboarr_ui_session` cookie. 5/min per IP. `403 ui_disabled` when the var is unset |
 | `GET`  | `/ui/api/session` | none | `{ enabled, authenticated }` — lets the page pick login / setup hint / dashboard |
 | `POST` | `/ui/api/logout` | UI cookie | Revokes the session and clears the cookie |
-| `GET`  | `/ui/api/overview` | UI cookie | Everything the page renders in one redacted JSON document (`version`, `uptimeMs`, `encryptionEnabled`, `devices[]`, `instances[]`, `webhooks[]`, `backups[]` metadata). Never credentials, payloads or backup envelopes |
+| `GET`  | `/ui/api/overview` | UI cookie | Everything the page renders in one redacted JSON document (`version`, `uptimeMs`, `encryptionEnabled`, `devices[]`, `instances[]`, `webhooks[]`, `backups[]` metadata incl. `revision`). Never credentials, payloads or backup envelopes |
+| `GET`  | `/ui/api/backups/:id/envelope` | UI cookie | A slot's metadata plus its encrypted envelope, for the browser to decrypt. `:id` is a device UUID or `web` |
+| `PUT`  | `/ui/api/backups/web` | UI cookie + same-origin | Write the web editor's slot. Body `{ envelope, configVersion, exportedAt, expectedRevision }`; `expectedRevision` must equal the stored revision (`null` = must not exist) or the answer is `409 { error: "conflict", current }`. 4 MB, 10/min |
+| `DELETE` | `/ui/api/backups/web` | UI cookie + same-origin | Remove the web slot; optional `{ expectedRevision }`. 10/min |
 | `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred). Optional `?instance=<uuid>` for per-instance attribution |
 | `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
 | `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook. Optional `?instance=<uuid>` |
@@ -303,7 +352,8 @@ logs. The path variant remains available for services that can't send custom
 headers.
 
 Rate limits: `/pair/*` is capped at 5 req/min, `/webhooks/*` at 60 req/min,
-`PUT /config/backup` and `DELETE /config/backups/:id` at 10 req/min,
+`PUT /config/backup`, `DELETE /config/backups/:id`, `PUT /ui/api/backups/web` and
+`DELETE /ui/api/backups/web` at 10 req/min,
 everything else at 120 req/min, all per source IP.
 
 Auth is per-route: there is no global hook and no public-path allowlist, so
