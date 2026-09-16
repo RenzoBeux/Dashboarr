@@ -46,6 +46,33 @@ The warning is surfaced in:
    Seerr request appears — the backend fires an Expo push that lands on
    your phone whether the app is running or not.
 
+### Config backup and sharing (backend 1.6+)
+
+Optionally the app also keeps a **passphrase-encrypted backup of its entire
+configuration** on the backend: turn on *Keep an encrypted backup on the
+backend* in the app's Backend screen, choose a passphrase (8+ characters),
+and from then on every config change is re-uploaded a few seconds later.
+
+- The blob is the same AES-256-GCM envelope the app's *Export config* file
+  uses, encrypted on the phone with a key derived from your passphrase
+  (PBKDF2-SHA256, 100k rounds). **The backend never sees the passphrase and
+  cannot read the backup.** It stores ciphertext plus a little metadata (size,
+  config version, platform, time).
+- **One slot per paired device.** A slot survives *Unpair*, *Rotate secret*
+  and a reinstall: it shows as *unpaired* until the phone pairs again or
+  someone deletes it from the app.
+- **Restore and sharing.** When a phone pairs, the app lists the existing
+  backups ("iPhone · app 1.19.0 · 2h ago") and offers to restore one. That is
+  also how you hand a full config to a second phone or a family member: they
+  pair with the same backend, pick your slot, and type the passphrase you gave
+  them. Their own pairing is kept (the synced payload carries no backend
+  credentials). After a restore the app offers to keep the new phone backed up
+  too.
+- **What a stolen bearer gains:** an offline guessing target. Any paired
+  device can download any slot, so pick a passphrase you would not use for a
+  file you post publicly. The backend rate-limits uploads and deletes to
+  10/min per IP; the web UI only ever shows metadata.
+
 ### Multi-instance support
 
 Each service kind can have multiple instances (e.g. "Radarr Home" and "Radarr
@@ -68,7 +95,8 @@ Your backend          ──unauthenticated POST──▶  https://exp.host/.../
 
 The backend never holds any Expo credentials. It just knows your phone's
 `ExponentPushToken[...]` (scoped to the shared Dashboarr `projectId`) and fires
-pushes at it through Expo's public endpoint.
+pushes at it through Expo's public endpoint. When config backup is on, it also
+holds a passphrase-encrypted envelope it cannot open (see above).
 
 ---
 
@@ -163,6 +191,9 @@ the phone in hand:
   whether Expo has rejected the push token.
 - **Recent webhooks**: the last 50 with source, event type and a one-line
   summary (movie/series title, Seerr subject).
+- **Config backups**: one row per device slot with platform, app and config
+  version, size and times, plus an *unpaired* badge for slots whose device is
+  gone. Metadata only; the encrypted blob is never shown or downloadable here.
 
 It is read-only and deliberately never shows API keys, usernames, passwords,
 device secrets, push tokens or raw webhook payloads (those carry file paths and,
@@ -237,11 +268,15 @@ docker run -d --name dashboarr-backend \
 | `PUT`  | `/config` | bearer | Replace config (push-only — no GET by design, avoids exposing API keys), hot-reload pollers. Accepts the multi-instance shape `{ instances: [{ id, kind, … }], notifications }` and the legacy `{ services: [{ id, … }], notifications }` shape for back-compat. `notifications` may include an optional `apprise: { enabled, url, tags }` block (see Apprise below) |
 | `POST` | `/notifications/test` | bearer | Fire a test push to all paired devices (also fans out to Apprise when enabled) |
 | `POST` | `/notifications/apprise/test` | bearer | Send a test notification to Apprise only; returns the real success/failure |
+| `PUT`  | `/config/backup` | bearer | Store the caller's passphrase-encrypted config envelope in its own per-device slot. Body `{ envelope, configVersion, exportedAt, appVersion? }`; envelope shape is validated, never decrypted. 4 MB limit (`413 payload_too_large`), 10/min |
+| `GET`  | `/config/backups` | bearer | Metadata for every slot (`deviceId`, `platform`, `appVersion`, `paired`, `sizeBytes`, `configVersion`, `exportedAt`, `updatedAt`, `mine`). Never the envelope |
+| `GET`  | `/config/backups/:deviceId` | bearer | Metadata plus the envelope for one slot. Any paired device may read any slot — that is the sharing flow; the passphrase is the only secret |
+| `DELETE` | `/config/backups/:deviceId` | bearer | Remove a slot (yours or a stale one). 10/min |
 | `GET`  | `/` | none | The web UI bundle (public code; the data behind it is gated). Hashed assets under `/assets/` |
 | `POST` | `/ui/api/login` | `WEB_UI_PASSWORD` in body | `{ "password": "…" }` → sets the `dashboarr_ui_session` cookie. 5/min per IP. `403 ui_disabled` when the var is unset |
 | `GET`  | `/ui/api/session` | none | `{ enabled, authenticated }` — lets the page pick login / setup hint / dashboard |
 | `POST` | `/ui/api/logout` | UI cookie | Revokes the session and clears the cookie |
-| `GET`  | `/ui/api/overview` | UI cookie | Everything the page renders in one redacted JSON document (`version`, `uptimeMs`, `encryptionEnabled`, `devices[]`, `instances[]`, `webhooks[]`). Never credentials or payloads |
+| `GET`  | `/ui/api/overview` | UI cookie | Everything the page renders in one redacted JSON document (`version`, `uptimeMs`, `encryptionEnabled`, `devices[]`, `instances[]`, `webhooks[]`, `backups[]` metadata). Never credentials, payloads or backup envelopes |
 | `POST` | `/webhooks/radarr` | `X-Dashboarr-Secret` header | Radarr "Custom" webhook ingestion (preferred). Optional `?instance=<uuid>` for per-instance attribution |
 | `POST` | `/webhooks/radarr/:secret` | path secret | Same, back-compat for services that can't send custom headers |
 | `POST` | `/webhooks/sonarr` | header | Sonarr "Custom" webhook. Optional `?instance=<uuid>` |
@@ -268,6 +303,7 @@ logs. The path variant remains available for services that can't send custom
 headers.
 
 Rate limits: `/pair/*` is capped at 5 req/min, `/webhooks/*` at 60 req/min,
+`PUT /config/backup` and `DELETE /config/backups/:id` at 10 req/min,
 everything else at 120 req/min, all per source IP.
 
 Auth is per-route: there is no global hook and no public-path allowlist, so

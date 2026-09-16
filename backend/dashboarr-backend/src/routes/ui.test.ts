@@ -17,10 +17,12 @@ const { createDevice } = await import("../db/repos/devices.js");
 const { upsertServiceInstance } = await import("../db/repos/service-instance.js");
 const { recordWebhook } = await import("../db/repos/events.js");
 const { setState } = await import("../db/repos/seen-state.js");
+const { upsertBackup } = await import("../db/repos/config-backup.js");
 
 const PASSWORD = "correct-horse-battery";
 const API_KEY = "SUPERSECRET-API-KEY-123";
 const DEVICE_TOKEN = "ExponentPushToken[ui-test]";
+const BACKUP_MARKER = "deadbeefcafef00d".repeat(4);
 
 async function buildApp(password: string | undefined) {
   const app = Fastify({ logger: false });
@@ -118,13 +120,21 @@ test("overview requires a session and never leaks secrets", async () => {
   setState("health:inst-radarr:online", { online: false, failCount: 3 });
   recordWebhook("radarr", { eventType: "Download", movie: { title: "Heat", year: 1995, folderPath: "/data/movies/Heat" } });
   recordWebhook("tautulli", { subject: "Playback started", ip: "203.0.113.9" });
+  upsertBackup({
+    deviceId: device.id,
+    envelope: JSON.stringify({ format: "dashboarr-encrypted-v1", cipher: { ciphertext: BACKUP_MARKER } }),
+    configVersion: 54,
+    exportedAt: Date.now(),
+    platform: "ios",
+    appVersion: "1.18.0",
+  });
 
   const token = await login(app);
   const res = await app.inject({ method: "GET", url: "/ui/api/overview", cookies: { [UI_COOKIE]: token } });
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers["cache-control"], "no-store");
 
-  for (const secret of [API_KEY, "hunter2-pass", "alice:pw@", device.sharedSecret, DEVICE_TOKEN, "/data/movies", "203.0.113.9"]) {
+  for (const secret of [API_KEY, "hunter2-pass", "alice:pw@", device.sharedSecret, DEVICE_TOKEN, "/data/movies", "203.0.113.9", BACKUP_MARKER]) {
     assert.equal(res.body.includes(secret), false, `body must not contain ${secret}`);
   }
 
@@ -133,6 +143,7 @@ test("overview requires a session and never leaks secrets", async () => {
     devices: { id: string; platform: string; invalid: boolean }[];
     instances: { id: string; localUrl: string; hasApiKey: boolean; hasCredentials: boolean; health: { online: boolean; failCount: number } | null }[];
     webhooks: { source: string; eventType: string | null; summary: string | null }[];
+    backups: { deviceId: string; paired: boolean; sizeBytes: number }[];
   };
   assert.equal(typeof body.version, "string");
   assert.deepEqual(body.devices.map((d) => [d.id, d.platform, d.invalid]), [[device.id, "ios", false]]);
@@ -149,6 +160,7 @@ test("overview requires a session and never leaks secrets", async () => {
       ["radarr", "Download", "Heat (1995)"],
     ],
   );
+  assert.deepEqual(body.backups.map((b) => [b.deviceId, b.paired, b.sizeBytes > 0]), [[device.id, true, true]]);
   await app.close();
 });
 

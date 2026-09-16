@@ -88,4 +88,20 @@ CREATE TABLE IF NOT EXISTS kv (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- One passphrase-encrypted config backup per paired device (Refs #385). The
+-- envelope is opaque to the backend. Deliberately no foreign key to devices:
+-- a slot must outlive unpair / rotate / reinstall so the phone (or another
+-- phone) can restore it later. platform is copied at upload time for that
+-- reason.
+CREATE TABLE IF NOT EXISTS config_backup (
+  device_id      TEXT PRIMARY KEY,
+  envelope       TEXT NOT NULL,
+  size_bytes     INTEGER NOT NULL,
+  config_version INTEGER NOT NULL,
+  exported_at    INTEGER NOT NULL,
+  platform       TEXT NOT NULL,
+  app_version    TEXT,
+  updated_at     INTEGER NOT NULL
+);
 `;

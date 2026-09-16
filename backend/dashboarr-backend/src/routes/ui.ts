@@ -3,6 +3,7 @@ import { z } from "zod";
 import { safeEqual } from "../auth/safe-equal.js";
 import type { UiSessionStore } from "../auth/ui-session.js";
 import { isEncryptionEnabled } from "../crypto/secrets.js";
+import { listBackupMeta } from "../db/repos/config-backup.js";
 import { listAllDevices } from "../db/repos/devices.js";
 import { listRecentWebhookEvents } from "../db/repos/events.js";
 import { getStateEntry } from "../db/repos/seen-state.js";
@@ -139,6 +140,7 @@ export async function uiDataRoutes(app: FastifyInstance, opts: UiRouteOptions): 
       pollers: getScheduler()?.status() ?? [],
       health: (id) => getStateEntry<HealthState>(`health:${id}:online`),
       webhooks: listRecentWebhookEvents(RECENT_WEBHOOKS),
+      backups: listBackupMeta(),
       now: Date.now(),
     });
   });

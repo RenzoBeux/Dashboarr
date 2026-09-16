@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSession, logout } from "./api";
+import { BackupsSection } from "./components/BackupsSection";
 import { DevicesSection } from "./components/DevicesSection";
 import { Disabled } from "./components/Disabled";
 import { Header } from "./components/Header";
@@ -47,6 +48,7 @@ function Dashboard({ onSignedOut }: { onSignedOut: () => void }) {
         <>
           <InstancesSection instances={data.instances} now={now} />
           <DevicesSection devices={data.devices} now={now} />
+          <BackupsSection backups={data.backups} now={now} />
           <WebhooksSection webhooks={data.webhooks} now={now} />
         </>
       ) : error ? (

@@ -1,11 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import Fastify from "fastify";
-import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import QRCode from "qrcode";
 import { getEnv } from "./env.js";
+import { registerErrorHandler } from "./http/error-handler.js";
 import { getDb, closeDb } from "./db/client.js";
 import { ensureActiveToken, purgeExpiredTokens } from "./auth/pairing-tokens.js";
 import { getWebhookSecret } from "./db/repos/settings.js";
@@ -17,6 +18,7 @@ import { healthRoutes } from "./routes/health.js";
 import { pairRoutes } from "./routes/pair.js";
 import { deviceRoutes } from "./routes/device.js";
 import { configRoutes } from "./routes/config.js";
+import { configBackupRoutes } from "./routes/config-backup.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { uiDataRoutes, uiLoginRoutes } from "./routes/ui.js";
 import { registerWebStatic } from "./routes/ui-static.js";
@@ -146,24 +148,7 @@ async function main(): Promise<void> {
     trustProxy: env.TRUST_PROXY,
   });
 
-  // Global error handler. Most routes already return explicit `{ error }`
-  // bodies, but any unhandled throw would otherwise flow through Fastify's
-  // default handler and echo `err.message` back to the client — potentially
-  // leaking SQLite errors, filesystem paths, or future dev-only messages.
-  app.setErrorHandler((err: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
-    // Validation errors (Fastify's own schema layer) stay 400 with a generic tag.
-    if (err.validation) {
-      return reply.code(400).send({ error: "invalid_payload" });
-    }
-    // Rate-limit and other intentional 4xx replies keep their codes but
-    // return a neutral body so we don't echo framework-authored strings.
-    if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
-      return reply.code(err.statusCode).send({ error: err.code ?? "client_error" });
-    }
-    // Anything else → log the real error, respond with a neutral 500.
-    request.log.error({ err }, "unhandled error");
-    return reply.code(500).send({ error: "internal_error" });
-  });
+  registerErrorHandler(app); // see http/error-handler.ts
 
   // 404s never reach setErrorHandler, so without this Fastify's default body
   // echoes the caller's method and path back at them
@@ -205,6 +190,7 @@ async function main(): Promise<void> {
     await healthRoutes(scope);
     await deviceRoutes(scope);
     await configRoutes(scope);
+    await configBackupRoutes(scope);
     await notificationRoutes(scope);
   });
 

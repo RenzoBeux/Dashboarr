@@ -27,6 +27,12 @@ export function formatInterval(ms: number): string {
   return `${Math.round(ms / 1000)}s`;
 }
 
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function formatDateTime(ts: number): string {
   return new Date(ts).toLocaleString();
 }

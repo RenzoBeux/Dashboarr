@@ -62,6 +62,18 @@ export interface OverviewWebhook {
   summary: string | null;
 }
 
+export interface OverviewBackup {
+  deviceId: string;
+  platform: string;
+  appVersion: string | null;
+  /** The device row still exists; false after unpair / rotate. */
+  paired: boolean;
+  sizeBytes: number;
+  configVersion: number;
+  exportedAt: number;
+  updatedAt: number;
+}
+
 export interface Overview {
   version: string;
   uptimeMs: number;
@@ -74,6 +86,8 @@ export interface Overview {
   devices: OverviewDevice[];
   instances: OverviewInstance[];
   webhooks: OverviewWebhook[];
+  /** Passphrase-encrypted config backups, metadata only. The envelope never leaves /config/backups. */
+  backups: OverviewBackup[];
 }
 
 export interface UiSession {

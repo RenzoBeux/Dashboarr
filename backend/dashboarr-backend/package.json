@@ -1,6 +1,6 @@
 {
   "name": "dashboarr-backend",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Self-hosted companion backend for Dashboarr — polls your *arr stack and sends real Expo push notifications",
   "license": "GPL-3.0",
   "private": true,
@@ -13,7 +13,7 @@
     "build:server": "tsc -p tsconfig.json",
     "build:web": "vite build --config web/vite.config.ts",
     "start": "node dist/index.js",
-    "test": "tsx --test src/types.test.ts src/services/qbittorrent.test.ts src/push/apprise.test.ts src/routes/health.test.ts src/workers/poller-eligibility.test.ts src/auth/ui-session.test.ts src/ui/webhook-summary.test.ts src/ui/overview.test.ts src/routes/ui.test.ts",
+    "test": "tsx --test src/types.test.ts src/services/qbittorrent.test.ts src/push/apprise.test.ts src/routes/health.test.ts src/workers/poller-eligibility.test.ts src/auth/ui-session.test.ts src/ui/webhook-summary.test.ts src/ui/overview.test.ts src/routes/ui.test.ts src/routes/config-backup.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit"
   },
   "dependencies": {
