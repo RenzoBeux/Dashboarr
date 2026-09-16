@@ -37,6 +37,7 @@ export default function SettingsScreen() {
   const webSlotPending = useBackendStore((s) => isWebSlotPending(s));
   const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
+  const currentWifi = useConfigStore((s) => s.currentWifi);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
@@ -74,13 +75,15 @@ export default function SettingsScreen() {
         context,
       ),
     );
-    // networkAwayFromHome / isOnWifi feed lanGuardBlockReason indirectly.
+    // networkAwayFromHome / currentWifi / isOnWifi feed getActiveUrl and
+    // lanGuardBlockReason indirectly (#418).
   }, [
     serviceInstances,
     healthData,
     determining,
     getActiveUrl,
     networkAwayFromHome,
+    currentWifi,
     isOnWifi,
   ]);
 

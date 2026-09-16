@@ -7,13 +7,11 @@ import { Platform } from "react-native";
 // returns null SSID even with the wifi-info entitlement and Location granted.
 NetInfo.configure({ shouldFetchWiFiSSID: true });
 
-export interface WifiIdentity {
-  ssid: string;
-  /** AP MAC address. Used as a secondary check in auto-switch so a rogue AP
-   *  with a cloned SSID can't trick the app into sending local-URL traffic.
-   *  Empty string when NetInfo doesn't surface it on this platform/build. */
-  bssid: string;
-}
+// The SSID + AP MAC pair. The BSSID is a secondary check in auto-switch so a
+// rogue AP with a cloned SSID can't trick the app into sending local-URL
+// traffic; empty when NetInfo doesn't surface it on this platform/build.
+import type { WifiIdentity } from "@/lib/home-network-match";
+export type { WifiIdentity };
 
 // Warm-up tuning for the iOS netinfo SSID-null-after-grant bug (#168): right
 // after Location permission is FIRST granted, the next NetInfo.fetch() returns a
