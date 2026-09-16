@@ -1,0 +1,42 @@
+diff --git a/build/fork/getStateFromPath-forks.js b/build/fork/getStateFromPath-forks.js
+index 0d0b9a1506e82965759ab233faa4356b84788080..3ec58e0cf44f4216a2d47817bc98b3713ecbbcc0 100644
+--- a/build/fork/getStateFromPath-forks.js
++++ b/build/fork/getStateFromPath-forks.js
+@@ -246,12 +246,6 @@ function getRouteConfigSorter(previousSegments = []) {
+          *
+          * NOTE(marklawlor): Is this a feature we want? I'm unsure if this is a gimmick or a feature.
+          */
+-        if (a.pattern.startsWith(b.pattern) && !b.isIndex) {
+-            return -1;
+-        }
+-        if (b.pattern.startsWith(a.pattern) && !a.isIndex) {
+-            return 1;
+-        }
+         /*
+          * Static routes should always be higher than dynamic and layout routes.
+          */
+@@ -267,6 +261,24 @@ function getRouteConfigSorter(previousSegments = []) {
+         if (a.staticPartCount !== b.staticPartCount) {
+             return b.staticPartCount - a.staticPartCount;
+         }
++        /*
++         * NOTE(dashboarr): upstream runs this prefix rule BEFORE the type /
++         * staticPartCount rules above, which makes the comparator cyclic:
++         * a static route beats a dynamic one, the dynamic one beats its own
++         * static prefix via this rule, and that prefix beats the first static
++         * one on the isInitial tie-break. Array.prototype.sort with a
++         * non-transitive comparator produces an order that depends on the input
++         * array's length and layout, so adding a tab to the shared array group
++         * silently re-resolved unrelated screens into the wrong tab stack.
++         * Demoting it to a tie-break keeps the intent and breaks the cycle.
++         * Still present in expo-router 58.0.3. See issue #426.
++         */
++        if (a.pattern.startsWith(b.pattern) && !b.isIndex) {
++            return -1;
++        }
++        if (b.pattern.startsWith(a.pattern) && !a.isIndex) {
++            return 1;
++        }
+         /*
+          * If both are static/dynamic or a layout file, then we check group similarity
+          */

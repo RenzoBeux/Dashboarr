@@ -97,6 +97,9 @@
     "onlyBuiltDependencies": [
       "canvas",
       "sharp"
-    ]
+    ],
+    "patchedDependencies": {
+      "expo-router@6.0.23": "patches/expo-router@6.0.23.patch"
+    }
   }
 }
