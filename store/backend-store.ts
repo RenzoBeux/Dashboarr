@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import * as SecureStore from "expo-secure-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 
 /**
@@ -12,6 +13,15 @@ const SECRET_KEYS = {
   sharedSecret: "backend.sharedSecret",
   deviceId: "backend.deviceId",
   ignoreCertErrors: "backend.ignoreCertErrors",
+  // Config backup (Refs #385). The derived AES key + its salt, never the
+  // passphrase. Same exposure class as the instance secrets and the bearer
+  // that already sit ungated in SecureStore; the blob it opens holds nothing
+  // those don't. Written WHEN_UNLOCKED_THIS_DEVICE_ONLY so it never rides
+  // along in an iCloud Keychain / device backup.
+  backupEnabled: "backend.backupEnabled",
+  backupSalt: "backend.backupSalt",
+  backupKey: "backend.backupKey",
+  backupKeyIterations: "backend.backupKeyIterations",
 } as const;
 
 interface BackendState {
@@ -42,6 +52,16 @@ interface BackendState {
   isHealthy: boolean;
   lastHealthAt: number | null;
   consecutiveFailures: number;
+  /** Continuous encrypted config backup to the backend is on (Refs #385). */
+  backupEnabled: boolean;
+  backupSaltHex: string | null;
+  backupKeyHex: string | null;
+  /** PBKDF2 rounds the cached key was derived with; stamped into every envelope so it decrypts. */
+  backupKeyIterations: number | null;
+  /** Server timestamp of the last successful upload; null when never. */
+  lastBackupAt: number | null;
+  lastBackupError: string | null;
+  backupInFlight: boolean;
 }
 
 interface BackendActions {
@@ -51,6 +71,13 @@ interface BackendActions {
   setHealth: (ok: boolean) => void;
   setIgnoreCertErrors: (value: boolean) => Promise<void>;
   setDraftUrl: (url: string | null) => void;
+  enableBackup: (key: { saltHex: string; keyHex: string; iterations: number }) => Promise<void>;
+  disableBackup: () => Promise<void>;
+  setBackupStatus: (patch: {
+    lastBackupAt?: number | null;
+    lastBackupError?: string | null;
+    backupInFlight?: boolean;
+  }) => void;
 }
 
 export const useBackendStore = create<BackendState & BackendActions>((set, get) => ({
@@ -63,14 +90,27 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   isHealthy: false,
   lastHealthAt: null,
   consecutiveFailures: 0,
+  backupEnabled: false,
+  backupSaltHex: null,
+  backupKeyHex: null,
+  backupKeyIterations: null,
+  lastBackupAt: null,
+  lastBackupError: null,
+  backupInFlight: false,
 
   hydrate: async () => {
-    const [url, sharedSecret, deviceId, ignoreCertErrors] = await Promise.all([
-      getSecret(SECRET_KEYS.url),
-      getSecret(SECRET_KEYS.sharedSecret),
-      getSecret(SECRET_KEYS.deviceId),
-      getSecret(SECRET_KEYS.ignoreCertErrors),
-    ]);
+    const [url, sharedSecret, deviceId, ignoreCertErrors, backupEnabled, backupSalt, backupKey, backupIter] =
+      await Promise.all([
+        getSecret(SECRET_KEYS.url),
+        getSecret(SECRET_KEYS.sharedSecret),
+        getSecret(SECRET_KEYS.deviceId),
+        getSecret(SECRET_KEYS.ignoreCertErrors),
+        getSecret(SECRET_KEYS.backupEnabled),
+        getSecret(SECRET_KEYS.backupSalt),
+        getSecret(SECRET_KEYS.backupKey),
+        getSecret(SECRET_KEYS.backupKeyIterations),
+      ]);
+    const iterations = backupIter ? Number(backupIter) : NaN;
     // Optimistically assume a previously-paired backend is still reachable.
     // `setHealth` will flip to unhealthy after 2 consecutive /health failures.
     // Without this, `isBackendActive` returns false until the first health
@@ -82,6 +122,13 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       sharedSecret: sharedSecret ?? null,
       deviceId: deviceId ?? null,
       ignoreCertErrors: ignoreCertErrors === "true",
+      // All three must be present; a partial write (killed mid-enable) reads
+      // as "off" rather than as a key that can never be used.
+      backupEnabled:
+        backupEnabled === "true" && !!backupSalt && !!backupKey && Number.isFinite(iterations),
+      backupSaltHex: backupSalt ?? null,
+      backupKeyHex: backupKey ?? null,
+      backupKeyIterations: Number.isFinite(iterations) ? iterations : null,
       hydrated: true,
       isHealthy: hasPairing,
     });
@@ -115,6 +162,12 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       deleteSecret(SECRET_KEYS.url),
       deleteSecret(SECRET_KEYS.sharedSecret),
       deleteSecret(SECRET_KEYS.deviceId),
+      // The backup key is bound to this pairing's slot; the slot itself
+      // stays on the backend (as "unpaired") for a later restore.
+      deleteSecret(SECRET_KEYS.backupEnabled),
+      deleteSecret(SECRET_KEYS.backupSalt),
+      deleteSecret(SECRET_KEYS.backupKey),
+      deleteSecret(SECRET_KEYS.backupKeyIterations),
     ]);
     set({
       url: null,
@@ -125,6 +178,13 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       isHealthy: false,
       lastHealthAt: null,
       consecutiveFailures: 0,
+      backupEnabled: false,
+      backupSaltHex: null,
+      backupKeyHex: null,
+      backupKeyIterations: null,
+      lastBackupAt: null,
+      lastBackupError: null,
+      backupInFlight: false,
     });
   },
 
@@ -150,6 +210,42 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   },
 
   setDraftUrl: (url) => set({ draftUrl: url }),
+
+  enableBackup: async ({ saltHex, keyHex, iterations }) => {
+    const opts = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
+    // Key material first, flag last, so a crash in between reads as "off".
+    await setSecret(SECRET_KEYS.backupSalt, saltHex, opts);
+    await setSecret(SECRET_KEYS.backupKey, keyHex, opts);
+    await setSecret(SECRET_KEYS.backupKeyIterations, String(iterations), opts);
+    await setSecret(SECRET_KEYS.backupEnabled, "true", opts);
+    set({
+      backupEnabled: true,
+      backupSaltHex: saltHex,
+      backupKeyHex: keyHex,
+      backupKeyIterations: iterations,
+      lastBackupError: null,
+    });
+  },
+
+  disableBackup: async () => {
+    await Promise.all([
+      deleteSecret(SECRET_KEYS.backupEnabled),
+      deleteSecret(SECRET_KEYS.backupSalt),
+      deleteSecret(SECRET_KEYS.backupKey),
+      deleteSecret(SECRET_KEYS.backupKeyIterations),
+    ]);
+    set({
+      backupEnabled: false,
+      backupSaltHex: null,
+      backupKeyHex: null,
+      backupKeyIterations: null,
+      lastBackupAt: null,
+      lastBackupError: null,
+      backupInFlight: false,
+    });
+  },
+
+  setBackupStatus: (patch) => set(patch),
 }));
 
 /**

@@ -33,6 +33,12 @@ import { useNetworkAutoSwitch } from "@/hooks/use-network";
 import { useWidgetRefresh } from "@/hooks/use-widget-refresh";
 import { evaluateHomeNetwork } from "@/lib/network";
 import { pushConfigSnapshot } from "@/services/backend-api";
+import {
+  cancelScheduledConfigBackup,
+  flushPendingConfigBackup,
+  loadBackupStatus,
+  scheduleConfigBackup,
+} from "@/services/backend-backup";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { AppStack } from "@/components/navigation/app-stack";
@@ -57,6 +63,8 @@ const ROOT_POP_TO_ROOT: ReadonlySet<string> = new Set(["(tabs)"]);
 function onAppStateChange(status: AppStateStatus) {
   focusManager.setFocused(status === "active");
   if (status === "active") {
+    // A config change made while backgrounded skipped its backup upload.
+    flushPendingConfigBackup();
     // The network may have changed while we were backgrounded — walked out the
     // door, or toggled a VPN like Tailscale (whose interface changes don't
     // deliver NetInfo events to a suspended JS runtime). Re-evaluate the home
@@ -306,8 +314,23 @@ function InsecureTlsBridge() {
 function ConfigSyncBridge() {
   const sharedSecret = useBackendStore((s) => s.sharedSecret);
   const backendHydrated = useBackendStore((s) => s.hydrated);
+  const backupEnabled = useBackendStore((s) => s.backupEnabled);
   const configHydrated = useConfigStore((s) => s.hydrated);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Encrypted config backup (Refs #385): same trigger, its own longer
+  // debounce and an unchanged-payload check inside the service, so ephemeral
+  // store writes cost a hash, not an upload.
+  useEffect(() => {
+    if (!sharedSecret || !backendHydrated || !configHydrated) return;
+    loadBackupStatus();
+    if (!backupEnabled) return;
+    const unsub = useConfigStore.subscribe(scheduleConfigBackup);
+    return () => {
+      unsub();
+      cancelScheduledConfigBackup();
+    };
+  }, [sharedSecret, backendHydrated, configHydrated, backupEnabled]);
 
   useEffect(() => {
     if (!sharedSecret || !backendHydrated || !configHydrated) {

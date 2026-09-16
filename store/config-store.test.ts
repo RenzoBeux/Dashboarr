@@ -19,13 +19,24 @@ jest.mock("expo-secure-store", () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => {}),
   deleteItemAsync: jest.fn(async () => {}),
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: "WHEN_UNLOCKED_THIS_DEVICE_ONLY",
+}));
+jest.mock("expo-crypto", () => ({
+  getRandomBytes: (n: number) => {
+    const out = new Uint8Array(n);
+    require("crypto").randomFillSync(out);
+    return out;
+  },
 }));
 
 import {
   useConfigStore,
+  buildExportPayload,
   stripImportedBssids,
   repairOrphanedHomeNetworkSelection,
 } from "./config-store";
+import { useBackendStore } from "./backend-store";
+import { encryptJsonString } from "@/lib/config-crypto";
 import { setJSON } from "./storage";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
@@ -1064,5 +1075,52 @@ describe("seerrStaleHosts", () => {
     useConfigStore.getState().forgetSeerrStaleHosts("i1");
     expect(useConfigStore.getState().seerrStaleHosts).toEqual({ i2: ["seerr.local"] });
     expect(() => useConfigStore.getState().forgetSeerrStaleHosts("i1")).not.toThrow();
+  });
+});
+
+describe("importConfigFromEnvelope (backend backup restore, Refs #385)", () => {
+  const PASSPHRASE = "correct-horse-battery-staple";
+  const pairing = { url: "http://backend.local:4000", sharedSecret: "s".repeat(64), deviceId: "dev-1" };
+
+  beforeEach(() => {
+    useConfigStore.setState({
+      hydrated: true,
+      dashboards: [{ id: "dash-1", name: "Default", widgets: [] }] as never,
+      activeDashboardId: "dash-1",
+    });
+    useBackendStore.setState({ hydrated: true, ...pairing, backupEnabled: true });
+  });
+
+  it("a payload without a backend block leaves the current pairing untouched", async () => {
+    const payload = buildExportPayload();
+    delete payload.backend;
+    const envelope = await encryptJsonString(JSON.stringify(payload), PASSPHRASE);
+    await useConfigStore.getState().importConfigFromEnvelope(envelope, PASSPHRASE);
+    const b = useBackendStore.getState();
+    expect([b.url, b.sharedSecret, b.deviceId, b.backupEnabled]).toEqual([
+      pairing.url,
+      pairing.sharedSecret,
+      pairing.deviceId,
+      true,
+    ]);
+  });
+
+  it("a payload with a backend block still pairs (file import regression)", async () => {
+    const payload = buildExportPayload();
+    payload.backend = { url: "http://other:4000", sharedSecret: "o".repeat(64), deviceId: "dev-9" };
+    const envelope = await encryptJsonString(JSON.stringify(payload), PASSPHRASE);
+    await useConfigStore.getState().importConfigFromEnvelope(envelope, PASSPHRASE);
+    expect(useBackendStore.getState().url).toBe("http://other:4000");
+    expect(useBackendStore.getState().deviceId).toBe("dev-9");
+  });
+
+  it("a wrong passphrase fails before anything is replaced", async () => {
+    const payload = buildExportPayload();
+    const envelope = await encryptJsonString(JSON.stringify(payload), PASSPHRASE);
+    const before = useConfigStore.getState().dashboards;
+    await expect(
+      useConfigStore.getState().importConfigFromEnvelope(envelope, "not-the-passphrase"),
+    ).rejects.toThrow(/Incorrect passphrase/);
+    expect(useConfigStore.getState().dashboards).toBe(before);
   });
 });

@@ -916,7 +916,9 @@
           state and last error, the paired phones, and the last 50 webhooks received. It is meant for the
           moment a notification did not arrive and your phone is not in front of you. It never shows API
           keys, passwords, device secrets or raw webhook payloads, and it cannot change anything. Pairing
-          still happens from the log and the app, not from this page.
+          still happens from the log and the app, not from this page. With config backup on (see
+          <a href="#backend-backup">Backend backup</a>) it also lists each device's encrypted backup
+          slot with its size and age, never its contents.
         </p>
 
         <h3>Pairing</h3>
@@ -1064,12 +1066,31 @@
         </ul>
         <p>
           Backend push must be re-paired on the new phone, since the push token belongs to the
-          physical device. Restart the backend for a fresh pairing token.
+          physical device. Restart the backend for a fresh pairing token. If the old phone kept a
+          backend backup (below), the new phone is offered it right after pairing, so the file
+          export is not needed for that move.
         </p>
         <p>
           The same screen also holds <strong>Clear image cache</strong>, for when cached posters and
           backdrops add up, and the <strong>Demo Mode</strong> toggle under Advanced.
         </p>
+
+        <h3 id="backend-backup">Backend backup and sharing <a class="anchor" href="#backend-backup" aria-label="Permalink to Backend backup">#</a></h3>
+        <p>
+          With a paired backend (1.6 or newer), <strong>Settings, Notifications, Backend</strong> has a
+          <strong>Keep an encrypted backup on the backend</strong> switch. Turning it on asks for your
+          device biometric or passcode, then for a backup passphrase (the same rules as the file
+          export). From then on every configuration change is encrypted on the phone and uploaded a
+          few seconds later; <strong>Back up now</strong> forces one.
+        </p>
+        <ul>
+          <li>The upload is the same encrypted envelope as the export file, minus this phone's backend pairing. The backend stores it as-is and <strong>cannot read it</strong>; the passphrase never leaves the phone. What the phone keeps is a key derived from the passphrase, so uploads do not ask for anything.</li>
+          <li>Each paired device has its own backup slot. The slot survives <strong>Unpair</strong>, <strong>Rotate secret</strong> and a reinstall: it shows as <em>unpaired</em> on the backend's web page until that phone pairs again or someone deletes it.</li>
+          <li><strong>Restoring.</strong> When a phone pairs with the backend, the app lists the available backups and offers to restore one. <strong>Restore…</strong> on the Backend screen does the same later. A restore replaces every setting on the phone, like a file import, but keeps that phone's own pairing. It asks for the backup's passphrase, and then offers to keep the new phone backed up with the same passphrase.</li>
+          <li><strong>Sharing.</strong> That is also how a second phone or a family member gets your whole setup: they pair with the same backend, pick your backup ("iPhone · app 1.19 · 2h ago"), and type the passphrase you gave them. Nothing else changes hands.</li>
+          <li><strong>Manage backend backups…</strong> lists every slot and lets you delete one, including stale unpaired ones.</li>
+          <li>Anyone paired with the backend can download any slot, so the passphrase is what protects it. Pick one you would not use for a file you post publicly. Demo Mode never uploads.</li>
+        </ul>
 
         <h3 id="config-file">Writing a config file on your PC <a class="anchor" href="#config-file" aria-label="Permalink to Writing a config file on your PC">#</a></h3>
         <p>

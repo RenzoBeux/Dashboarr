@@ -115,7 +115,7 @@ When adding a new `Modal`, sheet, or screen with a text input, decide which of t
 - No index files — import directly from source files
 
 ## Config Export/Import & Versioned Migrations
-- Config backup lives in `store/config-store.ts` (export/import) + `store/config-migrations.ts` (migration chain)
+- Config backup lives in `store/config-store.ts` (export/import) + `store/config-migrations.ts` (migration chain). The backend backup (`services/backend-backup.ts`, Refs #385) uploads the same envelope with `backend` stripped, encrypted with a key cached in SecureStore; restore goes through `importConfigFromEnvelope`, so the two paths never diverge
 - `CURRENT_CONFIG_VERSION` in `config-migrations.ts` is the source of truth for the schema version
 - Export always writes `CURRENT_CONFIG_VERSION`; import detects the version and chains migrations up
 - Migration functions live in a `migrations` record keyed by source version: `N: (payload) => ({ ...transformed, version: N+1 })`

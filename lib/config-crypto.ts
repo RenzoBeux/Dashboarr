@@ -8,7 +8,7 @@ const FORMAT = "dashboarr-encrypted-v1" as const;
 // PBKDF2-SHA256 runs in pure JS on Hermes, which is much slower than native
 // crypto. 100k is a mobile-practical balance — still adds ~17 bits of work
 // against a brute-force attack on top of the 8+ char passphrase requirement.
-const PBKDF2_ITERATIONS = 100_000;
+export const PBKDF2_ITERATIONS = 100_000;
 const KEY_LENGTH = 32; // AES-256
 const SALT_LENGTH = 16;
 const NONCE_LENGTH = 12; // GCM standard
@@ -59,6 +59,54 @@ async function deriveKey(passphrase: string, salt: Uint8Array, iterations: numbe
     // occasional frame but cuts a big chunk of scheduler overhead.
     asyncTick: 100,
   });
+}
+
+/** Fresh random salt, hex-encoded, in the envelope's format. */
+export function generateSaltHex(): string {
+  return bytesToHex(Crypto.getRandomBytes(SALT_LENGTH));
+}
+
+/**
+ * Runs the (slow) PBKDF2 step on its own so a caller can do it once and keep
+ * the derived key for repeated encryptions — the backend backup upload does
+ * this after every config change and must not spend seconds each time. The
+ * result is exactly what `encryptJsonString` would derive for the same
+ * passphrase + salt, so envelopes built from it stay file-compatible.
+ */
+export async function deriveKeyHex(
+  passphrase: string,
+  saltHex: string,
+  iterations: number = PBKDF2_ITERATIONS,
+): Promise<string> {
+  if (typeof passphrase !== "string" || passphrase.length < MIN_PASSPHRASE_LENGTH) {
+    throw new Error(`Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
+  }
+  return bytesToHex(await deriveKey(passphrase, hexToBytes(saltHex), iterations));
+}
+
+export interface DerivedKey {
+  saltHex: string;
+  keyHex: string;
+  iterations: number;
+}
+
+/**
+ * Encrypts with a previously derived key. Synchronous: no KDF here, just a
+ * fresh random nonce per call, which is what keeps key reuse across many
+ * backups safe under AES-GCM. The envelope records the salt and iteration
+ * count so `decryptEnvelope` (any device, the passphrase typed) works as
+ * usual.
+ */
+export function encryptJsonStringWithKey(plainJson: string, key: DerivedKey): EncryptedEnvelope {
+  if (!/^[0-9a-f]{64}$/.test(key.keyHex)) throw new Error("Invalid derived key");
+  if (!/^[0-9a-f]{32}$/.test(key.saltHex)) throw new Error("Invalid salt");
+  const nonce = Crypto.getRandomBytes(NONCE_LENGTH);
+  const ciphertext = gcm(hexToBytes(key.keyHex), nonce).encrypt(utf8ToBytes(plainJson));
+  return {
+    format: FORMAT,
+    kdf: { name: "pbkdf2-sha256", iterations: key.iterations, salt: key.saltHex },
+    cipher: { name: "aes-256-gcm", nonce: bytesToHex(nonce), ciphertext: bytesToHex(ciphertext) },
+  };
 }
 
 export async function encryptJsonString(

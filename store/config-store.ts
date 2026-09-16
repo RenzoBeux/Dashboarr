@@ -3,7 +3,6 @@ import type { SeerrAuthMode } from "@/lib/seerr-auth";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
-import * as LocalAuthentication from "expo-local-authentication";
 import {
   initStorage,
   getJSON,
@@ -72,6 +71,7 @@ import {
   isEncryptedEnvelope,
 } from "@/lib/config-crypto";
 import { useBackendStore } from "@/store/backend-store";
+import { requireDeviceAuth } from "@/lib/device-auth";
 import { useAddDefaultsStore, addDefaultsKey } from "@/store/add-defaults-store";
 import { queryClient } from "@/lib/query-client";
 import type { ServiceId, WidgetId } from "@/lib/constants";
@@ -471,7 +471,7 @@ export interface ExportPayload {
 }
 
 export type ExportStage = "preparing" | "encrypting" | "finalizing";
-export type ImportStage = "decrypting" | "restoring";
+export type ImportStage = "downloading" | "decrypting" | "restoring";
 
 // Macrotask yield so React can paint the new stage before the next CPU-bound
 // step hogs the JS thread (pbkdf2 in particular only yields microtasks).
@@ -637,6 +637,18 @@ interface ConfigActions {
     requestPassphrase: () => Promise<string | null>,
     onStage?: (stage: ImportStage) => void,
   ) => Promise<boolean>;
+  /**
+   * Decrypt an export envelope obtained elsewhere (the backend backup slot,
+   * Refs #385) and restore it. Same migration/validation/replace path as the
+   * file import; the picker is the only thing it skips.
+   */
+  importConfigFromEnvelope: (
+    envelope: unknown,
+    passphrase: string,
+    onStage?: (stage: ImportStage) => void,
+  ) => Promise<void>;
+  /** The restore half of importConfig: migrate, validate, full replace. */
+  importConfigFromPayload: (raw: unknown, onStage?: (stage: ImportStage) => void) => Promise<void>;
 }
 
 type ConfigStore = ConfigState & ConfigActions;
@@ -2777,65 +2789,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   exportConfig: async (passphrase: string, onStage, onBeforeShare) => {
     onStage?.("preparing");
     await yieldToPaint();
-    // Require device auth so a bystander with a momentarily-unlocked phone
-    // can't dump secrets by exporting with a passphrase they chose. Skip
-    // only if the device has no lock at all — no security boundary to enforce.
-    const level = await LocalAuthentication.getEnrolledLevelAsync();
-    if (level !== LocalAuthentication.SecurityLevel.NONE) {
-      const auth = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Authenticate to export configuration",
-        fallbackLabel: "Use passcode",
-      });
-      if (!auth.success) {
-        if ("error" in auth && (auth.error === "user_cancel" || auth.error === "app_cancel" || auth.error === "system_cancel")) {
-          return;
-        }
-        const reason = "error" in auth ? auth.error : "failed";
-        throw new Error(`Device authentication ${reason}`);
-      }
+    if ((await requireDeviceAuth("Authenticate to export configuration")) === "cancelled") {
+      return;
     }
 
-    const {
-      serviceInstances,
-      instanceSecrets,
-      autoSwitchNetwork,
-      treatVpnAsHome,
-      homeNetworks,
-      servicesOrder,
-      dashboards,
-      activeDashboardId,
-      wolDevices,
-      hapticsEnabled,
-      globalCustomHeaders,
-      uiScale,
-      appTheme,
-      weekStart,
-      notificationSettings: notifSettings,
-    } = get();
-    const { url, sharedSecret, deviceId, ignoreCertErrors } = useBackendStore.getState();
-
-    const payload: ExportPayload = {
-      version: CURRENT_CONFIG_VERSION,
-      exportedAt: new Date().toISOString(),
-      services: serviceInstances,
-      secrets: instanceSecrets,
-      // v22: activeInstance is now per-dashboard, serialized inside the
-      // `dashboards` array — no top-level field.
-      autoSwitchNetwork,
-      treatVpnAsHome,
-      homeNetworks,
-      servicesOrder,
-      dashboards,
-      activeDashboardId,
-      backend: { url, sharedSecret, deviceId, ignoreCertErrors },
-      notificationSettings: notifSettings,
-      wolDevices,
-      hapticsEnabled,
-      globalCustomHeaders,
-      uiScale,
-      appTheme,
-      weekStart,
-    };
+    const payload = buildExportPayload();
 
     onStage?.("encrypting");
     await yieldToPaint();
@@ -2896,16 +2854,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     if (isEncryptedEnvelope(raw)) {
       const passphrase = await requestPassphrase();
       if (!passphrase) return false;
-      onStage?.("decrypting");
-      await yieldToPaint();
-      const decrypted = await decryptEnvelope(raw, passphrase);
-      try {
-        raw = JSON.parse(decrypted);
-      } catch {
-        throw new Error("Decrypted content is not valid JSON");
-      }
+      await get().importConfigFromEnvelope(raw, passphrase, onStage);
+      return true;
     }
 
+    await get().importConfigFromPayload(raw, onStage);
+    return true;
+  },
+
+  importConfigFromEnvelope: async (envelope, passphrase, onStage) => {
+    onStage?.("decrypting");
+    await yieldToPaint();
+    const decrypted = await decryptEnvelope(envelope, passphrase);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(decrypted);
+    } catch {
+      throw new Error("Decrypted content is not valid JSON");
+    }
+    await get().importConfigFromPayload(raw, onStage);
+  },
+
+  importConfigFromPayload: async (raw, onStage) => {
     onStage?.("restoring");
     await yieldToPaint();
     const migrated = migrateConfig(raw);
@@ -3130,7 +3100,54 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // follow start from the imported configuration. Same call demo-mode
     // toggling makes, for the same reason: nothing cached predates this.
     queryClient.clear();
-
-    return true;
   },
 }));
+
+/**
+ * The export payload as the file export writes it. Shared with the backend
+ * backup upload (services/backend-backup.ts), which strips `backend` before
+ * encrypting so a restored phone keeps its own pairing.
+ */
+export function buildExportPayload(): ExportPayload {
+  const {
+    serviceInstances,
+    instanceSecrets,
+    autoSwitchNetwork,
+    treatVpnAsHome,
+    homeNetworks,
+    servicesOrder,
+    dashboards,
+    activeDashboardId,
+    wolDevices,
+    hapticsEnabled,
+    globalCustomHeaders,
+    uiScale,
+    appTheme,
+    weekStart,
+    notificationSettings: notifSettings,
+  } = useConfigStore.getState();
+  const { url, sharedSecret, deviceId, ignoreCertErrors } = useBackendStore.getState();
+
+  return {
+    version: CURRENT_CONFIG_VERSION,
+    exportedAt: new Date().toISOString(),
+    services: serviceInstances,
+    secrets: instanceSecrets,
+    // v22: activeInstance is now per-dashboard, serialized inside the
+    // `dashboards` array — no top-level field.
+    autoSwitchNetwork,
+    treatVpnAsHome,
+    homeNetworks,
+    servicesOrder,
+    dashboards,
+    activeDashboardId,
+    backend: { url, sharedSecret, deviceId, ignoreCertErrors },
+    notificationSettings: notifSettings,
+    wolDevices,
+    hapticsEnabled,
+    globalCustomHeaders,
+    uiScale,
+    appTheme,
+    weekStart,
+  };
+}

@@ -8,8 +8,12 @@ jest.mock("expo-crypto", () => ({
 
 import {
   encryptJsonString,
+  encryptJsonStringWithKey,
   decryptEnvelope,
+  deriveKeyHex,
+  generateSaltHex,
   isEncryptedEnvelope,
+  PBKDF2_ITERATIONS,
   type EncryptedEnvelope,
 } from "./config-crypto";
 
@@ -145,5 +149,54 @@ describe("decryptEnvelope", () => {
   it("throws when cipher name is not aes-256-gcm", async () => {
     const bad = { ...env, cipher: { ...env.cipher, name: "chacha20" as any } };
     await expect(decryptEnvelope(bad, samplePassphrase)).rejects.toThrow(/cipher/i);
+  });
+});
+
+describe("derived-key reuse (backend backup)", () => {
+  // The backend upload derives once and encrypts many times; every envelope it
+  // produces must still open with the plain passphrase path on another phone.
+  it("deriveKeyHex is deterministic per salt and differs across salts", async () => {
+    const salt = generateSaltHex();
+    expect(salt).toMatch(/^[0-9a-f]{32}$/);
+    const a = await deriveKeyHex(samplePassphrase, salt, 10_000);
+    const b = await deriveKeyHex(samplePassphrase, salt, 10_000);
+    const c = await deriveKeyHex(samplePassphrase, generateSaltHex(), 10_000);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+
+  it("rejects short passphrases like the file path does", async () => {
+    await expect(deriveKeyHex("short", generateSaltHex(), 10_000)).rejects.toThrow(/at least 8/);
+  });
+
+  it("envelopes built with a cached key decrypt with the passphrase", async () => {
+    const saltHex = generateSaltHex();
+    const keyHex = await deriveKeyHex(samplePassphrase, saltHex, 10_000);
+    const env = encryptJsonStringWithKey(samplePayload, { saltHex, keyHex, iterations: 10_000 });
+    expect(isEncryptedEnvelope(env)).toBe(true);
+    expect(env.kdf.salt).toBe(saltHex);
+    expect(env.kdf.iterations).toBe(10_000);
+    expect(await decryptEnvelope(env, samplePassphrase)).toBe(samplePayload);
+    await expect(decryptEnvelope(env, "wrong-passphrase")).rejects.toThrow(/Incorrect passphrase/);
+  });
+
+  it("uses a fresh nonce per call so ciphertexts never repeat", async () => {
+    const saltHex = generateSaltHex();
+    const keyHex = await deriveKeyHex(samplePassphrase, saltHex, 10_000);
+    const key = { saltHex, keyHex, iterations: PBKDF2_ITERATIONS };
+    const a = encryptJsonStringWithKey(samplePayload, key);
+    const b = encryptJsonStringWithKey(samplePayload, key);
+    expect(a.cipher.nonce).not.toBe(b.cipher.nonce);
+    expect(a.cipher.ciphertext).not.toBe(b.cipher.ciphertext);
+  });
+
+  it("refuses malformed key material", () => {
+    expect(() =>
+      encryptJsonStringWithKey(samplePayload, { saltHex: generateSaltHex(), keyHex: "ab".repeat(31), iterations: 10_000 }),
+    ).toThrow(/Invalid derived key/);
+    expect(() =>
+      encryptJsonStringWithKey(samplePayload, { saltHex: "zz", keyHex: "ab".repeat(32), iterations: 10_000 }),
+    ).toThrow(/Invalid salt/);
   });
 });

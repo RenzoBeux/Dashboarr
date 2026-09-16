@@ -415,6 +415,12 @@ export const STORAGE_KEYS = {
   // from queue + history; survives cold starts so seeding torrents still
   // render their posters on app open.
   torrentPosterCache: "app.torrentPosterCache",
+  // Backend config backup (Refs #385). Hash of the last successfully uploaded
+  // payload (minus exportedAt) so unchanged configs skip the upload, and the
+  // server's timestamp for that upload so the Backend screen can show it
+  // after a restart. Both non-secret; the key material lives in SecureStore.
+  backendBackupLastHash: "app.backendBackup.lastHash",
+  backendBackupLastAt: "app.backendBackup.lastAt",
 } as const;
 
 // Whitelisted UI scale multipliers. Kept as a const so the schema and the
