@@ -1,6 +1,9 @@
 services:
   dashboarr-backend:
-    build: .
+    # Built from the repository root (the web editor bundles app modules).
+    build:
+      context: ../..
+      dockerfile: backend/dashboarr-backend/Dockerfile
     # Or use a pre-built image when available:
     # image: ghcr.io/renzobeux/dashboarr-backend:latest
     container_name: dashboarr-backend

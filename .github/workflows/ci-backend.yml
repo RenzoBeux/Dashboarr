@@ -10,12 +10,18 @@ on:
   pull_request:
     paths:
       - 'backend/dashboarr-backend/**'
+      - 'lib/**'
+      - 'store/**'
+      - '.dockerignore'
       - '.github/workflows/ci-backend.yml'
   push:
     branches:
       - main
     paths:
       - 'backend/dashboarr-backend/**'
+      - 'lib/**'
+      - 'store/**'
+      - '.dockerignore'
       - '.github/workflows/ci-backend.yml'
 
 # Cancel in-progress runs when a new commit lands on the same PR/branch.
@@ -87,7 +93,8 @@ jobs:
       - name: Build image (no push)
         uses: docker/build-push-action@v7
         with:
-          context: backend/dashboarr-backend
+          # Repo root: the Dockerfile copies lib/ and store/ for the web editor.
+          context: .
           file: backend/dashboarr-backend/Dockerfile
           platforms: ${{ matrix.platform }}
           push: false

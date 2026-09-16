@@ -85,7 +85,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v7
         with:
-          context: backend/dashboarr-backend
+          # Repo root: the Dockerfile copies lib/ and store/ for the web editor.
+          context: .
           file: backend/dashboarr-backend/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}

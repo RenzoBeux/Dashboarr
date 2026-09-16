@@ -1,14 +1,25 @@
+# Built from the REPOSITORY ROOT, not from this directory:
+#
+#   docker build -f backend/dashboarr-backend/Dockerfile -t dashboarr-backend .
+#
+# The web editor bundles the app's pure config modules (lib/, store/) straight
+# from the app tree, so the build context must contain them. Paths inside the
+# build stage mirror the repository layout for the same reason.
+
 # ---------- build ----------
 FROM node:22-alpine AS build
-WORKDIR /app
+WORKDIR /repo/backend/dashboarr-backend
 
 # better-sqlite3 needs build tools
 RUN apk add --no-cache python3 make g++
 
-COPY package*.json tsconfig.json ./
+# Dependency layers first so source edits do not invalidate npm ci.
+COPY backend/dashboarr-backend/package*.json backend/dashboarr-backend/tsconfig.json ./
 RUN npm ci
-COPY src ./src
-COPY web ./web
+COPY backend/dashboarr-backend/src ./src
+COPY backend/dashboarr-backend/web ./web
+COPY lib /repo/lib
+COPY store /repo/store
 RUN npm run build && npm prune --omit=dev
 
 # ---------- runtime ----------
@@ -22,10 +33,10 @@ RUN apk upgrade --no-cache && apk add --no-cache tini su-exec \
        /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/corepack
 WORKDIR /app
 
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY package.json ./
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --from=build /repo/backend/dashboarr-backend/node_modules ./node_modules
+COPY --from=build /repo/backend/dashboarr-backend/dist ./dist
+COPY backend/dashboarr-backend/package.json ./
+COPY backend/dashboarr-backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production \
