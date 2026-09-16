@@ -547,10 +547,50 @@ function dashboardExplicitlyAttaches(
 
 // A home-network edit (SSID/BSSID, add, remove) changes what every dashboard
 // selecting it matches, and so the local/remote URL of the instances those
-// dashboards own (#418) — with no network flag moving. The ACTIVE dashboard's
-// flag is re-confirmed by useNetworkAutoSwitch (it depends on homeNetworks);
-// this covers the queries already fetched against the old URLs (#4). Rare,
-// user-driven edits, so a blanket invalidation is fine.
+// dashboards own (#418) — with no network event to re-evaluate. The state
+// patch for such an edit: the new list PLUS the active dashboard's away
+// verdict recomputed against it from the stored WiFi observation, in the same
+// transaction. Committing the list alone and letting useNetworkAutoSwitch
+// re-evaluate later leaves a window where the flag still says "home" for a
+// network that no longer exists in the list — and the invalidation that
+// follows would refetch through the local URL inside that window (#418
+// review). Mirrors evaluateHomeNetworkOnce's decision order.
+function homeNetworksPatch(
+  state: Pick<
+    ConfigState,
+    | "autoSwitchNetwork"
+    | "demoMode"
+    | "treatVpnAsHome"
+    | "isVpnActive"
+    | "currentWifi"
+    | "dashboards"
+    | "activeDashboardId"
+  >,
+  next: HomeNetwork[],
+): Pick<ConfigState, "homeNetworks"> &
+  Partial<Pick<ConfigState, "networkAwayFromHome">> {
+  setJSON(STORAGE_KEYS.homeNetworks, next);
+  // Auto-switch off / demo: getActiveUrl ignores the flag and the evaluator
+  // no-ops, so leave it untouched exactly as the evaluator would.
+  if (!state.autoSwitchNetwork || state.demoMode) return { homeNetworks: next };
+  if (state.treatVpnAsHome && state.isVpnActive) {
+    return { homeNetworks: next, networkAwayFromHome: false };
+  }
+  const active =
+    state.dashboards.find((d) => d.id === state.activeDashboardId) ??
+    state.dashboards[0];
+  return {
+    homeNetworks: next,
+    networkAwayFromHome: !matchesHomeNetwork(
+      state.currentWifi,
+      effectiveHomeNetworksOf(active, next),
+    ),
+  };
+}
+
+// After a home-network edit has landed atomically (homeNetworksPatch), refetch
+// what was cached against the old URLs (#4). Rare, user-driven edits, so a
+// blanket invalidation is fine.
 function invalidateForHomeNetworkEdit(): void {
   void queryClient.invalidateQueries();
 }
@@ -1798,11 +1838,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ssid: network.ssid.trim(),
       bssid: normalizeBssid(network.bssid),
     };
-    set((state) => {
-      const next = [...state.homeNetworks, created];
-      setJSON(STORAGE_KEYS.homeNetworks, next);
-      return { homeNetworks: next };
-    });
+    set((state) => homeNetworksPatch(state, [...state.homeNetworks, created]));
     invalidateForHomeNetworkEdit();
     return created;
   },
@@ -1818,24 +1854,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
             }
           : n,
       );
-      setJSON(STORAGE_KEYS.homeNetworks, next);
-      return { homeNetworks: next };
+      return homeNetworksPatch(state, next);
     });
     invalidateForHomeNetworkEdit();
   },
 
   removeHomeNetwork: (id) => {
-    set((state) => {
-      const next = state.homeNetworks.filter((n) => n.id !== id);
-      setJSON(STORAGE_KEYS.homeNetworks, next);
-      return { homeNetworks: next };
-    });
+    set((state) =>
+      homeNetworksPatch(
+        state,
+        state.homeNetworks.filter((n) => n.id !== id),
+      ),
+    );
     invalidateForHomeNetworkEdit();
   },
 
   setHomeNetworks: (networks) => {
-    setJSON(STORAGE_KEYS.homeNetworks, networks);
-    set({ homeNetworks: networks });
+    set((state) => homeNetworksPatch(state, networks));
     invalidateForHomeNetworkEdit();
   },
 
@@ -1926,12 +1961,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeDashboard: (dashboardId) => {
-    let forcedAway = false;
+    let removed = false;
     set((state) => {
       // Refuse to delete the last dashboard — the screen always needs one.
       if (state.dashboards.length <= 1) return state;
       const dashboards = state.dashboards.filter((d) => d.id !== dashboardId);
       if (dashboards.length === state.dashboards.length) return state;
+      removed = true;
       let activeDashboardId = state.activeDashboardId;
       const activeChanged = activeDashboardId === dashboardId;
       if (activeChanged) {
@@ -1961,7 +1997,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           state.dashboards.find((d) => d.id === dashboardId),
           dashboards.find((d) => d.id === activeDashboardId),
         );
-        forcedAway = forceAway;
         return {
           dashboards,
           activeDashboardId,
@@ -1971,10 +2006,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
       return { dashboards, activeDashboardId };
     });
-    // Same as setActiveDashboard: the inline away reset bypasses
-    // setNetworkAwayFromHome's invalidate, so refetch shared-instance queries
-    // against the new (remote) URL (#4).
-    if (forcedAway) void queryClient.invalidateQueries();
+    // Any real deletion can change routing: the inline away reset above
+    // bypasses setNetworkAwayFromHome's invalidate (#4), and deleting a
+    // NON-active dashboard can remove an instance's only explicit owner, which
+    // re-routes it with no flag moving (#418). Refetch in both cases.
+    if (removed) void queryClient.invalidateQueries();
   },
 
   renameDashboard: (dashboardId, name) => {

@@ -1412,3 +1412,120 @@ describe("ownership / home-network edits invalidate queries (#418)", () => {
     spy.mockRestore();
   });
 });
+
+// #418 review (blocking): a home-network edit must land together with the
+// active dashboard's recomputed away verdict. If the list were committed alone,
+// the invalidation that follows would refetch while the flag still said "home"
+// for a network that is no longer in the list — local URL, wrong LAN, real
+// credentials. These assert the URL AT INVALIDATION TIME.
+describe("home-network edits recompute the active away verdict atomically (#418)", () => {
+  const LOCAL = "http://homeserver.local:7878";
+  const REMOTE = "http://100.64.0.1:7878";
+  const HOME_WIFI = { ssid: "HomeWifi", bssid: "" };
+
+  function seedHome(opts: { networks: { id: string; ssid: string; bssid: string }[]; away: boolean }) {
+    seed({ localUrl: LOCAL, remoteUrl: REMOTE, autoSwitchNetwork: true, networkAwayFromHome: opts.away });
+    useConfigStore.setState({
+      homeNetworks: opts.networks,
+      // One plain dashboard: auto-attach, all home networks (no leaked
+      // selection from earlier describes).
+      dashboards: [{ id: "A", name: "A", widgets: [] }],
+      activeDashboardId: "A",
+      currentWifi: HOME_WIFI,
+      treatVpnAsHome: false,
+      isVpnActive: false,
+      demoMode: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+  // Capture what getActiveUrl resolves to at the moment the refetch starts.
+  function captureAtInvalidation(): { spy: jest.SpyInstance; urls: string[] } {
+    const urls: string[] = [];
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockImplementation(async () => {
+        urls.push(useConfigStore.getState().getActiveUrl("radarr"));
+      });
+    return { spy, urls };
+  }
+
+  it("renaming the currently matched network is remote by the time invalidation runs", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(LOCAL);
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().updateHomeNetwork("home", { ssid: "Renamed" });
+
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("removing the currently matched network is remote by the time invalidation runs", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().removeHomeNetwork("home");
+
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("pinning a BSSID the OS does not surface fails closed to remote at invalidation time", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().updateHomeNetwork("home", { bssid: "aa:bb:cc:dd:ee:ff" });
+
+    expect(urls).toEqual([REMOTE]);
+    spy.mockRestore();
+  });
+
+  it("adding the network we are on flips to home in the same transaction", () => {
+    seedHome({ networks: [], away: true });
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().addHomeNetwork({ ssid: "HomeWifi", bssid: "" });
+
+    expect(urls).toEqual([LOCAL]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+    spy.mockRestore();
+  });
+
+  it("leaves the flag alone when auto-switch is off (the evaluator would too)", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    useConfigStore.setState({ autoSwitchNetwork: false });
+    useConfigStore.getState().removeHomeNetwork("home");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+
+  it("stays home under VPN-as-home regardless of the edit (#185 precedence)", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    useConfigStore.setState({ treatVpnAsHome: true, isVpnActive: true });
+    useConfigStore.getState().removeHomeNetwork("home");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+});
+
+describe("removeDashboard — invalidates on a NON-active deletion too (#418)", () => {
+  it("refetches when the deleted dashboard was an instance's only explicit owner", () => {
+    useConfigStore.setState({
+      dashboards: [
+        { id: "A", name: "A", widgets: [], attachedInstances: ["x"] },
+        { id: "B", name: "B", widgets: [], attachedInstances: ["y"] },
+      ],
+      activeDashboardId: "A",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    spy.mockClear();
+
+    useConfigStore.getState().removeDashboard("B");
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    useConfigStore.getState().removeDashboard("nope"); // no-op → no refetch
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+});
