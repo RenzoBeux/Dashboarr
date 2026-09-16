@@ -176,6 +176,17 @@ function applyAuth(
     // concept of.
     return;
   }
+  if (id === "beszel") {
+    // Beszel's credential is a PocketBase login (POST
+    // /api/collections/{_superusers|users}/auth-with-password -> a bearer
+    // token), never a static header — handled entirely by the dedicated login
+    // POST in services/beszel.ts, not this per-request injector. The backend
+    // only ever pings /api/health here for reachability (PocketBase's own
+    // anonymous health route, see SERVICE_PING_PATH), never a real
+    // authenticated call, so there is nothing to send — and it must NOT fall
+    // through to the X-Api-Key default below, which Beszel has no concept of.
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }

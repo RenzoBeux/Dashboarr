@@ -76,6 +76,11 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // Same story as Pi-hole: no protection/blocking watcher and no backend
   // poller for query-log events, so only offline has a real source.
   adguard:     ["serviceOffline"],
+  // Beszel has its own threshold-alert system (alerts/alerts_history
+  // collections) but nothing here polls it yet, so only offline has a real
+  // source — a future "system alert triggered" category could poll for
+  // triggered=true rows, mirroring the *arr health-check pattern.
+  beszel:      ["serviceOffline"],
 };
 
 export const CATEGORY_LABELS: Record<NotifCategory, string> = {

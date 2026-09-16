@@ -23,6 +23,7 @@ import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
 import { adguardClearSession } from "@/services/adguard-api";
+import { beszelClearSession } from "@/services/beszel-api";
 import { seerrClearSession } from "@/services/overseerr-api";
 import {
   dropSeerrSession,
@@ -525,6 +526,11 @@ export function ServiceEditor({
       // ordering relative to the URL/credential rewrite above doesn't matter.
       await adguardClearSession(instanceId);
     }
+    if (serviceId === "beszel") {
+      // Same shape as AdGuard's: drops the cached PocketBase token, no
+      // network call (there's no logout endpoint to hit either).
+      beszelClearSession(instanceId);
+    }
 
     // First-save dashboard prompt. Fires once per editor session when the
     // instance was unconfigured on entry (either freshly added via "Add
@@ -802,6 +808,9 @@ export function ServiceEditor({
         }
         if (serviceId === "adguard") {
           await adguardClearSession(instanceId);
+        }
+        if (serviceId === "beszel") {
+          beszelClearSession(instanceId);
         }
         if (serviceId === "overseerr") {
           await seerrClearSession(instanceId);
