@@ -40,6 +40,9 @@ export default function IntegrationsHub() {
   // Instances attached only to another workspace resolve against that
   // workspace's home networks through the observed WiFi (#418).
   const currentWifi = useConfigStore((s) => s.currentWifi);
+  const dashboards = useConfigStore((s) => s.dashboards);
+  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
+  const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
 
   const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
@@ -72,6 +75,9 @@ export default function IntegrationsHub() {
     getActiveUrl,
     networkAwayFromHome,
     currentWifi,
+    dashboards,
+    activeDashboardId,
+    homeNetworks,
     isOnWifi,
   ]);
 

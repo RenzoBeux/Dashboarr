@@ -271,6 +271,12 @@ interface ConfigActions {
   setNetworkAwayFromHome: (away: boolean) => void;
   // Set by evaluateHomeNetwork() alongside the away flag. EPHEMERAL.
   setCurrentWifi: (wifi: WifiIdentity | null) => void;
+  // The evaluator's write: identity + active verdict in ONE state update and
+  // ONE invalidation. Writing them separately would let the refetch burst
+  // from the first write run against the other, still-stale field — on a
+  // house A → house B walk that is the active dashboard's local URL sent on
+  // house B's LAN with house A's key. EPHEMERAL.
+  setNetworkObservation: (wifi: WifiIdentity | null, away: boolean) => void;
   // The home/away + "always remote" verdict that governs ONE instance's URL
   // choice. For an instance attached to the active dashboard this is the
   // active verdict (`networkAwayFromHome` + the workspace pin); for one that
@@ -528,11 +534,25 @@ function effectiveHomeNetworksOf(
   return globalHomeNetworks.filter((n) => ids.has(n.id));
 }
 
-// Whether a dashboard claims an instance: an explicit attachment list, or the
-// pre-v20 "everything is attached" default when the list is absent.
-function dashboardAttaches(dashboard: Dashboard, instanceId: string): boolean {
-  const attached = dashboard.attachedInstances;
-  return attached === undefined || attached.includes(instanceId);
+// Whether a dashboard names an instance in its attachment list. The absent
+// list (pre-v20 "everything is attached") deliberately returns false here: it
+// is a display default, not a statement of which house the instance lives in
+// (see resolveInstanceNetwork).
+function dashboardExplicitlyAttaches(
+  dashboard: Dashboard,
+  instanceId: string,
+): boolean {
+  return dashboard.attachedInstances?.includes(instanceId) ?? false;
+}
+
+// A home-network edit (SSID/BSSID, add, remove) changes what every dashboard
+// selecting it matches, and so the local/remote URL of the instances those
+// dashboards own (#418) — with no network flag moving. The ACTIVE dashboard's
+// flag is re-confirmed by useNetworkAutoSwitch (it depends on homeNetworks);
+// this covers the queries already fetched against the old URLs (#4). Rare,
+// user-driven edits, so a blanket invalidation is fine.
+function invalidateForHomeNetworkEdit(): void {
+  void queryClient.invalidateQueries();
 }
 
 /** See ConfigActions.resolveInstanceNetwork. */
@@ -1736,6 +1756,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     void queryClient.invalidateQueries();
   },
 
+  setNetworkObservation: (wifi, away) => {
+    const state = get();
+    const wifiChanged = !sameWifiIdentity(state.currentWifi, wifi);
+    const awayChanged = state.networkAwayFromHome !== away;
+    if (!wifiChanged && !awayChanged) return;
+    set({ currentWifi: wifi, networkAwayFromHome: away });
+    // Same reasoning as setNetworkAwayFromHome (#4): resolved URLs flip with
+    // either field and query keys don't encode them.
+    void queryClient.invalidateQueries();
+  },
+
   setIsOnWifi: (onWifi) => {
     // No-op when unchanged (NetInfo emits repeatedly). Coming back onto WiFi
     // re-enables LAN URLs; leaving it disables them — invalidate so any query
@@ -1772,6 +1803,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       setJSON(STORAGE_KEYS.homeNetworks, next);
       return { homeNetworks: next };
     });
+    invalidateForHomeNetworkEdit();
     return created;
   },
 
@@ -1789,6 +1821,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       setJSON(STORAGE_KEYS.homeNetworks, next);
       return { homeNetworks: next };
     });
+    invalidateForHomeNetworkEdit();
   },
 
   removeHomeNetwork: (id) => {
@@ -1797,11 +1830,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       setJSON(STORAGE_KEYS.homeNetworks, next);
       return { homeNetworks: next };
     });
+    invalidateForHomeNetworkEdit();
   },
 
   setHomeNetworks: (networks) => {
     setJSON(STORAGE_KEYS.homeNetworks, networks);
     set({ homeNetworks: networks });
+    invalidateForHomeNetworkEdit();
   },
 
   setServicesOrder: (order) => {
@@ -2056,6 +2091,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
       return { dashboards };
     });
+    // Attachment is ownership for URL resolution (#418): claiming or releasing
+    // an instance on ANY dashboard can flip which home networks judge it, and
+    // with them its local/remote URL, without any network flag moving. Query
+    // keys don't encode the URL (#4), so refetch.
+    void queryClient.invalidateQueries();
   },
 
   setDashboardPinnedTabs: (dashboardId, tabIds) => {
@@ -2131,7 +2171,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
     // The inline away reset bypasses setNetworkAwayFromHome's invalidate, so
     // refetch any local-resolved instance against the new (remote) URL (#4).
-    if (forcedAway) void queryClient.invalidateQueries();
+    // A NON-active dashboard's selection also governs its own instances'
+    // URLs (#418) with no flag moving at all, so refetch for that too.
+    if (forcedAway || dashboardId !== get().activeDashboardId) {
+      void queryClient.invalidateQueries();
+    }
   },
 
   setDashboardServicesOrder: (dashboardId, order) => {
@@ -2492,16 +2536,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       away: state.networkAwayFromHome,
       forcesRemote: workspaceForcesRemote(active, state.homeNetworks),
     };
-    // The active dashboard's verdict is authoritative for everything it shows,
-    // exactly as before #418. That includes every instance when it auto-attaches
-    // (attachedInstances undefined).
-    if (!active || dashboardAttaches(active, instanceId)) return activeVerdict;
-    // Otherwise the instance lives on other dashboard(s): judge it against
-    // THEIR home networks. An instance no dashboard claims keeps the legacy
-    // active verdict — there is no better context for it.
+    // Ownership is EXPLICIT attachment only. A dashboard that auto-attaches
+    // (attachedInstances undefined, the pre-v20 / migrated default) shows every
+    // instance but says nothing about which house an instance lives in, so it
+    // must not override a dashboard that explicitly claims it: a long-time
+    // upgrader's home dashboard is exactly such an auto-attach dashboard, and
+    // the other house's instances still need to resolve remote there (#418).
+    if (!active || dashboardExplicitlyAttaches(active, instanceId)) {
+      return activeVerdict;
+    }
     const owners = state.dashboards.filter(
-      (d) => d.id !== active.id && dashboardAttaches(d, instanceId),
+      (d) => d.id !== active.id && dashboardExplicitlyAttaches(d, instanceId),
     );
+    // No dashboard claims it explicitly (auto-attach everywhere, or an orphan):
+    // the active verdict is the only context there is — unchanged behavior.
     if (owners.length === 0) return activeVerdict;
     const trusting = owners.filter(
       (d) => !workspaceForcesRemote(d, state.homeNetworks),

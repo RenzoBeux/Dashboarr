@@ -1272,15 +1272,28 @@ describe("getActiveUrl — instance attached to another workspace (#418)", () =>
     expect(url(ORPHAN_ID)).toBe(HOME_REMOTE);
   });
 
-  it("an auto-attach active workspace (attachedInstances undefined) governs every instance, as before", () => {
+  // Review finding on #418: a migrated / pre-v20 dashboard auto-attaches
+  // (attachedInstances undefined). That is a display default, not a claim on
+  // which house an instance lives in, so an explicit owner elsewhere wins.
+  it("an explicit owner beats an auto-attach ACTIVE workspace (migrated dashboards)", () => {
     seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
-    // Clear the attachment list on the active dashboard → it claims everything.
     useConfigStore.setState({
       dashboards: useConfigStore
         .getState()
         .dashboards.map((d) =>
           d.id === "home" ? { ...d, attachedInstances: undefined } : d,
         ),
+    });
+    expect(url(HOME_ID)).toBe(LOCAL); // no explicit owner → active verdict
+    expect(url(SEDONA_ID)).toBe(SEDONA_REMOTE); // Sedona owns it explicitly
+  });
+
+  it("with no explicit owner anywhere, the active verdict governs (unchanged behavior)", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
+    useConfigStore.setState({
+      dashboards: useConfigStore
+        .getState()
+        .dashboards.map((d) => ({ ...d, attachedInstances: undefined })),
     });
     expect(url(SEDONA_ID)).toBe(LOCAL);
   });
@@ -1314,6 +1327,88 @@ describe("setCurrentWifi — invalidation only on a real change (#418)", () => {
     useConfigStore.getState().setCurrentWifi(null);
     expect(useConfigStore.getState().currentWifi).toBeNull();
     expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+});
+
+describe("setNetworkObservation — one atomic write, one invalidation (#418)", () => {
+  it("writes both fields in one update and invalidates once", () => {
+    useConfigStore.setState({
+      currentWifi: { ssid: "Home", bssid: "" },
+      networkAwayFromHome: false,
+    });
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    const seen: Array<[unknown, boolean]> = [];
+    const unsub = useConfigStore.subscribe((s) =>
+      seen.push([s.currentWifi, s.networkAwayFromHome]),
+    );
+    spy.mockClear();
+
+    useConfigStore.getState().setNetworkObservation({ ssid: "Cabin", bssid: "" }, true);
+
+    // A single subscriber notification carrying BOTH new values: no
+    // intermediate state where the identity is new but the verdict is stale.
+    expect(seen).toEqual([[{ ssid: "Cabin", bssid: "" }, true]]);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    useConfigStore.getState().setNetworkObservation({ ssid: "Cabin", bssid: "" }, true);
+    expect(spy).toHaveBeenCalledTimes(1); // unchanged → no-op
+
+    useConfigStore.getState().setNetworkObservation({ ssid: "Cabin", bssid: "" }, false);
+    expect(spy).toHaveBeenCalledTimes(2); // one field changed → still one invalidate
+    unsub();
+    spy.mockRestore();
+  });
+});
+
+// #418 review: ownership and home-network edits re-route instances with no
+// network flag moving, so the setters must refetch what was cached against the
+// old URLs.
+describe("ownership / home-network edits invalidate queries (#418)", () => {
+  const net = (id: string) => ({ id, ssid: id, bssid: "" });
+  function seedTwo() {
+    useConfigStore.setState({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", name: "A", widgets: [], attachedInstances: ["x"], homeNetworkIds: ["home"] },
+        { id: "B", name: "B", widgets: [], attachedInstances: ["y"], homeNetworkIds: ["cabin"] },
+      ],
+      activeDashboardId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    spy.mockClear();
+    return spy;
+  }
+
+  it("setDashboardAttachedInstances on a NON-active workspace invalidates", () => {
+    const spy = seedTwo();
+    useConfigStore.getState().setDashboardAttachedInstances("B", ["y", "z"]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("setDashboardHomeNetworkIds on a NON-active workspace invalidates without touching the flag", () => {
+    const spy = seedTwo();
+    useConfigStore.getState().setDashboardHomeNetworkIds("B", ["home"]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+    spy.mockRestore();
+  });
+
+  it("updateHomeNetwork / removeHomeNetwork / addHomeNetwork invalidate", () => {
+    const spy = seedTwo();
+    useConfigStore.getState().updateHomeNetwork("cabin", { ssid: "cabin-5g" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    useConfigStore.getState().removeHomeNetwork("cabin");
+    expect(spy).toHaveBeenCalledTimes(2);
+    useConfigStore.getState().addHomeNetwork({ ssid: "lake", bssid: "" });
+    expect(spy).toHaveBeenCalledTimes(3);
     spy.mockRestore();
   });
 });

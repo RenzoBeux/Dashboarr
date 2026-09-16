@@ -190,11 +190,11 @@ async function evaluateHomeNetworkOnce(): Promise<void> {
     }
   }
   const wifi = wifiIdentityOf(state);
-  // Identity first, then the active verdict: each setter invalidates queries
-  // only when its value changed, and consumers read both synchronously, so the
-  // order only matters for keeping the two consistent within one pass.
-  store.setCurrentWifi(wifi);
-  store.setNetworkAwayFromHome(!matchesHomeNetwork(wifi, effective));
+  // One atomic write for both fields. Writing the identity first would
+  // trigger a refetch burst while the active verdict was still the previous
+  // network's — on a house A → house B walk, the active dashboard's local
+  // URL sent on house B's LAN. See setNetworkObservation.
+  store.setNetworkObservation(wifi, !matchesHomeNetwork(wifi, effective));
 }
 
 /**

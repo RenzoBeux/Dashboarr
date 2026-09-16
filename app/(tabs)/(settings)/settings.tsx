@@ -38,6 +38,9 @@ export default function SettingsScreen() {
   const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
   const currentWifi = useConfigStore((s) => s.currentWifi);
+  const dashboards = useConfigStore((s) => s.dashboards);
+  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
+  const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
@@ -84,6 +87,9 @@ export default function SettingsScreen() {
     getActiveUrl,
     networkAwayFromHome,
     currentWifi,
+    dashboards,
+    activeDashboardId,
+    homeNetworks,
     isOnWifi,
   ]);
 

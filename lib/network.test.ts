@@ -90,7 +90,7 @@ describe("isHomeNetwork", () => {
 
 describe("evaluateHomeNetwork", () => {
   function fakeStore(over: Record<string, any> = {}) {
-    return {
+    const store: Record<string, any> = {
       demoMode: false,
       autoSwitchNetwork: true,
       treatVpnAsHome: false,
@@ -104,6 +104,15 @@ describe("evaluateHomeNetwork", () => {
       setIsVpnActive: jest.fn(),
       ...over,
     };
+    // The evaluator commits identity + verdict through ONE store write
+    // (#418 review: separate writes let the first one's refetch run against
+    // the other, stale field). Delegate here so the per-field assertions
+    // below keep reading naturally.
+    store.setNetworkObservation = jest.fn((wifi: unknown, away: boolean) => {
+      store.setCurrentWifi(wifi);
+      store.setNetworkAwayFromHome(away);
+    });
+    return store;
   }
 
   it("sets away=false on a confirmed home network", async () => {
@@ -131,6 +140,20 @@ describe("evaluateHomeNetwork", () => {
       bssid: "aa:bb:cc",
     });
     expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  it("commits the identity and the active verdict in one atomic write", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkObservation).toHaveBeenCalledTimes(1);
+    expect(store.setNetworkObservation).toHaveBeenCalledWith(
+      { ssid: "Home", bssid: "" },
+      false,
+    );
   });
 
   it("records a null identity off WiFi (cellular / VPN-masked)", async () => {
@@ -433,7 +456,7 @@ describe("evaluateHomeNetwork", () => {
 
 describe("reevaluateHomeNetworkAfterImport", () => {
   function fakeStore(over: Record<string, any> = {}) {
-    return {
+    const store: Record<string, any> = {
       demoMode: false,
       autoSwitchNetwork: true,
       treatVpnAsHome: false,
@@ -445,6 +468,15 @@ describe("reevaluateHomeNetworkAfterImport", () => {
       setIsVpnActive: jest.fn(),
       ...over,
     };
+    // The evaluator commits identity + verdict through ONE store write
+    // (#418 review: separate writes let the first one's refetch run against
+    // the other, stale field). Delegate here so the per-field assertions
+    // below keep reading naturally.
+    store.setNetworkObservation = jest.fn((wifi: unknown, away: boolean) => {
+      store.setCurrentWifi(wifi);
+      store.setNetworkAwayFromHome(away);
+    });
+    return store;
   }
 
   beforeEach(() => {
