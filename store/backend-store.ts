@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
-import { getSecret, setSecret, deleteSecret } from "@/store/storage";
+import { getSecret, setSecret, deleteSecret, deleteKey } from "@/store/storage";
+import { STORAGE_KEYS } from "@/lib/constants";
 
 /**
  * Paired-backend state. URL + shared secret live in SecureStore so they don't
@@ -62,6 +63,14 @@ interface BackendState {
   lastBackupAt: number | null;
   lastBackupError: string | null;
   backupInFlight: boolean;
+  /**
+   * The backend's "web" slot (edited in its web UI, Refs #385): the revision
+   * last seen in a successful list (null = none, or backend too old), and the
+   * revision this phone last applied. Pending = seen > applied. Both reset on
+   * unpair; see services/web-slot-watch.ts for the update rules.
+   */
+  webSlotRevision: number | null;
+  webSlotAppliedRevision: number | null;
 }
 
 interface BackendActions {
@@ -78,6 +87,7 @@ interface BackendActions {
     lastBackupError?: string | null;
     backupInFlight?: boolean;
   }) => void;
+  setWebSlot: (patch: { webSlotRevision?: number | null; webSlotAppliedRevision?: number | null }) => void;
 }
 
 export const useBackendStore = create<BackendState & BackendActions>((set, get) => ({
@@ -97,6 +107,8 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   lastBackupAt: null,
   lastBackupError: null,
   backupInFlight: false,
+  webSlotRevision: null,
+  webSlotAppliedRevision: null,
 
   hydrate: async () => {
     const [url, sharedSecret, deviceId, ignoreCertErrors, backupEnabled, backupSalt, backupKey, backupIter] =
@@ -169,6 +181,8 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       deleteSecret(SECRET_KEYS.backupKey),
       deleteSecret(SECRET_KEYS.backupKeyIterations),
     ]);
+    // Web-slot revisions belong to the pairing being dropped.
+    deleteKey(STORAGE_KEYS.backendWebSlotAppliedRevision);
     set({
       url: null,
       sharedSecret: null,
@@ -185,6 +199,8 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       lastBackupAt: null,
       lastBackupError: null,
       backupInFlight: false,
+      webSlotRevision: null,
+      webSlotAppliedRevision: null,
     });
   },
 
@@ -246,7 +262,14 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   },
 
   setBackupStatus: (patch) => set(patch),
+
+  setWebSlot: (patch) => set(patch),
 }));
+
+/** An edit made on the backend's web UI that this phone has not applied yet. */
+export function isWebSlotPending(state: Pick<BackendState, "webSlotRevision" | "webSlotAppliedRevision">): boolean {
+  return state.webSlotRevision !== null && state.webSlotRevision > (state.webSlotAppliedRevision ?? -1);
+}
 
 /**
  * Returns true when the app should defer notifications to the backend

@@ -34,6 +34,9 @@ import {
 } from "@/services/backend-api";
 import type { BackupMeta } from "@/services/backend-api";
 import { uploadConfigBackup } from "@/services/backend-backup";
+import { WEB_SLOT_ID } from "@/services/backend-api";
+import { markWebSlotApplied, noteBackupList } from "@/services/web-slot-watch";
+import { isWebSlotPending } from "@/store/backend-store";
 import { getExpoPushToken, hasProjectId } from "@/lib/expo-push";
 import { normalizeServiceUrl } from "@/lib/url-validation";
 import { requireDeviceAuth } from "@/lib/device-auth";
@@ -55,18 +58,20 @@ const BACKUP_STAGE_COPY: Record<BackupStage, { title: string; subtitle?: string 
 };
 
 function slotLabel(slot: BackupMeta): string {
+  if (slot.deviceId === WEB_SLOT_ID) return "Web editor";
   if (slot.mine) return "This device";
   const platform = slot.platform === "ios" ? "iPhone" : slot.platform === "android" ? "Android" : slot.platform;
   return `${platform} · ${slot.deviceId.slice(0, 8)}`;
 }
 
 function slotSubtitle(slot: BackupMeta): string {
+  const isWeb = slot.deviceId === WEB_SLOT_ID;
   const parts = [
-    `app ${slot.appVersion ?? "?"}`,
+    isWeb ? "edited in the backend's web UI" : `app ${slot.appVersion ?? "?"}`,
     formatTimeAgo(new Date(slot.updatedAt).toISOString()),
     formatBytes(slot.sizeBytes),
   ];
-  if (!slot.paired) parts.push("unpaired");
+  if (!slot.paired && !isWeb) parts.push("unpaired");
   if (slot.configVersion > CURRENT_CONFIG_VERSION) parts.push("needs a newer app");
   return parts.join(" · ");
 }
@@ -142,6 +147,7 @@ export default function BackendScreen() {
   const lastBackupError = useBackendStore((s) => s.lastBackupError);
   const backupInFlight = useBackendStore((s) => s.backupInFlight);
   const importConfigFromEnvelope = useConfigStore((s) => s.importConfigFromEnvelope);
+  const webSlotPending = useBackendStore((s) => isWebSlotPending(s));
 
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
@@ -150,6 +156,8 @@ export default function BackendScreen() {
   const [backupStage, setBackupStage] = useState<BackupStage | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupSupported, setBackupSupported] = useState<boolean | null>(null);
+  const [slots, setSlots] = useState<BackupMeta[]>([]);
+  const webSlot = slots.find((s) => s.deviceId === WEB_SLOT_ID);
 
   // Every chained modal on this screen goes through the flow (see
   // hooks/use-modal-flow.ts): confirm → sheet → passphrase → progress, and the
@@ -376,8 +384,11 @@ export default function BackendScreen() {
     }
     let cancelled = false;
     listConfigBackups()
-      .then(() => {
-        if (!cancelled) setBackupSupported(true);
+      .then(({ backups }) => {
+        if (cancelled) return;
+        setBackupSupported(true);
+        setSlots(backups);
+        noteBackupList(backups);
       })
       .catch((err: unknown) => {
         if (!cancelled) setBackupSupported(isUnsupported(err) ? false : null);
@@ -386,6 +397,16 @@ export default function BackendScreen() {
       cancelled = true;
     };
   }, [url, sharedSecret]);
+
+  const refreshSlots = useCallback(async () => {
+    try {
+      const { backups } = await listConfigBackups();
+      setSlots(backups);
+      noteBackupList(backups);
+    } catch {
+      /* the next probe or resume will retry */
+    }
+  }, []);
 
   /** Derive the key from a passphrase, store it, upload once. Shared by the toggle and the post-restore offer. */
   const enableBackupWith = useCallback(
@@ -482,8 +503,11 @@ export default function BackendScreen() {
       if (!result) return;
       setBackupStage("downloading");
       try {
-        const { envelope } = await getConfigBackup(slot.deviceId);
-        await importConfigFromEnvelope(envelope, result.passphrase, setBackupStage);
+        const downloaded = await getConfigBackup(slot.deviceId);
+        await importConfigFromEnvelope(downloaded.envelope, result.passphrase, setBackupStage);
+        // Applied = the revision of the envelope actually restored, not the
+        // list we showed earlier and not this phone's clock.
+        if (slot.deviceId === WEB_SLOT_ID) markWebSlotApplied(downloaded.revision);
         try {
           await syncRememberedState(result);
         } catch (err) {
@@ -501,6 +525,7 @@ export default function BackendScreen() {
             );
           }
         });
+        void refreshSlots();
         if (!useBackendStore.getState().backupEnabled) {
           flow.open("offerEnableAfterRestore", result.passphrase);
         }
@@ -510,8 +535,26 @@ export default function BackendScreen() {
         setBackupStage(null);
       }
     },
-    [flow, importConfigFromEnvelope, requestPassphrase, syncRememberedState],
+    [flow, importConfigFromEnvelope, requestPassphrase, syncRememberedState, refreshSlots],
   );
+
+  const applyWebSlot = useCallback(async () => {
+    // Re-read so Apply acts on the newest web revision, not a stale list.
+    let target = webSlot;
+    try {
+      const { backups } = await listConfigBackups();
+      setSlots(backups);
+      noteBackupList(backups);
+      target = backups.find((s) => s.deviceId === WEB_SLOT_ID);
+    } catch {
+      /* fall back to what we have */
+    }
+    if (!target) {
+      toast("The web configuration is no longer on the backend", "info");
+      return;
+    }
+    flow.open("confirmRestore", [target]);
+  }, [flow, webSlot]);
 
   const openManage = useCallback(async () => {
     try {
@@ -526,14 +569,18 @@ export default function BackendScreen() {
     }
   }, [flow]);
 
-  const performDeleteSlot = useCallback(async (slot: BackupMeta) => {
-    try {
-      await deleteConfigBackup(slot.deviceId);
-      toast("Backup deleted", "success");
-    } catch (err) {
-      toastError("Could not delete backup", err);
-    }
-  }, []);
+  const performDeleteSlot = useCallback(
+    async (slot: BackupMeta) => {
+      try {
+        await deleteConfigBackup(slot.deviceId);
+        toast("Backup deleted", "success");
+        void refreshSlots();
+      } catch (err) {
+        toastError("Could not delete backup", err);
+      }
+    },
+    [refreshSlots],
+  );
 
   useEffect(() => {
     if (mode === "scanning" && !permission?.granted) {
@@ -690,6 +737,17 @@ export default function BackendScreen() {
                           ? `Last backup ${formatTimeAgo(new Date(lastBackupAt).toISOString())}`
                           : "No backup uploaded yet"}
                   </Text>
+                ) : null}
+                {webSlotPending && webSlot ? (
+                  <View className="bg-amber-950/60 border border-amber-900/60 rounded-xl px-3 py-2 flex-row items-center justify-between gap-3">
+                    <View className="flex-1">
+                      <Text className="text-amber-300 text-sm font-medium">Configuration edited on the web</Text>
+                      <Text className="text-amber-200/70 text-xs">
+                        {formatTimeAgo(new Date(webSlot.updatedAt).toISOString())} · replaces this phone's settings
+                      </Text>
+                    </View>
+                    <Button label="Apply" onPress={() => void applyWebSlot()} disabled={backupBusy || backupStage !== null} />
+                  </View>
                 ) : null}
                 <View className="flex-row gap-3">
                   <Button
@@ -910,7 +968,7 @@ export default function BackendScreen() {
       <ActionSheet
         {...flow.bind("pickSlot")}
         title="Choose a backup"
-        subtitle="Any paired device's backup can be restored with its passphrase."
+        subtitle="Any device's backup, or the one edited on the backend's web UI, can be restored with its passphrase."
         actions={(flow.payload("pickSlot") ?? []).map((slot) => ({
           label: slotLabel(slot),
           subtitle: slotSubtitle(slot),

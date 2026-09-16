@@ -39,6 +39,7 @@ import {
   loadBackupStatus,
   scheduleConfigBackup,
 } from "@/services/backend-backup";
+import { checkWebSlot, loadWebSlotStatus } from "@/services/web-slot-watch";
 import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { AppStack } from "@/components/navigation/app-stack";
@@ -65,6 +66,8 @@ function onAppStateChange(status: AppStateStatus) {
   if (status === "active") {
     // A config change made while backgrounded skipped its backup upload.
     flushPendingConfigBackup();
+    // Anything edited on the backend's web UI since we last looked?
+    void checkWebSlot();
     // The network may have changed while we were backgrounded — walked out the
     // door, or toggled a VPN like Tailscale (whose interface changes don't
     // deliver NetInfo events to a suspended JS runtime). Re-evaluate the home
@@ -324,6 +327,8 @@ function ConfigSyncBridge() {
   useEffect(() => {
     if (!sharedSecret || !backendHydrated || !configHydrated) return;
     loadBackupStatus();
+    loadWebSlotStatus();
+    void checkWebSlot({ force: true });
     if (!backupEnabled) return;
     const unsub = useConfigStore.subscribe(scheduleConfigBackup);
     return () => {

@@ -208,10 +208,15 @@ export interface BackupMeta {
   configVersion: number;
   exportedAt: number;
   updatedAt: number;
+  /** Monotonic per-slot counter, bumped on every write (backend 1.7+; 0 on older rows). */
+  revision: number;
   lastSeenAt: number | null;
   /** This slot belongs to the calling device. */
   mine: boolean;
 }
+
+/** The backend's reserved slot written by its web editor (Refs #385). */
+export const WEB_SLOT_ID = "web";
 
 export interface BackupPutBody {
   envelope: EncryptedEnvelope;

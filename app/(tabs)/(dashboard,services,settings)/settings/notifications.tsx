@@ -7,6 +7,7 @@ import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { useConfigStore } from "@/store/config-store";
+import { isWebSlotPending, useBackendStore } from "@/store/backend-store";
 
 export default function NotificationsSettingsScreen() {
   const notifEnabled = useConfigStore((s) => s.notificationSettings.enabled);
@@ -18,6 +19,7 @@ export default function NotificationsSettingsScreen() {
   const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
   const overseerrNewRequest = useConfigStore((s) => s.notificationSettings.overseerrNewRequest);
   const setNotifSetting = useConfigStore((s) => s.setNotificationSetting);
+  const webSlotPending = useBackendStore((s) => isWebSlotPending(s));
 
   return (
     <ScreenWrapper>
@@ -86,7 +88,12 @@ export default function NotificationsSettingsScreen() {
         <SettingsRow
           icon={Cloud}
           label="Backend"
-          subtitle="Self-host for real push notifications when the app is closed"
+          subtitle={
+            webSlotPending
+              ? "Configuration edited on the web · tap to apply"
+              : "Self-host for real push notifications when the app is closed"
+          }
+          subtitleTone={webSlotPending ? "warn" : "default"}
           onPress={() => router.push("/backend")}
           right={<BackendStatusPill />}
         />
