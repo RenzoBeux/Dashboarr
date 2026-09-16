@@ -36,7 +36,7 @@ export function AddArtistSheet({ result, visible, onClose }: AddArtistSheetProps
   const { data: profiles } = useLidarrQualityProfiles();
   const { data: metadataProfiles } = useLidarrMetadataProfiles();
   const { data: folders } = useLidarrRootFolders();
-  const { data: tags } = useLidarrTags();
+  const { data: tags, isError: tagsError } = useLidarrTags();
   const addArtist = useAddArtist();
 
   const [metadataProfileId, setMetadataProfileId] = useState<number | undefined>();
@@ -77,7 +77,7 @@ export function AddArtistSheet({ result, visible, onClose }: AddArtistSheetProps
       placeholderIcon={Mic2}
       profiles={profiles}
       folders={folders}
-      tags={tags}
+      tags={tags ?? (tagsError ? [] : undefined)}
       isSubmitting={addArtist.isPending}
       searchToggleDescription="Trigger a search for the artist's albums once added"
       onSubmit={({ qualityProfileId, rootFolderPath, selectedTags, searchOnAdd }) => {

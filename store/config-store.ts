@@ -72,6 +72,7 @@ import {
   isEncryptedEnvelope,
 } from "@/lib/config-crypto";
 import { useBackendStore } from "@/store/backend-store";
+import { useAddDefaultsStore, addDefaultsKey } from "@/store/add-defaults-store";
 import { queryClient } from "@/lib/query-client";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
@@ -1664,6 +1665,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // runs before removal); this only stops a deleted id from lingering.
     forgetSeerrSession(instanceId);
     get().forgetSeerrStaleHosts(instanceId);
+    // Drop this instance's remembered add-sheet defaults.
+    useAddDefaultsStore.getState().prune(addDefaultsKey(id, instanceId));
     // Clear SecureStore entries for this instance before mutating state so a
     // crash mid-delete doesn't leave orphaned secrets behind.
     await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);

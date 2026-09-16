@@ -21,6 +21,7 @@ import { useGlancesUiStore } from "@/store/glances-ui-store";
 import { useUnraidUiStore } from "@/store/unraid-ui-store";
 import { useReleaseFilterStore } from "@/store/releases-filter-store";
 import { useLibraryTagFilterStore } from "@/store/library-tag-filter-store";
+import { useAddDefaultsStore } from "@/store/add-defaults-store";
 import { useIntroStore } from "@/store/intro-store";
 import { queryClient } from "@/lib/query-client";
 import { configureNotifications } from "@/lib/notifications";
@@ -346,6 +347,7 @@ export default function RootLayout() {
   const hydrateUnraidUi = useUnraidUiStore((s) => s.hydrate);
   const hydrateReleaseFilters = useReleaseFilterStore((s) => s.hydrate);
   const hydrateLibraryTagFilters = useLibraryTagFilterStore((s) => s.hydrate);
+  const hydrateAddDefaults = useAddDefaultsStore((s) => s.hydrate);
   const hydrateIntro = useIntroStore((s) => s.hydrate);
   const introHydrated = useIntroStore((s) => s.hydrated);
   const introSeen = useIntroStore((s) => s.workspaceIntroSeen);
@@ -378,6 +380,7 @@ export default function RootLayout() {
       hydrateUnraidUi();
       hydrateReleaseFilters();
       hydrateLibraryTagFilters();
+      hydrateAddDefaults();
       hydrateIntro();
     }
   }, [
@@ -387,6 +390,7 @@ export default function RootLayout() {
     hydrateUnraidUi,
     hydrateReleaseFilters,
     hydrateLibraryTagFilters,
+    hydrateAddDefaults,
     hydrateIntro,
   ]);
 

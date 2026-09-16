@@ -49,7 +49,7 @@ export const SERIES_TYPE_OPTIONS: {
 export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps) {
   const { data: profiles } = useSonarrQualityProfiles();
   const { data: folders } = useSonarrRootFolders();
-  const { data: tags } = useSonarrTags();
+  const { data: tags, isError: tagsError } = useSonarrTags();
   const addSeries = useAddSeries();
 
   const [monitor, setMonitor] = useState<SonarrMonitorOption>("all");
@@ -72,7 +72,7 @@ export function AddSeriesSheet({ result, visible, onClose }: AddSeriesSheetProps
       placeholderIcon={Tv}
       profiles={profiles}
       folders={folders}
-      tags={tags}
+      tags={tags ?? (tagsError ? [] : undefined)}
       isSubmitting={addSeries.isPending}
       searchToggleDescription="Trigger an automatic search once the series is added"
       onSubmit={({ qualityProfileId, rootFolderPath, selectedTags, searchOnAdd }) => {
