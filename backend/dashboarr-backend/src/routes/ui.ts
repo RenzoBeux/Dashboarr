@@ -112,7 +112,17 @@ export async function uiDataRoutes(app: FastifyInstance, opts: UiRouteOptions): 
     noStore(reply);
     const token = sessionToken(request);
     if (token) opts.sessions.revoke(token);
-    reply.clearCookie(UI_COOKIE);
+    // Not reply.clearCookie(): that helper forces Path=/, which would not
+    // match the login cookie's default path (see UI_COOKIE) and so would
+    // leave the stale cookie in the browser. An expired Set-Cookie with the
+    // same attributes and no Path replaces it exactly.
+    reply.setCookie(UI_COOKIE, "", {
+      httpOnly: true,
+      sameSite: "strict",
+      expires: new Date(0),
+      maxAge: 0,
+      secure: request.protocol === "https",
+    });
     return { ok: true };
   });
 

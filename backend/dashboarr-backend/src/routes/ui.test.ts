@@ -160,6 +160,12 @@ test("logout revokes the session", async () => {
   const cleared = out.cookies.find((c) => c.name === UI_COOKIE);
   assert.ok(cleared);
   assert.equal(cleared.value, "");
+  assert.equal(cleared.maxAge, 0);
+  // Same default path as the login cookie, so the browser really drops it
+  // (reply.clearCookie would have emitted Path=/ and left it in place).
+  assert.equal(cleared.path, undefined);
+  assert.equal(cleared.httpOnly, true);
+  assert.equal(cleared.sameSite, "Strict");
 
   const after = await app.inject({ method: "GET", url: "/ui/api/overview", cookies: { [UI_COOKIE]: token } });
   assert.equal(after.statusCode, 401);
