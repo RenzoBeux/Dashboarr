@@ -1,5 +1,5 @@
 import type { ServiceId } from "@/lib/constants";
-import type { NotificationSettings, NotifCategory } from "@/store/config-store";
+import type { NotificationSettings, NotifCategory } from "@/lib/config-types";
 
 export type { NotifCategory };
 

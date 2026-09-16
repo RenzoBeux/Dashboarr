@@ -138,7 +138,9 @@ export const LUCIDE_ICON_NAMES = Object.keys(
   LUCIDE_BY_NAME,
 ) as readonly DashboardIconName[];
 
-export const DEFAULT_DASHBOARD_ICON: DashboardIconName = "LayoutDashboard";
+import { DEFAULT_DASHBOARD_ICON as PURE_DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-defaults";
+
+export const DEFAULT_DASHBOARD_ICON = PURE_DEFAULT_DASHBOARD_ICON satisfies DashboardIconName;
 
 export function resolveDashboardIcon(name: string | undefined): LucideIcon {
   if (name && name in LUCIDE_BY_NAME) {

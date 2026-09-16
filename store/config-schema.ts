@@ -13,8 +13,9 @@ import type {
   ServiceSecrets,
   WakeOnLanDevice,
   WidgetSlot,
-} from "@/store/config-store";
-import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/store/config-store";
+} from "@/lib/config-types";
+import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/lib/config-types";
+import { isValidWeekStart } from "@/lib/week-start-values";
 import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
@@ -511,15 +512,16 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     }
     dashboards.push(coerced);
   }
-  if (dashboards.length === 0) throw new Error("Config dashboards is empty");
+  const firstDashboard = dashboards[0];
+  if (!firstDashboard) throw new Error("Config dashboards is empty");
 
   let activeDashboardId: string;
   if (typeof raw.activeDashboardId !== "string") {
-    activeDashboardId = dashboards[0].id;
+    activeDashboardId = firstDashboard.id;
   } else if (dashboards.some((d) => d.id === raw.activeDashboardId)) {
     activeDashboardId = raw.activeDashboardId;
   } else {
-    activeDashboardId = dashboards[0].id;
+    activeDashboardId = firstDashboard.id;
   }
 
   const homeNetworks: HomeNetwork[] = [];
@@ -611,6 +613,13 @@ export function validateExportPayload(raw: unknown): ExportPayload {
       order.push(id as ServiceId);
     }
     payload.servicesOrder = order;
+  }
+
+  // v40: calendar first-day-of-week. Validated here so a config that round-trips
+  // through the backend's web editor keeps the user's choice.
+  if (raw.weekStart !== undefined && raw.weekStart !== null) {
+    if (!isValidWeekStart(raw.weekStart)) throw new Error("Config weekStart is invalid");
+    payload.weekStart = raw.weekStart;
   }
 
   return payload;

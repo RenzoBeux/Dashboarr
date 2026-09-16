@@ -6,9 +6,9 @@ import {
   DEFAULT_UI_SCALE,
   SERVICE_IDS,
 } from "@/lib/constants";
-import type { ExportPayload } from "@/store/config-store";
-import { generateInstanceId } from "@/lib/uuid";
-import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-icons";
+import type { ExportPayload } from "@/lib/config-types";
+import { generateInstanceId } from "@/lib/instance-id";
+import { DEFAULT_DASHBOARD_ICON } from "@/lib/dashboard-defaults";
 import { DEFAULT_DASHBOARD_COLOR } from "@/lib/dashboard-colors";
 import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
 
