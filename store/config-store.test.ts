@@ -1481,14 +1481,35 @@ describe("home-network edits recompute the active away verdict atomically (#418)
     spy.mockRestore();
   });
 
-  it("adding the network we are on flips to home in the same transaction", () => {
+  // An edit never LOOSENS the verdict from the cached identity: the evaluator
+  // stops refreshing `currentWifi` while no network is configured, so it can
+  // be stale by the time one is added again. Home is confirmed only by the
+  // evaluator's fresh NetInfo read that the edit triggers.
+  it("adding the network we are on stays remote until the evaluator confirms it", () => {
     seedHome({ networks: [], away: true });
     const { spy, urls } = captureAtInvalidation();
 
     useConfigStore.getState().addHomeNetwork({ ssid: "HomeWifi", bssid: "" });
 
-    expect(urls).toEqual([LOCAL]);
-    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("removing the last network drops the cached identity, so a later re-add cannot match it", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+
+    // 1. At home, the user removes the last network → away, identity dropped.
+    useConfigStore.getState().removeHomeNetwork("home");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    expect(useConfigStore.getState().currentWifi).toBeNull();
+
+    // 2. Evaluation has stopped (no networks). The device travels. 3. The user
+    //    adds HomeWifi again while away: must NOT resolve local from a cache.
+    const { spy, urls } = captureAtInvalidation();
+    useConfigStore.getState().addHomeNetwork({ ssid: "HomeWifi", bssid: "" });
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
     spy.mockRestore();
   });
 

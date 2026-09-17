@@ -549,12 +549,19 @@ function dashboardExplicitlyAttaches(
 // selecting it matches, and so the local/remote URL of the instances those
 // dashboards own (#418) — with no network event to re-evaluate. The state
 // patch for such an edit: the new list PLUS the active dashboard's away
-// verdict recomputed against it from the stored WiFi observation, in the same
-// transaction. Committing the list alone and letting useNetworkAutoSwitch
-// re-evaluate later leaves a window where the flag still says "home" for a
-// network that no longer exists in the list — and the invalidation that
-// follows would refetch through the local URL inside that window (#418
-// review). Mirrors evaluateHomeNetworkOnce's decision order.
+// verdict re-checked against it, in the same transaction. Committing the list
+// alone and letting useNetworkAutoSwitch re-evaluate later leaves a window
+// where the flag still says "home" for a network that no longer exists in the
+// list — and the invalidation that follows would refetch through the local
+// URL inside that window (#418 review).
+//
+// The re-check only ever TIGHTENS (home → away). It never loosens away → home
+// from the stored identity: `currentWifi` stops being refreshed while no home
+// network is configured (useNetworkAutoSwitch bails), so by the time the user
+// adds a network again the device may be on a different LAN with the old
+// identity still cached. Clearing home is the evaluator's job — the edit
+// re-runs it (the hook depends on homeNetworks) and it reads NetInfo fresh.
+// For the same reason the identity is dropped when the list becomes empty.
 function homeNetworksPatch(
   state: Pick<
     ConfigState,
@@ -563,24 +570,33 @@ function homeNetworksPatch(
     | "treatVpnAsHome"
     | "isVpnActive"
     | "currentWifi"
+    | "networkAwayFromHome"
     | "dashboards"
     | "activeDashboardId"
   >,
   next: HomeNetwork[],
 ): Pick<ConfigState, "homeNetworks"> &
-  Partial<Pick<ConfigState, "networkAwayFromHome">> {
+  Partial<Pick<ConfigState, "networkAwayFromHome" | "currentWifi">> {
   setJSON(STORAGE_KEYS.homeNetworks, next);
+  const identity = next.length === 0 ? { currentWifi: null } : {};
   // Auto-switch off / demo: getActiveUrl ignores the flag and the evaluator
   // no-ops, so leave it untouched exactly as the evaluator would.
-  if (!state.autoSwitchNetwork || state.demoMode) return { homeNetworks: next };
+  if (!state.autoSwitchNetwork || state.demoMode) {
+    return { homeNetworks: next, ...identity };
+  }
+  if (state.networkAwayFromHome) return { homeNetworks: next, ...identity };
+  // Currently home: stay home only if the VPN opt-in still vouches for it
+  // (#185, live via the liveness poll) or the network we matched is still in
+  // the active dashboard's effective selection of the NEW list.
   if (state.treatVpnAsHome && state.isVpnActive) {
-    return { homeNetworks: next, networkAwayFromHome: false };
+    return { homeNetworks: next, ...identity };
   }
   const active =
     state.dashboards.find((d) => d.id === state.activeDashboardId) ??
     state.dashboards[0];
   return {
     homeNetworks: next,
+    ...identity,
     networkAwayFromHome: !matchesHomeNetwork(
       state.currentWifi,
       effectiveHomeNetworksOf(active, next),
