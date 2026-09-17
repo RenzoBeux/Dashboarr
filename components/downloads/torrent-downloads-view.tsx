@@ -22,7 +22,10 @@ import {
   CheckCircle2,
   Circle,
   AlertCircle,
+  FileUp,
+  X,
 } from "lucide-react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
 import { DemoBanner } from "@/components/common/demo-banner";
@@ -57,6 +60,7 @@ import {
   formatBytes,
   truncateText,
   magnetDisplayName,
+  torrentFileDisplayName,
 } from "@/lib/utils";
 import {
   torrentBadgeVariant,
@@ -64,6 +68,7 @@ import {
   type TorrentFilterType,
   type UnifiedTorrent,
 } from "@/lib/torrent-adapter";
+import { discardTorrentFile, type TorrentFileSource } from "@/lib/torrent-file";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { isValidQbCategoryName } from "@/lib/qbittorrent-category";
 
@@ -97,15 +102,21 @@ const SORT_OPTIONS: { key: DownloadsSortKey; label: string }[] = [
 // ruTorrent's erasedata plugin is installed (capabilities.deleteWithDataCaveat).
 const DELETE_DATA_CAVEAT = "Files removed only if ruTorrent's erasedata plugin is installed";
 
+// Something the OS handed the app to add: a magnet link (the magnet: URL
+// scheme) or a local .torrent file ("Open in Dashboarr" / an Android VIEW
+// intent). Both go through app/+native-intent.ts → downloads.tsx → here.
+export type IncomingTorrent =
+  | { kind: "magnet"; uri: string }
+  | { kind: "file"; file: TorrentFileSource };
+
 interface ViewProps {
   adapter: TorrentAdapter;
   showHeader?: boolean;
   segmentedControl?: React.ReactNode;
-  // Magnet URI from the OS-level magnet: handler (app/+native-intent.ts →
-  // downloads.tsx). Prefills and opens the add card; the parent clears it via
-  // onMagnetConsumed once the torrent is added or the card is dismissed.
-  incomingMagnet?: string;
-  onMagnetConsumed?: () => void;
+  // Prefills and opens the add card; the parent clears it via
+  // onIncomingConsumed once the torrent is added or the card is dismissed.
+  incomingTorrent?: IncomingTorrent;
+  onIncomingConsumed?: () => void;
 }
 
 // Shared downloads view for every torrent client. Driven entirely by the
@@ -116,8 +127,8 @@ export function TorrentDownloadsView({
   adapter,
   showHeader = true,
   segmentedControl,
-  incomingMagnet,
-  onMagnetConsumed,
+  incomingTorrent,
+  onIncomingConsumed,
 }: ViewProps) {
   const [filter, setFilter] = useState<TorrentFilterType>("all");
   const theme = useAppTheme();
@@ -129,18 +140,52 @@ export function TorrentDownloadsView({
   const [categoryBulkOpen, setCategoryBulkOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [magnetUri, setMagnetUri] = useState("");
+  // A local .torrent staged for upload (document picker or OS "Open in").
+  // While set it replaces the magnet input; Add sends it through the same
+  // mutation as a magnet so category/label handling is shared.
+  const [pickedFile, setPickedFile] = useState<TorrentFileSource>();
   // "" = no category, CUSTOM_CATEGORY = free-text entry below the picker
   // (qBittorrent-only; other clients never show the picker).
   const [addCategory, setAddCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
 
   // Runs on mount too (segment switches remount this view per client), so a
-  // pending magnet re-prefills whichever client the user lands on.
+  // pending magnet/file re-prefills whichever client the user lands on.
   useEffect(() => {
-    if (!incomingMagnet) return;
-    setMagnetUri(incomingMagnet);
+    if (!incomingTorrent) return;
+    if (incomingTorrent.kind === "magnet") {
+      setMagnetUri(incomingTorrent.uri);
+      setPickedFile(undefined);
+    } else {
+      setPickedFile(incomingTorrent.file);
+      setMagnetUri("");
+    }
     setShowAddModal(true);
-  }, [incomingMagnet]);
+  }, [incomingTorrent]);
+
+  const resetAddCard = () => {
+    setMagnetUri("");
+    setPickedFile(undefined);
+    setAddCategory("");
+    setCustomCategory("");
+    setShowAddModal(false);
+    onIncomingConsumed?.();
+  };
+
+  const handlePickFile = async () => {
+    // iOS maps the `type` filter via UTType(mimeType:), which returns nil for
+    // niche types like application/x-bittorrent and leaves the picker unusable
+    // — use the wildcard (same workaround as the .nzb upload and config
+    // import) and let the client reject non-torrent files.
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "*/*",
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setPickedFile({ uri: asset.uri, name: asset.name });
+    setMagnetUri("");
+  };
 
   // "all" sentinel → omit the param entirely (qBittorrent reads no param as
   // "all categories"); "" stays "" so it maps to uncategorized.
@@ -223,9 +268,12 @@ export function TorrentDownloadsView({
     }, [multiSelect.isActive, multiSelect.clear]),
   );
 
-  // Torrent name from the magnet's `dn` param, shown above the input so the
-  // user sees what they're adding (covers pasted and incoming magnets alike).
-  const magnetName = magnetDisplayName(magnetUri.trim());
+  // Torrent name shown above the input so the user sees what they're adding:
+  // the staged file's name, or the magnet's `dn` param (covers pasted and
+  // incoming magnets alike).
+  const addTitle = pickedFile
+    ? torrentFileDisplayName(pickedFile.name)
+    : magnetDisplayName(magnetUri.trim());
 
   // Custom entry resolves to its trimmed text; an empty custom field falls
   // back to "no category". Invalid names must be blocked client-side because
@@ -237,20 +285,22 @@ export function TorrentDownloadsView({
     customCategory.trim().length > 0 &&
     !isValidQbCategoryName(customCategory.trim());
 
+  const canAdd =
+    (pickedFile !== undefined || magnetUri.trim().length > 0) && !customCategoryInvalid;
+
   const handleAdd = () => {
-    if (!magnetUri.trim() || customCategoryInvalid) return;
+    if (!canAdd) return;
+    const label = resolvedAddCategory || undefined;
     addTorrent.mutate(
-      { uri: magnetUri.trim(), label: resolvedAddCategory || undefined },
+      pickedFile ? { file: pickedFile, label } : { uri: magnetUri.trim(), label },
       {
         onSuccess: () => {
-          setMagnetUri("");
-          setAddCategory("");
-          setCustomCategory("");
-          setShowAddModal(false);
-          onMagnetConsumed?.();
+          if (pickedFile) discardTorrentFile(pickedFile.uri);
+          resetAddCard();
           toast("Torrent added");
         },
-        onError: (err) => toastError("Failed to add torrent", err),
+        onError: (err) =>
+          toastError(pickedFile ? "Failed to upload torrent" : "Failed to add torrent", err),
       },
     );
   };
@@ -399,19 +449,35 @@ export function TorrentDownloadsView({
       {/* Add Torrent */}
       {showAddModal ? (
         <Card className="mb-4 gap-3">
-          {magnetName ? (
+          {addTitle ? (
             <Text className="text-zinc-100 text-sm font-semibold" numberOfLines={2}>
-              {magnetName}
+              {addTitle}
             </Text>
           ) : null}
-          <TextInput
-            placeholder="Paste magnet link..."
-            value={magnetUri}
-            onChangeText={setMagnetUri}
-            // Incoming magnets arrive prefilled — popping the keyboard would
-            // just cover the Add button.
-            autoFocus={!incomingMagnet}
-          />
+          {pickedFile ? (
+            <View className="flex-row items-center gap-2 rounded-xl bg-zinc-800/80 px-3 py-2">
+              <Icon icon={FileUp} size={16} color="#a1a1aa" />
+              <Text className="flex-1 text-zinc-300 text-xs" numberOfLines={1}>
+                {pickedFile.name || "Selected .torrent file"}
+              </Text>
+              <Pressable
+                onPress={() => setPickedFile(undefined)}
+                hitSlop={8}
+                accessibilityLabel="Remove file"
+              >
+                <Icon icon={X} size={16} color="#a1a1aa" />
+              </Pressable>
+            </View>
+          ) : (
+            <TextInput
+              placeholder="Paste magnet link..."
+              value={magnetUri}
+              onChangeText={setMagnetUri}
+              // Incoming magnets arrive prefilled — popping the keyboard would
+              // just cover the Add button.
+              autoFocus={!incomingTorrent}
+            />
+          )}
           {adapter.capabilities.categories ? (
             <>
               <Select
@@ -452,13 +518,7 @@ export function TorrentDownloadsView({
               label="Cancel"
               variant="ghost"
               size="sm"
-              onPress={() => {
-                setShowAddModal(false);
-                setMagnetUri("");
-                setAddCategory("");
-                setCustomCategory("");
-                onMagnetConsumed?.();
-              }}
+              onPress={resetAddCard}
               className="flex-1"
             />
             <Button
@@ -466,10 +526,19 @@ export function TorrentDownloadsView({
               size="sm"
               onPress={handleAdd}
               loading={addTorrent.isPending}
-              disabled={customCategoryInvalid}
+              disabled={!canAdd}
               className="flex-1"
             />
           </View>
+          {pickedFile ? null : (
+            <Button
+              label="Upload .torrent File"
+              variant="outline"
+              size="sm"
+              onPress={handlePickFile}
+              icon={<Icon icon={FileUp} size={16} color="#a1a1aa" />}
+            />
+          )}
         </Card>
       ) : (
         <Button

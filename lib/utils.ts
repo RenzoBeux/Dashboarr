@@ -92,6 +92,24 @@ export function magnetDisplayName(uri: string): string | null {
 }
 
 /**
+ * Display name for a picked/opened .torrent file: the filename without its
+ * extension, percent-decoded (iOS Inbox URLs and Android content URIs both
+ * arrive encoded). Falls back to a generic label so the add card never shows
+ * an empty title.
+ */
+export function torrentFileDisplayName(fileNameOrUri: string): string {
+  const last = fileNameOrUri.split(/[\\/]/).pop() ?? "";
+  let name = last;
+  try {
+    name = decodeURIComponent(last);
+  } catch {
+    // Keep the raw segment when it isn't valid percent-encoding.
+  }
+  name = name.replace(/\.torrent$/i, "").trim();
+  return name || "Torrent file";
+}
+
+/**
  * Format season/episode as S01E05
  */
 export function formatEpisodeCode(season: number, episode: number): string {

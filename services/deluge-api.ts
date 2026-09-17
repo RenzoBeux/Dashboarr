@@ -822,19 +822,49 @@ export async function addDelugeTorrent(
   const uri = uriOrMagnet.trim();
   if (!uri) return;
 
-  // The options dict key is `download_location`; `save_path` is a read-only
-  // status alias and is silently ignored here.
-  const options: Record<string, unknown> = { add_paused: false };
-  if (opts.savePath) options.download_location = opts.savePath;
-
   // Magnets go to add_torrent_magnet; an http(s) .torrent link goes to
   // add_torrent_url, which makes the daemon fetch the file itself.
   const isMagnet = /^magnet:/i.test(uri);
-  const hash = await delugeRpc<string | null>(
+  await addTorrent(
     isMagnet ? "core.add_torrent_magnet" : "core.add_torrent_url",
-    [uri, options],
+    [uri, addOptions(opts)],
+    opts,
     instanceId,
   );
+}
+
+// Add a local .torrent by content. core.add_torrent_file(filename, filedump,
+// options) takes the file as a base64 string; `filename` is only recorded as
+// the torrent's origin name.
+export async function addDelugeTorrentFile(
+  fileName: string,
+  base64Content: string,
+  opts: { label?: string; savePath?: string } = {},
+  instanceId?: string,
+): Promise<void> {
+  await addTorrent(
+    "core.add_torrent_file",
+    [fileName, base64Content, addOptions(opts)],
+    opts,
+    instanceId,
+  );
+}
+
+// The options dict key is `download_location`; `save_path` is a read-only
+// status alias and is silently ignored here.
+function addOptions(opts: { savePath?: string }): Record<string, unknown> {
+  const options: Record<string, unknown> = { add_paused: false };
+  if (opts.savePath) options.download_location = opts.savePath;
+  return options;
+}
+
+async function addTorrent(
+  method: string,
+  params: unknown[],
+  opts: { label?: string },
+  instanceId?: string,
+): Promise<void> {
+  const hash = await delugeRpc<string | null>(method, params, instanceId);
 
   // A null id means the add failed — most often because the torrent is already
   // in the session. (2.x usually raises AddTorrentError instead, which surfaces

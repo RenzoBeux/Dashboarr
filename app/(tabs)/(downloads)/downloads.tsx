@@ -4,7 +4,10 @@ import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { UsenetDownloadsView } from "@/components/downloads/usenet-downloads-view";
-import { TorrentDownloadsView } from "@/components/downloads/torrent-downloads-view";
+import {
+  TorrentDownloadsView,
+  type IncomingTorrent,
+} from "@/components/downloads/torrent-downloads-view";
 import { sabnzbdAdapter } from "@/lib/usenet-adapters/sabnzbd";
 import { nzbgetAdapter } from "@/lib/usenet-adapters/nzbget";
 import { qbittorrentTorrentAdapter } from "@/lib/torrent-adapters/qbittorrent";
@@ -15,7 +18,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { toastError } from "@/components/ui/toast";
 import { useTorrentTargets, type TorrentTarget } from "@/hooks/use-torrent-targets";
-import { magnetDisplayName } from "@/lib/utils";
+import { magnetDisplayName, torrentFileDisplayName } from "@/lib/utils";
+import { torrentFileName } from "@/lib/torrent-file";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 type DownloadClient =
@@ -58,10 +62,16 @@ export default function DownloadsScreen() {
   // `?client=...` lets the Services tab (and dashboard Status widget) deep-link
   // straight to the matching segment instead of always landing on whichever
   // client was opened first. `?magnet=...` arrives from the OS magnet-link
-  // handler (see app/+native-intent.ts) and prefills the add card.
-  const { client: clientParam, magnet: magnetParam } = useLocalSearchParams<{
+  // handler and `?torrentFile=...` from an opened .torrent file (both via
+  // app/+native-intent.ts); either prefills the add card.
+  const {
+    client: clientParam,
+    magnet: magnetParam,
+    torrentFile: torrentFileParam,
+  } = useLocalSearchParams<{
     client?: string;
     magnet?: string;
+    torrentFile?: string;
   }>();
   const paramClient =
     clientParam === "qbittorrent" ||
@@ -88,59 +98,83 @@ export default function DownloadsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramClient]);
 
-  // Incoming magnet link. Stash it in state (not the route) so the prefill
-  // survives segment switches — TorrentDownloadsView remounts per client — and
-  // clear the param immediately so tab revisits don't re-trigger the add card.
+  // Incoming magnet link or .torrent file. Stash it in state (not the route)
+  // so the prefill survives segment switches — TorrentDownloadsView remounts
+  // per client — and clear the param immediately so tab revisits don't
+  // re-trigger the add card.
   //
   // Candidate destinations are every enabled+attached instance of every
   // enabled torrent client. One candidate → open the add card directly;
   // several → an ActionSheet picks the client + instance first.
   const router = useRouter();
-  const [pendingMagnet, setPendingMagnet] = useState<string>();
-  // Magnet waiting on the destination ActionSheet (only set with 2+ targets).
-  const [magnetPick, setMagnetPick] = useState<string>();
+  const [pendingTorrent, setPendingTorrent] = useState<IncomingTorrent>();
+  // Item waiting on the destination ActionSheet (only set with 2+ targets).
+  const [incomingPick, setIncomingPick] = useState<IncomingTorrent>();
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
 
   // Shared with the Jackett grab flow — see hooks/use-torrent-targets.ts.
-  const magnetTargets = useTorrentTargets();
+  const torrentTargets = useTorrentTargets();
 
-  const applyMagnetTarget = (target: TorrentTarget, magnet: string) => {
+  const applyTorrentTarget = (target: TorrentTarget, incoming: IncomingTorrent) => {
     setClient(target.client);
     // Switch the tab to the picked instance so the torrent list and add card
     // show the actual destination (useAddTorrent follows the active instance).
     setActiveInstance(target.client, target.instanceId);
-    setPendingMagnet(magnet);
+    setPendingTorrent(incoming);
+  };
+
+  const routeIncoming = (incoming: IncomingTorrent) => {
+    if (torrentTargets.length === 0) {
+      toastError("No torrent client enabled");
+      return;
+    }
+    if (torrentTargets.length === 1) {
+      applyTorrentTarget(torrentTargets[0], incoming);
+    } else {
+      setIncomingPick(incoming);
+    }
   };
 
   useEffect(() => {
     if (!magnetParam) return;
     router.setParams({ magnet: undefined });
-    if (magnetTargets.length === 0) {
-      toastError("No torrent client enabled");
-      return;
-    }
-    if (magnetTargets.length === 1) {
-      applyMagnetTarget(magnetTargets[0], magnetParam);
-    } else {
-      setMagnetPick(magnetParam);
-    }
+    routeIncoming({ kind: "magnet", uri: magnetParam });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [magnetParam]);
 
-  // Destination picker for incoming magnets. Action presses only set inline
-  // state (no second modal, no navigation), so this doesn't need useModalFlow.
+  useEffect(() => {
+    if (!torrentFileParam) return;
+    router.setParams({ torrentFile: undefined });
+    // An Android content:// URI carries no filename; ask the content resolver
+    // for the display name and fall back to the last path segment.
+    const name =
+      torrentFileName(torrentFileParam) ??
+      torrentFileParam.split(/[?#]/)[0].split("/").pop() ??
+      "";
+    routeIncoming({ kind: "file", file: { uri: torrentFileParam, name } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [torrentFileParam]);
+
+  const incomingTitle = (incoming: IncomingTorrent | undefined) => {
+    if (!incoming) return undefined;
+    return incoming.kind === "magnet"
+      ? magnetDisplayName(incoming.uri) ?? undefined
+      : torrentFileDisplayName(incoming.file.name);
+  };
+
+  // Destination picker for incoming magnets/files. Action presses only set
+  // inline state (no second modal, no navigation), so this doesn't need
+  // useModalFlow.
   const magnetSheet = (
     <ActionSheet
-      visible={magnetPick !== undefined}
-      onClose={() => setMagnetPick(undefined)}
+      visible={incomingPick !== undefined}
+      onClose={() => setIncomingPick(undefined)}
       title="Add Torrent To"
-      subtitle={
-        magnetPick ? magnetDisplayName(magnetPick) ?? undefined : undefined
-      }
-      actions={magnetTargets.map((t) => ({
+      subtitle={incomingTitle(incomingPick)}
+      actions={torrentTargets.map((t) => ({
         label: t.label,
         onPress: () => {
-          if (magnetPick) applyMagnetTarget(t, magnetPick);
+          if (incomingPick) applyTorrentTarget(t, incomingPick);
         },
       }))}
     />
@@ -216,8 +250,8 @@ export default function DownloadsScreen() {
         key={activeClient}
         adapter={torrentAdapter}
         segmentedControl={segmentedControl}
-        incomingMagnet={pendingMagnet}
-        onMagnetConsumed={() => setPendingMagnet(undefined)}
+        incomingTorrent={pendingTorrent}
+        onIncomingConsumed={() => setPendingTorrent(undefined)}
       />
       {magnetSheet}
     </>

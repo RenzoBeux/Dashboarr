@@ -17,6 +17,7 @@ import {
   getTransferInfo,
   getTorrents,
   addTorrentMagnet,
+  addTorrentFile,
   DASHBOARR_TAG,
   type QBTorrentFilter,
 } from "@/services/qbittorrent-api";
@@ -27,6 +28,7 @@ import { isTorrentPaused } from "@/lib/types";
 import type { QBTorrent, QBServerState, TorrentState } from "@/lib/types";
 import { QbittorrentSpeedLimitsControl } from "@/components/qbittorrent/speed-limits-control";
 import type {
+  AddTorrentInput,
   TorrentAdapter,
   TorrentFilterType,
   TorrentGlobalStats,
@@ -227,11 +229,14 @@ export const qbittorrentTorrentAdapter: TorrentAdapter = {
     // per-instance `tagAddedTorrents` setting is read at mutate time so a
     // settings change applies without remounting the view (#289).
     return useMutation({
-      mutationFn: ({ uri, label }: { uri: string; label?: string; savePath?: string }) => {
+      mutationFn: ({ uri, file, label }: AddTorrentInput) => {
         const inst = id
           ? useConfigStore.getState().getInstance("qbittorrent", id)
           : undefined;
         const tags = inst?.tagAddedTorrents ? [DASHBOARR_TAG] : undefined;
+        if (file) {
+          return addTorrentFile(file.uri, file.name, id ?? undefined, label, tags);
+        }
         return addTorrentMagnet(uri, id ?? undefined, label, tags);
       },
       onSuccess: () => {

@@ -6,6 +6,7 @@ import {
   formatProgress,
   truncateText,
   magnetDisplayName,
+  torrentFileDisplayName,
   formatEpisodeCode,
   relativeDate,
   formatAudioChannels,
@@ -128,6 +129,25 @@ describe("magnetDisplayName", () => {
   it("returns null for non-magnet text and malformed encodings", () => {
     expect(magnetDisplayName("hello world")).toBeNull();
     expect(magnetDisplayName("magnet:?xt=urn:btih:abc&dn=%E0%A4%A")).toBeNull();
+  });
+});
+
+describe("torrentFileDisplayName", () => {
+  it("strips the extension and percent-decodes a filename", () => {
+    expect(torrentFileDisplayName("Some%20Release.torrent")).toBe("Some Release");
+    expect(torrentFileDisplayName("Some Release.TORRENT")).toBe("Some Release");
+  });
+
+  it("takes the last path segment of a URL", () => {
+    expect(
+      torrentFileDisplayName("file:///private/var/app/Documents/Inbox/Some%20Release.torrent"),
+    ).toBe("Some Release");
+  });
+
+  it("falls back to a generic label", () => {
+    expect(torrentFileDisplayName("")).toBe("Torrent file");
+    expect(torrentFileDisplayName(".torrent")).toBe("Torrent file");
+    expect(torrentFileDisplayName("%E0%A4%A.torrent")).toBe("%E0%A4%A");
   });
 });
 

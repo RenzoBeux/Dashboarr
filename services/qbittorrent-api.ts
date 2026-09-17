@@ -511,15 +511,49 @@ export async function addTorrentMagnet(
   // yet (unlike /torrents/setCategory, which 409s on unknown names).
   if (category) params.set("category", category);
   if (tags?.length) params.set("tags", tags.join(","));
+  await postTorrentsAdd(
+    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    },
+    instanceId,
+  );
+}
+
+// Add a local .torrent file. /torrents/add takes the file as a multipart part
+// named `torrents` (repeatable; we send one). React Native's fetch uploads a
+// { uri, name, type } descriptor as a file part and sets the multipart
+// Content-Type (with boundary) itself, so no header is passed here — the
+// same shape as SABnzbd's addfile upload. Category/tags ride along as plain
+// form fields.
+export async function addTorrentFile(
+  fileUri: string,
+  fileName: string,
+  instanceId?: string,
+  category?: string,
+  tags?: string[],
+): Promise<void> {
+  const form = new FormData();
+  form.append("torrents", {
+    uri: fileUri,
+    name: fileName,
+    type: "application/x-bittorrent",
+  } as unknown as Blob);
+  if (category) form.append("category", category);
+  if (tags?.length) form.append("tags", tags.join(","));
+  await postTorrentsAdd({ body: form }, instanceId);
+}
+
+// Shared /torrents/add POST + the two ways qBittorrent says "added nothing".
+async function postTorrentsAdd(
+  init: { headers?: Record<string, string>; body: BodyInit },
+  instanceId?: string,
+): Promise<void> {
   let result: unknown;
   try {
     result = await qbRequest<unknown>(
       "/torrents/add",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
-      },
+      { method: "POST", ...init },
       instanceId,
     );
   } catch (err) {
@@ -527,6 +561,10 @@ export async function addTorrentMagnet(
     // body, which surfaced as a bare "qBittorrent request failed: 409" (#329).
     if (err instanceof QbHttpError && err.status === 409) {
       throw new Error(QB_ADD_REFUSED_MESSAGE);
+    }
+    // 415 is the documented answer to a file that isn't a valid torrent.
+    if (err instanceof QbHttpError && err.status === 415) {
+      throw new Error("qBittorrent rejected the file: not a valid .torrent");
     }
     throw err;
   }

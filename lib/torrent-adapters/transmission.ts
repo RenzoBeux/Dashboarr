@@ -18,10 +18,13 @@ import {
   stopTransmissionTorrents,
   removeTransmissionTorrents,
   addTransmissionTorrent,
+  addTransmissionTorrentFile,
 } from "@/services/transmission-api";
 import { TransmissionSpeedLimitsControl } from "@/components/transmission/speed-limits-control";
 import { applyFilterSort } from "@/lib/torrent-adapters/client-filter-sort";
+import { readTorrentFileBase64 } from "@/lib/torrent-file";
 import type {
+  AddTorrentInput,
   TorrentAdapter,
   TorrentGlobalStats,
   TorrentListFilter,
@@ -136,15 +139,13 @@ export const transmissionTorrentAdapter: TorrentAdapter = {
     const queryClient = useQueryClient();
     const { instanceId: id } = useInstanceTarget("transmission", instanceId);
     return useMutation({
-      mutationFn: ({
-        uri,
-        label,
-        savePath,
-      }: {
-        uri: string;
-        label?: string;
-        savePath?: string;
-      }) => addTransmissionTorrent(uri, { label, savePath }, id ?? undefined),
+      mutationFn: async ({ uri, file, label, savePath }: AddTorrentInput) => {
+        if (file) {
+          const content = await readTorrentFileBase64(file.uri);
+          return addTransmissionTorrentFile(content, { label, savePath }, id ?? undefined);
+        }
+        return addTransmissionTorrent(uri, { label, savePath }, id ?? undefined);
+      },
       onSuccess: () => invalidateTransmissionTorrents(queryClient, id),
     });
   },

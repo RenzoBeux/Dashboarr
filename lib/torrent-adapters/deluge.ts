@@ -15,10 +15,13 @@ import {
   resumeDelugeTorrents,
   removeDelugeTorrents,
   addDelugeTorrent,
+  addDelugeTorrentFile,
 } from "@/services/deluge-api";
 import { DelugeSpeedLimitsControl } from "@/components/deluge/speed-limits-control";
 import { applyFilterSort } from "@/lib/torrent-adapters/client-filter-sort";
+import { readTorrentFileBase64 } from "@/lib/torrent-file";
 import type {
+  AddTorrentInput,
   TorrentAdapter,
   TorrentGlobalStats,
   TorrentListFilter,
@@ -136,15 +139,18 @@ export const delugeTorrentAdapter: TorrentAdapter = {
     const queryClient = useQueryClient();
     const { instanceId: id } = useInstanceTarget("deluge", instanceId);
     return useMutation({
-      mutationFn: ({
-        uri,
-        label,
-        savePath,
-      }: {
-        uri: string;
-        label?: string;
-        savePath?: string;
-      }) => addDelugeTorrent(uri, { label, savePath }, id ?? undefined),
+      mutationFn: async ({ uri, file, label, savePath }: AddTorrentInput) => {
+        if (file) {
+          const content = await readTorrentFileBase64(file.uri);
+          return addDelugeTorrentFile(
+            file.name,
+            content,
+            { label, savePath },
+            id ?? undefined,
+          );
+        }
+        return addDelugeTorrent(uri, { label, savePath }, id ?? undefined);
+      },
       onSuccess: () => invalidateDelugeTorrents(queryClient, id),
     });
   },
