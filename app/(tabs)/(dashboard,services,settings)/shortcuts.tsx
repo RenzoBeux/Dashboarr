@@ -195,7 +195,7 @@ export default function ShortcutsScreen() {
           />
           <Text className="text-zinc-500 text-xs -mt-2">
             https:// is assumed when no scheme is given. Opens in the system
-            browser, so an existing login there carries over.
+            in-app browser.
           </Text>
         </Card>
 

@@ -3,10 +3,11 @@ import * as WebBrowser from "expo-web-browser";
 
 /**
  * Open a web page in the system in-app browser (SFSafariViewController on iOS,
- * a Chrome Custom Tab on Android). Unlike an embedded WebView it shares the
- * device browser's session, so a self-hosted admin UI the user is already
- * signed into opens signed in. Same pattern the Plex OAuth flow in
- * components/integrations/service-editor.tsx uses. Falls back to handing the
+ * a Chrome Custom Tab on Android), the same surface the Plex OAuth flow in
+ * components/integrations/service-editor.tsx uses. Cookie sharing differs per
+ * platform and must not be promised in UI copy: a Custom Tab shares Chrome's
+ * cookies, but since iOS 11 SFSafariViewController keeps its own store, so an
+ * existing Safari login does not carry over there. Falls back to handing the
  * URL to the OS when no in-app browser is available (some Android builds
  * without a Custom Tabs provider); that fallback's own failure is the only
  * error surfaced to the caller.
