@@ -32,14 +32,19 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
   );
   const router = useRouter();
 
-  const tautulliInstances = useWorkspaceScopedInstances(
+  const boundTautulli = useWorkspaceScopedInstances(
     "tautulli",
     settings.tautulliInstanceIds,
   );
-  const tracearrInstances = useWorkspaceScopedInstances(
+  const boundTracearr = useWorkspaceScopedInstances(
     "tracearr",
     settings.tracearrInstanceIds,
   );
+  // A monitor switched off in the widget settings contributes nothing and is
+  // not polled, so Tautulli + Tracearr on one Plex server can be shown once
+  // instead of twice (#362).
+  const tautulliInstances = settings.includeTautulli ? boundTautulli : [];
+  const tracearrInstances = settings.includeTracearr ? boundTracearr : [];
 
   const sources = [
     ...tautulliInstances.map((inst) => ({ kind: "tautulli" as MonitorKind, inst })),
@@ -98,7 +103,7 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
       />
 
       {sources.length === 0 ? (
-        <EmptyState compact title="No stream monitor enabled" />
+        <EmptyState compact title="No stream monitor selected" />
       ) : isInitialLoading ? (
         <PosterSkeletonRow count={2} />
       ) : isAllErrored ? (

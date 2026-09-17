@@ -55,7 +55,6 @@ export function CombinedNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
   );
 
   // Only offer an instance picker for a kind attached to this workspace.
-  // Deselect all of a kind's instances to drop it from the widget.
   const hasPlex = useAttachedEnabledInstances("plex").length > 0;
   const hasJellyfin = useAttachedEnabledInstances("jellyfin").length > 0;
   const hasEmby = useAttachedEnabledInstances("emby").length > 0;

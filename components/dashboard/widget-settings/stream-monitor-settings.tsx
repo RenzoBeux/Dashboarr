@@ -19,6 +19,13 @@ import {
 export interface StreamMonitorSettingsValue extends Record<string, unknown> {
   tautulliInstanceIds: InstanceBindingValue;
   tracearrInstanceIds: InstanceBindingValue;
+  // Per-monitor on/off, same shape as the calendar widget's includeSonarr /
+  // includeRadarr. The instance picker can't express "none" (it snaps back to
+  // "all" when the last chip is deselected), so without these a user running
+  // Tautulli + Tracearr against the same Plex server sees every stream twice
+  // with no way to drop one monitor from the widget (#362).
+  includeTautulli: boolean;
+  includeTracearr: boolean;
   maxItems: number;
   hideUsers: string;
   showTranscoding: boolean;
@@ -30,6 +37,8 @@ export interface StreamMonitorSettingsValue extends Record<string, unknown> {
 export const STREAM_MONITOR_DEFAULT_SETTINGS: StreamMonitorSettingsValue = {
   tautulliInstanceIds: INSTANCE_BINDING_ALL,
   tracearrInstanceIds: INSTANCE_BINDING_ALL,
+  includeTautulli: true,
+  includeTracearr: true,
   maxItems: 5,
   hideUsers: "",
   showTranscoding: true,
@@ -50,15 +59,45 @@ export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) 
     STREAM_MONITOR_DEFAULT_SETTINGS,
   );
 
-  // Only offer an instance picker for a monitor attached to this workspace.
+  // Only offer a source toggle + instance picker for a monitor attached to
+  // this workspace.
   const hasTautulli = useAttachedEnabledInstances("tautulli").length > 0;
   const hasTracearr = useAttachedEnabledInstances("tracearr").length > 0;
+  const showTautulli = hasTautulli && settings.includeTautulli;
+  const showTracearr = hasTracearr && settings.includeTracearr;
 
   return (
     <View className="px-4 py-2 gap-5">
-      <SettingsSection label="Monitors">
+      {(hasTautulli || hasTracearr) && (
+        <SettingsSection label="Monitors">
+          <ToggleCard>
+            {hasTautulli && (
+              <Toggle
+                label="Tautulli"
+                description={
+                  hasTracearr ? "Turn off if Tracearr already shows the same streams" : undefined
+                }
+                value={settings.includeTautulli}
+                onValueChange={(includeTautulli) => update({ includeTautulli })}
+              />
+            )}
+            {hasTracearr && (
+              <Toggle
+                label="Tracearr"
+                description={
+                  hasTautulli ? "Turn off if Tautulli already shows the same streams" : undefined
+                }
+                value={settings.includeTracearr}
+                onValueChange={(includeTracearr) => update({ includeTracearr })}
+              />
+            )}
+          </ToggleCard>
+        </SettingsSection>
+      )}
+
+      {(showTautulli || showTracearr) && (
         <View className="gap-4">
-          {hasTautulli && (
+          {showTautulli && (
             <InstancePickerRow
               serviceId="tautulli"
               label="Tautulli instances"
@@ -66,7 +105,7 @@ export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) 
               onChange={(tautulliInstanceIds) => update({ tautulliInstanceIds })}
             />
           )}
-          {hasTracearr && (
+          {showTracearr && (
             <InstancePickerRow
               serviceId="tracearr"
               label="Tracearr instances"
@@ -75,7 +114,7 @@ export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) 
             />
           )}
         </View>
-      </SettingsSection>
+      )}
 
       <SettingsSection label="Filters">
         <TextInput
