@@ -59,7 +59,6 @@ import {
   validateServiceUrl,
   normalizeServiceUrl,
   resolveActiveUrlKind,
-  workspaceForcesRemote,
 } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { ConfirmModal } from "@/components/common/confirm-modal";
@@ -557,17 +556,13 @@ export function ServiceEditor({
     // and missed both the workspace "always remote" pin and getActiveUrl's
     // remote→local fallback). We feed it the in-progress form values, not the
     // saved ones, so Test validates what the user typed before they Save.
-    const {
-      autoSwitchNetwork,
-      networkAwayFromHome,
-      dashboards,
-      activeDashboardId,
-      homeNetworks,
-    } = useConfigStore.getState();
-    const forcesRemote = workspaceForcesRemote(
-      dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0],
-      homeNetworks,
-    );
+    // The verdict is per instance: one attached only to another workspace is
+    // judged against that workspace's home networks (#418), so Test probes the
+    // same slot the Integrations hub and the health poll do.
+    const { autoSwitchNetwork, resolveInstanceNetwork } =
+      useConfigStore.getState();
+    const { away: networkAwayFromHome, forcesRemote } =
+      resolveInstanceNetwork(instanceId);
     const which =
       resolveActiveUrlKind(
         { localUrl, remoteUrl, useRemote: config.useRemote },
@@ -595,7 +590,7 @@ export function ServiceEditor({
       setTesting(false);
       if (useRemote && !config.useRemote && forcesRemote) {
         toast(
-          "This dashboard uses remote URLs only (its Home networks selection is empty), but none is set here. Add a remote URL, or pick its home networks in the dashboard's settings.",
+          "This instance's dashboard uses remote URLs only (its Home networks selection is empty), but none is set here. Add a remote URL, or pick its home networks in the dashboard's settings.",
           "error",
         );
       } else if (

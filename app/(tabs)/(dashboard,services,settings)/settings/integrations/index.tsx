@@ -37,6 +37,12 @@ export default function IntegrationsHub() {
   // Re-resolve the probe context whenever the network verdict changes: the
   // same LAN URL is reachable at home and blocked on cellular.
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
+  // Instances attached only to another workspace resolve against that
+  // workspace's home networks through the observed WiFi (#418).
+  const currentWifi = useConfigStore((s) => s.currentWifi);
+  const dashboards = useConfigStore((s) => s.dashboards);
+  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
+  const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
 
   const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
@@ -60,13 +66,18 @@ export default function IntegrationsHub() {
       determining ? undefined : healthData,
       context,
     );
-    // networkAwayFromHome / isOnWifi feed lanGuardBlockReason indirectly.
+    // networkAwayFromHome / currentWifi / isOnWifi feed getActiveUrl and
+    // lanGuardBlockReason indirectly.
   }, [
     serviceInstances,
     healthData,
     determining,
     getActiveUrl,
     networkAwayFromHome,
+    currentWifi,
+    dashboards,
+    activeDashboardId,
+    homeNetworks,
     isOnWifi,
   ]);
 

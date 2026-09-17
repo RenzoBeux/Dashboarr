@@ -1124,3 +1124,429 @@ describe("importConfigFromEnvelope (backend backup restore, Refs #385)", () => {
     expect(useConfigStore.getState().dashboards).toBe(before);
   });
 });
+
+// #418: two houses, each with its own dashboard, home SSID and instances, and
+// identical LAN addressing. The health poll and the Integrations hub probe
+// EVERY instance, so the other house's instance must be judged against ITS
+// dashboard's home networks — not the active dashboard's — or its local URL
+// reaches the wrong box at this house (which answers "authentication failed").
+describe("getActiveUrl — instance attached to another workspace (#418)", () => {
+  const HOME_ID = "00000000-0000-0000-0000-0000000000aa";
+  const SEDONA_ID = "00000000-0000-0000-0000-0000000000bb";
+  const ORPHAN_ID = "00000000-0000-0000-0000-0000000000cc";
+  const LOCAL = "http://homeserver.local:7878"; // same name on both LANs
+  const HOME_REMOTE = "http://100.64.0.1:7878";
+  const SEDONA_REMOTE = "http://100.64.0.2:7878";
+  const HOME_WIFI = { ssid: "HomeWifi", bssid: "" };
+  const SEDONA_WIFI = { ssid: "SedonaWifi", bssid: "" };
+
+  const inst = (id: string, remoteUrl: string) => ({
+    id,
+    enabled: true,
+    name: id,
+    localUrl: LOCAL,
+    remoteUrl,
+    useRemote: false,
+  });
+
+  function seedHouses(opts: {
+    activeDashboardId: "home" | "sedona";
+    networkAwayFromHome: boolean;
+    currentWifi: { ssid: string; bssid: string } | null;
+    autoSwitchNetwork?: boolean;
+    treatVpnAsHome?: boolean;
+    isVpnActive?: boolean;
+    sedonaHomeNetworkIds?: string[];
+  }) {
+    useConfigStore.setState({
+      serviceInstances: {
+        ...useConfigStore.getState().serviceInstances,
+        radarr: [
+          inst(HOME_ID, HOME_REMOTE),
+          inst(SEDONA_ID, SEDONA_REMOTE),
+          inst(ORPHAN_ID, HOME_REMOTE),
+        ],
+      },
+      activeInstance: {
+        ...useConfigStore.getState().activeInstance,
+        radarr: opts.activeDashboardId === "home" ? HOME_ID : SEDONA_ID,
+      },
+      homeNetworks: [
+        { id: "home-net", ssid: HOME_WIFI.ssid, bssid: "" },
+        { id: "sedona-net", ssid: SEDONA_WIFI.ssid, bssid: "" },
+      ],
+      dashboards: [
+        {
+          id: "home",
+          name: "Home",
+          widgets: [],
+          attachedInstances: [HOME_ID],
+          homeNetworkIds: ["home-net"],
+        },
+        {
+          id: "sedona",
+          name: "Sedona",
+          widgets: [],
+          attachedInstances: [SEDONA_ID],
+          homeNetworkIds: opts.sedonaHomeNetworkIds ?? ["sedona-net"],
+        },
+      ],
+      activeDashboardId: opts.activeDashboardId,
+      autoSwitchNetwork: opts.autoSwitchNetwork ?? true,
+      networkAwayFromHome: opts.networkAwayFromHome,
+      currentWifi: opts.currentWifi,
+      treatVpnAsHome: opts.treatVpnAsHome ?? false,
+      isVpnActive: opts.isVpnActive ?? false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  const url = (id: string) => useConfigStore.getState().getActiveUrl("radarr", id);
+
+  it("at home on the Home dashboard: Home is local, Sedona is REMOTE (the #418 bug)", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
+    expect(url(HOME_ID)).toBe(LOCAL);
+    expect(url(SEDONA_ID)).toBe(SEDONA_REMOTE);
+  });
+
+  it("at Sedona on the Home dashboard: Home is remote, Sedona is LOCAL", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: true, currentWifi: SEDONA_WIFI });
+    expect(url(HOME_ID)).toBe(HOME_REMOTE);
+    expect(url(SEDONA_ID)).toBe(LOCAL);
+  });
+
+  it("at Sedona on the Sedona dashboard: Sedona is local, Home is remote", () => {
+    seedHouses({ activeDashboardId: "sedona", networkAwayFromHome: false, currentWifi: SEDONA_WIFI });
+    expect(url(SEDONA_ID)).toBe(LOCAL);
+    expect(url(HOME_ID)).toBe(HOME_REMOTE);
+  });
+
+  it("off WiFi (or before the first evaluation) the other workspace's instance is remote-only", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: true, currentWifi: null });
+    expect(url(SEDONA_ID)).toBe(SEDONA_REMOTE);
+    // Even with a stale confirmed-home active flag, a null identity never
+    // matches → never the private local URL for the other house's instance.
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: null });
+    expect(url(SEDONA_ID)).toBe(SEDONA_REMOTE);
+  });
+
+  it("honors the other workspace's 'always remote' pin even with auto-switch off", () => {
+    seedHouses({
+      activeDashboardId: "home",
+      networkAwayFromHome: true,
+      currentWifi: SEDONA_WIFI,
+      sedonaHomeNetworkIds: [],
+      autoSwitchNetwork: false,
+    });
+    expect(url(SEDONA_ID)).toBe(SEDONA_REMOTE);
+    expect(useConfigStore.getState().resolveInstanceNetwork(SEDONA_ID)).toEqual({
+      away: true,
+      forcesRemote: true,
+    });
+  });
+
+  it("uses local for the other workspace's instance when auto-switch is off (user opted out)", () => {
+    seedHouses({
+      activeDashboardId: "home",
+      networkAwayFromHome: true,
+      currentWifi: null,
+      autoSwitchNetwork: false,
+    });
+    expect(url(SEDONA_ID)).toBe(LOCAL);
+  });
+
+  it("counts an active VPN as home for the other workspace's instance with the opt-in (#185)", () => {
+    seedHouses({
+      activeDashboardId: "home",
+      networkAwayFromHome: false,
+      currentWifi: null,
+      treatVpnAsHome: true,
+      isVpnActive: true,
+    });
+    expect(url(SEDONA_ID)).toBe(LOCAL);
+  });
+
+  it("an instance no workspace claims keeps the active workspace's verdict", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
+    expect(url(ORPHAN_ID)).toBe(LOCAL);
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: true, currentWifi: null });
+    expect(url(ORPHAN_ID)).toBe(HOME_REMOTE);
+  });
+
+  // Review finding on #418: a migrated / pre-v20 dashboard auto-attaches
+  // (attachedInstances undefined). That is a display default, not a claim on
+  // which house an instance lives in, so an explicit owner elsewhere wins.
+  it("an explicit owner beats an auto-attach ACTIVE workspace (migrated dashboards)", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
+    useConfigStore.setState({
+      dashboards: useConfigStore
+        .getState()
+        .dashboards.map((d) =>
+          d.id === "home" ? { ...d, attachedInstances: undefined } : d,
+        ),
+    });
+    expect(url(HOME_ID)).toBe(LOCAL); // no explicit owner → active verdict
+    expect(url(SEDONA_ID)).toBe(SEDONA_REMOTE); // Sedona owns it explicitly
+  });
+
+  it("with no explicit owner anywhere, the active verdict governs (unchanged behavior)", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
+    useConfigStore.setState({
+      dashboards: useConfigStore
+        .getState()
+        .dashboards.map((d) => ({ ...d, attachedInstances: undefined })),
+    });
+    expect(url(SEDONA_ID)).toBe(LOCAL);
+  });
+
+  it("the per-instance verdict mirrors the active flag for attached instances", () => {
+    seedHouses({ activeDashboardId: "home", networkAwayFromHome: false, currentWifi: HOME_WIFI });
+    expect(useConfigStore.getState().resolveInstanceNetwork(HOME_ID)).toEqual({
+      away: false,
+      forcesRemote: false,
+    });
+    expect(useConfigStore.getState().resolveInstanceNetwork(SEDONA_ID)).toEqual({
+      away: true,
+      forcesRemote: false,
+    });
+  });
+});
+
+describe("setCurrentWifi — invalidation only on a real change (#418)", () => {
+  it("no-ops on an identical identity and invalidates on a change", () => {
+    useConfigStore.setState({ currentWifi: { ssid: "Home", bssid: "" } });
+    const spy = jest.spyOn(queryClient, "invalidateQueries");
+    spy.mockClear();
+
+    useConfigStore.getState().setCurrentWifi({ ssid: "Home", bssid: "" });
+    expect(spy).not.toHaveBeenCalled();
+
+    useConfigStore.getState().setCurrentWifi({ ssid: "Cabin", bssid: "" });
+    expect(useConfigStore.getState().currentWifi).toEqual({ ssid: "Cabin", bssid: "" });
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    useConfigStore.getState().setCurrentWifi(null);
+    expect(useConfigStore.getState().currentWifi).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+});
+
+describe("setNetworkObservation — one atomic write, one invalidation (#418)", () => {
+  it("writes both fields in one update and invalidates once", () => {
+    useConfigStore.setState({
+      currentWifi: { ssid: "Home", bssid: "" },
+      networkAwayFromHome: false,
+    });
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    const seen: Array<[unknown, boolean]> = [];
+    const unsub = useConfigStore.subscribe((s) =>
+      seen.push([s.currentWifi, s.networkAwayFromHome]),
+    );
+    spy.mockClear();
+
+    useConfigStore.getState().setNetworkObservation({ ssid: "Cabin", bssid: "" }, true);
+
+    // A single subscriber notification carrying BOTH new values: no
+    // intermediate state where the identity is new but the verdict is stale.
+    expect(seen).toEqual([[{ ssid: "Cabin", bssid: "" }, true]]);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    useConfigStore.getState().setNetworkObservation({ ssid: "Cabin", bssid: "" }, true);
+    expect(spy).toHaveBeenCalledTimes(1); // unchanged → no-op
+
+    useConfigStore.getState().setNetworkObservation({ ssid: "Cabin", bssid: "" }, false);
+    expect(spy).toHaveBeenCalledTimes(2); // one field changed → still one invalidate
+    unsub();
+    spy.mockRestore();
+  });
+});
+
+// #418 review: ownership and home-network edits re-route instances with no
+// network flag moving, so the setters must refetch what was cached against the
+// old URLs.
+describe("ownership / home-network edits invalidate queries (#418)", () => {
+  const net = (id: string) => ({ id, ssid: id, bssid: "" });
+  function seedTwo() {
+    useConfigStore.setState({
+      homeNetworks: [net("home"), net("cabin")],
+      dashboards: [
+        { id: "A", name: "A", widgets: [], attachedInstances: ["x"], homeNetworkIds: ["home"] },
+        { id: "B", name: "B", widgets: [], attachedInstances: ["y"], homeNetworkIds: ["cabin"] },
+      ],
+      activeDashboardId: "A",
+      autoSwitchNetwork: true,
+      networkAwayFromHome: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    spy.mockClear();
+    return spy;
+  }
+
+  it("setDashboardAttachedInstances on a NON-active workspace invalidates", () => {
+    const spy = seedTwo();
+    useConfigStore.getState().setDashboardAttachedInstances("B", ["y", "z"]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("setDashboardHomeNetworkIds on a NON-active workspace invalidates without touching the flag", () => {
+    const spy = seedTwo();
+    useConfigStore.getState().setDashboardHomeNetworkIds("B", ["home"]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+    spy.mockRestore();
+  });
+
+  it("updateHomeNetwork / removeHomeNetwork / addHomeNetwork invalidate", () => {
+    const spy = seedTwo();
+    useConfigStore.getState().updateHomeNetwork("cabin", { ssid: "cabin-5g" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    useConfigStore.getState().removeHomeNetwork("cabin");
+    expect(spy).toHaveBeenCalledTimes(2);
+    useConfigStore.getState().addHomeNetwork({ ssid: "lake", bssid: "" });
+    expect(spy).toHaveBeenCalledTimes(3);
+    spy.mockRestore();
+  });
+});
+
+// #418 review (blocking): a home-network edit must land together with the
+// active dashboard's recomputed away verdict. If the list were committed alone,
+// the invalidation that follows would refetch while the flag still said "home"
+// for a network that is no longer in the list — local URL, wrong LAN, real
+// credentials. These assert the URL AT INVALIDATION TIME.
+describe("home-network edits recompute the active away verdict atomically (#418)", () => {
+  const LOCAL = "http://homeserver.local:7878";
+  const REMOTE = "http://100.64.0.1:7878";
+  const HOME_WIFI = { ssid: "HomeWifi", bssid: "" };
+
+  function seedHome(opts: { networks: { id: string; ssid: string; bssid: string }[]; away: boolean }) {
+    seed({ localUrl: LOCAL, remoteUrl: REMOTE, autoSwitchNetwork: true, networkAwayFromHome: opts.away });
+    useConfigStore.setState({
+      homeNetworks: opts.networks,
+      // One plain dashboard: auto-attach, all home networks (no leaked
+      // selection from earlier describes).
+      dashboards: [{ id: "A", name: "A", widgets: [] }],
+      activeDashboardId: "A",
+      currentWifi: HOME_WIFI,
+      treatVpnAsHome: false,
+      isVpnActive: false,
+      demoMode: false,
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+  // Capture what getActiveUrl resolves to at the moment the refetch starts.
+  function captureAtInvalidation(): { spy: jest.SpyInstance; urls: string[] } {
+    const urls: string[] = [];
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockImplementation(async () => {
+        urls.push(useConfigStore.getState().getActiveUrl("radarr"));
+      });
+    return { spy, urls };
+  }
+
+  it("renaming the currently matched network is remote by the time invalidation runs", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    expect(useConfigStore.getState().getActiveUrl("radarr")).toBe(LOCAL);
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().updateHomeNetwork("home", { ssid: "Renamed" });
+
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("removing the currently matched network is remote by the time invalidation runs", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().removeHomeNetwork("home");
+
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("pinning a BSSID the OS does not surface fails closed to remote at invalidation time", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().updateHomeNetwork("home", { bssid: "aa:bb:cc:dd:ee:ff" });
+
+    expect(urls).toEqual([REMOTE]);
+    spy.mockRestore();
+  });
+
+  // An edit never LOOSENS the verdict from the cached identity: the evaluator
+  // stops refreshing `currentWifi` while no network is configured, so it can
+  // be stale by the time one is added again. Home is confirmed only by the
+  // evaluator's fresh NetInfo read that the edit triggers.
+  it("adding the network we are on stays remote until the evaluator confirms it", () => {
+    seedHome({ networks: [], away: true });
+    const { spy, urls } = captureAtInvalidation();
+
+    useConfigStore.getState().addHomeNetwork({ ssid: "HomeWifi", bssid: "" });
+
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("removing the last network drops the cached identity, so a later re-add cannot match it", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+
+    // 1. At home, the user removes the last network → away, identity dropped.
+    useConfigStore.getState().removeHomeNetwork("home");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    expect(useConfigStore.getState().currentWifi).toBeNull();
+
+    // 2. Evaluation has stopped (no networks). The device travels. 3. The user
+    //    adds HomeWifi again while away: must NOT resolve local from a cache.
+    const { spy, urls } = captureAtInvalidation();
+    useConfigStore.getState().addHomeNetwork({ ssid: "HomeWifi", bssid: "" });
+    expect(urls).toEqual([REMOTE]);
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("leaves the flag alone when auto-switch is off (the evaluator would too)", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    useConfigStore.setState({ autoSwitchNetwork: false });
+    useConfigStore.getState().removeHomeNetwork("home");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+
+  it("stays home under VPN-as-home regardless of the edit (#185 precedence)", () => {
+    seedHome({ networks: [{ id: "home", ssid: "HomeWifi", bssid: "" }], away: false });
+    useConfigStore.setState({ treatVpnAsHome: true, isVpnActive: true });
+    useConfigStore.getState().removeHomeNetwork("home");
+    expect(useConfigStore.getState().networkAwayFromHome).toBe(false);
+  });
+});
+
+describe("removeDashboard — invalidates on a NON-active deletion too (#418)", () => {
+  it("refetches when the deleted dashboard was an instance's only explicit owner", () => {
+    useConfigStore.setState({
+      dashboards: [
+        { id: "A", name: "A", widgets: [], attachedInstances: ["x"] },
+        { id: "B", name: "B", widgets: [], attachedInstances: ["y"] },
+      ],
+      activeDashboardId: "A",
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    spy.mockClear();
+
+    useConfigStore.getState().removeDashboard("B");
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    useConfigStore.getState().removeDashboard("nope"); // no-op → no refetch
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+});

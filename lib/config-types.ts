@@ -155,9 +155,11 @@ export interface Dashboard {
   // a live network are ignored at resolve time, and an empty array means "no
   // home network for this workspace → always remote". Home networks themselves
   // are created/edited/deleted only on the Home Networks screen; this is purely
-  // which of them attach to this workspace. Only the *active* dashboard's
-  // selection is evaluated (see resolveEffectiveHomeNetworks /
-  // evaluateHomeNetwork in lib/network.ts).
+  // which of them attach to this workspace. The *active* dashboard's selection
+  // drives the global away flag (see resolveEffectiveHomeNetworks /
+  // evaluateHomeNetwork in lib/network.ts); an instance attached only to other
+  // dashboards is judged against their selections instead (the store's
+  // resolveInstanceNetwork, #418).
   homeNetworkIds?: string[];
   // v30: optional per-workspace Services-tab tile order. Missing/undefined means
   // "use the global servicesOrder" so existing dashboards keep the shared order.

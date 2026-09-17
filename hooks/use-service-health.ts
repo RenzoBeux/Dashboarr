@@ -123,6 +123,18 @@ export function useServiceHealth() {
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const instanceSecrets = useConfigStore((s) => s.instanceSecrets);
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
+  // Not part of the signature itself: the per-instance URLs already encode
+  // it. Subscribed so a WiFi change that flips only a non-active workspace's
+  // instances (judged against their own home networks, #418) rebuilds the
+  // signature and re-probes, even when the active away flag didn't move.
+  const currentWifi = useConfigStore((s) => s.currentWifi);
+  // Same reason: which dashboards claim an instance, their home-network
+  // selections, the networks' SSIDs, and which dashboard is active all feed
+  // resolveInstanceNetwork, so an edit to any of them can change a resolved
+  // URL with no network flag moving.
+  const dashboards = useConfigStore((s) => s.dashboards);
+  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
+  const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
   const isVpnActive = useConfigStore((s) => s.isVpnActive);
@@ -149,6 +161,10 @@ export function useServiceHealth() {
       globalCustomHeaders,
       autoSwitchNetwork,
       networkAwayFromHome,
+      currentWifi,
+      dashboards,
+      activeDashboardId,
+      homeNetworks,
       isOnWifi,
       isVpnActive,
       treatVpnAsHome,
