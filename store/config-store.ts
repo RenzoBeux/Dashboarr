@@ -10,6 +10,7 @@ import type {
   ServiceInstance,
   ServiceSecrets,
   WakeOnLanDevice,
+  WebShortcut,
   WidgetSettingsMap,
   WidgetSlot,
   WidgetSlotSettings,
@@ -25,6 +26,7 @@ export type {
   ServiceInstance,
   ServiceSecrets,
   WakeOnLanDevice,
+  WebShortcut,
   WidgetSettingsMap,
   WidgetSlot,
   WidgetSlotSettings,
@@ -204,6 +206,8 @@ interface ConfigState {
   dashboards: Dashboard[];
   activeDashboardId: string;
   wolDevices: WakeOnLanDevice[];
+  // User-defined web shortcuts rendered by the Shortcuts widget (#344).
+  shortcuts: WebShortcut[];
   // Seerr sign-in (#332): instance id -> hosts that must be logged into with
   // credentials before their jar cookie may be trusted again. Set for every
   // host of an instance on a credential/URL change or removal; a host leaves
@@ -355,6 +359,7 @@ interface ConfigActions {
 
   setServicesOrder: (order: ServiceId[]) => void;
   setWolDevices: (devices: WakeOnLanDevice[]) => void;
+  setShortcuts: (shortcuts: WebShortcut[]) => void;
   markSeerrHostsStale: (instanceId: string, hosts: string[]) => void;
   clearSeerrStaleHost: (instanceId: string, host: string) => void;
   forgetSeerrStaleHosts: (instanceId: string) => void;
@@ -894,6 +899,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   dashboards: initialDashboards,
   activeDashboardId: initialDashboards[0].id,
   wolDevices: [],
+  shortcuts: [],
   seerrStaleHosts: {},
   hydrated: false,
   demoMode: false,
@@ -1341,6 +1347,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     );
 
     const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
+    const shortcuts = getJSON<WebShortcut[]>(STORAGE_KEYS.shortcuts) ?? [];
     const seerrStaleHosts =
       getJSON<Record<string, string[]>>(STORAGE_KEYS.seerrStaleHosts) ?? {};
     const globalCustomHeaders =
@@ -1459,6 +1466,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       dashboards,
       activeDashboardId,
       wolDevices,
+      shortcuts,
       seerrStaleHosts,
       demoMode,
       hapticsEnabled,
@@ -2426,6 +2434,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setJSON(STORAGE_KEYS.wolDevices, devices);
     set({ wolDevices: devices });
   },
+  setShortcuts: (shortcuts) => {
+    setJSON(STORAGE_KEYS.shortcuts, shortcuts);
+    set({ shortcuts });
+  },
 
   setHapticsEnabled: (enabled) => {
     setBoolean(STORAGE_KEYS.hapticsEnabled, enabled);
@@ -2869,6 +2881,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     deleteKey(STORAGE_KEYS.widgetSettingsLegacy);
 
     setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
+    setJSON(STORAGE_KEYS.shortcuts, payload.shortcuts ?? []);
     const importedHapticsEnabled = payload.hapticsEnabled ?? true;
     setBoolean(STORAGE_KEYS.hapticsEnabled, importedHapticsEnabled);
     const importedGlobalCustomHeaders = payload.globalCustomHeaders ?? {};
@@ -2984,6 +2997,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       // network (#148). useNetworkAutoSwitch re-confirms and clears it if home.
       networkAwayFromHome: true,
       wolDevices: payload.wolDevices ?? [],
+      shortcuts: payload.shortcuts ?? [],
       hapticsEnabled: importedHapticsEnabled,
       globalCustomHeaders: importedGlobalCustomHeaders,
       uiScale: importedUiScale,
@@ -3021,6 +3035,7 @@ export function buildExportPayload(): ExportPayload {
     dashboards,
     activeDashboardId,
     wolDevices,
+    shortcuts,
     hapticsEnabled,
     globalCustomHeaders,
     uiScale,
@@ -3046,6 +3061,7 @@ export function buildExportPayload(): ExportPayload {
     backend: { url, sharedSecret, deviceId, ignoreCertErrors },
     notificationSettings: notifSettings,
     wolDevices,
+    shortcuts,
     hapticsEnabled,
     globalCustomHeaders,
     uiScale,

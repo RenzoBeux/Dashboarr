@@ -816,6 +816,81 @@ describe("validateExportPayload — WOL devices", () => {
   });
 });
 
+describe("validateExportPayload — shortcuts (v56)", () => {
+  const baseShortcut = () => ({
+    id: "s1",
+    name: "Portainer",
+    url: "https://portainer.example.com",
+  });
+
+  it("accepts a minimal shortcut and keeps icon/color absent", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      shortcuts: [baseShortcut()],
+    });
+    expect(result.shortcuts).toEqual([baseShortcut()]);
+    expect(result.shortcuts?.[0]).not.toHaveProperty("icon");
+    expect(result.shortcuts?.[0]).not.toHaveProperty("color");
+  });
+
+  it("keeps icon and color when present", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      shortcuts: [{ ...baseShortcut(), icon: "Router", color: "#3b82f6" }],
+    });
+    expect(result.shortcuts?.[0]).toMatchObject({ icon: "Router", color: "#3b82f6" });
+  });
+
+  it("leaves the field absent when omitted (pre-v56 exports)", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result).not.toHaveProperty("shortcuts");
+  });
+
+  it("rejects when shortcuts is not an array", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), shortcuts: "nope" as any }),
+    ).toThrow(/shortcuts/);
+  });
+
+  it.each([
+    ["empty id", { id: "" }],
+    ["empty name", { name: "   " }],
+    ["over-long name", { name: "x".repeat(101) }],
+    ["javascript: url", { url: "javascript:alert(1)" }],
+    ["file: url", { url: "file:///etc/passwd" }],
+    ["scheme-less url", { url: "portainer.example.com" }],
+    ["host-less url", { url: "https://" }],
+    ["over-long url", { url: `https://example.com/${"x".repeat(2048)}` }],
+    ["non-string icon", { icon: 3 }],
+    ["malformed color", { color: "blue" }],
+    ["short hex color", { color: "#fff" }],
+  ])("rejects a shortcut with %s", (_label, overrides) => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        shortcuts: [{ ...baseShortcut(), ...overrides }],
+      }),
+    ).toThrow(/shortcuts/);
+  });
+
+  it("accepts http:// urls (LAN boxes without TLS)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      shortcuts: [{ ...baseShortcut(), url: "http://192.168.1.10:9000/" }],
+    });
+    expect(result.shortcuts?.[0].url).toBe("http://192.168.1.10:9000/");
+  });
+
+  it("rejects duplicate shortcut ids", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        shortcuts: [baseShortcut(), { ...baseShortcut(), name: "Again" }],
+      }),
+    ).toThrow(/duplicate/);
+  });
+});
+
 describe("validateExportPayload — homeNetworks", () => {
   const baseNetwork = () => ({ id: "n1", ssid: "MyHome", bssid: "" });
 

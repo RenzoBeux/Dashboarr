@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { View, Text } from "react-native";
 import { router } from "expo-router";
-import { Wifi, Bell, Palette, HardDrive, Info, Plug } from "lucide-react-native";
+import { Wifi, Bell, Palette, HardDrive, Info, Plug, Link } from "lucide-react-native";
 import { StatusDot } from "@/components/ui/status-dot";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
@@ -39,6 +39,7 @@ export default function SettingsScreen() {
   const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
   const currentWifi = useConfigStore((s) => s.currentWifi);
   const dashboards = useConfigStore((s) => s.dashboards);
+  const shortcutsCount = useConfigStore((s) => s.shortcuts.length);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
@@ -154,6 +155,16 @@ export default function SettingsScreen() {
           }
           subtitleTone={webSlotPending ? "warn" : "default"}
           onPress={() => router.push("/settings/notifications")}
+        />
+        <SettingsRow
+          icon={Link}
+          label="Shortcuts"
+          subtitle={
+            shortcutsCount
+              ? `${shortcutsCount} shortcut${shortcutsCount > 1 ? "s" : ""} configured`
+              : "Quick links to web UIs"
+          }
+          onPress={() => router.push("/shortcuts")}
         />
         <SettingsRow
           icon={Palette}

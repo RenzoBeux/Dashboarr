@@ -146,7 +146,7 @@ export default function DashboardScreen() {
 
   // Slots whose required service is disabled OR has no attached instance on
   // this dashboard get filtered out so users don't see broken/irrelevant
-  // cards. Service-health/calendar/wol-devices have `service: null` and so
+  // cards. Service-health/calendar/wol-devices/shortcuts have `service: null` and so
   // always render. Speed Stats accepts an array (qbit OR sab) — the helpers
   // handle all three shapes.
   const visibleSlots = slots.filter((slot) => {

@@ -19,6 +19,17 @@ export interface WakeOnLanDevice {
   port?: number;
 }
 
+// A user-defined web shortcut shown on the Shortcuts dashboard widget (#344).
+// `icon` is a lucide name from lib/dashboard-icons.ts and `color` a hex from
+// lib/dashboard-colors.ts; both are optional and fall back at render time.
+export interface WebShortcut {
+  id: string;
+  name: string;
+  url: string;
+  icon?: string;
+  color?: string;
+}
+
 export interface HomeNetwork {
   id: string;
   ssid: string;
@@ -289,4 +300,6 @@ export interface ExportPayload {
   appTheme?: AppThemeId;
   // v40 — calendar first-day-of-week preference (#320).
   weekStart?: WeekStart;
+  // v56 — user-defined web shortcuts for the Shortcuts widget (#344).
+  shortcuts?: WebShortcut[];
 }
