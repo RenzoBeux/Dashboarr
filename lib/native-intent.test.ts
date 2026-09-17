@@ -85,6 +85,7 @@ describe("redirectSystemPath", () => {
         "/settings/network",
         "/settings/integrations/radarr/i1",
         "/wake-on-lan",
+        "/shortcuts",
         "/backend",
         "/custom-headers",
         "/home-networks",

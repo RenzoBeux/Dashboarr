@@ -657,13 +657,13 @@
         </p>
 
         <h3>The widget catalogue</h3>
-        <p>Thirty-six widgets are available:</p>
+        <p>Thirty-seven widgets are available:</p>
         <p style="color:var(--muted)">
           Service Health, Server Stats, Speed Stats, Downloads, SABnzbd Queue, NZBGet Queue,
           Radarr Queue, Sonarr Queue, Lidarr Queue, Bindery Queue, Recently Downloaded, Calendar, Still Pending,
           Stream Activity, Streaming Bandwidth, Seerr Requests, Now Playing (All Servers),
           Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats,
-          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array,
+          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Shortcuts, Disk Space, Health Alerts, unRAID Array,
           Tdarr, Autobrr Activity, Cleanuparr Stats, NZBHydra2 Indexers, Navidrome Library, Pi-hole,
           Top Blocked Domains, AdGuard Home, Top Blocked Domains (AdGuard).
         </p>
@@ -673,6 +673,16 @@
           row. Tapping that tile lists the individual episodes with their quality, size and import
           date, and any of them opens the series. Turn it off with
           <strong>Episodes, "Group by series"</strong> in the widget settings.
+        </p>
+        <p>
+          <strong>Shortcuts</strong> is a grid of your own web links for anything Dashboarr does not
+          integrate with: Portainer, Proxmox, Home Assistant, a router admin page, a hosting
+          dashboard. Each entry has a name, a URL, an icon and an accent colour, and tapping it opens
+          the page in the system in-app browser (Safari View Controller on iOS, a Chrome Custom Tab on
+          Android), so a site you are already signed into there opens signed in. Manage the list at
+          <strong>Settings, Shortcuts</strong> or from the gear on the card; <code>https://</code> is
+          assumed when you type a bare host. The list is shared, and the widget's settings sheet picks
+          <strong>All shortcuts</strong> or a subset for that dashboard.
         </p>
         <p>
           The same widget can be placed more than once on one dashboard, each copy with its own
@@ -1039,8 +1049,8 @@
           URLs, per-instance flags) and its secrets (API key, username, password, custom headers), all
           dashboards with their widgets and per-widget settings, the active dashboard, home networks,
           the auto-switch and treat-VPN-as-home settings, Services tile order, Wake-on-LAN devices,
-          haptics, global custom headers, UI scale, theme, notification settings, and your backend
-          pairing.
+          web shortcuts, haptics, global custom headers, UI scale, theme, notification settings, and
+          your backend pairing.
         </p>
         <div class="note warn">
           <strong>Treat the file like a password vault.</strong> It contains every API key and your
@@ -1172,7 +1182,8 @@
         <p>
           Everything else is optional and falls back to defaults when omitted:
           <code>backend</code>, <code>notificationSettings</code>, <code>wolDevices</code>,
-          <code>hapticsEnabled</code>, <code>treatVpnAsHome</code>, <code>globalCustomHeaders</code>,
+          <code>shortcuts</code>, <code>hapticsEnabled</code>, <code>treatVpnAsHome</code>,
+          <code>globalCustomHeaders</code>,
           <code>uiScale</code>, <code>appTheme</code> and <code>servicesOrder</code>. The simplest way
           to see their exact shape is to configure one in the app and read it back from an export.
         </p>

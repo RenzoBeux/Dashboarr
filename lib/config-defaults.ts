@@ -122,6 +122,7 @@ export function blankExportPayload(): ExportPayload {
     activeDashboardId: dashboards[0]!.id,
     notificationSettings: { ...DEFAULT_NOTIFICATION_SETTINGS },
     wolDevices: [],
+    shortcuts: [],
     hapticsEnabled: true,
     globalCustomHeaders: {},
     uiScale: DEFAULT_UI_SCALE,

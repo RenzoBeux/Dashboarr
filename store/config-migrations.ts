@@ -207,8 +207,10 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() backfills a disabled maintainerr instance at import.
  *   v55 — added the adguard service entry. Pure version stamp —
  *         defaultInstances() backfills a disabled adguard instance at import.
+ *   v56 — added optional `shortcuts: WebShortcut[]` (#344): user-defined web
+ *         links rendered by the Shortcuts dashboard widget. Absent means none.
  */
-export const CURRENT_CONFIG_VERSION = 55;
+export const CURRENT_CONFIG_VERSION = 56;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -771,6 +773,10 @@ const migrations: Record<number, (payload: any) => any> = {
   // v54 → v55: added the adguard service entry. Pure version stamp —
   // defaultInstances() backfills a disabled adguard instance at import.
   54: (payload) => ({ ...payload, version: 55 }),
+  // v55 → v56: optional top-level `shortcuts` (#344). Pure version stamp —
+  // validateExportPayload treats the key as optional, so pre-v56 exports
+  // validate and the list defaults to empty.
+  55: (payload) => ({ ...payload, version: 56 }),
 };
 
 /**

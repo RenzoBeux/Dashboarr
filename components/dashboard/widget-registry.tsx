@@ -15,6 +15,7 @@ import {
   Hourglass,
   Inbox,
   Disc3,
+  Link,
   MonitorPlay,
   Newspaper,
   PackageCheck,
@@ -59,6 +60,7 @@ import { Nzbhydra2Card } from "@/components/dashboard/nzbhydra2-card";
 import { ArrHealthCard } from "@/components/dashboard/arr-health-card";
 import { BazarrWantedCard } from "@/components/dashboard/bazarr-wanted-card";
 import { WolDevicesCard } from "@/components/dashboard/wol-devices-card";
+import { ShortcutsCard } from "@/components/dashboard/shortcuts-card";
 import { DiskSpaceCard } from "@/components/dashboard/disk-space-card";
 import { UnraidCard } from "@/components/dashboard/unraid-card";
 import { TdarrQueueCard } from "@/components/dashboard/tdarr-queue-card";
@@ -238,6 +240,11 @@ import {
   ADGUARD_TOP_BLOCKED_DEFAULT_SETTINGS,
   type AdguardTopBlockedSettingsValue,
 } from "@/components/dashboard/widget-settings/adguard-top-blocked-settings";
+import {
+  ShortcutsSettings,
+  SHORTCUTS_DEFAULT_SETTINGS,
+  type ShortcutsSettingsValue,
+} from "@/components/dashboard/widget-settings/shortcuts-settings";
 import { DASHBOARD_WIDGET_IDS, type ServiceId, type WidgetId } from "@/lib/constants";
 
 // Every widget component receives the id of its slot in the active dashboard.
@@ -298,7 +305,7 @@ export function isWidgetServiceEnabled(
 /**
  * Whether the widget's service requirement intersects the active dashboard's
  * attached service set. Widgets with `service === null` (service-health,
- * calendar, wol-devices) are workspace-agnostic and always pass. Used by the
+ * calendar, wol-devices, shortcuts) are workspace-agnostic and always pass. Used by the
  * dashboard visibility filter and the Add Widget picker to keep each
  * workspace's widget list scoped to its attached services.
  */
@@ -570,6 +577,16 @@ export const WIDGET_REGISTRY: Record<WidgetId, WidgetDefinition> = {
     service: null,
     component: WolDevicesCard,
   },
+  "shortcuts": {
+    id: "shortcuts",
+    label: "Shortcuts",
+    description: "One-tap links to web UIs Dashboarr doesn't integrate with",
+    icon: Link,
+    service: null,
+    component: ShortcutsCard,
+    settingsComponent: ShortcutsSettings,
+    defaultSettings: SHORTCUTS_DEFAULT_SETTINGS,
+  },
   "disk-space": {
     id: "disk-space",
     label: "Disk Space",
@@ -726,4 +743,5 @@ export type {
   PiholeTopBlockedSettingsValue,
   AdguardStatusSettingsValue,
   AdguardTopBlockedSettingsValue,
+  ShortcutsSettingsValue,
 };

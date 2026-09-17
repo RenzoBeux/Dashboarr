@@ -99,6 +99,7 @@ describe("tab route resolution", () => {
     [at("downloads", "downloads"), "/torrent/abc", "(downloads)", "torrent/[hash]"],
     [at("services", "services"), "/settings/integrations", "(services)", "settings/integrations/index"],
     [at("settings", "settings", "network"), "/wake-on-lan", "(settings)", "wake-on-lan"],
+    [at("settings", "settings"), "/shortcuts", "(settings)", "shortcuts"],
     [at("activity", "activity"), "/tautulli-stats", "(activity)", "tautulli-stats"],
     [at("pihole", "pihole"), "/pihole/queries", "(pihole)", "pihole/queries"],
     [at("navidrome", "navidrome"), "/navidrome/playlist/9", "(navidrome)", "navidrome/playlist/[id]"],
@@ -180,7 +181,7 @@ describe("tab route resolution", () => {
       });
       checked += 1;
     }
-    expect(checked).toBe(33);
+    expect(checked).toBe(34);
   });
 
   it("keeps a rewritten link in the Dashboard stack even from another tab", () => {

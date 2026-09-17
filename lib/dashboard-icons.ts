@@ -15,7 +15,10 @@ import {
   Clapperboard,
   Cloud,
   Coffee,
+  Container,
   Cpu,
+  Database,
+  ExternalLink,
   Disc,
   Download,
   Drama,
@@ -36,14 +39,18 @@ import {
   Image as ImageIcon,
   Inbox,
   Joystick,
+  KeyRound,
   LayoutDashboard,
   LayoutGrid,
   Library,
   Lightbulb,
+  Link,
+  Lock,
   Map,
   Monitor,
   MonitorPlay,
   Music,
+  Network,
   Newspaper,
   Package,
   PlayCircle,
@@ -51,15 +58,19 @@ import {
   Radar,
   Radio,
   Rocket,
+  Router,
   Server,
+  Settings,
   Shield,
   Sparkles,
   Star,
   Sun,
   Tent,
+  Terminal,
   Tv,
   Users,
   Wifi,
+  Wrench,
   Zap,
   type LucideIcon,
 } from "lucide-react-native";
@@ -130,6 +141,20 @@ export const LUCIDE_BY_NAME = {
   Joystick,
   Lightbulb,
   Users,
+  // Web-shortcut flavored additions (#344): self-hosted admin UIs, routers,
+  // containers and the like. Appended so existing dashboard picks keep their
+  // position in the picker grid.
+  Link,
+  ExternalLink,
+  Router,
+  Network,
+  Container,
+  Database,
+  Terminal,
+  Settings,
+  Wrench,
+  KeyRound,
+  Lock,
 } as const satisfies Record<string, LucideIcon>;
 
 export type DashboardIconName = keyof typeof LUCIDE_BY_NAME;
@@ -147,4 +172,14 @@ export function resolveDashboardIcon(name: string | undefined): LucideIcon {
     return LUCIDE_BY_NAME[name as DashboardIconName];
   }
   return LUCIDE_BY_NAME[DEFAULT_DASHBOARD_ICON];
+}
+
+// Web shortcuts (#344) share the registry so the same picker sheet serves both.
+export const DEFAULT_SHORTCUT_ICON = "Globe" satisfies DashboardIconName;
+
+export function resolveShortcutIcon(name: string | undefined): LucideIcon {
+  if (name && name in LUCIDE_BY_NAME) {
+    return LUCIDE_BY_NAME[name as DashboardIconName];
+  }
+  return LUCIDE_BY_NAME[DEFAULT_SHORTCUT_ICON];
 }
