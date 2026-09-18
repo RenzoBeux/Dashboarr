@@ -48,3 +48,30 @@ describe("readTorrentInfo", () => {
     expect(readTorrentInfo(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBeNull(); // PNG
   });
 });
+
+import { safeTorrentFileName } from "./torrent-metainfo";
+
+describe("safeTorrentFileName", () => {
+  it("keeps an ordinary name and normalizes the extension", () => {
+    expect(safeTorrentFileName("Some Release")).toBe("Some Release.torrent");
+    expect(safeTorrentFileName("Some Release.TORRENT")).toBe("Some Release.torrent");
+    expect(safeTorrentFileName("a.b.c.torrent")).toBe("a.b.c.torrent");
+  });
+
+  it("cannot escape a directory or hide the file", () => {
+    expect(safeTorrentFileName("../../target")).toBe("target.torrent");
+    expect(safeTorrentFileName("..")).toBe("upload.torrent");
+    expect(safeTorrentFileName("../")).toBe("upload.torrent");
+    expect(safeTorrentFileName("C:\\Users\\x\\evil")).toBe("evil.torrent");
+    expect(safeTorrentFileName("/etc/passwd")).toBe("passwd.torrent");
+    expect(safeTorrentFileName(".hidden")).toBe("hidden.torrent");
+    expect(safeTorrentFileName("name\u0000.torrent\n")).toBe("name.torrent");
+  });
+
+  it("falls back and caps the length", () => {
+    expect(safeTorrentFileName(undefined)).toBe("upload.torrent");
+    expect(safeTorrentFileName("   ")).toBe("upload.torrent");
+    const long = "x".repeat(500);
+    expect(safeTorrentFileName(long)).toBe(`${"x".repeat(200)}.torrent`);
+  });
+});

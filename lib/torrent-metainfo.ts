@@ -86,3 +86,21 @@ export function readTorrentInfo(bytes: Uint8Array): TorrentInfo | null {
     return null;
   }
 }
+
+// Filename handed to download clients that record one (Deluge's
+// add_torrent_file, qBittorrent's multipart part). Every source is untrusted:
+// info.name comes straight from the metainfo and a picker name from another
+// app, and Deluge joins the name onto its torrent-copy directory. Keeps the
+// last path segment only, drops control characters and leading/trailing
+// dots and spaces (no "..", no hidden files), caps the length, and always
+// ends in ".torrent".
+export function safeTorrentFileName(name: string | null | undefined): string {
+  const last = (name ?? "").split(/[\\/]/).pop() ?? "";
+  let base = last
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/\.torrent$/i, "")
+    .replace(/^[\s.]+|[\s.]+$/g, "")
+    .trim();
+  if (base.length > 200) base = base.slice(0, 200).replace(/[\s.]+$/g, "");
+  return `${base || "upload"}.torrent`;
+}

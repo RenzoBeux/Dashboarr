@@ -1,12 +1,12 @@
-import { File } from "expo-file-system";
-import { readTorrentInfo } from "@/lib/torrent-metainfo";
+import { File, Paths } from "expo-file-system";
+import { copyAsync } from "expo-file-system/legacy";
+import { readTorrentInfo, safeTorrentFileName } from "@/lib/torrent-metainfo";
 
-// A local .torrent picked with the document picker or handed to the app by the
-// OS ("Open in Dashboarr" on iOS, a VIEW intent on Android), already checked
-// by inspectTorrentFile. `uri` is what the platform gave us (file:// on iOS
-// and for picker cache copies, content:// for Android intents); `name` is the
+// A local .torrent that passed inspectTorrentFile. `uri` is always a file://
+// path the app can read again (a picker cache copy, an iOS Inbox file, or our
+// own cache copy of an Android content:// document); `name` is the sanitized
 // filename sent to clients that want one; `title` is info.name from the
-// metainfo, when readable.
+// metainfo, for display.
 export interface TorrentFileSource {
   uri: string;
   name: string;
@@ -21,10 +21,10 @@ export const MAX_TORRENT_FILE_BYTES = 16 * 1024 * 1024;
 
 const TOO_LARGE = "File is too large to be a .torrent (over 16 MB)";
 
-// Reads at most MAX + 1 bytes so an oversized file is detected without being
-// loaded whole. Goes through a file handle when the platform gives us one;
-// a content:// provider that refuses a handle falls back to the size the
-// resolver reports, and only then to a full read.
+// Reads at most MAX + 1 bytes through a file handle so an oversized file is
+// detected without being loaded whole. Only called on file:// paths, where
+// the handle (a RandomAccessFile on Android) is available; if it still isn't,
+// the reported size of a plain file is reliable enough to gate a full read.
 async function readBounded(file: File): Promise<Uint8Array> {
   let handle: ReturnType<File["open"]> | undefined;
   try {
@@ -43,10 +43,26 @@ async function readBounded(file: File): Promise<Uint8Array> {
   return file.bytes();
 }
 
+// An Android content:// document can't be opened as a handle, and a provider
+// may report its size as 0 when it doesn't know it, so nothing about it can
+// be read in a bounded way in place. Stream it into our own cache file first
+// (the legacy copyAsync goes through the ContentResolver without buffering
+// the whole thing) and inspect that copy instead. The copy is app-owned, so
+// the normal discard path cleans it up.
+async function stageContentUri(uri: string): Promise<File> {
+  const copy = new File(
+    Paths.cache,
+    `torrent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.torrent`,
+  );
+  await copyAsync({ from: uri, to: copy.uri });
+  return copy;
+}
+
 // Validates a local file before it is staged for upload: extension when a
 // filename is known (picker, iOS Inbox), then size, then content (a bencoded
 // dictionary with an `info` dictionary). Throws a user-facing Error on any
-// failure and never holds more than the cap in memory.
+// failure, never holds more than the cap in memory, and never leaves a copy
+// of its own behind on failure.
 export async function inspectTorrentFile(
   uri: string,
   fileName?: string,
@@ -56,15 +72,23 @@ export async function inspectTorrentFile(
     throw new Error("Only .torrent files can be added");
   }
 
-  const bytes = await readBounded(new File(uri));
-  if (bytes.byteLength > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
-  if (bytes.byteLength === 0) throw new Error("File is empty or could not be read");
-  const info = readTorrentInfo(bytes);
-  if (!info) throw new Error("Not a valid .torrent file");
-
-  const name =
-    fileName?.trim() || (info.name ? `${info.name}.torrent` : "upload.torrent");
-  return { uri, name, title: info.name ?? undefined };
+  const isContentUri = /^content:\/\//i.test(uri);
+  const file = isContentUri ? await stageContentUri(uri) : new File(uri);
+  try {
+    const bytes = await readBounded(file);
+    if (bytes.byteLength > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
+    if (bytes.byteLength === 0) throw new Error("File is empty or could not be read");
+    const info = readTorrentInfo(bytes);
+    if (!info) throw new Error("Not a valid .torrent file");
+    return {
+      uri: file.uri,
+      name: safeTorrentFileName(fileName?.trim() || info.name),
+      title: info.name ?? undefined,
+    };
+  } catch (err) {
+    if (isContentUri) discardTorrentFile(file.uri);
+    throw err;
+  }
 }
 
 // rtorrent (load.raw_start), Transmission (metainfo) and Deluge (filedump) all

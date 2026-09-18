@@ -153,26 +153,6 @@ export function TorrentDownloadsView({
   const [addCategory, setAddCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
 
-  // Runs on mount too (segment switches remount this view per client), so a
-  // pending magnet/file re-prefills whichever client the user lands on.
-  useEffect(() => {
-    if (!incomingTorrent) return;
-    // A file already staged in this card is being replaced: drop its copy.
-    const replacesStaged =
-      pickedFile !== undefined &&
-      (incomingTorrent.kind !== "file" || incomingTorrent.file.uri !== pickedFile.uri);
-    if (replacesStaged) discardTorrentFile(pickedFile.uri);
-    if (incomingTorrent.kind === "magnet") {
-      setMagnetUri(incomingTorrent.uri);
-      setPickedFile(undefined);
-    } else {
-      setPickedFile(incomingTorrent.file);
-      setMagnetUri("");
-    }
-    setShowAddModal(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incomingTorrent]);
-
   // Unstage the file and delete our local copy of it (picker cache copy or
   // iOS Inbox file). Used on remove, cancel and after a successful add.
   const clearPickedFile = () => {
@@ -235,6 +215,30 @@ export function TorrentDownloadsView({
   const stats = statsResult.data;
   const { data: healthData } = useServiceHealth();
   const addTorrent = adapter.useAddTorrent();
+
+  // Runs on mount too (segment switches remount this view per client), so a
+  // pending magnet/file re-prefills whichever client the user lands on.
+  useEffect(() => {
+    if (!incomingTorrent) return;
+    // A file already staged in this card is being replaced: drop its copy.
+    const replacesStaged =
+      pickedFile !== undefined &&
+      (incomingTorrent.kind !== "file" || incomingTorrent.file.uri !== pickedFile.uri);
+    // Never while its upload is in flight: qBittorrent streams the file from
+    // disk and the other adapters are reading it. A leaked temp file in that
+    // race beats a deleted-under-the-upload failure.
+    if (replacesStaged && !addTorrent.isPending) discardTorrentFile(pickedFile.uri);
+    if (incomingTorrent.kind === "magnet") {
+      setMagnetUri(incomingTorrent.uri);
+      setPickedFile(undefined);
+    } else {
+      setPickedFile(incomingTorrent.file);
+      setMagnetUri("");
+    }
+    setShowAddModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingTorrent]);
+
   const pauseMutation = adapter.usePauseTorrent();
   const resumeMutation = adapter.useResumeTorrent();
   const deleteMutation = adapter.useDeleteTorrent();
@@ -488,6 +492,7 @@ export function TorrentDownloadsView({
               </Text>
               <Pressable
                 onPress={clearPickedFile}
+                disabled={addTorrent.isPending}
                 hitSlop={8}
                 accessibilityLabel="Remove file"
               >
@@ -545,6 +550,9 @@ export function TorrentDownloadsView({
               variant="ghost"
               size="sm"
               onPress={resetAddCard}
+              // Cancel/remove delete the staged file; while the upload is
+              // streaming it from disk that would fail the add midway.
+              disabled={addTorrent.isPending}
               className="flex-1"
             />
             <Button
