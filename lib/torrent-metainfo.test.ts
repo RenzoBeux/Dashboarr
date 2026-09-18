@@ -1,4 +1,4 @@
-import { readTorrentInfo } from "./torrent-metainfo";
+import { readTorrentInfo, scanTorrentInfo } from "./torrent-metainfo";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -64,6 +64,37 @@ describe("readTorrentInfo", () => {
     expect(
       readTorrentInfo(enc("d4:infod4:name1:Ae4:infod4:name1:Bee")),
     ).toEqual({ name: "A" });
+  });
+
+  it("tells a truncated prefix apart from a non-torrent", () => {
+    const full = "d8:announce10:http://tr/4:infod4:name4:Testee";
+    for (let cut = 1; cut < full.length; cut++) {
+      expect(scanTorrentInfo(enc(full.slice(0, cut)))).toEqual({
+        ok: false,
+        truncated: true,
+      });
+    }
+    expect(scanTorrentInfo(enc(full))).toEqual({
+      ok: true,
+      info: { name: "Test" },
+    });
+    // Extra bytes after the root dictionary are ignored, not a truncation.
+    expect(scanTorrentInfo(enc(full + "junk"))).toEqual({
+      ok: true,
+      info: { name: "Test" },
+    });
+    expect(scanTorrentInfo(enc('{"json":true}'))).toEqual({
+      ok: false,
+      truncated: false,
+    });
+    expect(scanTorrentInfo(enc("d8:announce3:urle"))).toEqual({
+      ok: false,
+      truncated: false,
+    });
+    expect(scanTorrentInfo(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toEqual({
+      ok: false,
+      truncated: false,
+    });
   });
 
   it("rejects anything that is not a torrent dictionary", () => {

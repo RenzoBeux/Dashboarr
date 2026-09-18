@@ -1,7 +1,11 @@
 import { File } from "expo-file-system";
 import { readAsStringAsync } from "expo-file-system/legacy";
 import { base64ToBytes } from "@/lib/base64";
-import { readTorrentInfo, safeTorrentFileName } from "@/lib/torrent-metainfo";
+import {
+  scanTorrentInfo,
+  safeTorrentFileName,
+  type TorrentInfo,
+} from "@/lib/torrent-metainfo";
 
 // A local .torrent that passed inspectTorrentFile. `uri` is what the platform
 // gave us (a picker cache copy or an iOS Inbox file as file://, an Android
@@ -21,43 +25,58 @@ export const MAX_TORRENT_FILE_BYTES = 16 * 1024 * 1024;
 
 const CHUNK = 1024 * 1024;
 const TOO_LARGE = "File is too large to be a .torrent (over 16 MB)";
+const NOT_A_TORRENT = "Not a valid .torrent file";
 
-// Reads the source in fixed chunks and stops as soon as the cap is exceeded,
-// so neither memory nor disk ever holds more than cap + one chunk, whatever
-// the source is. The legacy read honours `position` + `length` on both
-// platforms and on Android opens content:// documents through the
-// ContentResolver, which is what makes this work in place for an OS-delivered
-// document with no filename and an unreliable reported size. A chunk shorter
-// than requested is not EOF on a stream (a provider can short-read), so the
-// loop only stops on an empty chunk or the cap.
-async function readBounded(uri: string): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = [];
-  let total = 0;
+// Reads the source in fixed chunks, re-scanning the metainfo after each one,
+// and stops the moment the root dictionary is complete, the bytes are
+// provably not a torrent, or the cap is exceeded. So neither memory nor disk
+// ever holds more than cap + one chunk, and a wrong pick (a video) is refused
+// after its first chunk. The legacy read honours `position` + `length` on
+// both platforms and on Android opens content:// documents through the
+// ContentResolver, which is what makes this work in place for an
+// OS-delivered document with no filename and an unreliable reported size.
+//
+// No end-of-file signal is relied on: the scanner decides. That matters
+// because the platforms disagree at EOF (iOS answers an empty chunk, Android
+// throws — its read returns -1, which the base64 encoder rejects) and a
+// content provider may short-read mid-stream, so neither an empty nor a
+// short chunk is a safe stop. A read failure after data was already read is
+// treated as EOF (only reachable with an incomplete document).
+async function readMetainfo(uri: string): Promise<TorrentInfo> {
+  let buf = new Uint8Array(0);
   for (;;) {
-    const b64 = await readAsStringAsync(uri, {
-      encoding: "base64",
-      position: total,
-      length: CHUNK,
-    });
+    let b64: string;
+    try {
+      b64 = await readAsStringAsync(uri, {
+        encoding: "base64",
+        position: buf.byteLength,
+        length: CHUNK,
+      });
+    } catch (err) {
+      if (buf.byteLength === 0) throw err;
+      break;
+    }
     const chunk = base64ToBytes(b64);
     if (chunk.byteLength === 0) break;
-    chunks.push(chunk);
-    total += chunk.byteLength;
-    if (total > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
+    const next = new Uint8Array(buf.byteLength + chunk.byteLength);
+    next.set(buf, 0);
+    next.set(chunk, buf.byteLength);
+    buf = next;
+    if (buf.byteLength > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
+    const scan = scanTorrentInfo(buf);
+    if (scan.ok) return scan.info;
+    if (!scan.truncated) throw new Error(NOT_A_TORRENT);
   }
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const c of chunks) {
-    out.set(c, at);
-    at += c.byteLength;
-  }
-  return out;
+  if (buf.byteLength === 0)
+    throw new Error("File is empty or could not be read");
+  throw new Error(NOT_A_TORRENT);
 }
 
 // Validates a local file before it is staged for upload: extension when a
-// filename is known (picker, iOS Inbox), then size, then content (a bencoded
-// dictionary with an `info` dictionary). Throws a user-facing Error on any
-// failure and never holds more than the cap in memory.
+// filename is known (picker, iOS Inbox), then size and content (a bencoded
+// dictionary with an `info` dictionary) in one bounded pass. Throws a
+// user-facing Error on any failure and never holds more than the cap in
+// memory.
 export async function inspectTorrentFile(
   uri: string,
   fileName?: string,
@@ -67,11 +86,7 @@ export async function inspectTorrentFile(
     throw new Error("Only .torrent files can be added");
   }
 
-  const bytes = await readBounded(uri);
-  if (bytes.byteLength === 0)
-    throw new Error("File is empty or could not be read");
-  const info = readTorrentInfo(bytes);
-  if (!info) throw new Error("Not a valid .torrent file");
+  const info = await readMetainfo(uri);
   return {
     uri,
     name: safeTorrentFileName(fileName?.trim() || info.name),

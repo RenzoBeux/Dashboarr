@@ -54,8 +54,10 @@ class Scanner {
   private stringRange(): [number, number] {
     this.budget();
     const len = this.integer(0x3a /* : */);
-    if (len < 0 || this.pos + len > this.buf.length)
-      throw new Error("bad string");
+    if (len < 0) throw new Error("bad string");
+    // A plausible length whose bytes aren't here yet is a truncation, not a
+    // malformed file: the chunked reader relies on that distinction.
+    if (this.pos + len > this.buf.length) throw new Error("truncated");
     const range: [number, number] = [this.pos, this.pos + len];
     this.pos += len;
     return range;
@@ -123,9 +125,17 @@ class Scanner {
   }
 }
 
-// Returns the torrent's metainfo, or null when the bytes are not a bencoded
-// dictionary with an `info` dictionary (i.e. not a .torrent). Never throws.
-export function readTorrentInfo(bytes: Uint8Array): TorrentInfo | null {
+export type TorrentScan =
+  | { ok: true; info: TorrentInfo }
+  // `truncated` means the bytes ran out before the root dictionary closed:
+  // the document may still be valid once more of the file is read. Any other
+  // failure is final.
+  | { ok: false; truncated: boolean };
+
+// Scans a (possibly partial) .torrent. Lets a chunked reader stop as soon as
+// the metainfo is complete, or bail as soon as it is provably not a torrent,
+// without ever needing an end-of-file signal from the platform.
+export function scanTorrentInfo(bytes: Uint8Array): TorrentScan {
   try {
     const sc = new Scanner(bytes);
     let hasInfo = false;
@@ -143,12 +153,22 @@ export function readTorrentInfo(bytes: Uint8Array): TorrentInfo | null {
         else sc.skip(2);
       });
     });
-    if (!hasInfo) return null;
+    if (!hasInfo) return { ok: false, truncated: false };
     const picked = ((nameUtf8 ?? name) as string | null)?.trim() ?? "";
-    return { name: picked || null };
-  } catch {
-    return null;
+    return { ok: true, info: { name: picked || null } };
+  } catch (err) {
+    return {
+      ok: false,
+      truncated: err instanceof Error && err.message === "truncated",
+    };
   }
+}
+
+// Returns the torrent's metainfo, or null when the bytes are not a complete
+// bencoded dictionary with an `info` dictionary (i.e. not a .torrent).
+export function readTorrentInfo(bytes: Uint8Array): TorrentInfo | null {
+  const scan = scanTorrentInfo(bytes);
+  return scan.ok ? scan.info : null;
 }
 
 // Filename handed to download clients that record one (Deluge's
