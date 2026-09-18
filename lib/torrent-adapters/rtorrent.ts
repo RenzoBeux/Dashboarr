@@ -20,6 +20,7 @@ import {
 import { RtorrentSpeedLimitsControl } from "@/components/rtorrent/speed-limits-control";
 import { applyFilterSort } from "@/lib/torrent-adapters/client-filter-sort";
 import { readTorrentFileBase64 } from "@/lib/torrent-file";
+import { TORRENT_ADD_MUTATION_KEY } from "@/lib/torrent-adapter";
 import type {
   AddTorrentInput,
   TorrentAdapter,
@@ -135,6 +136,7 @@ export const rtorrentTorrentAdapter: TorrentAdapter = {
     const queryClient = useQueryClient();
     const { instanceId: id } = useInstanceTarget("rtorrent", instanceId);
     return useMutation({
+      mutationKey: TORRENT_ADD_MUTATION_KEY,
       mutationFn: async ({ uri, file, label, savePath }: AddTorrentInput) => {
         if (file) {
           const content = await readTorrentFileBase64(file.uri);

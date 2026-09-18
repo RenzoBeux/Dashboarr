@@ -320,20 +320,31 @@ export function TorrentDownloadsView({
   const canAdd =
     (pickedFile !== undefined || magnetUri.trim().length > 0) && !customCategoryInvalid;
 
+  // mutateAsync rather than mutate's per-call callbacks: TanStack drops those
+  // once the component unmounts, and this view remounts whenever the client
+  // segment changes (downloads.tsx keys it by client). The promise settles
+  // regardless, so the staged file is always cleaned up and the parent's
+  // pending item always consumed; the setState calls become no-ops on an
+  // unmounted view, which is fine.
   const handleAdd = () => {
     if (!canAdd) return;
     const label = resolvedAddCategory || undefined;
-    addTorrent.mutate(
-      pickedFile ? { file: pickedFile, label } : { uri: magnetUri.trim(), label },
-      {
-        onSuccess: () => {
-          resetAddCard();
-          toast("Torrent added");
-        },
-        onError: (err) =>
-          toastError(pickedFile ? "Failed to upload torrent" : "Failed to add torrent", err),
-      },
-    );
+    const staged = pickedFile;
+    addTorrent
+      .mutateAsync(staged ? { file: staged, label } : { uri: magnetUri.trim(), label })
+      .then(() => {
+        if (staged) discardTorrentSource(staged);
+        setPickedFile(undefined);
+        setMagnetUri("");
+        setAddCategory("");
+        setCustomCategory("");
+        setShowAddModal(false);
+        onIncomingConsumed?.();
+        toast("Torrent added");
+      })
+      .catch((err: unknown) =>
+        toastError(staged ? "Failed to upload torrent" : "Failed to add torrent", err),
+      );
   };
 
   const selectedHashes = () => multiSelect.selectedItems(torrents).map((t) => t.hash);

@@ -25,6 +25,8 @@ import {
   inspectTorrentFile,
 } from "@/lib/torrent-file";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useIsMutating } from "@tanstack/react-query";
+import { TORRENT_ADD_MUTATION_KEY } from "@/lib/torrent-adapter";
 
 type DownloadClient =
   | "qbittorrent"
@@ -119,6 +121,12 @@ export default function DownloadsScreen() {
   // Shared with the Jackett grab flow — see hooks/use-torrent-targets.ts.
   const torrentTargets = useTorrentTargets();
 
+  // A torrent add (magnet or file upload) is streaming right now. Switching
+  // client remounts TorrentDownloadsView, which would re-stage the same file
+  // under a fresh idle mutation while the old one is still reading it, so
+  // the segmented control and OS-delivered items wait until it settles.
+  const addInFlight = useIsMutating({ mutationKey: TORRENT_ADD_MUTATION_KEY }) > 0;
+
   const applyTorrentTarget = (target: TorrentTarget, incoming: IncomingTorrent) => {
     setClient(target.client);
     // Switch the tab to the picked instance so the torrent list and add card
@@ -137,6 +145,11 @@ export default function DownloadsScreen() {
   const routeIncoming = (incoming: IncomingTorrent) => {
     if (torrentTargets.length === 0) {
       toastError("No torrent client enabled");
+      abandonIncoming(incoming);
+      return;
+    }
+    if (addInFlight) {
+      toastError("A torrent is still being added. Try again when it finishes.");
       abandonIncoming(incoming);
       return;
     }
@@ -232,6 +245,7 @@ export default function DownloadsScreen() {
       value={activeClient}
       enabled={enabledClients}
       onChange={setClient}
+      disabled={addInFlight}
     />
   ) : null;
 
@@ -308,10 +322,13 @@ function DownloadsSegmentedControl({
   value,
   enabled,
   onChange,
+  disabled = false,
 }: {
   value: DownloadClient;
   enabled: DownloadClient[];
   onChange: (next: DownloadClient) => void;
+  // Freezes switching (the inactive segments) while a torrent add is in flight.
+  disabled?: boolean;
 }) {
   const segments = enabled.map((c) => (
     <Segment
@@ -320,6 +337,7 @@ function DownloadsSegmentedControl({
       active={value === c}
       onPress={() => onChange(c)}
       fill={enabled.length <= MAX_FIXED_SEGMENTS}
+      disabled={disabled && value !== c}
     />
   ));
 
@@ -348,17 +366,20 @@ function Segment({
   active,
   onPress,
   fill,
+  disabled = false,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   // Split the row evenly (few clients) vs size to the label (scrolling row).
   fill: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      className={`py-2 rounded-xl items-center active:opacity-70 ${fill ? "flex-1" : "px-4"} ${active ? "bg-surface" : ""}`}
+      disabled={disabled}
+      className={`py-2 rounded-xl items-center active:opacity-70 ${fill ? "flex-1" : "px-4"} ${active ? "bg-surface" : ""} ${disabled ? "opacity-40" : ""}`}
     >
       <Text className={`text-sm font-semibold ${active ? "text-zinc-100" : "text-zinc-400"}`}>
         {label}

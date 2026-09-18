@@ -141,6 +141,13 @@ export type AddTorrentInput = (
   savePath?: string;
 };
 
+// Every adapter's useAddTorrent mutation carries this key so the Downloads
+// screen can ask the mutation cache whether an add is in flight
+// (useIsMutating) and freeze client switching until it settles: a switch
+// remounts the shared view, and a remounted view would re-stage the same
+// file with an idle mutation while the old upload is still streaming it.
+export const TORRENT_ADD_MUTATION_KEY = ["torrentAdd"] as const;
+
 // Shared adapter: each torrent client implements one of these and the shared
 // downloads view branches on no client-specific knowledge beyond what the
 // adapter + capability flags expose.
