@@ -75,6 +75,16 @@ export interface ServiceConfig {
   // fall back, so the settings card re-resolves the id against the live user
   // list and shows it as unknown when it no longer matches.
   requestAsUserId?: number;
+  // v57 (#386): unRAID-only — the id of the Glances instance that supplies
+  // per-disk read/write rates for this server's drives. unRAID's own API
+  // hardcodes numReads/numWrites to 0 and has no throughput field, so the only
+  // source is a Glances running on the same machine. Deliberately an explicit
+  // pairing rather than a guess: matching the two by URL hostname looks right
+  // but isn't (one public hostname can port-forward to different machines), and
+  // a wrong match paints another server's disk activity onto these drives.
+  // Absent/undefined means no I/O is shown and no Glances query is made. A
+  // stale id (instance deleted) reads as absent.
+  diskIoInstanceId?: string;
   // v53 (#332): Seerr-only sign-in mode. Absent/undefined means the admin
   // API key (the pre-v53 behavior). The three session values ride Seerr's
   // login cookie instead; see lib/seerr-auth.ts for what each one posts and
