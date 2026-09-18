@@ -74,7 +74,10 @@ function DiskIoBody({ instanceId }: { instanceId: string }) {
       <Select<string>
         label="Disk activity source"
         value={stored ?? NOT_PAIRED}
-        disabled={glances.length === 0}
+        // Stays usable with no candidates as long as something is stored:
+        // deleting, disabling or detaching the paired Glances would otherwise
+        // strand a dangling id with no way to pick "None" and clear it.
+        disabled={glances.length === 0 && stored === undefined}
         options={[
           {
             value: NOT_PAIRED,
@@ -92,8 +95,10 @@ function DiskIoBody({ instanceId }: { instanceId: string }) {
             ? [
                 {
                   value: stored,
-                  label: "Unknown instance",
-                  description: "That Glances server no longer exists",
+                  // Covers all three ways a pairing goes stale: the instance
+                  // was deleted, disabled, or detached from this dashboard.
+                  label: "Unavailable server",
+                  description: "Not available on this dashboard anymore",
                 },
               ]
             : []),
@@ -105,7 +110,13 @@ function DiskIoBody({ instanceId }: { instanceId: string }) {
         }
       />
 
-      {glances.length === 0 ? (
+      {isStale ? (
+        <Text className="text-zinc-500 text-xs">
+          The paired Glances server was deleted, disabled, or removed from this
+          dashboard, so no rates are being shown. Pick another one, or choose
+          None to clear the pairing.
+        </Text>
+      ) : glances.length === 0 ? (
         <Text className="text-zinc-500 text-xs">
           No Glances server is set up on this dashboard. Add one running on this
           same machine to see per-disk read and write rates.
