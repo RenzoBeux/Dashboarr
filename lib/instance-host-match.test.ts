@@ -1,76 +1,68 @@
-import { findSameHostInstance, hostsOf } from "@/lib/instance-host-match";
+import { hostsOf, sharesHost } from "@/lib/instance-host-match";
 
-const inst = (id: string, localUrl: string, remoteUrl = "") => ({
-  id,
-  localUrl,
-  remoteUrl,
-});
+const inst = (localUrl: string, remoteUrl = "") => ({ localUrl, remoteUrl });
 
 describe("hostsOf", () => {
   it("collects both URLs' hostnames, ignoring scheme, port and path", () => {
-    const hosts = hostsOf(inst("a", "http://192.168.1.10:61208/", "https://glances.example.com"));
+    const hosts = hostsOf(inst("http://192.168.1.10:61208/", "https://glances.example.com"));
     expect([...hosts].sort()).toEqual(["192.168.1.10", "glances.example.com"]);
   });
 
+  it("drops credentials from the authority", () => {
+    expect([...hostsOf(inst("http://user:pass@192.168.1.10:61208"))]).toEqual(["192.168.1.10"]);
+  });
+
   it("drops blanks and is empty for a missing instance", () => {
-    expect(hostsOf(inst("a", "", "")).size).toBe(0);
+    expect(hostsOf(inst("", "")).size).toBe(0);
     expect(hostsOf(undefined).size).toBe(0);
   });
 });
 
-describe("findSameHostInstance", () => {
-  it("matches a Glances on the same host but a different port", () => {
-    const target = inst("unraid", "http://192.168.1.10");
-    const found = findSameHostInstance(target, [
-      inst("glances-vps", "http://10.0.0.5:61208"),
-      inst("glances-nas", "http://192.168.1.10:61208"),
-    ]);
-    expect(found?.id).toBe("glances-nas");
+describe("sharesHost", () => {
+  it("matches the same host on different ports", () => {
+    expect(sharesHost(inst("http://192.168.1.10"), inst("http://192.168.1.10:61208"))).toBe(true);
   });
 
   it("matches on the local URL when the remote hostnames differ (reverse proxy)", () => {
-    const target = inst("unraid", "http://192.168.1.10", "https://unraid.example.com");
-    const found = findSameHostInstance(target, [
-      inst("glances", "http://192.168.1.10:61208", "https://glances.example.com"),
-    ]);
-    expect(found?.id).toBe("glances");
+    expect(
+      sharesHost(
+        inst("http://192.168.1.10", "https://unraid.example.com"),
+        inst("http://192.168.1.10:61208", "https://glances.example.com"),
+      ),
+    ).toBe(true);
   });
 
   it("matches on the remote URL when only that is configured", () => {
-    const target = inst("unraid", "", "https://box.example.com");
-    const found = findSameHostInstance(target, [inst("glances", "", "https://box.example.com:61208")]);
-    expect(found?.id).toBe("glances");
-  });
-
-  it("returns undefined when no candidate shares a host", () => {
-    const target = inst("unraid", "http://192.168.1.10");
     expect(
-      findSameHostInstance(target, [
-        inst("glances-vps", "http://10.0.0.5:61208"),
-        inst("glances-other", "https://elsewhere.example.com"),
-      ]),
-    ).toBeUndefined();
+      sharesHost(inst("", "https://box.example.com"), inst("", "https://box.example.com:61208")),
+    ).toBe(true);
   });
 
   it("is case-insensitive on hostnames", () => {
-    const found = findSameHostInstance(inst("unraid", "http://Tower.local"), [
-      inst("glances", "http://tower.LOCAL:61208"),
-    ]);
-    expect(found?.id).toBe("glances");
+    expect(sharesHost(inst("http://Tower.local"), inst("http://tower.LOCAL:61208"))).toBe(true);
   });
 
-  it("never matches when the target has no usable URL", () => {
-    expect(findSameHostInstance(inst("unraid", "", ""), [inst("glances", "http://x")])).toBeUndefined();
-    expect(findSameHostInstance(undefined, [inst("glances", "http://x")])).toBeUndefined();
-  });
-
-  it("never matches a candidate with no usable URL", () => {
+  it("does not match different hosts", () => {
+    expect(sharesHost(inst("http://192.168.1.10"), inst("http://10.0.0.5:61208"))).toBe(false);
     expect(
-      findSameHostInstance(inst("unraid", "http://192.168.1.10"), [inst("glances", "", "")]),
-    ).toBeUndefined();
+      sharesHost(inst("http://192.168.1.10"), inst("https://elsewhere.example.com")),
+    ).toBe(false);
   });
 
-  it("returns undefined for an empty candidate list", () => {
-    expect(findSameHostInstance(inst("unraid", "http://192.168.1.10"), [])).toBeUndefined();
+  it("never matches when either side has no usable URL", () => {
+    expect(sharesHost(inst("", ""), inst("http://192.168.1.10"))).toBe(false);
+    expect(sharesHost(inst("http://192.168.1.10"), inst("", ""))).toBe(false);
+    expect(sharesHost(undefined, inst("http://192.168.1.10"))).toBe(false);
+    expect(sharesHost(inst("http://192.168.1.10"), undefined)).toBe(false);
+  });
+
+  // The reason the unRAID → Glances pairing is stored explicitly rather than
+  // derived from this: one public hostname can forward different ports to
+  // different machines, and nothing here can tell that apart from one machine
+  // serving two ports. Documented as a test so the limitation stays visible.
+  it("cannot tell one host forwarding ports to two machines from one machine", () => {
+    expect(
+      sharesHost(inst("", "https://home.example.com"), inst("", "https://home.example.com:61208")),
+    ).toBe(true);
   });
 });

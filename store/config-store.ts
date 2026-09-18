@@ -882,6 +882,16 @@ const initialInstances = defaultInstances();
 const initialActiveInstance = defaultActiveInstance(initialInstances);
 const initialDashboards = defaultDashboards();
 
+// Demo mode is a curated showcase, so its unRAID instance is pre-paired with its
+// Glances instance for disk I/O (#386) — the ids are generated fresh each time,
+// so the link has to be made after both exist. In a real config this pairing is
+// always the user's explicit choice; see components/settings/unraid-disk-io-card.tsx.
+function pairDemoDiskIo(instances: Record<ServiceId, ServiceInstance[]>): void {
+  const unraid = instances.unraid?.[0];
+  const glances = instances.glances?.[0];
+  if (unraid && glances) unraid.diskIoInstanceId = glances.id;
+}
+
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
   instanceSecrets: {},
@@ -1402,6 +1412,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         };
         instances[id] = [demoInst];
       }
+      pairDemoDiskIo(instances);
       // v22: drop curated attachments in memory so demo UUIDs resolve. Mirrors
       // the enableDemoMode action; not persisted (real attachments come back
       // on disableDemoMode → hydrate).
@@ -2667,6 +2678,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       };
       demoInstances[id] = [inst];
     }
+    pairDemoDiskIo(demoInstances);
     set((state) => {
       // v22: force every dashboard into auto-attach mode in memory (not
       // persisted) so the resolver picks up the freshly-generated demo UUIDs.

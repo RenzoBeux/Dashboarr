@@ -120,6 +120,17 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (isSeerrAuthMode(v.authMode) && v.authMode !== "apiKey") {
     out.authMode = v.authMode;
   }
+  // v57 (#386): optional unRAID → Glances disk I/O pairing. Same id shape as
+  // ServiceInstance.id. An id pointing at an instance that isn't in this
+  // payload is kept — the editor resolves it at render time and shows it as
+  // unknown, matching how requestAsUserId handles a deleted Seerr account.
+  if (
+    typeof v.diskIoInstanceId === "string" &&
+    v.diskIoInstanceId.length > 0 &&
+    v.diskIoInstanceId.length <= 128
+  ) {
+    out.diskIoInstanceId = v.diskIoInstanceId;
+  }
   return out;
 }
 

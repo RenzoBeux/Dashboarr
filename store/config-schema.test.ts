@@ -350,6 +350,30 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.overseerr[1].requestAsUserId).toBeUndefined();
   });
 
+  it("round-trips diskIoInstanceId (v57)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { unraid: [validInstance({ diskIoInstanceId: "glances-uuid-1" })] },
+    });
+    expect(result.services.unraid[0].diskIoInstanceId).toBe("glances-uuid-1");
+  });
+
+  it("drops an invalid diskIoInstanceId without rejecting the instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        unraid: [
+          validInstance({ diskIoInstanceId: "" }),
+          validInstance({ id: "uuid-2", diskIoInstanceId: 7 }),
+          validInstance({ id: "uuid-3", diskIoInstanceId: "x".repeat(129) }),
+        ],
+      },
+    });
+    expect(result.services.unraid[0].diskIoInstanceId).toBeUndefined();
+    expect(result.services.unraid[1].diskIoInstanceId).toBeUndefined();
+    expect(result.services.unraid[2].diskIoInstanceId).toBeUndefined();
+  });
+
   it("round-trips the Seerr session sign-in modes (v53)", () => {
     const result = validateExportPayload({
       ...baseValid(),

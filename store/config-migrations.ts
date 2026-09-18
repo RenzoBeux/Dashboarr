@@ -210,7 +210,7 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v56 — added optional `shortcuts: WebShortcut[]` (#344): user-defined web
  *         links rendered by the Shortcuts dashboard widget. Absent means none.
  */
-export const CURRENT_CONFIG_VERSION = 56;
+export const CURRENT_CONFIG_VERSION = 57;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -777,6 +777,10 @@ const migrations: Record<number, (payload: any) => any> = {
   // validateExportPayload treats the key as optional, so pre-v56 exports
   // validate and the list defaults to empty.
   55: (payload) => ({ ...payload, version: 56 }),
+  // v56 → v57: optional per-instance `diskIoInstanceId` on ServiceConfig (the
+  // unRAID → Glances disk I/O pairing, #386). Pure version stamp — absence
+  // means no I/O is shown, which is the pre-v57 behavior.
+  56: (payload) => ({ ...payload, version: 57 }),
 };
 
 /**

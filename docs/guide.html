@@ -305,6 +305,7 @@
               <tr><td>(buttons)</td><td><strong>Test Connection</strong> and <strong>Save</strong>, side by side. Everything above them is saved by the Save button.</td></tr>
               <tr><td>Preferences: Routing and security</td><td><strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong></td></tr>
               <tr><td>Preferences: Torrents</td><td>qBittorrent only: tag added torrents with "Dashboarr"</td></tr>
+              <tr><td>Preferences: Disk activity</td><td>unRAID only: pick the Glances instance running on that same machine to show per-disk read/write rates. unRAID's own API always reports zero reads and writes, so this is the only source. Left as <strong>None</strong>, no rates are shown.</td></tr>
               <tr><td>Preferences: Add Defaults</td><td>Radarr, Sonarr and Lidarr only: Quality Profile, Root Folder, and Metadata Profile for Lidarr</td></tr>
               <tr><td>Preferences: Notifications</td><td>Per-instance overrides for each notification category</td></tr>
               <tr><td>Preferences: Webhook Attribution</td><td>Only when a backend is paired, and only for Radarr, Sonarr, Tautulli, Seerr, Bazarr and Tracearr</td></tr>
@@ -782,7 +783,7 @@
           <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
           <li><strong>Navidrome</strong>: Overview, Browse and Playlists. Overview holds the library counters, whatever is playing right now, and the maintenance actions — quick scan, full scan and delete missing, each behind a confirm. Browse defaults to recently added albums and searches artists, albums and tracks as you type. Any row opens that record in Navidrome&rsquo;s own web UI.</li>
           <li><strong>Glances</strong> (headed "Server"): CPU, Memory, GPU, Disks, Disk I/O, Network and Containers cards. Containers are read-only here.</li>
-          <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container.</li>
+          <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container. Disks also show live read/write rates once you pair a Glances instance under Disk activity in the unRAID instance editor.</li>
           <li><strong>Tdarr</strong>: Server status, Library stats (Tdarr score, health-check score, space saved), Nodes with per-node pause/resume and per-worker Cancel/Kill, a Libraries list with per-library <strong>Find New</strong> and <strong>Fresh Scan</strong> actions, and a file search across every library.</li>
           <li><strong>Autobrr</strong>: push stats, a searchable release feed with approved/rejected/error badges and per-action retry, filter enable toggles, and IRC network health with per-network restart.</li>
           <li><strong>Cleanuparr</strong>: strike/removal/cleanup stats over a selectable 24h/7d/30d window, scheduled jobs with run-now buttons, health of its connected download clients and *arr instances, and a filterable event feed.</li>

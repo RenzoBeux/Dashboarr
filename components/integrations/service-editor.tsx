@@ -66,6 +66,7 @@ import { useModalFlow } from "@/hooks/use-modal-flow";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { ArrDefaultsCard } from "@/components/settings/arr-defaults-card";
 import { SeerrRequestUserCard } from "@/components/settings/seerr-request-user-card";
+import { UnraidDiskIoCard } from "@/components/settings/unraid-disk-io-card";
 import { QbtMutedCategories } from "@/components/settings/qbt-muted-categories";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
@@ -998,6 +999,8 @@ export function ServiceEditor({
       <ArrDefaultsCard serviceId={serviceId} instanceId={instanceId} />
 
       <SeerrRequestUserCard serviceId={serviceId} instanceId={instanceId} />
+
+      <UnraidDiskIoCard serviceId={serviceId} instanceId={instanceId} />
 
       <InstanceNotificationsCard serviceId={serviceId} instanceId={instanceId} />
 

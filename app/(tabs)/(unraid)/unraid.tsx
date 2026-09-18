@@ -33,7 +33,7 @@ import {
 } from "@/hooks/use-unraid";
 import { useGlancesDiskIoRates } from "@/hooks/use-glances";
 import { useTargetInstance } from "@/hooks/use-instance-target";
-import { useSameHostInstance } from "@/hooks/use-workspace-instances";
+import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
 import { normalizeDeviceName } from "@/services/glances-api";
 import type { DiskIoRate } from "@/services/glances-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -267,15 +267,20 @@ function diskIo(
   return device ? rates.get(normalizeDeviceName(device)) : undefined;
 }
 
-// Disk I/O only from a Glances instance on the SAME machine as this unRAID
-// server. Both kinds resolve their active instance independently, so pairing
-// them blindly would paint another host's disk activity onto these drives —
-// and, because live I/O overrides the standby chip, would misreport a parked
-// disk as awake. No same-host Glances means no query and no chips.
+// Disk I/O only from the Glances instance the user explicitly paired with this
+// unRAID server (Settings → the unRAID instance → Disk activity). Never guessed:
+// the two kinds resolve their active instance independently, and matching them
+// by URL hostname isn't verifiable — one public hostname can forward different
+// ports to different machines. A wrong pairing would paint another server's disk
+// activity onto these drives and, because live I/O overrides the standby chip,
+// misreport a parked disk as awake. Unpaired (or paired with an instance that no
+// longer exists / isn't attached here) means no query and no chips.
 function useUnraidDiskIoRates(): ReadonlyMap<string, DiskIoRate> {
   const unraid = useTargetInstance("unraid");
-  const glances = useSameHostInstance("glances", unraid);
-  return useGlancesDiskIoRates(glances?.id, !!glances);
+  const pairedId = unraid?.diskIoInstanceId;
+  const glances = useAttachedEnabledInstances("glances");
+  const paired = pairedId ? glances.find((g) => g.id === pairedId) : undefined;
+  return useGlancesDiskIoRates(paired?.id, !!paired);
 }
 
 // One array/pool disk: name + device, usage bar when the disk has a
