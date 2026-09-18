@@ -19,7 +19,11 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { toastError } from "@/components/ui/toast";
 import { useTorrentTargets, type TorrentTarget } from "@/hooks/use-torrent-targets";
 import { magnetDisplayName, torrentFileDisplayName } from "@/lib/utils";
-import { discardTorrentFile, inspectTorrentFile } from "@/lib/torrent-file";
+import {
+  discardTorrentFile,
+  discardTorrentSource,
+  inspectTorrentFile,
+} from "@/lib/torrent-file";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 type DownloadClient =
@@ -127,7 +131,7 @@ export default function DownloadsScreen() {
   // here (no client, picker dismissed); once staged in the add card the card
   // owns that cleanup.
   const abandonIncoming = (incoming: IncomingTorrent) => {
-    if (incoming.kind === "file") discardTorrentFile(incoming.file.uri);
+    if (incoming.kind === "file") discardTorrentSource(incoming.file);
   };
 
   const routeIncoming = (incoming: IncomingTorrent) => {

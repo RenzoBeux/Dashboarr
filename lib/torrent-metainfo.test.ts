@@ -77,11 +77,14 @@ describe("readTorrentInfo", () => {
     expect(scanTorrentInfo(enc(full))).toEqual({
       ok: true,
       info: { name: "Test" },
+      end: full.length,
     });
-    // Extra bytes after the root dictionary are ignored, not a truncation.
+    // Extra bytes after the root dictionary are not a truncation; `end`
+    // marks where the torrent proper stops so a caller can drop them.
     expect(scanTorrentInfo(enc(full + "junk"))).toEqual({
       ok: true,
       info: { name: "Test" },
+      end: full.length,
     });
     expect(scanTorrentInfo(enc('{"json":true}'))).toEqual({
       ok: false,

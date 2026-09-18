@@ -126,7 +126,9 @@ class Scanner {
 }
 
 export type TorrentScan =
-  | { ok: true; info: TorrentInfo }
+  // `end` is the byte offset just past the root dictionary: the torrent is
+  // exactly bytes[0, end), whatever may follow.
+  | { ok: true; info: TorrentInfo; end: number }
   // `truncated` means the bytes ran out before the root dictionary closed:
   // the document may still be valid once more of the file is read. Any other
   // failure is final.
@@ -155,7 +157,7 @@ export function scanTorrentInfo(bytes: Uint8Array): TorrentScan {
     });
     if (!hasInfo) return { ok: false, truncated: false };
     const picked = ((nameUtf8 ?? name) as string | null)?.trim() ?? "";
-    return { ok: true, info: { name: picked || null } };
+    return { ok: true, info: { name: picked || null }, end: sc.pos };
   } catch (err) {
     return {
       ok: false,

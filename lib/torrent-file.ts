@@ -1,4 +1,4 @@
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { readAsStringAsync } from "expo-file-system/legacy";
 import { base64ToBytes } from "@/lib/base64";
 import {
@@ -7,12 +7,16 @@ import {
   type TorrentInfo,
 } from "@/lib/torrent-metainfo";
 
-// A local .torrent that passed inspectTorrentFile. `uri` is what the platform
-// gave us (a picker cache copy or an iOS Inbox file as file://, an Android
-// document as content://); `name` is the sanitized filename sent to clients
-// that want one; `title` is info.name from the metainfo, for display.
+// A local .torrent that passed inspectTorrentFile. `uri` is an app-owned
+// cache file holding exactly the verified metainfo bytes (never more than the
+// cap), which is what every client uploads; `sourceUri` is what the platform
+// handed us (a picker cache copy or an iOS Inbox file as file://, an Android
+// document as content://), kept only so it can be cleaned up with the copy;
+// `name` is the sanitized filename sent to clients that want one; `title` is
+// info.name from the metainfo, for display.
 export interface TorrentFileSource {
   uri: string;
+  sourceUri: string;
   name: string;
   title?: string;
 }
@@ -42,7 +46,9 @@ const NOT_A_TORRENT = "Not a valid .torrent file";
 // content provider may short-read mid-stream, so neither an empty nor a
 // short chunk is a safe stop. A read failure after data was already read is
 // treated as EOF (only reachable with an incomplete document).
-async function readMetainfo(uri: string): Promise<TorrentInfo> {
+async function readMetainfo(
+  uri: string,
+): Promise<{ info: TorrentInfo; bytes: Uint8Array }> {
   let buf = new Uint8Array(0);
   for (;;) {
     let b64: string;
@@ -64,7 +70,10 @@ async function readMetainfo(uri: string): Promise<TorrentInfo> {
     buf = next;
     if (buf.byteLength > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
     const scan = scanTorrentInfo(buf);
-    if (scan.ok) return scan.info;
+    // Only the bytes the scanner walked are the torrent. Whatever follows the
+    // root dictionary is dropped here, so a tiny valid torrent glued to a
+    // huge payload is never read past this point by anyone.
+    if (scan.ok) return { info: scan.info, bytes: buf.subarray(0, scan.end) };
     if (!scan.truncated) throw new Error(NOT_A_TORRENT);
   }
   if (buf.byteLength === 0)
@@ -74,9 +83,12 @@ async function readMetainfo(uri: string): Promise<TorrentInfo> {
 
 // Validates a local file before it is staged for upload: extension when a
 // filename is known (picker, iOS Inbox), then size and content (a bencoded
-// dictionary with an `info` dictionary) in one bounded pass. Throws a
-// user-facing Error on any failure and never holds more than the cap in
-// memory.
+// dictionary with an `info` dictionary) in one bounded pass. The verified
+// bytes are written to an app-owned cache file and that copy is what gets
+// uploaded, so the clients' later reads are bounded by construction and the
+// original (which may carry anything after the metainfo) is never sent.
+// Throws a user-facing Error on any failure and never holds more than the
+// cap in memory.
 export async function inspectTorrentFile(
   uri: string,
   fileName?: string,
@@ -86,9 +98,15 @@ export async function inspectTorrentFile(
     throw new Error("Only .torrent files can be added");
   }
 
-  const info = await readMetainfo(uri);
+  const { info, bytes } = await readMetainfo(uri);
+  const copy = new File(
+    Paths.cache,
+    `torrent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.torrent`,
+  );
+  copy.write(bytes);
   return {
-    uri,
+    uri: copy.uri,
+    sourceUri: uri,
     name: safeTorrentFileName(fileName?.trim() || info.name),
     title: info.name ?? undefined,
   };
@@ -97,21 +115,28 @@ export async function inspectTorrentFile(
 // rtorrent (load.raw_start), Transmission (metainfo) and Deluge (filedump) all
 // take the .torrent as base64 text inside the RPC body, so the adapters read
 // the file once here and hand the encoded content to the service layer. Only
-// sources that passed inspectTorrentFile reach this, so the read is bounded.
-// Works for content:// too (the new File API streams SAF documents).
-// qBittorrent is the exception: it takes a multipart file part, and React
-// Native's fetch streams that from the URI directly (see addTorrentFile in
-// services/qbittorrent-api.ts).
+// the verified copy inspectTorrentFile wrote reaches this, so the read is
+// bounded by the cap. qBittorrent is the exception: it takes a multipart
+// file part, and React Native's fetch streams that copy from disk directly
+// (see addTorrentFile in services/qbittorrent-api.ts).
 export function readTorrentFileBase64(uri: string): Promise<string> {
   return new File(uri).base64();
 }
 
-// Drop our local copy once it is no longer needed: after a successful add,
-// and whenever the user abandons it (cancel, remove, dismissed destination
-// picker, no client configured). Picker copies live in the cache dir and iOS
-// "Open in" copies land in Documents/Inbox, where they pile up forever
-// otherwise. Android content:// URIs belong to another app and are left
-// alone. Never throws — cleanup must not turn a successful add into an error.
+// Drop everything we hold for a staged torrent once it is no longer needed:
+// after a successful add, and whenever the user abandons it (cancel, remove,
+// dismissed destination picker, no client configured). That is our verified
+// cache copy plus the original when it is ours to delete: picker copies live
+// in the cache dir and iOS "Open in" copies land in Documents/Inbox, where
+// they pile up forever otherwise. Android content:// originals belong to
+// another app and are left alone.
+export function discardTorrentSource(file: TorrentFileSource): void {
+  discardTorrentFile(file.uri);
+  discardTorrentFile(file.sourceUri);
+}
+
+// Deletes one local file:// path. Never throws — cleanup must not turn a
+// successful add into an error.
 export function discardTorrentFile(uri: string): void {
   if (!/^file:\/\//i.test(uri)) return;
   try {

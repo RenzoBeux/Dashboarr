@@ -70,6 +70,7 @@ import {
 } from "@/lib/torrent-adapter";
 import {
   discardTorrentFile,
+  discardTorrentSource,
   inspectTorrentFile,
   type TorrentFileSource,
 } from "@/lib/torrent-file";
@@ -156,7 +157,7 @@ export function TorrentDownloadsView({
   // Unstage the file and delete our local copy of it (picker cache copy or
   // iOS Inbox file). Used on remove, cancel and after a successful add.
   const clearPickedFile = () => {
-    if (pickedFile) discardTorrentFile(pickedFile.uri);
+    if (pickedFile) discardTorrentSource(pickedFile);
     setPickedFile(undefined);
   };
 
@@ -227,7 +228,7 @@ export function TorrentDownloadsView({
     // Never while its upload is in flight: qBittorrent streams the file from
     // disk and the other adapters are reading it. A leaked temp file in that
     // race beats a deleted-under-the-upload failure.
-    if (replacesStaged && !addTorrent.isPending) discardTorrentFile(pickedFile.uri);
+    if (replacesStaged && !addTorrent.isPending) discardTorrentSource(pickedFile);
     if (incomingTorrent.kind === "magnet") {
       setMagnetUri(incomingTorrent.uri);
       setPickedFile(undefined);
