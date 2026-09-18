@@ -3,6 +3,7 @@ import type { ServiceId } from "@/lib/constants";
 import type { ServiceInstance } from "@/store/config-store";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
+import { findSameHostInstance } from "@/lib/instance-host-match";
 import {
   resolveBoundInstances,
   isExplicitInstanceBinding,
@@ -48,6 +49,32 @@ export function useAttachedEnabledInstances(
   return useMemo(
     () => enabled.filter((i) => attached.has(i.id)),
     [enabled, attached],
+  );
+}
+
+/**
+ * The instance of `kind` that runs on the same host as `target`, or undefined
+ * when there is none. Use this — never the active instance — before rendering
+ * one service's data against another's; see lib/instance-host-match.ts for why
+ * an unguarded pairing shows the wrong machine's numbers.
+ *
+ * Attachment-scoped, not merely enabled: an instance the user detached from the
+ * active dashboard must not be queried here, and must never shadow an attached
+ * one. Auto-attach dashboards still see every enabled instance.
+ */
+export function useSameHostInstance(
+  serviceId: ServiceId,
+  target: { localUrl: string; remoteUrl: string } | undefined,
+): ServiceInstance | undefined {
+  const candidates = useAttachedEnabledInstances(serviceId);
+  // Depend on the URLs, not the instance object: unrelated edits to the target
+  // (renames, profile defaults) shouldn't re-run the match. A missing target
+  // reduces to two blank URLs, which findSameHostInstance already rejects.
+  const localUrl = target?.localUrl ?? "";
+  const remoteUrl = target?.remoteUrl ?? "";
+  return useMemo(
+    () => findSameHostInstance({ localUrl, remoteUrl }, candidates),
+    [candidates, localUrl, remoteUrl],
   );
 }
 

@@ -32,7 +32,8 @@ import {
   useUnraidStorage,
 } from "@/hooks/use-unraid";
 import { useGlancesDiskIoRates } from "@/hooks/use-glances";
-import { useSameHostInstance, useTargetInstance } from "@/hooks/use-instance-target";
+import { useTargetInstance } from "@/hooks/use-instance-target";
+import { useSameHostInstance } from "@/hooks/use-workspace-instances";
 import { normalizeDeviceName } from "@/services/glances-api";
 import type { DiskIoRate } from "@/services/glances-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
