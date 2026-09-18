@@ -57,13 +57,16 @@ export function useGlancesFs(instanceId?: string) {
   });
 }
 
-export function useGlancesDiskIO(instanceId?: string) {
+// `active` is an extra gate ANDed onto the internal enabled, mirroring
+// useServiceQuery's. Callers that render this outside the Glances screen pass
+// false when they have no instance to trust, so nothing is fetched at all.
+export function useGlancesDiskIO(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("glances", instanceId);
   return useQuery({
     queryKey: ["glances", id, "diskio"],
     queryFn: () => getDiskIO(id ?? undefined),
     refetchInterval: FAST_POLL,
-    enabled: enabled && !!id,
+    enabled: enabled && !!id && active,
   });
 }
 
@@ -77,11 +80,14 @@ const EMPTY_DISK_IO_RATES: ReadonlyMap<string, DiskIoRate> = new Map();
 // An errored query keeps returning its last successful data for gcTime (5min),
 // which off the Glances screen would mean frozen numbers with nothing on screen
 // to hint they're stale — so an error resolves to no rates at all.
-export function useGlancesDiskIoRates(instanceId?: string): ReadonlyMap<string, DiskIoRate> {
-  const { data, isError } = useGlancesDiskIO(instanceId);
+export function useGlancesDiskIoRates(
+  instanceId?: string,
+  active = true,
+): ReadonlyMap<string, DiskIoRate> {
+  const { data, isError } = useGlancesDiskIO(instanceId, active);
   return useMemo(
-    () => (isError || !data ? EMPTY_DISK_IO_RATES : diskIoRateMap(data)),
-    [data, isError],
+    () => (!active || isError || !data ? EMPTY_DISK_IO_RATES : diskIoRateMap(data)),
+    [active, data, isError],
   );
 }
 

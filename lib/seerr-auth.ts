@@ -15,6 +15,10 @@
  * minus /auth/jellyfin.
  */
 
+// The one exception to the no-imports rule above: lib/url-validation.ts is
+// itself import-free and in the same pure-config set, so this can't cycle.
+import { hostOf } from "@/lib/url-validation";
+
 /**
  * How one Seerr instance authenticates.
  *
@@ -380,13 +384,7 @@ export const SEERR_AUTH_MODE_LABELS: Record<SeerrAuthMode, string> = {
 // ---------------------------------------------------------------------------
 
 /** Lower-cased hostname of a URL (no scheme, port, path), or "" if unparseable. */
-export function seerrHostOf(url: string): string {
-  const stripped = url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
-  const end = stripped.search(/[/?#]/);
-  const authority = end === -1 ? stripped : stripped.slice(0, end);
-  const host = authority.replace(/^[^@]*@/, "").replace(/:\d+$/, "");
-  return host.toLowerCase();
-}
+export const seerrHostOf = hostOf;
 
 export interface SeerrInstanceLike {
   id: string;

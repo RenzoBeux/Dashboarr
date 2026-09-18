@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import Animated, { FadeIn } from "react-native-reanimated";
 import {
   Activity,
@@ -31,10 +32,11 @@ import {
   useUnraidStorage,
 } from "@/hooks/use-unraid";
 import { useGlancesDiskIoRates } from "@/hooks/use-glances";
+import { useSameHostInstance, useTargetInstance } from "@/hooks/use-instance-target";
 import { normalizeDeviceName } from "@/services/glances-api";
 import type { DiskIoRate } from "@/services/glances-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
 import { useUnraidUiStore } from "@/store/unraid-ui-store";
 import { lightHaptic } from "@/lib/haptics";
 import { formatBytes, formatSpeed } from "@/lib/utils";
@@ -88,8 +90,16 @@ export default function UnraidScreen() {
 
 function UnraidScreenInner() {
   const { data: healthData } = useServiceHealth();
-  // glances too: the disk rows show its I/O rates, so a pull should refresh them.
-  const { refreshing, onRefresh } = usePullToRefresh([["unraid"], ["glances"]]);
+  const queryClient = useQueryClient();
+  // The disk rows show Glances' I/O rates, so a pull refreshes those too — but
+  // Glances is optional context here and must never hold the spinner. An
+  // unreachable one takes ~50s to settle (15s abort + retry:2 + backoff), which
+  // would pin the spinner to its full 10s cap long after unRAID is done.
+  const doRefresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["glances"] }).catch(() => {});
+    return queryClient.invalidateQueries({ queryKey: ["unraid"] });
+  }, [queryClient]);
+  const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
   const unraidHealth = healthData?.find((s) => s.id === "unraid");
 
   return (
@@ -108,7 +118,7 @@ function UnraidScreenInner() {
 
 function ArrayCard() {
   const { data: storage, isLoading } = useUnraidStorage();
-  const ioRates = useGlancesDiskIoRates();
+  const ioRates = useUnraidDiskIoRates();
   const disksExpanded = useUnraidUiStore((s) => s.arrayDisksExpanded);
   const setDisksExpanded = useUnraidUiStore((s) => s.setArrayDisksExpanded);
 
@@ -256,6 +266,17 @@ function diskIo(
   return device ? rates.get(normalizeDeviceName(device)) : undefined;
 }
 
+// Disk I/O only from a Glances instance on the SAME machine as this unRAID
+// server. Both kinds resolve their active instance independently, so pairing
+// them blindly would paint another host's disk activity onto these drives —
+// and, because live I/O overrides the standby chip, would misreport a parked
+// disk as awake. No same-host Glances means no query and no chips.
+function useUnraidDiskIoRates(): ReadonlyMap<string, DiskIoRate> {
+  const unraid = useTargetInstance("unraid");
+  const glances = useSameHostInstance("glances", unraid);
+  return useGlancesDiskIoRates(glances?.id, !!glances);
+}
+
 // One array/pool disk: name + device, usage bar when the disk has a
 // filesystem (parity disks don't), and status/temp/standby detail. Non-OK
 // status is the headline problem signal, so it renders red.
@@ -340,7 +361,7 @@ function ArrayDiskRow({
 
 function PoolsCard() {
   const { data: storage, isLoading } = useUnraidStorage();
-  const ioRates = useGlancesDiskIoRates();
+  const ioRates = useUnraidDiskIoRates();
   const pools = storage?.pools ?? [];
 
   // Hidden entirely on servers without cache/named pools.
@@ -381,7 +402,7 @@ function PoolsCard() {
 
 function UnassignedCard() {
   const { data: storage, isLoading } = useUnraidStorage();
-  const ioRates = useGlancesDiskIoRates();
+  const ioRates = useUnraidDiskIoRates();
   const expanded = useUnraidUiStore((s) => s.unassignedExpanded);
   const setExpanded = useUnraidUiStore((s) => s.setUnassignedExpanded);
   const disks = storage?.unassigned ?? [];
