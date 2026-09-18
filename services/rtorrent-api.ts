@@ -287,12 +287,35 @@ export async function addRtorrentTorrent(
   // The EMPTY first target arg is REQUIRED — passing the magnet as the first
   // arg makes rtorrent treat it as the target and fail ("Could not find
   // info-hash").
-  const params: XmlRpcParam[] = [str(""), str(uriOrMagnet)];
+  await rpc("load.start", [str(""), str(uriOrMagnet), ...loadCommands(opts)], instanceId);
+}
+
+// Add a local .torrent by content. load.raw_start takes the metafile bytes as
+// an XML-RPC <base64> value (the same empty-target convention as load.start);
+// rtorrent decodes it server-side, so nothing is written to its watch dir and
+// d.tied_to_file stays empty. Oversized files trip network.xmlrpc.size_limit
+// and come back as an XML-RPC fault, which rpc() surfaces as an Error.
+export async function addRtorrentTorrentFile(
+  base64Content: string,
+  opts: { label?: string; savePath?: string } = {},
+  instanceId?: string,
+): Promise<void> {
+  await rpc(
+    "load.raw_start",
+    [str(""), { t: "base64", v: base64Content }, ...loadCommands(opts)],
+    instanceId,
+  );
+}
+
+// Per-download commands appended to a load.* call: d.directory.set="<path>"
+// and d.custom1.set=<label> (custom1 is what ruTorrent reads as the label).
+function loadCommands(opts: { label?: string; savePath?: string }): XmlRpcParam[] {
+  const params: XmlRpcParam[] = [];
   const savePath = opts.savePath ? sanitizeCommandArg(opts.savePath) : "";
   const label = opts.label ? sanitizeCommandArg(opts.label) : "";
   if (savePath) params.push(str(`d.directory.set="${savePath}"`));
   if (label) params.push(str(`d.custom1.set=${label}`));
-  await rpc("load.start", params, instanceId);
+  return params;
 }
 
 // --- Global speed limits (KiB/s setters; 0 = unlimited) ---

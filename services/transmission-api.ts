@@ -499,7 +499,26 @@ export async function addTransmissionTorrent(
   opts: { label?: string; savePath?: string } = {},
   instanceId?: string,
 ): Promise<void> {
-  const args: Record<string, unknown> = { filename: uriOrMagnet, paused: false };
+  await torrentAdd({ filename: uriOrMagnet }, opts, instanceId);
+}
+
+// Add a local .torrent by content: torrent-add's `metainfo` is the
+// base64-encoded file, the alternative to `filename` (exactly one of the two
+// is sent).
+export async function addTransmissionTorrentFile(
+  base64Content: string,
+  opts: { label?: string; savePath?: string } = {},
+  instanceId?: string,
+): Promise<void> {
+  await torrentAdd({ metainfo: base64Content }, opts, instanceId);
+}
+
+async function torrentAdd(
+  source: { filename: string } | { metainfo: string },
+  opts: { label?: string; savePath?: string },
+  instanceId?: string,
+): Promise<void> {
+  const args: Record<string, unknown> = { ...source, paused: false };
   if (opts.savePath) args["download-dir"] = opts.savePath;
   if (opts.label) args.labels = [opts.label];
   await transmissionRpc("torrent-add", args, instanceId);

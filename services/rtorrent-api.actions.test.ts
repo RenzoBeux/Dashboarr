@@ -15,6 +15,7 @@ import {
   stopTorrents,
   eraseTorrents,
   addRtorrentTorrent,
+  addRtorrentTorrentFile,
   setRtorrentGlobalLimits,
   getRtorrentGlobalStats,
 } from "@/services/rtorrent-api";
@@ -108,6 +109,18 @@ describe("rtorrent action request bodies", () => {
     expect(body).not.toContain('m"v');
     // Newline stripped from the label.
     expect(body).toContain("d.custom1.set=label");
+  });
+
+  it("add-file uses load.raw_start with the file as a base64 value after the empty target", async () => {
+    await addRtorrentTorrentFile("ZDg6YW5ub3VuY2Vl", { label: "movies", savePath: "/data" });
+    const body = lastBody();
+    expect(body).toContain("<methodName>load.raw_start</methodName>");
+    expect(body).toContain(
+      "<params><param><value><string></string></value></param><param><value><base64>ZDg6YW5ub3VuY2Vl</base64></value></param>",
+    );
+    // The same per-download commands load.start appends.
+    expect(body).toContain('d.directory.set="/data"');
+    expect(body).toContain("d.custom1.set=movies");
   });
 
   it("set-limits sends KiB set_kb setters as i8", async () => {

@@ -23,16 +23,34 @@ function relativePath(url: string): string {
   return url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/^\/+/, "");
 }
 
+// A .torrent file handed to the app by the OS. iOS "Open in Dashboarr" (via
+// the CFBundleDocumentTypes entry in app.config.ts) copies the file into the
+// app's Documents/Inbox and opens a file:// URL; Android's VIEW intent filter
+// (mime application/x-bittorrent, or a *.torrent path) delivers a content://
+// or file:// URI. Nothing else the app registers for arrives on those schemes,
+// so any content:// URL is a torrent by construction; file:// is checked by
+// extension so a stray file link can't hijack the add card.
+export function isTorrentFileUrl(url: string): boolean {
+  if (/^content:\/\//i.test(url)) return true;
+  if (!/^file:\/\//i.test(url)) return false;
+  const pathname = url.split(/[?#]/)[0];
+  return /\.torrent$/i.test(pathname);
+}
+
 // Rewrites OS-delivered URLs before expo-router routes them. Magnet links
-// (registered via the "magnet" entry in app.config.ts `scheme`) are not valid
-// routes, so they're redirected to the Downloads tab which prefills the add
-// card from the `magnet` param. Returns bare paths: expo-router accepts "/..."
-// here on cold and warm starts, whereas a scheme-prefixed "(tabs)" segment
-// would be parsed as a URL host.
+// (registered via the "magnet" entry in app.config.ts `scheme`) and opened
+// .torrent files are not valid routes, so they're redirected to the Downloads
+// tab which prefills the add card from the `magnet` / `torrentFile` param.
+// Returns bare paths: expo-router accepts "/..." here on cold and warm
+// starts, whereas a scheme-prefixed "(tabs)" segment would be parsed as a URL
+// host.
 export function redirectSystemPath({ path }: { path: string; initial: boolean }) {
   try {
     if (path.startsWith("magnet:")) {
       return `/downloads?magnet=${encodeURIComponent(path)}`;
+    }
+    if (isTorrentFileUrl(path)) {
+      return `/downloads?torrentFile=${encodeURIComponent(path)}`;
     }
     const relative = relativePath(path);
     if (SHARED_STACK_LINK.test(relative)) {

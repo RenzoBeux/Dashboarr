@@ -91,6 +91,31 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
       },
+      // Registers the app as an "Open in" target for .torrent files (Files app,
+      // Safari downloads, the share sheet's app row). iOS has no built-in UTI
+      // for torrents, so the type is imported here under the identifier the
+      // desktop clients (Transmission, qBittorrent) export. Opened files are
+      // copied into Documents/Inbox and arrive as a file:// URL, which
+      // app/+native-intent.ts routes to the Downloads add card. Native
+      // config: needs a new binary, not an OTA update.
+      CFBundleDocumentTypes: [
+        {
+          CFBundleTypeName: "BitTorrent Document",
+          LSHandlerRank: "Alternate",
+          LSItemContentTypes: ["org.bittorrent.torrent"],
+        },
+      ],
+      UTImportedTypeDeclarations: [
+        {
+          UTTypeIdentifier: "org.bittorrent.torrent",
+          UTTypeDescription: "BitTorrent Document",
+          UTTypeConformsTo: ["public.data"],
+          UTTypeTagSpecification: {
+            "public.filename-extension": ["torrent"],
+            "public.mime-type": ["application/x-bittorrent"],
+          },
+        },
+      ],
     },
     // Required so NetInfo can read the current Wi-Fi SSID/BSSID for the
     // local-vs-remote auto-switch feature. iOS also needs Location When-In-Use
@@ -121,6 +146,31 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: "com.dashboarr.app",
     versionCode: nativeBuildNumber,
     ...(HAS_GOOGLE_SERVICES ? { googleServicesFile: GOOGLE_SERVICES_FILE } : {}),
+    // VIEW intent filters for .torrent files (file managers, browser
+    // downloads, "Open with"). The first matches by MIME type; the second
+    // catches providers that label the download application/octet-stream
+    // but keep the .torrent name (a host is required for a path pattern to
+    // match). The delivered content:// / file:// URI reaches
+    // app/+native-intent.ts through Linking. Native config: needs a new
+    // binary, not an OTA update.
+    intentFilters: [
+      {
+        action: "VIEW",
+        category: ["DEFAULT", "BROWSABLE"],
+        data: [
+          { scheme: "content", mimeType: "application/x-bittorrent" },
+          { scheme: "file", mimeType: "application/x-bittorrent" },
+        ],
+      },
+      {
+        action: "VIEW",
+        category: ["DEFAULT", "BROWSABLE"],
+        data: [
+          { scheme: "content", host: "*", mimeType: "*/*", pathPattern: ".*\\.torrent" },
+          { scheme: "file", host: "*", mimeType: "*/*", pathPattern: ".*\\.torrent" },
+        ],
+      },
+    ],
   },
   // APP_SCHEME must stay first — expo-linking's createURL uses the first entry.
   // "magnet" registers the app as a magnet-link handler (Android intent filter
