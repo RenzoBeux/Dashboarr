@@ -68,7 +68,11 @@ import {
   type TorrentFilterType,
   type UnifiedTorrent,
 } from "@/lib/torrent-adapter";
-import { discardTorrentFile, type TorrentFileSource } from "@/lib/torrent-file";
+import {
+  discardTorrentFile,
+  inspectTorrentFile,
+  type TorrentFileSource,
+} from "@/lib/torrent-file";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { isValidQbCategoryName } from "@/lib/qbittorrent-category";
 
@@ -153,6 +157,11 @@ export function TorrentDownloadsView({
   // pending magnet/file re-prefills whichever client the user lands on.
   useEffect(() => {
     if (!incomingTorrent) return;
+    // A file already staged in this card is being replaced: drop its copy.
+    const replacesStaged =
+      pickedFile !== undefined &&
+      (incomingTorrent.kind !== "file" || incomingTorrent.file.uri !== pickedFile.uri);
+    if (replacesStaged) discardTorrentFile(pickedFile.uri);
     if (incomingTorrent.kind === "magnet") {
       setMagnetUri(incomingTorrent.uri);
       setPickedFile(undefined);
@@ -161,11 +170,19 @@ export function TorrentDownloadsView({
       setMagnetUri("");
     }
     setShowAddModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incomingTorrent]);
+
+  // Unstage the file and delete our local copy of it (picker cache copy or
+  // iOS Inbox file). Used on remove, cancel and after a successful add.
+  const clearPickedFile = () => {
+    if (pickedFile) discardTorrentFile(pickedFile.uri);
+    setPickedFile(undefined);
+  };
 
   const resetAddCard = () => {
     setMagnetUri("");
-    setPickedFile(undefined);
+    clearPickedFile();
     setAddCategory("");
     setCustomCategory("");
     setShowAddModal(false);
@@ -176,14 +193,24 @@ export function TorrentDownloadsView({
     // iOS maps the `type` filter via UTType(mimeType:), which returns nil for
     // niche types like application/x-bittorrent and leaves the picker unusable
     // — use the wildcard (same workaround as the .nzb upload and config
-    // import) and let the client reject non-torrent files.
+    // import). inspectTorrentFile then refuses anything that isn't a torrent
+    // (by extension, size cap, then bencode content) before it is staged.
     const result = await DocumentPicker.getDocumentAsync({
       type: "*/*",
       copyToCacheDirectory: true,
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    setPickedFile({ uri: asset.uri, name: asset.name });
+    let staged: TorrentFileSource;
+    try {
+      staged = await inspectTorrentFile(asset.uri, asset.name);
+    } catch (err) {
+      discardTorrentFile(asset.uri);
+      toastError("Can't add this file", err);
+      return;
+    }
+    clearPickedFile();
+    setPickedFile(staged);
     setMagnetUri("");
   };
 
@@ -272,7 +299,7 @@ export function TorrentDownloadsView({
   // the staged file's name, or the magnet's `dn` param (covers pasted and
   // incoming magnets alike).
   const addTitle = pickedFile
-    ? torrentFileDisplayName(pickedFile.name)
+    ? pickedFile.title ?? torrentFileDisplayName(pickedFile.name)
     : magnetDisplayName(magnetUri.trim());
 
   // Custom entry resolves to its trimmed text; an empty custom field falls
@@ -295,7 +322,6 @@ export function TorrentDownloadsView({
       pickedFile ? { file: pickedFile, label } : { uri: magnetUri.trim(), label },
       {
         onSuccess: () => {
-          if (pickedFile) discardTorrentFile(pickedFile.uri);
           resetAddCard();
           toast("Torrent added");
         },
@@ -461,7 +487,7 @@ export function TorrentDownloadsView({
                 {pickedFile.name || "Selected .torrent file"}
               </Text>
               <Pressable
-                onPress={() => setPickedFile(undefined)}
+                onPress={clearPickedFile}
                 hitSlop={8}
                 accessibilityLabel="Remove file"
               >

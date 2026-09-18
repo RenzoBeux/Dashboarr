@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
@@ -19,7 +19,7 @@ import { ActionSheet } from "@/components/ui/action-sheet";
 import { toastError } from "@/components/ui/toast";
 import { useTorrentTargets, type TorrentTarget } from "@/hooks/use-torrent-targets";
 import { magnetDisplayName, torrentFileDisplayName } from "@/lib/utils";
-import { torrentFileName } from "@/lib/torrent-file";
+import { discardTorrentFile, inspectTorrentFile } from "@/lib/torrent-file";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 type DownloadClient =
@@ -123,9 +123,17 @@ export default function DownloadsScreen() {
     setPendingTorrent(incoming);
   };
 
+  // An opened file we own a local copy of is deleted when it is abandoned
+  // here (no client, picker dismissed); once staged in the add card the card
+  // owns that cleanup.
+  const abandonIncoming = (incoming: IncomingTorrent) => {
+    if (incoming.kind === "file") discardTorrentFile(incoming.file.uri);
+  };
+
   const routeIncoming = (incoming: IncomingTorrent) => {
     if (torrentTargets.length === 0) {
       toastError("No torrent client enabled");
+      abandonIncoming(incoming);
       return;
     }
     if (torrentTargets.length === 1) {
@@ -145,13 +153,18 @@ export default function DownloadsScreen() {
   useEffect(() => {
     if (!torrentFileParam) return;
     router.setParams({ torrentFile: undefined });
-    // An Android content:// URI carries no filename; ask the content resolver
-    // for the display name and fall back to the last path segment.
-    const name =
-      torrentFileName(torrentFileParam) ??
-      torrentFileParam.split(/[?#]/)[0].split("/").pop() ??
-      "";
-    routeIncoming({ kind: "file", file: { uri: torrentFileParam, name } });
+    // The OS names nothing for us (an Android content:// URI has no filename
+    // at all), so inspectTorrentFile reads the torrent's own name from the
+    // metainfo and refuses anything that isn't a torrent.
+    void (async () => {
+      try {
+        const file = await inspectTorrentFile(torrentFileParam);
+        routeIncoming({ kind: "file", file });
+      } catch (err) {
+        discardTorrentFile(torrentFileParam);
+        toastError("Can't open this file", err);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [torrentFileParam]);
 
@@ -159,21 +172,33 @@ export default function DownloadsScreen() {
     if (!incoming) return undefined;
     return incoming.kind === "magnet"
       ? magnetDisplayName(incoming.uri) ?? undefined
-      : torrentFileDisplayName(incoming.file.name);
+      : incoming.file.title ?? torrentFileDisplayName(incoming.file.name);
   };
 
   // Destination picker for incoming magnets/files. Action presses only set
   // inline state (no second modal, no navigation), so this doesn't need
-  // useModalFlow.
+  // useModalFlow. The sheet fires onClose before an action's onPress, so a
+  // dismissal is only treated as abandonment once the sheet has fully closed
+  // (onClosed) with no action having claimed the item in between.
+  const unclaimedPick = useRef<IncomingTorrent | undefined>(undefined);
   const magnetSheet = (
     <ActionSheet
       visible={incomingPick !== undefined}
-      onClose={() => setIncomingPick(undefined)}
+      onClose={() => {
+        unclaimedPick.current = incomingPick;
+        setIncomingPick(undefined);
+      }}
+      onClosed={() => {
+        const abandoned = unclaimedPick.current;
+        unclaimedPick.current = undefined;
+        if (abandoned) abandonIncoming(abandoned);
+      }}
       title="Add Torrent To"
       subtitle={incomingTitle(incomingPick)}
       actions={torrentTargets.map((t) => ({
         label: t.label,
         onPress: () => {
+          unclaimedPick.current = undefined;
           if (incomingPick) applyTorrentTarget(t, incomingPick);
         },
       }))}
