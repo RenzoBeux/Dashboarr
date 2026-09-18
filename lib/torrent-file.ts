@@ -1,12 +1,12 @@
-import { File, Paths } from "expo-file-system";
-import { copyAsync } from "expo-file-system/legacy";
+import { File } from "expo-file-system";
+import { readAsStringAsync } from "expo-file-system/legacy";
+import { base64ToBytes } from "@/lib/base64";
 import { readTorrentInfo, safeTorrentFileName } from "@/lib/torrent-metainfo";
 
-// A local .torrent that passed inspectTorrentFile. `uri` is always a file://
-// path the app can read again (a picker cache copy, an iOS Inbox file, or our
-// own cache copy of an Android content:// document); `name` is the sanitized
-// filename sent to clients that want one; `title` is info.name from the
-// metainfo, for display.
+// A local .torrent that passed inspectTorrentFile. `uri` is what the platform
+// gave us (a picker cache copy or an iOS Inbox file as file://, an Android
+// document as content://); `name` is the sanitized filename sent to clients
+// that want one; `title` is info.name from the metainfo, for display.
 export interface TorrentFileSource {
   uri: string;
   name: string;
@@ -19,50 +19,45 @@ export interface TorrentFileSource {
 // before it is read, not after it has exhausted memory.
 export const MAX_TORRENT_FILE_BYTES = 16 * 1024 * 1024;
 
+const CHUNK = 1024 * 1024;
 const TOO_LARGE = "File is too large to be a .torrent (over 16 MB)";
 
-// Reads at most MAX + 1 bytes through a file handle so an oversized file is
-// detected without being loaded whole. Only called on file:// paths, where
-// the handle (a RandomAccessFile on Android) is available; if it still isn't,
-// the reported size of a plain file is reliable enough to gate a full read.
-async function readBounded(file: File): Promise<Uint8Array> {
-  let handle: ReturnType<File["open"]> | undefined;
-  try {
-    handle = file.open();
-  } catch {
-    handle = undefined;
+// Reads the source in fixed chunks and stops as soon as the cap is exceeded,
+// so neither memory nor disk ever holds more than cap + one chunk, whatever
+// the source is. The legacy read honours `position` + `length` on both
+// platforms and on Android opens content:// documents through the
+// ContentResolver, which is what makes this work in place for an OS-delivered
+// document with no filename and an unreliable reported size. A chunk shorter
+// than requested is not EOF on a stream (a provider can short-read), so the
+// loop only stops on an empty chunk or the cap.
+async function readBounded(uri: string): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const b64 = await readAsStringAsync(uri, {
+      encoding: "base64",
+      position: total,
+      length: CHUNK,
+    });
+    const chunk = base64ToBytes(b64);
+    if (chunk.byteLength === 0) break;
+    chunks.push(chunk);
+    total += chunk.byteLength;
+    if (total > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
   }
-  if (handle) {
-    try {
-      return handle.readBytes(MAX_TORRENT_FILE_BYTES + 1);
-    } finally {
-      handle.close();
-    }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
   }
-  if (file.size > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
-  return file.bytes();
-}
-
-// An Android content:// document can't be opened as a handle, and a provider
-// may report its size as 0 when it doesn't know it, so nothing about it can
-// be read in a bounded way in place. Stream it into our own cache file first
-// (the legacy copyAsync goes through the ContentResolver without buffering
-// the whole thing) and inspect that copy instead. The copy is app-owned, so
-// the normal discard path cleans it up.
-async function stageContentUri(uri: string): Promise<File> {
-  const copy = new File(
-    Paths.cache,
-    `torrent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.torrent`,
-  );
-  await copyAsync({ from: uri, to: copy.uri });
-  return copy;
+  return out;
 }
 
 // Validates a local file before it is staged for upload: extension when a
 // filename is known (picker, iOS Inbox), then size, then content (a bencoded
 // dictionary with an `info` dictionary). Throws a user-facing Error on any
-// failure, never holds more than the cap in memory, and never leaves a copy
-// of its own behind on failure.
+// failure and never holds more than the cap in memory.
 export async function inspectTorrentFile(
   uri: string,
   fileName?: string,
@@ -72,29 +67,23 @@ export async function inspectTorrentFile(
     throw new Error("Only .torrent files can be added");
   }
 
-  const isContentUri = /^content:\/\//i.test(uri);
-  const file = isContentUri ? await stageContentUri(uri) : new File(uri);
-  try {
-    const bytes = await readBounded(file);
-    if (bytes.byteLength > MAX_TORRENT_FILE_BYTES) throw new Error(TOO_LARGE);
-    if (bytes.byteLength === 0) throw new Error("File is empty or could not be read");
-    const info = readTorrentInfo(bytes);
-    if (!info) throw new Error("Not a valid .torrent file");
-    return {
-      uri: file.uri,
-      name: safeTorrentFileName(fileName?.trim() || info.name),
-      title: info.name ?? undefined,
-    };
-  } catch (err) {
-    if (isContentUri) discardTorrentFile(file.uri);
-    throw err;
-  }
+  const bytes = await readBounded(uri);
+  if (bytes.byteLength === 0)
+    throw new Error("File is empty or could not be read");
+  const info = readTorrentInfo(bytes);
+  if (!info) throw new Error("Not a valid .torrent file");
+  return {
+    uri,
+    name: safeTorrentFileName(fileName?.trim() || info.name),
+    title: info.name ?? undefined,
+  };
 }
 
 // rtorrent (load.raw_start), Transmission (metainfo) and Deluge (filedump) all
 // take the .torrent as base64 text inside the RPC body, so the adapters read
 // the file once here and hand the encoded content to the service layer. Only
 // sources that passed inspectTorrentFile reach this, so the read is bounded.
+// Works for content:// too (the new File API streams SAF documents).
 // qBittorrent is the exception: it takes a multipart file part, and React
 // Native's fetch streams that from the URI directly (see addTorrentFile in
 // services/qbittorrent-api.ts).
