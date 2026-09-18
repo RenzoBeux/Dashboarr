@@ -2340,9 +2340,17 @@ export interface GlancesLoad {
 }
 
 export interface GlancesDiskIOItem {
+  // Kernel device name (psutil's perdisk key), e.g. "sdd", "nvme0n1", "md1".
+  // Partitions ("sdd1") appear alongside their whole disk, which already
+  // aggregates them — see diskIoRateMap in services/glances-api.ts.
   disk_name: string;
+  // Deltas since the last sample, so rate = bytes / time_since_update. The
+  // diskio plugin marks these `rate: True`, which makes Glances v4 also ship
+  // the pre-computed *_rate_per_sec fields; prefer those when present.
   read_bytes: number;
   write_bytes: number;
+  read_bytes_rate_per_sec?: number | null;
+  write_bytes_rate_per_sec?: number | null;
   read_count: number;
   write_count: number;
   time_since_update: number;

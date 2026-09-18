@@ -1953,9 +1953,19 @@ const DEMO_GLANCES_PERCPU = [
   { cpu_number: 3, total: 28.9, user: 18.6, system: 9.1, idle: 71.1 },
 ];
 const DEMO_GLANCES_LOAD = { min1: 3.42, min5: 2.87, min15: 2.61, cpucore: 8 };
+// Device names match DEMO_UNRAID_ARRAY/DEMO_UNRAID_DISKS so the unRAID disk
+// rows light up too (they look I/O up by device). sdd is the hot one — heavy
+// reads, light writes, the "something is hammering the array" picture. sdf/sdg
+// are deliberately absent: they're the spun-down demo disks. sde1 is a
+// partition, which a real /diskio payload always carries next to its whole
+// disk and which must never be mistaken for one.
 const DEMO_GLANCES_DISKIO = [
   { disk_name: "sda", read_bytes: 4096000, write_bytes: 1048576, read_count: 128, write_count: 32, time_since_update: 1 },
   { disk_name: "sdb", read_bytes: 20971520, write_bytes: 8388608, read_count: 512, write_count: 256, time_since_update: 1 },
+  { disk_name: "sdd", read_bytes: 148897792, write_bytes: 2097152, read_count: 3634, write_count: 64, time_since_update: 1 },
+  { disk_name: "sde", read_bytes: 6291456, write_bytes: 524288, read_count: 192, write_count: 16, time_since_update: 1 },
+  { disk_name: "sde1", read_bytes: 6291456, write_bytes: 524288, read_count: 192, write_count: 16, time_since_update: 1 },
+  { disk_name: "nvme0n1", read_bytes: 12582912, write_bytes: 41943040, read_count: 384, write_count: 1280, time_since_update: 1 },
 ];
 const DEMO_GLANCES_NET = [
   { interface_name: "eth0", is_up: true, bytes_recv: 8650752, bytes_sent: 1153024, bytes_recv_rate_per_sec: 8650752, bytes_sent_rate_per_sec: 1153024, speed: 1000000000, time_since_update: 1 },
