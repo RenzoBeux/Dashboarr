@@ -95,14 +95,36 @@ export default function DownloadsScreen() {
       : enabledClients[0] ?? "qbittorrent",
   );
 
+  // A torrent add (magnet or file upload) is streaming right now. Switching
+  // client remounts TorrentDownloadsView, which would re-stage the same file
+  // under a fresh idle mutation while the old one is still reading it, so
+  // the segmented control, deep-link client changes and OS-delivered items
+  // all wait until it settles.
+  const addInFlight = useIsMutating({ mutationKey: TORRENT_ADD_MUTATION_KEY }) > 0;
+
   // Re-select when the deep-link param changes (e.g. user is already on this
-  // tab and taps a different download-client tile in the Services tab).
+  // tab and taps a different download-client tile in the Services tab). While
+  // an add is in flight the switch is parked in a ref and applied once the
+  // add settles. A ref, not a re-run on `addInFlight`, because the route
+  // param outlives the tap: re-applying it after every upload would yank the
+  // user back to a client they deep-linked to minutes ago and left since.
+  const deferredClient = useRef<DownloadClient | undefined>(undefined);
   useEffect(() => {
-    if (paramClient && enabledClients.includes(paramClient) && paramClient !== client) {
-      setClient(paramClient);
+    if (!paramClient || !enabledClients.includes(paramClient) || paramClient === client) return;
+    if (addInFlight) {
+      deferredClient.current = paramClient;
+      return;
     }
+    setClient(paramClient);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paramClient]);
+  useEffect(() => {
+    if (addInFlight) return;
+    const next = deferredClient.current;
+    deferredClient.current = undefined;
+    if (next && enabledClients.includes(next) && next !== client) setClient(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addInFlight]);
 
   // Incoming magnet link or .torrent file. Stash it in state (not the route)
   // so the prefill survives segment switches — TorrentDownloadsView remounts
@@ -121,11 +143,6 @@ export default function DownloadsScreen() {
   // Shared with the Jackett grab flow — see hooks/use-torrent-targets.ts.
   const torrentTargets = useTorrentTargets();
 
-  // A torrent add (magnet or file upload) is streaming right now. Switching
-  // client remounts TorrentDownloadsView, which would re-stage the same file
-  // under a fresh idle mutation while the old one is still reading it, so
-  // the segmented control and OS-delivered items wait until it settles.
-  const addInFlight = useIsMutating({ mutationKey: TORRENT_ADD_MUTATION_KEY }) > 0;
 
   const applyTorrentTarget = (target: TorrentTarget, incoming: IncomingTorrent) => {
     setClient(target.client);
