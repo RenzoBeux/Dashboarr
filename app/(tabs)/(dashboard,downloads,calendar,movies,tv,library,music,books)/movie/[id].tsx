@@ -50,6 +50,7 @@ import {
   AddMovieSheet,
   MIN_AVAILABILITY_OPTIONS,
 } from "@/components/radarr/add-movie-sheet";
+import { RequestedByBlock } from "@/components/overseerr/requested-by-block";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
@@ -268,6 +269,8 @@ export default function MovieDetailScreen() {
           <MediaActionBar actions={actions} className="mb-4" />
 
           <MediaStatsStrip stats={stats} className="mb-5" />
+
+          <RequestedByBlock tmdbId={movie.tmdbId} mediaType="movie" />
 
           <MovieFileBlock
             movie={movie}

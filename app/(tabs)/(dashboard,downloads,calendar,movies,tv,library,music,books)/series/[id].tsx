@@ -31,6 +31,7 @@ import {
 } from "@/components/common/media-action-bar";
 import { MediaStatsStrip } from "@/components/common/media-stats-strip";
 import { ExpandableText } from "@/components/common/expandable-text";
+import { RequestedByBlock } from "@/components/overseerr/requested-by-block";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -273,6 +274,8 @@ export default function SeriesDetailScreen() {
           <MediaActionBar actions={actions} className="mb-4" />
 
           <MediaStatsStrip stats={stats} className="mb-5" />
+
+          <RequestedByBlock tmdbId={series.tmdbId} mediaType="tv" />
 
           <EpisodeProgressBlock
             series={series}
