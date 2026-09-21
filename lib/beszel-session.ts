@@ -28,13 +28,18 @@
  *     the real expiry.
  *  2. Reactive backstop: `getBeszelToken` reports whether the token it
  *     returned came from a FRESH login (`fresh: true`) or a cache hit. If a
- *     cache-hit token's systems query comes back with zero results — which
- *     can otherwise only mean "no systems configured" OR "this token was
- *     invalidated out of band" (hub restart, password rotated elsewhere) and
- *     those are indistinguishable from the response alone — the caller drops
- *     the session and retries once with a guaranteed-fresh token. A token
- *     that was ALREADY fresh returning zero systems is trusted: forcing a
- *     second login there would just loop.
+ *     cache-hit token's list query comes back with zero results — which can
+ *     otherwise only mean "legitimately empty" (no systems on this hub, no
+ *     Docker on this system, no rollups yet) OR "this token was invalidated
+ *     out of band" (hub restart, password rotated elsewhere) and those are
+ *     indistinguishable from the response alone — the caller confirms the
+ *     token itself via PocketBase's `POST .../auth-refresh` (200 + a renewed
+ *     token = still valid, 404 = invalid) before trusting either reading.
+ *     Only a confirmed-invalid token triggers a fresh login + retry; a
+ *     confirmed-valid one keeps the empty result and its renewed token gets
+ *     cached via `updateBeszelToken` so the next call skips the refresh too.
+ *     A token that was ALREADY fresh returning zero results is trusted
+ *     outright: it just logged in, so a second check would be redundant.
  */
 
 export type BeszelAuthCollection = "_superusers" | "users";
@@ -119,6 +124,24 @@ export function getBeszelToken(
     });
   entry.loginPromise = attempt;
   return attempt.then((r) => ({ ...r, fresh: true }));
+}
+
+/**
+ * Cache a token obtained out-of-band (PocketBase's auth-refresh response),
+ * without going through the login path. Used by the reactive backstop in
+ * services/beszel-api.ts when auth-refresh confirms a cache-hit token is
+ * still valid — its renewed token replaces the cached one so the next call
+ * doesn't need to re-confirm it.
+ */
+export function updateBeszelToken(
+  instanceId: string,
+  token: string,
+  authCollection: BeszelAuthCollection,
+): void {
+  const entry = entryFor(instanceId);
+  entry.token = token;
+  entry.authCollection = authCollection;
+  entry.obtainedAt = Date.now();
 }
 
 /**

@@ -445,9 +445,9 @@ export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   adguard: "/status",
   // PocketBase's own anonymous health route — reachable with or without
   // credentials, so this can't validate them either. That's fine for
-  // pingService's reachability-only check; credential validation happens in
-  // the dedicated Beszel poller (workers/pollers/beszel.ts), which performs
-  // an actual login.
+  // pingService's reachability-only check: there is no dedicated Beszel
+  // poller (the app already validates credentials on every poll, mirroring
+  // Pi-hole/AdGuard), so this ping is the only backend-side signal.
   beszel: "/health",
 };
 

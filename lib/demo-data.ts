@@ -3065,25 +3065,39 @@ const DEMO_BESZEL_CONTAINERS = [
 
 // A synthetic 12-point 1m rollup, generated at request time so it always
 // reads as "recent" instead of drifting stale like a frozen fixture would.
-function demoBeszelStats() {
+// Takes the requested system id so each system's chart shows its own data
+// instead of both always rendering media-server's numbers.
+function demoBeszelStats(systemId: string) {
   const now = Date.now();
+  const isBackupNas = systemId === DEMO_BESZEL_SYSTEM_B.id;
   return Array.from({ length: 12 }, (_, i) => {
     const t = i / 11;
     return {
-      id: `demo-beszel-stat-${i}`,
-      system: DEMO_BESZEL_SYSTEM_A.id,
+      id: `demo-beszel-stat-${systemId}-${i}`,
+      system: systemId,
       type: "1m",
       created: new Date(now - (11 - i) * 60_000).toISOString(),
-      stats: {
-        cpu: 20 + Math.sin(t * Math.PI * 2) * 15 + 20,
-        m: 15.36,
-        mu: 6 + t * 3,
-        mp: 40 + t * 15,
-        d: 467.35,
-        du: 260 + t * 5,
-        dp: 55 + t,
-        la: [1.5 + t, 1.2, 1.0],
-      },
+      stats: isBackupNas
+        ? {
+            cpu: 5 + Math.sin(t * Math.PI * 2) * 3 + 5,
+            m: 31.25,
+            mu: 9 + t * 2,
+            mp: 28 + t * 8,
+            d: 3725.8,
+            du: 3280 + t * 15,
+            dp: 88 + t * 0.5,
+            la: [0.3 + t * 0.2, 0.25, 0.2],
+          }
+        : {
+            cpu: 20 + Math.sin(t * Math.PI * 2) * 15 + 20,
+            m: 15.36,
+            mu: 6 + t * 3,
+            mp: 40 + t * 15,
+            d: 467.35,
+            du: 260 + t * 5,
+            dp: 55 + t,
+            la: [1.5 + t, 1.2, 1.0],
+          },
     };
   }).reverse(); // newest first, matching the real sort=-created
 }
@@ -4305,7 +4319,11 @@ export function getDemoResponse(
     }
     case "beszel": {
       if (normalized === "/collections/systems/records") return DEMO_BESZEL_SYSTEMS;
-      if (normalized === "/collections/system_stats/records") return demoBeszelStats();
+      if (normalized === "/collections/system_stats/records") {
+        const filter = typeof params?.filter === "string" ? params.filter : "";
+        const systemId = filter.match(/system='([^']+)'/)?.[1] ?? DEMO_BESZEL_SYSTEM_A.id;
+        return demoBeszelStats(systemId);
+      }
       if (normalized === "/collections/containers/records") {
         const filter = typeof params?.filter === "string" ? params.filter : "";
         const systemId = filter.match(/system='([^']+)'/)?.[1];

@@ -61,7 +61,7 @@ export function BeszelSystemsCard({ slotId }: WidgetComponentProps) {
             instanceName={bound.length > 1 ? inst.name : undefined}
             tileWidth={tileWidth}
             tileGap={tileGap}
-            onPressSystem={() => router.push("/(tabs)/beszel" as any)}
+            onPressSystem={() => router.push("/(tabs)/beszel")}
           />
         ))}
       </View>
