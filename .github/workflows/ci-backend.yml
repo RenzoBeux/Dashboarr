@@ -64,10 +64,10 @@ jobs:
       # The Docker image is unaffected: it copies lib/ and store/ without the
       # root tsconfig.
       - name: Set up pnpm (app toolchain)
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Cache pnpm store
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
