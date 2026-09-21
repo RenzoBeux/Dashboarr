@@ -1,6 +1,6 @@
 {
   "name": "dashboarr-backend",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Self-hosted companion backend for Dashboarr \u2014 polls your *arr stack and sends real Expo push notifications",
   "license": "GPL-3.0",
   "private": true,
