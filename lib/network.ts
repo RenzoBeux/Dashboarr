@@ -7,6 +7,10 @@ import {
   refreshWifiIdentity,
 } from "@/lib/wifi";
 import { detectVpnActive } from "@/lib/vpn";
+import {
+  matchesHomeNetwork,
+  type WifiIdentity,
+} from "@/lib/home-network-match";
 
 /**
  * Home-network detection — the single signal behind local/remote URL switching.
@@ -23,9 +27,27 @@ import { detectVpnActive } from "@/lib/vpn";
  *     home networks configured) → remote URL only; never the local URL.
  *
  * `evaluateHomeNetwork()` recomputes this on startup, on every (debounced)
- * NetInfo change, and on app resume, writing the ephemeral
- * `networkAwayFromHome` flag the synchronous `getActiveUrl` reads.
+ * NetInfo change, and on app resume, writing two ephemeral store fields:
+ *   - `networkAwayFromHome`: the verdict for the ACTIVE dashboard's home
+ *     networks, read synchronously by `getActiveUrl` for its instances.
+ *   - `currentWifi`: the observed SSID/BSSID, so `getActiveUrl` can judge an
+ *     instance that belongs to ANOTHER dashboard against that dashboard's own
+ *     home networks (#418): with two houses on identical LAN addressing, the
+ *     other house's instance must resolve to remote at this house, not to a
+ *     local URL that reaches the wrong box.
  */
+
+/** The WiFi identity a NetInfo state carries, or null off WiFi / masked. */
+export function wifiIdentityOf(state: NetInfoState): WifiIdentity | null {
+  if (state.type !== "wifi" || !state.details) return null;
+  return {
+    ssid: state.details.ssid ?? "",
+    bssid:
+      typeof state.details.bssid === "string"
+        ? state.details.bssid.toLowerCase()
+        : "",
+  };
+}
 
 /**
  * True only when on a configured home network: the SSID must match, and a pinned
@@ -37,18 +59,7 @@ export function isHomeNetwork(
   state: NetInfoState,
   homeNetworks: HomeNetwork[],
 ): boolean {
-  if (state.type !== "wifi" || !state.details) return false;
-  const ssid = state.details.ssid ?? "";
-  const bssid =
-    typeof state.details.bssid === "string"
-      ? state.details.bssid.toLowerCase()
-      : "";
-  return homeNetworks.some((n) => {
-    if (n.ssid !== ssid) return false;
-    if (!n.bssid) return true;
-    if (!bssid) return false;
-    return n.bssid === bssid;
-  });
+  return matchesHomeNetwork(wifiIdentityOf(state), homeNetworks);
 }
 
 /**
@@ -133,13 +144,17 @@ async function evaluateHomeNetworkOnce(): Promise<void> {
     store.activeDashboardId,
     store.homeNetworks,
   );
-  if (effective.length === 0) {
-    // No SSIDs to match. With treatVpnAsHome on, a VPN drop must actively
-    // flip us back to away; otherwise keep the historical no-op (the flag
-    // already sits at its safe default and use-network forces it).
+  if (store.homeNetworks.length === 0) {
+    // No SSIDs to match anywhere. With treatVpnAsHome on, a VPN drop must
+    // actively flip us back to away; otherwise keep the historical no-op (the
+    // flag already sits at its safe default and use-network forces it).
     if (store.treatVpnAsHome) store.setNetworkAwayFromHome(true);
     return;
   }
+  // An empty ACTIVE selection ("always remote") still needs the SSID read:
+  // instances attached to another dashboard are judged against that
+  // dashboard's networks via `currentWifi` (#418), and the active verdict
+  // below resolves to away regardless (nothing matches an empty list).
   let state = await NetInfo.fetch();
   // iOS transient (#234): NetInfo.fetch() can report type "wifi" with a null
   // SSID for a brief window after cold start or app resume, before the OS
@@ -174,7 +189,12 @@ async function evaluateHomeNetworkOnce(): Promise<void> {
       // worse.
     }
   }
-  store.setNetworkAwayFromHome(!isHomeNetwork(state, effective));
+  const wifi = wifiIdentityOf(state);
+  // One atomic write for both fields. Writing the identity first would
+  // trigger a refetch burst while the active verdict was still the previous
+  // network's — on a house A → house B walk, the active dashboard's local
+  // URL sent on house B's LAN. See setNetworkObservation.
+  store.setNetworkObservation(wifi, !matchesHomeNetwork(wifi, effective));
 }
 
 /**
@@ -194,14 +214,11 @@ async function evaluateHomeNetworkOnce(): Promise<void> {
 export async function reevaluateHomeNetworkAfterImport(): Promise<void> {
   const store = useConfigStore.getState();
   if (store.demoMode || !store.autoSwitchNetwork) return;
-  const effective = resolveEffectiveHomeNetworks(
-    store.dashboards,
-    store.activeDashboardId,
-    store.homeNetworks,
-  );
-  if (effective.length === 0) {
-    // No SSIDs to match — but an imported treatVpnAsHome can still clear the
-    // away flag via the VPN check, which needs no permission prompt.
+  if (store.homeNetworks.length === 0) {
+    // No SSIDs to match on any dashboard — but an imported treatVpnAsHome can
+    // still clear the away flag via the VPN check, which needs no permission
+    // prompt. (An empty ACTIVE selection alone is not enough to skip: other
+    // dashboards' instances still need the SSID, see evaluateHomeNetworkOnce.)
     if (store.treatVpnAsHome) await evaluateHomeNetwork();
     return;
   }

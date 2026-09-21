@@ -90,7 +90,7 @@ describe("isHomeNetwork", () => {
 
 describe("evaluateHomeNetwork", () => {
   function fakeStore(over: Record<string, any> = {}) {
-    return {
+    const store: Record<string, any> = {
       demoMode: false,
       autoSwitchNetwork: true,
       treatVpnAsHome: false,
@@ -100,9 +100,19 @@ describe("evaluateHomeNetwork", () => {
       dashboards: [],
       activeDashboardId: "",
       setNetworkAwayFromHome: jest.fn(),
+      setCurrentWifi: jest.fn(),
       setIsVpnActive: jest.fn(),
       ...over,
     };
+    // The evaluator commits identity + verdict through ONE store write
+    // (#418 review: separate writes let the first one's refetch run against
+    // the other, stale field). Delegate here so the per-field assertions
+    // below keep reading naturally.
+    store.setNetworkObservation = jest.fn((wifi: unknown, away: boolean) => {
+      store.setCurrentWifi(wifi);
+      store.setNetworkAwayFromHome(away);
+    });
+    return store;
   }
 
   it("sets away=false on a confirmed home network", async () => {
@@ -113,6 +123,47 @@ describe("evaluateHomeNetwork", () => {
     await evaluateHomeNetwork();
 
     expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(false);
+  });
+
+  // #418: the observed identity is stored next to the active verdict so an
+  // instance attached to another workspace can be judged against THAT
+  // workspace's networks by the store's resolveInstanceNetwork.
+  it("records the observed WiFi identity alongside the away flag", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Cafe", "AA:BB:CC"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setCurrentWifi).toHaveBeenCalledWith({
+      ssid: "Cafe",
+      bssid: "aa:bb:cc",
+    });
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
+  });
+
+  it("commits the identity and the active verdict in one atomic write", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Home"));
+
+    await evaluateHomeNetwork();
+
+    expect(store.setNetworkObservation).toHaveBeenCalledTimes(1);
+    expect(store.setNetworkObservation).toHaveBeenCalledWith(
+      { ssid: "Home", bssid: "" },
+      false,
+    );
+  });
+
+  it("records a null identity off WiFi (cellular / VPN-masked)", async () => {
+    const store = fakeStore();
+    mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(cellular());
+
+    await evaluateHomeNetwork();
+
+    expect(store.setCurrentWifi).toHaveBeenCalledWith(null);
   });
 
   it("sets away=true when not on a home network (VPN masks the SSID)", async () => {
@@ -271,18 +322,23 @@ describe("evaluateHomeNetwork", () => {
     expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
   });
 
-  it("no-ops when the active dashboard's selection is empty (always away)", async () => {
+  // Pre-#418 this was a full no-op. Other workspaces may still trust networks
+  // in the global list, and their instances are judged via the stored
+  // identity — so the SSID is read; the ACTIVE verdict is still always away.
+  it("still reads the SSID when the active selection is empty, and stays away (#418)", async () => {
     const store = fakeStore({
       homeNetworks: twoNetworks,
       dashboards: [dashWithIds([])],
       activeDashboardId: "d1",
     });
     mockGetState.mockReturnValue(store);
+    mockFetch.mockResolvedValue(wifi("Home"));
 
     await evaluateHomeNetwork();
 
-    expect(mockFetch).not.toHaveBeenCalled();
-    expect(store.setNetworkAwayFromHome).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalled();
+    expect(store.setCurrentWifi).toHaveBeenCalledWith({ ssid: "Home", bssid: "" });
+    expect(store.setNetworkAwayFromHome).toHaveBeenCalledWith(true);
   });
 
   it("uses all networks when the active dashboard has no selection", async () => {
@@ -400,7 +456,7 @@ describe("evaluateHomeNetwork", () => {
 
 describe("reevaluateHomeNetworkAfterImport", () => {
   function fakeStore(over: Record<string, any> = {}) {
-    return {
+    const store: Record<string, any> = {
       demoMode: false,
       autoSwitchNetwork: true,
       treatVpnAsHome: false,
@@ -408,9 +464,19 @@ describe("reevaluateHomeNetworkAfterImport", () => {
       dashboards: [],
       activeDashboardId: "",
       setNetworkAwayFromHome: jest.fn(),
+      setCurrentWifi: jest.fn(),
       setIsVpnActive: jest.fn(),
       ...over,
     };
+    // The evaluator commits identity + verdict through ONE store write
+    // (#418 review: separate writes let the first one's refetch run against
+    // the other, stale field). Delegate here so the per-field assertions
+    // below keep reading naturally.
+    store.setNetworkObservation = jest.fn((wifi: unknown, away: boolean) => {
+      store.setCurrentWifi(wifi);
+      store.setNetworkAwayFromHome(away);
+    });
+    return store;
   }
 
   beforeEach(() => {

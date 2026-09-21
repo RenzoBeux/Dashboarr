@@ -363,6 +363,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "nzbhydra2-indexers",
   "bazarr-wanted",
   "wol-devices",
+  "shortcuts",
   "disk-space",
   "arr-health",
   "unraid-array",
@@ -425,6 +426,8 @@ export const STORAGE_KEYS = {
   dashboardOrderLegacy: "app.dashboardOrder",
   notificationSettings: "app.notificationSettings",
   wolDevices: "app.wolDevices",
+  // v56: user-defined web shortcuts for the Shortcuts widget (#344).
+  shortcuts: "app.shortcuts",
   // Seerr sign-in (#332): per-instance list of hosts whose next login must
   // post credentials instead of trusting the platform cookie jar. Persisted
   // because the jar outlives the process while the in-memory session cache

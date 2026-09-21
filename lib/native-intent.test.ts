@@ -1,6 +1,6 @@
 // Tests live here rather than next to app/+native-intent.ts — files inside
 // app/ are treated as expo-router routes.
-import { redirectSystemPath } from "../app/+native-intent";
+import { isTorrentFileUrl, redirectSystemPath } from "../app/+native-intent";
 
 describe("redirectSystemPath", () => {
   it("rewrites magnet URIs to the downloads route with the URI encoded", () => {
@@ -15,6 +15,31 @@ describe("redirectSystemPath", () => {
     const result = redirectSystemPath({ path: magnet, initial: false });
     const param = new URLSearchParams(result.split("?")[1]).get("magnet");
     expect(param).toBe(magnet);
+  });
+
+  // "Open in Dashboarr" (iOS Inbox file:// URL) and Android VIEW intents
+  // (content:// from a file manager or browser download) both land on the
+  // Downloads add card with the URI intact.
+  it("rewrites opened .torrent files to the downloads route", () => {
+    const ios = "file:///private/var/mobile/Containers/Data/Application/X/Documents/Inbox/Some%20Release.torrent";
+    const android = "content://com.android.providers.downloads.documents/document/42";
+    for (const url of [ios, android]) {
+      const result = redirectSystemPath({ path: url, initial: true });
+      expect(result.startsWith("/downloads?torrentFile=")).toBe(true);
+      expect(new URLSearchParams(result.split("?")[1]).get("torrentFile")).toBe(url);
+    }
+  });
+
+  it("only treats file:// URLs as torrents when they end in .torrent", () => {
+    expect(isTorrentFileUrl("file:///tmp/x.torrent")).toBe(true);
+    expect(isTorrentFileUrl("file:///tmp/x.TORRENT?x=1")).toBe(true);
+    expect(isTorrentFileUrl("file:///tmp/backup.json")).toBe(false);
+    expect(isTorrentFileUrl("content://provider/doc/1")).toBe(true);
+    expect(isTorrentFileUrl("dashboarr:///settings")).toBe(false);
+    expect(isTorrentFileUrl("magnet:?xt=urn:btih:abc")).toBe(false);
+    expect(redirectSystemPath({ path: "file:///tmp/backup.json", initial: true })).toBe(
+      "file:///tmp/backup.json",
+    );
   });
 
   it("passes non-magnet paths through unchanged", () => {
@@ -85,6 +110,7 @@ describe("redirectSystemPath", () => {
         "/settings/network",
         "/settings/integrations/radarr/i1",
         "/wake-on-lan",
+        "/shortcuts",
         "/backend",
         "/custom-headers",
         "/home-networks",

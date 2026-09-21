@@ -18,10 +18,10 @@ import { SERVICE_ROUTES } from "@/lib/service-routes";
 import {
   resolveActiveUrlKind,
   isRemoteOnlyOffline,
-  workspaceForcesRemote,
 } from "@/lib/url-validation";
 import { useConfigStore } from "@/store/config-store";
-import { useAttachedInstances, useActiveDashboard } from "@/hooks/use-active-dashboard";
+import { useAttachedInstances } from "@/hooks/use-active-dashboard";
+import { useInstanceNetworkResolver } from "@/hooks/use-instance-network";
 import {
   resolveBoundInstances,
   isExplicitInstanceBinding,
@@ -100,19 +100,15 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   // Subscribed so the L/R badge flips live when the user walks home/away or
   // toggles auto-switch — both feed resolveActiveUrlKind below.
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
-  const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
-  const homeNetworks = useConfigStore((s) => s.homeNetworks);
+  // Per-instance home/away + "always remote" verdict. An explicitly bound
+  // instance from another workspace is judged against THAT workspace's home
+  // networks, the same way getActiveUrl picks its URL (#418).
+  const resolveInstanceNetwork = useInstanceNetworkResolver();
   const attachedInstances = useAttachedInstances();
-  const activeDashboard = useActiveDashboard();
   // Fixed-width cells so a long instance name truncates instead of stretching
   // its tile and knocking every following tile out of its column.
   const { width: tileWidth, gap: tileGap } = useServiceTileLayout();
   const router = useRouter();
-
-  // A workspace that explicitly selected no live home networks (homeNetworkIds:
-  // [] or only stale ids) is "always remote" — mirror getActiveUrl step 2 so the
-  // L/R badge reads "remote" even when global auto-switch is off (#148).
-  const forcesRemote = workspaceForcesRemote(activeDashboard, homeNetworks);
 
   const hiddenSet = new Set(settings.hiddenKinds);
   // Index health by (kind, instanceId) so we can pair each bound instance with
@@ -157,10 +153,15 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
     if (bound.length === 0) continue;
     for (const inst of bound) {
       const health = healthByInstance.get(`${kindId}:${inst.id}`);
+      // A workspace that explicitly selected no live home networks
+      // (homeNetworkIds: [] or only stale ids) is "always remote" — mirror
+      // getActiveUrl step 2 so the L/R badge reads "remote" even when global
+      // auto-switch is off (#148).
+      const { away, forcesRemote } = resolveInstanceNetwork(inst.id);
       const awayBlocked = isRemoteOnlyOffline(
         inst,
         autoSwitchNetwork,
-        networkAwayFromHome,
+        away,
         forcesRemote,
       );
       entries.push({
@@ -174,7 +175,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         urlKind: resolveActiveUrlKind(
           inst,
           autoSwitchNetwork,
-          networkAwayFromHome,
+          away,
           forcesRemote,
         ),
         awayBlocked,

@@ -305,6 +305,7 @@
               <tr><td>(buttons)</td><td><strong>Test Connection</strong> and <strong>Save</strong>, side by side. Everything above them is saved by the Save button.</td></tr>
               <tr><td>Preferences: Routing and security</td><td><strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong></td></tr>
               <tr><td>Preferences: Torrents</td><td>qBittorrent only: tag added torrents with "Dashboarr"</td></tr>
+              <tr><td>Preferences: Disk activity</td><td>unRAID only: pick the Glances instance running on that same machine to show per-disk read/write rates. unRAID's own API always reports zero reads and writes, so this is the only source. Left as <strong>None</strong>, no rates are shown.</td></tr>
               <tr><td>Preferences: Add Defaults</td><td>Radarr, Sonarr and Lidarr only: Quality Profile, Root Folder, and Metadata Profile for Lidarr</td></tr>
               <tr><td>Preferences: Notifications</td><td>Per-instance overrides for each notification category</td></tr>
               <tr><td>Preferences: Webhook Attribution</td><td>Only when a backend is paired, and only for Radarr, Sonarr, Tautulli, Seerr, Bazarr and Tracearr</td></tr>
@@ -658,13 +659,13 @@
         </p>
 
         <h3>The widget catalogue</h3>
-        <p>Thirty-seven widgets are available:</p>
+        <p>Thirty-eight widgets are available:</p>
         <p style="color:var(--muted)">
           Service Health, Server Stats, Speed Stats, Downloads, SABnzbd Queue, NZBGet Queue,
           Radarr Queue, Sonarr Queue, Lidarr Queue, Bindery Queue, Recently Downloaded, Calendar, Still Pending,
           Stream Activity, Streaming Bandwidth, Seerr Requests, Now Playing (All Servers),
           Plex Now Playing, Jellyfin Now Playing, Emby Now Playing, Prowlarr Stats,
-          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Disk Space, Health Alerts, unRAID Array,
+          Jackett Indexers, Bazarr Wanted, Wake-on-LAN, Shortcuts, Disk Space, Health Alerts, unRAID Array,
           Tdarr, Autobrr Activity, Cleanuparr Stats, NZBHydra2 Indexers, Navidrome Library, Pi-hole,
           Top Blocked Domains, AdGuard Home, Top Blocked Domains (AdGuard), Beszel Systems.
         </p>
@@ -674,6 +675,17 @@
           row. Tapping that tile lists the individual episodes with their quality, size and import
           date, and any of them opens the series. Turn it off with
           <strong>Episodes, "Group by series"</strong> in the widget settings.
+        </p>
+        <p>
+          <strong>Shortcuts</strong> is a grid of your own web links for anything Dashboarr does not
+          integrate with: Portainer, Proxmox, Home Assistant, a router admin page, a hosting
+          dashboard. Each entry has a name, a URL, an icon and an accent colour, and tapping it opens
+          the page in the system in-app browser (Safari View Controller on iOS, a Chrome Custom Tab on
+          Android). On Android the Custom Tab shares Chrome's logins; on iOS the Safari view keeps its
+          own cookies, so expect to sign in there once. Manage the list at
+          <strong>Settings, Shortcuts</strong> or from the gear on the card; <code>https://</code> is
+          assumed when you type a bare host. The list is shared, and the widget's settings sheet picks
+          <strong>All shortcuts</strong> or a subset for that dashboard.
         </p>
         <p>
           The same widget can be placed more than once on one dashboard, each copy with its own
@@ -772,7 +784,7 @@
           <li><strong>Plex</strong>: Now Playing, Recent, On Deck, Libraries. <strong>Jellyfin</strong> and <strong>Emby</strong> share a screen: Now Playing, Recent, Continue Watching, Libraries.</li>
           <li><strong>Navidrome</strong>: Overview, Browse and Playlists. Overview holds the library counters, whatever is playing right now, and the maintenance actions — quick scan, full scan and delete missing, each behind a confirm. Browse defaults to recently added albums and searches artists, albums and tracks as you type. Any row opens that record in Navidrome&rsquo;s own web UI.</li>
           <li><strong>Glances</strong> (headed "Server"): CPU, Memory, GPU, Disks, Disk I/O, Network and Containers cards. Containers are read-only here.</li>
-          <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container.</li>
+          <li><strong>unRAID</strong>: Array, Pools, Unassigned and Containers, with Start, Restart and Stop actions per container. Disks also show live read/write rates once you pair a Glances instance under Disk activity in the unRAID instance editor.</li>
           <li><strong>Tdarr</strong>: Server status, Library stats (Tdarr score, health-check score, space saved), Nodes with per-node pause/resume and per-worker Cancel/Kill, a Libraries list with per-library <strong>Find New</strong> and <strong>Fresh Scan</strong> actions, and a file search across every library.</li>
           <li><strong>Autobrr</strong>: push stats, a searchable release feed with approved/rejected/error badges and per-action retry, filter enable toggles, and IRC network health with per-network restart.</li>
           <li><strong>Cleanuparr</strong>: strike/removal/cleanup stats over a selectable 24h/7d/30d window, scheduled jobs with run-now buttons, health of its connected download clients and *arr instances, and a filterable event feed.</li>
@@ -1041,8 +1053,8 @@
           URLs, per-instance flags) and its secrets (API key, username, password, custom headers), all
           dashboards with their widgets and per-widget settings, the active dashboard, home networks,
           the auto-switch and treat-VPN-as-home settings, Services tile order, Wake-on-LAN devices,
-          haptics, global custom headers, UI scale, theme, notification settings, and your backend
-          pairing.
+          web shortcuts, haptics, global custom headers, UI scale, theme, notification settings, and
+          your backend pairing.
         </p>
         <div class="note warn">
           <strong>Treat the file like a password vault.</strong> It contains every API key and your
@@ -1174,7 +1186,8 @@
         <p>
           Everything else is optional and falls back to defaults when omitted:
           <code>backend</code>, <code>notificationSettings</code>, <code>wolDevices</code>,
-          <code>hapticsEnabled</code>, <code>treatVpnAsHome</code>, <code>globalCustomHeaders</code>,
+          <code>shortcuts</code>, <code>hapticsEnabled</code>, <code>treatVpnAsHome</code>,
+          <code>globalCustomHeaders</code>,
           <code>uiScale</code>, <code>appTheme</code> and <code>servicesOrder</code>. The simplest way
           to see their exact shape is to configure one in the app and read it back from an export.
         </p>

@@ -6,6 +6,7 @@ import type {
 import type { ComponentType } from "react";
 import type { ServiceId } from "@/lib/constants";
 import type { DownloadBadgeVariant } from "@/lib/download-status";
+import type { TorrentFileSource } from "@/lib/torrent-file";
 import type { DownloadsSortKey } from "@/store/sort-store";
 
 // Normalized status surface shared by every torrent component (the downloads
@@ -127,6 +128,26 @@ export interface TorrentListResult {
   refetch: () => Promise<unknown>;
 }
 
+// What the add card (and the indexer grab flows) hand to useAddTorrent. A
+// magnet / http(s) .torrent link goes as `uri`; a local .torrent picked from
+// the Files app or opened from the OS goes as `file`. The `never` halves keep
+// the two exclusive at the type level while `{ uri, label }` call sites stay
+// untouched.
+export type AddTorrentInput = (
+  | { uri: string; file?: never }
+  | { file: TorrentFileSource; uri?: never }
+) & {
+  label?: string;
+  savePath?: string;
+};
+
+// Every adapter's useAddTorrent mutation carries this key so the Downloads
+// screen can ask the mutation cache whether an add is in flight
+// (useIsMutating) and freeze client switching until it settles: a switch
+// remounts the shared view, and a remounted view would re-stage the same
+// file with an idle mutation while the old upload is still streaming it.
+export const TORRENT_ADD_MUTATION_KEY = ["torrentAdd"] as const;
+
 // Shared adapter: each torrent client implements one of these and the shared
 // downloads view branches on no client-specific knowledge beyond what the
 // adapter + capability flags expose.
@@ -176,9 +197,12 @@ export interface TorrentAdapter {
   useDeleteTorrent: (
     instanceId?: string,
   ) => UseMutationResult<unknown, Error, { hashes: string[]; deleteFiles?: boolean }>;
+  // Add by magnet/URL (`uri`) or by uploading a local .torrent (`file`, see
+  // lib/torrent-file.ts). Exactly one of the two is set; `label` and
+  // `savePath` apply to both.
   useAddTorrent: (
     instanceId?: string,
-  ) => UseMutationResult<unknown, Error, { uri: string; label?: string; savePath?: string }>;
+  ) => UseMutationResult<unknown, Error, AddTorrentInput>;
 
   // Assign/clear a torrent's category (qBittorrent only — gated by
   // capabilities.categories). category "" clears it. Always called by the

@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import Animated, { FadeIn } from "react-native-reanimated";
 import {
+  Activity,
   ChevronDown,
   ChevronUp,
   Container,
@@ -29,11 +31,16 @@ import {
   useUnraidContainers,
   useUnraidStorage,
 } from "@/hooks/use-unraid";
+import { useGlancesDiskIoRates } from "@/hooks/use-glances";
+import { useTargetInstance } from "@/hooks/use-instance-target";
+import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
+import { normalizeDeviceName } from "@/services/glances-api";
+import type { DiskIoRate } from "@/services/glances-api";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
 import { useUnraidUiStore } from "@/store/unraid-ui-store";
 import { lightHaptic } from "@/lib/haptics";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatSpeed } from "@/lib/utils";
 import type { UnraidArrayDisk, UnraidContainer as UnraidContainerType, UnraidPhysicalDisk } from "@/lib/types";
 
 function usageBarColor(percent: number): string {
@@ -84,7 +91,16 @@ export default function UnraidScreen() {
 
 function UnraidScreenInner() {
   const { data: healthData } = useServiceHealth();
-  const { refreshing, onRefresh } = usePullToRefresh([["unraid"]]);
+  const queryClient = useQueryClient();
+  // The disk rows show Glances' I/O rates, so a pull refreshes those too — but
+  // Glances is optional context here and must never hold the spinner. An
+  // unreachable one takes ~50s to settle (15s abort + retry:2 + backoff), which
+  // would pin the spinner to its full 10s cap long after unRAID is done.
+  const doRefresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["glances"] }).catch(() => {});
+    return queryClient.invalidateQueries({ queryKey: ["unraid"] });
+  }, [queryClient]);
+  const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
   const unraidHealth = healthData?.find((s) => s.id === "unraid");
 
   return (
@@ -103,6 +119,7 @@ function UnraidScreenInner() {
 
 function ArrayCard() {
   const { data: storage, isLoading } = useUnraidStorage();
+  const ioRates = useUnraidDiskIoRates();
   const disksExpanded = useUnraidUiStore((s) => s.arrayDisksExpanded);
   const setDisksExpanded = useUnraidUiStore((s) => s.setArrayDisksExpanded);
 
@@ -187,11 +204,26 @@ function ArrayCard() {
               {disksExpanded && (
                 <Animated.View entering={FadeIn.duration(150)} className="gap-4 mt-3">
                   {storage.parities.map((disk) => (
-                    <ArrayDiskRow key={`parity-${disk.idx}-${disk.name}`} disk={disk} parity />
+                    <ArrayDiskRow
+                      key={`parity-${disk.idx}-${disk.name}`}
+                      disk={disk}
+                      io={diskIo(ioRates, disk.device)}
+                      parity
+                    />
                   ))}
                   {storage.dataDisks.map((disk) => (
-                    <ArrayDiskRow key={`data-${disk.idx}-${disk.name}`} disk={disk} />
+                    <ArrayDiskRow
+                      key={`data-${disk.idx}-${disk.name}`}
+                      disk={disk}
+                      io={diskIo(ioRates, disk.device)}
+                    />
                   ))}
+                  {/* Name the source: these numbers come from a different
+                      service than everything else on the row, and a Glances
+                      instance pointed at another host can't be detected. */}
+                  {[...storage.parities, ...storage.dataDisks].some((d) =>
+                    activeIo(diskIo(ioRates, d.device)),
+                  ) && <Text className="text-zinc-600 text-xs">Read/write via Glances</Text>}
                 </Animated.View>
               )}
             </View>
@@ -202,15 +234,75 @@ function ArrayCard() {
   );
 }
 
+// Live read/write for one device, from Glances — unRAID's own API reports
+// numReads/numWrites as 0 for every disk (its state parser drops them), and has
+// no throughput field at all, so this is the only source for "what is hammering
+// the array right now". Rendered as two chips rather than one string so they
+// wrap independently alongside the Used/Free/Total triple.
+function DiskIoChips({ io }: { io: DiskIoRate }) {
+  return (
+    <>
+      <View className="flex-row items-center gap-1">
+        <Icon icon={Activity} size={12} color="#a1a1aa" />
+        <Text className="text-zinc-400 text-xs">R {formatSpeed(io.read)}</Text>
+      </View>
+      <Text className="text-zinc-400 text-xs">W {formatSpeed(io.write)}</Text>
+    </>
+  );
+}
+
+// Only worth showing while the drive is actually doing something — idle disks
+// keep the row as clean as it is today (same rule as the Glances Disk I/O card).
+function activeIo(io: DiskIoRate | undefined): DiskIoRate | undefined {
+  return io && io.read + io.write > 0 ? io : undefined;
+}
+
+// unRAID reports bare kernel device names, the same key Glances uses. A device
+// missing from the map means Glances isn't configured, isn't watching this host,
+// or has the disk hidden — in every case the row just renders without I/O.
+function diskIo(
+  rates: ReadonlyMap<string, DiskIoRate>,
+  device: string | undefined,
+): DiskIoRate | undefined {
+  return device ? rates.get(normalizeDeviceName(device)) : undefined;
+}
+
+// Disk I/O only from the Glances instance the user explicitly paired with this
+// unRAID server (Settings → the unRAID instance → Disk activity). Never guessed:
+// the two kinds resolve their active instance independently, and matching them
+// by URL hostname isn't verifiable — one public hostname can forward different
+// ports to different machines. A wrong pairing would paint another server's disk
+// activity onto these drives and, because live I/O overrides the standby chip,
+// misreport a parked disk as awake. Unpaired (or paired with an instance that no
+// longer exists / isn't attached here) means no query and no chips.
+function useUnraidDiskIoRates(): ReadonlyMap<string, DiskIoRate> {
+  const unraid = useTargetInstance("unraid");
+  const pairedId = unraid?.diskIoInstanceId;
+  const glances = useAttachedEnabledInstances("glances");
+  const paired = pairedId ? glances.find((g) => g.id === pairedId) : undefined;
+  return useGlancesDiskIoRates(paired?.id, !!paired);
+}
+
 // One array/pool disk: name + device, usage bar when the disk has a
 // filesystem (parity disks don't), and status/temp/standby detail. Non-OK
 // status is the headline problem signal, so it renders red.
-function ArrayDiskRow({ disk, parity = false }: { disk: UnraidArrayDisk; parity?: boolean }) {
+function ArrayDiskRow({
+  disk,
+  parity = false,
+  io,
+}: {
+  disk: UnraidArrayDisk;
+  parity?: boolean;
+  io?: DiskIoRate;
+}) {
   const hasFs =
     typeof disk.fsSize === "number" && disk.fsSize > 0 && typeof disk.fsUsed === "number";
   const pctUsed = hasFs ? (disk.fsUsed! / disk.fsSize!) * 100 : 0;
   const statusOk = disk.status === "DISK_OK";
-  const standby = disk.isSpinning === false;
+  const activity = activeIo(io);
+  // Storage polls every 30s and Glances every 5s, so isSpinning lags a spin-up
+  // by up to half a minute — live I/O is the fresher proof that it's awake.
+  const standby = disk.isSpinning === false && !activity;
 
   return (
     <View>
@@ -261,6 +353,7 @@ function ArrayDiskRow({ disk, parity = false }: { disk: UnraidArrayDisk; parity?
         {typeof disk.temp === "number" && (
           <Text className="text-zinc-500 text-xs">{disk.temp}°C</Text>
         )}
+        {activity && <DiskIoChips io={activity} />}
         {standby && (
           <View className="flex-row items-center gap-1">
             <Icon icon={Moon} size={12} color="#71717a" />
@@ -274,6 +367,7 @@ function ArrayDiskRow({ disk, parity = false }: { disk: UnraidArrayDisk; parity?
 
 function PoolsCard() {
   const { data: storage, isLoading } = useUnraidStorage();
+  const ioRates = useUnraidDiskIoRates();
   const pools = storage?.pools ?? [];
 
   // Hidden entirely on servers without cache/named pools.
@@ -298,7 +392,11 @@ function PoolsCard() {
                 </Text>
               )}
               {pool.disks.map((disk) => (
-                <ArrayDiskRow key={`${pool.name}-${disk.idx}-${disk.name}`} disk={disk} />
+                <ArrayDiskRow
+                  key={`${pool.name}-${disk.idx}-${disk.name}`}
+                  disk={disk}
+                  io={diskIo(ioRates, disk.device)}
+                />
               ))}
             </View>
           ))}
@@ -310,6 +408,7 @@ function PoolsCard() {
 
 function UnassignedCard() {
   const { data: storage, isLoading } = useUnraidStorage();
+  const ioRates = useUnraidDiskIoRates();
   const expanded = useUnraidUiStore((s) => s.unassignedExpanded);
   const setExpanded = useUnraidUiStore((s) => s.setUnassignedExpanded);
   const disks = storage?.unassigned ?? [];
@@ -346,7 +445,7 @@ function UnassignedCard() {
       ) : expanded ? (
         <Animated.View entering={FadeIn.duration(150)} className="gap-3 mt-4">
           {disks.map((disk) => (
-            <UnassignedDiskRow key={disk.id} disk={disk} />
+            <UnassignedDiskRow key={disk.id} disk={disk} io={diskIo(ioRates, disk.device)} />
           ))}
         </Animated.View>
       ) : null}
@@ -356,9 +455,10 @@ function UnassignedCard() {
 
 // Physical-only info: unassigned devices have no filesystem knowledge, so no
 // usage bar — just identity (name/device/serial), size, temp and SMART state.
-function UnassignedDiskRow({ disk }: { disk: UnraidPhysicalDisk }) {
+function UnassignedDiskRow({ disk, io }: { disk: UnraidPhysicalDisk; io?: DiskIoRate }) {
   const smart = disk.smartStatus?.toUpperCase();
   const smartFailing = !!smart && smart !== "OK" && smart !== "PASSED";
+  const activity = activeIo(io);
 
   return (
     <View>
@@ -386,6 +486,7 @@ function UnassignedDiskRow({ disk }: { disk: UnraidPhysicalDisk }) {
             SMART {disk.smartStatus}
           </Text>
         )}
+        {activity && <DiskIoChips io={activity} />}
       </View>
     </View>
   );

@@ -148,6 +148,58 @@ export function selectInterfaces(
   return ranked.filter((i) => allowed.has(i.interface_name));
 }
 
+export interface DiskIoRate {
+  read: number; // bytes/sec read
+  write: number; // bytes/sec written
+}
+
+// Glances reports device names exactly as psutil's perdisk keys, and unRAID
+// reports the same bare kernel names ("sdd", "nvme0n1"), so the two join on
+// equality. Only a "/dev/" prefix is stripped — never trailing digits, which
+// are part of the identity ("nvme0n1" is not "nvme", "md1" is not "md").
+export function normalizeDeviceName(name: string): string {
+  return name.trim().replace(/^\/dev\//, "");
+}
+
+// Device-keyed read/write rates from a /diskio payload, for callers that need
+// to look up one device (the unRAID disk rows) rather than render the list.
+//
+// Partitions come through as their own entries ("sdd1" next to "sdd") because
+// psutil only filters them out when perdisk=false; the whole-disk line in
+// /proc/diskstats already aggregates its partitions, so they are simply left
+// in the map under their own names and never match a whole-disk lookup.
+export function diskIoRateMap(
+  items: GlancesDiskIOItem[] | undefined,
+): Map<string, DiskIoRate> {
+  const map = new Map<string, DiskIoRate>();
+  if (!items) return map;
+  for (const item of items) {
+    const key = normalizeDeviceName(item.disk_name ?? "");
+    if (!key) continue;
+    map.set(key, {
+      read: diskIoRate(item.read_bytes_rate_per_sec, item.read_bytes, item.time_since_update),
+      write: diskIoRate(item.write_bytes_rate_per_sec, item.write_bytes, item.time_since_update),
+    });
+  }
+  return map;
+}
+
+// Same prefer-precomputed rule as netRxTx, plus a floor at 0: a Glances restart
+// resets the counters, which can surface as a negative delta for one sample.
+function diskIoRate(
+  precomputed: number | null | undefined,
+  delta: number,
+  interval: number,
+): number {
+  const raw =
+    typeof precomputed === "number" && Number.isFinite(precomputed)
+      ? precomputed
+      : interval > 0 && Number.isFinite(delta)
+        ? delta / interval
+        : 0;
+  return Number.isFinite(raw) ? Math.max(0, raw) : 0;
+}
+
 export async function getGpu(instanceId?: string): Promise<GlancesGpuItem[]> {
   // Hosts without a GPU return an empty list; if the plugin is disabled the
   // endpoint can 404, so swallow that into [] rather than surfacing as error.

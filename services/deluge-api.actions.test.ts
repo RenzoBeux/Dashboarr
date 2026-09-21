@@ -22,6 +22,7 @@ jest.mock("expo-secure-store", () => ({
 import { useConfigStore } from "@/store/config-store";
 import {
   addDelugeTorrent,
+  addDelugeTorrentFile,
   delugeClearSession,
   getDelugeTorrents,
   pauseDelugeTorrents,
@@ -368,6 +369,21 @@ describe("deluge-api (transport)", () => {
       .mockResolvedValueOnce(ok("def456"));
     await addDelugeTorrent("https://tracker.example/file.torrent");
     expect(bodyOf(calls()[2]).method).toBe("core.add_torrent_url");
+  });
+
+  it("add-file sends core.add_torrent_file with the base64 dump positionally", async () => {
+    fetchSpy
+      .mockResolvedValueOnce(ok(true))
+      .mockResolvedValueOnce(ok(true))
+      .mockResolvedValueOnce(ok("abc123"));
+    await addDelugeTorrentFile("release.torrent", "ZDg6YW5ub3VuY2Vl", { savePath: "/data" });
+    const body = bodyOf(calls()[2]);
+    expect(body.method).toBe("core.add_torrent_file");
+    expect(body.params).toEqual([
+      "release.torrent",
+      "ZDg6YW5ub3VuY2Vl",
+      { add_paused: false, download_location: "/data" },
+    ]);
   });
 
   it("fails the add when Deluge answers with a null torrent id", async () => {

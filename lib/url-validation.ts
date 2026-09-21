@@ -59,6 +59,19 @@ export function normalizeServiceUrl(raw: string): string {
 }
 
 /**
+ * Lower-cased hostname of a URL (no scheme, port, path, credentials), or "" if
+ * unparseable. Deliberately string-based rather than `new URL()`: it has to
+ * cope with the half-typed values a settings field holds.
+ */
+export function hostOf(url: string): string {
+  const stripped = url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  const end = stripped.search(/[/?#]/);
+  const authority = end === -1 ? stripped : stripped.slice(0, end);
+  const host = authority.replace(/^[^@]*@/, "").replace(/:\d+$/, "");
+  return host.toLowerCase();
+}
+
+/**
  * True for hosts only reachable on a local network: RFC1918 IPv4 ranges,
  * loopback, IPv4/IPv6 link-local, IPv6 unique-local (fc00::/7), and mDNS
  * `.local` names. These can NEVER be reached off the home LAN, so issuing a

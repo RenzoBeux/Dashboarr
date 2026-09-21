@@ -350,6 +350,30 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.overseerr[1].requestAsUserId).toBeUndefined();
   });
 
+  it("round-trips diskIoInstanceId (v57)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { unraid: [validInstance({ diskIoInstanceId: "glances-uuid-1" })] },
+    });
+    expect(result.services.unraid[0].diskIoInstanceId).toBe("glances-uuid-1");
+  });
+
+  it("drops an invalid diskIoInstanceId without rejecting the instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        unraid: [
+          validInstance({ diskIoInstanceId: "" }),
+          validInstance({ id: "uuid-2", diskIoInstanceId: 7 }),
+          validInstance({ id: "uuid-3", diskIoInstanceId: "x".repeat(129) }),
+        ],
+      },
+    });
+    expect(result.services.unraid[0].diskIoInstanceId).toBeUndefined();
+    expect(result.services.unraid[1].diskIoInstanceId).toBeUndefined();
+    expect(result.services.unraid[2].diskIoInstanceId).toBeUndefined();
+  });
+
   it("round-trips the Seerr session sign-in modes (v53)", () => {
     const result = validateExportPayload({
       ...baseValid(),
@@ -813,6 +837,81 @@ describe("validateExportPayload — WOL devices", () => {
     expect(() =>
       validateExportPayload({ ...baseValid(), wolDevices: "nope" as any }),
     ).toThrow(/wolDevices/);
+  });
+});
+
+describe("validateExportPayload — shortcuts (v56)", () => {
+  const baseShortcut = () => ({
+    id: "s1",
+    name: "Portainer",
+    url: "https://portainer.example.com",
+  });
+
+  it("accepts a minimal shortcut and keeps icon/color absent", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      shortcuts: [baseShortcut()],
+    });
+    expect(result.shortcuts).toEqual([baseShortcut()]);
+    expect(result.shortcuts?.[0]).not.toHaveProperty("icon");
+    expect(result.shortcuts?.[0]).not.toHaveProperty("color");
+  });
+
+  it("keeps icon and color when present", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      shortcuts: [{ ...baseShortcut(), icon: "Router", color: "#3b82f6" }],
+    });
+    expect(result.shortcuts?.[0]).toMatchObject({ icon: "Router", color: "#3b82f6" });
+  });
+
+  it("leaves the field absent when omitted (pre-v56 exports)", () => {
+    const result = validateExportPayload(baseValid());
+    expect(result).not.toHaveProperty("shortcuts");
+  });
+
+  it("rejects when shortcuts is not an array", () => {
+    expect(() =>
+      validateExportPayload({ ...baseValid(), shortcuts: "nope" as any }),
+    ).toThrow(/shortcuts/);
+  });
+
+  it.each([
+    ["empty id", { id: "" }],
+    ["empty name", { name: "   " }],
+    ["over-long name", { name: "x".repeat(101) }],
+    ["javascript: url", { url: "javascript:alert(1)" }],
+    ["file: url", { url: "file:///etc/passwd" }],
+    ["scheme-less url", { url: "portainer.example.com" }],
+    ["host-less url", { url: "https://" }],
+    ["over-long url", { url: `https://example.com/${"x".repeat(2048)}` }],
+    ["non-string icon", { icon: 3 }],
+    ["malformed color", { color: "blue" }],
+    ["short hex color", { color: "#fff" }],
+  ])("rejects a shortcut with %s", (_label, overrides) => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        shortcuts: [{ ...baseShortcut(), ...overrides }],
+      }),
+    ).toThrow(/shortcuts/);
+  });
+
+  it("accepts http:// urls (LAN boxes without TLS)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      shortcuts: [{ ...baseShortcut(), url: "http://192.168.1.10:9000/" }],
+    });
+    expect(result.shortcuts?.[0].url).toBe("http://192.168.1.10:9000/");
+  });
+
+  it("rejects duplicate shortcut ids", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        shortcuts: [baseShortcut(), { ...baseShortcut(), name: "Again" }],
+      }),
+    ).toThrow(/duplicate/);
   });
 });
 

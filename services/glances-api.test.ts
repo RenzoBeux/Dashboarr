@@ -20,12 +20,14 @@ jest.mock("expo-secure-store", () => ({
 }));
 
 import {
+  diskIoRateMap,
   isVirtualInterface,
+  normalizeDeviceName,
   rankedInterfaces,
   selectInterfaces,
   NETWORK_INTERFACES_ALL,
 } from "@/services/glances-api";
-import type { GlancesNetItem } from "@/lib/types";
+import type { GlancesDiskIOItem, GlancesNetItem } from "@/lib/types";
 
 function iface(
   interface_name: string,
@@ -167,5 +169,130 @@ describe("selectInterfaces", () => {
   it("an explicit list never matches loopback even if named", () => {
     // rankedInterfaces already strips loopback, so it can't be selected.
     expect(selectInterfaces(net, ["lo"])).toEqual([]);
+  });
+});
+
+function diskio(
+  disk_name: string,
+  overrides: Partial<GlancesDiskIOItem> = {},
+): GlancesDiskIOItem {
+  return {
+    disk_name,
+    read_bytes: 0,
+    write_bytes: 0,
+    read_count: 0,
+    write_count: 0,
+    time_since_update: 1,
+    ...overrides,
+  };
+}
+
+describe("normalizeDeviceName", () => {
+  it("strips a /dev/ prefix and surrounding whitespace", () => {
+    expect(normalizeDeviceName("/dev/sda")).toBe("sda");
+    expect(normalizeDeviceName("  sdd  ")).toBe("sdd");
+  });
+
+  it("never strips trailing digits — they are part of the identity", () => {
+    expect(normalizeDeviceName("nvme0n1")).toBe("nvme0n1");
+    expect(normalizeDeviceName("md1")).toBe("md1");
+    expect(normalizeDeviceName("dm-0")).toBe("dm-0");
+  });
+});
+
+describe("diskIoRateMap", () => {
+  it("returns an empty map for undefined or empty input", () => {
+    expect(diskIoRateMap(undefined).size).toBe(0);
+    expect(diskIoRateMap([]).size).toBe(0);
+  });
+
+  it("divides the delta by the interval", () => {
+    const rates = diskIoRateMap([
+      diskio("sdb", { read_bytes: 20971520, write_bytes: 8388608, time_since_update: 2 }),
+    ]);
+    expect(rates.get("sdb")).toEqual({ read: 10485760, write: 4194304 });
+  });
+
+  it("divides exactly on a non-integer interval", () => {
+    const rates = diskIoRateMap([
+      diskio("sdb", { read_bytes: 502, time_since_update: 5.02 }),
+    ]);
+    expect(rates.get("sdb")!.read).toBeCloseTo(100, 10);
+  });
+
+  it("prefers Glances' pre-computed per-second rate over the delta", () => {
+    const rates = diskIoRateMap([
+      diskio("sdd", {
+        read_bytes: 1000,
+        write_bytes: 1000,
+        time_since_update: 1,
+        read_bytes_rate_per_sec: 42,
+        write_bytes_rate_per_sec: 7,
+      }),
+    ]);
+    expect(rates.get("sdd")).toEqual({ read: 42, write: 7 });
+  });
+
+  it("falls back to the delta when the pre-computed rate is null or not finite", () => {
+    const rates = diskIoRateMap([
+      diskio("sdd", {
+        read_bytes: 400,
+        write_bytes: 200,
+        time_since_update: 2,
+        read_bytes_rate_per_sec: null,
+        write_bytes_rate_per_sec: NaN,
+      }),
+    ]);
+    expect(rates.get("sdd")).toEqual({ read: 200, write: 100 });
+  });
+
+  it("yields 0 rather than Infinity or NaN for a zero, negative or missing interval", () => {
+    const items = [
+      diskio("a", { read_bytes: 100, time_since_update: 0 }),
+      diskio("b", { read_bytes: 100, time_since_update: -1 }),
+      diskio("c", { read_bytes: 100, time_since_update: undefined as unknown as number }),
+    ];
+    for (const [name, rate] of diskIoRateMap(items)) {
+      expect(rate).toEqual({ read: 0, write: 0 });
+      expect(Number.isFinite(rate.read)).toBe(true);
+      expect(name).toBeTruthy();
+    }
+  });
+
+  it("clamps a negative delta to 0 (counter reset across a Glances restart)", () => {
+    const rates = diskIoRateMap([
+      diskio("sdb", { read_bytes: -4096, write_bytes: -1, time_since_update: 1 }),
+    ]);
+    expect(rates.get("sdb")).toEqual({ read: 0, write: 0 });
+  });
+
+  it("keys by the normalized device name", () => {
+    const rates = diskIoRateMap([diskio("/dev/sda", { read_bytes: 512 })]);
+    expect(rates.has("sda")).toBe(true);
+    expect(rates.has("/dev/sda")).toBe(false);
+  });
+
+  it("skips entries with a blank device name", () => {
+    expect(diskIoRateMap([diskio(""), diskio("   ")]).size).toBe(0);
+  });
+
+  it("keeps partitions under their own name and never folds them into the whole disk", () => {
+    // psutil reports both at perdisk=true, and the whole-disk line in
+    // /proc/diskstats already aggregates its partitions — so looking up "sdd"
+    // must return the whole disk, untouched by sdd1.
+    const rates = diskIoRateMap([
+      diskio("sdd", { read_bytes: 1000, time_since_update: 1 }),
+      diskio("sdd1", { read_bytes: 900, time_since_update: 1 }),
+      diskio("nvme0n1", { read_bytes: 300, time_since_update: 1 }),
+      diskio("nvme0n1p1", { read_bytes: 250, time_since_update: 1 }),
+    ]);
+    expect(rates.get("sdd")!.read).toBe(1000);
+    expect(rates.get("sdd1")!.read).toBe(900);
+    expect(rates.get("nvme0n1")!.read).toBe(300);
+  });
+
+  it("creates no parent key for devices whose trailing digits are identity", () => {
+    const rates = diskIoRateMap([diskio("md1"), diskio("dm-0"), diskio("zd16")]);
+    expect([...rates.keys()].sort()).toEqual(["dm-0", "md1", "zd16"]);
   });
 });

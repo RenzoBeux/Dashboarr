@@ -12,6 +12,7 @@ import type {
   ServiceInstance,
   ServiceSecrets,
   WakeOnLanDevice,
+  WebShortcut,
   WidgetSlot,
 } from "@/lib/config-types";
 import type { NotificationSettings, NotifCategory, AppriseConfig } from "@/lib/config-types";
@@ -20,6 +21,7 @@ import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
 import { isSeerrAuthMode } from "@/lib/seerr-auth";
+import { isValidShortcutUrl, SHORTCUT_NAME_MAX_LENGTH } from "@/lib/web-shortcuts";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
@@ -118,6 +120,17 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (isSeerrAuthMode(v.authMode) && v.authMode !== "apiKey") {
     out.authMode = v.authMode;
   }
+  // v57 (#386): optional unRAID → Glances disk I/O pairing. Same id shape as
+  // ServiceInstance.id. An id pointing at an instance that isn't in this
+  // payload is kept — the editor resolves it at render time and shows it as
+  // unknown, matching how requestAsUserId handles a deleted Seerr account.
+  if (
+    typeof v.diskIoInstanceId === "string" &&
+    v.diskIoInstanceId.length > 0 &&
+    v.diskIoInstanceId.length <= 128
+  ) {
+    out.diskIoInstanceId = v.diskIoInstanceId;
+  }
   return out;
 }
 
@@ -157,6 +170,31 @@ function coerceWolDevice(v: unknown): WakeOnLanDevice | null {
       return null;
     }
     out.port = v.port;
+  }
+  return out;
+}
+
+function coerceWebShortcut(v: unknown): WebShortcut | null {
+  if (!isPlainObject(v)) return null;
+  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
+  if (
+    typeof v.name !== "string" ||
+    v.name.trim().length === 0 ||
+    v.name.length > SHORTCUT_NAME_MAX_LENGTH
+  ) {
+    return null;
+  }
+  if (typeof v.url !== "string" || !isValidShortcutUrl(v.url)) return null;
+  const out: WebShortcut = { id: v.id, name: v.name, url: v.url };
+  // Icon and color are looked up leniently at render time (unknown values fall
+  // back to defaults), so only reject present-but-malformed values here.
+  if (v.icon !== undefined && v.icon !== null) {
+    if (typeof v.icon !== "string" || v.icon.length > 64) return null;
+    out.icon = v.icon;
+  }
+  if (v.color !== undefined && v.color !== null) {
+    if (typeof v.color !== "string" || !/^#[0-9a-f]{6}$/i.test(v.color)) return null;
+    out.color = v.color;
   }
   return out;
 }
@@ -563,6 +601,22 @@ export function validateExportPayload(raw: unknown): ExportPayload {
       devices.push(coerced);
     }
     payload.wolDevices = devices;
+  }
+
+  if (raw.shortcuts !== undefined && raw.shortcuts !== null) {
+    if (!Array.isArray(raw.shortcuts)) throw new Error("Config shortcuts is invalid");
+    const shortcuts: WebShortcut[] = [];
+    const seenShortcutIds = new Set<string>();
+    for (const item of raw.shortcuts) {
+      const coerced = coerceWebShortcut(item);
+      if (!coerced) throw new Error("Config shortcuts entry is invalid");
+      if (seenShortcutIds.has(coerced.id)) {
+        throw new Error("Config shortcuts has duplicate id");
+      }
+      seenShortcutIds.add(coerced.id);
+      shortcuts.push(coerced);
+    }
+    payload.shortcuts = shortcuts;
   }
 
   if (raw.hapticsEnabled !== undefined) {

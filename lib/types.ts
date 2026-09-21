@@ -654,6 +654,13 @@ export interface SonarrSeries {
   network: string;
   year: number;
   tvdbId: number;
+  // Sonarr only started carrying the TMDB id on SeriesResource in 4.0.5 (build
+  // 1801; absent in 4.0.5.1710 and every earlier build), and SkyHookProxy sets
+  // it only `if (show.TmdbId.HasValue)` during a metadata refresh — so it is 0
+  // or missing on older servers and on series not refreshed since the upgrade.
+  // Seerr keys its media on the TMDB id, so the "Requested by" block hides
+  // itself rather than guessing when this is absent.
+  tmdbId?: number;
   imdbId?: string;
   monitored: boolean;
   added: string;
@@ -1311,6 +1318,41 @@ export interface OverseerrRequest {
 }
 
 /**
+ * One entry of `mediaInfo.requests` on a `/movie/{tmdbId}` or `/tv/{tmdbId}`
+ * details payload — the same MediaRequest rows `GET /request` returns.
+ *
+ * Verified against sct/overseerr, Fallenbagel/jellyseerr and seerr-team/seerr
+ * @develop: both routes hand `mediaInfo` straight from
+ * `Media.getMedia(tmdbId, type)`, which loads `relations: { requests: true }`,
+ * and `MediaRequest.requestedBy` is an eager `@ManyToOne(() => User)` — so the
+ * requester rides along with the details call and needs no `/request` page
+ * scan. Seerr's own ManageSlideOver reads exactly this field, and the OpenAPI
+ * schema declares `MediaInfo.requests: MediaRequest[]`.
+ *
+ * The route applies NO permission filter to those rows, which is why the UI
+ * gates on `canViewAllRequests` rather than trusting the server to scope them
+ * (see components/overseerr/requested-by-block.tsx).
+ */
+export interface OverseerrMediaInfoRequest {
+  id: number;
+  status: number; // 1=pending, 2=approved, 3=declined
+  is4k?: boolean;
+  createdAt?: string;
+  requestedBy?: OverseerrUser;
+}
+
+/**
+ * The `mediaInfo` block shared by the movie and tv details payloads: Seerr's
+ * Media entity for a title it tracks, absent entirely for one it does not.
+ */
+export interface OverseerrMediaInfo {
+  id: number;
+  status: OverseerrMediaStatus;
+  status4k?: OverseerrMediaStatus;
+  requests?: OverseerrMediaInfoRequest[];
+}
+
+/**
  * A Seerr account, as returned by `GET /user`.
  *
  * `displayName` is not declared in either fork's OpenAPI schema, but the User
@@ -1432,11 +1474,7 @@ export interface OverseerrMovieDetails {
   releaseDate?: string;
   voteAverage?: number;
   relatedVideos?: OverseerrRelatedVideo[];
-  mediaInfo?: {
-    id: number;
-    status: OverseerrMediaStatus;
-    status4k?: OverseerrMediaStatus;
-  };
+  mediaInfo?: OverseerrMediaInfo;
 }
 
 export interface OverseerrSeasonInfo {
@@ -1457,11 +1495,7 @@ export interface OverseerrTVDetails {
   voteAverage?: number;
   seasons?: OverseerrSeasonInfo[];
   relatedVideos?: OverseerrRelatedVideo[];
-  mediaInfo?: {
-    id: number;
-    status: OverseerrMediaStatus;
-    status4k?: OverseerrMediaStatus;
-  };
+  mediaInfo?: OverseerrMediaInfo;
 }
 
 // --- Overseerr Service Discovery (Radarr/Sonarr instances configured in Seerr) ---
@@ -2340,9 +2374,17 @@ export interface GlancesLoad {
 }
 
 export interface GlancesDiskIOItem {
+  // Kernel device name (psutil's perdisk key), e.g. "sdd", "nvme0n1", "md1".
+  // Partitions ("sdd1") appear alongside their whole disk, which already
+  // aggregates them — see diskIoRateMap in services/glances-api.ts.
   disk_name: string;
+  // Deltas since the last sample, so rate = bytes / time_since_update. The
+  // diskio plugin marks these `rate: True`, which makes Glances v4 also ship
+  // the pre-computed *_rate_per_sec fields; prefer those when present.
   read_bytes: number;
   write_bytes: number;
+  read_bytes_rate_per_sec?: number | null;
+  write_bytes_rate_per_sec?: number | null;
   read_count: number;
   write_count: number;
   time_since_update: number;

@@ -19,6 +19,17 @@ export interface WakeOnLanDevice {
   port?: number;
 }
 
+// A user-defined web shortcut shown on the Shortcuts dashboard widget (#344).
+// `icon` is a lucide name from lib/dashboard-icons.ts and `color` a hex from
+// lib/dashboard-colors.ts; both are optional and fall back at render time.
+export interface WebShortcut {
+  id: string;
+  name: string;
+  url: string;
+  icon?: string;
+  color?: string;
+}
+
 export interface HomeNetwork {
   id: string;
   ssid: string;
@@ -64,6 +75,16 @@ export interface ServiceConfig {
   // fall back, so the settings card re-resolves the id against the live user
   // list and shows it as unknown when it no longer matches.
   requestAsUserId?: number;
+  // v57 (#386): unRAID-only — the id of the Glances instance that supplies
+  // per-disk read/write rates for this server's drives. unRAID's own API
+  // hardcodes numReads/numWrites to 0 and has no throughput field, so the only
+  // source is a Glances running on the same machine. Deliberately an explicit
+  // pairing rather than a guess: matching the two by URL hostname looks right
+  // but isn't (one public hostname can port-forward to different machines), and
+  // a wrong match paints another server's disk activity onto these drives.
+  // Absent/undefined means no I/O is shown and no Glances query is made. A
+  // stale id (instance deleted) reads as absent.
+  diskIoInstanceId?: string;
   // v53 (#332): Seerr-only sign-in mode. Absent/undefined means the admin
   // API key (the pre-v53 behavior). The three session values ride Seerr's
   // login cookie instead; see lib/seerr-auth.ts for what each one posts and
@@ -155,9 +176,11 @@ export interface Dashboard {
   // a live network are ignored at resolve time, and an empty array means "no
   // home network for this workspace → always remote". Home networks themselves
   // are created/edited/deleted only on the Home Networks screen; this is purely
-  // which of them attach to this workspace. Only the *active* dashboard's
-  // selection is evaluated (see resolveEffectiveHomeNetworks /
-  // evaluateHomeNetwork in lib/network.ts).
+  // which of them attach to this workspace. The *active* dashboard's selection
+  // drives the global away flag (see resolveEffectiveHomeNetworks /
+  // evaluateHomeNetwork in lib/network.ts); an instance attached only to other
+  // dashboards is judged against their selections instead (the store's
+  // resolveInstanceNetwork, #418).
   homeNetworkIds?: string[];
   // v30: optional per-workspace Services-tab tile order. Missing/undefined means
   // "use the global servicesOrder" so existing dashboards keep the shared order.
@@ -287,4 +310,6 @@ export interface ExportPayload {
   appTheme?: AppThemeId;
   // v40 — calendar first-day-of-week preference (#320).
   weekStart?: WeekStart;
+  // v56 — user-defined web shortcuts for the Shortcuts widget (#344).
+  shortcuts?: WebShortcut[];
 }

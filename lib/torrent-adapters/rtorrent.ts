@@ -15,10 +15,14 @@ import {
   stopTorrents,
   eraseTorrents,
   addRtorrentTorrent,
+  addRtorrentTorrentFile,
 } from "@/services/rtorrent-api";
 import { RtorrentSpeedLimitsControl } from "@/components/rtorrent/speed-limits-control";
 import { applyFilterSort } from "@/lib/torrent-adapters/client-filter-sort";
+import { readTorrentFileBase64 } from "@/lib/torrent-file";
+import { TORRENT_ADD_MUTATION_KEY } from "@/lib/torrent-adapter";
 import type {
+  AddTorrentInput,
   TorrentAdapter,
   TorrentGlobalStats,
   TorrentListFilter,
@@ -132,15 +136,14 @@ export const rtorrentTorrentAdapter: TorrentAdapter = {
     const queryClient = useQueryClient();
     const { instanceId: id } = useInstanceTarget("rtorrent", instanceId);
     return useMutation({
-      mutationFn: ({
-        uri,
-        label,
-        savePath,
-      }: {
-        uri: string;
-        label?: string;
-        savePath?: string;
-      }) => addRtorrentTorrent(uri, { label, savePath }, id ?? undefined),
+      mutationKey: TORRENT_ADD_MUTATION_KEY,
+      mutationFn: async ({ uri, file, label, savePath }: AddTorrentInput) => {
+        if (file) {
+          const content = await readTorrentFileBase64(file.uri);
+          return addRtorrentTorrentFile(content, { label, savePath }, id ?? undefined);
+        }
+        return addRtorrentTorrent(uri, { label, savePath }, id ?? undefined);
+      },
       onSuccess: () => queryClient.invalidateQueries({ queryKey: ["rtorrent", id] }),
     });
   },

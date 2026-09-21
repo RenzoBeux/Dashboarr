@@ -81,12 +81,11 @@ export function useNetworkAutoSwitch() {
     // Auto-switch off → the flag is ignored by getActiveUrl; nothing to do.
     if (!autoSwitchNetwork) return;
 
-    // No effective home networks (none configured, or an empty custom
-    // selection) → we can never confirm "home" by SSID, so force the safe
-    // default (away → remote) rather than leaving a stale "home" flag that
-    // would use the private local URL off-network. The Home Networks screen
-    // warns the user. With treatVpnAsHome on, fall through instead: the VPN
-    // check can still confirm home, so we must evaluate and keep listening.
+    // No effective home networks for the active dashboard (none configured, or
+    // an empty custom selection) → we can never confirm "home" by SSID, so
+    // force the safe default (away → remote) rather than leaving a stale
+    // "home" flag that would use the private local URL off-network. The Home
+    // Networks screen warns the user.
     const { dashboards, activeDashboardId, homeNetworks } =
       useConfigStore.getState();
     const effective = resolveEffectiveHomeNetworks(
@@ -94,10 +93,15 @@ export function useNetworkAutoSwitch() {
       activeDashboardId,
       homeNetworks,
     );
-    if (effective.length === 0 && !treatVpnAsHome) {
+    if (effective.length === 0) {
       useConfigStore.getState().setNetworkAwayFromHome(true);
-      return;
     }
+    // Stop here only when NO dashboard has a network to match and the VPN
+    // check can't confirm home either. With networks on other dashboards we
+    // must still evaluate and keep listening: their instances are judged
+    // against their own selections via `currentWifi` (#418). With
+    // treatVpnAsHome on, the VPN check alone can confirm home.
+    if (homeNetworks.length === 0 && !treatVpnAsHome) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const evaluate = () => void evaluateHomeNetwork();

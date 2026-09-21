@@ -599,7 +599,13 @@ const DEMO_RADARR_CALENDAR = [
 
 // --- Sonarr ---
 
-function makeSeries(id: number, title: string, year: number, tvdbId: number) {
+function makeSeries(
+  id: number,
+  title: string,
+  year: number,
+  tvdbId: number,
+  tmdbId: number,
+) {
   return {
     id,
     title,
@@ -614,6 +620,9 @@ function makeSeries(id: number, title: string, year: number, tvdbId: number) {
     network: "HBO",
     year,
     tvdbId,
+    // Sonarr only exposes this from 4.0.5 on; the Seerr "Requested by" block
+    // keys on it (#378), so demo mode ships it like a current server would.
+    tmdbId,
     monitored: true,
     added: daysFromNowFull(-60),
     images: [],
@@ -629,12 +638,18 @@ function makeSeries(id: number, title: string, year: number, tvdbId: number) {
 }
 
 const DEMO_SONARR_SERIES = [
-  makeSeries(1, "House of the Dragon", 2022, 362696),
-  makeSeries(2, "The Last of Us", 2023, 392367),
-  makeSeries(3, "Fallout", 2024, 456789),
-  makeSeries(4, "Shogun", 2024, 345678),
-  makeSeries(5, "Severance", 2022, 403891),
+  makeSeries(1, "House of the Dragon", 2022, 362696, 94997),
+  makeSeries(2, "The Last of Us", 2023, 392367, 100088),
+  makeSeries(3, "Fallout", 2024, 456789, 106379),
+  makeSeries(4, "Shogun", 2024, 345678, 126308),
+  makeSeries(5, "Severance", 2022, 403891, 95396),
 ];
+
+// The embedded `series` object on a calendar row, queue record or manual-import
+// candidate: the same fixture the library list serves, so ids can never drift
+// between the two.
+const demoSeries = (id: number) =>
+  DEMO_SONARR_SERIES.find((series) => series.id === id)!;
 
 // Neutral episode titles, cycled per season. Demo mode needs a real episode
 // list so the series screen and manual import's season/episode pickers (#306)
@@ -692,7 +707,7 @@ const DEMO_SONARR_CALENDAR = [
     airDateUtc: daysFromNowFull(1),
     hasFile: false,
     monitored: true,
-    series: makeSeries(1, "House of the Dragon", 2022, 362696),
+    series: demoSeries(1),
   },
   {
     id: 202,
@@ -704,7 +719,7 @@ const DEMO_SONARR_CALENDAR = [
     airDateUtc: daysFromNowFull(2),
     hasFile: false,
     monitored: true,
-    series: makeSeries(2, "The Last of Us", 2023, 392367),
+    series: demoSeries(2),
   },
   {
     id: 203,
@@ -716,7 +731,7 @@ const DEMO_SONARR_CALENDAR = [
     airDateUtc: daysFromNowFull(3),
     hasFile: false,
     monitored: true,
-    series: makeSeries(3, "Fallout", 2024, 456789),
+    series: demoSeries(3),
   },
   {
     id: 204,
@@ -728,7 +743,7 @@ const DEMO_SONARR_CALENDAR = [
     airDateUtc: daysFromNowFull(5),
     hasFile: false,
     monitored: true,
-    series: makeSeries(5, "Severance", 2022, 403891),
+    series: demoSeries(5),
   },
 ];
 
@@ -751,7 +766,7 @@ const DEMO_SONARR_QUEUE = {
       estimatedCompletionTime: daysFromNowFull(0.03),
       protocol: "torrent",
       quality: { quality: { name: "WEBDL-1080p" } },
-      series: makeSeries(3, "Fallout", 2024, 456789),
+      series: demoSeries(3),
     },
     // Finished downloading but Sonarr refuses to import it — drives the import
     // issues banner (#285) and its Force import action (#325); the downloadId
@@ -778,7 +793,7 @@ const DEMO_SONARR_QUEUE = {
       protocol: "torrent",
       downloadId: "DEMO-FALLOUT-S01E07",
       quality: { quality: { name: "WEBDL-1080p" } },
-      series: makeSeries(3, "Fallout", 2024, 456789),
+      series: demoSeries(3),
     },
   ],
 };
@@ -792,7 +807,7 @@ const DEMO_SONARR_MANUAL_IMPORT = [
     relativePath: "fallout.s01e07.1080p.mkv",
     folderName: "Fallout.S01E07.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
     size: 2952790016,
-    series: makeSeries(3, "Fallout", 2024, 456789),
+    series: demoSeries(3),
     seasonNumber: 1,
     episodes: [{ id: 3107 }],
     episodeFileId: 0,
@@ -966,12 +981,15 @@ const DEMO_LIDARR_WANTED = {
 
 // --- Overseerr ---
 
+// The tmdbIds match DEMO_RADARR_MOVIES / DEMO_SONARR_SERIES so the movie and
+// series detail screens can resolve a "Requested by" row from them (#378).
 const DEMO_OVERSEERR_REQUESTS = {
   pageInfo: { pages: 1, pageSize: 10, results: 3, page: 1 },
   results: [
     {
       id: 1,
       status: 1,
+      is4k: false,
       media: { id: 101, mediaType: "movie", tmdbId: 779782, status: 3, createdAt: daysFromNowFull(-2), updatedAt: daysFromNowFull(-1) },
       createdAt: daysFromNowFull(-2),
       updatedAt: daysFromNowFull(-1),
@@ -980,7 +998,8 @@ const DEMO_OVERSEERR_REQUESTS = {
     {
       id: 2,
       status: 1,
-      media: { id: 102, mediaType: "tv", tmdbId: 456789, status: 2, createdAt: daysFromNowFull(-3), updatedAt: daysFromNowFull(-3) },
+      is4k: false,
+      media: { id: 102, mediaType: "tv", tmdbId: 106379, tvdbId: 456789, status: 2, createdAt: daysFromNowFull(-3), updatedAt: daysFromNowFull(-3) },
       createdAt: daysFromNowFull(-3),
       updatedAt: daysFromNowFull(-3),
       requestedBy: { id: 2, displayName: "Sarah Connor" },
@@ -988,6 +1007,7 @@ const DEMO_OVERSEERR_REQUESTS = {
     {
       id: 3,
       status: 2,
+      is4k: true,
       media: { id: 103, mediaType: "movie", tmdbId: 545611, status: 5, createdAt: daysFromNowFull(-7), updatedAt: daysFromNowFull(-5) },
       createdAt: daysFromNowFull(-7),
       updatedAt: daysFromNowFull(-5),
@@ -996,6 +1016,43 @@ const DEMO_OVERSEERR_REQUESTS = {
     },
   ],
 };
+
+/**
+ * The TMDB id in `/movie/{id}` or `/tv/{id}`, or null when the path is a
+ * sub-route of one (`/movie/{id}/recommendations`, `/tv/{id}/season/1`) that
+ * these fixtures do not answer.
+ */
+function seerrTmdbIdFromPath(path: string, prefix: string): number | null {
+  if (!path.startsWith(prefix)) return null;
+  const rest = path.slice(prefix.length);
+  return /^\d+$/.test(rest) ? Number(rest) : null;
+}
+
+/**
+ * The `mediaInfo` a details call carries for a title demo mode "tracks": the
+ * matching rows from DEMO_OVERSEERR_REQUESTS, shaped the way Seerr's
+ * Media.getMedia does (#378). An untracked tmdbId gets no mediaInfo at all,
+ * which is exactly how a hand-added movie behaves against a real server.
+ */
+function demoSeerrMediaInfo(mediaType: "movie" | "tv", tmdbId: number) {
+  const requests = DEMO_OVERSEERR_REQUESTS.results.filter(
+    (r) => r.media.mediaType === mediaType && r.media.tmdbId === tmdbId,
+  );
+  if (requests.length === 0) return {};
+  return {
+    mediaInfo: {
+      id: requests[0]!.media.id,
+      status: requests[0]!.media.status,
+      requests: requests.map((r) => ({
+        id: r.id,
+        status: r.status,
+        is4k: r.is4k,
+        createdAt: r.createdAt,
+        requestedBy: r.requestedBy,
+      })),
+    },
+  };
+}
 
 // The accounts behind the requests above, for the "Request As" pickers (#332).
 const DEMO_OVERSEERR_USERS = {
@@ -1953,9 +2010,19 @@ const DEMO_GLANCES_PERCPU = [
   { cpu_number: 3, total: 28.9, user: 18.6, system: 9.1, idle: 71.1 },
 ];
 const DEMO_GLANCES_LOAD = { min1: 3.42, min5: 2.87, min15: 2.61, cpucore: 8 };
+// Device names match DEMO_UNRAID_ARRAY/DEMO_UNRAID_DISKS so the unRAID disk
+// rows light up too (they look I/O up by device). sdd is the hot one — heavy
+// reads, light writes, the "something is hammering the array" picture. sdf/sdg
+// are deliberately absent: they're the spun-down demo disks. sde1 is a
+// partition, which a real /diskio payload always carries next to its whole
+// disk and which must never be mistaken for one.
 const DEMO_GLANCES_DISKIO = [
   { disk_name: "sda", read_bytes: 4096000, write_bytes: 1048576, read_count: 128, write_count: 32, time_since_update: 1 },
   { disk_name: "sdb", read_bytes: 20971520, write_bytes: 8388608, read_count: 512, write_count: 256, time_since_update: 1 },
+  { disk_name: "sdd", read_bytes: 148897792, write_bytes: 2097152, read_count: 3634, write_count: 64, time_since_update: 1 },
+  { disk_name: "sde", read_bytes: 6291456, write_bytes: 524288, read_count: 192, write_count: 16, time_since_update: 1 },
+  { disk_name: "sde1", read_bytes: 6291456, write_bytes: 524288, read_count: 192, write_count: 16, time_since_update: 1 },
+  { disk_name: "nvme0n1", read_bytes: 12582912, write_bytes: 41943040, read_count: 384, write_count: 1280, time_since_update: 1 },
 ];
 const DEMO_GLANCES_NET = [
   { interface_name: "eth0", is_up: true, bytes_recv: 8650752, bytes_sent: 1153024, bytes_recv_rate_per_sec: 8650752, bytes_sent_rate_per_sec: 1153024, speed: 1000000000, time_since_update: 1 },
@@ -3855,8 +3922,32 @@ export function getDemoResponse(
       if (normalized.startsWith("/request")) return DEMO_OVERSEERR_REQUESTS;
       if (normalized.startsWith("/search")) return DEMO_OVERSEERR_SEARCH;
       if (normalized.startsWith("/discover")) return DEMO_OVERSEERR_SEARCH;
-      if (normalized.startsWith("/movie/")) return { id: 779782, title: "Deadpool & Wolverine", posterPath: "", releaseDate: "2024-07-26" };
-      if (normalized.startsWith("/tv/")) return { id: 114472, name: "Fallout", posterPath: "", firstAirDate: "2024-04-11" };
+      {
+        // basePath, not `normalized`: the router rewrites a trailing numeric
+        // segment to "/:id", which is exactly the id these two need.
+        const movieId = seerrTmdbIdFromPath(basePath, "/movie/");
+        if (movieId !== null) {
+          const movie = DEMO_RADARR_MOVIES.find((m) => m.tmdbId === movieId);
+          return {
+            id: movieId || 779782,
+            title: movie?.title ?? "Deadpool & Wolverine",
+            posterPath: "",
+            releaseDate: `${movie?.year ?? 2024}-07-26`,
+            ...demoSeerrMediaInfo("movie", movieId),
+          };
+        }
+        const tvId = seerrTmdbIdFromPath(basePath, "/tv/");
+        if (tvId !== null) {
+          const series = DEMO_SONARR_SERIES.find((x) => x.tmdbId === tvId);
+          return {
+            id: tvId || 106379,
+            name: series?.title ?? "Fallout",
+            posterPath: "",
+            firstAirDate: `${series?.year ?? 2024}-04-11`,
+            ...demoSeerrMediaInfo("tv", tvId),
+          };
+        }
+      }
       if (normalized.startsWith("/status")) return { version: "2.2.0", commitTag: "HEAD" };
       if (normalized.startsWith("/user")) return DEMO_OVERSEERR_USERS;
       return undefined;

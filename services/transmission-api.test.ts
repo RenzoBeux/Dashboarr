@@ -26,6 +26,7 @@ import {
   getTransmissionGlobalStats,
   getTransmissionSession,
   getTransmissionTorrent,
+  addTransmissionTorrentFile,
 } from "@/services/transmission-api";
 
 // Exercises the full Transmission read path end-to-end in demo mode: the api
@@ -230,5 +231,31 @@ describe("transmission-api (Digest + CSRF)", () => {
     expect(headerOf(replay, "authorization")).toMatch(/^Digest /);
     expect(headerOf(replay, "authorization")).toContain("nc=00000002");
     expect(headerOf(replay, "x-transmission-session-id")).toBe("sid-1");
+  });
+
+  // Runs after the Digest test on purpose: it leaves the session id cached, so
+  // the fetch stub answers by request shape instead of a fixed sequence.
+  it("add-file sends torrent-add with metainfo (base64) instead of filename", async () => {
+    fetchSpy.mockImplementation(async (_url: string, init: RequestInit) => {
+      const h = init.headers as Headers;
+      if (!(h.get("authorization") ?? "").startsWith("Digest ")) return challenge();
+      if (!h.get("x-transmission-session-id")) return csrf();
+      return sessionOk();
+    });
+
+    await addTransmissionTorrentFile("ZDg6YW5ub3VuY2Vl", {
+      label: "movies",
+      savePath: "/data",
+    });
+    const last = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1];
+    const body = JSON.parse(last[1].body as string);
+    expect(body.method).toBe("torrent-add");
+    expect(body.arguments).toEqual({
+      metainfo: "ZDg6YW5ub3VuY2Vl",
+      paused: false,
+      "download-dir": "/data",
+      labels: ["movies"],
+    });
+    expect(body.arguments.filename).toBeUndefined();
   });
 });
