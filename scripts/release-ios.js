@@ -129,6 +129,23 @@ function findAppStoreProfile(teamId, bundleId) {
   return null;
 }
 
+function ensureXcodeLicenseAccepted() {
+  // A fresh Xcode install (or a major upgrade) leaves the license unaccepted.
+  // Every developer tool then exits non-zero, including `pod --version` — and
+  // `expo prebuild` reads that as "CocoaPods is not installed", tries to install
+  // it via gem and brew, fails both, and continues without running `pod install`.
+  // The archive then dies on a missing .xcworkspace, three steps away from the
+  // real cause. Probe a tool that surfaces the license error and stop here.
+  const probe = capture("/usr/bin/xcrun", ["clang", "--version"]);
+  const out = `${probe.stdout}\n${probe.stderr}`;
+  if (probe.status !== 0 && /license/i.test(out)) {
+    die(
+      "Xcode license has not been accepted, so no developer tool (clang, pod, xcodebuild) can run.",
+      "Run this once, then re-run the release:\n  sudo xcodebuild -license accept"
+    );
+  }
+}
+
 function ensureCodesignCanAccessKeys() {
   // Probe codesign on a tiny Mach-O with a real signing identity. If the keychain is
   // locked or the private keys' ACL doesn't grant `codesign` access, this fails with
@@ -284,10 +301,16 @@ function patchPbxprojSigning(teamId, profileName) {
   // Release AND that contains our app's PRODUCT_BUNDLE_IDENTIFIER (which is
   // only set on the target's own configs, never on project-level configs).
   const blockRe = /([0-9A-F]{24} \/\* (?:Debug|Release) \*\/ = \{\s*isa = XCBuildConfiguration;[\s\S]*?\n\t\t\tname = (\w+);\n\t\t\};)/g;
+  // The bundle id may be written bare or quoted depending on the prebuild
+  // template version (`= com.dashboarr.app;` vs `= "com.dashboarr.app";`) —
+  // accept both, or the patch silently finds nothing and the script dies.
+  const bundleIdRe = new RegExp(
+    `PRODUCT_BUNDLE_IDENTIFIER = "?${BUNDLE_ID.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"?;`
+  );
   let injections = 0;
   content = content.replace(blockRe, (block, _id, configName) => {
     if (configName !== "Release") return block;
-    if (!block.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID}`)) return block;
+    if (!bundleIdRe.test(block)) return block;
     if (block.includes("PROVISIONING_PROFILE_SPECIFIER")) return block;
     const inject =
       `\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";\n` +
@@ -357,6 +380,10 @@ async function main() {
   log(`Team ID:   ${cfg.teamId}`);
   if (FLAGS.noUpload) log("--no-upload set: will stop after IPA export.");
   if (FLAGS.skipPrebuild) log("--skip-prebuild set: reusing existing ios/ folder.");
+
+  // Nothing below works until the Xcode license is accepted, and the failure
+  // it produces downstream is deeply misleading. Check it first.
+  ensureXcodeLicenseAccepted();
 
   // Locate the App Store profile we'll pin manual signing to. Doing this
   // up-front (before prebuild) lets us fail fast if it isn't installed.
