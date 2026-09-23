@@ -203,6 +203,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "./plugins/withGradleJvmArgs",
     "./plugins/withInsecureTls",
     "./plugins/withPodsDeploymentTarget",
+    "./plugins/withSceneLifecycle",
     [
       "expo-location",
       {
