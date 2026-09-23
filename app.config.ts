@@ -98,6 +98,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       // copied into Documents/Inbox and arrive as a file:// URL, which
       // app/+native-intent.ts routes to the Downloads add card. Native
       // config: needs a new binary, not an OTA update.
+      // Declaring document types makes App Store Connect require an explicit
+      // open-in-place choice (ITMS-90737). NO keeps the Inbox-copy behavior
+      // above; YES would hand us the original file, which needs
+      // security-scoped access the add flow doesn't do.
+      LSSupportsOpeningDocumentsInPlace: false,
       CFBundleDocumentTypes: [
         {
           CFBundleTypeName: "BitTorrent Document",
