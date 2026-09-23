@@ -107,7 +107,7 @@ If you're running a de-Googled Android (GrapheneOS, LineageOS, /e/OS, etc.) or j
 2. Open it on your device — Android will prompt you to allow installs from your browser/file manager
 3. Updates are **manual**: there is no in-app updater for sideloaded installs, so check the Releases page periodically (or watch the repo)
 
-The APK is signed with the same keystore as the Play Store build, so you can install it side-by-side or migrate from Play without losing data — but you cannot mix the two on the same device.
+The APK is signed with a different key than the Play Store build, so the two can't update over each other. To switch between them, export your config from Settings, uninstall the current app, install the other one, then import the backup.
 
 ## Getting Started
 
