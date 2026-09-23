@@ -197,6 +197,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "./plugins/withFmtConstevalFix",
     "./plugins/withGradleJvmArgs",
     "./plugins/withInsecureTls",
+    "./plugins/withPodsDeploymentTarget",
     [
       "expo-location",
       {
