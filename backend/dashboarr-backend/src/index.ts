@@ -11,7 +11,6 @@ import { getDb, closeDb } from "./db/client.js";
 import { ensureActiveToken, purgeExpiredTokens } from "./auth/pairing-tokens.js";
 import { getWebhookSecret } from "./db/repos/settings.js";
 import { isEncryptionEnabled } from "./crypto/secrets.js";
-import { SERVICE_IDS } from "./types.js";
 import { VERSION } from "./version.js";
 import { initScheduler, getScheduler } from "./workers/scheduler.js";
 import { healthRoutes } from "./routes/health.js";
@@ -43,6 +42,12 @@ const BANNER = `
 ===============================================================================
 `;
 
+// Services with a registered handler under /webhooks/:service — keep in sync
+// with the scope.register(...Webhook) calls below. Anything not listed here
+// has no route, so it's left out of webhook-urls.txt rather than printing a
+// URL that would just 404.
+const WEBHOOK_SERVICE_IDS = ["radarr", "sonarr", "overseerr", "bazarr", "tautulli", "tracearr"] as const;
+
 async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise<string> {
   const webhookSecret = getWebhookSecret();
   const webhookBase = `${publicUrl}/webhooks`;
@@ -56,8 +61,7 @@ async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise
     "#",
     "# Back-compat — secret in the URL path (works with services that can't send custom headers):",
   ];
-  for (const id of SERVICE_IDS) {
-    if (id === "qbittorrent" || id === "transmission" || id === "deluge" || id === "prowlarr" || id === "plex" || id === "jellyfin" || id === "emby" || id === "glances" || id === "autobrr" || id === "cleanuparr" || id === "nzbhydra2" || id === "navidrome") continue;
+  for (const id of WEBHOOK_SERVICE_IDS) {
     lines.push(`${id.padEnd(10)} ${webhookBase}/${id}/${webhookSecret}`);
   }
   const content = lines.join("\n") + "\n";
@@ -175,6 +179,7 @@ async function main(): Promise<void> {
   // used to flood notifications.
   await app.register(async (scope) => {
     await scope.register(rateLimit, { max: 60, timeWindow: "1 minute" });
+    // Keep this list in sync with WEBHOOK_SERVICE_IDS above.
     await radarrWebhook(scope);
     await sonarrWebhook(scope);
     await overseerrWebhook(scope);

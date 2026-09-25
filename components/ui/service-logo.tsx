@@ -22,6 +22,11 @@ import PiholeLogo from "@/assets/services/pihole.svg";
 // <style>/CSS-class styling, so it needed no edits before landing here — see
 // the comment on assets/services/adguard.svg.
 import AdguardLogo from "@/assets/services/adguard.svg";
+// Beszel's own "B" favicon/site-icon mark (MIT, henrygd/beszel
+// internal/site/public/static/icon.svg). Gradient-filled with no
+// <style>/CSS-class styling, so only its non-square viewBox needed padding —
+// see the comment on assets/services/beszel.svg.
+import BeszelLogo from "@/assets/services/beszel.svg";
 
 const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   qbittorrent: QbittorrentLogo,
@@ -35,6 +40,7 @@ const SVG_LOGOS: Partial<Record<ServiceId, ComponentType<SvgProps>>> = {
   unraid: UnraidLogo,
   pihole: PiholeLogo,
   adguard: AdguardLogo,
+  beszel: BeszelLogo,
 };
 
 const PNG_LOGOS: Partial<Record<ServiceId, number>> = {

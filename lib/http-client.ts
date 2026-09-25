@@ -489,6 +489,11 @@ export async function serviceRequest<T>(
     // instance (store/config-store.ts's updateInstanceSecrets MERGES rather
     // than replaces) never falls through to the X-Api-Key default below —
     // same reasoning as the Pi-hole branch above.
+  } else if (serviceId === "beszel") {
+    // Beszel's credential is a PocketBase bearer token, not a key:
+    // services/beszel-api.ts owns login and the Authorization header
+    // entirely and never routes data requests through this generic path.
+    // Same stale-apiKey guard as the Pi-hole/AdGuard branches above.
   } else if (serviceId === "overseerr") {
     if (seerrUsesSession(seerrAuthMode(inst))) {
       // A sign-in mode (#332): the session rides the platform cookie jar,
@@ -711,6 +716,13 @@ export async function pingService(
     // session anyway — and must not send a stale X-Api-Key. Health for AdGuard
     // Home goes through adguardHealthCheck (services/adguard-api.ts) instead,
     // the same bypass hooks/use-service-health.ts already does for qBittorrent.
+  } else if (serviceId === "beszel") {
+    // pingPath (/health) is PocketBase's own anonymous route — confirmed live
+    // to answer 200 with or without credentials — so it needs, and can
+    // validate, no auth. checkInstanceHealth's generic path already covers
+    // real credential validation via runConnectionProbe's "beszel" case
+    // (a real login POST), so no health-hook bypass is needed here, unlike
+    // qBittorrent/AdGuard. Just don't send a stale X-Api-Key.
   } else if (serviceId !== "qbittorrent") {
     if (secrets.apiKey) headers.set("X-Api-Key", secrets.apiKey);
   }
@@ -2450,6 +2462,37 @@ async function runConnectionProbe(
           kind: "auth_failed",
           message: body.trim() || "Wrong username or password",
         };
+      }
+      if (res.ok) return { kind: "ok" };
+      return { kind: "unreachable", message: `Unexpected status ${res.status}` };
+    }
+
+    case "beszel": {
+      // PocketBase auth-with-password (the qBittorrent/AdGuard shape: login
+      // endpoint + bearer token, never HTTP Basic). Wrong credentials answer
+      // 400 with {message}, NOT 401 — confirmed live against a v0.19.0 hub.
+      // Try `_superusers` first (the setup-wizard admin account, bypasses
+      // per-system sharing rules), falling back to `users` on a 400 since a
+      // hub may only grant a non-admin account — see lib/beszel-session.ts.
+      const tryLogin = (collection: "_superusers" | "users") =>
+        fetch(buildUrl(baseUrl, defaults.apiBasePath, `/collections/${collection}/auth-with-password`), {
+          method: "POST",
+          headers: makeHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ identity: username, password }),
+          signal,
+        });
+
+      let res = await tryLogin("_superusers");
+      if (res.status >= 500)
+        return { kind: "unreachable", message: `Server error ${res.status}` };
+      if (res.status === 400) {
+        res = await tryLogin("users");
+        if (res.status >= 500)
+          return { kind: "unreachable", message: `Server error ${res.status}` };
+      }
+      if (res.status === 400) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null;
+        return { kind: "auth_failed", message: body?.message || "Wrong email or password" };
       }
       if (res.ok) return { kind: "ok" };
       return { kind: "unreachable", message: `Unexpected status ${res.status}` };

@@ -23,6 +23,7 @@ import { qbClearSession } from "@/services/qbittorrent-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
 import { piholeClearSession } from "@/services/pihole-api";
 import { adguardClearSession } from "@/services/adguard-api";
+import { beszelClearSession } from "@/services/beszel-api";
 import { seerrClearSession } from "@/services/overseerr-api";
 import { SERVICE_IDS, type ServiceId } from "@/lib/constants";
 
@@ -130,6 +131,11 @@ function KindInstances({
     if (kind === "overseerr") {
       // Log a signed-in Seerr account out before its credentials go away.
       await seerrClearSession(instanceId);
+    }
+    if (kind === "beszel") {
+      // Drop any cached Beszel PocketBase token for the deleted instance
+      // before its SecureStore row goes away.
+      beszelClearSession(instanceId);
     }
     await removeInstance(kind, instanceId);
   };

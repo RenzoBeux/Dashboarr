@@ -3815,3 +3815,140 @@ export interface MaintainerrCollectionMedia {
   sizeBytes: number | null;
   isManual: boolean;
 }
+
+// --- Beszel Types ---
+// Beszel (github.com/henrygd/beszel) is a hub-and-agent server monitor: one
+// hub aggregates metrics for many monitored "systems" via a PocketBase-backed
+// REST API. Auth is PocketBase's own POST /api/collections/{_superusers|
+// users}/auth-with-password → {token, record}, sent back as a raw (unprefixed)
+// Authorization header — see lib/beszel-session.ts. Field shapes below are
+// verified against henrygd/beszel@main's internal/entities/system/system.go
+// json tags AND a live v0.19.0 hub (see lib/beszel-normalize.ts for why the
+// wire keys are this terse — space-optimized, not typos).
+
+/** GET /api/collections/systems/records item — one monitored system. */
+export interface BeszelSystemRecord {
+  id: string;
+  name: string;
+  status: "up" | "down" | "paused" | "pending";
+  host: string;
+  port?: string;
+  info: BeszelInfoWire;
+  created: string;
+  updated: string;
+}
+
+/**
+ * The terse wire shape of `systems.info` (system.Info in Go), the live
+ * per-system snapshot embedded directly in the systems list response — no
+ * extra request needed. Every field is exactly as Beszel serializes it; do
+ * not rename these to descriptive keys here, that's what
+ * normalizeBeszelInfo() in lib/beszel-normalize.ts is for.
+ */
+export interface BeszelInfoWire {
+  h?: string; // Hostname
+  k?: string; // KernelVersion
+  c?: number; // Cores
+  t?: number; // Threads
+  m?: string; // CpuModel
+  u: number; // Uptime, seconds
+  cpu: number; // Cpu %
+  mp: number; // MemPct
+  dp: number; // DiskPct
+  v: string; // AgentVersion
+  p?: boolean; // Podman
+  g?: number; // GpuPct
+  dt?: number; // DashboardTemp, °C
+  os?: 0 | 1 | 2 | 3; // 0=Linux 1=Darwin 2=Windows 3=Freebsd
+  bb: number; // BandwidthBytes
+  la?: [number, number, number]; // LoadAvg 1/5/15
+  ct?: 0 | 1 | 2; // ConnectionType: none/SSH/WebSocket
+  efs?: Record<string, number>; // ExtraFsPct, mount name -> percent
+  sv?: [number, number]; // Services [total, failed]
+  bat?: [number, number]; // Battery [percent, chargeState]
+  rdn?: string; // RootDiskName
+}
+
+/** GET /api/collections/system_stats/records item — one historical rollup. */
+export interface BeszelSystemStatsRecord {
+  id: string;
+  system: string;
+  type: "1m" | "10m" | "20m" | "120m" | "480m";
+  stats: BeszelStatsWire;
+  created: string;
+}
+
+/**
+ * The terse wire shape of `system_stats.stats` (system.Stats in Go) — richer
+ * than BeszelInfoWire. Only the fields the app actually reads are typed here;
+ * unlisted keys (bat, ni, dio, cpub, cpus, dios, f, bats, z, diot, s, su, mb,
+ * mz) exist on the wire but nothing renders them yet.
+ */
+export interface BeszelStatsWire {
+  cpu: number; // Cpu %
+  m: number; // Mem, GB
+  mu: number; // MemUsed, GB
+  mp: number; // MemPct
+  d: number; // DiskTotal, GB
+  du: number; // DiskUsed, GB
+  dp: number; // DiskPct
+  dr?: number; // DiskReadPs
+  dw?: number; // DiskWritePs
+  ns?: number; // NetworkSent
+  nr?: number; // NetworkRecv
+  t?: Record<string, number>; // Temperatures, sensor name -> celsius
+  la?: [number, number, number]; // LoadAvg 1/5/15
+  g?: Record<string, BeszelGpuWire>; // GPUData, gpu id -> reading
+}
+
+export interface BeszelGpuWire {
+  n: string; // Name
+  u: number; // Usage %
+  p?: number; // Power
+}
+
+/**
+ * GET /api/collections/containers/records item. Unlike the two shapes above,
+ * the hub flattens this to descriptive field names on ingestion — verified
+ * live, no terse-key translation needed. `updated` is the one inconsistency:
+ * numeric epoch-ms here, an ISO string everywhere else.
+ */
+export interface BeszelContainerRecord {
+  id: string;
+  system: string;
+  name: string;
+  status: string; // free text, e.g. "Up 11 minutes"
+  health: 0 | 1 | 2 | 3; // none/starting/healthy/unhealthy
+  cpu: number; // %
+  memory: number; // MB
+  net: number; // bytes
+  image: string;
+  ports: string;
+  updated: number; // epoch ms
+}
+
+/** Normalized shape the UI actually renders — see lib/beszel-normalize.ts. */
+export interface BeszelSystem {
+  id: string;
+  name: string;
+  status: "up" | "down" | "paused" | "pending";
+  host: string;
+  cpuPct: number;
+  memPct: number;
+  diskPct: number;
+  gpuPct?: number;
+  uptimeSeconds: number;
+  loadAvg?: [number, number, number];
+  agentVersion: string;
+  dashboardTempC?: number;
+  hostname?: string;
+}
+
+/** Normalized chart-friendly point derived from a BeszelSystemStatsRecord. */
+export interface BeszelStatsPoint {
+  createdAt: string;
+  cpuPct: number;
+  memPct: number;
+  diskPct: number;
+  loadAvg1?: number;
+}

@@ -176,6 +176,20 @@ function applyAuth(
     // concept of.
     return;
   }
+  if (id === "beszel") {
+    // Beszel's credential is a PocketBase login (POST
+    // /api/collections/{_superusers|users}/auth-with-password -> a bearer
+    // token), not a static header, and the backend never performs that login:
+    // the app already validates it on every poll, so duplicating the check
+    // here would just be a second copy of the admin password sitting in the
+    // backend's SQLite for no new signal (mirrors Pi-hole/AdGuard, which
+    // deliberately don't share credentials with the backend either). The
+    // backend only ever pings /api/health for reachability (PocketBase's own
+    // anonymous health route, see SERVICE_PING_PATH), so there is nothing to
+    // send here — and it must NOT fall through to the X-Api-Key default
+    // below, which Beszel has no concept of.
+    return;
+  }
   if (config.apiKey) {
     headers.set("X-Api-Key", config.apiKey);
   }

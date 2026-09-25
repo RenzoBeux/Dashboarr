@@ -29,6 +29,7 @@ export const SERVICE_IDS = [
   "pihole",
   "maintainerr",
   "adguard",
+  "beszel",
 ] as const;
 
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -293,6 +294,22 @@ export const SERVICE_DEFAULTS: Record<
     apiBasePath: "/control",
     pingPath: "/status",
   },
+  // Beszel is a hub+agent server monitor backed by PocketBase — one hub
+  // fans out to many monitored "systems" (see lib/types.ts's Beszel section
+  // and services/beszel-api.ts). Auth is a PocketBase auth-token session
+  // (POST /api/collections/{_superusers|users}/auth-with-password), the
+  // qBittorrent/AdGuard shape (login endpoint + bearer token), so no
+  // httpAuth flag — see lib/beszel-session.ts. pingPath is PocketBase's own
+  // anonymous /api/health (confirmed live: 200 with or without credentials),
+  // a fine reachability check but no credential probe — that's
+  // runConnectionProbe's "beszel" case in lib/http-client.ts, which POSTs
+  // the login itself.
+  beszel: {
+    name: "Beszel",
+    defaultPort: 8090,
+    apiBasePath: "/api",
+    pingPath: "/health",
+  },
 };
 
 export const POLLING_INTERVALS = {
@@ -357,6 +374,7 @@ export const DASHBOARD_WIDGET_IDS = [
   "pihole-top-blocked",
   "adguard-status",
   "adguard-top-blocked",
+  "beszel-systems",
 ] as const;
 
 export type WidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];

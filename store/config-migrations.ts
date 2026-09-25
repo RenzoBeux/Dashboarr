@@ -209,8 +209,13 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() backfills a disabled adguard instance at import.
  *   v56 — added optional `shortcuts: WebShortcut[]` (#344): user-defined web
  *         links rendered by the Shortcuts dashboard widget. Absent means none.
+ *   v57 — optional per-instance `diskIoInstanceId` on ServiceConfig (the
+ *         unRAID → Glances disk I/O pairing, #386). Pure version stamp —
+ *         absence means no I/O is shown, which is the pre-v57 behavior.
+ *   v58 — added the beszel service entry. Pure version stamp —
+ *         defaultInstances() backfills a disabled beszel instance at import.
  */
-export const CURRENT_CONFIG_VERSION = 57;
+export const CURRENT_CONFIG_VERSION = 58;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -781,6 +786,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // unRAID → Glances disk I/O pairing, #386). Pure version stamp — absence
   // means no I/O is shown, which is the pre-v57 behavior.
   56: (payload) => ({ ...payload, version: 57 }),
+  // v57 → v58: added the beszel service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled beszel instance at import.
+  57: (payload) => ({ ...payload, version: 58 }),
 };
 
 /**

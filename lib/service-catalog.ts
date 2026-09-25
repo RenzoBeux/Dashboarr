@@ -271,6 +271,18 @@ export const SERVICE_CATALOG: Record<ServiceId, ServiceCatalogEntry> = {
     apiKeyHint: "Settings > Management Access",
     authShape: "apiKey",
   },
+  // Beszel authenticates with the same email + password used to sign into
+  // its own web UI, exchanged for a PocketBase auth token (see
+  // lib/beszel-session.ts) — userPass, NOT httpAuth: the credential is
+  // POSTed to a login endpoint and comes back as a bearer token, never HTTP
+  // Basic. See the ServiceAuthShape warning above.
+  beszel: {
+    category: "monitoring",
+    tagline: "Hub server monitoring",
+    keywords: ["cpu", "ram", "system", "server", "docker", "hub", "agent"],
+    authShape: "userPass",
+    apiKeyHint: "the account you use to sign into the Beszel hub web UI",
+  },
 
   // --- Network ---
   // Pi-hole has ONE web password and no username at all (FTL's POST /api/auth

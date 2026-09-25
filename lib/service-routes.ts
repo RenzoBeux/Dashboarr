@@ -42,4 +42,5 @@ export const SERVICE_ROUTES: Partial<Record<ServiceId, string>> = {
   pihole: "/(tabs)/pihole",
   maintainerr: "/(tabs)/maintainerr",
   adguard: "/(tabs)/adguard",
+  beszel: "/(tabs)/beszel",
 };
