@@ -141,6 +141,44 @@ describe("getSystems / retry backstop", () => {
     expect(loginCalls).toHaveLength(1);
   });
 
+  it("keeps the empty result when the auth-refresh confirmation itself fails", async () => {
+    // The list GET succeeded; only the secondary confirmation call broke. A
+    // transient 5xx there must not turn a good (empty) response into an error,
+    // and must not trigger a re-login either — the next poll confirms again.
+    let listCalls = 0;
+    const { calls } = fetchMock(({ url }) => {
+      if (url.includes("auth-with-password")) return jsonResponse(200, { token: "tok-1" });
+      if (url.includes("auth-refresh")) return jsonResponse(503, { message: "temporarily down" });
+      listCalls += 1;
+      return jsonResponse(200, page([]));
+    });
+
+    await getSystems(INSTANCE);
+    await expect(getSystems(INSTANCE)).resolves.toEqual([]);
+
+    expect(listCalls).toBe(2);
+    expect(calls.filter((c) => c.url.includes("auth-refresh"))).toHaveLength(1);
+    expect(calls.filter((c) => c.url.includes("auth-with-password"))).toHaveLength(1);
+  });
+
+  it("keeps the empty result when the auth-refresh confirmation cannot connect", async () => {
+    let listCalls = 0;
+    global.fetch = jest.fn((url: string) => {
+      if (String(url).includes("auth-with-password")) {
+        return Promise.resolve(jsonResponse(200, { token: "tok-1" }));
+      }
+      if (String(url).includes("auth-refresh")) {
+        return Promise.reject(new TypeError("Network request failed"));
+      }
+      listCalls += 1;
+      return Promise.resolve(jsonResponse(200, page([])));
+    }) as unknown as typeof fetch;
+
+    await getSystems(INSTANCE);
+    await expect(getSystems(INSTANCE)).resolves.toEqual([]);
+    expect(listCalls).toBe(2);
+  });
+
   it("drops the session and retries with a fresh login when auth-refresh says the token is invalid", async () => {
     let loginCount = 0;
     let listCount = 0;

@@ -160,7 +160,8 @@ async function beszelFetch<T>(
  * token-validity check: 200 with a renewed token when the token is still
  * good, 404 when it is not (see `apis/record_auth_refresh.go` upstream).
  * Used by the reactive backstop below to get an unambiguous answer instead
- * of guessing from an empty list result.
+ * of guessing from an empty list result. Any other status throws, and the
+ * backstop treats that as "could not confirm" rather than as a verdict.
  */
 async function beszelAuthRefresh(
   instanceId: string,
@@ -193,7 +194,8 @@ async function beszelAuthRefresh(
  * confirm the token itself via auth-refresh: only a confirmed-invalid token
  * triggers a fresh login + retry, and a confirmed-valid one keeps the empty
  * result as-is. A token that was ALREADY fresh returning zero is trusted
- * outright — it just logged in, so a second check would be redundant.
+ * outright — it just logged in, so a second check would be redundant, and so
+ * is one whose confirmation call could not be completed.
  */
 async function beszelListRequest<T>(
   instanceId: string | undefined,
@@ -212,13 +214,21 @@ async function beszelListRequest<T>(
   const first = await getBeszelToken(id, () => beszelLogin(id));
   const result = await beszelFetch<BeszelPageResponse<T>>(id, path, params, first.token);
   if (result.totalItems === 0 && !first.fresh) {
-    const renewed = await beszelAuthRefresh(id, first.authCollection, first.token);
+    // Three outcomes: a renewed token (the cached one is good), `null` (a 404,
+    // the token is definitively invalid), or `undefined` when the confirmation
+    // call itself failed. That last one must NOT throw away the list response
+    // already in hand — the GET succeeded, and an unconfirmed empty result is
+    // strictly better than surfacing an error for a transient 5xx on a
+    // secondary request. The next poll confirms again.
+    const renewed = await beszelAuthRefresh(id, first.authCollection, first.token).catch(
+      () => undefined,
+    );
     if (renewed === null) {
       dropBeszelSession(id);
       const retry = await getBeszelToken(id, () => beszelLogin(id));
       return beszelFetch<BeszelPageResponse<T>>(id, path, params, retry.token);
     }
-    updateBeszelToken(id, first.generation, renewed, first.authCollection);
+    if (renewed) updateBeszelToken(id, first.generation, renewed, first.authCollection);
   }
   return result;
 }
