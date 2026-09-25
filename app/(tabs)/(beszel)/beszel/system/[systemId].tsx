@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
 import { Text, View } from "react-native";
 import { BackHeader } from "@/components/common/back-header";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { ContainerRow } from "@/components/beszel/container-row";
@@ -16,11 +17,15 @@ const STATS_LIMIT = 60; // ~1h of 1-minute rollups
 export default function BeszelSystemScreen() {
   const { systemId } = useLocalSearchParams<{ systemId: string }>();
   const { refreshing, onRefresh } = usePullToRefresh([["beszel"]]);
-  const { data: systems, isLoading } = useBeszelSystems();
+  const { data: systems, isLoading, error: systemsError } = useBeszelSystems();
   const system = systems?.find((s) => s.id === systemId);
 
-  const { data: statsPoints } = useBeszelSystemStats(systemId, "1m", STATS_LIMIT);
-  const { data: containers, isLoading: containersLoading } = useBeszelContainers(systemId);
+  const { data: statsPoints, error: statsError } = useBeszelSystemStats(systemId, "1m", STATS_LIMIT);
+  const {
+    data: containers,
+    isLoading: containersLoading,
+    error: containersError,
+  } = useBeszelContainers(systemId);
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
@@ -31,6 +36,8 @@ export default function BeszelSystemScreen() {
           <Skeleton height={160} />
           <Skeleton height={160} />
         </View>
+      ) : !system && systemsError ? (
+        <ErrorBanner error={systemsError} title="Couldn't load this system" />
       ) : !system ? (
         <EmptyState title="System not found" message="It may have been removed from the hub." />
       ) : (
@@ -46,10 +53,14 @@ export default function BeszelSystemScreen() {
             <CardHeader>
               <CardTitle>History</CardTitle>
             </CardHeader>
-            <View className="gap-4">
-              <HistoryChart points={statsPoints ?? []} metric="cpuPct" color="#3b82f6" label="CPU" />
-              <HistoryChart points={statsPoints ?? []} metric="memPct" color="#a855f7" label="Memory" />
-            </View>
+            {statsError && !statsPoints?.length ? (
+              <ErrorBanner error={statsError} title="Couldn't load history" />
+            ) : (
+              <View className="gap-4">
+                <HistoryChart points={statsPoints ?? []} metric="cpuPct" color="#3b82f6" label="CPU" />
+                <HistoryChart points={statsPoints ?? []} metric="memPct" color="#a855f7" label="Memory" />
+              </View>
+            )}
           </Card>
 
           <Card>
@@ -58,6 +69,8 @@ export default function BeszelSystemScreen() {
             </CardHeader>
             {containersLoading && !containers ? (
               <Skeleton height={120} />
+            ) : containersError && !containers?.length ? (
+              <ErrorBanner error={containersError} title="Couldn't load containers" />
             ) : !containers || containers.length === 0 ? (
               <EmptyState compact title="No containers reported" />
             ) : (

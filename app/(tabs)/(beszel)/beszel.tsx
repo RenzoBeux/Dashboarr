@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
 import { CachedDataBanner } from "@/components/common/cached-data-banner";
+import { ErrorBanner } from "@/components/common/error-banner";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
 import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
@@ -27,7 +28,7 @@ function BeszelScreenInner() {
   // so this invalidates the systems list, the detail screen and its history
   // chart / containers at once.
   const { refreshing, onRefresh } = usePullToRefresh([["beszel"]]);
-  const { data: systems, isLoading } = useBeszelSystems();
+  const { data: systems, isLoading, error } = useBeszelSystems();
 
   return (
     <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
@@ -43,6 +44,9 @@ function BeszelScreenInner() {
           <Skeleton height={84} />
           <Skeleton height={84} />
         </View>
+      ) : error && !systems?.length ? (
+        // A rejected login or unreachable hub must not read as "no agents yet".
+        <ErrorBanner error={error} title="Couldn't load Beszel systems" />
       ) : !systems || systems.length === 0 ? (
         <EmptyState title="No systems yet" message="Connect an agent to your Beszel hub to see it here." />
       ) : (

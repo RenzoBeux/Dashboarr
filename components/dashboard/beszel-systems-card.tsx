@@ -16,6 +16,7 @@ import {
   type BeszelSystemsSettingsValue,
 } from "@/components/dashboard/widget-settings/beszel-systems-settings";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
+import { useConfigStore } from "@/store/config-store";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import type { BeszelSystem } from "@/lib/types";
 
@@ -39,6 +40,7 @@ export function BeszelSystemsCard({ slotId }: WidgetComponentProps) {
   const allInstances = useEnabledInstances("beszel");
   const attachedInstances = useAttachedInstances();
   const { width: tileWidth, gap: tileGap } = useServiceTileLayout();
+  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const router = useRouter();
 
   const resolved = resolveBoundInstances(settings.instanceIds, allInstances);
@@ -61,7 +63,12 @@ export function BeszelSystemsCard({ slotId }: WidgetComponentProps) {
             instanceName={bound.length > 1 ? inst.name : undefined}
             tileWidth={tileWidth}
             tileGap={tileGap}
-            onPressSystem={() => router.push("/(tabs)/beszel")}
+            onPressSystem={() => {
+              // The tab reads the active instance, so pin the tapped hub first
+              // or it would open whichever hub the user last visited.
+              setActiveInstance("beszel", inst.id);
+              router.push("/(tabs)/beszel");
+            }}
           />
         ))}
       </View>
