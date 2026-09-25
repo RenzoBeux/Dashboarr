@@ -275,8 +275,14 @@ export function pushConfigSnapshot(): Promise<void> {
       // person's Plex token or media-server password, and the backend has no
       // session client to use it with. The backend skips its pending-request
       // poller for a Seerr instance without an API key; webhooks need none.
+      //
+      // Beszel is Pi-hole's case exactly: the credential is a PocketBase
+      // superuser email/password, i.e. full admin over the hub, and the
+      // backend has no Beszel poller at all — its only Beszel call is the
+      // anonymous /api/health ping, so applyAuth deliberately sends nothing.
       const shareSecrets =
         kind !== "pihole" &&
+        kind !== "beszel" &&
         !(kind === "overseerr" && seerrUsesSession(seerrAuthMode(inst)));
       const secrets = configState.instanceSecrets[inst.id] ?? {
         apiKey: "",

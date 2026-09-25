@@ -218,7 +218,7 @@ async function beszelListRequest<T>(
       const retry = await getBeszelToken(id, () => beszelLogin(id));
       return beszelFetch<BeszelPageResponse<T>>(id, path, params, retry.token);
     }
-    updateBeszelToken(id, renewed, first.authCollection);
+    updateBeszelToken(id, first.generation, renewed, first.authCollection);
   }
   return result;
 }

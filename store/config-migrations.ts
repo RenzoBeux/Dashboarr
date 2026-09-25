@@ -207,13 +207,13 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         defaultInstances() backfills a disabled maintainerr instance at import.
  *   v55 — added the adguard service entry. Pure version stamp —
  *         defaultInstances() backfills a disabled adguard instance at import.
- *   v56 — added the beszel service entry. Pure version stamp —
- *         defaultInstances() backfills a disabled beszel instance at import.
- *   v57 — added optional `shortcuts: WebShortcut[]` (#344): user-defined web
+ *   v56 — added optional `shortcuts: WebShortcut[]` (#344): user-defined web
  *         links rendered by the Shortcuts dashboard widget. Absent means none.
- *   v58 — optional per-instance `diskIoInstanceId` on ServiceConfig (the
+ *   v57 — optional per-instance `diskIoInstanceId` on ServiceConfig (the
  *         unRAID → Glances disk I/O pairing, #386). Pure version stamp —
- *         absence means no I/O is shown, which is the pre-v58 behavior.
+ *         absence means no I/O is shown, which is the pre-v57 behavior.
+ *   v58 — added the beszel service entry. Pure version stamp —
+ *         defaultInstances() backfills a disabled beszel instance at import.
  */
 export const CURRENT_CONFIG_VERSION = 58;
 
@@ -778,16 +778,16 @@ const migrations: Record<number, (payload: any) => any> = {
   // v54 → v55: added the adguard service entry. Pure version stamp —
   // defaultInstances() backfills a disabled adguard instance at import.
   54: (payload) => ({ ...payload, version: 55 }),
-  // v55 → v56: added the beszel service entry. Pure version stamp —
-  // defaultInstances() backfills a disabled beszel instance at import.
-  55: (payload) => ({ ...payload, version: 56 }),
-  // v56 → v57: optional top-level `shortcuts` (#344). Pure version stamp —
-  // validateExportPayload treats the key as optional, so pre-v57 exports
+  // v55 → v56: optional top-level `shortcuts` (#344). Pure version stamp —
+  // validateExportPayload treats the key as optional, so pre-v56 exports
   // validate and the list defaults to empty.
-  56: (payload) => ({ ...payload, version: 57 }),
-  // v57 → v58: optional per-instance `diskIoInstanceId` on ServiceConfig (the
+  55: (payload) => ({ ...payload, version: 56 }),
+  // v56 → v57: optional per-instance `diskIoInstanceId` on ServiceConfig (the
   // unRAID → Glances disk I/O pairing, #386). Pure version stamp — absence
-  // means no I/O is shown, which is the pre-v58 behavior.
+  // means no I/O is shown, which is the pre-v57 behavior.
+  56: (payload) => ({ ...payload, version: 57 }),
+  // v57 → v58: added the beszel service entry. Pure version stamp —
+  // defaultInstances() backfills a disabled beszel instance at import.
   57: (payload) => ({ ...payload, version: 58 }),
 };
 

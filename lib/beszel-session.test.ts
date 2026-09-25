@@ -1,9 +1,11 @@
 import {
   BESZEL_TOKEN_MAX_AGE_MS,
+  beszelSessionIds,
   dropBeszelSession,
   forgetBeszelSession,
   getBeszelToken,
   resetBeszelSessions,
+  updateBeszelToken,
 } from "@/lib/beszel-session";
 
 /**
@@ -47,6 +49,7 @@ describe("getBeszelToken", () => {
       token: "tok-1",
       authCollection: "_superusers",
       fresh: true,
+      generation: 0,
     });
     expect(fn).toHaveBeenCalledTimes(1);
   });
@@ -62,6 +65,7 @@ describe("getBeszelToken", () => {
       token: "tok-1",
       authCollection: "_superusers",
       fresh: false,
+      generation: 0,
     });
     expect(login).not.toHaveBeenCalled();
   });
@@ -74,6 +78,7 @@ describe("getBeszelToken", () => {
       token: "tok-1",
       authCollection: "users",
       fresh: true,
+      generation: 0,
     });
   });
 
@@ -84,9 +89,9 @@ describe("getBeszelToken", () => {
     const c = getBeszelToken(ID, fn);
     resolve();
     await expect(Promise.all([a, b, c])).resolves.toEqual([
-      { token: "tok-1", authCollection: "_superusers", fresh: true },
-      { token: "tok-1", authCollection: "_superusers", fresh: false },
-      { token: "tok-1", authCollection: "_superusers", fresh: false },
+      { token: "tok-1", authCollection: "_superusers", fresh: true, generation: 0 },
+      { token: "tok-1", authCollection: "_superusers", fresh: false, generation: 0 },
+      { token: "tok-1", authCollection: "_superusers", fresh: false, generation: 0 },
     ]);
     expect(fn).toHaveBeenCalledTimes(1);
   });
@@ -106,6 +111,7 @@ describe("getBeszelToken", () => {
       token: "tok-2",
       authCollection: "_superusers",
       fresh: true,
+      generation: 0,
     });
     expect(second.fn).toHaveBeenCalledTimes(1);
   });
@@ -123,6 +129,7 @@ describe("getBeszelToken", () => {
       token: "tok-1",
       authCollection: "_superusers",
       fresh: false,
+      generation: 0,
     });
     expect(login).not.toHaveBeenCalled();
   });
@@ -146,6 +153,8 @@ describe("getBeszelToken", () => {
       token: "tok-new",
       authCollection: "_superusers",
       fresh: true,
+      // dropBeszelSession above bumped the cache generation past 0.
+      generation: 1,
     });
     expect(second.fn).toHaveBeenCalledTimes(1);
   });
@@ -160,6 +169,53 @@ describe("getBeszelToken", () => {
     const q = getBeszelToken(ID, ok.fn);
     ok.resolve();
     await expect(q).resolves.toMatchObject({ token: "tok-2" });
+  });
+});
+
+describe("updateBeszelToken", () => {
+  it("caches an out-of-band renewal for the current generation", async () => {
+    const first = deferredLogin("tok-1");
+    const p1 = getBeszelToken(ID, first.fn);
+    first.resolve();
+    const { generation } = await p1;
+
+    updateBeszelToken(ID, generation, "tok-renewed", "_superusers");
+
+    const login = jest.fn();
+    await expect(getBeszelToken(ID, login)).resolves.toMatchObject({
+      token: "tok-renewed",
+      fresh: false,
+    });
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it("discards a renewal whose generation was invalidated mid-flight", async () => {
+    const first = deferredLogin("tok-1");
+    const p1 = getBeszelToken(ID, first.fn);
+    first.resolve();
+    const { generation } = await p1;
+
+    // A credential save (or instance delete) lands while the auth-refresh
+    // that produced "tok-renewed" is still in flight.
+    dropBeszelSession(ID);
+    updateBeszelToken(ID, generation, "tok-renewed", "_superusers");
+
+    const second = deferredLogin("tok-2");
+    const p2 = getBeszelToken(ID, second.fn);
+    second.resolve();
+    await expect(p2).resolves.toMatchObject({ token: "tok-2", fresh: true });
+  });
+
+  it("does not re-create an entry that forgetBeszelSession removed", async () => {
+    const first = deferredLogin("tok-1");
+    const p1 = getBeszelToken(ID, first.fn);
+    first.resolve();
+    const { generation } = await p1;
+
+    forgetBeszelSession(ID);
+    updateBeszelToken(ID, generation, "tok-renewed", "_superusers");
+
+    expect(beszelSessionIds()).not.toContain(ID);
   });
 });
 

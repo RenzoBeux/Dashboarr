@@ -49,6 +49,13 @@ export interface BeszelToken {
   authCollection: BeszelAuthCollection;
   /** True when this call performed the login itself, false on a cache hit. */
   fresh: boolean;
+  /**
+   * The cache generation this token belongs to. Hand it back to
+   * `updateBeszelToken` so a renewal that lands after the session was dropped
+   * (a credential save, an instance delete) is discarded instead of
+   * resurrecting the old token.
+   */
+  generation: number;
 }
 
 interface BeszelSessionEntry {
@@ -98,18 +105,19 @@ export function getBeszelToken(
   loginFn: () => Promise<{ token: string; authCollection: BeszelAuthCollection }>,
 ): Promise<BeszelToken> {
   const entry = entryFor(instanceId);
+  const generation = entry.generation;
   if (isFresh(entry)) {
     return Promise.resolve({
       token: entry.token as string,
       authCollection: entry.authCollection as BeszelAuthCollection,
       fresh: false,
+      generation,
     });
   }
   if (entry.loginPromise) {
-    return entry.loginPromise.then((r) => ({ ...r, fresh: false }));
+    return entry.loginPromise.then((r) => ({ ...r, fresh: false, generation }));
   }
 
-  const generation = entry.generation;
   const attempt = loginFn()
     .then((result) => {
       if (entry.generation === generation) {
@@ -123,7 +131,7 @@ export function getBeszelToken(
       if (entry.loginPromise === attempt) entry.loginPromise = null;
     });
   entry.loginPromise = attempt;
-  return attempt.then((r) => ({ ...r, fresh: true }));
+  return attempt.then((r) => ({ ...r, fresh: true, generation }));
 }
 
 /**
@@ -132,13 +140,22 @@ export function getBeszelToken(
  * services/beszel-api.ts when auth-refresh confirms a cache-hit token is
  * still valid — its renewed token replaces the cached one so the next call
  * doesn't need to re-confirm it.
+ *
+ * `generation` is the one `getBeszelToken` handed out with the token being
+ * renewed, and the write is dropped when it no longer matches — the same
+ * guard the login path uses. Without it a refresh in flight across a
+ * `dropBeszelSession` (credential save) or `forgetBeszelSession` (instance
+ * delete) would write the pre-change token back, in the delete case
+ * re-creating the very map entry that was just removed.
  */
 export function updateBeszelToken(
   instanceId: string,
+  generation: number,
   token: string,
   authCollection: BeszelAuthCollection,
 ): void {
-  const entry = entryFor(instanceId);
+  const entry = sessions.get(instanceId);
+  if (!entry || entry.generation !== generation) return;
   entry.token = token;
   entry.authCollection = authCollection;
   entry.obtainedAt = Date.now();
