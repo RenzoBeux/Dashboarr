@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Icon } from "@/components/ui/icon";
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 import { useWindowControlsInset } from "@/hooks/use-window-controls-inset";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { hexToRgba } from "@/lib/theme-palette";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Match `media-detail-hero.tsx` so the skeleton settles into the same shape
@@ -25,6 +27,7 @@ export function MediaDetailSkeleton({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scale = useUiScale();
+  const theme = useAppTheme();
   const rem = BASE_REM * scale;
   // Same clearance as the real hero's back button (#342).
   const windowControls = useWindowControlsInset();
@@ -43,7 +46,11 @@ export function MediaDetailSkeleton({
           className="bg-surface-light"
         >
           <LinearGradient
-            colors={["transparent", "rgba(9,9,11,0.7)", "rgba(9,9,11,1)"]}
+            colors={[
+              hexToRgba(theme.background, 0),
+              hexToRgba(theme.background, 0.7),
+              theme.background,
+            ]}
             locations={[0, 0.6, 1]}
             pointerEvents="none"
             style={{

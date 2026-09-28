@@ -57,6 +57,7 @@ import {
 import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
 import { canRequest4kMedia, canRequestMedia } from "@/lib/seerr-permissions";
 import { SeerrPermissionNotice } from "@/components/overseerr/seerr-permission-notice";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import type {
   OverseerrMediaResult,
   OverseerrMovieDetails,
@@ -111,6 +112,7 @@ export function MediaDetailModal({
   visible,
   onClose,
 }: MediaDetailModalProps) {
+  const theme = useAppTheme();
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [optionsIs4k, setOptionsIs4k] = useState(false);
   const [quickKind, setQuickKind] = useState<null | "hd" | "4k">(null);
@@ -304,7 +306,7 @@ export function MediaDetailModal({
               <View className="w-full h-full bg-surface-light" />
             )}
             <View className="absolute inset-0 bg-background/40">
-              <BlurView intensity={20} tint="dark" style={{ flex: 1 }} />
+              <BlurView intensity={20} tint={theme.scheme} style={{ flex: 1 }} />
             </View>
 
             {/* Play overlay — quick access to the trailer from the backdrop.

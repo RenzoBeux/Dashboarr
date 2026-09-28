@@ -92,7 +92,7 @@ export function ProgressModal({ visible, title, subtitle, onClosed }: ProgressMo
       statusBarTranslucent
       onDismiss={handleDismiss}
     >
-      <View className="flex-1 bg-black/85 items-center justify-center px-8">
+      <View className="flex-1 bg-background/90 items-center justify-center px-8">
         <View className="items-center gap-7">
           <View className="w-20 h-20 items-center justify-center">
             <Animated.View

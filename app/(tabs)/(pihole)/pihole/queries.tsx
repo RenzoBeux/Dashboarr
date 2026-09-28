@@ -124,7 +124,7 @@ export default function PiholeQueriesScreen() {
             label={`Client: ${clientFilter}`}
             selected
             onPress={() => setClientFilter(null)}
-            icon={<Icon icon={X} size={ICON.XS} color="#e4e4e7" />}
+            icon={<Icon icon={X} size={ICON.XS} color="#e4e4e7" themed={false} />}
           />
         ) : null}
       </ScrollView>

@@ -356,7 +356,7 @@ function PosterTagBadges({ tags, cellWidth }: { tags: string[]; cellWidth: numbe
         // shrink-0: the count must never ellipsize into "+…". Neutral rather
         // than blue so it reads as a count, not as a tag literally named "+2".
         <View className="shrink-0 rounded-full bg-zinc-700 px-1.5 py-0.5">
-          <Text className="text-white text-[0.65rem] font-medium">{`+${overflow}`}</Text>
+          <Text className="text-zinc-50 text-[0.65rem] font-medium">{`+${overflow}`}</Text>
         </View>
       ) : null}
     </View>

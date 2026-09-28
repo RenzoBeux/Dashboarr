@@ -43,6 +43,7 @@ import type { Dashboard } from "@/store/config-store";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { resolveDashboardIcon } from "@/lib/dashboard-icons";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX_HEIGHT = Math.round(SCREEN_H * 0.82);
@@ -54,6 +55,7 @@ interface DashboardPickerSheetProps {
 }
 
 export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetProps) {
+  const tc = useThemeColor();
   const dashboards = useConfigStore((s) => s.dashboards);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const addDashboard = useConfigStore((s) => s.addDashboard);
@@ -410,7 +412,7 @@ export function DashboardPickerSheet({ visible, onClose }: DashboardPickerSheetP
                       maxLength={40}
                       className="flex-1 text-zinc-100 text-base font-semibold"
                       placeholder="Dashboard name"
-                      placeholderTextColor="#52525b"
+                      placeholderTextColor={tc("#52525b")}
                     />
                     <Pressable
                       onPress={cancelCreate}

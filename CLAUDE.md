@@ -35,7 +35,7 @@ Inspired by nzb360. Licensed under GPL-3.0. No monetization, no feedback system 
 Upstream API docs and per-service gotchas live in the `service-apis` skill (`.claude/skills/service-apis/SKILL.md`). Load it before implementing or debugging any service integration, and prefer fetching the relevant doc page over guessing endpoint shapes.
 
 ## UI/UX Rules
-- Dark mode only (forced via userInterfaceStyle: "dark")
+- Dark by default, plus a Light theme preset (#450). UI is still authored against the dark chrome; see **Theming** below for the rules that keep it working under Light
 - Native mobile app (Android + iOS via Expo)
 - Bottom tab navigation between services (tabs auto-hide when service disabled)
 - Fast — no unnecessary loading states or re-fetches
@@ -43,6 +43,20 @@ Upstream API docs and per-service gotchas live in the `service-apis` skill (`.cl
 - Pull-to-refresh on all screens
 - Haptic feedback on key interactions
 - **Top-of-screen header rows must clear the iPadOS 26 window-control cluster** (the macOS-style close/minimize pill overlaying the window's top-left corner in windowed mode — it covered the back arrow, #342). Any row rendered at the top of a screen inside ScreenWrapper's px-4 spreads `useWindowControlsContentPadding()` (from `hooks/use-window-controls-inset.ts`) into its `style`; edge-to-edge overlays (hero back button) use `Math.max(ownLeftOffset, useWindowControlsInset().left)` instead. `BackHeader`, `ServiceHeader`, the media hero/skeleton back buttons, and the dashboard/settings/services title rows already do this — copy the pattern for new custom headers. Values come from the `modules/window-controls` native module (iOS 26 corner-adapted layout margins) and are 0 on iPhone/Android/fullscreen, so applying them unconditionally is safe.
+
+## Theming (Light theme) — MUST follow when writing any new UI
+
+Themes are presets in `lib/app-themes.ts`; each has a `scheme` (`"dark"` or `"light"`). ThemeRoot in `app/_layout.tsx` sets the chrome tokens (`bg-background`, `bg-surface`, `bg-surface-light`, `border-border`) plus the palette CSS variables, calls `Appearance.setColorScheme`, and picks the StatusBar style. `app.config.ts` still pins `userInterfaceStyle: "dark"` so launch (native splash) stays dark.
+
+UI is authored against the **dark** chrome and a light-scheme theme **mirrors** the Tailwind palette (`lib/theme-palette.ts`): zinc is fully inverted (`text-zinc-100` becomes near-black, `bg-zinc-800` light gray, 500 stays), and the accent palettes mirror only their pale shades 50-400 and dark 900/950 (`text-red-400` becomes red-600). Accent 500-800 never change, so solid buttons/badges keep white text. Rules:
+
+- **Keep writing dark-chrome Tailwind classes** (`text-zinc-100` for primary text, `text-zinc-400/500` for secondary, `text-red-400` for accent text). They flip automatically; don't add `dark:` variants or per-theme class branches.
+- **Hex colors go through the theme.** `<Icon color="#a1a1aa">` / `fill` are mirrored by the `Icon` wrapper already. Any other hex prop (`placeholderTextColor`, `ActivityIndicator`/`RefreshControl` colors, `Switch` colors, SVG `stroke`/`fill`, inline `style` colors) must use `const tc = useThemeColor()` (`hooks/use-theme-color.ts`) and pass `tc("#71717a")`. Inline `style={{ color: "#..." }}` is **not** mirrored on its own.
+- **Content on a fixed-color fill** (solid `bg-primary`/`bg-red-600` button, a colored badge, `bg-black/60` over a poster): use `text-white` and `<Icon ... themed={false}>` (or `color="#fff"`, which is never mirrored). Conversely **never put `text-white` on a neutral surface** (`bg-surface*`, `bg-zinc-*`): use `text-zinc-50`, which flips.
+- **Scrims and fades.** A gradient that fades into the page uses the theme background: `hexToRgba(theme.background, a)` from `lib/theme-palette.ts`. Never `"transparent"` as a stop (it's transparent *black* and grays a light fade) and never hardcode `rgba(9,9,11,…)`. A legibility scrim over a backdrop image uses `useBackdropScrim()` (`hooks/use-backdrop-scrim.ts`). `BlurView` takes `tint={theme.scheme}`, and only ever covers a whole image: on Android `expo-blur` doesn't blur (its default fallback is a flat translucent view), so a partial-height blur strip reads as a hard-edged band. For a status-bar scrim use an eased gradient instead (see `media-detail-hero.tsx`). Full-screen scrims behind *themed* content use `bg-background/90`, not `bg-black/85`; plain modal backdrops behind a `bg-surface` card stay `bg-black/70`.
+- **Service logos** drawn white for the dark UI must be listed in `WHITE_PNG_LOGOS` in `components/ui/service-logo.tsx` so Light tints them dark.
+- Out of scope by design: the splash (`components/common/animated-splash.tsx`, which pins a light StatusBar while mounted) and the Android home-screen widget (`widgets/`) stay dark.
+- Adding a theme: add a preset to `APP_THEMES` and bump `CURRENT_CONFIG_VERSION` with a pure version stamp (an older app would otherwise fail the backup import with "appTheme is invalid" instead of "update the app first").
 
 ## Confirmations & Dialogs — MUST follow
 

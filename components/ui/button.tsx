@@ -5,28 +5,38 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { lightHaptic } from "@/lib/haptics";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 const SPRING_CONFIG = { damping: 15, stiffness: 200 };
 
 type ButtonVariant = "primary" | "ghost" | "danger" | "outline";
 type ButtonSize = "sm" | "md" | "lg";
 
-const VARIANT_CLASSES: Record<ButtonVariant, { container: string; text: string }> = {
+// `spinner` matches the label color: white on the solid fills, zinc-300 (run
+// through the theme) on the transparent ones.
+const VARIANT_CLASSES: Record<
+  ButtonVariant,
+  { container: string; text: string; spinner: string }
+> = {
   primary: {
     container: "bg-primary",
     text: "text-white",
+    spinner: "#ffffff",
   },
   ghost: {
     container: "bg-transparent",
     text: "text-zinc-300",
+    spinner: "#d4d4d8",
   },
   danger: {
     container: "bg-danger",
     text: "text-white",
+    spinner: "#ffffff",
   },
   outline: {
     container: "bg-transparent border border-border",
     text: "text-zinc-300",
+    spinner: "#d4d4d8",
   },
 };
 
@@ -57,6 +67,7 @@ export function Button({
   className = "",
   icon,
 }: ButtonProps) {
+  const tc = useThemeColor();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -82,7 +93,7 @@ export function Button({
         className={`flex-row items-center justify-center ${sizeStyle.container} ${variantStyle.container} ${disabled ? "opacity-50" : ""}`}
       >
         {loading ? (
-          <ActivityIndicator size="small" color="white" />
+          <ActivityIndicator size="small" color={tc(variantStyle.spinner)} />
         ) : (
           <>
             {icon && <>{icon}</>}

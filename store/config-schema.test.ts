@@ -1627,6 +1627,11 @@ describe("validateExportPayload — appTheme", () => {
     expect(result.appTheme).toBe("ember");
   });
 
+  it("accepts the light appTheme", () => {
+    const result = validateExportPayload({ ...baseValid(), appTheme: "light" });
+    expect(result.appTheme).toBe("light");
+  });
+
   it("omits appTheme from the result when absent in input", () => {
     const result = validateExportPayload(baseValid());
     expect(result.appTheme).toBeUndefined();

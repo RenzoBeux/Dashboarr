@@ -49,6 +49,7 @@ import {
   type DiscoverSliderInput,
   type DiscoverSliderTypeValue,
 } from "@/lib/types";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 // Local editable copy of a slider. `id` is null for sliders the user added but
 // hasn't saved yet (the bulk POST creates them server-side). `rowKey` is a
@@ -97,6 +98,7 @@ function signature(draft: DraftSlider[]): string {
 }
 
 export default function CustomizeDiscoverScreen() {
+  const tc = useThemeColor();
   const router = useRouter();
   const navigation = useNavigation();
   const { data: sliders, isLoading, isError, error } = useOverseerrDiscoverSliders();
@@ -449,7 +451,7 @@ export default function CustomizeDiscoverScreen() {
               onChangeText={setRenameDraft}
               autoFocus
               placeholder="Section title"
-              placeholderTextColor="#52525b"
+              placeholderTextColor={tc("#52525b")}
               returnKeyType="done"
               onSubmitEditing={commitRename}
               className="bg-surface-light border border-border rounded-xl px-4 py-3 text-zinc-100 text-base"
@@ -520,6 +522,7 @@ const SliderRow = memo(function SliderRow({
   onRename: (rowKey: string) => void;
   onDelete: (rowKey: string) => void;
 }) {
+  const tc = useThemeColor();
   const isCustom = !slider.isBuiltIn;
   return (
     <View
@@ -566,8 +569,8 @@ const SliderRow = memo(function SliderRow({
           Haptics.selectionAsync();
           onToggle(slider.rowKey, v);
         }}
-        trackColor={{ false: "#3f3f46", true: "#3b82f6" }}
-        thumbColor={slider.enabled ? "#ffffff" : "#a1a1aa"}
+        trackColor={{ false: tc("#3f3f46"), true: "#3b82f6" }}
+        thumbColor={slider.enabled ? "#ffffff" : tc("#a1a1aa")}
       />
     </View>
   );

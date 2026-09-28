@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { Image } from "expo-image";
 import type { SvgProps } from "react-native-svg";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import type { ServiceId } from "@/lib/constants";
 
 import QbittorrentLogo from "@/assets/services/qbittorrent.svg";
@@ -93,6 +94,10 @@ const PNG_LOGOS: Partial<Record<ServiceId, number>> = {
   navidrome: require("@/assets/services/navidrome.png"),
 };
 
+// Marks recolored white for the dark chrome. Under the Light theme they get a
+// near-black tint instead, or they'd vanish into the white cards (#450).
+const WHITE_PNG_LOGOS: ReadonlySet<ServiceId> = new Set<ServiceId>(["jackett"]);
+
 export function hasServiceLogo(id: ServiceId): boolean {
   return id in SVG_LOGOS || id in PNG_LOGOS;
 }
@@ -105,6 +110,7 @@ interface ServiceLogoProps {
 
 export function ServiceLogo({ id, size, online = true }: ServiceLogoProps) {
   const scale = useUiScale();
+  const { scheme } = useAppTheme();
   const px = Math.round(size * scale);
   const opacity = online ? 1 : 0.4;
 
@@ -120,6 +126,9 @@ export function ServiceLogo({ id, size, online = true }: ServiceLogoProps) {
         source={png}
         style={{ width: px, height: px, opacity }}
         contentFit="contain"
+        tintColor={
+          scheme === "light" && WHITE_PNG_LOGOS.has(id) ? "#18181b" : undefined
+        }
       />
     );
   }

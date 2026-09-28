@@ -391,7 +391,7 @@ const ColorSwatch = memo(function ColorSwatch({ hex, selected, onPress }: ColorS
       onPress={onPress}
       hitSlop={6}
       className={`w-10 h-10 rounded-full items-center justify-center ${
-        selected ? "border-2 border-white" : ""
+        selected ? "border-2 border-zinc-50" : ""
       }`}
       style={{ backgroundColor: hex }}
     >

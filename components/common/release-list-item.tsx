@@ -122,7 +122,7 @@ function ReleaseListItemImpl({
               className="rounded-md px-1.5 py-0.5 flex-row items-center gap-1"
               style={{ backgroundColor: "#5b21b6" }}
             >
-              <Icon icon={CheckCheck} size={10} color="#ede9fe" />
+              <Icon icon={CheckCheck} size={10} color="#ede9fe" themed={false} />
               <Text className="text-xs font-semibold" style={{ color: "#f5f3ff" }}>
                 {episodeCount > 0 ? `Season Pack · ${episodeCount} ep` : "Season Pack"}
               </Text>

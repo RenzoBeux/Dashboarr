@@ -1707,6 +1707,21 @@ describe("v37 → v38 (appTheme stamp)", () => {
   });
 });
 
+describe("v58 → v59 (light appTheme stamp)", () => {
+  it("just stamps the version and preserves a light appTheme", () => {
+    const result: any = migrateConfig({
+      version: 58,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      appTheme: "light",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.appTheme).toBe("light");
+  });
+});
+
 describe("v39 → v40 (weekStart stamp)", () => {
   it("just stamps the version and preserves an already-set weekStart", () => {
     const result: any = migrateConfig({
