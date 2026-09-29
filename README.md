@@ -79,7 +79,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 
 - **Unified dashboard** — All your services at a glance with customizable, reorderable cards
 - **Multi-instance support** — Run two qBittorrents, split 4K and 1080p Radarrs, or any combination — switch in-tab and aggregate on the dashboard
-- **Dark mode only** — Designed for OLED screens and late-night browsing
+- **Dark or light** — Five dark themes built for OLED screens and late-night browsing, plus a Light theme for daytime
 - **Auto network switching** — Detects your home WiFi SSID and switches between local/remote URLs automatically
 - **Per-service configuration** — Enable only the services you use; tabs auto-hide for disabled services
 - **Secure storage** — API keys stored in the device's secure enclave via `expo-secure-store`

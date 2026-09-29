@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { StyleSheet, Text, useWindowDimensions } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
 import Animated, {
   Easing,
   runOnJS,
@@ -206,6 +207,10 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
       onLayout={handleLayout}
       style={[styles.overlay, overlayStyle]}
     >
+      {/* The splash stays dark under every theme (it continues the native
+          splash), so pin light status-bar icons until it unmounts and the
+          theme's own StatusBar in ThemeRoot takes back over. */}
+      <StatusBar style="light" />
       <Animated.View
         style={[
           {

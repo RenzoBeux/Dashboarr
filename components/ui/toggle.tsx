@@ -1,5 +1,6 @@
 import { View, Text, Switch } from "react-native";
 import { lightHaptic } from "@/lib/haptics";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 interface ToggleProps {
   label: string;
@@ -18,6 +19,7 @@ export function Toggle({
   disabled = false,
   className = "",
 }: ToggleProps) {
+  const tc = useThemeColor();
   return (
     <View className={`flex-row items-center justify-between py-2 ${className}`}>
       <View className="flex-1 mr-3">
@@ -33,8 +35,8 @@ export function Toggle({
           onValueChange(val);
         }}
         disabled={disabled}
-        trackColor={{ false: "#3f3f46", true: "#3b82f6" }}
-        thumbColor={value ? "#ffffff" : "#a1a1aa"}
+        trackColor={{ false: tc("#3f3f46"), true: "#3b82f6" }}
+        thumbColor={value ? "#ffffff" : tc("#a1a1aa")}
       />
     </View>
   );

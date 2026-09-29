@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RefreshControl, Platform, StyleSheet } from "react-native";
+import { RefreshControl, Platform, StyleSheet, View } from "react-native";
 import type { ViewProps } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { cssInterop } from "nativewind";
@@ -85,7 +85,18 @@ export function ScreenWrapper({
   // background color. SafeAreaView is padding-based, so absoluteFill covers
   // the status-bar region too; pointerEvents="none" keeps scroll and
   // pull-to-refresh untouched.
-  const backdrop = (
+  //
+  // Edge-to-edge (media detail) screens get the flat background instead. Their
+  // hero covers the top where the glow would show, and its bottom fade ends in
+  // theme.background; over this fixed gradient that end color never matches
+  // what's behind the scrolling hero, leaving a visible band on every theme
+  // whose glow differs from its background (Midnight, Ember, Light, ...).
+  const backdrop = edgeToEdge ? (
+    <View
+      style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]}
+      pointerEvents="none"
+    />
+  ) : (
     <LinearGradient
       colors={theme.gradient}
       style={StyleSheet.absoluteFill}

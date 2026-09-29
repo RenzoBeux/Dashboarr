@@ -1,5 +1,6 @@
 import { View, Text, ActivityIndicator, Platform } from "react-native";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 interface CheckingIndicatorProps {
   label?: string;
@@ -21,6 +22,7 @@ export function CheckingIndicator({
   label = "Checking…",
   color = "#a1a1aa",
 }: CheckingIndicatorProps) {
+  const tc = useThemeColor();
   const scale = useUiScale();
   return (
     <View className="flex-row items-center gap-1.5">
@@ -29,7 +31,7 @@ export function CheckingIndicator({
         // Android pass a scaled pixel size so the glyph tracks the UI-scale
         // setting like the rem-based "Checking…" text beside it.
         size={Platform.OS === "android" ? Math.round(16 * scale) : "small"}
-        color={color}
+        color={tc(color)}
       />
       <Text className="text-zinc-400 text-xs">{label}</Text>
     </View>

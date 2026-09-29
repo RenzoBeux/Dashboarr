@@ -44,6 +44,7 @@ import { GlassSurface } from "@/components/ui/glass-surface";
 import { useOverseerrGenreSlider } from "@/hooks/use-overseerr";
 import { NETWORKS, STUDIOS } from "@/lib/overseerr-discover";
 import { DiscoverSliderType, type DiscoverSliderTypeValue } from "@/lib/types";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 const SHEET_MAX = Math.round(SCREEN_H * 0.85);
@@ -170,6 +171,7 @@ interface AddSliderSheetProps {
 // stacks a second native modal over itself (the iOS Fabric hang). On completion
 // it calls onAdd and closes; the editor appends the result to its draft.
 export function AddSliderSheet({ visible, onClose, onAdd }: AddSliderSheetProps) {
+  const tc = useThemeColor();
   const bottomInset = useBottomInset();
   const [mounted, setMounted] = useState(false);
   const [chosen, setChosen] = useState<AddTypeOption | null>(null);
@@ -399,7 +401,7 @@ export function AddSliderSheet({ visible, onClose, onAdd }: AddSliderSheetProps)
                         value={title}
                         onChangeText={setTitle}
                         placeholder="e.g. On Netflix"
-                        placeholderTextColor="#52525b"
+                        placeholderTextColor={tc("#52525b")}
                         className="bg-surface-light border border-border rounded-xl px-4 py-3 text-zinc-100 text-base"
                       />
                     </View>
@@ -420,7 +422,7 @@ export function AddSliderSheet({ visible, onClose, onAdd }: AddSliderSheetProps)
                           ? "e.g. Marvel"
                           : "e.g. 8"
                       }
-                      placeholderTextColor="#52525b"
+                      placeholderTextColor={tc("#52525b")}
                       autoCapitalize="none"
                       keyboardType={
                         chosen.kind === "search" ? "default" : "number-pad"

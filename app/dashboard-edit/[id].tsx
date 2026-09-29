@@ -26,6 +26,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { useConfigStore, type ServiceInstance } from "@/store/config-store";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import {
   ICON,
   SERVICE_DEFAULTS,
@@ -913,6 +914,7 @@ const SegmentButton = memo(function SegmentButton({
   onPress,
 }: SegmentButtonProps) {
   const theme = useAppTheme();
+  const tc = useThemeColor();
   return (
     <Pressable
       onPress={onPress}
@@ -924,7 +926,7 @@ const SegmentButton = memo(function SegmentButton({
     >
       <Text
         className="text-sm font-semibold"
-        style={{ color: active ? color : "#a1a1aa" }}
+        style={{ color: active ? color : tc("#a1a1aa") }}
       >
         {label}
       </Text>
@@ -940,12 +942,13 @@ interface CheckboxProps {
 
 const Checkbox = memo(function Checkbox({ on, color, disabled }: CheckboxProps) {
   const theme = useAppTheme();
+  const tc = useThemeColor();
   return (
     <View
       className="w-5 h-5 rounded items-center justify-center border"
       style={{
         backgroundColor: on ? color : "transparent",
-        borderColor: on ? color : disabled ? theme.border : "#52525b",
+        borderColor: on ? color : disabled ? theme.border : tc("#52525b"),
       }}
     >
       {on && <Icon icon={Check} size={14} color="#ffffff" />}
@@ -965,7 +968,7 @@ const ColorSwatch = memo(function ColorSwatch({ hex, selected, onPress }: ColorS
       onPress={onPress}
       hitSlop={6}
       className={`w-10 h-10 rounded-full items-center justify-center ${
-        selected ? "border-2 border-white" : ""
+        selected ? "border-2 border-zinc-50" : ""
       }`}
       style={{ backgroundColor: hex }}
     >

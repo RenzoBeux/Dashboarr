@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Film, Music, Tv, type LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useBackdropScrim } from "@/hooks/use-backdrop-scrim";
 
 export const BACKDROP_ROW_HEIGHT = 64;
 const POSTER_W = 44;
@@ -33,6 +34,7 @@ export function MediaBackdropRow({
   const FallbackIcon =
     fallbackIcon ?? (mediaType === "music" ? Music : mediaType === "tv" ? Tv : Film);
   const scale = useUiScale();
+  const scrim = useBackdropScrim([0.92, 0.75, 0.45]);
   const rowHeight = Math.round(BACKDROP_ROW_HEIGHT * scale);
   const posterW = Math.round(POSTER_W * scale);
   const posterH = Math.round(POSTER_H * scale);
@@ -64,14 +66,10 @@ export function MediaBackdropRow({
         />
       ) : null}
 
-      {/* Left-to-right dark overlay so the title stays legible against any
+      {/* Left-to-right overlay so the title stays legible against any
           backdrop. Heavier on the left where the poster + text sit. */}
       <LinearGradient
-        colors={[
-          "rgba(15, 15, 17, 0.92)",
-          "rgba(15, 15, 17, 0.75)",
-          "rgba(15, 15, 17, 0.45)",
-        ]}
+        colors={scrim}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={{

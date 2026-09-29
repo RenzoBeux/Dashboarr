@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   Dimensions,
-  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -12,7 +11,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, Star, Film } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -21,6 +19,8 @@ import Animated, {
 import type { RatingsBundle } from "@/lib/types";
 import { useWindowControlsInset } from "@/hooks/use-window-controls-inset";
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { hexToRgba } from "@/lib/theme-palette";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Backdrop is shallower than the side-by-side variant: the focal point shifts
@@ -55,6 +55,7 @@ export function MediaDetailHero({
 }: MediaDetailHeroProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const theme = useAppTheme();
   const handleBack = onBack ?? (() => router.back());
   // The hero is edge-to-edge, so the button's default offset (left-3, 0.75rem)
   // is measured from the window edge — same origin as the iPadOS 26
@@ -91,41 +92,39 @@ export function MediaDetailHero({
           </Animated.View>
         ) : null}
 
-        {/* Top blur strip behind the status bar / back button — keeps the
-            backdrop legible without dimming the whole image. */}
-        <View
+        {/* Top scrim behind the status bar / back button, so both stay legible
+            over any backdrop. A gradient that eases out to nothing rather than
+            a BlurView: expo-blur's Android fallback is a flat translucent slab,
+            and its hard bottom edge cut across the middle of the backdrop as a
+            visible band (on iOS the real blur had the same hard edge). */}
+        <LinearGradient
+          colors={[
+            hexToRgba(theme.background, 0.6),
+            hexToRgba(theme.background, 0.38),
+            hexToRgba(theme.background, 0.14),
+            hexToRgba(theme.background, 0),
+          ]}
+          locations={[0, 0.35, 0.7, 1]}
           pointerEvents="none"
           style={{
             position: "absolute",
             left: 0,
             right: 0,
             top: 0,
-            height: insets.top + 56,
-            overflow: "hidden",
+            height: insets.top + 72,
           }}
-        >
-          <BlurView
-            intensity={Platform.OS === "ios" ? 30 : 18}
-            tint="dark"
-            style={{ flex: 1 }}
-          />
-          <LinearGradient
-            colors={["rgba(9,9,11,0.45)", "transparent"]}
-            locations={[0, 1]}
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: 0,
-            }}
-          />
-        </View>
+        />
 
         {/* Stronger bottom fade — pulls the backdrop into the body so the
-            centered poster reads as floating, not pasted on. */}
+            centered poster reads as floating, not pasted on. Stops are the
+            theme background (not "transparent", which is transparent black
+            and would gray the fade under the Light theme). */}
         <LinearGradient
-          colors={["transparent", "rgba(9,9,11,0.7)", "rgba(9,9,11,1)"]}
+          colors={[
+            hexToRgba(theme.background, 0),
+            hexToRgba(theme.background, 0.7),
+            theme.background,
+          ]}
           locations={[0, 0.6, 1]}
           pointerEvents="none"
           style={{

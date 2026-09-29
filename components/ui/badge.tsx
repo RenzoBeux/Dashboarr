@@ -30,12 +30,15 @@ interface BadgeProps {
 }
 
 export function Badge({ label, variant = "default", count, className = "" }: BadgeProps) {
+  // The neutral fill is a themed zinc (light gray under the Light theme), so
+  // its label is too; the colored fills stay saturated and keep white text.
+  const textClass = variant === "default" ? "text-zinc-50" : "text-white";
   return (
     <View className={`flex-row items-center rounded-full px-2.5 py-0.5 ${VARIANT_CLASSES[variant]} ${className}`}>
-      <Text className="text-white text-xs font-medium">{label}</Text>
+      <Text className={`${textClass} text-xs font-medium`}>{label}</Text>
       {count !== undefined && (
         <View className="bg-white/20 rounded-full ml-1.5 px-1.5 min-w-[1.25rem] items-center">
-          <Text className="text-white text-xs font-bold">{count}</Text>
+          <Text className={`${textClass} text-xs font-bold`}>{count}</Text>
         </View>
       )}
     </View>

@@ -1,4 +1,27 @@
 import type { Config } from "tailwindcss";
+import {
+  PALETTES,
+  paletteVarName,
+  themedShades,
+  type PaletteName,
+} from "./lib/theme-palette";
+
+// Shades that flip between the dark and light schemes resolve through CSS
+// variables set by ThemeRoot (app/_layout.tsx) from lib/theme-palette.ts, so
+// `text-zinc-100` / `text-red-400` darken under the Light theme (#450) with no
+// call-site changes. Shades that don't flip keep Tailwind's static value.
+// extend deep-merges, so each palette only lists its themed shades.
+const themedPalettes = Object.fromEntries(
+  (Object.keys(PALETTES) as PaletteName[]).map((palette) => [
+    palette,
+    Object.fromEntries(
+      themedShades(palette).map((shade) => [
+        shade,
+        `rgb(var(${paletteVarName(palette, shade)}) / <alpha-value>)`,
+      ]),
+    ),
+  ]),
+);
 
 export default {
   darkMode: "class",
@@ -10,6 +33,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        ...themedPalettes,
         // Chrome tokens resolve through CSS variables so the app theme
         // (lib/app-themes.ts, applied by ThemeRoot in app/_layout.tsx) can
         // retint them at runtime. Channel-triplet + <alpha-value> form keeps

@@ -30,6 +30,7 @@ import {
 import type { HomeNetwork } from "@/store/config-store";
 import { MAX_HOME_NETWORKS } from "@/lib/constants";
 import { resolveDashboardColor } from "@/lib/dashboard-colors";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 type Mode = "list" | "add" | "edit";
 
@@ -57,6 +58,7 @@ function DiagRow({
 }
 
 export default function HomeNetworksScreen() {
+  const tc = useThemeColor();
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
   const addHomeNetwork = useConfigStore((s) => s.addHomeNetwork);
@@ -311,7 +313,7 @@ export default function HomeNetworksScreen() {
               className="bg-surface-light rounded-xl p-3 active:opacity-70"
             >
               {detecting ? (
-                <ActivityIndicator size={20} color="#a1a1aa" />
+                <ActivityIndicator size={20} color={tc("#a1a1aa")} />
               ) : (
                 <Icon icon={Wifi} size={20} color="#a1a1aa" />
               )}

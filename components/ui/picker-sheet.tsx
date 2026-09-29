@@ -9,6 +9,7 @@ import { TextInput } from "@/components/ui/text-input";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useModalClosed } from "@/hooks/use-modal-closed";
 import { lightHaptic } from "@/lib/haptics";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 export interface PickerOption {
   value: number;
@@ -66,6 +67,7 @@ export function PickerSheet({
   onClose,
   onClosed,
 }: PickerSheetProps) {
+  const tc = useThemeColor();
   const handleDismiss = useModalClosed(visible, onClosed);
   const listPadding = useSheetBottomPadding(16);
   const footerPadding = useSheetBottomPadding(12);
@@ -119,7 +121,7 @@ export function PickerSheet({
           <View className="flex-1 items-center justify-center">
             {/* Native indicator, not the reanimated Spinner: this one has to be
                 visibly moving under OS Reduce Motion too (#196). */}
-            <ActivityIndicator color="#a1a1aa" />
+            <ActivityIndicator color={tc("#a1a1aa")} />
           </View>
         ) : (
           <FlatList

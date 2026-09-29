@@ -5,7 +5,9 @@
 /* Default (zinc) values for the themeable chrome tokens, as space-separated
    RGB channels — see tailwind.config.ts. ThemeRoot in app/_layout.tsx
    overrides these at runtime via NativeWind vars() when a non-default
-   app theme is selected. */
+   app theme is selected. The palette variables (--zinc-100, --red-400, ...)
+   have no default here: ThemeRoot always sets them, from
+   lib/theme-palette.ts. */
 @layer base {
   :root {
     --color-background: 9 9 11;

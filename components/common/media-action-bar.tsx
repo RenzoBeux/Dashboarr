@@ -7,6 +7,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Icon } from "@/components/ui/icon";
 import { lightHaptic } from "@/lib/haptics";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 const SPRING_CONFIG = { damping: 15, stiffness: 200 };
 
@@ -43,6 +44,7 @@ function ActionPill({
   disabled = false,
   onPress,
 }: Omit<MediaActionItem, "key">) {
+  const tc = useThemeColor();
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -72,7 +74,7 @@ function ActionPill({
         className={`items-center justify-center rounded-2xl border py-3 ${surfaceClasses} ${disabled ? "opacity-50" : ""}`}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={iconColor} />
+          <ActivityIndicator size="small" color={tc(iconColor)} />
         ) : (
           <Icon icon={icon} size={20} color={iconColor} fill={active ? iconColor : "transparent"} />
         )}

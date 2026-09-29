@@ -6,6 +6,9 @@ import { Icon } from "@/components/ui/icon";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useUiScale } from "@/hooks/use-ui-scale";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeColor } from "@/hooks/use-theme-color";
+import { useBackdropScrim } from "@/hooks/use-backdrop-scrim";
 import {
   downloadIndicator,
   DOWNLOAD_INDICATOR_COLOR,
@@ -82,6 +85,9 @@ export function CalendarEventRow({
   action,
 }: CalendarEventRowProps) {
   const scale = useUiScale();
+  const isLight = useAppTheme().scheme === "light";
+  const tc = useThemeColor();
+  const scrim = useBackdropScrim([0.94, 0.78, 0.5]);
   const rowHeight = Math.round(ROW_HEIGHT * scale);
   const posterW = Math.round(POSTER_W * scale);
   const posterH = Math.round(POSTER_H * scale);
@@ -120,13 +126,9 @@ export function CalendarEventRow({
         />
       ) : null}
 
-      {/* Left→right dark scrim so the title stays legible over any backdrop. */}
+      {/* Left→right scrim so the title stays legible over any backdrop. */}
       <LinearGradient
-        colors={[
-          "rgba(15, 15, 17, 0.94)",
-          "rgba(15, 15, 17, 0.78)",
-          "rgba(15, 15, 17, 0.5)",
-        ]}
+        colors={scrim}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
@@ -190,10 +192,14 @@ export function CalendarEventRow({
             onPress={action.loading ? undefined : action.onPress}
             hitSlop={8}
             className="w-7 h-7 rounded-full items-center justify-center active:opacity-70"
-            style={{ backgroundColor: "rgba(255, 255, 255, 0.12)" }}
+            style={{
+              backgroundColor: isLight
+                ? "rgba(0, 0, 0, 0.08)"
+                : "rgba(255, 255, 255, 0.12)",
+            }}
           >
             {action.loading ? (
-              <ActivityIndicator size="small" color="#d4d4d8" />
+              <ActivityIndicator size="small" color={tc("#d4d4d8")} />
             ) : (
               <Icon icon={action.icon} size={14} color="#d4d4d8" />
             )}

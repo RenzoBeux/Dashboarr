@@ -3,6 +3,7 @@ import {
   LiquidGlassView,
   isLiquidGlassSupported,
 } from "@callstack/liquid-glass";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 const USE_GLASS = Platform.OS === "ios" && isLiquidGlassSupported;
 
@@ -20,11 +21,12 @@ export function GlassSurface({
   children,
   ...rest
 }: GlassSurfaceProps) {
+  const { scheme } = useAppTheme();
   if (USE_GLASS) {
     return (
       <LiquidGlassView
         effect={effect}
-        colorScheme="dark"
+        colorScheme={scheme}
         tintColor={tintColor}
         className={className}
         {...rest}

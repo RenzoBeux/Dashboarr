@@ -41,6 +41,7 @@ import {
 import { formatBytes, formatEpisodeCode } from "@/lib/utils";
 import { lightHaptic } from "@/lib/haptics";
 import type { ArrQualityModel } from "@/lib/types";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 interface ManualImportViewProps {
   service: ManualImportService;
@@ -80,6 +81,7 @@ export function ManualImportView({
   instanceId,
   releaseTitle,
 }: ManualImportViewProps) {
+  const tc = useThemeColor();
   const isSonarr = service === "sonarr";
   const serviceName = manualImportServiceName(service);
 
@@ -275,7 +277,7 @@ export function ManualImportView({
   if (candidatesQuery.isLoading) {
     return (
       <View className="flex-1 items-center justify-center">
-        <ActivityIndicator color="#a1a1aa" />
+        <ActivityIndicator color={tc("#a1a1aa")} />
       </View>
     );
   }

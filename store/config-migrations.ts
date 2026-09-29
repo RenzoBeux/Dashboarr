@@ -214,8 +214,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         absence means no I/O is shown, which is the pre-v57 behavior.
  *   v58 — added the beszel service entry. Pure version stamp —
  *         defaultInstances() backfills a disabled beszel instance at import.
+ *   v59 — `appTheme` accepts the new "light" preset (#450). Pure version
+ *         stamp — it exists so a pre-v59 app rejects a Light-theme backup
+ *         with "update the app first" rather than "appTheme is invalid".
  */
-export const CURRENT_CONFIG_VERSION = 58;
+export const CURRENT_CONFIG_VERSION = 59;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -789,6 +792,8 @@ const migrations: Record<number, (payload: any) => any> = {
   // v57 → v58: added the beszel service entry. Pure version stamp —
   // defaultInstances() backfills a disabled beszel instance at import.
   57: (payload) => ({ ...payload, version: 58 }),
+  // v58 → v59: `appTheme` gains the "light" preset (#450). Pure version stamp.
+  58: (payload) => ({ ...payload, version: 59 }),
 };
 
 /**

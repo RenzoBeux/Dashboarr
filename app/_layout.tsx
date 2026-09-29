@@ -3,14 +3,14 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
-import { AppState, View } from "react-native";
+import { Appearance, AppState, View } from "react-native";
 import type { AppStateStatus } from "react-native";
 import * as Notifications from "expo-notifications";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { rem, vars } from "nativewind";
-import { hexToRgbChannels } from "@/lib/app-themes";
+import { hexToRgbChannels, paletteVars } from "@/lib/theme-palette";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { BASE_REM } from "@/hooks/use-ui-scale";
 import { useStackScreenOptions } from "@/hooks/use-stack-screen-options";
@@ -271,11 +271,15 @@ function UiScaleBridge() {
 // context, so everything below — Stack screens, overlays, toasts, and Modal
 // content (Modals stay in the React tree) — re-resolves bg-background /
 // bg-surface / bg-surface-light / border-border against the active theme.
+// The palette variables (text-zinc-*, text-red-400, ...) are set here for
+// every theme, dark ones included: they have no global.css default, and a
+// light-scheme theme mirrors them (lib/theme-palette.ts, #450).
 function ThemeRoot({ children }: { children: ReactNode }) {
   const theme = useAppTheme();
   const themeVars = useMemo(
     () =>
       vars({
+        ...paletteVars(theme.scheme),
         "--color-background": hexToRgbChannels(theme.background),
         "--color-surface": hexToRgbChannels(theme.surface),
         "--color-surface-light": hexToRgbChannels(theme.surfaceLight),
@@ -283,7 +287,19 @@ function ThemeRoot({ children }: { children: ReactNode }) {
       }),
     [theme],
   );
-  return <View style={[{ flex: 1 }, themeVars]}>{children}</View>;
+  // Native chrome (keyboard, Liquid Glass, scroll indicators, in-app browser)
+  // follows the OS interface style, which app.config.ts pins to dark at
+  // launch. Override it to match the theme; explicit "dark" rather than
+  // "unspecified" so a light-mode phone doesn't lighten the dark themes.
+  useEffect(() => {
+    Appearance.setColorScheme(theme.scheme);
+  }, [theme.scheme]);
+  return (
+    <View style={[{ flex: 1 }, themeVars]}>
+      <StatusBar style={theme.scheme === "light" ? "dark" : "light"} />
+      {children}
+    </View>
+  );
 }
 
 // Keeps the native TLS-bypass allowlist in lockstep with which hosts the user
@@ -483,7 +499,6 @@ export default function RootLayout() {
                 <SilentErrorBoundary label="app-update-checker">
                   <AppUpdateChecker />
                 </SilentErrorBoundary>
-                <StatusBar style="light" />
                 <AppStack
                   popToRootNames={ROOT_POP_TO_ROOT}
                   screenOptions={stackScreenOptions}
