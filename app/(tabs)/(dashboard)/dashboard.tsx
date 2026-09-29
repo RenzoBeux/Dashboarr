@@ -207,13 +207,15 @@ export default function DashboardScreen() {
         className="flex-row items-center justify-between mt-2 mb-4"
         style={windowControlsPadding}
       >
+        {/* shrink on both the button and the Text lets a long name truncate
+            instead of pushing the action icons off-screen (#452). */}
         <TouchableOpacity
           onPress={openDashboardPicker}
-          className="flex-row items-center gap-1.5"
+          className="flex-row items-center gap-1.5 shrink mr-2"
           hitSlop={8}
           activeOpacity={0.7}
         >
-          <Text className="text-zinc-100 text-2xl font-bold" numberOfLines={1}>
+          <Text className="text-zinc-100 text-2xl font-bold shrink" numberOfLines={1}>
             {dashboardName}
           </Text>
           {/* Always show the chevron so single-dashboard users still see the
