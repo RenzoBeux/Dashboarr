@@ -21,6 +21,8 @@ import { useWindowControlsInset } from "@/hooks/use-window-controls-inset";
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { hexToRgba } from "@/lib/theme-palette";
+import { lightHaptic } from "@/lib/haptics";
+import { openExternalUrl } from "@/lib/external-links";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Backdrop is shallower than the side-by-side variant: the focal point shifts
@@ -36,9 +38,17 @@ interface MediaDetailHeroProps {
   title: string;
   metaLine?: string;
   ratings?: RatingsBundle;
+  // Page each labeled rating chip opens when tapped. The unlabeled legacy
+  // rating has no known source, so it never links.
+  ratingLinks?: RatingLinks;
   badges?: ReactNode;
   posterFallbackIcon?: ComponentType<any>;
   onBack?: () => void;
+}
+
+interface RatingLinks {
+  imdb?: string;
+  tmdb?: string;
 }
 
 export function MediaDetailHero({
@@ -49,6 +59,7 @@ export function MediaDetailHero({
   title,
   metaLine,
   ratings,
+  ratingLinks,
   badges,
   posterFallbackIcon = Film,
   onBack,
@@ -186,7 +197,7 @@ export function MediaDetailHero({
         ) : null}
         {hasAnyRating(ratings) || badges ? (
           <View className="flex-row items-center gap-2 mt-3 flex-wrap justify-center">
-            <RatingChips ratings={ratings} />
+            <RatingChips ratings={ratings} links={ratingLinks} />
             {badges}
           </View>
         ) : null}
@@ -204,7 +215,13 @@ function hasAnyRating(ratings?: RatingsBundle): boolean {
   );
 }
 
-function RatingChips({ ratings }: { ratings?: RatingsBundle }) {
+function RatingChips({
+  ratings,
+  links,
+}: {
+  ratings?: RatingsBundle;
+  links?: RatingLinks;
+}) {
   if (!ratings) return null;
   const imdb = ratings.imdb?.value && ratings.imdb.value > 0
     ? ratings.imdb.value
@@ -219,16 +236,30 @@ function RatingChips({ ratings }: { ratings?: RatingsBundle }) {
 
   return (
     <>
-      {imdb !== null ? <RatingChip label="IMDb" value={imdb} /> : null}
-      {tmdb !== null ? <RatingChip label="TMDB" value={tmdb} /> : null}
+      {imdb !== null ? (
+        <RatingChip label="IMDb" value={imdb} url={links?.imdb} />
+      ) : null}
+      {tmdb !== null ? (
+        <RatingChip label="TMDB" value={tmdb} url={links?.tmdb} />
+      ) : null}
       {legacy !== null ? <RatingChip value={legacy} /> : null}
     </>
   );
 }
 
-function RatingChip({ label, value }: { label?: string; value: number }) {
-  return (
-    <View className="flex-row items-center gap-1 bg-yellow-500/15 rounded-md px-1.5 py-0.5">
+function RatingChip({
+  label,
+  value,
+  url,
+}: {
+  label?: string;
+  value: number;
+  url?: string;
+}) {
+  const chipClass =
+    "flex-row items-center gap-1 bg-yellow-500/15 rounded-md px-1.5 py-0.5";
+  const content = (
+    <>
       <Icon icon={Star} size={12} color="#eab308" fill="#eab308" />
       {label ? (
         <Text className="text-yellow-400 text-[0.65rem] font-bold uppercase">
@@ -238,6 +269,26 @@ function RatingChip({ label, value }: { label?: string; value: number }) {
       <Text className="text-yellow-400 text-xs font-semibold">
         {value.toFixed(1)}
       </Text>
-    </View>
+    </>
+  );
+
+  if (!url) return <View className={chipClass}>{content}</View>;
+
+  return (
+    <Pressable
+      onPress={() => {
+        lightHaptic();
+        openExternalUrl(url);
+      }}
+      // Tall but narrow slop: the chip is short, and its neighbours sit only
+      // a gap-2 away.
+      hitSlop={{ top: 8, bottom: 8, left: 3, right: 3 }}
+      accessibilityRole="link"
+      accessibilityLabel={`${label ?? "Rating"} ${value.toFixed(1)}`}
+      accessibilityHint={label ? `Opens the title on ${label}` : undefined}
+      className={`${chipClass} active:opacity-60`}
+    >
+      {content}
+    </Pressable>
   );
 }
