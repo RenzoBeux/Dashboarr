@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { View, Text, ScrollView, Linking, Pressable } from "react-native";
+import { View, Text, ScrollView, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Trash2,
@@ -56,6 +56,11 @@ import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
 import { BAR_KIND_COLOR, radarrBarKind } from "@/lib/arr-poster-status";
 import { getRadarrPoster } from "@/services/radarr-api";
+import {
+  imdbTitleUrl,
+  openExternalUrl,
+  tmdbMovieUrl,
+} from "@/lib/external-links";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
@@ -157,10 +162,7 @@ export default function MovieDetailScreen() {
     toggleMonitored.mutate({ movieId: movie.id, monitored: !movie.monitored });
   };
 
-  const handleOpenImdb = () => {
-    if (!movie.imdbId) return;
-    Linking.openURL(`https://www.imdb.com/title/${movie.imdbId}`);
-  };
+  const imdbUrl = imdbTitleUrl(movie.imdbId);
 
   const confirmDelete = () => {
     const mode = flow.payload("confirmDelete");
@@ -208,13 +210,13 @@ export default function MovieDetailScreen() {
             : `/movie/releases/${movie.id}`,
         ),
     },
-    ...(movie.imdbId
+    ...(imdbUrl
       ? [
           {
             key: "imdb",
             icon: Film,
             label: "IMDb",
-            onPress: handleOpenImdb,
+            onPress: () => openExternalUrl(imdbUrl),
           },
         ]
       : []),
@@ -239,6 +241,7 @@ export default function MovieDetailScreen() {
           title={movie.title}
           metaLine={buildMovieMeta(movie)}
           ratings={movie.ratings}
+          ratingLinks={{ imdb: imdbUrl, tmdb: tmdbMovieUrl(movie.tmdbId) }}
           posterFallbackIcon={Film}
           badges={
             <>

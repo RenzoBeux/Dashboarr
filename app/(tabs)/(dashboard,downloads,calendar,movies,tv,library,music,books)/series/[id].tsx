@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Award,
   Tv,
+  Film,
   Circle,
   FolderTree,
   Pencil,
@@ -70,6 +71,7 @@ import {
   formatResolution,
 } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { imdbTitleUrl, openExternalUrl } from "@/lib/external-links";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   sonarrEpisodeBarKind,
@@ -190,6 +192,8 @@ export default function SeriesDetailScreen() {
       ?.map((tagId) => tags?.find((t) => t.id === tagId)?.label)
       .filter((label): label is string => !!label) ?? [];
 
+  const imdbUrl = imdbTitleUrl(series.imdbId);
+
   const handleToggleMonitor = () => {
     toggleSeries.mutate({ seriesId: series.id, monitored: !series.monitored });
   };
@@ -235,6 +239,16 @@ export default function SeriesDetailScreen() {
       loading: searchSeries.isPending,
       onPress: () => flow.open("seriesSearch"),
     },
+    ...(imdbUrl
+      ? [
+          {
+            key: "imdb",
+            icon: Film,
+            label: "IMDb",
+            onPress: () => openExternalUrl(imdbUrl),
+          },
+        ]
+      : []),
     {
       key: "more",
       icon: MoreHorizontal,
