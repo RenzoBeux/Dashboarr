@@ -61,14 +61,25 @@ export function useToggleIndexer(instanceId?: string) {
 // one), so statuses are refetched either way. Drive it through
 // useIndexerTestRunner (one `mutateAsync` per row): `isPending`/`variables`
 // only track the latest call, so they can't tell two overlapping rows apart.
-export function useTestProwlarrIndexer(instanceId?: string) {
+//
+// The target instance travels in the variables instead of being read from the
+// hook's closure: TanStack re-applies a pending mutation's options on every
+// render, so a closure-read id would follow an instance switch made mid-flight
+// and invalidate the wrong server's statuses. `instanceId` is the list's
+// useInstanceTarget value, null-typed to match the query key.
+export function useTestProwlarrIndexer() {
   const queryClient = useQueryClient();
-  const { instanceId: id } = useInstanceTarget("prowlarr", instanceId);
   return useMutation({
-    mutationFn: (indexer: ProwlarrIndexer) => testIndexer(indexer, id ?? undefined),
-    onSettled: () => {
+    mutationFn: ({
+      indexer,
+      instanceId,
+    }: {
+      indexer: ProwlarrIndexer;
+      instanceId: string | null;
+    }) => testIndexer(indexer, instanceId ?? undefined),
+    onSettled: (_data, _error, { instanceId }) => {
       queryClient.invalidateQueries({
-        queryKey: ["prowlarr", id, "indexerStatuses"],
+        queryKey: ["prowlarr", instanceId, "indexerStatuses"],
       });
     },
   });

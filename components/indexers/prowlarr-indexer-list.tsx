@@ -44,7 +44,7 @@ export function ProwlarrIndexerList() {
   // the server's view and refreshes on its own.
   const tests = useIndexerTestRunner<ProwlarrIndexer, ProwlarrIndexerTestResult>({
     instanceId,
-    run: (indexer) => test.mutateAsync(indexer),
+    run: (indexer) => test.mutateAsync({ indexer, instanceId }),
     failed: (error) => ({ ok: false, error }),
   });
 

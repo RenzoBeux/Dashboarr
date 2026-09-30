@@ -30,7 +30,7 @@ export function JackettIndexerList({
   // point-in-time probe, not cached server state.
   const tests = useIndexerTestRunner<JackettIndexer, JackettIndexerTestResult>({
     instanceId,
-    run: (indexer) => test.mutateAsync(indexer.id),
+    run: (indexer) => test.mutateAsync({ indexerId: indexer.id, instanceId }),
     failed: (error) => ({ ok: false, results: 0, error }),
   });
 
