@@ -1937,6 +1937,13 @@ export interface ProwlarrIndexerStatus {
   initialFailure?: string;
 }
 
+// Outcome of POST /indexer/test. A pass and a fail are both a result the user
+// asked for, not a transport error (see testIndexer in services/prowlarr-api.ts).
+export type ProwlarrIndexerTestResult =
+  | { ok: true }
+  // The server's reason(s) for the failure, joined.
+  | { ok: false; error: string };
+
 export interface ProwlarrSearchResult {
   guid: string;
   indexerId: number;

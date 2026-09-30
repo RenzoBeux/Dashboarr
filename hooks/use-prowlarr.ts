@@ -3,6 +3,7 @@ import {
   getIndexers,
   getIndexerStatuses,
   getIndexerStats,
+  testIndexer,
   toggleIndexer,
   grabRelease,
 } from "@/services/prowlarr-api";
@@ -50,6 +51,24 @@ export function useToggleIndexer(instanceId?: string) {
       toggleIndexer(indexer, enable, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prowlarr", id, "indexers"] });
+    },
+  });
+}
+
+// Per-indexer test (#447). The verdict itself is transient row state in the
+// list, but unlike Jackett's probe this one has a server-side effect: Prowlarr
+// records the outcome in /indexerstatus (a pass clears a backoff, a fail starts
+// one), so statuses are refetched either way. `variables` tells the caller
+// which row is currently in flight.
+export function useTestProwlarrIndexer(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("prowlarr", instanceId);
+  return useMutation({
+    mutationFn: (indexer: ProwlarrIndexer) => testIndexer(indexer, id ?? undefined),
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["prowlarr", id, "indexerStatuses"],
+      });
     },
   });
 }

@@ -1,8 +1,9 @@
-import { serviceRequest } from "@/lib/http-client";
+import { HttpError, serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   ProwlarrIndexer,
   ProwlarrIndexerStatus,
+  ProwlarrIndexerTestResult,
   ProwlarrSearchResult,
   ProwlarrIndexerStats,
 } from "@/lib/types";
@@ -24,11 +25,52 @@ export function getIndexerStatuses(
   });
 }
 
-export function testIndexer(id: number, instanceId?: string): Promise<void> {
-  return serviceRequest<void>("prowlarr", `/indexer/${id}/test`, {
-    method: "POST",
-    instanceId,
-  });
+// Servarr's provider test route is `POST /indexer/test` with the FULL indexer
+// resource in the body (ProviderControllerBase.Test); there is no
+// `/indexer/{id}/test`. A pass answers 200 `"{}"`. A fail throws
+// ValidationException upstream, which ProwlarrErrorPipeline serializes as a
+// 400 whose body is the bare failure list `[{ propertyName, errorMessage, … }]`
+// — the normal outcome of testing a broken indexer, so it is parsed into a
+// result rather than thrown. Everything else (401, 404, unreachable, a 400 with
+// some other body) still rejects.
+//
+// Side effect that makes this the "retry" for a backed-off indexer (#447):
+// IndexerFactory.Test records the outcome in /indexerstatus — a pass clears
+// `disabledTill`, a fail starts or extends the backoff — so callers refetch
+// statuses afterwards.
+export async function testIndexer(
+  indexer: ProwlarrIndexer,
+  instanceId?: string,
+): Promise<ProwlarrIndexerTestResult> {
+  try {
+    await serviceRequest<unknown>("prowlarr", "/indexer/test", {
+      method: "POST",
+      body: JSON.stringify(indexer),
+      // A live round-trip to the tracker: the 15s default aborts a slow one
+      // while the server is still waiting on it.
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId,
+    });
+    return { ok: true };
+  } catch (err) {
+    const error =
+      err instanceof HttpError && err.status === 400
+        ? parseIndexerTestFailures(err.body)
+        : null;
+    if (error === null) throw err;
+    return { ok: false, error };
+  }
+}
+
+// The joined `errorMessage`s of a ValidationFailure list, or null when the body
+// isn't one, so a genuine bad request still surfaces as an error.
+export function parseIndexerTestFailures(body: unknown): string | null {
+  if (!Array.isArray(body)) return null;
+  if (body.some((e) => typeof e !== "object" || e === null)) return null;
+  const messages = (body as { errorMessage?: unknown }[])
+    .map((f) => (typeof f.errorMessage === "string" ? f.errorMessage.trim() : ""))
+    .filter((m) => m.length > 0);
+  return messages.join("; ") || "Test failed";
 }
 
 export function toggleIndexer(

@@ -1,24 +1,69 @@
-import { View, Text, Pressable, Platform } from "react-native";
-import { Power, AlertTriangle } from "lucide-react-native";
+import { useState } from "react";
+import { View, Text, Pressable, Platform, ActivityIndicator } from "react-native";
+import {
+  Power,
+  AlertTriangle,
+  Activity,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
+import { toast, toastError } from "@/components/ui/toast";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import {
   useProwlarrIndexers,
   useProwlarrIndexerStatuses,
+  useTestProwlarrIndexer,
   useToggleIndexer,
 } from "@/hooks/use-prowlarr";
+import type { ProwlarrIndexer, ProwlarrIndexerTestResult } from "@/lib/types";
 
-// Prowlarr's indexer list: per-indexer health dot (from /indexerstatus) and an
-// enable/disable toggle. Deliberately NOT shared with Jackett — its admin API
-// is cookie-authed, so its list (jackett-indexer-list.tsx) is read-only.
+// Prowlarr's indexer list: per-indexer health dot (from /indexerstatus), an
+// enable/disable toggle, and a Test action (#447). Deliberately NOT shared with
+// Jackett — its toggle and status endpoints are cookie-authed, so its list
+// (jackett-indexer-list.tsx) has neither the power toggle nor a standing dot.
+//
+// The power toggle is `indexer.enable`, nothing to do with the backoff the red
+// dot reports. Testing is what clears a backoff: a passing test makes Prowlarr
+// record a success against the indexer, which is why the dot flips back to
+// green after one.
 export function ProwlarrIndexerList() {
+  const tc = useThemeColor();
   const { data: indexers, isLoading, error } = useProwlarrIndexers();
   const { data: statuses } = useProwlarrIndexerStatuses();
   const toggleIndexer = useToggleIndexer();
+  const test = useTestProwlarrIndexer();
+  // Per row and local, as in the Jackett list: a test is a point-in-time probe
+  // whose verdict should survive testing a second indexer. The standing health
+  // dot is the server's view and refreshes on its own.
+  const [testResults, setTestResults] = useState<
+    Record<number, ProwlarrIndexerTestResult>
+  >({});
+
+  const runTest = (indexer: ProwlarrIndexer) => {
+    test.mutate(indexer, {
+      onSuccess: (result) => {
+        setTestResults((prev) => ({ ...prev, [indexer.id]: result }));
+        if (result.ok) toast(`${indexer.name} is working`);
+        else toast(`${indexer.name}: ${result.error}`, "error");
+      },
+      onError: (err) => {
+        setTestResults((prev) => ({
+          ...prev,
+          [indexer.id]: {
+            ok: false,
+            error: err instanceof Error ? err.message : "Test failed",
+          },
+        }));
+        toastError(`Couldn't test ${indexer.name}`, err);
+      },
+    });
+  };
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
   if (error) {
@@ -36,6 +81,8 @@ export function ProwlarrIndexerList() {
         const status = statusMap.get(indexer.id);
         const isDisabled = !!status?.disabledTill;
         const isEnabled = indexer.enable;
+        const testing = test.isPending && test.variables?.id === indexer.id;
+        const result = testResults[indexer.id];
 
         return (
           <Card key={indexer.id}>
@@ -73,12 +120,30 @@ export function ProwlarrIndexerList() {
                   label={indexer.protocol}
                   variant={indexer.protocol === "torrent" ? "info" : "default"}
                 />
+                {/* Fixed box so swapping the icon for its spinner can't
+                    reflow the row. */}
+                <Pressable
+                  onPress={() => runTest(indexer)}
+                  disabled={testing}
+                  className="w-7 h-7 items-center justify-center active:opacity-70"
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Test ${indexer.name}`}
+                >
+                  {testing ? (
+                    <ActivityIndicator size="small" color={tc("#a1a1aa")} />
+                  ) : (
+                    <Icon icon={Activity} size={16} color="#a1a1aa" />
+                  )}
+                </Pressable>
                 <Pressable
                   onPress={() =>
                     toggleIndexer.mutate({ indexer, enable: !isEnabled })
                   }
                   className="p-1.5 active:opacity-70"
                   hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${isEnabled ? "Disable" : "Enable"} ${indexer.name}`}
                 >
                   <Icon icon={Power}
                     size={16}
@@ -87,6 +152,21 @@ export function ProwlarrIndexerList() {
                 </Pressable>
               </View>
             </View>
+
+            {result && !testing ? (
+              <View className="flex-row items-start gap-1.5 mt-3">
+                <Icon
+                  icon={result.ok ? CheckCircle2 : XCircle}
+                  size={14}
+                  color={result.ok ? "#22c55e" : "#ef4444"}
+                />
+                <Text
+                  className={`flex-1 text-xs ${result.ok ? "text-success" : "text-danger"}`}
+                >
+                  {result.ok ? "Working" : result.error}
+                </Text>
+              </View>
+            ) : null}
           </Card>
         );
       })}
