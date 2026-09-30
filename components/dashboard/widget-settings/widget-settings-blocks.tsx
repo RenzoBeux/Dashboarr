@@ -4,6 +4,7 @@ import { Check } from "lucide-react-native";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Icon } from "@/components/ui/icon";
 import { Toggle } from "@/components/ui/toggle";
+import type { TvArtwork } from "@/lib/now-playing-stream";
 
 /**
  * Section header + body wrapper used by every widget-settings panel. Keeps
@@ -279,6 +280,27 @@ export function HideWhenEmptyToggle({
       value={value}
       onChange={onChange}
     />
+  );
+}
+
+const TV_ARTWORK_OPTIONS: readonly { value: TvArtwork; label: string }[] = [
+  { value: "poster", label: "Show poster" },
+  { value: "still", label: "Episode still" },
+];
+
+/**
+ * "TV artwork" chip selector shared by the now-playing widgets (#408): whether
+ * a TV episode's tile shows the series poster or the episode's own frame.
+ */
+export function TvArtworkSelector({
+  value,
+  onChange,
+}: {
+  value: TvArtwork;
+  onChange: (value: TvArtwork) => void;
+}) {
+  return (
+    <ChipGroup label="TV artwork" options={TV_ARTWORK_OPTIONS} value={value} onChange={onChange} />
   );
 }
 

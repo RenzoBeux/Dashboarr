@@ -101,6 +101,7 @@ export function PlexNowPlayingCard({ slotId }: WidgetComponentProps) {
               stream={stream}
               showUserAndDevice={settings.showUserAndDevice}
               showTranscoding={settings.showTranscoding}
+              tvArtwork={settings.tvArtwork}
             />
           ))}
           {hasMore && (

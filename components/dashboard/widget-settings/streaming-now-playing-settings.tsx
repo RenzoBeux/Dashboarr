@@ -13,8 +13,10 @@ import {
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
+  TvArtworkSelector,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
 import type { ServiceId } from "@/lib/constants";
+import type { TvArtwork } from "@/lib/now-playing-stream";
 
 export interface StreamingNowPlayingSettingsValue extends Record<string, unknown> {
   instanceIds: InstanceBindingValue;
@@ -24,6 +26,7 @@ export interface StreamingNowPlayingSettingsValue extends Record<string, unknown
   showBitrate: boolean;
   showTranscoding: boolean;
   showUserAndDevice: boolean;
+  tvArtwork: TvArtwork;
   hideWhenEmpty: boolean;
 }
 
@@ -35,6 +38,7 @@ export const STREAMING_NOW_PLAYING_DEFAULT_SETTINGS: StreamingNowPlayingSettings
   showBitrate: false,
   showTranscoding: true,
   showUserAndDevice: true,
+  tvArtwork: "poster",
   hideWhenEmpty: false,
 };
 
@@ -107,6 +111,11 @@ export function StreamingNowPlayingSettings({
           />
         </ToggleCard>
       </SettingsSection>
+
+      <TvArtworkSelector
+        value={settings.tvArtwork}
+        onChange={(tvArtwork) => update({ tvArtwork })}
+      />
 
       <MaxItemsSelector
         value={settings.maxItems}

@@ -19,6 +19,20 @@ jest.mock("expo-secure-store", () => ({
   setItemAsync: jest.fn(async () => {}),
   deleteItemAsync: jest.fn(async () => {}),
 }));
+// The image helpers build URLs against the configured instance; stub them to
+// echo what they were asked for, so the mappers' artwork choices (show poster
+// vs episode still, #408) are assertable without a store.
+jest.mock("@/services/plex-api", () => ({
+  getPlexImageSource: (thumb: string | null | undefined) =>
+    thumb ? { uri: thumb, cacheKey: thumb } : null,
+}));
+jest.mock("@/services/jellyfin-api", () => ({
+  ...jest.requireActual("@/services/jellyfin-api"),
+  getJellyfinImageSource: (item: { Id: string; ImageTags?: { Primary?: string } } | null) =>
+    item?.ImageTags?.Primary
+      ? { uri: `${item.Id}:${item.ImageTags.Primary}`, cacheKey: item.Id }
+      : null,
+}));
 
 import {
   plexPlayDecision,
@@ -28,8 +42,10 @@ import {
   formatEpisodeStreamTitle,
   isLocalEndpoint,
   parseHiddenUsers,
+  streamArtwork,
 } from "./now-playing-stream";
 import type {
+  JellyfinItem,
   JellyfinSession,
   NavidromeNowPlayingEntry,
   PlexSession,
@@ -127,6 +143,27 @@ describe("plexSessionToStream", () => {
     expect(s.progress).toBe(0);
     expect(s.isLocal).toBe(false);
     expect(s.mediaType).toBe("movie");
+  });
+
+  it("shows the series poster on an episode and keeps its frame as the still (#408)", () => {
+    const s = plexSessionToStream(
+      plexSession({ type: "episode", thumb: "/ep", grandparentThumb: "/show" }),
+      "i",
+    );
+    expect(s.poster?.uri).toBe("/show");
+    expect(s.episodeStill?.uri).toBe("/ep");
+  });
+
+  it("falls back to the episode's own frame when the series has no poster", () => {
+    const s = plexSessionToStream(plexSession({ type: "episode", thumb: "/ep" }), "i");
+    expect(s.poster?.uri).toBe("/ep");
+    expect(s.episodeStill?.uri).toBe("/ep");
+  });
+
+  it("uses a movie's own thumb and exposes no still", () => {
+    const s = plexSessionToStream(plexSession({ thumb: "/movie" }), "i");
+    expect(s.poster?.uri).toBe("/movie");
+    expect(s.episodeStill).toBeUndefined();
   });
 });
 
@@ -355,6 +392,74 @@ describe("mediaServerSessionToStream", () => {
     expect(s.transcoding).toBe(false);
     expect(s.isLocal).toBe(true);
     expect(s.mediaType).toBe("movie");
+  });
+
+  function jellyfinSession(item: Partial<JellyfinItem>): JellyfinSession {
+    return {
+      Id: "s",
+      Client: "Jellyfin Web",
+      DeviceName: "TV",
+      NowPlayingItem: { Id: "ep", Name: "Pilot", Type: "Episode", ...item },
+      PlayState: { PositionTicks: 0, IsPaused: false, PlayMethod: "DirectPlay" },
+    } as JellyfinSession;
+  }
+
+  it("shows the series poster on an episode and keeps its frame as the still (#408)", () => {
+    // DtoService stamps SeriesPrimaryImageTag on every episode DTO, sessions
+    // included; the episode's own Primary is its 16:9 frame.
+    const s = mediaServerSessionToStream(
+      jellyfinSession({
+        SeriesId: "series",
+        SeriesPrimaryImageTag: "series-tag",
+        ImageTags: { Primary: "ep-tag" },
+      }),
+      "i",
+      "jellyfin",
+    );
+    expect(s.poster?.uri).toBe("series:series-tag");
+    expect(s.episodeStill?.uri).toBe("ep:ep-tag");
+  });
+
+  it("falls back to the episode's own image when the series has no poster", () => {
+    const s = mediaServerSessionToStream(
+      jellyfinSession({ SeriesId: "series", ImageTags: { Primary: "ep-tag" } }),
+      "i",
+      "jellyfin",
+    );
+    expect(s.poster?.uri).toBe("ep:ep-tag");
+  });
+
+  it("reports no still for an episode without its own image, and none for a movie", () => {
+    const episode = mediaServerSessionToStream(
+      jellyfinSession({ SeriesId: "series", SeriesPrimaryImageTag: "series-tag", ImageTags: {} }),
+      "i",
+      "jellyfin",
+    );
+    expect(episode.poster?.uri).toBe("series:series-tag");
+    expect(episode.episodeStill).toBeNull();
+
+    const movie = mediaServerSessionToStream(
+      jellyfinSession({ Type: "Movie", ImageTags: { Primary: "m-tag" } }),
+      "i",
+      "emby",
+    );
+    expect(movie.poster?.uri).toBe("ep:m-tag");
+    expect(movie.episodeStill).toBeUndefined();
+  });
+});
+
+describe("streamArtwork", () => {
+  const poster = { uri: "poster", cacheKey: "poster" };
+  const still = { uri: "still", cacheKey: "still" };
+
+  it("renders the poster by default and the still on request", () => {
+    expect(streamArtwork({ poster, episodeStill: still }, "poster")).toBe(poster);
+    expect(streamArtwork({ poster, episodeStill: still }, "still")).toBe(still);
+  });
+
+  it("falls back to the poster when the source has no still", () => {
+    expect(streamArtwork({ poster }, "still")).toBe(poster);
+    expect(streamArtwork({ poster, episodeStill: null }, "still")).toBe(poster);
   });
 });
 

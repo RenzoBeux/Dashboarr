@@ -17,6 +17,18 @@ import { formatEpisodeCode } from "@/lib/utils";
 export const NOW_PLAYING_SERVICE_IDS = ["plex", "jellyfin", "emby", "navidrome"] as const;
 export type NowPlayingServiceId = (typeof NOW_PLAYING_SERVICE_IDS)[number];
 
+// Which artwork a TV episode's poster tile shows (issue #408): the series' own
+// 2:3 poster, or the episode's 16:9 still cover-cropped to the tile. Movies and
+// music are unaffected either way.
+export type TvArtwork = "poster" | "still";
+
+// Poster tiles are requested at 220x330 (2:3). An episode still is 16:9 and the
+// tile cover-crops its centre, so it is requested at the width that fills the
+// tile's height instead: Emby sizes by maxWidth/maxHeight and would otherwise
+// return a 220x124 frame for the tile to upscale.
+export const EPISODE_STILL_WIDTH = 587;
+export const EPISODE_STILL_HEIGHT = 330;
+
 // Normalized shape every server's session maps into, so one tile/row renders
 // them all (mirrors lib/usenet-adapter.ts for SAB/NZBGet). Poster matches the
 // expo-image source returned by the getXImageSource helpers.
@@ -36,7 +48,13 @@ export interface NowPlayingStream {
   state: "playing" | "paused" | "buffering";
   transcoding: boolean;
   progress: number; // 0–1
+  // 2:3 art for the poster tile. For an episode that is the series poster,
+  // falling back to the episode's own thumb when the series has none.
   poster: { uri: string; cacheKey: string } | null;
+  // The episode's own frame, for TV episodes whose source exposes one. Left
+  // undefined for movies/music and by sources that can't provide it, so a tile
+  // set to "still" falls back to `poster` (see streamArtwork).
+  episodeStill?: { uri: string; cacheKey: string } | null;
   // "music" exists because Navidrome is a music server: the poster is square
   // album art and the fallback icon is a note, not a film reel.
   mediaType: "movie" | "tv" | "music";
@@ -100,6 +118,16 @@ export function formatEpisodeStreamTitle(
 export function formatBitrateKbps(kbps: number | undefined): string | undefined {
   if (!kbps || kbps <= 0 || Number.isNaN(kbps)) return undefined;
   return kbps >= 1000 ? `${(kbps / 1000).toFixed(1)} Mbps` : `${Math.round(kbps)} kbps`;
+}
+
+// The artwork a poster tile renders for `stream` under the widget's TV artwork
+// setting. Falls back to the poster when the source has no still (Tracearr,
+// JellyStat), so the choice never blanks a tile.
+export function streamArtwork(
+  stream: Pick<NowPlayingStream, "poster" | "episodeStill">,
+  tvArtwork: TvArtwork,
+): { uri: string; cacheKey: string } | null {
+  return tvArtwork === "still" ? (stream.episodeStill ?? stream.poster) : stream.poster;
 }
 
 // Hidden-users filter input ("alice, bob" → {"alice","bob"}). Shared by the
@@ -223,15 +251,15 @@ export function plexSessionToStream(
       : session.Player.state === "buffering"
         ? "buffering"
         : "playing";
-  const title =
-    session.type === "episode"
-      ? formatEpisodeStreamTitle(
-          session.grandparentTitle,
-          session.parentIndex,
-          session.index,
-          session.title,
-        )
-      : session.title;
+  const isEpisode = session.type === "episode";
+  const title = isEpisode
+    ? formatEpisodeStreamTitle(
+        session.grandparentTitle,
+        session.parentIndex,
+        session.index,
+        session.title,
+      )
+    : session.title;
 
   return {
     key: `plex:${instanceId}:${session.sessionKey}`,
@@ -244,13 +272,22 @@ export function plexSessionToStream(
     state,
     transcoding: plexIsTranscoding(session),
     progress: session.duration > 0 ? session.viewOffset / session.duration : 0,
+    // An episode's `thumb` is its frame and `grandparentThumb` the show poster,
+    // so the 2:3 tile shows the show and keeps the frame as the still. Anything
+    // else uses its own thumb (a track's grandparentThumb is the artist, kept
+    // only as a last resort).
     poster: getPlexImageSource(
-      session.thumb || session.grandparentThumb,
+      isEpisode
+        ? session.grandparentThumb || session.thumb
+        : session.thumb || session.grandparentThumb,
       220,
       330,
       instanceId,
     ),
-    mediaType: session.type === "episode" ? "tv" : "movie",
+    episodeStill: isEpisode
+      ? getPlexImageSource(session.thumb, EPISODE_STILL_WIDTH, EPISODE_STILL_HEIGHT, instanceId)
+      : undefined,
+    mediaType: isEpisode ? "tv" : "movie",
   };
 }
 
@@ -260,17 +297,27 @@ export function mediaServerSessionToStream(
   serviceId: MediaServerId,
 ): NowPlayingStream {
   const item = session.NowPlayingItem;
+  const episode = item?.Type === "Episode" ? item : null;
   const durationMs = ticksToMs(item?.RunTimeTicks);
   const positionMs = ticksToMs(session.PlayState?.PositionTicks);
   const title =
-    item?.Type === "Episode" && item.SeriesName
+    episode && episode.SeriesName
       ? formatEpisodeStreamTitle(
-          item.SeriesName,
-          item.ParentIndexNumber,
-          item.IndexNumber,
-          item.Name,
+          episode.SeriesName,
+          episode.ParentIndexNumber,
+          episode.IndexNumber,
+          episode.Name,
         )
       : (item?.Name ?? "Unknown");
+
+  // An episode's own Primary image is its 16:9 frame. The series poster rides
+  // along as SeriesId + SeriesPrimaryImageTag (DtoService stamps it on every
+  // episode DTO, sessions included), so the 2:3 tile shows that and keeps the
+  // frame as the still. Without a series tag the helper's own fallback applies.
+  const seriesPoster =
+    episode?.SeriesId && episode.SeriesPrimaryImageTag
+      ? { Id: episode.SeriesId, ImageTags: { Primary: episode.SeriesPrimaryImageTag } }
+      : null;
 
   return {
     key: `${serviceId}:${instanceId}:${session.Id}`,
@@ -283,8 +330,27 @@ export function mediaServerSessionToStream(
     state: session.PlayState?.IsPaused ? "paused" : "playing",
     transcoding: isJellyfinTranscoding(session),
     progress: durationMs > 0 ? positionMs / durationMs : 0,
-    poster: getJellyfinImageSource(item ?? null, "Primary", 220, 330, instanceId, serviceId),
-    mediaType: item?.Type === "Episode" ? "tv" : "movie",
+    poster: getJellyfinImageSource(
+      seriesPoster ?? item ?? null,
+      "Primary",
+      220,
+      330,
+      instanceId,
+      serviceId,
+    ),
+    episodeStill: episode
+      ? episode.ImageTags?.Primary
+        ? getJellyfinImageSource(
+            episode,
+            "Primary",
+            EPISODE_STILL_WIDTH,
+            EPISODE_STILL_HEIGHT,
+            instanceId,
+            serviceId,
+          )
+        : null
+      : undefined,
+    mediaType: episode ? "tv" : "movie",
   };
 }
 
