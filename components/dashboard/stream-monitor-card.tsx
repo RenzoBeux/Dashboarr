@@ -123,6 +123,7 @@ export function StreamMonitorCard({ slotId }: WidgetComponentProps) {
               showUserAndDevice={settings.showUserAndDevice}
               showTranscoding={settings.showTranscoding}
               showSource={showSource}
+              tvArtwork={settings.tvArtwork}
             />
           ))}
           {hasMore && <ViewAllTile onPress={() => router.push("/(tabs)/activity")} />}

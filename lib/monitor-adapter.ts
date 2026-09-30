@@ -1,4 +1,6 @@
 import {
+  EPISODE_STILL_HEIGHT,
+  EPISODE_STILL_WIDTH,
   formatBitrateKbps,
   formatEpisodeStreamTitle,
   isLocalEndpoint,
@@ -19,6 +21,7 @@ import type {
 import {
   getActivity as getTautulliActivity,
   getHistory as getTautulliHistory,
+  getTautulliSessionEpisodeStill,
   getTautulliSessionPoster,
 } from "@/services/tautulli-api";
 import {
@@ -201,6 +204,10 @@ function tautulliSessionToStream(s: TautulliSession, instanceId: string): NowPla
     // Picks the album cover for music, show poster for episodes, item thumb for
     // movies — each with the correct pms_image_proxy fallback (issue #141).
     poster: getTautulliSessionPoster(s, 220, 330, instanceId),
+    episodeStill:
+      s.media_type === "episode"
+        ? getTautulliSessionEpisodeStill(s, EPISODE_STILL_WIDTH, EPISODE_STILL_HEIGHT, instanceId)
+        : undefined,
     mediaType: s.media_type === "episode" ? "tv" : "movie",
     resolution: s.video_resolution || null,
     details: tautulliSessionToDetails(s),
@@ -243,6 +250,10 @@ function tracearrStreamToStream(s: TracearrStream, instanceId: string): NowPlayi
     state: s.state === "paused" ? "paused" : "playing",
     transcoding,
     progress,
+    // Tracearr builds posterUrl from the item's own thumb (apps/server/src/
+    // routes/public.ts), so for an episode this is already its still, and the
+    // v1 API exposes no show-level key to build a series poster from. Both TV
+    // artwork settings therefore render this same image.
     poster: getTracearrImageSource(s.posterUrl, instanceId),
     mediaType: s.mediaType === "episode" ? "tv" : "movie",
     resolution: s.resolution || null,

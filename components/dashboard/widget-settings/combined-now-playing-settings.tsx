@@ -14,7 +14,9 @@ import {
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
+  TvArtworkSelector,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+import type { TvArtwork } from "@/lib/now-playing-stream";
 
 export interface CombinedNowPlayingSettingsValue extends Record<string, unknown> {
   plexInstanceIds: InstanceBindingValue;
@@ -26,6 +28,7 @@ export interface CombinedNowPlayingSettingsValue extends Record<string, unknown>
   hideUsers: string;
   showTranscoding: boolean;
   showUserAndDevice: boolean;
+  tvArtwork: TvArtwork;
   hideWhenEmpty: boolean;
 }
 
@@ -39,6 +42,7 @@ export const COMBINED_NOW_PLAYING_DEFAULT_SETTINGS: CombinedNowPlayingSettingsVa
   hideUsers: "",
   showTranscoding: true,
   showUserAndDevice: true,
+  tvArtwork: "poster",
   hideWhenEmpty: false,
 };
 
@@ -132,6 +136,11 @@ export function CombinedNowPlayingSettings({ slotId }: WidgetSettingsComponentPr
           />
         </ToggleCard>
       </SettingsSection>
+
+      <TvArtworkSelector
+        value={settings.tvArtwork}
+        onChange={(tvArtwork) => update({ tvArtwork })}
+      />
 
       <MaxItemsSelector
         value={settings.maxItems}

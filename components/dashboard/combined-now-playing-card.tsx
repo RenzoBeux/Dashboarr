@@ -168,6 +168,7 @@ export function CombinedNowPlayingCard({ slotId }: WidgetComponentProps) {
               showUserAndDevice={settings.showUserAndDevice}
               showTranscoding={settings.showTranscoding}
               showSource
+              tvArtwork={settings.tvArtwork}
             />
           ))}
           {hasMore && <ViewAllTile onPress={() => router.push(viewAllRoute)} />}

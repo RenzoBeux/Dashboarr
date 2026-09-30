@@ -228,9 +228,6 @@ export function getTautulliSessionPoster(
   height = 330,
   instanceId?: string,
 ): { uri: string; cacheKey: string } | null {
-  const metadataThumb = (ratingKey: string) =>
-    ratingKey ? `/library/metadata/${ratingKey}/thumb` : "";
-
   let imgPath: string;
   let fallback: TautulliFallback;
   if (session.media_type === "track") {
@@ -251,4 +248,25 @@ export function getTautulliSessionPoster(
   }
   if (!imgPath) return null;
   return getTautulliImageSource(imgPath, width, height, instanceId, fallback);
+}
+
+// An episode's own frame (its `thumb`) for the now-playing widgets' "episode
+// still" artwork option (#408); null for anything that isn't an episode. The
+// fallback is `art`, the 16:9 placeholder, so a frame Plex hasn't generated
+// yet doesn't come back poster-shaped.
+export function getTautulliSessionEpisodeStill(
+  session: TautulliSession,
+  width = 587,
+  height = 330,
+  instanceId?: string,
+): { uri: string; cacheKey: string } | null {
+  if (session.media_type !== "episode") return null;
+  const imgPath = session.thumb || metadataThumb(session.rating_key);
+  if (!imgPath) return null;
+  return getTautulliImageSource(imgPath, width, height, instanceId, "art");
+}
+
+// Plex's canonical thumb path for a rating key, for sessions that omit theirs.
+function metadataThumb(ratingKey: string): string {
+  return ratingKey ? `/library/metadata/${ratingKey}/thumb` : "";
 }

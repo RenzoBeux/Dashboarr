@@ -14,7 +14,9 @@ import {
   MaxItemsSelector,
   SettingsSection,
   ToggleCard,
+  TvArtworkSelector,
 } from "@/components/dashboard/widget-settings/widget-settings-blocks";
+import type { TvArtwork } from "@/lib/now-playing-stream";
 
 export interface StreamMonitorSettingsValue extends Record<string, unknown> {
   tautulliInstanceIds: InstanceBindingValue;
@@ -31,6 +33,7 @@ export interface StreamMonitorSettingsValue extends Record<string, unknown> {
   showTranscoding: boolean;
   showUserAndDevice: boolean;
   showBandwidthSummary: boolean;
+  tvArtwork: TvArtwork;
   hideWhenEmpty: boolean;
 }
 
@@ -44,6 +47,7 @@ export const STREAM_MONITOR_DEFAULT_SETTINGS: StreamMonitorSettingsValue = {
   showTranscoding: true,
   showUserAndDevice: true,
   showBandwidthSummary: true,
+  tvArtwork: "poster",
   hideWhenEmpty: false,
 };
 
@@ -146,6 +150,11 @@ export function StreamMonitorSettings({ slotId }: WidgetSettingsComponentProps) 
           />
         </ToggleCard>
       </SettingsSection>
+
+      <TvArtworkSelector
+        value={settings.tvArtwork}
+        onChange={(tvArtwork) => update({ tvArtwork })}
+      />
 
       <MaxItemsSelector
         value={settings.maxItems}

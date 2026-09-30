@@ -106,6 +106,7 @@ export function MediaServerNowPlayingCard({
               stream={stream}
               showUserAndDevice={settings.showUserAndDevice}
               showTranscoding={settings.showTranscoding}
+              tvArtwork={settings.tvArtwork}
             />
           ))}
           {hasMore && (

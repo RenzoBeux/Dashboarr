@@ -3,23 +3,26 @@ import { Play, Pause, Loader, Cog } from "lucide-react-native";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
-import type { NowPlayingStream } from "@/lib/now-playing-stream";
+import { streamArtwork, type NowPlayingStream, type TvArtwork } from "@/lib/now-playing-stream";
 import { SERVICE_ROUTES } from "@/lib/service-routes";
 
 // Renders one normalized NowPlayingStream as a poster tile. Shared by the Plex,
 // Jellyfin/Emby, and combined now-playing cards so the tile presentation lives
 // in exactly one place. `showSource` adds the small source-server logo used by
-// the combined widget; the per-service cards leave it off.
+// the combined widget; the per-service cards leave it off. `tvArtwork` picks
+// the show poster or the episode still for TV episodes (#408).
 export function NowPlayingStreamTile({
   stream,
   showUserAndDevice,
   showTranscoding,
   showSource = false,
+  tvArtwork = "poster",
 }: {
   stream: NowPlayingStream;
   showUserAndDevice: boolean;
   showTranscoding: boolean;
   showSource?: boolean;
+  tvArtwork?: TvArtwork;
 }) {
   const router = useRouter();
 
@@ -34,7 +37,7 @@ export function NowPlayingStreamTile({
 
   return (
     <MediaPosterTile
-      posterUrl={stream.poster}
+      posterUrl={streamArtwork(stream, tvArtwork)}
       title={stream.title}
       subtitle={subtitle}
       cornerBadge={{ icon: StateIcon, color: stateColor }}
