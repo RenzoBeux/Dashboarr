@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { View, Text, Pressable, Platform, ActivityIndicator } from "react-native";
 import {
   Power,
@@ -13,8 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { toast, toastError } from "@/components/ui/toast";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useIndexerTestRunner } from "@/hooks/use-indexer-test-runner";
 import {
   useProwlarrIndexers,
   useProwlarrIndexerStatuses,
@@ -37,33 +37,16 @@ export function ProwlarrIndexerList() {
   const { data: indexers, isLoading, error } = useProwlarrIndexers();
   const { data: statuses } = useProwlarrIndexerStatuses();
   const toggleIndexer = useToggleIndexer();
+  const { instanceId } = useInstanceTarget("prowlarr");
   const test = useTestProwlarrIndexer();
-  // Per row and local, as in the Jackett list: a test is a point-in-time probe
-  // whose verdict should survive testing a second indexer. The standing health
-  // dot is the server's view and refreshes on its own.
-  const [testResults, setTestResults] = useState<
-    Record<number, ProwlarrIndexerTestResult>
-  >({});
-
-  const runTest = (indexer: ProwlarrIndexer) => {
-    test.mutate(indexer, {
-      onSuccess: (result) => {
-        setTestResults((prev) => ({ ...prev, [indexer.id]: result }));
-        if (result.ok) toast(`${indexer.name} is working`);
-        else toast(`${indexer.name}: ${result.error}`, "error");
-      },
-      onError: (err) => {
-        setTestResults((prev) => ({
-          ...prev,
-          [indexer.id]: {
-            ok: false,
-            error: err instanceof Error ? err.message : "Test failed",
-          },
-        }));
-        toastError(`Couldn't test ${indexer.name}`, err);
-      },
-    });
-  };
+  // Verdicts are per row, local, and scoped to this instance: a test is a
+  // point-in-time probe, not cached server state. The standing health dot is
+  // the server's view and refreshes on its own.
+  const tests = useIndexerTestRunner<ProwlarrIndexer, ProwlarrIndexerTestResult>({
+    instanceId,
+    run: (indexer) => test.mutateAsync(indexer),
+    failed: (error) => ({ ok: false, error }),
+  });
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
   if (error) {
@@ -81,8 +64,8 @@ export function ProwlarrIndexerList() {
         const status = statusMap.get(indexer.id);
         const isDisabled = !!status?.disabledTill;
         const isEnabled = indexer.enable;
-        const testing = test.isPending && test.variables?.id === indexer.id;
-        const result = testResults[indexer.id];
+        const testing = tests.isTesting(indexer);
+        const result = tests.resultFor(indexer);
 
         return (
           <Card key={indexer.id}>
@@ -123,7 +106,7 @@ export function ProwlarrIndexerList() {
                 {/* Fixed box so swapping the icon for its spinner can't
                     reflow the row. */}
                 <Pressable
-                  onPress={() => runTest(indexer)}
+                  onPress={() => tests.runTest(indexer)}
                   disabled={testing}
                   className="w-7 h-7 items-center justify-center active:opacity-70"
                   hitSlop={6}

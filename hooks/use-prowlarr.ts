@@ -58,8 +58,9 @@ export function useToggleIndexer(instanceId?: string) {
 // Per-indexer test (#447). The verdict itself is transient row state in the
 // list, but unlike Jackett's probe this one has a server-side effect: Prowlarr
 // records the outcome in /indexerstatus (a pass clears a backoff, a fail starts
-// one), so statuses are refetched either way. `variables` tells the caller
-// which row is currently in flight.
+// one), so statuses are refetched either way. Drive it through
+// useIndexerTestRunner (one `mutateAsync` per row): `isPending`/`variables`
+// only track the latest call, so they can't tell two overlapping rows apart.
 export function useTestProwlarrIndexer(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("prowlarr", instanceId);
