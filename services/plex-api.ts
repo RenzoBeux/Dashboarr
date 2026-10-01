@@ -1,6 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
-import { buildUrl } from "@/lib/http-client";
+import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { getDemoPlexResponse } from "@/lib/demo-data";
 import type {
   PlexLibrariesResponse,
@@ -32,7 +32,7 @@ async function plexRequest<T>(path: string, instanceId?: string): Promise<T> {
 
   if (!inst.enabled) throw new Error("Plex is not enabled");
 
-  const baseUrl = store.getActiveUrl("plex", targetId);
+  const baseUrl = resolveReachableUrl("plex", targetId);
   if (!baseUrl) throw new Error("No URL configured for Plex");
 
   const url = new URL(

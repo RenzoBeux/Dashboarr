@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { buildUrl } from "@/lib/http-client";
+import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
@@ -79,7 +79,7 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
   const id = resolveQbInstanceId(instanceId);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
-  const baseUrl = store.getActiveUrl("qbittorrent", id);
+  const baseUrl = resolveReachableUrl("qbittorrent", id);
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 
   // Custom headers first so the reverse proxy lets /auth/login through; then
@@ -205,7 +205,7 @@ async function qbRequest<T>(
   if (!inst?.enabled) {
     throw new Error("qBittorrent is not enabled");
   }
-  const baseUrl = store.getActiveUrl("qbittorrent", id);
+  const baseUrl = resolveReachableUrl("qbittorrent", id);
   if (!baseUrl) throw new Error("No URL configured for qBittorrent");
   const apiBase = SERVICE_DEFAULTS.qbittorrent.apiBasePath;
 

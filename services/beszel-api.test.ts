@@ -24,6 +24,15 @@ function setStore(overrides: Record<string, unknown> = {}) {
     getActiveInstanceId: () => INSTANCE,
     instanceSecrets: { [INSTANCE]: { username: "admin", password: "hunter2" } },
     getActiveUrl: () => BASE_URL,
+    // resolveReachableUrl reads the instance for the reachability guards.
+    getInstance: () => ({
+      id: INSTANCE,
+      enabled: true,
+      name: "Beszel",
+      localUrl: BASE_URL,
+      remoteUrl: "",
+      useRemote: false,
+    }),
     getMergedHeaders: () => ({}),
     ...overrides,
   });

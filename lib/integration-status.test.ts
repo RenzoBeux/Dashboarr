@@ -53,6 +53,14 @@ function ctxFor(
   );
 }
 
+/** The probe context for a single classifyInstance call. */
+function probe(
+  activeUrl: string,
+  over: Partial<InstanceProbeContext> = {},
+): InstanceProbeContext {
+  return { activeUrl, lanBlocked: false, vpnBlocked: false, ...over };
+}
+
 function health(
   kind: ServiceId,
   entries: { instanceId: string; status: HealthStatusKind; responseTime?: number }[],
@@ -125,117 +133,74 @@ describe("isBlankInstance", () => {
 
 describe("classifyInstance", () => {
   it("reports a healthy enabled instance as ok", () => {
-    const r = classifyInstance("radarr", inst(), { status: "ok" }, false, "http://a");
+    const r = classifyInstance("radarr", inst(), { status: "ok" }, probe("http://a"));
     expect(r.state).toBe("ok");
     expect(r.status).toBe("ok");
     expect(r.reason).toBeUndefined();
   });
 
   it("reports auth failures with a specific reason", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst(),
-      { status: "auth_failed" },
-      false,
-      "http://a",
-    );
+    const r = classifyInstance("radarr", inst(), { status: "auth_failed" }, probe("http://a"));
     expect(r.state).toBe("attention");
     expect(r.reason).toBe("Authentication failed");
   });
 
   it("names the host in the unreachable reason", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst(),
-      { status: "offline" },
-      false,
-      "http://192.168.1.5:7878/sub",
-    );
+    const r = classifyInstance("radarr", inst(), { status: "offline" }, probe("http://192.168.1.5:7878/sub"));
     expect(r.state).toBe("attention");
     expect(r.reason).toBe("Unreachable · 192.168.1.5:7878");
   });
 
   // The split that stops the hub screaming on cellular.
   it("reports a LAN-blocked instance as away, never as attention", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst(),
-      { status: "offline" },
-      true,
-      "http://192.168.1.5:7878",
-    );
+    const r = classifyInstance("radarr", inst(), { status: "offline" }, probe("http://192.168.1.5:7878", { lanBlocked: true }));
     expect(r.state).toBe("away");
     expect(r.reason).toBeUndefined();
   });
 
   it("prefers away over a pending probe", () => {
-    const r = classifyInstance("radarr", inst(), undefined, true, "http://a");
+    const r = classifyInstance("radarr", inst(), undefined, probe("http://a", { lanBlocked: true }));
     expect(r.state).toBe("away");
   });
 
   // The same split for a VPN-only Remote URL with no VPN connected (#394).
   it("reports a VPN-blocked instance as waiting for VPN, never as attention", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst({
+    const r = classifyInstance("radarr", inst({
         remoteUrl: "http://100.64.0.5:7878",
         useRemote: true,
         remoteRequiresVpn: true,
-      }),
-      { status: "offline", message: "Waiting for VPN" },
-      false,
-      "http://100.64.0.5:7878",
-      true,
-    );
+      }), { status: "offline", message: "Waiting for VPN" }, probe("http://100.64.0.5:7878", { vpnBlocked: true }));
     expect(r.state).toBe("vpn");
     expect(r.reason).toBeUndefined();
   });
 
   it("prefers waiting-for-VPN over away and over a pending probe", () => {
     expect(
-      classifyInstance("radarr", inst(), undefined, true, "http://a", true).state,
+      classifyInstance("radarr", inst(), undefined, probe("http://a", { lanBlocked: true, vpnBlocked: true })).state,
     ).toBe("vpn");
     expect(
-      classifyInstance("radarr", inst(), undefined, false, "http://a", true).state,
+      classifyInstance("radarr", inst(), undefined, probe("http://a", { vpnBlocked: true })).state,
     ).toBe("vpn");
   });
 
   it("reports checking before the first probe resolves", () => {
-    const r = classifyInstance("radarr", inst(), undefined, false, "http://a");
+    const r = classifyInstance("radarr", inst(), undefined, probe("http://a"));
     expect(r.state).toBe("checking");
     expect(r.status).toBeUndefined();
   });
 
   it("reports a disabled but configured instance as off", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst({ enabled: false }),
-      { status: "ok" },
-      false,
-      "http://a",
-    );
+    const r = classifyInstance("radarr", inst({ enabled: false }), { status: "ok" }, probe("http://a"));
     expect(r.state).toBe("off");
   });
 
   it("reports an untouched placeholder as unconfigured", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst({ enabled: false, localUrl: "", remoteUrl: "" }),
-      undefined,
-      false,
-      "",
-    );
+    const r = classifyInstance("radarr", inst({ enabled: false, localUrl: "", remoteUrl: "" }), undefined, probe(""));
     expect(r.state).toBe("unconfigured");
   });
 
   it("flags an enabled instance with no URL, which health cannot verdict on", () => {
-    const r = classifyInstance(
-      "radarr",
-      inst({ localUrl: "", remoteUrl: "" }),
-      undefined,
-      false,
-      "",
-    );
+    const r = classifyInstance("radarr", inst({ localUrl: "", remoteUrl: "" }), undefined, probe(""));
     expect(r.state).toBe("attention");
     expect(r.reason).toBe("Enabled but no URL set");
   });

@@ -657,7 +657,10 @@ export function ServiceEditor({
       // at the URL. Judged against the in-progress Remote URL, like the LAN
       // hint above.
       const vpnWait = vpnGuardBlocked(testUrl, {
+        id: instanceId,
+        localUrl,
         remoteUrl,
+        useRemote: config.useRemote,
         remoteRequiresVpn: config.remoteRequiresVpn,
       });
       toast(

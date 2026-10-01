@@ -129,16 +129,16 @@ function hostLabel(url: string): string {
  * Classify one instance.
  *
  * `health` is that instance's entry from useServiceHealth, or undefined when
- * the first probe batch has not resolved yet.
+ * the first probe batch has not resolved yet. `ctx` is the caller's resolved
+ * URL for it plus the two guard verdicts (see InstanceProbeContext).
  */
 export function classifyInstance(
   kind: ServiceId,
   inst: ServiceInstance,
   health: { status: HealthStatusKind; message?: string } | undefined,
-  lanBlocked: boolean,
-  activeUrl: string,
-  vpnBlocked = false,
+  ctx: InstanceProbeContext,
 ): IntegrationInstanceRow {
+  const { activeUrl, lanBlocked, vpnBlocked } = ctx;
   const base = { kind, instanceId: inst.id, instanceName: inst.name, activeUrl };
 
   const hasUrl = inst.localUrl.length > 0 || inst.remoteUrl.length > 0;
@@ -233,9 +233,7 @@ export function buildIntegrationRows(
         health
           ? { status: health.status, message: health.message }
           : settledKindFallback,
-        ctx?.lanBlocked ?? false,
-        ctx?.activeUrl ?? "",
-        ctx?.vpnBlocked ?? false,
+        ctx ?? { activeUrl: "", lanBlocked: false, vpnBlocked: false },
       );
       return { ...row, responseTime: health?.responseTime };
     });

@@ -580,26 +580,34 @@ function ServiceHealthWatcher({
     for (const kind of health) {
       for (const inst of kind.instances) {
         const key = `${kind.id}:${inst.instanceId}`;
+        // kind.id is widened to string on ServiceHealthStatus but is always
+        // a ServiceId here (results are built from SERVICE_IDS).
+        const kindId = kind.id as ServiceId;
+        const url = store.getActiveUrl(kindId, inst.instanceId);
+        // An "offline" reached without contacting the server says nothing
+        // about the server: the current network has no URL to reach it on
+        // (leaving home resolves a local-only server to "", see getActiveUrl),
+        // or its VPN-only Remote URL has no VPN up and the probe was skipped
+        // (#394). Don't alert on it, and don't record it either: keep the
+        // last real verdict, otherwise a server that dies while the VPN is
+        // off never alerts once the VPN is back, because the recorded
+        // "offline" hides the online→offline transition.
+        const suppressed =
+          !inst.online &&
+          (!url ||
+            vpnGuardBlocked(url, store.getInstance(kindId, inst.instanceId)));
+        if (suppressed) {
+          const last = prev?.get(key);
+          if (last !== undefined) currentMap.set(key, last);
+          continue;
+        }
         currentMap.set(key, inst.online);
         if (prev !== null) {
           const wasOnline = prev.get(key);
-          // kind.id is widened to string on ServiceHealthStatus but is always
-          // a ServiceId here (results are built from SERVICE_IDS).
-          const kindId = kind.id as ServiceId;
-          const url = store.getActiveUrl(kindId, inst.instanceId);
           if (
             wasOnline === true &&
             inst.online === false &&
-            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings) &&
-            // Don't cry "unreachable" when the instance only went offline
-            // because the current network has no URL to reach it on — e.g.
-            // leaving home resolves a local-only server to "" (see
-            // getActiveUrl). That's a network change, not a server going down;
-            // a server with a usable URL that stops responding still fires.
-            url &&
-            // Nor when its VPN-only Remote URL lost the VPN (#394): the tunnel
-            // dropped, the server didn't.
-            !vpnGuardBlocked(url, store.getInstance(kindId, inst.instanceId))
+            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings)
           ) {
             sendLocalNotification({
               title: "Service offline",

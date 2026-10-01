@@ -12,6 +12,7 @@ import {
   pingService,
   lanGuardBlockReason,
   vpnGuardBlocked,
+  resolveReachableUrl,
   VPN_WAIT_MESSAGE,
   testServiceConnection,
   checkInstanceHealth,
@@ -33,13 +34,14 @@ jest.mock("@/store/config-store", () => ({
   },
 }));
 
-// The VPN guard (#394) stands down on binaries without the native VpnStatus
-// module. Jest has no native modules, so pretend it is present; the
-// stale-binary test flips this off.
-const mockVpnModule = { available: true };
+// The VPN guard (#394) reads the tunnel live through detectVpnActive (the
+// store's isVpnActive can be stale) and stands down on binaries without the
+// native VpnStatus module. Jest has no native modules, so both are faked here;
+// the stale-binary test flips `available` off.
+const mockVpnModule = { available: true, active: false };
 jest.mock("@/lib/vpn", () => ({
   isVpnModuleAvailable: () => mockVpnModule.available,
-  detectVpnActive: () => false,
+  detectVpnActive: () => mockVpnModule.active,
   getActiveTunnelInterfaces: () => [],
 }));
 
@@ -92,6 +94,13 @@ interface FakeState {
   // Opt-in that lets a VPN stand the guard down (#185). Falsy by default, so an
   // untrusted VPN does NOT make a private URL reachable off Wi-Fi.
   treatVpnAsHome?: boolean;
+  // Slot resolution inputs for the VPN guard when both URL fields hold the
+  // same address (#394). Defaults: auto-switch off, at home, no forced remote.
+  autoSwitchNetwork?: boolean;
+  resolveInstanceNetwork: (instanceId: string) => {
+    away: boolean;
+    forcesRemote: boolean;
+  };
   serviceInstances: Record<string, FakeInstance[]>;
   instanceSecrets: Record<string, FakeSecrets>;
   activeInstance: Record<string, string | null>;
@@ -150,6 +159,7 @@ function makeState(overrides: Partial<FakeState> = {}): FakeState {
     activeInstance,
     secrets,
     globalCustomHeaders: {},
+    resolveInstanceNetwork: () => ({ away: false, forcesRemote: false }),
     seerrStaleHosts: {},
     isSeerrHostStale(instanceId, host) {
       return (this.seerrStaleHosts[instanceId] ?? []).includes(host);
@@ -533,13 +543,14 @@ describe("Remote URL needs a VPN (#394)", () => {
     global.fetch = fetchSpy as any;
     mockStateRef.current = makeState();
     mockStateRef.current.isOnWifi = true;
-    mockStateRef.current.isVpnActive = false;
     mockVpnModule.available = true;
+    mockVpnModule.active = false;
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
     mockVpnModule.available = true;
+    mockVpnModule.active = false;
   });
 
   it("skips a VPN-only Remote URL while no VPN is connected, with a 'waiting' verdict", async () => {
@@ -558,11 +569,30 @@ describe("Remote URL needs a VPN (#394)", () => {
 
   it("probes it as soon as a VPN is up, with no treatVpnAsHome needed", async () => {
     const inst = vpnOnlyRadarr();
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = false;
     await serviceRequest("radarr", "/system/status");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(false);
+  });
+
+  it("reads the tunnel live, not the store flag that starts false and can lag", async () => {
+    const inst = vpnOnlyRadarr();
+    // Cold start: the store still says "no VPN" while one is up. Must probe.
+    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = true;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // The tunnel just dropped and the store still says "up". Must skip, and
+    // the offline watcher must read it as blocked rather than as a server
+    // going down.
+    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "Waiting for VPN",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(true);
   });
 
   it("leaves the Local URL alone: at home the LAN needs no tunnel", async () => {
@@ -577,16 +607,70 @@ describe("Remote URL needs a VPN (#394)", () => {
     expect(vpnGuardBlocked(inst.localUrl, inst)).toBe(false);
   });
 
-  it("applies to both slots when they hold the same tunnel address", async () => {
+  it("resolves the slot when both fields hold the same address", async () => {
+    // A VPN that routes the home LAN: the same 192.168.x in both fields. At
+    // home under auto-switch that is the Local slot, tried directly with no
+    // VPN. Away, or with "Always use Remote URL", it is the Remote slot and
+    // the requirement applies. URL equality alone would block it at home.
     const inst = mockStateRef.current.serviceInstances.radarr[0];
-    inst.localUrl = "http://100.64.0.5:7878";
-    inst.remoteUrl = "http://100.64.0.5:7878";
+    inst.localUrl = "http://192.168.1.50:7878";
+    inst.remoteUrl = "http://192.168.1.50:7878";
     inst.remoteRequiresVpn = true;
     inst.useRemote = false;
+    mockStateRef.current.autoSwitchNetwork = true;
+    mockStateRef.current.resolveInstanceNetwork = () => ({
+      away: false,
+      forcesRemote: false,
+    });
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(vpnGuardBlocked(inst.localUrl, inst)).toBe(false);
+
+    mockStateRef.current.resolveInstanceNetwork = () => ({
+      away: true,
+      forcesRemote: false,
+    });
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "Waiting for VPN",
     );
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    mockStateRef.current.resolveInstanceNetwork = () => ({
+      away: false,
+      forcesRemote: false,
+    });
+    inst.useRemote = true;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "Waiting for VPN",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("is the one resolver for transports that fetch on their own", async () => {
+    // qBittorrent, AdGuard, Plex, ... pick their URL through
+    // resolveReachableUrl, which carries both guards and throws like
+    // serviceRequest does, so they fail fast too instead of hanging.
+    const inst = vpnOnlyRadarr();
+    expect(() => resolveReachableUrl("radarr", "radarr-uuid")).toThrow(
+      "radarr: Waiting for VPN",
+    );
+    mockVpnModule.active = true;
+    expect(resolveReachableUrl("radarr", "radarr-uuid")).toBe(
+      "http://100.64.0.5:7878",
+    );
+    // The LAN guard rides along (#106): a private address off Wi-Fi, no VPN.
+    mockVpnModule.active = false;
+    inst.remoteRequiresVpn = false;
+    inst.remoteUrl = "http://192.168.1.50:7878";
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = false;
+    expect(() => resolveReachableUrl("radarr", "radarr-uuid")).toThrow(
+      "private LAN address not reachable off Wi-Fi",
+    );
+    // No URL at all is the caller's "No URL configured" case, not a block.
+    inst.remoteUrl = "";
+    inst.localUrl = "";
+    expect(resolveReachableUrl("radarr", "radarr-uuid")).toBe("");
   });
 
   it("wins over the LAN guard for a private tunnel address off Wi-Fi", async () => {

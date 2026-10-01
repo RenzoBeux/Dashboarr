@@ -105,11 +105,10 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   // Subscribed so the L/R badge flips live when the user walks home/away or
   // toggles auto-switch — both feed resolveActiveUrlKind below.
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
-  // The VPN badge (#394) reads the resolved URL and the live VPN flag through
-  // vpnGuardBlocked; subscribe to the flag (bare: only the re-render matters)
-  // so the badge flips the moment the tunnel comes up or drops.
+  // The VPN badge (#394) reads the resolved URL through vpnGuardBlocked. The
+  // re-render when the tunnel comes up or drops comes from the resolver hook
+  // below, which already subscribes to isVpnActive.
   const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
-  useConfigStore((s) => s.isVpnActive);
   // Per-instance home/away + "always remote" verdict. An explicitly bound
   // instance from another workspace is judged against THAT workspace's home
   // networks, the same way getActiveUrl picks its URL (#418).
