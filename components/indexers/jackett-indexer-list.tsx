@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { View, Text } from "react-native";
 import { Search, CheckCircle2, XCircle, Activity } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -8,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { toast, toastError } from "@/components/ui/toast";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useIndexerTestRunner } from "@/hooks/use-indexer-test-runner";
 import { useJackettIndexers, useTestJackettIndexer } from "@/hooks/use-jackett";
 import type { JackettIndexer, JackettIndexerTestResult } from "@/lib/types";
 
@@ -24,33 +24,15 @@ export function JackettIndexerList({
   onSearch?: (indexer: JackettIndexer) => void;
 }) {
   const { data: indexers, isLoading, error } = useJackettIndexers();
+  const { instanceId } = useInstanceTarget("jackett");
   const test = useTestJackettIndexer();
-  // Results are per row and deliberately local: a test is a point-in-time probe,
-  // not cached server state, and it should survive testing a second indexer.
-  const [testResults, setTestResults] = useState<
-    Record<string, JackettIndexerTestResult>
-  >({});
-
-  const runTest = (indexer: JackettIndexer) => {
-    test.mutate(indexer.id, {
-      onSuccess: (result) => {
-        setTestResults((prev) => ({ ...prev, [indexer.id]: result }));
-        if (result.ok) toast(`${indexer.name} is working`);
-        else toast(`${indexer.name}: ${result.error}`, "error");
-      },
-      onError: (err) => {
-        setTestResults((prev) => ({
-          ...prev,
-          [indexer.id]: {
-            ok: false,
-            results: 0,
-            error: err instanceof Error ? err.message : "Test failed",
-          },
-        }));
-        toastError(`Couldn't test ${indexer.name}`, err);
-      },
-    });
-  };
+  // Verdicts are per row, local, and scoped to this instance: a test is a
+  // point-in-time probe, not cached server state.
+  const tests = useIndexerTestRunner<JackettIndexer, JackettIndexerTestResult>({
+    instanceId,
+    run: (indexer) => test.mutateAsync({ indexerId: indexer.id, instanceId }),
+    failed: (error) => ({ ok: false, results: 0, error }),
+  });
 
   if (isLoading) return <SkeletonCardContent rows={4} />;
   if (error) {
@@ -68,8 +50,8 @@ export function JackettIndexerList({
   return (
     <View className="gap-2">
       {indexers.map((indexer) => {
-        const testing = test.isPending && test.variables === indexer.id;
-        const result = testResults[indexer.id];
+        const testing = tests.isTesting(indexer);
+        const result = tests.resultFor(indexer);
 
         return (
           <Card key={indexer.id}>
@@ -126,7 +108,7 @@ export function JackettIndexerList({
                 size="sm"
                 className="flex-1"
                 loading={testing}
-                onPress={() => runTest(indexer)}
+                onPress={() => tests.runTest(indexer)}
                 icon={<Icon icon={Activity} size={14} color="#a1a1aa" />}
               />
             </View>

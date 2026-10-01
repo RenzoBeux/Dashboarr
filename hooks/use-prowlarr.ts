@@ -3,6 +3,7 @@ import {
   getIndexers,
   getIndexerStatuses,
   getIndexerStats,
+  testIndexer,
   toggleIndexer,
   grabRelease,
 } from "@/services/prowlarr-api";
@@ -50,6 +51,36 @@ export function useToggleIndexer(instanceId?: string) {
       toggleIndexer(indexer, enable, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prowlarr", id, "indexers"] });
+    },
+  });
+}
+
+// Per-indexer test (#447). The verdict itself is transient row state in the
+// list, but unlike Jackett's probe this one has a server-side effect: Prowlarr
+// records the outcome in /indexerstatus (a pass clears a backoff, a fail starts
+// one), so statuses are refetched either way. Drive it through
+// useIndexerTestRunner (one `mutateAsync` per row): `isPending`/`variables`
+// only track the latest call, so they can't tell two overlapping rows apart.
+//
+// The target instance travels in the variables instead of being read from the
+// hook's closure: TanStack re-applies a pending mutation's options on every
+// render, so a closure-read id would follow an instance switch made mid-flight
+// and invalidate the wrong server's statuses. `instanceId` is the list's
+// useInstanceTarget value, null-typed to match the query key.
+export function useTestProwlarrIndexer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      indexer,
+      instanceId,
+    }: {
+      indexer: ProwlarrIndexer;
+      instanceId: string | null;
+    }) => testIndexer(indexer, instanceId ?? undefined),
+    onSettled: (_data, _error, { instanceId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["prowlarr", instanceId, "indexerStatuses"],
+      });
     },
   });
 }

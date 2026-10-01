@@ -17,11 +17,19 @@ export function useJackettIndexers(instanceId?: string) {
 
 // Per-indexer test (#315). Nothing is cached or invalidated: a test is a probe
 // the user explicitly asked for, and its result is transient row state in the
-// list. `variables` tells the caller which row is currently in flight.
-export function useTestJackettIndexer(instanceId?: string) {
-  const { instanceId: id } = useInstanceTarget("jackett", instanceId);
+// list. Drive it through useIndexerTestRunner (one `mutateAsync` per row):
+// `isPending`/`variables` only track the latest call, so they can't tell two
+// overlapping rows apart. The target instance travels in the variables, pinned
+// at call time, for the reason given on useTestProwlarrIndexer.
+export function useTestJackettIndexer() {
   return useMutation({
-    mutationFn: (indexerId: string) => testIndexer(indexerId, id ?? undefined),
+    mutationFn: ({
+      indexerId,
+      instanceId,
+    }: {
+      indexerId: string;
+      instanceId: string | null;
+    }) => testIndexer(indexerId, instanceId ?? undefined),
   });
 }
 
