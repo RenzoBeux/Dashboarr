@@ -166,6 +166,20 @@ describe("buildHealthProbeSignature — health query re-keys on its inputs (#106
     expect(on).not.toBe(off);
   });
 
+  it("changes when 'Remote URL needs a VPN' is toggled on an instance (#394)", () => {
+    // The flag swaps a real probe for the "Waiting for VPN" short-circuit with
+    // no URL change, so the key must move or the editor toggle would appear to
+    // do nothing until the next background poll.
+    const off = sig({ instances: oneRadarr() });
+    const on = sig({
+      instances: {
+        ...emptyInstances(),
+        radarr: [makeInst({ id: "r1", remoteRequiresVpn: true })],
+      },
+    });
+    expect(on).not.toBe(off);
+  });
+
   it("ignores disabled instances", () => {
     const enabled = sig({ instances: oneRadarr() });
     const disabled = sig({

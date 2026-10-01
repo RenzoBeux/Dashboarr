@@ -102,8 +102,12 @@ export function buildHealthProbeSignature(inputs: HealthProbeInputs): string {
       // Seerr's sign-in mode (#332) changes which credential the probe posts
       // and where, so a mode switch without a credential change must re-probe.
       const mode = inst.authMode ?? "";
+      // "Remote URL needs a VPN" (#394) flips the probe between a real request
+      // and the "Waiting for VPN" short-circuit with no URL change, so toggling
+      // it in the editor must re-probe at once. (isVpnActive is already keyed.)
+      const vpnOnly = inst.remoteRequiresVpn ? 1 : 0;
       parts.push(
-        `${id}:${inst.id}:${url}:${hasCreds}:${inst.ignoreCertErrors ? 1 : 0}:${headerKeys}:${mode}`,
+        `${id}:${inst.id}:${url}:${hasCreds}:${inst.ignoreCertErrors ? 1 : 0}:${headerKeys}:${mode}:${vpnOnly}`,
       );
     }
   }

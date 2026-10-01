@@ -16,7 +16,7 @@ import { SettingsRow } from "@/components/settings/settings-row";
 import { SERVICE_DEFAULTS_KIND_LABEL } from "@/components/settings/service-kind-shared";
 import { useConfigStore } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { lanGuardBlockReason } from "@/lib/http-client";
+import { lanGuardBlockReason, vpnGuardBlocked } from "@/lib/http-client";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import {
   buildIntegrationRows,
@@ -44,6 +44,8 @@ export default function IntegrationsHub() {
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
+  // A VPN coming up or dropping flips vpnGuardBlocked (#394).
+  const isVpnActive = useConfigStore((s) => s.isVpnActive);
 
   const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
   // "Determining": the first probe batch, or a re-keyed refetch after a
@@ -58,6 +60,7 @@ export default function IntegrationsHub() {
         context[inst.id] = {
           activeUrl,
           lanBlocked: lanGuardBlockReason(activeUrl, inst) !== null,
+          vpnBlocked: vpnGuardBlocked(activeUrl, inst),
         };
       }
     }
@@ -66,8 +69,8 @@ export default function IntegrationsHub() {
       determining ? undefined : healthData,
       context,
     );
-    // networkAwayFromHome / currentWifi / isOnWifi feed getActiveUrl and
-    // lanGuardBlockReason indirectly.
+    // networkAwayFromHome / currentWifi / isOnWifi / isVpnActive feed
+    // getActiveUrl and the two guards indirectly.
   }, [
     serviceInstances,
     healthData,
@@ -79,6 +82,7 @@ export default function IntegrationsHub() {
     activeDashboardId,
     homeNetworks,
     isOnWifi,
+    isVpnActive,
   ]);
 
   const summary = summarizeIntegrations(rows);
@@ -190,9 +194,9 @@ export default function IntegrationsHub() {
                 right={
                   row.enabledCount === 0 ? (
                     <Badge label="Off" variant="default" />
-                  ) : row.state === "away" ? (
-                    // Away is not a health verdict — the subtitle already says
-                    // "away from home". A dot here would read as broken.
+                  ) : row.state === "away" || row.state === "vpn" ? (
+                    // Away / waiting for VPN are not health verdicts; the
+                    // subtitle already says so. A dot here would read as broken.
                     null
                   ) : (
                     <StatusDot

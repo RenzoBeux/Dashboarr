@@ -11,6 +11,8 @@ import {
   serviceRequest,
   pingService,
   lanGuardBlockReason,
+  vpnGuardBlocked,
+  VPN_WAIT_MESSAGE,
   testServiceConnection,
   checkInstanceHealth,
   ensureSeerrSession,
@@ -29,6 +31,16 @@ jest.mock("@/store/config-store", () => ({
   useConfigStore: {
     getState: () => mockStateRef.current,
   },
+}));
+
+// The VPN guard (#394) stands down on binaries without the native VpnStatus
+// module. Jest has no native modules, so pretend it is present; the
+// stale-binary test flips this off.
+const mockVpnModule = { available: true };
+jest.mock("@/lib/vpn", () => ({
+  isVpnModuleAvailable: () => mockVpnModule.available,
+  detectVpnActive: () => false,
+  getActiveTunnelInterfaces: () => [],
 }));
 
 // fetchWithDigestRetry caches the server nonce in module state shared by every
@@ -53,6 +65,8 @@ interface FakeInstance {
   localUrl: string;
   remoteUrl: string;
   useRemote: boolean;
+  // "Remote URL needs a VPN" (#394); absent means off.
+  remoteRequiresVpn?: boolean;
   // Seerr sign-in mode (#332); absent means the admin API key.
   authMode?: "apiKey" | "plex" | "mediaServer" | "local";
 }
@@ -496,6 +510,122 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     mockStateRef.current.isVpnActive = false;
     await serviceRequest("radarr", "/system/status");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Remote URL needs a VPN (#394)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  // A tailnet-only Radarr: tunnel address in the Remote URL, "Always use
+  // Remote URL" on, flag on. The fake getActiveUrl resolves useRemote → remote.
+  const vpnOnlyRadarr = () => {
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.remoteUrl = "http://100.64.0.5:7878";
+    inst.useRemote = true;
+    inst.remoteRequiresVpn = true;
+    return inst;
+  };
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = fetchMock();
+    global.fetch = fetchSpy as any;
+    mockStateRef.current = makeState();
+    mockStateRef.current.isOnWifi = true;
+    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.available = true;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    mockVpnModule.available = true;
+  });
+
+  it("skips a VPN-only Remote URL while no VPN is connected, with a 'waiting' verdict", async () => {
+    const inst = vpnOnlyRadarr();
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "Waiting for VPN",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await pingService("radarr")).toBeNull();
+    expect(await checkInstanceHealth("radarr", "radarr-uuid")).toEqual({
+      kind: "unreachable",
+      message: VPN_WAIT_MESSAGE,
+    });
+    expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(true);
+  });
+
+  it("probes it as soon as a VPN is up, with no treatVpnAsHome needed", async () => {
+    const inst = vpnOnlyRadarr();
+    mockStateRef.current.isVpnActive = true;
+    mockStateRef.current.treatVpnAsHome = false;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(false);
+  });
+
+  it("leaves the Local URL alone: at home the LAN needs no tunnel", async () => {
+    // The fast-at-home setup: LAN address local, tunnel address remote, and
+    // auto-switch picked local. Only the Remote slot carries the requirement.
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.remoteUrl = "http://100.64.0.5:7878";
+    inst.remoteRequiresVpn = true;
+    inst.useRemote = false;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(vpnGuardBlocked(inst.localUrl, inst)).toBe(false);
+  });
+
+  it("applies to both slots when they hold the same tunnel address", async () => {
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.localUrl = "http://100.64.0.5:7878";
+    inst.remoteUrl = "http://100.64.0.5:7878";
+    inst.remoteRequiresVpn = true;
+    inst.useRemote = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "Waiting for VPN",
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("wins over the LAN guard for a private tunnel address off Wi-Fi", async () => {
+    // A WireGuard/ZeroTier-assigned 10.x in the Remote URL (#356) with the
+    // flag on: off Wi-Fi with no VPN both guards apply, and "waiting for VPN"
+    // is the useful answer, not "private LAN address".
+    const inst = vpnOnlyRadarr();
+    inst.remoteUrl = "http://10.147.20.4:7878";
+    mockStateRef.current.isOnWifi = false;
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
+      "Waiting for VPN",
+    );
+    expect(await checkInstanceHealth("radarr", "radarr-uuid")).toMatchObject({
+      kind: "unreachable",
+      message: VPN_WAIT_MESSAGE,
+    });
+  });
+
+  it("does nothing without the flag, and nothing in demo mode", async () => {
+    const inst = mockStateRef.current.serviceInstances.radarr[0];
+    inst.remoteUrl = "http://100.64.0.5:7878";
+    inst.useRemote = true;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(false);
+
+    inst.remoteRequiresVpn = true;
+    mockStateRef.current.demoMode = true;
+    expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(false);
+  });
+
+  it("stands down on a binary without the VpnStatus module and probes like before", async () => {
+    // An OTA'd bundle on an old build can never see a VPN; skipping there
+    // would mean never probing the instance again.
+    const inst = vpnOnlyRadarr();
+    mockVpnModule.available = false;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(false);
   });
 });
 

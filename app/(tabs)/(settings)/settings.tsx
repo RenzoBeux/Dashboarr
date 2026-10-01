@@ -9,7 +9,7 @@ import { APP_THEMES } from "@/lib/app-themes";
 import { useConfigStore } from "@/store/config-store";
 import { isWebSlotPending, useBackendStore } from "@/store/backend-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
-import { lanGuardBlockReason } from "@/lib/http-client";
+import { lanGuardBlockReason, vpnGuardBlocked } from "@/lib/http-client";
 import { SERVICE_IDS } from "@/lib/constants";
 import {
   buildIntegrationRows,
@@ -43,6 +43,8 @@ export default function SettingsScreen() {
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const isOnWifi = useConfigStore((s) => s.isOnWifi);
+  // A VPN coming up or dropping flips vpnGuardBlocked (#394).
+  const isVpnActive = useConfigStore((s) => s.isVpnActive);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
   const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
@@ -69,6 +71,7 @@ export default function SettingsScreen() {
         context[inst.id] = {
           activeUrl,
           lanBlocked: lanGuardBlockReason(activeUrl, inst) !== null,
+          vpnBlocked: vpnGuardBlocked(activeUrl, inst),
         };
       }
     }
@@ -79,8 +82,8 @@ export default function SettingsScreen() {
         context,
       ),
     );
-    // networkAwayFromHome / currentWifi / isOnWifi feed getActiveUrl and
-    // lanGuardBlockReason indirectly (#418).
+    // networkAwayFromHome / currentWifi / isOnWifi / isVpnActive feed
+    // getActiveUrl and the two guards indirectly (#418, #394).
   }, [
     serviceInstances,
     healthData,
@@ -92,6 +95,7 @@ export default function SettingsScreen() {
     activeDashboardId,
     homeNetworks,
     isOnWifi,
+    isVpnActive,
   ]);
 
   // Keeps the title clear of the iPadOS 26 window-control cluster (#342).

@@ -17,7 +17,11 @@ import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore, type ServiceConfig } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { BackHeader } from "@/components/common/back-header";
-import { testServiceConnection, lanGuardBlockReason } from "@/lib/http-client";
+import {
+  testServiceConnection,
+  lanGuardBlockReason,
+  vpnGuardBlocked,
+} from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
@@ -648,7 +652,20 @@ export function ServiceEditor({
     } else if (result.kind === "auth_failed") {
       toast(`Auth failed (${which} URL): ${result.message}`, "error");
     } else {
-      toast(`Could not reach ${which} URL: ${result.message}`, "error");
+      // A VPN-only Remote URL failing with no VPN up is the expected outcome,
+      // not a misconfiguration (#394): say what to turn on instead of pointing
+      // at the URL. Judged against the in-progress Remote URL, like the LAN
+      // hint above.
+      const vpnWait = vpnGuardBlocked(testUrl, {
+        remoteUrl,
+        remoteRequiresVpn: config.remoteRequiresVpn,
+      });
+      toast(
+        vpnWait
+          ? `Could not reach ${which} URL. It is marked as needing a VPN and none is connected: turn on your VPN and try again.`
+          : `Could not reach ${which} URL: ${result.message}`,
+        "error",
+      );
     }
   };
 
@@ -985,6 +1002,14 @@ export function ServiceEditor({
           value={config.ignoreCertErrors ?? false}
           onValueChange={(v) =>
             updateInstance(serviceId, instanceId, { ignoreCertErrors: v })
+          }
+        />
+        <Toggle
+          label="Remote URL needs a VPN"
+          description="The Remote URL is a Tailscale, WireGuard or other VPN address. While no VPN is connected, Dashboarr skips it and shows Waiting for VPN instead of marking the server offline. For a server with no LAN address, pair this with Always use Remote URL."
+          value={config.remoteRequiresVpn ?? false}
+          onValueChange={(v) =>
+            updateInstance(serviceId, instanceId, { remoteRequiresVpn: v })
           }
         />
       </Card>

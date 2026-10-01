@@ -15,6 +15,7 @@ import { buildUrl } from "@/lib/url-builder";
 import { applyMediaServerAuth } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
 import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+import { isVpnModuleAvailable } from "@/lib/vpn";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
 // service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
 // the same envelope the same way. Pure string/object helpers — no cycle.
@@ -159,6 +160,56 @@ export function lanGuardBlockReason(
   inst?: { remoteUrl: string },
 ): string | null {
   return lanUnreachableOffWifi(url, inst) ? lanGuardReason() : null;
+}
+
+/**
+ * "Remote URL needs a VPN" (#394): the user declared the Remote URL slot a
+ * VPN-side address (Tailscale, WireGuard, ...). With no VPN connected that host
+ * provably can't answer, so probing it only burns the connect timeout and
+ * paints a verdict identical to a crashed server. Skip it, and let the UI say
+ * "Waiting for VPN" instead.
+ *
+ * Judged on the slot, not the host: the same instance's Local URL is still
+ * probed, because under auto-switch it is only ever used on a confirmed home
+ * network, where the LAN needs no tunnel. A server with no LAN address puts the
+ * tunnel address in the Remote URL with "Always use Remote URL" on, which
+ * resolves to that slot everywhere. `isRemoteSlotUrl` also matches when both
+ * slots hold the same address.
+ *
+ * Stands down on a binary without the VpnStatus module (an OTA update onto an
+ * old build): `isVpnActive` can only ever read false there, so skipping would
+ * never probe the instance again. Falling through to the probe is exactly the
+ * pre-#394 behavior.
+ */
+function remoteVpnDown(
+  url: string,
+  inst?: { remoteUrl: string; remoteRequiresVpn?: boolean },
+): boolean {
+  const store = useConfigStore.getState();
+  if (store.demoMode) return false;
+  if (!inst?.remoteRequiresVpn) return false;
+  if (!isRemoteSlotUrl(url, inst)) return false;
+  if (store.isVpnActive) return false;
+  return isVpnModuleAvailable();
+}
+
+/** Health-probe and request message while a VPN-only Remote URL has no VPN. */
+export const VPN_WAIT_MESSAGE =
+  "Waiting for VPN (the Remote URL needs a VPN and none is connected)";
+
+/**
+ * The VPN guard's verdict for UI (#394): true when `url` is this instance's
+ * Remote URL, the instance says that slot needs a VPN, and none is connected.
+ * The Integrations hub and the Status widget classify such an instance as
+ * "waiting for VPN" instead of "needs attention", and the offline-notification
+ * watcher stays quiet for it. Same in-progress-form contract as
+ * `lanGuardBlockReason`.
+ */
+export function vpnGuardBlocked(
+  url: string,
+  inst?: { remoteUrl: string; remoteRequiresVpn?: boolean },
+): boolean {
+  return remoteVpnDown(url, inst);
 }
 
 interface RequestOptions extends Omit<RequestInit, "signal"> {
@@ -394,6 +445,12 @@ export async function serviceRequest<T>(
   const baseUrl = pinnedBaseUrl ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) {
     throw new Error(`No URL configured for ${serviceId}`);
+  }
+  // The Remote URL is declared VPN-only and no VPN is up (#394): the host
+  // provably can't answer, so don't pay the connect timeout. Checked before the
+  // LAN guard so a private tunnel address gets the more specific message.
+  if (remoteVpnDown(baseUrl, inst)) {
+    throw new Error(`${serviceId}: ${VPN_WAIT_MESSAGE}`);
   }
   // Fail fast instead of hanging on an unreachable LAN address off WiFi.
   // Slot-neutral wording: with no VPN up the guard keys on the URL's host, so a
@@ -643,10 +700,16 @@ export async function pingService(
 
   const baseUrl = urlOverride ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) return null;
-  // Don't hang pinging a LAN address off WiFi. Skipped only for the stored URL;
-  // an explicit urlOverride (form "Test" value) is always attempted so the user
-  // can validate a local URL even while away.
-  if (!urlOverride && lanUnreachableOffWifi(baseUrl, inst)) return null;
+  // Don't hang pinging a LAN address off WiFi, or a VPN-only Remote URL with no
+  // VPN up (#394). Skipped only for the stored URL; an explicit urlOverride
+  // (form "Test" value) is always attempted so the user can validate a local
+  // URL even while away.
+  if (
+    !urlOverride &&
+    (remoteVpnDown(baseUrl, inst) || lanUnreachableOffWifi(baseUrl, inst))
+  ) {
+    return null;
+  }
 
   // SAB has no /system endpoint to GET — it advertises version through the
   // single /api?mode=version handler, so we synthesize the ping URL from the
@@ -965,6 +1028,12 @@ export async function checkInstanceHealth(
   const url = store.getActiveUrl(serviceId, instanceId);
   if (!url) {
     return { kind: "unreachable", message: "No URL configured" };
+  }
+  // The Remote URL needs a VPN and none is connected (#394): same fail-fast
+  // reasoning as the LAN guard below, with a verdict the UI can tell apart
+  // from a server that is actually down.
+  if (remoteVpnDown(url, inst)) {
+    return { kind: "unreachable", message: VPN_WAIT_MESSAGE };
   }
   // A LAN URL can't be reached off WiFi — short-circuit instead of probing it.
   // This is the core of the Glances/#106 fix: without it the doomed connect
@@ -1306,6 +1375,9 @@ export function ensureSeerrSession(instanceId: string, pinnedBaseUrl?: string): 
   // runs before serviceRequest, and what it would send to a private address
   // off the home network is not an API call but the account's password or
   // Plex token. Local URLs are for the home network only.
+  if (remoteVpnDown(baseUrl, inst)) {
+    return Promise.reject(new Error(`overseerr: ${VPN_WAIT_MESSAGE}`));
+  }
   if (lanUnreachableOffWifi(baseUrl, inst)) {
     return Promise.reject(
       new Error(`overseerr: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`),

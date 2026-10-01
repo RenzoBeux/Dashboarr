@@ -43,7 +43,12 @@ function ctxFor(
   return Object.fromEntries(
     instances.map((i) => [
       i.id,
-      { activeUrl: i.localUrl || i.remoteUrl, lanBlocked: false, ...over },
+      {
+        activeUrl: i.localUrl || i.remoteUrl,
+        lanBlocked: false,
+        vpnBlocked: false,
+        ...over,
+      },
     ]),
   );
 }
@@ -166,6 +171,33 @@ describe("classifyInstance", () => {
   it("prefers away over a pending probe", () => {
     const r = classifyInstance("radarr", inst(), undefined, true, "http://a");
     expect(r.state).toBe("away");
+  });
+
+  // The same split for a VPN-only Remote URL with no VPN connected (#394).
+  it("reports a VPN-blocked instance as waiting for VPN, never as attention", () => {
+    const r = classifyInstance(
+      "radarr",
+      inst({
+        remoteUrl: "http://100.64.0.5:7878",
+        useRemote: true,
+        remoteRequiresVpn: true,
+      }),
+      { status: "offline", message: "Waiting for VPN" },
+      false,
+      "http://100.64.0.5:7878",
+      true,
+    );
+    expect(r.state).toBe("vpn");
+    expect(r.reason).toBeUndefined();
+  });
+
+  it("prefers waiting-for-VPN over away and over a pending probe", () => {
+    expect(
+      classifyInstance("radarr", inst(), undefined, true, "http://a", true).state,
+    ).toBe("vpn");
+    expect(
+      classifyInstance("radarr", inst(), undefined, false, "http://a", true).state,
+    ).toBe("vpn");
   });
 
   it("reports checking before the first probe resolves", () => {
@@ -376,7 +408,7 @@ describe("summarizeIntegrations", () => {
     const s = summarizeIntegrations(rows);
 
     expect(
-      s.connected + s.attention + s.away + s.checking + s.off + s.available,
+      s.connected + s.attention + s.away + s.vpn + s.checking + s.off + s.available,
     ).toBe(SERVICE_IDS.length);
     expect(s.connected).toBe(1);
     expect(s.attention).toBe(1);
@@ -388,9 +420,40 @@ describe("summarizeIntegrations", () => {
     const rows = buildIntegrationRows(emptyInstances(), undefined, {});
     const s = summarizeIntegrations(rows);
     expect(
-      s.connected + s.attention + s.away + s.checking + s.off + s.available,
+      s.connected + s.attention + s.away + s.vpn + s.checking + s.off + s.available,
     ).toBe(SERVICE_IDS.length);
     expect(s.line).toBe("Set up your first service");
+  });
+
+  it("counts kinds waiting for VPN apart from attention and says so (#394)", () => {
+    const a = inst({ id: "a" });
+    const b = inst({
+      id: "b",
+      name: "Sonarr",
+      remoteUrl: "http://100.64.0.5:8989",
+      useRemote: true,
+      remoteRequiresVpn: true,
+    });
+    const map = { ...emptyInstances(), radarr: [a], sonarr: [b] };
+    const rows = buildIntegrationRows(
+      map,
+      health("radarr", [{ instanceId: "a", status: "ok" }]).concat(
+        health("sonarr", [{ instanceId: "b", status: "offline" }]),
+      ),
+      { ...ctxFor([a]), ...ctxFor([b], { vpnBlocked: true }) },
+    );
+    const s = summarizeIntegrations(rows);
+    expect(s.vpn).toBe(1);
+    expect(s.attention).toBe(0);
+    expect(s.worst).toBeUndefined();
+    expect(s.line).toBe("1 connected · 1 waiting for VPN");
+    expect(
+      s.connected + s.attention + s.away + s.vpn + s.checking + s.off + s.available,
+    ).toBe(SERVICE_IDS.length);
+    expect(integrationSubtitle(rows.find((r) => r.kind === "sonarr")!)).toEqual({
+      text: "Waiting for VPN",
+      tone: "default",
+    });
   });
 
   it("reports auth failures as the worst dot", () => {

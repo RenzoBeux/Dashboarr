@@ -207,7 +207,7 @@ export function ServiceHealthSettings({
       <View className="bg-surface-light rounded-2xl border border-border px-4">
         <Toggle
           label="Away indicator"
-          description="Flag services that are offline because you're away from home and have no remote URL set"
+          description="Flag services that are out of reach because you're away from home with no remote URL set, or because their Remote URL needs a VPN that isn't connected"
           value={settings.showAwayBadge}
           onValueChange={(v) => update({ showAwayBadge: v })}
         />

@@ -19,6 +19,7 @@ import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
+import { vpnGuardBlocked } from "@/lib/http-client";
 import { toast } from "@/components/ui/toast";
 import type {
   QBTorrent,
@@ -582,6 +583,10 @@ function ServiceHealthWatcher({
         currentMap.set(key, inst.online);
         if (prev !== null) {
           const wasOnline = prev.get(key);
+          // kind.id is widened to string on ServiceHealthStatus but is always
+          // a ServiceId here (results are built from SERVICE_IDS).
+          const kindId = kind.id as ServiceId;
+          const url = store.getActiveUrl(kindId, inst.instanceId);
           if (
             wasOnline === true &&
             inst.online === false &&
@@ -591,9 +596,10 @@ function ServiceHealthWatcher({
             // leaving home resolves a local-only server to "" (see
             // getActiveUrl). That's a network change, not a server going down;
             // a server with a usable URL that stops responding still fires.
-            // kind.id is widened to string on ServiceHealthStatus but is always
-            // a ServiceId here (results are built from SERVICE_IDS).
-            store.getActiveUrl(kind.id as ServiceId, inst.instanceId)
+            url &&
+            // Nor when its VPN-only Remote URL lost the VPN (#394): the tunnel
+            // dropped, the server didn't.
+            !vpnGuardBlocked(url, store.getInstance(kindId, inst.instanceId))
           ) {
             sendLocalNotification({
               title: "Service offline",

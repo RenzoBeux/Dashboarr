@@ -26,6 +26,8 @@ jest.mock("@/lib/http-client", () => {
     seerrFetchMe: jest.fn(),
     seerrLogout: jest.fn(async () => undefined),
     lanGuardBlockReason: jest.fn(() => null),
+    // "Remote URL needs a VPN" (#394): never blocked in these tests.
+    vpnGuardBlocked: jest.fn(() => false),
     HttpError,
     AuthProxyResponseError,
     buildUrl: jest.requireActual("@/lib/url-builder").buildUrl,
