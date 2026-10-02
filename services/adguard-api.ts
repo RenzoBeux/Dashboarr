@@ -12,6 +12,8 @@ import type {
   AdguardQueryLogFilters,
   AdguardFilterStatus,
   AdguardRewriteEntry,
+  AdguardBlockedServicesAll,
+  AdguardBlockedServicesSchedule,
 } from "@/lib/types";
 
 // iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
@@ -385,6 +387,36 @@ export function refreshFilters(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ whitelist }),
+    },
+    instanceId,
+  );
+}
+
+// --- Blocked services ---
+
+/** The catalog. Static for a given AGH build — cache it for the session. */
+export function getBlockedServicesAll(instanceId?: string): Promise<AdguardBlockedServicesAll> {
+  return adguardRequest<AdguardBlockedServicesAll>("/blocked_services/all", undefined, instanceId);
+}
+
+export function getBlockedServices(instanceId?: string): Promise<AdguardBlockedServicesSchedule> {
+  return adguardRequest<AdguardBlockedServicesSchedule>("/blocked_services/get", undefined, instanceId);
+}
+
+/**
+ * Replaces the blocked ids AND the pause schedule (see
+ * AdguardBlockedServicesSchedule). Answers 200 with no body.
+ */
+export async function setBlockedServices(
+  body: AdguardBlockedServicesSchedule,
+  instanceId?: string,
+): Promise<void> {
+  await adguardRequest<void>(
+    "/blocked_services/update",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     },
     instanceId,
   );

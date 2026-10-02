@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, Filter, Network } from "lucide-react-native";
+import { ChevronRight, Filter, Network, ShieldBan } from "lucide-react-native";
 import { CachedDataBanner } from "@/components/common/cached-data-banner";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -10,6 +10,7 @@ import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { BlockedRing } from "@/components/pihole/blocked-ring";
 import { ProtectionControl } from "@/components/adguard/protection-control";
 import { QueriesOverTimeChart } from "@/components/adguard/queries-over-time-chart";
+import { BlockedServiceIcon } from "@/components/adguard/blocked-service-icon";
 import { QueryRow } from "@/components/adguard/query-row";
 import { TopList, type TopListRow } from "@/components/pihole/top-list";
 import { Button } from "@/components/ui/button";
@@ -19,8 +20,11 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { Icon } from "@/components/ui/icon";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { toast, toastError } from "@/components/ui/toast";
+import { describePauseSchedule } from "@/lib/adguard-blocked-services";
 import { toTopListRows } from "@/lib/adguard-normalize";
 import {
+  useAdguardBlockedServices,
+  useAdguardBlockedServicesAll,
   useAdguardFilterStatus,
   useAdguardLiveQueryLog,
   useAdguardRewrites,
@@ -35,6 +39,7 @@ import { formatIsoAgo } from "@/lib/adguard-format";
 const TOP_COUNT = 10;
 const PREVIEW_QUERY_COUNT = 5;
 const PREVIEW_REWRITE_COUNT = 3;
+const PREVIEW_BLOCKED_SERVICE_COUNT = 6;
 
 export default function AdguardScreen() {
   return (
@@ -67,6 +72,7 @@ function AdguardScreenInner() {
         <ActivityCard />
         <TopListsCard />
         <FilteringCard />
+        <BlockedServicesCard />
         <RecentQueriesCard />
         <LocalDnsCard />
       </View>
@@ -263,6 +269,66 @@ function FilteringCard() {
             loading={refresh.isPending}
             onPress={run}
           />
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function BlockedServicesCard() {
+  const router = useRouter();
+  const catalog = useAdguardBlockedServicesAll();
+  const current = useAdguardBlockedServices();
+  const total = catalog.data?.blocked_services.length ?? 0;
+  const ids = current.data?.ids ?? [];
+  const byId = new Map((catalog.data?.blocked_services ?? []).map((s) => [s.id, s]));
+  const blocked = ids.map((id) => byId.get(id)).filter((s): s is NonNullable<typeof s> => !!s);
+  const pause = describePauseSchedule(current.data?.schedule);
+
+  return (
+    <Card>
+      <CardHeader>
+        <View className="flex-row items-center gap-2">
+          <Icon icon={ShieldBan} size={ICON.MD} color="#a1a1aa" />
+          <CardTitle>Blocked services</CardTitle>
+        </View>
+        <Pressable
+          onPress={() => router.push("/adguard/blocked-services")}
+          className="flex-row items-center gap-1 active:opacity-70"
+        >
+          <Text className="text-primary text-sm">Manage</Text>
+          <Icon icon={ChevronRight} size={ICON.XS} color="#3b82f6" />
+        </Pressable>
+      </CardHeader>
+      {(catalog.isLoading && !catalog.data) || (current.isLoading && !current.data) ? (
+        <SkeletonCardContent rows={2} />
+      ) : catalog.isError ? (
+        <EmptyState compact title="Not available on this AdGuard Home" />
+      ) : blocked.length === 0 ? (
+        <EmptyState compact title="No services blocked" />
+      ) : (
+        <View className="gap-2">
+          <View className="flex-row flex-wrap gap-2">
+            {blocked.slice(0, PREVIEW_BLOCKED_SERVICE_COUNT).map((svc) => (
+              <View
+                key={svc.id}
+                className="flex-row items-center gap-1.5 bg-zinc-800/60 rounded-full px-2.5 py-1"
+              >
+                <BlockedServiceIcon iconB64={svc.icon_svg} size={ICON.SM} color="#ef4444" />
+                <Text className="text-zinc-200 text-xs">{svc.name}</Text>
+              </View>
+            ))}
+            {blocked.length > PREVIEW_BLOCKED_SERVICE_COUNT ? (
+              <View className="justify-center px-1">
+                <Text className="text-zinc-500 text-xs">
+                  +{blocked.length - PREVIEW_BLOCKED_SERVICE_COUNT} more
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <Text className="text-zinc-600 text-xs">
+            {blocked.length} of {total} blocked{pause ? ` · ${pause}` : ""}
+          </Text>
         </View>
       )}
     </Card>

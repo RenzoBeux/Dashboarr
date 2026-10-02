@@ -9,16 +9,21 @@ import {
 import {
   addRewrite,
   deleteRewrite,
+  getBlockedServices,
+  getBlockedServicesAll,
   getFilterStatus,
   getQueryLog,
   getRewrites,
   getStats,
   getStatus,
   refreshFilters,
+  setBlockedServices,
   setProtection,
 } from "@/services/adguard-api";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { toggleBlockedService } from "@/lib/adguard-blocked-services";
 import type {
+  AdguardBlockedServicesSchedule,
   AdguardQueryLogFilters,
   AdguardRewriteEntry,
   AdguardServerStatus,
@@ -49,6 +54,10 @@ export const adguardKeys = {
   filterStatus: (id: string | null | undefined) =>
     ["adguard", id, "filterStatus"] as const,
   rewrites: (id: string | null | undefined) => ["adguard", id, "rewrites"] as const,
+  blockedServicesAll: (id: string | null | undefined) =>
+    ["adguard", id, "blockedServices", "all"] as const,
+  blockedServices: (id: string | null | undefined) =>
+    ["adguard", id, "blockedServices", "current"] as const,
   liveQueryLog: (id: string | null | undefined, filterKey: string) =>
     ["adguard", id, "querylog", "live", filterKey] as const,
   queryLogPage: (id: string | null | undefined, filterKey: string) =>
@@ -211,6 +220,76 @@ export function useRefreshAdguardFilters(instanceId?: string) {
     mutationFn: (whitelist: boolean) => refreshFilters(whitelist, id ?? undefined),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: adguardKeys.filterStatus(id) }),
+  });
+}
+
+// --- Blocked services ------------------------------------------------------
+
+const BLOCKED_SERVICES_POLL_MS = 30_000;
+
+/** The catalog: fixed for an AGH build, so one fetch per session. */
+export function useAdguardBlockedServicesAll(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("adguard", instanceId);
+  return useQuery({
+    queryKey: adguardKeys.blockedServicesAll(id),
+    queryFn: () => getBlockedServicesAll(id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: Infinity,
+    gcTime: 24 * 3_600_000,
+  });
+}
+
+export function useAdguardBlockedServices(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("adguard", instanceId);
+  return useQuery({
+    queryKey: adguardKeys.blockedServices(id),
+    queryFn: () => getBlockedServices(id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: BLOCKED_SERVICES_POLL_MS,
+    refetchInterval: BLOCKED_SERVICES_POLL_MS,
+  });
+}
+
+/**
+ * Flip one service. Optimistic (the switch moves at once) with rollback,
+ * but the write itself re-reads `/blocked_services/get` first: the PUT
+ * replaces ids AND schedule, so sending the cached schedule — or a stale
+ * ids list from before a toggle made in the web UI — would silently undo
+ * it. Two quick taps serialize through TanStack's mutation queue only if
+ * the caller awaits; the screen disables the switch while pending instead.
+ */
+export function useToggleAdguardBlockedService(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
+  const key = adguardKeys.blockedServices(id);
+  return useMutation({
+    mutationFn: async (vars: { serviceId: string; blocked: boolean }) => {
+      const current = await getBlockedServices(id ?? undefined);
+      const body: AdguardBlockedServicesSchedule = {
+        ids: toggleBlockedService(current.ids, vars.serviceId, vars.blocked),
+        schedule: current.schedule,
+      };
+      await setBlockedServices(body, id ?? undefined);
+      return body;
+    },
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<AdguardBlockedServicesSchedule>(key);
+      queryClient.setQueryData<AdguardBlockedServicesSchedule>(key, (prev) =>
+        prev
+          ? { ...prev, ids: toggleBlockedService(prev.ids, vars.serviceId, vars.blocked) }
+          : prev,
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    onSuccess: (body) => {
+      queryClient.setQueryData<AdguardBlockedServicesSchedule>(key, body);
+      invalidateAdguardStats(queryClient, id);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
 }
 
