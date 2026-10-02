@@ -12,6 +12,8 @@ import type {
   AdguardQueryLogFilters,
   AdguardFilterStatus,
   AdguardRewriteEntry,
+  AdguardClientsResponse,
+  AdguardDhcpStatus,
 } from "@/lib/types";
 
 // iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
@@ -388,6 +390,21 @@ export function refreshFilters(
     },
     instanceId,
   );
+}
+
+// --- Clients & DHCP ---
+
+export function getClients(instanceId?: string): Promise<AdguardClientsResponse> {
+  return adguardRequest<AdguardClientsResponse>("/clients", undefined, instanceId);
+}
+
+/**
+ * Only call when `/status`.dhcp_available is true: on an instance that
+ * cannot do DHCP (Docker bridge, no raw-socket capability) AGH answers this
+ * route with an error rather than an empty status.
+ */
+export function getDhcpStatus(instanceId?: string): Promise<AdguardDhcpStatus> {
+  return adguardRequest<AdguardDhcpStatus>("/dhcp/status", undefined, instanceId);
 }
 
 // --- DNS rewrites (custom records) ---

@@ -3741,6 +3741,63 @@ const DEMO_ADGUARD_FILTER_STATUS = {
   user_rules: ["@@||example-video.com^"],
 };
 
+/**
+ * Clients as AGH reports them: two configured by hand (one by MAC + ClientID,
+ * one by CIDR), the rest auto-discovered. IPs line up with
+ * DEMO_ADGUARD_STATS.top_clients so the merged list shows query counts, and
+ * one configured client's MAC matches a DHCP lease below so the fold-in
+ * path renders in demo mode too.
+ */
+const DEMO_ADGUARD_CLIENTS = {
+  clients: [
+    {
+      name: "Kids tablet",
+      ids: ["aa:bb:cc:dd:ee:24", "kids-tablet"],
+      use_global_settings: false,
+      filtering_enabled: true,
+      parental_enabled: true,
+      safebrowsing_enabled: true,
+      use_global_blocked_services: false,
+      blocked_services: ["tiktok", "youtube"],
+      tags: ["device_tablet", "user_child"],
+    },
+    {
+      name: "Guest Wi-Fi",
+      ids: ["192.168.50.0/24"],
+      use_global_settings: true,
+      use_global_blocked_services: true,
+      tags: ["user_regular"],
+    },
+  ],
+  auto_clients: [
+    { ip: "192.168.1.11", name: "office-pc", source: "rDNS" },
+    { ip: "192.168.1.42", name: "living-room-tv", source: "etc/hosts" },
+    { ip: "192.168.1.7", name: "nas", source: "etc/hosts" },
+    { ip: "192.168.1.63", name: "", source: "ARP" },
+  ],
+  supported_tags: ["device_tablet", "user_child", "user_regular"],
+};
+
+/** The demo instance reports dhcp_available: false, so this is only served
+ * when a caller asks anyway; it keeps the fold-in path exercised. */
+const DEMO_ADGUARD_DHCP = {
+  enabled: true,
+  interface_name: "eth0",
+  v4: {
+    gateway_ip: "192.168.1.1",
+    subnet_mask: "255.255.255.0",
+    range_start: "192.168.1.100",
+    range_end: "192.168.1.199",
+    lease_duration: 86400,
+  },
+  v6: { range_start: "", lease_duration: 86400 },
+  leases: [
+    { mac: "aa:bb:cc:dd:ee:24", ip: "192.168.1.24", hostname: "kids-tablet", expires: "2099-01-01T00:00:00Z" },
+    { mac: "aa:bb:cc:dd:ee:63", ip: "192.168.1.63", hostname: "", expires: "2099-01-01T00:00:00Z" },
+  ],
+  static_leases: [{ mac: "aa:bb:cc:dd:ee:07", ip: "192.168.1.7", hostname: "nas" }],
+};
+
 const DEMO_ADGUARD_REWRITES = [
   { domain: "nas.lan", answer: "192.168.1.7", enabled: true },
   { domain: "*.dev.lan", answer: "192.168.1.11", enabled: true },
@@ -4379,6 +4436,8 @@ export function getDemoResponse(
       if (normalized === "/stats") return DEMO_ADGUARD_STATS;
       if (normalized === "/filtering/status") return DEMO_ADGUARD_FILTER_STATUS;
       if (normalized === "/rewrite/list") return DEMO_ADGUARD_REWRITES;
+      if (normalized === "/clients") return DEMO_ADGUARD_CLIENTS;
+      if (normalized === "/dhcp/status") return DEMO_ADGUARD_DHCP;
       if (normalized === "/filtering/refresh") return { updated: DEMO_ADGUARD_FILTER_STATUS.filters.length };
 
       if (normalized === "/querylog") {
