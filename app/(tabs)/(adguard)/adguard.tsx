@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, Filter, Network } from "lucide-react-native";
+import { ChevronRight, Filter, ListFilter, Network } from "lucide-react-native";
 import { CachedDataBanner } from "@/components/common/cached-data-banner";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ServiceHeader } from "@/components/common/service-header";
@@ -20,6 +20,7 @@ import { Icon } from "@/components/ui/icon";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { toast, toastError } from "@/components/ui/toast";
 import { toTopListRows } from "@/lib/adguard-normalize";
+import { summarizeRules, userRulesOf } from "@/lib/adguard-rules";
 import {
   useAdguardFilterStatus,
   useAdguardLiveQueryLog,
@@ -67,6 +68,7 @@ function AdguardScreenInner() {
         <ActivityCard />
         <TopListsCard />
         <FilteringCard />
+        <CustomRulesCard />
         <RecentQueriesCard />
         <LocalDnsCard />
       </View>
@@ -263,6 +265,43 @@ function FilteringCard() {
             loading={refresh.isPending}
             onPress={run}
           />
+        </View>
+      )}
+    </Card>
+  );
+}
+
+function CustomRulesCard() {
+  const router = useRouter();
+  const { data, isLoading } = useAdguardFilterStatus();
+  const summary = summarizeRules(userRulesOf(data));
+
+  return (
+    <Card>
+      <CardHeader>
+        <View className="flex-row items-center gap-2">
+          <Icon icon={ListFilter} size={ICON.MD} color="#a1a1aa" />
+          <CardTitle>Custom rules</CardTitle>
+        </View>
+        <Pressable
+          onPress={() => router.push("/adguard/rules")}
+          className="flex-row items-center gap-1 active:opacity-70"
+        >
+          <Text className="text-primary text-sm">Manage</Text>
+          <Icon icon={ChevronRight} size={ICON.XS} color="#3b82f6" />
+        </Pressable>
+      </CardHeader>
+      {isLoading && !data ? (
+        <SkeletonCardContent rows={1} />
+      ) : summary.total === 0 ? (
+        <EmptyState compact title="No custom rules" />
+      ) : (
+        <View className="flex-row gap-6">
+          <StatItem label="Allowed" value={summary.allow.toLocaleString()} className="text-success" />
+          <StatItem label="Blocked" value={summary.block.toLocaleString()} className="text-danger" />
+          {summary.other > 0 ? (
+            <StatItem label="Other" value={summary.other.toLocaleString()} />
+          ) : null}
         </View>
       )}
     </Card>
