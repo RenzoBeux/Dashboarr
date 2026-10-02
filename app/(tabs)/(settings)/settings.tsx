@@ -8,14 +8,8 @@ import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-ins
 import { APP_THEMES } from "@/lib/app-themes";
 import { useConfigStore } from "@/store/config-store";
 import { isWebSlotPending, useBackendStore } from "@/store/backend-store";
-import { useServiceHealth } from "@/hooks/use-service-health";
-import { lanGuardBlockReason, vpnGuardBlocked } from "@/lib/http-client";
-import { SERVICE_IDS } from "@/lib/constants";
-import {
-  buildIntegrationRows,
-  summarizeIntegrations,
-  type InstanceProbeContext,
-} from "@/lib/integration-status";
+import { useIntegrationRows } from "@/hooks/use-integration-rows";
+import { summarizeIntegrations } from "@/lib/integration-status";
 import { NATIVE_VERSION } from "@/lib/app-version";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
@@ -33,18 +27,8 @@ const NOTIF_CATEGORY_KEYS = [
 ] as const;
 
 export default function SettingsScreen() {
-  const serviceInstances = useConfigStore((s) => s.serviceInstances);
   const webSlotPending = useBackendStore((s) => isWebSlotPending(s));
-  const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
-  const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
-  const currentWifi = useConfigStore((s) => s.currentWifi);
-  const dashboards = useConfigStore((s) => s.dashboards);
   const shortcutsCount = useConfigStore((s) => s.shortcuts.length);
-  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
-  const homeNetworks = useConfigStore((s) => s.homeNetworks);
-  const isOnWifi = useConfigStore((s) => s.isOnWifi);
-  // A VPN coming up or dropping flips vpnGuardBlocked (#394).
-  const isVpnActive = useConfigStore((s) => s.isVpnActive);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
   const homeNetworksCount = useConfigStore((s) => s.homeNetworks.length);
   const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
@@ -56,47 +40,10 @@ export default function SettingsScreen() {
     NOTIF_CATEGORY_KEYS.filter((k) => s.notificationSettings[k]).length,
   );
 
-  // Pull live health for every (kind, instance) pair so the Integrations row
-  // can summarise it. Cached + polled by the shared hook — no extra requests.
-  const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
-  const determining = isPending || isPlaceholderData;
-
-  // The exact same projection the Integrations hub renders, so the row's count
-  // and the hub's summary line can never disagree.
-  const summary = useMemo(() => {
-    const context: Record<string, InstanceProbeContext> = {};
-    for (const kind of SERVICE_IDS) {
-      for (const inst of serviceInstances[kind] ?? []) {
-        const activeUrl = getActiveUrl(kind, inst.id);
-        context[inst.id] = {
-          activeUrl,
-          lanBlocked: lanGuardBlockReason(activeUrl, inst) !== null,
-          vpnBlocked: vpnGuardBlocked(activeUrl, inst),
-        };
-      }
-    }
-    return summarizeIntegrations(
-      buildIntegrationRows(
-        serviceInstances,
-        determining ? undefined : healthData,
-        context,
-      ),
-    );
-    // networkAwayFromHome / currentWifi / isOnWifi / isVpnActive feed
-    // getActiveUrl and the two guards indirectly (#418, #394).
-  }, [
-    serviceInstances,
-    healthData,
-    determining,
-    getActiveUrl,
-    networkAwayFromHome,
-    currentWifi,
-    dashboards,
-    activeDashboardId,
-    homeNetworks,
-    isOnWifi,
-    isVpnActive,
-  ]);
+  // The exact same projection the Integrations hub renders (one shared hook),
+  // so the row's count and the hub's summary line can never disagree.
+  const { rows } = useIntegrationRows();
+  const summary = useMemo(() => summarizeIntegrations(rows), [rows]);
 
   // Keeps the title clear of the iPadOS 26 window-control cluster (#342).
   const windowControlsPadding = useWindowControlsContentPadding();

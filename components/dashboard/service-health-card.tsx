@@ -181,7 +181,11 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         // ("qBit Home" / "qBit Cabin") can tell which one is offline at a
         // glance instead of seeing two identical "qBittorrent" tiles.
         label: inst.name,
-        status: health?.status ?? "offline",
+        // A VPN-blocked instance is deterministically unreachable right now,
+        // and the health batch that will say so is still in flight (the key
+        // re-keys on the VPN flag; keepPreviousData shows the old verdict
+        // meanwhile). Don't pair a stale green dot with the VPN badge (#394).
+        status: vpnBlocked ? "offline" : (health?.status ?? "offline"),
         urlKind: resolveActiveUrlKind(
           inst,
           autoSwitchNetwork,

@@ -12,7 +12,9 @@ import {
   pingService,
   lanGuardBlockReason,
   vpnGuardBlocked,
+  urlBlock,
   resolveReachableUrl,
+  UrlBlockedError,
   VPN_WAIT_MESSAGE,
   testServiceConnection,
   checkInstanceHealth,
@@ -51,6 +53,10 @@ jest.mock("@/lib/vpn", () => ({
 beforeEach(() => {
   resetDigestSessions();
   resetSeerrSessions();
+  // Both guards read the tunnel live through this mock (see above); start
+  // every test with no VPN and the native module present.
+  mockVpnModule.active = false;
+  mockVpnModule.available = true;
 });
 
 // The Seerr probe hands fresh /auth/me data to the identity query; the cache
@@ -87,10 +93,10 @@ interface FakeSecrets {
 // without having to know the synthetic UUID.
 interface FakeState {
   demoMode: boolean;
-  // Off-WiFi LAN guard inputs (#106/#185). Absent in most tests → undefined →
+  // Off-WiFi LAN guard input (#106/#185). Absent in most tests → undefined →
   // the guard never trips, same as the cold-start `null` in the real store.
+  // (The VPN state is NOT read from the store: see mockVpnModule.)
   isOnWifi?: boolean | null;
-  isVpnActive?: boolean;
   // Opt-in that lets a VPN stand the guard down (#185). Falsy by default, so an
   // untrusted VPN does NOT make a private URL reachable off Wi-Fi.
   treatVpnAsHome?: boolean;
@@ -393,7 +399,7 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
 
   it("short-circuits a private URL off WiFi with no VPN (the #106 behavior)", async () => {
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = false;
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "private LAN address not reachable off Wi-Fi",
     );
@@ -403,7 +409,7 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
 
   it("attempts a private URL off WiFi while a trusted VPN is up (the tunnel can route it)", async () => {
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = true;
     await serviceRequest("radarr", "/system/status");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -413,7 +419,7 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     // Bug: without this, ANY VPN — even one to a hostile network the user never
     // chose to trust — would silently make the LAN URL "work" off Wi-Fi.
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = false;
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "private LAN address not reachable off Wi-Fi",
@@ -430,12 +436,12 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     inst.remoteUrl = "http://192.168.1.50:7878";
     inst.useRemote = true;
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = false;
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "private LAN address not reachable off Wi-Fi",
     );
 
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = true;
     await serviceRequest("radarr", "/system/status");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -451,7 +457,7 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     inst.remoteUrl = "http://10.147.20.4:7878";
     inst.useRemote = true;
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = false;
 
     await serviceRequest("radarr", "/system/status");
@@ -466,7 +472,7 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     inst.remoteUrl = "http://10.147.20.4:7878";
     inst.useRemote = false;
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = false;
 
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
@@ -479,13 +485,13 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     // "(no VPN detected)" used to print unconditionally — the exact opposite of
     // what the user sees in Network diagnostics.
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     mockStateRef.current.treatVpnAsHome = false;
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "Treat VPN as home is off",
     );
 
-    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = false;
     await expect(serviceRequest("radarr", "/system/status")).rejects.toThrow(
       "(no VPN detected)",
     );
@@ -495,12 +501,12 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
     // Test Connection skips the guard, so the settings screen asks for the
     // verdict separately to explain a green toast sitting next to a red dot.
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = false;
     expect(lanGuardBlockReason("http://192.168.1.50:7878")).toBe(
       "no VPN detected",
     );
 
-    mockStateRef.current.isVpnActive = true;
+    mockVpnModule.active = true;
     expect(lanGuardBlockReason("http://192.168.1.50:7878")).toBe(
       "VPN detected, but Treat VPN as home is off",
     );
@@ -517,7 +523,7 @@ describe("off-WiFi LAN guard — VPN awareness (#185)", () => {
 
   it("never short-circuits while WiFi state is still unknown (cold start)", async () => {
     mockStateRef.current.isOnWifi = null;
-    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = false;
     await serviceRequest("radarr", "/system/status");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -595,6 +601,37 @@ describe("Remote URL needs a VPN (#394)", () => {
     expect(vpnGuardBlocked(inst.remoteUrl, inst)).toBe(true);
   });
 
+  it("lets a private tunnel address through on a live VPN while the store flag lags (reconnect)", async () => {
+    // Cellular, WireGuard 10.x in the Remote URL, flag on: the VPN came back
+    // but the store's isVpnActive hasn't caught up. Both guards read the SAME
+    // live snapshot, so neither blocks; with the LAN guard still on the store
+    // flag this was "private LAN address not reachable off Wi-Fi (no VPN
+    // detected)" and, via the watcher, a false "Service offline".
+    const inst = vpnOnlyRadarr();
+    inst.remoteUrl = "http://10.147.20.4:7878";
+    mockStateRef.current.isOnWifi = false;
+    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = true;
+    await serviceRequest("radarr", "/system/status");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(urlBlock(inst.remoteUrl, inst)).toBeNull();
+    expect(await checkInstanceHealth("radarr", "radarr-uuid")).toMatchObject({
+      kind: "ok",
+    });
+  });
+
+  it("throws a non-retryable UrlBlockedError so queries settle at once", async () => {
+    vpnOnlyRadarr();
+    await expect(serviceRequest("radarr", "/system/status")).rejects.toMatchObject({
+      name: "UrlBlockedError",
+      blocked: true,
+      block: { kind: "vpn" },
+    });
+    expect(() => resolveReachableUrl("radarr", "radarr-uuid")).toThrow(
+      UrlBlockedError,
+    );
+  });
+
   it("leaves the Local URL alone: at home the LAN needs no tunnel", async () => {
     // The fast-at-home setup: LAN address local, tunnel address remote, and
     // auto-switch picked local. Only the Remote slot carries the requirement.
@@ -663,7 +700,6 @@ describe("Remote URL needs a VPN (#394)", () => {
     inst.remoteRequiresVpn = false;
     inst.remoteUrl = "http://192.168.1.50:7878";
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = false;
     expect(() => resolveReachableUrl("radarr", "radarr-uuid")).toThrow(
       "private LAN address not reachable off Wi-Fi",
     );
@@ -2176,7 +2212,7 @@ describe("ensureSeerrSession — guards (#332)", () => {
     mockStateRef.current = withSeerr("local", { username: "me@example.com", password: "pw" });
     mockStateRef.current.serviceInstances.overseerr[0].localUrl = "http://192.168.1.10:5055";
     mockStateRef.current.isOnWifi = false;
-    mockStateRef.current.isVpnActive = false;
+    mockVpnModule.active = false;
     await expect(ensureSeerrSession(SEERR_ID)).rejects.toThrow(
       "private LAN address not reachable off Wi-Fi",
     );

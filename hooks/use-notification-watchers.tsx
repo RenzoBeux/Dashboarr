@@ -19,7 +19,7 @@ import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
-import { vpnGuardBlocked } from "@/lib/http-client";
+import { urlBlock } from "@/lib/http-client";
 import { toast } from "@/components/ui/toast";
 import type {
   QBTorrent,
@@ -587,15 +587,17 @@ function ServiceHealthWatcher({
         // An "offline" reached without contacting the server says nothing
         // about the server: the current network has no URL to reach it on
         // (leaving home resolves a local-only server to "", see getActiveUrl),
-        // or its VPN-only Remote URL has no VPN up and the probe was skipped
-        // (#394). Don't alert on it, and don't record it either: keep the
-        // last real verdict, otherwise a server that dies while the VPN is
-        // off never alerts once the VPN is back, because the recorded
-        // "offline" hides the online→offline transition.
+        // or a guard skipped the probe (a LAN address off Wi-Fi, or a VPN-only
+        // Remote URL with no VPN up, #394). Don't alert on it, and don't
+        // record it either: keep the last real verdict, otherwise a server
+        // that dies while the VPN is off never alerts once the VPN is back,
+        // because the recorded "offline" hides the online→offline transition.
+        // Every block counts, not only the VPN one: a private tunnel address
+        // trips the LAN guard right after a reconnect too.
         const suppressed =
           !inst.online &&
           (!url ||
-            vpnGuardBlocked(url, store.getInstance(kindId, inst.instanceId)));
+            urlBlock(url, store.getInstance(kindId, inst.instanceId)) !== null);
         if (suppressed) {
           const last = prev?.get(key);
           if (last !== undefined) currentMap.set(key, last);

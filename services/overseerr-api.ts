@@ -2,11 +2,10 @@ import {
   AuthProxyResponseError,
   HttpError,
   ensureSeerrSession,
-  lanGuardBlockReason,
   seerrFetchMe,
   seerrLogout,
   serviceRequest,
-  vpnGuardBlocked,
+  urlBlock,
 } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import {
@@ -228,7 +227,7 @@ export async function seerrClearSession(instanceId?: string): Promise<void> {
         for (const url of urlsByHost.values()) {
           // Both guards: a LAN host off Wi-Fi and a VPN-only Remote URL with
           // no VPN up (#394) would each hang the logout until the timeout.
-          if (lanGuardBlockReason(url, inst) || vpnGuardBlocked(url, inst)) continue;
+          if (urlBlock(url, inst)) continue;
           await seerrLogout(url, headers);
         }
       }

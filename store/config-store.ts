@@ -178,6 +178,7 @@ interface ConfigState {
   // reads this synchronously: a private/LAN URL can never be reached on
   // cellular, so probing it there just hangs and (because the health grid awaits
   // the whole probe batch) freezes every dot red — the Glances/#106 report.
+  // Wired Ethernet counts as "on WiFi" here: it is the same LAN link.
   isOnWifi: boolean | null;
   // EPHEMERAL (never persisted). Whether a VPN tunnel is currently active
   // (native check — see lib/vpn.ts; NetInfo can't report this). Tracked
@@ -1658,7 +1659,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const urlChanged =
         ("localUrl" in patch && patch.localUrl !== prevInst.localUrl) ||
         ("remoteUrl" in patch && patch.remoteUrl !== prevInst.remoteUrl) ||
-        ("useRemote" in patch && patch.useRemote !== prevInst.useRemote);
+        ("useRemote" in patch && patch.useRemote !== prevInst.useRemote) ||
+        // Same for "Remote URL needs a VPN" (#394): it decides whether the
+        // resolved URL is contacted at all, so a screen sitting on a
+        // "Waiting for VPN" error must refetch when the flag is turned off.
+        ("remoteRequiresVpn" in patch &&
+          (patch.remoteRequiresVpn ?? false) !==
+            (prevInst.remoteRequiresVpn ?? false));
       if (urlChanged) {
         void queryClient.invalidateQueries({ queryKey: [id, instanceId] });
       }
