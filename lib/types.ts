@@ -3605,6 +3605,105 @@ export interface AdguardRewriteEntry {
   enabled?: boolean;
 }
 
+// --- Clients & DHCP (GET /control/clients, GET /control/dhcp/status) ---
+
+/**
+ * A client the user configured by hand (AGH web UI → Settings → Client
+ * settings). `ids` mixes IPs, CIDRs, MACs and ClientIDs in one string
+ * array; `lib/adguard-clients.ts` tells them apart. Per-client overrides
+ * (`filtering_enabled`, `blocked_services`, …) only apply when
+ * `use_global_settings` / `use_global_blocked_services` is false.
+ */
+export interface AdguardClient {
+  name: string;
+  ids: string[];
+  use_global_settings?: boolean;
+  filtering_enabled?: boolean;
+  parental_enabled?: boolean;
+  safebrowsing_enabled?: boolean;
+  safe_search?: { enabled?: boolean } & Record<string, boolean | undefined>;
+  use_global_blocked_services?: boolean;
+  blocked_services?: string[];
+  blocked_services_schedule?: AdguardSchedule;
+  upstreams?: string[];
+  tags?: string[];
+  ignore_querylog?: boolean;
+  ignore_statistics?: boolean;
+  upstreams_cache_enabled?: boolean;
+  upstreams_cache_size?: number;
+}
+
+/**
+ * A client AGH discovered on its own — from /etc/hosts, rDNS, ARP, or its
+ * own DHCP leases (`source` says which). IP-keyed; never has a MAC.
+ */
+export interface AdguardAutoClient {
+  ip: string;
+  name: string;
+  source: string;
+  whois_info?: Record<string, string>;
+}
+
+export interface AdguardClientsResponse {
+  clients?: AdguardClient[];
+  auto_clients?: AdguardAutoClient[];
+  supported_tags?: string[];
+}
+
+/** Dynamic lease. `expires` is ISO 8601; a static lease has no expiry. */
+export interface AdguardDhcpLease {
+  mac: string;
+  ip: string;
+  hostname: string;
+  expires?: string;
+}
+
+export interface AdguardDhcpStaticLease {
+  mac: string;
+  ip: string;
+  hostname: string;
+}
+
+/**
+ * `GET /control/dhcp/status`. Only meaningful when `/status`.dhcp_available
+ * is true — inside a Docker bridge network AGH never sees DHCP broadcasts,
+ * and the endpoint answers an error there, so callers gate on
+ * dhcp_available and treat a failure as "no DHCP" rather than "offline".
+ */
+export interface AdguardDhcpStatus {
+  enabled: boolean;
+  interface_name: string;
+  v4?: {
+    gateway_ip?: string;
+    subnet_mask?: string;
+    range_start?: string;
+    range_end?: string;
+    /** Seconds. */
+    lease_duration?: number;
+  };
+  v6?: { range_start?: string; lease_duration?: number };
+  leases?: AdguardDhcpLease[];
+  static_leases?: AdguardDhcpStaticLease[];
+}
+
+/** Blocked-services pause schedule; one optional range per weekday. */
+export interface AdguardSchedule {
+  time_zone?: string;
+  sun?: AdguardDayRange;
+  mon?: AdguardDayRange;
+  tue?: AdguardDayRange;
+  wed?: AdguardDayRange;
+  thu?: AdguardDayRange;
+  fri?: AdguardDayRange;
+  sat?: AdguardDayRange;
+}
+
+/** Milliseconds since local midnight; the range is [start, end). */
+export interface AdguardDayRange {
+  start: number;
+  end: number;
+}
+
 // --- Shared Types ---
 
 // Tri-state status for the green/orange/red dots:
