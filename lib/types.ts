@@ -3599,6 +3599,17 @@ export interface AdguardFilterStatus {
   user_rules: string[];
 }
 
+/**
+ * Body of `POST /control/filtering/set_rules`. The array is the COMPLETE new
+ * user-rules list (one rule per entry, joined with newlines server-side) —
+ * it replaces whatever is stored, so always build it from a fresh
+ * `/filtering/status` read, never from the cached one. Answers 200 with no
+ * body.
+ */
+export interface AdguardSetRulesRequest {
+  rules: string[];
+}
+
 export interface AdguardRewriteEntry {
   domain: string;
   answer: string;
