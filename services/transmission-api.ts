@@ -1,4 +1,4 @@
-import { buildUrl, HttpError } from "@/lib/http-client";
+import { buildUrl, HttpError, resolveReachableUrl } from "@/lib/http-client";
 import { basicAuthHeader, digestSessionKey, fetchWithDigestRetry } from "@/lib/http-auth";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
@@ -203,7 +203,7 @@ async function transmissionRpc<T>(
 
   const inst = store.getInstance("transmission", id);
   if (!inst?.enabled) throw new Error("Transmission is not enabled");
-  const baseUrl = store.getActiveUrl("transmission", id);
+  const baseUrl = resolveReachableUrl("transmission", id);
   if (!baseUrl) throw new Error("No URL configured for Transmission");
   const apiBase = SERVICE_DEFAULTS.transmission.apiBasePath;
   const url = buildUrl(baseUrl, apiBase, "");

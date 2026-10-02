@@ -1,6 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
-import { buildUrl } from "@/lib/http-client";
+import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { getDemoJellystatResponse } from "@/lib/demo-data";
 import type {
   JellyfinSession,
@@ -45,7 +45,7 @@ async function jellystatRequest<T>(
   if (!inst.enabled) throw new Error("JellyStat is not enabled");
 
   const secrets = store.instanceSecrets[targetId] ?? {};
-  const baseUrl = store.getActiveUrl("jellystat", targetId);
+  const baseUrl = resolveReachableUrl("jellystat", targetId);
   if (!baseUrl) throw new Error("No URL configured for JellyStat");
 
   const { method = "GET", params, body } = options;

@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { buildUrl, HttpError } from "@/lib/http-client";
+import { buildUrl, HttpError, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
@@ -281,7 +281,7 @@ function requestTarget(
   const store = useConfigStore.getState();
   const inst = store.getInstance("deluge", instanceId);
   if (!inst?.enabled) throw new Error("Deluge is not enabled");
-  const baseUrl = store.getActiveUrl("deluge", instanceId);
+  const baseUrl = resolveReachableUrl("deluge", instanceId);
   if (!baseUrl) throw new Error("No URL configured for Deluge");
   const url = buildUrl(baseUrl, SERVICE_DEFAULTS.deluge.apiBasePath, "");
 

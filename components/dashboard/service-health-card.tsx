@@ -1,7 +1,7 @@
 import { View, Text, Pressable } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import { useRouter } from "expo-router";
-import { WifiOff } from "lucide-react-native";
+import { ShieldOff, WifiOff } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceLogo, hasServiceLogo } from "@/components/ui/service-logo";
 import { CheckingIndicator } from "@/components/ui/checking-indicator";
@@ -19,6 +19,7 @@ import {
   resolveActiveUrlKind,
   isRemoteOnlyOffline,
 } from "@/lib/url-validation";
+import { vpnGuardBlocked } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedInstances } from "@/hooks/use-active-dashboard";
 import { useInstanceNetworkResolver } from "@/hooks/use-instance-network";
@@ -55,6 +56,10 @@ interface RenderEntry {
   // (away from home / workspace pinned remote) but has no remote URL set — the
   // #168 case. Drives the away badge, which takes the L/R badge's corner.
   awayBlocked: boolean;
+  // True when this instance's Remote URL is declared VPN-only and no VPN is
+  // connected (#394). Like awayBlocked: out of reach by network state, not
+  // broken. Drives the VPN badge in that same corner.
+  vpnBlocked: boolean;
   // True while a probe is in flight for this instance and we want to surface it
   // as activity: a cold start (no verdict yet) or an explicit re-check (pull to
   // refresh, or a network/dashboard change). Renders the dot as a gray "checking"
@@ -100,6 +105,10 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
   // Subscribed so the L/R badge flips live when the user walks home/away or
   // toggles auto-switch — both feed resolveActiveUrlKind below.
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
+  // The VPN badge (#394) reads the resolved URL through vpnGuardBlocked. The
+  // re-render when the tunnel comes up or drops comes from the resolver hook
+  // below, which already subscribes to isVpnActive.
+  const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
   // Per-instance home/away + "always remote" verdict. An explicitly bound
   // instance from another workspace is judged against THAT workspace's home
   // networks, the same way getActiveUrl picks its URL (#418).
@@ -164,6 +173,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         away,
         forcesRemote,
       );
+      const vpnBlocked = vpnGuardBlocked(getActiveUrl(kindId, inst.id), inst);
       entries.push({
         kindId,
         instanceId: inst.id,
@@ -179,20 +189,26 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
           forcesRemote,
         ),
         awayBlocked,
+        vpnBlocked,
         // Away-blocked instances are deterministically offline-by-config (no
         // remote URL while remote-only), so they keep their red dot + away
-        // badge rather than a misleading "checking" pulse. Otherwise mirror the
-        // title spinner: pulse gray whenever a probe is in flight (incl. pulling
-        // to refresh over a known verdict), not only when no verdict exists yet.
-        checking: determining && !awayBlocked,
+        // badge rather than a misleading "checking" pulse; VPN-blocked ones are
+        // skipped by the probe, so there is nothing in flight to show (#394).
+        // Otherwise mirror the title spinner: pulse gray whenever a probe is in
+        // flight (incl. pulling to refresh over a known verdict), not only when
+        // no verdict exists yet.
+        checking: determining && !awayBlocked && !vpnBlocked,
       });
     }
   }
 
   // Away-blocked instances are offline by configuration (remote-only with no
   // remote URL, #168), not by failure, so they don't count as "something is
-  // wrong". auth_failed does — a rejected key is actionable, keep the card up.
-  const allHealthy = entries.every((e) => e.awayBlocked || e.status === "ok");
+  // wrong"; neither does a VPN-only Remote URL whose VPN is off (#394).
+  // auth_failed does — a rejected key is actionable, keep the card up.
+  const allHealthy = entries.every(
+    (e) => e.awayBlocked || e.vpnBlocked || e.status === "ok",
+  );
   // Must run before the early return below — rules of hooks.
   //
   // `isEmpty: allHealthy || isPending` with no isLoading gate, which inverts the
@@ -269,7 +285,11 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                     // "checking" dot carries the in-progress signal) instead of
                     // dimming it to the offline look, so the grid doesn't read
                     // as "everything offline" for ~15s on cold start (#196).
-                    online={entry.checking || entry.status !== "offline"}
+                    online={
+                      entry.checking ||
+                      entry.vpnBlocked ||
+                      entry.status !== "offline"
+                    }
                   />
                 </View>
                 {settings.showAwayBadge && entry.awayBlocked ? (
@@ -281,6 +301,13 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                   <View className="absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full border-2 border-surface items-center justify-center bg-amber-500">
                     <Icon icon={WifiOff} size={9} color="#fff" />
                   </View>
+                ) : settings.showAwayBadge && entry.vpnBlocked ? (
+                  // The Remote URL needs a VPN and none is connected (#394).
+                  // Same corner and amber "network state" hue as the away
+                  // badge; a different glyph so the two causes stay apart.
+                  <View className="absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full border-2 border-surface items-center justify-center bg-amber-500">
+                    <Icon icon={ShieldOff} size={9} color="#fff" />
+                  </View>
                 ) : settings.showUrlBadge && entry.urlKind ? (
                   <View
                     className={`absolute -top-0.5 -left-0.5 w-4 h-4 rounded-full border-2 border-surface items-center justify-center ${URL_KIND_BG[entry.urlKind]}`}
@@ -291,7 +318,18 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                   </View>
                 ) : null}
                 <StatusDot
-                  state={entry.checking ? "checking" : entry.status}
+                  // Waiting for VPN (#394) is not a verdict: the probe was
+                  // skipped. Neutral dot and a lit logo, like the header and
+                  // the instance list, with the badge naming the cause; a red
+                  // dot here would read as broken (and keepPreviousData could
+                  // show a stale green one while the re-keyed batch runs).
+                  state={
+                    entry.checking
+                      ? "checking"
+                      : entry.vpnBlocked
+                        ? "waiting"
+                        : entry.status
+                  }
                   overlay
                   shadow
                 />

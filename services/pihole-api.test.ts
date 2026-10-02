@@ -19,7 +19,9 @@ jest.mock("@/lib/http-client", () => {
       this.body = body;
     }
   }
-  return { serviceRequest: jest.fn(), HttpError };
+  // The logout path asks urlBlock before contacting the host (#394); never
+  // blocked in these tests.
+  return { serviceRequest: jest.fn(), urlBlock: jest.fn(() => null), HttpError };
 });
 
 jest.mock("@/store/config-store", () => ({
@@ -61,6 +63,14 @@ function setStore(overrides: Record<string, unknown> = {}) {
     getActiveInstanceId: () => INSTANCE,
     instanceSecrets: { [INSTANCE]: { password: "hunter2" } },
     getActiveUrl: () => "http://pi.hole",
+    getInstance: () => ({
+      id: INSTANCE,
+      enabled: true,
+      name: "Pi-hole",
+      localUrl: "http://pi.hole",
+      remoteUrl: "",
+      useRemote: false,
+    }),
     ...overrides,
   });
 }

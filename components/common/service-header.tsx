@@ -7,6 +7,8 @@ import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-shee
 import { useActiveInstance } from "@/hooks/use-active-instance";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useWindowControlsContentPadding } from "@/hooks/use-window-controls-inset";
+import { vpnGuardBlocked } from "@/lib/http-client";
+import { useConfigStore } from "@/store/config-store";
 import { lightHaptic } from "@/lib/haptics";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
@@ -62,6 +64,20 @@ function ActiveInstanceStatusDot({
 }) {
   const { activeId } = useActiveInstance(serviceId);
   const { data: health } = useServiceHealth();
+  // "Waiting for VPN" (#394): the active instance's Remote URL needs a VPN
+  // and none is connected, so the probe is skipped. A neutral dot, not a red
+  // one: nothing is known to be broken. The isVpnActive subscription
+  // re-renders the dot when the tunnel flips.
+  const activeUrl = useConfigStore((s) =>
+    activeId ? s.getActiveUrl(serviceId, activeId) : "",
+  );
+  const activeInst = useConfigStore((s) =>
+    activeId ? s.getInstance(serviceId, activeId) : undefined,
+  );
+  useConfigStore((s) => s.isVpnActive);
+  if (vpnGuardBlocked(activeUrl, activeInst)) {
+    return <StatusDot state="waiting" size="md" />;
+  }
   const kind = health?.find((s) => s.id === serviceId);
   const instance = kind?.instances.find((i) => i.instanceId === activeId);
   // While health is still loading the kind entry is undefined; once populated

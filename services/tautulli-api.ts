@@ -1,6 +1,6 @@
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
-import { buildUrl } from "@/lib/http-client";
+import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { getDemoTautulliResponse } from "@/lib/demo-data";
 import type {
   TautulliActivity,
@@ -37,7 +37,7 @@ async function tautulliRequest<T>(
 
   if (!inst.enabled) throw new Error("Tautulli is not enabled");
 
-  const baseUrl = store.getActiveUrl("tautulli", targetId);
+  const baseUrl = resolveReachableUrl("tautulli", targetId);
   if (!baseUrl) throw new Error("No URL configured for Tautulli");
 
   const url = new URL(

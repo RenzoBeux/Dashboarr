@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { buildUrl } from "@/lib/http-client";
+import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
@@ -96,7 +96,7 @@ export async function adguardLogin(instanceId?: string): Promise<boolean> {
   const id = resolveAdguardInstanceId(instanceId);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
-  const baseUrl = store.getActiveUrl("adguard", id);
+  const baseUrl = resolveReachableUrl("adguard", id);
   const apiBase = SERVICE_DEFAULTS.adguard.apiBasePath;
 
   const headers = new Headers();
@@ -220,7 +220,7 @@ async function adguardRequest<T>(
   if (!inst?.enabled) {
     throw new Error("AdGuard Home is not enabled");
   }
-  const baseUrl = store.getActiveUrl("adguard", id);
+  const baseUrl = resolveReachableUrl("adguard", id);
   if (!baseUrl) throw new Error("No URL configured for AdGuard Home");
   const apiBase = SERVICE_DEFAULTS.adguard.apiBasePath;
 

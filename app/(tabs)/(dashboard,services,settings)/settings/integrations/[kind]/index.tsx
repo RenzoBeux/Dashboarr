@@ -5,6 +5,7 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
+import { vpnGuardBlocked } from "@/lib/http-client";
 import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
@@ -59,6 +60,10 @@ function KindInstances({
   const removeInstance = useConfigStore((s) => s.removeInstance);
   const moveInstance = useConfigStore((s) => s.moveInstance);
   const dashboards = useConfigStore((s) => s.dashboards);
+  // "Waiting for VPN" rows (#394): the resolved URL plus the live VPN guard;
+  // the isVpnActive subscription re-renders the list when the tunnel flips.
+  const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
+  useConfigStore((s) => s.isVpnActive);
   const kindLabel = SERVICE_DEFAULTS_KIND_LABEL[kind];
   const catalog = SERVICE_CATALOG[kind];
 
@@ -167,17 +172,26 @@ function KindInstances({
         }
       >
         {instances.map((inst, idx) => {
-          const subtitle = inst.enabled
-            ? inst.useRemote
-              ? inst.remoteUrl || "No remote URL set"
-              : inst.localUrl || inst.remoteUrl || "No URL set"
-            : "Disabled";
+          // Its Remote URL needs a VPN and none is connected: the probe is
+          // skipped, so the row says so instead of pairing the URL with a red
+          // dot that reads as broken (#394).
+          const waitingForVpn =
+            inst.enabled && vpnGuardBlocked(getActiveUrl(kind, inst.id), inst);
+          const subtitle = !inst.enabled
+            ? "Disabled"
+            : waitingForVpn
+              ? "Waiting for VPN"
+              : inst.useRemote
+                ? inst.remoteUrl || "No remote URL set"
+                : inst.localUrl || inst.remoteUrl || "No URL set";
           // Only enabled instances are actively probed; for disabled ones
           // we want NO dot (not red) — there's nothing wrong, the user has
           // just turned it off.
-          const instanceStatus = inst.enabled
-            ? healthByInstance.get(inst.id)
-            : undefined;
+          const instanceStatus = !inst.enabled
+            ? undefined
+            : waitingForVpn
+              ? "waiting"
+              : healthByInstance.get(inst.id);
           return (
             <View
               key={inst.id}

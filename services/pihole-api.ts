@@ -1,4 +1,4 @@
-import { HttpError, serviceRequest } from "@/lib/http-client";
+import { HttpError, serviceRequest, urlBlock } from "@/lib/http-client";
 import { GRAVITY_UPDATE_TIMEOUT, SERVICE_DEFAULTS } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { useConfigStore } from "@/store/config-store";
@@ -211,7 +211,11 @@ async function logoutSid(instanceId: string, sid: string): Promise<void> {
   const store = useConfigStore.getState();
   if (store.demoMode) return;
   const baseUrl = store.getActiveUrl("pihole", instanceId);
-  if (!baseUrl) return;
+  // Nor when the host can't be reached at all (LAN off Wi-Fi, or a VPN-only
+  // Remote URL with no VPN up, #394): the seat idles out on its own.
+  if (!baseUrl || urlBlock(baseUrl, store.getInstance("pihole", instanceId))) {
+    return;
+  }
   const url = buildUrl(baseUrl, SERVICE_DEFAULTS.pihole.apiBasePath, "/auth");
   // Bounded: this runs on save and on delete, and a Pi-hole is usually a LAN
   // address. Deleting an instance while off the home network would otherwise

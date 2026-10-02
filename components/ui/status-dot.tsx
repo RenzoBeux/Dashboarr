@@ -18,21 +18,26 @@ import type { HealthStatusKind } from "@/lib/types";
 // "green/orange/red" meaning the same thing everywhere instead of each surface
 // hand-rolling its own copy of the palette + circle.
 //
-// Adds a "checking" state on top of the tri-state health kind: a pulsing
-// neutral dot shown while the health probe batch is still settling, so a cold
-// start reads as "determining" instead of a wall of red that looks like an
-// outage (#196).
-export type StatusDotState = HealthStatusKind | "checking";
+// Adds two non-verdict states on top of the tri-state health kind:
+//  - "checking": a pulsing neutral dot shown while the health probe batch is
+//    still settling, so a cold start reads as "determining" instead of a wall
+//    of red that looks like an outage (#196).
+//  - "waiting": a static neutral dot for an instance the app deliberately is
+//    not probing right now (its Remote URL needs a VPN and none is connected,
+//    #394). Not red, because nothing is known to be broken; not pulsing,
+//    because nothing is in flight.
+export type StatusDotState = HealthStatusKind | "checking" | "waiting";
 
 const DOT_BG: Record<StatusDotState, string> = {
   ok: "bg-success",
   auth_failed: "bg-warning",
   offline: "bg-danger",
   checking: "bg-zinc-500",
+  waiting: "bg-zinc-500",
 };
 
-// iOS glow color per settled state — the checking state pulses instead of
-// glowing, so it isn't keyed here.
+// iOS glow color per settled state. The checking and waiting states carry no
+// verdict, so they don't glow and aren't keyed here.
 const DOT_SHADOW: Record<HealthStatusKind, string> = {
   ok: "#22c55e",
   auth_failed: "#f59e0b",
@@ -104,6 +109,8 @@ export function StatusDot({
   }, [state, pulse]);
 
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+  const glow =
+    state === "checking" || state === "waiting" ? undefined : DOT_SHADOW[state];
 
   const classes = [
     "rounded-full",
@@ -121,9 +128,9 @@ export function StatusDot({
       className={classes}
       style={[
         state === "checking" ? pulseStyle : undefined,
-        shadow && state !== "checking" && Platform.OS === "ios"
+        shadow && glow && Platform.OS === "ios"
           ? {
-              shadowColor: DOT_SHADOW[state],
+              shadowColor: glow,
               shadowRadius: 6,
               shadowOpacity: 0.6,
               shadowOffset: { width: 0, height: 0 },

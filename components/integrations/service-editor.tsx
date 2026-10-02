@@ -17,7 +17,11 @@ import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { useConfigStore, type ServiceConfig } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { BackHeader } from "@/components/common/back-header";
-import { testServiceConnection, lanGuardBlockReason } from "@/lib/http-client";
+import {
+  testServiceConnection,
+  urlBlock,
+  vpnGuardBlocked,
+} from "@/lib/http-client";
 import { qbClearSession } from "@/services/qbittorrent-api";
 import { delugeClearSession } from "@/services/deluge-api";
 import { navidromeClearSession } from "@/services/navidrome-api";
@@ -633,22 +637,44 @@ export function ServiceEditor({
     });
     setTesting(false);
 
+    // The in-progress form as the guards see it, so the hints below judge what
+    // the user is about to save rather than the stored instance.
+    const guardInst = {
+      id: instanceId,
+      localUrl,
+      remoteUrl,
+      useRemote: config.useRemote,
+      remoteRequiresVpn: config.remoteRequiresVpn,
+    };
     if (result.kind === "ok") {
       // The URL answered, but the health probes may still be short-circuiting
-      // it: Test always fires at what you typed, while the dots run the off-WiFi
-      // LAN guard (#356). Say so, otherwise a green toast next to a red dot
-      // reads as a contradiction with no explanation anywhere.
-      const blocked = lanGuardBlockReason(testUrl, { remoteUrl });
+      // it: Test always fires at what you typed, while the dots run the
+      // off-WiFi LAN guard (#356) and the VPN guard (#394). Say so, otherwise
+      // a green toast next to a red dot or a VPN badge reads as a
+      // contradiction with no explanation anywhere.
+      const block = urlBlock(testUrl, guardInst);
       toast(
-        blocked
-          ? `Connected via ${which} URL in ${result.responseTime}ms. Dashboarr still shows it offline on this network: private LAN address off Wi-Fi (${blocked}).`
-          : `Connected via ${which} URL in ${result.responseTime}ms`,
-        blocked ? "info" : "success",
+        block?.kind === "vpn"
+          ? `Connected via ${which} URL in ${result.responseTime}ms with no VPN detected. Dashboarr still shows it as waiting for VPN: turn off "Remote URL needs a VPN" if this address works without one.`
+          : block
+            ? `Connected via ${which} URL in ${result.responseTime}ms. Dashboarr still shows it offline on this network: private LAN address off Wi-Fi (${block.reason}).`
+            : `Connected via ${which} URL in ${result.responseTime}ms`,
+        block ? "info" : "success",
       );
     } else if (result.kind === "auth_failed") {
       toast(`Auth failed (${which} URL): ${result.message}`, "error");
     } else {
-      toast(`Could not reach ${which} URL: ${result.message}`, "error");
+      // A VPN-only Remote URL failing with no VPN up is the expected outcome,
+      // not a misconfiguration (#394): add what to turn on. Appended, not
+      // substituted: a real server answer (a 502 from the proxy, say) is still
+      // the more useful fact and must stay visible.
+      const vpnWait = vpnGuardBlocked(testUrl, guardInst);
+      toast(
+        vpnWait
+          ? `Could not reach ${which} URL: ${result.message}. It is marked as needing a VPN and none is detected: turn on your VPN and try again.`
+          : `Could not reach ${which} URL: ${result.message}`,
+        "error",
+      );
     }
   };
 
@@ -985,6 +1011,14 @@ export function ServiceEditor({
           value={config.ignoreCertErrors ?? false}
           onValueChange={(v) =>
             updateInstance(serviceId, instanceId, { ignoreCertErrors: v })
+          }
+        />
+        <Toggle
+          label="Remote URL needs a VPN"
+          description="The Remote URL is a Tailscale, WireGuard or other VPN address. While no VPN is connected, Dashboarr skips it and shows Waiting for VPN instead of marking the server offline. For a server with no LAN address, pair this with Always use Remote URL."
+          value={config.remoteRequiresVpn ?? false}
+          onValueChange={(v) =>
+            updateInstance(serviceId, instanceId, { remoteRequiresVpn: v })
           }
         />
       </Card>

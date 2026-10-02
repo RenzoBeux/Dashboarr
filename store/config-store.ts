@@ -172,13 +172,19 @@ interface ConfigState {
   // wrong box and answers "authentication failed".
   currentWifi: WifiIdentity | null;
   // EPHEMERAL (never persisted). Whether the device is currently on a WiFi
-  // network — tracked independently of auto-switch by useNetworkAutoSwitch so it
-  // is correct even when switching is off. `null` = not yet determined (cold
-  // start, before NetInfo reports). The off-WiFi LAN guard in lib/http-client
-  // reads this synchronously: a private/LAN URL can never be reached on
-  // cellular, so probing it there just hangs and (because the health grid awaits
-  // the whole probe batch) freezes every dot red — the Glances/#106 report.
+  // network, literally. Tracked independently of auto-switch by
+  // useNetworkAutoSwitch so it is correct even when switching is off. `null`
+  // = not yet determined (cold start, before NetInfo reports). Read by the
+  // Home Networks screen (diagnostics, the SSID-permission prompts).
   isOnWifi: boolean | null;
+  // EPHEMERAL (never persisted). Whether the device is on a LAN link: WiFi or
+  // wired Ethernet (Android reports the latter as its own type). The off-WiFi
+  // LAN guard in lib/http-client reads this synchronously: a private/LAN URL
+  // can never be reached on cellular, so probing it there just hangs and
+  // (because the health grid awaits the whole probe batch) freezes every dot
+  // red, the Glances/#106 report. Kept apart from `isOnWifi` so a wired device
+  // keeps the guard down without the Home Networks screen claiming WiFi.
+  isOnLan: boolean | null;
   // EPHEMERAL (never persisted). Whether a VPN tunnel is currently active
   // (native check — see lib/vpn.ts; NetInfo can't report this). Tracked
   // alongside isOnWifi and refreshed by evaluateHomeNetwork() on resume. A VPN
@@ -291,6 +297,8 @@ interface ConfigActions {
   // Set by useNetworkAutoSwitch on every NetInfo change (and eagerly at start).
   // EPHEMERAL — never persisted.
   setIsOnWifi: (onWifi: boolean | null) => void;
+  // Same source and lifetime; WiFi or wired Ethernet. The LAN guard's input.
+  setIsOnLan: (onLan: boolean | null) => void;
   // Set by useNetworkAutoSwitch / evaluateHomeNetwork from lib/vpn.ts.
   // EPHEMERAL — never persisted.
   setIsVpnActive: (active: boolean) => void;
@@ -902,6 +910,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   networkAwayFromHome: true,
   currentWifi: null,
   isOnWifi: null,
+  isOnLan: null,
   isVpnActive: false,
   treatVpnAsHome: false,
   homeNetworks: [],
@@ -1658,7 +1667,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const urlChanged =
         ("localUrl" in patch && patch.localUrl !== prevInst.localUrl) ||
         ("remoteUrl" in patch && patch.remoteUrl !== prevInst.remoteUrl) ||
-        ("useRemote" in patch && patch.useRemote !== prevInst.useRemote);
+        ("useRemote" in patch && patch.useRemote !== prevInst.useRemote) ||
+        // Same for "Remote URL needs a VPN" (#394): it decides whether the
+        // resolved URL is contacted at all, so a screen sitting on a
+        // "Waiting for VPN" error must refetch when the flag is turned off.
+        ("remoteRequiresVpn" in patch &&
+          (patch.remoteRequiresVpn ?? false) !==
+            (prevInst.remoteRequiresVpn ?? false));
       if (urlChanged) {
         void queryClient.invalidateQueries({ queryKey: [id, instanceId] });
       }
@@ -1843,18 +1858,25 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setIsOnWifi: (onWifi) => {
-    // No-op when unchanged (NetInfo emits repeatedly). Coming back onto WiFi
-    // re-enables LAN URLs; leaving it disables them — invalidate so any query
-    // that was short-circuited offline by the LAN guard (or was serving
-    // LAN-fetched data) re-resolves against the new reality. The health query
-    // also re-keys via its probe signature.
+    // No-op when unchanged (NetInfo emits repeatedly). Display-only: the LAN
+    // guard reads isOnLan, whose setter does the invalidation.
     if (get().isOnWifi === onWifi) return;
     set({ isOnWifi: onWifi });
+  },
+
+  setIsOnLan: (onLan) => {
+    // No-op when unchanged (NetInfo emits repeatedly). Coming back onto a LAN
+    // link re-enables LAN URLs; leaving it disables them. Invalidate so any
+    // query that was short-circuited offline by the LAN guard (or was serving
+    // LAN-fetched data) re-resolves against the new reality. The health query
+    // also re-keys via its probe signature.
+    if (get().isOnLan === onLan) return;
+    set({ isOnLan: onLan });
     void queryClient.invalidateQueries();
   },
 
   setIsVpnActive: (active) => {
-    // Same shape as setIsOnWifi: a VPN coming up makes LAN URLs reachable
+    // Same shape as setIsOnLan: a VPN coming up makes LAN URLs reachable
     // (the off-WiFi guard stands down); it dropping takes them away again.
     if (get().isVpnActive === active) return;
     set({ isVpnActive: active });

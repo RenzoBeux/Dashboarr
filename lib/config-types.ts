@@ -54,6 +54,15 @@ export interface ServiceConfig {
   // lib/insecure-tls.ts), which bypasses trust evaluation for exactly those
   // hosts. Absent/undefined behaves like false.
   ignoreCertErrors?: boolean;
+  // v60 (#394): the Remote URL is a VPN-side address (Tailscale, WireGuard,
+  // ...). While no VPN is connected the app skips that slot instead of probing
+  // it: the health poll reports "Waiting for VPN" rather than offline, and
+  // requests fail fast rather than paying the connect timeout. Scoped to the
+  // Remote URL slot on purpose: with auto-switch the Local URL is only ever
+  // used on a confirmed home network, where the LAN needs no tunnel; a server
+  // with no LAN address pairs this with `useRemote`. Absent/undefined behaves
+  // like false, which is the pre-v60 behavior.
+  remoteRequiresVpn?: boolean;
   // v36 (#287): per-instance defaults preselected in the arr add flows
   // (components/common/add-media-sheet.tsx). Absent/undefined keeps the
   // previous "first in the server's list" behavior; a stale value (profile or

@@ -266,6 +266,21 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.sonarr[0].ignoreCertErrors).toBe(false);
   });
 
+  // v60 (#394): only persisted when explicitly on, so exports keep the absent shape.
+  it("round-trips remoteRequiresVpn=true and drops anything else (v60)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        radarr: [validInstance({ remoteRequiresVpn: true })],
+        sonarr: [validInstance({ id: "uuid-s", remoteRequiresVpn: "yes" })],
+        lidarr: [validInstance({ id: "uuid-l" })],
+      },
+    });
+    expect(result.services.radarr[0].remoteRequiresVpn).toBe(true);
+    expect(result.services.sonarr[0]).not.toHaveProperty("remoteRequiresVpn");
+    expect(result.services.lidarr[0]).not.toHaveProperty("remoteRequiresVpn");
+  });
+
   it("round-trips arr add-flow defaults (v36)", () => {
     const result = validateExportPayload({
       ...baseValid(),

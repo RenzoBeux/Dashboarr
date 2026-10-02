@@ -9,6 +9,11 @@ import { QueryClient } from "@tanstack/react-query";
 function retryQuery(failureCount: number, error: unknown): boolean {
   const status = (error as { status?: unknown } | null)?.status;
   if (status === 401 || status === 403) return false;
+  // A reachability guard refused to contact the host (UrlBlockedError in
+  // http-client: LAN address off Wi-Fi, or a VPN-only Remote URL with no VPN).
+  // The verdict is deterministic for the current network, so backoff retries
+  // only delay the "Waiting for VPN" state by a few seconds.
+  if ((error as { blocked?: unknown } | null)?.blocked === true) return false;
   return failureCount < 2;
 }
 

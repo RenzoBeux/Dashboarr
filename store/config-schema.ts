@@ -109,6 +109,11 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (v.tagAddedTorrents === true) {
     out.tagAddedTorrents = true;
   }
+  // v60 (#394): optional "Remote URL needs a VPN" flag. Same shape rule as
+  // tagAddedTorrents: only persisted when explicitly on, garbage means off.
+  if (v.remoteRequiresVpn === true) {
+    out.remoteRequiresVpn = true;
+  }
   // v52 (#332): optional Seerr "Request As" default. Seerr user ids are
   // positive auto-increment integers. This was missing from the coercer when
   // v52 shipped, so an export/import round-trip silently dropped it.

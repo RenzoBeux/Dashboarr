@@ -19,6 +19,7 @@ import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
+import { urlBlock } from "@/lib/http-client";
 import { toast } from "@/components/ui/toast";
 import type {
   QBTorrent,
@@ -579,21 +580,36 @@ function ServiceHealthWatcher({
     for (const kind of health) {
       for (const inst of kind.instances) {
         const key = `${kind.id}:${inst.instanceId}`;
+        // kind.id is widened to string on ServiceHealthStatus but is always
+        // a ServiceId here (results are built from SERVICE_IDS).
+        const kindId = kind.id as ServiceId;
+        const url = store.getActiveUrl(kindId, inst.instanceId);
+        // An "offline" reached without contacting the server says nothing
+        // about the server: the current network has no URL to reach it on
+        // (leaving home resolves a local-only server to "", see getActiveUrl),
+        // or a guard skipped the probe (a LAN address off Wi-Fi, or a VPN-only
+        // Remote URL with no VPN up, #394). Don't alert on it, and don't
+        // record it either: keep the last real verdict, otherwise a server
+        // that dies while the VPN is off never alerts once the VPN is back,
+        // because the recorded "offline" hides the online→offline transition.
+        // Every block counts, not only the VPN one: a private tunnel address
+        // trips the LAN guard right after a reconnect too.
+        const suppressed =
+          !inst.online &&
+          (!url ||
+            urlBlock(url, store.getInstance(kindId, inst.instanceId)) !== null);
+        if (suppressed) {
+          const last = prev?.get(key);
+          if (last !== undefined) currentMap.set(key, last);
+          continue;
+        }
         currentMap.set(key, inst.online);
         if (prev !== null) {
           const wasOnline = prev.get(key);
           if (
             wasOnline === true &&
             inst.online === false &&
-            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings) &&
-            // Don't cry "unreachable" when the instance only went offline
-            // because the current network has no URL to reach it on — e.g.
-            // leaving home resolves a local-only server to "" (see
-            // getActiveUrl). That's a network change, not a server going down;
-            // a server with a usable URL that stops responding still fires.
-            // kind.id is widened to string on ServiceHealthStatus but is always
-            // a ServiceId here (results are built from SERVICE_IDS).
-            store.getActiveUrl(kind.id as ServiceId, inst.instanceId)
+            shouldNotifyForInstance("serviceOffline", inst.instanceId, settings)
           ) {
             sendLocalNotification({
               title: "Service offline",

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { View, Text } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -15,17 +14,14 @@ import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 import { SERVICE_DEFAULTS_KIND_LABEL } from "@/components/settings/service-kind-shared";
 import { useConfigStore } from "@/store/config-store";
-import { useServiceHealth } from "@/hooks/use-service-health";
-import { lanGuardBlockReason } from "@/lib/http-client";
+import { useIntegrationRows } from "@/hooks/use-integration-rows";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import {
-  buildIntegrationRows,
   summarizeIntegrations,
   integrationSubtitle,
   resolveKindRoute,
-  type InstanceProbeContext,
 } from "@/lib/integration-status";
-import { SERVICE_IDS, type ServiceId } from "@/lib/constants";
+import type { ServiceId } from "@/lib/constants";
 
 /** Sensible first integrations for someone with an empty install. */
 const STARTING_POINTS: ServiceId[] = ["qbittorrent", "radarr", "sonarr", "plex"];
@@ -33,53 +29,8 @@ const STARTING_POINTS: ServiceId[] = ["qbittorrent", "radarr", "sonarr", "plex"]
 export default function IntegrationsHub() {
   const router = useRouter();
   const serviceInstances = useConfigStore((s) => s.serviceInstances);
-  const getActiveUrl = useConfigStore((s) => s.getActiveUrl);
-  // Re-resolve the probe context whenever the network verdict changes: the
-  // same LAN URL is reachable at home and blocked on cellular.
-  const networkAwayFromHome = useConfigStore((s) => s.networkAwayFromHome);
-  // Instances attached only to another workspace resolve against that
-  // workspace's home networks through the observed WiFi (#418).
-  const currentWifi = useConfigStore((s) => s.currentWifi);
-  const dashboards = useConfigStore((s) => s.dashboards);
-  const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
-  const homeNetworks = useConfigStore((s) => s.homeNetworks);
-  const isOnWifi = useConfigStore((s) => s.isOnWifi);
-
-  const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
-  // "Determining": the first probe batch, or a re-keyed refetch after a
-  // network or workspace change. Same derivation as the Services tab.
-  const determining = isPending || isPlaceholderData;
-
-  const rows = useMemo(() => {
-    const context: Record<string, InstanceProbeContext> = {};
-    for (const kind of SERVICE_IDS) {
-      for (const inst of serviceInstances[kind] ?? []) {
-        const activeUrl = getActiveUrl(kind, inst.id);
-        context[inst.id] = {
-          activeUrl,
-          lanBlocked: lanGuardBlockReason(activeUrl, inst) !== null,
-        };
-      }
-    }
-    return buildIntegrationRows(
-      serviceInstances,
-      determining ? undefined : healthData,
-      context,
-    );
-    // networkAwayFromHome / currentWifi / isOnWifi feed getActiveUrl and
-    // lanGuardBlockReason indirectly.
-  }, [
-    serviceInstances,
-    healthData,
-    determining,
-    getActiveUrl,
-    networkAwayFromHome,
-    currentWifi,
-    dashboards,
-    activeDashboardId,
-    homeNetworks,
-    isOnWifi,
-  ]);
+  // Shared with the Settings row, so the two can never disagree.
+  const { rows } = useIntegrationRows();
 
   const summary = summarizeIntegrations(rows);
   const configured = rows.filter((r) => r.configured);
@@ -190,9 +141,9 @@ export default function IntegrationsHub() {
                 right={
                   row.enabledCount === 0 ? (
                     <Badge label="Off" variant="default" />
-                  ) : row.state === "away" ? (
-                    // Away is not a health verdict — the subtitle already says
-                    // "away from home". A dot here would read as broken.
+                  ) : row.state === "away" || row.state === "vpn" ? (
+                    // Away / waiting for VPN are not health verdicts; the
+                    // subtitle already says so. A dot here would read as broken.
                     null
                   ) : (
                     <StatusDot

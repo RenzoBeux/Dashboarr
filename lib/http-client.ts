@@ -14,7 +14,12 @@ import type { PiholeAuthResponse } from "@/lib/types";
 import { buildUrl } from "@/lib/url-builder";
 import { applyMediaServerAuth } from "@/lib/media-server-config";
 import { getDemoResponse } from "@/lib/demo-data";
-import { isPrivateUrl, normalizeServiceUrl } from "@/lib/url-validation";
+import {
+  isPrivateUrl,
+  normalizeServiceUrl,
+  resolveActiveUrlKind,
+} from "@/lib/url-validation";
+import { detectVpnActive, isVpnModuleAvailable } from "@/lib/vpn";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
 // service's wire quirks, so the probe below and services/nzbhydra2-api.ts read
 // the same envelope the same way. Pure string/object helpers — no cycle.
@@ -80,14 +85,18 @@ const DEFAULT_TIMEOUT = 15000;
  * whole probe batch, one such hang freezes every dot red (the Glances/#106
  * report). Short-circuit when we KNOW we're off WiFi.
  *
- * Gated on `isOnWifi === false` (confirmed), so `null` (cold start, not yet
- * determined) never short-circuits a URL that might be fine. On non-home WiFi
+ * Gated on `isOnLan === false` (confirmed off both WiFi and wired Ethernet,
+ * see hooks/use-network.ts), so `null` (cold start, not yet determined) never
+ * short-circuits a URL that might be fine. On non-home WiFi
  * we still attempt it — the bounded probe timeout handles that case, and the
  * existing away→remote URL resolution already keeps the LAN URL out of those
  * requests when auto-switch is on.
  *
  * Two things void the "private ⇒ unreachable" premise, both requiring a LIVE
- * tunnel (`isVpnActive`); without one the guard always stands, so the #106
+ * tunnel (`vpn`, read from the native module on every check, see `urlBlock`:
+ * the store's `isVpnActive` can lag a reconnect by up to its 15s poll, which
+ * blocked a VPN-only address right after the tunnel came back and fired a
+ * false "Service offline"); without one the guard always stands, so the #106
  * fail-fast is untouched:
  *
  *  1. The user opted to trust the VPN as home (`treatVpnAsHome`): WireGuard/
@@ -111,15 +120,16 @@ const DEFAULT_TIMEOUT = 15000;
  */
 function lanUnreachableOffWifi(
   url: string,
-  inst?: { remoteUrl: string },
+  inst: { remoteUrl: string } | undefined,
+  vpn: boolean,
 ): boolean {
   const store = useConfigStore.getState();
   // Demo mode never hits the network (probes return canned data), so don't let
   // the guard short-circuit demo services to offline when testing on cellular.
   if (store.demoMode) return false;
-  if (store.isVpnActive && store.treatVpnAsHome) return false;
-  if (store.isVpnActive && isRemoteSlotUrl(url, inst)) return false;
-  return store.isOnWifi === false && isPrivateUrl(url);
+  if (vpn && store.treatVpnAsHome) return false;
+  if (vpn && isRemoteSlotUrl(url, inst)) return false;
+  return store.isOnLan === false && isPrivateUrl(url);
 }
 
 /**
@@ -138,10 +148,8 @@ function isRemoteSlotUrl(url: string, inst?: { remoteUrl: string }): boolean {
  * read as a lie to the one group most likely to see it — users with a tunnel up
  * whose local URL it can't route (#356). Name the actual setting instead.
  */
-function lanGuardReason(): string {
-  return useConfigStore.getState().isVpnActive
-    ? "VPN detected, but Treat VPN as home is off"
-    : "no VPN detected";
+function lanGuardReason(vpn: boolean): string {
+  return vpn ? "VPN detected, but Treat VPN as home is off" : "no VPN detected";
 }
 
 /**
@@ -158,7 +166,148 @@ export function lanGuardBlockReason(
   url: string,
   inst?: { remoteUrl: string },
 ): string | null {
-  return lanUnreachableOffWifi(url, inst) ? lanGuardReason() : null;
+  const vpn = detectVpnActive();
+  return lanUnreachableOffWifi(url, inst, vpn) ? lanGuardReason(vpn) : null;
+}
+
+/** The instance fields the reachability guards read; a ServiceInstance satisfies it. */
+export interface GuardInstance {
+  id: string;
+  localUrl: string;
+  remoteUrl: string;
+  useRemote: boolean;
+  remoteRequiresVpn?: boolean;
+}
+
+/**
+ * "Remote URL needs a VPN" (#394): the user declared the Remote URL slot a
+ * VPN-side address (Tailscale, WireGuard, ...). With no VPN connected that host
+ * provably can't answer, so probing it only burns the connect timeout and
+ * paints a verdict identical to a crashed server. Skip it, and let the UI say
+ * "Waiting for VPN" instead.
+ *
+ * Judged on the slot, not the host: the same instance's Local URL is still
+ * probed, because under auto-switch it is only ever used on a confirmed home
+ * network, where the LAN needs no tunnel. A server with no LAN address puts the
+ * tunnel address in the Remote URL with "Always use Remote URL" on, which
+ * resolves to that slot everywhere. When both slots hold the same address (a
+ * VPN that routes the home LAN, or one tunnel address used everywhere) the URL
+ * alone can't say which slot picked it, so the resolver decides exactly as
+ * getActiveUrl did: at home under auto-switch that is the Local slot and the
+ * LAN is tried directly; with "Always use Remote URL", or away, it is the
+ * Remote slot and the requirement applies.
+ *
+ * `vpn` is the tunnel state read live (detectVpnActive) rather than the
+ * store's `isVpnActive`: that flag starts false and can lag a tunnel change
+ * by up to the 15s liveness poll, which would block a VPN that is up at cold
+ * start, or let a "Service offline" alert through for one that just dropped.
+ * The native check is a cheap sync call, and `urlBlock` takes ONE snapshot
+ * for both guards so they can never disagree about the same request.
+ *
+ * Stands down on a binary without the VpnStatus module (an OTA update onto an
+ * old build): the check can only ever read false there, so skipping would
+ * never probe the instance again. Falling through to the probe is exactly the
+ * pre-#394 behavior.
+ */
+function remoteVpnDown(
+  url: string,
+  inst: GuardInstance | undefined,
+  vpn: boolean,
+): boolean {
+  const store = useConfigStore.getState();
+  if (store.demoMode || !inst?.remoteRequiresVpn) return false;
+  if (!isVpnModuleAvailable()) return false;
+  const remote = normalizeServiceUrl(inst.remoteUrl);
+  if (!remote || url !== remote) return false;
+  if (normalizeServiceUrl(inst.localUrl) === remote) {
+    const { away, forcesRemote } = store.resolveInstanceNetwork(inst.id);
+    const slot = resolveActiveUrlKind(
+      inst,
+      store.autoSwitchNetwork,
+      away,
+      forcesRemote,
+    );
+    if (slot !== "remote") return false;
+  }
+  return !vpn;
+}
+
+/** Health-probe and request message while a VPN-only Remote URL has no VPN. */
+export const VPN_WAIT_MESSAGE =
+  "Waiting for VPN (the Remote URL needs a VPN and none is connected)";
+
+/**
+ * The VPN guard's verdict for UI (#394): true when `url` is this instance's
+ * Remote URL, the instance says that slot needs a VPN, and none is connected.
+ * The Integrations hub, the Status widget, the service header and the
+ * instance list show such an instance as "waiting for VPN" instead of broken.
+ * Same in-progress-form contract as `lanGuardBlockReason`.
+ */
+export function vpnGuardBlocked(url: string, inst?: GuardInstance): boolean {
+  return remoteVpnDown(url, inst, detectVpnActive());
+}
+
+/** Why a stored URL must not be contacted right now (#106/#185/#394), or null. */
+export type UrlBlock = { kind: "vpn" } | { kind: "lan"; reason: string };
+
+/**
+ * Both reachability guards in one verdict, from one live VPN snapshot. VPN
+ * first: a private tunnel address off Wi-Fi trips both, and "waiting for VPN"
+ * is the useful answer. The offline-notification watcher and the Seerr logout
+ * skip whatever this blocks, so a skipped probe never reads as a server down.
+ */
+export function urlBlock(url: string, inst?: GuardInstance): UrlBlock | null {
+  const vpn = detectVpnActive();
+  if (remoteVpnDown(url, inst, vpn)) return { kind: "vpn" };
+  if (lanUnreachableOffWifi(url, inst, vpn)) {
+    return { kind: "lan", reason: lanGuardReason(vpn) };
+  }
+  return null;
+}
+
+/** Request-path wording for a block, after the `${serviceId}: ` prefix. */
+export function urlBlockMessage(block: UrlBlock): string {
+  return block.kind === "vpn"
+    ? VPN_WAIT_MESSAGE
+    : `private LAN address not reachable off Wi-Fi (${block.reason})`;
+}
+
+/**
+ * Thrown instead of contacting a blocked URL. `blocked` is duck-typed by the
+ * query client's retry policy (lib/query-client.ts can't import this module):
+ * the verdict is deterministic for the current network, so retrying with
+ * backoff only delays the "Waiting for VPN" state by a few seconds.
+ */
+export class UrlBlockedError extends Error {
+  readonly blocked = true;
+  readonly block: UrlBlock;
+
+  constructor(serviceId: string, block: UrlBlock) {
+    super(`${serviceId}: ${urlBlockMessage(block)}`);
+    this.name = "UrlBlockedError";
+    this.block = block;
+  }
+}
+
+/**
+ * The URL a custom transport should send to right now: `getActiveUrl` plus the
+ * two guards `serviceRequest` applies. Returns "" when no URL is configured
+ * (callers keep their own "No URL configured" message) and THROWS when a guard
+ * says the host can't answer, so a doomed connect fails fast instead of holding
+ * every tile on "checking" for the probe deadline. Transports that fetch on
+ * their own (qBittorrent, AdGuard, Plex, Tautulli, JellyStat, Deluge,
+ * Transmission, Beszel) resolve through this, never through getActiveUrl.
+ */
+export function resolveReachableUrl(
+  serviceId: ServiceId,
+  instanceId: string,
+): string {
+  const store = useConfigStore.getState();
+  const url = store.getActiveUrl(serviceId, instanceId);
+  if (!url) return "";
+  const block = urlBlock(url, store.getInstance(serviceId, instanceId));
+  if (block) throw new UrlBlockedError(serviceId, block);
+  return url;
 }
 
 interface RequestOptions extends Omit<RequestInit, "signal"> {
@@ -395,14 +544,12 @@ export async function serviceRequest<T>(
   if (!baseUrl) {
     throw new Error(`No URL configured for ${serviceId}`);
   }
-  // Fail fast instead of hanging on an unreachable LAN address off WiFi.
-  // Slot-neutral wording: with no VPN up the guard keys on the URL's host, so a
-  // private address in the Remote URL slot trips it too (#185).
-  if (lanUnreachableOffWifi(baseUrl, inst)) {
-    throw new Error(
-      `${serviceId}: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`,
-    );
-  }
+  // Fail fast instead of hanging on a host that provably can't answer: a LAN
+  // address off WiFi (#106/#185; slot-neutral, so a private address in the
+  // Remote URL slot trips it too) or a VPN-only Remote URL with no VPN up
+  // (#394).
+  const block = urlBlock(baseUrl, inst);
+  if (block) throw new UrlBlockedError(serviceId, block);
 
   const headers = new Headers(fetchOptions.headers);
 
@@ -643,10 +790,11 @@ export async function pingService(
 
   const baseUrl = urlOverride ?? store.getActiveUrl(serviceId, targetId);
   if (!baseUrl) return null;
-  // Don't hang pinging a LAN address off WiFi. Skipped only for the stored URL;
-  // an explicit urlOverride (form "Test" value) is always attempted so the user
-  // can validate a local URL even while away.
-  if (!urlOverride && lanUnreachableOffWifi(baseUrl, inst)) return null;
+  // Don't hang pinging a LAN address off WiFi, or a VPN-only Remote URL with no
+  // VPN up (#394). Skipped only for the stored URL; an explicit urlOverride
+  // (form "Test" value) is always attempted so the user can validate a local
+  // URL even while away.
+  if (!urlOverride && urlBlock(baseUrl, inst)) return null;
 
   // SAB has no /system endpoint to GET — it advertises version through the
   // single /api?mode=version handler, so we synthesize the ping URL from the
@@ -968,11 +1116,17 @@ export async function checkInstanceHealth(
   }
   // A LAN URL can't be reached off WiFi — short-circuit instead of probing it.
   // This is the core of the Glances/#106 fix: without it the doomed connect
-  // hangs and stalls every other probe in the batch.
-  if (lanUnreachableOffWifi(url, inst)) {
+  // hangs and stalls every other probe in the batch. Same for a VPN-only
+  // Remote URL with no VPN up (#394), with a verdict the UI can tell apart
+  // from a server that is actually down.
+  const block = urlBlock(url, inst);
+  if (block) {
     return {
       kind: "unreachable",
-      message: `Private LAN address not reachable off Wi-Fi (${lanGuardReason()})`,
+      message:
+        block.kind === "vpn"
+          ? VPN_WAIT_MESSAGE
+          : `Private LAN address not reachable off Wi-Fi (${block.reason})`,
     };
   }
   const secrets = store.instanceSecrets[instanceId] ?? {};
@@ -1306,11 +1460,8 @@ export function ensureSeerrSession(instanceId: string, pinnedBaseUrl?: string): 
   // runs before serviceRequest, and what it would send to a private address
   // off the home network is not an API call but the account's password or
   // Plex token. Local URLs are for the home network only.
-  if (lanUnreachableOffWifi(baseUrl, inst)) {
-    return Promise.reject(
-      new Error(`overseerr: private LAN address not reachable off Wi-Fi (${lanGuardReason()})`),
-    );
-  }
+  const block = urlBlock(baseUrl, inst);
+  if (block) return Promise.reject(new UrlBlockedError("overseerr", block));
   const secrets = store.instanceSecrets[instanceId] ?? {};
   const customHeaders = store.getMergedHeaders("overseerr", instanceId);
   const mode = seerrAuthMode(inst);

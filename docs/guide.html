@@ -303,7 +303,7 @@
               <tr><td>Connection: Authentication</td><td>Either <strong>Username</strong> and <strong>Password</strong>, or a single <strong>API Key</strong> with a hint about where to find it. Plex also gets a <strong>Connect with Plex</strong> button.</td></tr>
               <tr><td>Connection: Custom Headers</td><td>Optional per-instance headers for reverse-proxy auth</td></tr>
               <tr><td>(buttons)</td><td><strong>Test Connection</strong> and <strong>Save</strong>, side by side. Everything above them is saved by the Save button.</td></tr>
-              <tr><td>Preferences: Routing and security</td><td><strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong></td></tr>
+              <tr><td>Preferences: Routing and security</td><td><strong>Always use Remote URL</strong>, <strong>Allow invalid certificates</strong>, <strong>Remote URL needs a VPN</strong></td></tr>
               <tr><td>Preferences: Torrents</td><td>qBittorrent only: tag added torrents with "Dashboarr"</td></tr>
               <tr><td>Preferences: Disk activity</td><td>unRAID only: pick the Glances instance running on that same machine to show per-disk read/write rates. unRAID's own API always reports zero reads and writes, so this is the only source. Left as <strong>None</strong>, no rates are shown.</td></tr>
               <tr><td>Preferences: Add Defaults</td><td>Radarr, Sonarr and Lidarr only: Quality Profile, Root Folder, and Metadata Profile for Lidarr</td></tr>
@@ -474,6 +474,15 @@
           <code>100.64.0.0/10</code> range as LAN-only, so those addresses are never blocked when you
           are away.
         </div>
+        <p>
+          Services that exist only on the tailnet can say so: in the instance editor, under
+          <strong>Routing and security</strong>, turn on <strong>Remote URL needs a VPN</strong>. While
+          no VPN is connected Dashboarr skips that address instead of probing it, so the Integrations
+          hub reads <strong>Waiting for VPN</strong>, the Service Health widget marks the tile with a
+          VPN badge and a neutral dot instead of treating it as broken, no "Service offline"
+          notification fires, and the service screen fails fast instead of waiting out the timeout. It applies to the Remote URL slot: at home the Local URL is still used
+          directly, and a server with no LAN address pairs it with <strong>Always use Remote URL</strong>.
+        </p>
 
         <h3>Diagnostics</h3>
         <p>

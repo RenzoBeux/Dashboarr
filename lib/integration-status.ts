@@ -22,11 +22,16 @@ import type { HealthStatusKind, ServiceHealthStatus } from "@/lib/types";
  * Without splitting it out, every hub visit on cellular would render a full
  * "Needs attention" list claiming a working setup is broken, which is worse
  * than the small per-row dot it replaces.
+ *
+ * `vpn` is the same split for a Remote URL the user declared VPN-only (#394):
+ * with no VPN connected the probe is skipped, and the row says "Waiting for
+ * VPN" rather than claiming the server is down.
  */
 export type InstanceState =
   | "ok"
   | "attention"
   | "away"
+  | "vpn"
   | "checking"
   | "off"
   | "unconfigured";
@@ -37,6 +42,8 @@ export interface InstanceProbeContext {
   activeUrl: string;
   /** lanGuardBlockReason(activeUrl, inst) !== null. */
   lanBlocked: boolean;
+  /** vpnGuardBlocked(activeUrl, inst): a VPN-only Remote URL with no VPN up (#394). */
+  vpnBlocked: boolean;
 }
 
 export interface IntegrationInstanceRow {
@@ -72,12 +79,19 @@ export interface IntegrationRow {
  * offline). That aggregate is right for a dashboard widget, where a healthy
  * primary should keep the tile green, and wrong here, where the whole point is
  * to surface the broken secondary.
+ *
+ * "away" and "vpn" are not broken, just out of reach, so a kind with one
+ * connected instance and one waiting for the VPN is connected: the summary
+ * line counts it as such, and the row's subtitle lists the waiting one. Ranking
+ * them above "ok" made the headline say "waiting for VPN" while the subtitle
+ * under it said "1 connected".
  */
 const STATE_PRECEDENCE: InstanceState[] = [
   "attention",
   "checking",
-  "away",
   "ok",
+  "away",
+  "vpn",
 ];
 
 /** True when any instance of this kind has a URL saved. */
@@ -121,15 +135,16 @@ function hostLabel(url: string): string {
  * Classify one instance.
  *
  * `health` is that instance's entry from useServiceHealth, or undefined when
- * the first probe batch has not resolved yet.
+ * the first probe batch has not resolved yet. `ctx` is the caller's resolved
+ * URL for it plus the two guard verdicts (see InstanceProbeContext).
  */
 export function classifyInstance(
   kind: ServiceId,
   inst: ServiceInstance,
   health: { status: HealthStatusKind; message?: string } | undefined,
-  lanBlocked: boolean,
-  activeUrl: string,
+  ctx: InstanceProbeContext,
 ): IntegrationInstanceRow {
+  const { activeUrl, lanBlocked, vpnBlocked } = ctx;
   const base = { kind, instanceId: inst.id, instanceName: inst.name, activeUrl };
 
   const hasUrl = inst.localUrl.length > 0 || inst.remoteUrl.length > 0;
@@ -146,6 +161,12 @@ export function classifyInstance(
       state: "attention",
       reason: "Enabled but no URL set",
     };
+  }
+
+  // The Remote URL needs a VPN and none is connected (#394). Not broken
+  // either: the probe was skipped, so there is no verdict to read.
+  if (vpnBlocked) {
+    return { ...base, state: "vpn" };
   }
 
   // Off the home network with a LAN-only URL. Not broken, just out of reach.
@@ -218,8 +239,7 @@ export function buildIntegrationRows(
         health
           ? { status: health.status, message: health.message }
           : settledKindFallback,
-        ctx?.lanBlocked ?? false,
-        ctx?.activeUrl ?? "",
+        ctx ?? { activeUrl: "", lanBlocked: false, vpnBlocked: false },
       );
       return { ...row, responseTime: health?.responseTime };
     });
@@ -227,7 +247,7 @@ export function buildIntegrationRows(
     const enabledCount = instances.filter((i) => i.enabled).length;
     const configured = isConfigured(instances);
     const enabledRows = rows.filter((r) =>
-      ["attention", "checking", "away", "ok"].includes(r.state),
+      ["attention", "checking", "away", "vpn", "ok"].includes(r.state),
     );
 
     const state: InstanceState = !configured
@@ -257,6 +277,8 @@ export interface IntegrationSummary {
   connected: number;
   attention: number;
   away: number;
+  /** Kinds whose instances are all waiting for a VPN (#394). */
+  vpn: number;
   checking: number;
   off: number;
   available: number;
@@ -269,7 +291,7 @@ export interface IntegrationSummary {
  * Counts for the Settings row subtitle and the hub summary line.
  *
  * Every kind lands in exactly one bucket, so
- *   connected + attention + away + checking + off + available === SERVICE_IDS.length
+ *   connected + attention + away + vpn + checking + off + available === SERVICE_IDS.length
  * for any store shape. The test asserts it.
  */
 export function summarizeIntegrations(
@@ -278,6 +300,7 @@ export function summarizeIntegrations(
   let connected = 0;
   let attention = 0;
   let away = 0;
+  let vpn = 0;
   let checking = 0;
   let off = 0;
   let available = 0;
@@ -292,6 +315,9 @@ export function summarizeIntegrations(
         break;
       case "away":
         away++;
+        break;
+      case "vpn":
+        vpn++;
         break;
       case "checking":
         checking++;
@@ -309,7 +335,7 @@ export function summarizeIntegrations(
   );
 
   // Configured kinds that are up right now, for the headline number.
-  const live = connected + attention + away + checking;
+  const live = connected + attention + away + vpn + checking;
 
   let line: string;
   if (live === 0 && off === 0) {
@@ -318,8 +344,12 @@ export function summarizeIntegrations(
     line = `Checking ${live} service${live === 1 ? "" : "s"}…`;
   } else if (attention > 0) {
     line = `${connected} connected · ${attention} need${attention === 1 ? "s" : ""} attention`;
-  } else if (away > 0) {
-    line = `${connected} connected · ${away} away from home`;
+  } else if (away > 0 || vpn > 0) {
+    // Both are "out of reach by network state", so list whichever apply.
+    const parts = [`${connected} connected`];
+    if (away > 0) parts.push(`${away} away from home`);
+    if (vpn > 0) parts.push(`${vpn} waiting for VPN`);
+    line = parts.join(" · ");
   } else {
     line = `${connected} service${connected === 1 ? "" : "s"} connected`;
   }
@@ -328,6 +358,7 @@ export function summarizeIntegrations(
     connected,
     attention,
     away,
+    vpn,
     checking,
     off,
     available,
@@ -350,6 +381,8 @@ export function integrationSubtitle(row: IntegrationRow): {
     const only = row.rows[0];
     if (only.state === "away")
       return { text: "Local only · away from home", tone: "default" };
+    if (only.state === "vpn")
+      return { text: "Waiting for VPN", tone: "default" };
     if (only.state === "attention")
       return { text: only.reason ?? "Needs attention", tone: "warn" };
     if (only.state === "checking")
@@ -360,11 +393,17 @@ export function integrationSubtitle(row: IntegrationRow): {
 
   const bad = row.rows.filter((r) => r.state === "attention").length;
   const ok = row.rows.filter((r) => r.state === "ok").length;
+  const vpn = row.rows.filter((r) => r.state === "vpn").length;
   const plural = `${row.instances.length} instances`;
   if (bad > 0)
     return {
       text: `${plural} · ${bad} need${bad === 1 ? "s" : ""} attention`,
       tone: "warn",
+    };
+  if (vpn > 0)
+    return {
+      text: `${plural} · ${ok} connected · ${vpn} waiting for VPN`,
+      tone: "default",
     };
   return { text: `${plural} · ${ok} connected`, tone: "default" };
 }

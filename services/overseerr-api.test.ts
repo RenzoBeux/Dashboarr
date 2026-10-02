@@ -25,7 +25,9 @@ jest.mock("@/lib/http-client", () => {
     ensureSeerrSession: jest.fn(),
     seerrFetchMe: jest.fn(),
     seerrLogout: jest.fn(async () => undefined),
-    lanGuardBlockReason: jest.fn(() => null),
+    // The combined reachability verdict (LAN off Wi-Fi, VPN-only Remote URL
+    // with no VPN): never blocked unless a test says so.
+    urlBlock: jest.fn(() => null),
     HttpError,
     AuthProxyResponseError,
     buildUrl: jest.requireActual("@/lib/url-builder").buildUrl,
@@ -68,10 +70,10 @@ import {
   AuthProxyResponseError,
   HttpError,
   ensureSeerrSession,
-  lanGuardBlockReason,
   seerrFetchMe,
   seerrLogout,
   serviceRequest,
+  urlBlock,
 } from "@/lib/http-client";
 import {
   dedupedSeerrLogin,
@@ -88,7 +90,7 @@ const mockedRequest = serviceRequest as jest.MockedFunction<typeof serviceReques
 const mockedEnsure = ensureSeerrSession as jest.MockedFunction<typeof ensureSeerrSession>;
 const mockedFetchMe = seerrFetchMe as jest.MockedFunction<typeof seerrFetchMe>;
 const mockedLogout = seerrLogout as jest.MockedFunction<typeof seerrLogout>;
-const mockedLanGuard = lanGuardBlockReason as jest.MockedFunction<typeof lanGuardBlockReason>;
+const mockedUrlBlock = urlBlock as jest.MockedFunction<typeof urlBlock>;
 
 const ID = "inst-active";
 const HOST = "seerr.local";
@@ -329,12 +331,14 @@ describe("seerrClearSession", () => {
     mockState.instances = {
       [ID]: { authMode: "local", localUrl: "http://192.168.1.10:5055", remoteUrl: "https://seerr.example.com" },
     };
-    mockedLanGuard.mockImplementation((url) => (url.startsWith("http://192.") ? "no VPN detected" : null));
+    mockedUrlBlock.mockImplementation((url) =>
+      url.startsWith("http://192.") ? { kind: "lan", reason: "no VPN detected" } : null,
+    );
     await seerrClearSession(ID);
     expect(mockedLogout.mock.calls.map((c) => c[0])).toEqual(["https://seerr.example.com"]);
     expect(mockMarkStale).toHaveBeenCalledWith(ID, ["192.168.1.10", "seerr.example.com"]);
-    mockedLanGuard.mockReset();
-    mockedLanGuard.mockReturnValue(null);
+    mockedUrlBlock.mockReset();
+    mockedUrlBlock.mockReturnValue(null);
   });
 
   it("marks every host stale, persisted through the store", async () => {

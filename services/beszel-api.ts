@@ -1,4 +1,4 @@
-import { buildUrl } from "@/lib/http-client";
+import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
@@ -86,7 +86,7 @@ export async function beszelLogin(
   const id = resolveBeszelInstanceId(instanceId);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
-  const baseUrl = store.getActiveUrl("beszel", id);
+  const baseUrl = resolveReachableUrl("beszel", id);
   if (!baseUrl) throw new Error("No URL configured for Beszel");
 
   const attempt = async (
@@ -130,7 +130,7 @@ async function beszelFetch<T>(
   token: string,
 ): Promise<T> {
   const store = useConfigStore.getState();
-  const baseUrl = store.getActiveUrl("beszel", instanceId);
+  const baseUrl = resolveReachableUrl("beszel", instanceId);
   if (!baseUrl) throw new Error("No URL configured for Beszel");
   const headers = new Headers();
   const customHeaders = store.getMergedHeaders("beszel", instanceId);
@@ -169,7 +169,7 @@ async function beszelAuthRefresh(
   token: string,
 ): Promise<string | null> {
   const store = useConfigStore.getState();
-  const baseUrl = store.getActiveUrl("beszel", instanceId);
+  const baseUrl = resolveReachableUrl("beszel", instanceId);
   if (!baseUrl) throw new Error("No URL configured for Beszel");
   const headers = new Headers();
   const customHeaders = store.getMergedHeaders("beszel", instanceId);

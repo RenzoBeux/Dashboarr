@@ -169,6 +169,15 @@ export function InstanceForm({ kind, instance, secrets, onChange, onSecrets, onS
         <span>Allow invalid certificates (self-signed or private CA)</span>
       </label>
 
+      <label className="field toggle">
+        <input
+          type="checkbox"
+          checked={instance.remoteRequiresVpn === true}
+          onChange={(e) => onChange({ remoteRequiresVpn: e.target.checked })}
+        />
+        <span>Remote URL needs a VPN (skipped and shown as waiting while no VPN is connected)</span>
+      </label>
+
       <div className="form-actions">
         <button type="button" className="danger secondary" onClick={onRemove}>
           Remove instance

@@ -1722,6 +1722,32 @@ describe("v58 → v59 (light appTheme stamp)", () => {
   });
 });
 
+describe("v59 → v60 (remoteRequiresVpn stamp, #394)", () => {
+  it("just stamps the version and preserves a per-instance remoteRequiresVpn", () => {
+    const result: any = migrateConfig({
+      version: 59,
+      services: {
+        radarr: [
+          {
+            id: "r1",
+            enabled: true,
+            name: "Radarr",
+            localUrl: "",
+            remoteUrl: "http://100.64.0.5:7878",
+            useRemote: true,
+            remoteRequiresVpn: true,
+          },
+        ],
+      },
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.services.radarr[0].remoteRequiresVpn).toBe(true);
+  });
+});
+
 describe("v39 → v40 (weekStart stamp)", () => {
   it("just stamps the version and preserves an already-set weekStart", () => {
     const result: any = migrateConfig({

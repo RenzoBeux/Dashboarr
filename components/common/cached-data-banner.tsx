@@ -1,9 +1,11 @@
 import { Text } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { CloudOff } from "lucide-react-native";
+import { CloudOff, ShieldOff } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { useActiveInstance } from "@/hooks/use-active-instance";
 import { useServiceHealth } from "@/hooks/use-service-health";
+import { vpnGuardBlocked } from "@/lib/http-client";
+import { useConfigStore } from "@/store/config-store";
 import type { ServiceId } from "@/lib/constants";
 
 /**
@@ -29,19 +31,32 @@ export function CachedDataBanner({
 }) {
   const { activeId } = useActiveInstance(serviceId);
   const { data: health } = useServiceHealth();
+  // "Waiting for VPN" (#394) is the same offline verdict with a known cause:
+  // the probe was skipped because the Remote URL needs a VPN that is down.
+  // Re-renders when the tunnel flips via the isVpnActive subscription.
+  const activeUrl = useConfigStore((s) =>
+    activeId ? s.getActiveUrl(serviceId, activeId) : "",
+  );
+  const activeInst = useConfigStore((s) =>
+    activeId ? s.getInstance(serviceId, activeId) : undefined,
+  );
+  useConfigStore((s) => s.isVpnActive);
   const kind = health?.find((s) => s.id === serviceId);
   const instance = kind?.instances.find((i) => i.instanceId === activeId);
   if (!instance || instance.status !== "offline") return null;
 
+  const waiting = vpnGuardBlocked(activeUrl, activeInst);
   const name = label ?? instance.instanceName ?? kind?.name ?? "This service";
   return (
     <Animated.View
       entering={FadeIn.duration(150)}
       className="flex-row items-center gap-2.5 mb-4 px-3 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10"
     >
-      <Icon icon={CloudOff} size={16} color="#f59e0b" />
+      <Icon icon={waiting ? ShieldOff : CloudOff} size={16} color="#f59e0b" />
       <Text className="text-amber-300 text-xs flex-1">
-        {name} is unreachable — any data shown may be out of date.
+        {waiting
+          ? `${name} is waiting for a VPN. Any data shown may be out of date.`
+          : `${name} is unreachable — any data shown may be out of date.`}
       </Text>
     </Animated.View>
   );
