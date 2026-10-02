@@ -3741,6 +3741,39 @@ const DEMO_ADGUARD_FILTER_STATUS = {
   user_rules: ["@@||example-video.com^"],
 };
 
+/** A slice of AGH's catalog (/blocked_services/all): group ids and the
+ * Base64 `currentColor` SVG shape are the real ones, the paths are stand-ins. */
+const DEMO_ADGUARD_BLOCKED_SERVICES_ALL = {
+  blocked_services: [
+    { id: "youtube", name: "YouTube", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNOCA1djE0bDExLTd6Ii8+PC9zdmc+", rules: ["||youtube.com^"], group_id: "streaming" },
+    { id: "netflix", name: "Netflix", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNOCA1djE0bDExLTd6Ii8+PC9zdmc+", rules: ["||netflix.com^"], group_id: "streaming" },
+    { id: "twitch", name: "Twitch", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNOCA1djE0bDExLTd6Ii8+PC9zdmc+", rules: ["||twitch.tv^"], group_id: "streaming" },
+    { id: "spotify", name: "Spotify", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgM3YxMC41NUE0IDQgMCAxIDAgMTQgMTdWN2g0VjN6Ii8+PC9zdmc+", rules: ["||spotify.com^"], group_id: "streaming" },
+    { id: "tiktok", name: "TikTok", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgM3YxMC41NUE0IDQgMCAxIDAgMTQgMTdWN2g0VjN6Ii8+PC9zdmc+", rules: ["||tiktok.com^"], group_id: "social_network" },
+    { id: "instagram", name: "Instagram", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNCA0aDE2djEySDdsLTMgM3oiLz48L3N2Zz4=", rules: ["||instagram.com^"], group_id: "social_network" },
+    { id: "facebook", name: "Facebook", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNCA0aDE2djEySDdsLTMgM3oiLz48L3N2Zz4=", rules: ["||facebook.com^"], group_id: "social_network" },
+    { id: "discord", name: "Discord", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNCA0aDE2djEySDdsLTMgM3oiLz48L3N2Zz4=", rules: ["||discord.com^"], group_id: "messenger" },
+    { id: "whatsapp", name: "WhatsApp", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNCA0aDE2djEySDdsLTMgM3oiLz48L3N2Zz4=", rules: ["||whatsapp.com^"], group_id: "messenger" },
+    { id: "steam", name: "Steam", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNiA5aDEyYTQgNCAwIDAgMSAwIDhINmE0IDQgMCAwIDEgMC04eiIvPjwvc3ZnPg==", rules: ["||steampowered.com^"], group_id: "gaming" },
+    { id: "roblox", name: "Roblox", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNiA5aDEyYTQgNCAwIDAgMSAwIDhINmE0IDQgMCAwIDEgMC04eiIvPjwvc3ZnPg==", rules: ["||roblox.com^"], group_id: "gaming" },
+    { id: "epic_games", name: "Epic Games", icon_svg: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9ImN1cnJlbnRDb2xvciIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNNiA5aDEyYTQgNCAwIDAgMSAwIDhINmE0IDQgMCAwIDEgMC04eiIvPjwvc3ZnPg==", rules: ["||epicgames.com^"], group_id: "gaming" },
+  ],
+  groups: [{ id: "social_network" }, { id: "streaming" }, { id: "messenger" }, { id: "gaming" }],
+};
+
+const DEMO_HOUR_MS = 3_600_000;
+const DEMO_ADGUARD_BLOCKED_SERVICES = {
+  ids: ["tiktok", "roblox"],
+  schedule: {
+    time_zone: "Local",
+    mon: { start: 15 * DEMO_HOUR_MS, end: 17 * DEMO_HOUR_MS },
+    tue: { start: 15 * DEMO_HOUR_MS, end: 17 * DEMO_HOUR_MS },
+    wed: { start: 15 * DEMO_HOUR_MS, end: 17 * DEMO_HOUR_MS },
+    thu: { start: 15 * DEMO_HOUR_MS, end: 17 * DEMO_HOUR_MS },
+    fri: { start: 15 * DEMO_HOUR_MS, end: 17 * DEMO_HOUR_MS },
+  },
+};
+
 const DEMO_ADGUARD_REWRITES = [
   { domain: "nas.lan", answer: "192.168.1.7", enabled: true },
   { domain: "*.dev.lan", answer: "192.168.1.11", enabled: true },
@@ -4379,6 +4412,8 @@ export function getDemoResponse(
       if (normalized === "/stats") return DEMO_ADGUARD_STATS;
       if (normalized === "/filtering/status") return DEMO_ADGUARD_FILTER_STATUS;
       if (normalized === "/rewrite/list") return DEMO_ADGUARD_REWRITES;
+      if (normalized === "/blocked_services/all") return DEMO_ADGUARD_BLOCKED_SERVICES_ALL;
+      if (normalized === "/blocked_services/get") return DEMO_ADGUARD_BLOCKED_SERVICES;
       if (normalized === "/filtering/refresh") return { updated: DEMO_ADGUARD_FILTER_STATUS.filters.length };
 
       if (normalized === "/querylog") {
