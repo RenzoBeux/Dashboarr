@@ -85,9 +85,9 @@ const DEFAULT_TIMEOUT = 15000;
  * whole probe batch, one such hang freezes every dot red (the Glances/#106
  * report). Short-circuit when we KNOW we're off WiFi.
  *
- * Gated on `isOnWifi === false` (confirmed), so `null` (cold start, not yet
- * determined) never short-circuits a URL that might be fine; wired Ethernet
- * counts as on-LAN there (hooks/use-network.ts). On non-home WiFi
+ * Gated on `isOnLan === false` (confirmed off both WiFi and wired Ethernet,
+ * see hooks/use-network.ts), so `null` (cold start, not yet determined) never
+ * short-circuits a URL that might be fine. On non-home WiFi
  * we still attempt it — the bounded probe timeout handles that case, and the
  * existing away→remote URL resolution already keeps the LAN URL out of those
  * requests when auto-switch is on.
@@ -129,7 +129,7 @@ function lanUnreachableOffWifi(
   if (store.demoMode) return false;
   if (vpn && store.treatVpnAsHome) return false;
   if (vpn && isRemoteSlotUrl(url, inst)) return false;
-  return store.isOnWifi === false && isPrivateUrl(url);
+  return store.isOnLan === false && isPrivateUrl(url);
 }
 
 /**

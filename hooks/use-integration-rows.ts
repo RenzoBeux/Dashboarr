@@ -35,7 +35,7 @@ export function useIntegrationRows(): {
   const dashboards = useConfigStore((s) => s.dashboards);
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
-  const isOnWifi = useConfigStore((s) => s.isOnWifi);
+  const isOnLan = useConfigStore((s) => s.isOnLan);
   const isVpnActive = useConfigStore((s) => s.isVpnActive);
 
   const { data: healthData, isPending, isPlaceholderData } = useServiceHealth();
@@ -69,7 +69,7 @@ export function useIntegrationRows(): {
     dashboards,
     activeDashboardId,
     homeNetworks,
-    isOnWifi,
+    isOnLan,
     isVpnActive,
   ]);
 

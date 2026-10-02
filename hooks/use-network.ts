@@ -52,10 +52,13 @@ export function useNetworkAutoSwitch() {
   useEffect(() => {
     const apply = (state: NetInfoState) => {
       const store = useConfigStore.getState();
-      // "On WiFi" means "on a LAN link": wired Ethernet (Android reports it as
-      // its own type; a docked tablet or an Android TV box) reaches private
-      // addresses exactly like WiFi does, so it must not trip the LAN guard.
-      store.setIsOnWifi(state.type === "wifi" || state.type === "ethernet");
+      // Two flags on purpose. `isOnWifi` is literal (the Home Networks screen
+      // reads it for diagnostics and the SSID-permission prompts). `isOnLan`
+      // is what the LAN guard reads: wired Ethernet (Android reports it as its
+      // own type; a docked tablet or an Android TV box) reaches private
+      // addresses exactly like WiFi does, so it must not trip the guard.
+      store.setIsOnWifi(state.type === "wifi");
+      store.setIsOnLan(state.type === "wifi" || state.type === "ethernet");
       store.setIsVpnActive(detectVpnActive());
     };
     void NetInfo.fetch().then(apply).catch(() => {});

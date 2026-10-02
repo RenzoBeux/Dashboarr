@@ -390,6 +390,38 @@ describe("summarizeIntegrations", () => {
     expect(s.line).toBe("Set up your first service");
   });
 
+  it("counts a kind with one connected and one waiting instance as connected (#394)", () => {
+    // The headline and the row subtitle must tell the same story: "1
+    // connected" up top, "2 instances · 1 connected · 1 waiting for VPN" below.
+    const a = inst({ id: "a" });
+    const b = inst({
+      id: "b",
+      name: "Radarr 4K",
+      remoteUrl: "http://100.64.0.5:7878",
+      useRemote: true,
+      remoteRequiresVpn: true,
+    });
+    const map = { ...emptyInstances(), radarr: [a, b] };
+    const rows = buildIntegrationRows(
+      map,
+      health("radarr", [
+        { instanceId: "a", status: "ok" },
+        { instanceId: "b", status: "offline" },
+      ]),
+      { ...ctxFor([a]), ...ctxFor([b], { vpnBlocked: true }) },
+    );
+    const radarr = rows.find((r) => r.kind === "radarr")!;
+    expect(radarr.state).toBe("ok");
+    const s = summarizeIntegrations(rows);
+    expect(s.connected).toBe(1);
+    expect(s.vpn).toBe(0);
+    expect(s.line).toBe("1 service connected");
+    expect(integrationSubtitle(radarr)).toEqual({
+      text: "2 instances · 1 connected · 1 waiting for VPN",
+      tone: "default",
+    });
+  });
+
   it("counts kinds waiting for VPN apart from attention and says so (#394)", () => {
     const a = inst({ id: "a" });
     const b = inst({

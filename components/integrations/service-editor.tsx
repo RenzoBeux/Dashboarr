@@ -665,12 +665,13 @@ export function ServiceEditor({
       toast(`Auth failed (${which} URL): ${result.message}`, "error");
     } else {
       // A VPN-only Remote URL failing with no VPN up is the expected outcome,
-      // not a misconfiguration (#394): say what to turn on instead of pointing
-      // at the URL.
+      // not a misconfiguration (#394): add what to turn on. Appended, not
+      // substituted: a real server answer (a 502 from the proxy, say) is still
+      // the more useful fact and must stay visible.
       const vpnWait = vpnGuardBlocked(testUrl, guardInst);
       toast(
         vpnWait
-          ? `Could not reach ${which} URL. It is marked as needing a VPN and none is connected: turn on your VPN and try again.`
+          ? `Could not reach ${which} URL: ${result.message}. It is marked as needing a VPN and none is detected: turn on your VPN and try again.`
           : `Could not reach ${which} URL: ${result.message}`,
         "error",
       );

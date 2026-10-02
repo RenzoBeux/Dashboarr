@@ -181,11 +181,7 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
         // ("qBit Home" / "qBit Cabin") can tell which one is offline at a
         // glance instead of seeing two identical "qBittorrent" tiles.
         label: inst.name,
-        // A VPN-blocked instance is deterministically unreachable right now,
-        // and the health batch that will say so is still in flight (the key
-        // re-keys on the VPN flag; keepPreviousData shows the old verdict
-        // meanwhile). Don't pair a stale green dot with the VPN badge (#394).
-        status: vpnBlocked ? "offline" : (health?.status ?? "offline"),
+        status: health?.status ?? "offline",
         urlKind: resolveActiveUrlKind(
           inst,
           autoSwitchNetwork,
@@ -289,7 +285,11 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                     // "checking" dot carries the in-progress signal) instead of
                     // dimming it to the offline look, so the grid doesn't read
                     // as "everything offline" for ~15s on cold start (#196).
-                    online={entry.checking || entry.status !== "offline"}
+                    online={
+                      entry.checking ||
+                      entry.vpnBlocked ||
+                      entry.status !== "offline"
+                    }
                   />
                 </View>
                 {settings.showAwayBadge && entry.awayBlocked ? (
@@ -318,7 +318,18 @@ export function ServiceHealthCard({ slotId }: WidgetComponentProps) {
                   </View>
                 ) : null}
                 <StatusDot
-                  state={entry.checking ? "checking" : entry.status}
+                  // Waiting for VPN (#394) is not a verdict: the probe was
+                  // skipped. Neutral dot and a lit logo, like the header and
+                  // the instance list, with the badge naming the cause; a red
+                  // dot here would read as broken (and keepPreviousData could
+                  // show a stale green one while the re-keyed batch runs).
+                  state={
+                    entry.checking
+                      ? "checking"
+                      : entry.vpnBlocked
+                        ? "waiting"
+                        : entry.status
+                  }
                   overlay
                   shadow
                 />

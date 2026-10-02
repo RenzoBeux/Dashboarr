@@ -23,10 +23,11 @@ export interface HealthProbeInputs {
   globalCustomHeaders: Record<string, string>;
   autoSwitchNetwork: boolean;
   networkAwayFromHome: boolean;
-  // WiFi-vs-not (null = unknown). Flips the off-WiFi LAN guard in
-  // checkInstanceHealth, so re-key the query when it changes (coming back onto
-  // WiFi must re-probe the LAN services that were short-circuited offline).
-  isOnWifi: boolean | null;
+  // On a LAN link (WiFi or wired Ethernet) or not (null = unknown). Flips the
+  // off-WiFi LAN guard in checkInstanceHealth, so re-key the query when it
+  // changes (coming back onto the LAN must re-probe the services that were
+  // short-circuited offline).
+  isOnLan: boolean | null;
   // VPN up/down also flips that guard (a VPN makes LAN URLs reachable off
   // WiFi, #185) — re-key so toggling the tunnel re-probes immediately.
   isVpnActive: boolean;
@@ -82,7 +83,7 @@ function settleWithin<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
  */
 export function buildHealthProbeSignature(inputs: HealthProbeInputs): string {
   const globalHeaderKeys = Object.keys(inputs.globalCustomHeaders);
-  const wifi = inputs.isOnWifi === null ? "u" : inputs.isOnWifi ? 1 : 0;
+  const wifi = inputs.isOnLan === null ? "u" : inputs.isOnLan ? 1 : 0;
   const parts: string[] = [
     `net:${inputs.autoSwitchNetwork ? 1 : 0}:${inputs.networkAwayFromHome ? 1 : 0}:${wifi}:${inputs.isVpnActive ? 1 : 0}:${inputs.treatVpnAsHome ? 1 : 0}`,
   ];
@@ -140,7 +141,7 @@ export function useServiceHealth() {
   const activeDashboardId = useConfigStore((s) => s.activeDashboardId);
   const homeNetworks = useConfigStore((s) => s.homeNetworks);
   const autoSwitchNetwork = useConfigStore((s) => s.autoSwitchNetwork);
-  const isOnWifi = useConfigStore((s) => s.isOnWifi);
+  const isOnLan = useConfigStore((s) => s.isOnLan);
   const isVpnActive = useConfigStore((s) => s.isVpnActive);
   const treatVpnAsHome = useConfigStore((s) => s.treatVpnAsHome);
   const globalCustomHeaders = useConfigStore((s) => s.globalCustomHeaders);
@@ -153,7 +154,7 @@ export function useServiceHealth() {
         globalCustomHeaders,
         autoSwitchNetwork,
         networkAwayFromHome,
-        isOnWifi,
+        isOnLan,
         isVpnActive,
         treatVpnAsHome,
         resolveUrl: (id, instanceId) =>
@@ -169,7 +170,7 @@ export function useServiceHealth() {
       dashboards,
       activeDashboardId,
       homeNetworks,
-      isOnWifi,
+      isOnLan,
       isVpnActive,
       treatVpnAsHome,
     ],

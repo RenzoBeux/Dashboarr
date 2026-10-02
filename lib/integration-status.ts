@@ -79,13 +79,19 @@ export interface IntegrationRow {
  * offline). That aggregate is right for a dashboard widget, where a healthy
  * primary should keep the tile green, and wrong here, where the whole point is
  * to surface the broken secondary.
+ *
+ * "away" and "vpn" are not broken, just out of reach, so a kind with one
+ * connected instance and one waiting for the VPN is connected: the summary
+ * line counts it as such, and the row's subtitle lists the waiting one. Ranking
+ * them above "ok" made the headline say "waiting for VPN" while the subtitle
+ * under it said "1 connected".
  */
 const STATE_PRECEDENCE: InstanceState[] = [
   "attention",
   "checking",
+  "ok",
   "away",
   "vpn",
-  "ok",
 ];
 
 /** True when any instance of this kind has a URL saved. */
