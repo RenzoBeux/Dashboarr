@@ -106,3 +106,22 @@ export function nextStatusTableStart(
   const loaded = allPages.reduce((n, p) => n + (p.array?.length ?? 0), 0);
   return loaded < (lastPage.totalCount ?? 0) ? loaded : undefined;
 }
+
+/**
+ * Concatenate infinite-query pages into one row list. The queue shifts while
+ * paging, so a row can land on two pages; the first occurrence wins.
+ */
+export function flattenStatusPages(
+  pages: readonly TdarrStatusTablePage[] | undefined,
+): TdarrStatusTableRow[] {
+  const seen = new Set<string>();
+  const out: TdarrStatusTableRow[] = [];
+  for (const p of pages ?? []) {
+    for (const r of p?.array ?? []) {
+      if (seen.has(r._id)) continue;
+      seen.add(r._id);
+      out.push(r);
+    }
+  }
+  return out;
+}

@@ -1,5 +1,5 @@
 import {
-  TDARR_TABLES, getTableDef, tableCount, rowActions, rowSizeLine, rowTimestamp, nextStatusTableStart,
+  TDARR_TABLES, getTableDef, tableCount, rowActions, rowSizeLine, rowTimestamp, nextStatusTableStart, flattenStatusPages,
 } from "@/lib/tdarr-tables";
 import type { TdarrStatistics, TdarrStatusTableRow } from "@/lib/types";
 
@@ -84,5 +84,22 @@ describe("nextStatusTableStart", () => {
   it("stops on a short or empty page even if totalCount drifted upward", () => {
     const p1 = page(25, 100), p2 = page(0, 100);
     expect(nextStatusTableStart(p2, [p1, p2])).toBeUndefined();
+  });
+});
+
+describe("flattenStatusPages", () => {
+  const pg = (ids: string[]) => ({
+    array: ids.map((id) => row({ _id: id, file: id })),
+    totalCount: 99,
+  });
+  it("keeps the first occurrence of an id repeated across a page boundary", () => {
+    const out = flattenStatusPages([pg(["a", "b"]), pg(["b", "c"])]);
+    expect(out.map((r) => r._id)).toEqual(["a", "b", "c"]);
+  });
+  it("tolerates empty, undefined and array-less pages", () => {
+    expect(flattenStatusPages([])).toEqual([]);
+    expect(flattenStatusPages(undefined)).toEqual([]);
+    const odd = [pg(["a"]), { totalCount: 0 }, pg([])] as never;
+    expect(flattenStatusPages(odd).map((r) => r._id)).toEqual(["a"]);
   });
 });

@@ -2562,12 +2562,14 @@ const DEMO_TDARR_STATISTICS = [
     sizeDiff: 330.37,
     tdarrScore: "100.0",
     healthCheckScore: "100.0",
-    table0Count: 1,
-    table1Count: 3,
-    table2Count: 751,
+    // Match what the demo /client/status-tables handler returns per table
+    // (2 demo files: 1 Queued, 1 Not required, both health-check Success).
+    table0Count: 0,
+    table1Count: 1,
+    table2Count: 1,
     table3Count: 0,
     table4Count: 0,
-    table5Count: 751,
+    table5Count: 2,
     table6Count: 0,
   },
 ];

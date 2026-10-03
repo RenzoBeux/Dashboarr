@@ -20,10 +20,11 @@ import {
   useTdarrBulkUpdateFiles, useTdarrSetAllStatus, useTdarrStatistics, useTdarrStatusTable,
 } from "@/hooks/use-tdarr";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { getHttpErrorMessage } from "@/lib/http-client";
 import { lightHaptic } from "@/lib/haptics";
 import { fileBaseName } from "@/lib/tdarr-format";
 import { bulkConfirmMessage, pruneSelection, toggleSelected } from "@/lib/tdarr-selection";
-import { TDARR_TABLES, getTableDef, rowActions, tableCount } from "@/lib/tdarr-tables";
+import { TDARR_TABLES, flattenStatusPages, getTableDef, rowActions, tableCount } from "@/lib/tdarr-tables";
 import type { TdarrRowAction } from "@/lib/tdarr-tables";
 import type { TdarrStatusTableId, TdarrStatusTableRow } from "@/lib/types";
 
@@ -76,9 +77,10 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
 
-  const rows = useMemo(() => query.data?.pages.flatMap((p) => p.array) ?? [], [query.data]);
+  const rows = useMemo(() => flattenStatusPages(query.data?.pages), [query.data]);
   const actions = rowActions(tableId);
-  const count = tableCount(stats, tableId);
+  // The live total beats the statistics doc, which can lag the table.
+  const count = query.data?.pages.at(-1)?.totalCount ?? tableCount(stats, tableId);
   const canBulk = actions.length > 0 && count !== 0;
   // A refresh can empty the table mid-selection; the bar hides with it.
   const inSelection = selecting && canBulk;
@@ -106,7 +108,6 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const runRow = (a: TdarrRowAction) => {
     const row = flow.payload("rowActions");
     if (!row) return;
-    lightHaptic();
     const name = rowName(row);
     bulk.mutate(
       { fileIds: [row._id], updatedObj: a.updatedObj },
@@ -135,7 +136,8 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const runAll = () => {
     const a = flow.payload("confirmAll");
     flow.close();
-    if (!a) return;
+    if (!a || setAll.isPending) return;
+    exitSelection();
     setAll.mutate(
       { table: tableId, updatedObj: a.updatedObj },
       {
@@ -152,7 +154,7 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
       <BackHeader
         title={label}
         right={
-          canBulk ? (
+          canBulk && !inSelection ? (
             <Pressable
               onPress={() => flow.open("allActions")}
               className="p-1 active:opacity-70"
@@ -211,6 +213,12 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
         ListEmptyComponent={
           query.isLoading ? (
             <SkeletonCardContent rows={4} />
+          ) : query.isError ? (
+            <EmptyState
+              title="Couldn't load this table"
+              message={getHttpErrorMessage(query.error) ?? (query.error as Error)?.message}
+              action={<Button label="Retry" size="sm" onPress={() => void query.refetch()} />}
+            />
           ) : (
             <EmptyState title="Nothing here" />
           )
