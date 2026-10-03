@@ -26,3 +26,25 @@ export function sumParts(...parts: (number | string | null | undefined)[]): stri
     .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
   return nums.length > 0 ? String(nums.reduce((sum, n) => sum + n, 0)) : "—";
 }
+
+function toNum(n: unknown): number | null {
+  const num = typeof n === "string" ? Number(n) : n;
+  return typeof num === "number" && Number.isFinite(num) ? num : null;
+}
+
+// The web UI only prints a worker's fps when it's > 0; health-check workers
+// and a transcode that hasn't produced frames yet report 0 or nothing.
+export function workerFps(fps: unknown): string | null {
+  const n = toNum(fps);
+  return n !== null && n > 0 ? `${Math.round(n)} fps` : null;
+}
+
+// Mirrors the web UI's node "FPS" column (renderTotalFps): the sum of every
+// worker's fps, skipping NaN.
+export function totalFps(
+  workers: Record<string, { fps?: unknown }> | undefined,
+): string {
+  let sum = 0;
+  for (const w of Object.values(workers ?? {})) sum += toNum(w.fps) ?? 0;
+  return String(Math.round(sum));
+}

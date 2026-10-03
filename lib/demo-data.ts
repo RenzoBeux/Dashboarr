@@ -2562,15 +2562,28 @@ const DEMO_TDARR_STATISTICS = [
     sizeDiff: 330.37,
     tdarrScore: "100.0",
     healthCheckScore: "100.0",
-    table0Count: 1,
-    table1Count: 3,
-    table2Count: 751,
+    // Match what the demo /client/status-tables handler returns per table
+    // (2 demo files: 1 Queued, 1 Not required, both health-check Success).
+    table0Count: 0,
+    table1Count: 1,
+    table2Count: 1,
     table3Count: 0,
     table4Count: 0,
-    table5Count: 751,
+    table5Count: 2,
     table6Count: 0,
   },
 ];
+
+const DEMO_TDARR_GLOBAL_SETTINGS = {
+  _id: "globalsettings",
+  ignoreSchedules: false,
+  queueSortType: "sortSizeSmallest",
+  enableBumpedFiles: true,
+  alternateLibraries: false,
+  prioritiseLibraries: false,
+  prioritiseTranscodes: false,
+  prioritiseHealthChecks: false,
+};
 
 const DEMO_TDARR_LIBRARIES = [
   {
@@ -2631,7 +2644,7 @@ const DEMO_TDARR_FILES = [
     lastTranscodeDate: Date.now() - 5 * 86400_000,
     oldSize: 2.4,
     newSize: 1.93,
-    newVsOldRatio: 0.8,
+    newVsOldRatio: 80,
     createdAt: Date.now() - 60 * 86400_000,
   },
 ];
@@ -4026,16 +4039,42 @@ export function getDemoResponse(
       if (normalized === "/get-nodes") return DEMO_TDARR_NODES;
       if (normalized === "/get-res-stats") return DEMO_TDARR_RES_STATS;
       if (normalized === "/search-db") return DEMO_TDARR_FILES;
+      if (normalized === "/client/status-tables") {
+        const opts = (() => {
+          try {
+            return body ? (JSON.parse(body) as { data?: { opts?: { table?: string; setAll?: boolean } } }).data?.opts ?? {} : {};
+          } catch {
+            return {};
+          }
+        })() as { table?: string; setAll?: boolean };
+        // "<Action> all" — demo data is static, so just acknowledge it.
+        if (opts.setAll) return {};
+        const table = opts.table ?? "";
+        // table1 = transcode queue, table2 = success/not required (see lib/tdarr-tables.ts)
+        const rows = DEMO_TDARR_FILES.filter((f) =>
+          table === "table1" ? f.TranscodeDecisionMaker === "Queued"
+          : table === "table2" ? f.TranscodeDecisionMaker === "Not required"
+          : table === "table5" ? f.HealthCheck === "Success"
+          : false,
+        );
+        return { array: rows, totalCount: rows.length };
+      }
       if (normalized === "/cruddb") {
         // Dispatch off the collection named in the POSTed body — cruddb is one
         // endpoint for several JSON "tables" (see services/tdarr-api.ts).
-        const collection = (() => {
+        const { collection, mode } = (() => {
           try {
-            return body ? (JSON.parse(body) as { data?: { collection?: string } }).data?.collection ?? "" : "";
+            const d = body
+              ? (JSON.parse(body) as { data?: { collection?: string; mode?: string } }).data
+              : undefined;
+            return { collection: d?.collection ?? "", mode: d?.mode ?? "" };
           } catch {
-            return "";
+            return { collection: "", mode: "" };
           }
         })();
+        if (collection === "SettingsGlobalJSONDB") {
+          return mode === "update" ? {} : DEMO_TDARR_GLOBAL_SETTINGS;
+        }
         if (collection === "StatisticsJSONDB") return DEMO_TDARR_STATISTICS;
         if (collection === "LibrarySettingsJSONDB") return DEMO_TDARR_LIBRARIES;
         return undefined;
@@ -4045,7 +4084,8 @@ export function getDemoResponse(
       if (
         normalized === "/update-node" ||
         normalized === "/cancel-worker-item" ||
-        normalized === "/kill-worker"
+        normalized === "/kill-worker" ||
+        normalized === "/bulk-update-files"
       ) {
         return {};
       }

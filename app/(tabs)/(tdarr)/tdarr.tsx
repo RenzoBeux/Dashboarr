@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import { useRouter } from "expo-router";
 import {
   Cpu,
   Server,
@@ -13,6 +14,8 @@ import {
   RefreshCw,
   Minus,
   Plus,
+  ListOrdered,
+  ChevronRight,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -25,6 +28,7 @@ import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/text-input";
 import { toast, toastError } from "@/components/ui/toast";
+import { QueueOptionsCard } from "@/components/tdarr/queue-options-card";
 import { StatPill } from "@/components/tdarr/stat-pill";
 import {
   useTdarrStatus,
@@ -42,8 +46,9 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { TDARR_TABLES, tableCount } from "@/lib/tdarr-tables";
 import { lightHaptic } from "@/lib/haptics";
-import { fmt, fileBaseName, sumParts } from "@/lib/tdarr-format";
+import { fmt, fileBaseName, sumParts, workerFps, totalFps } from "@/lib/tdarr-format";
 import type { TdarrNode, TdarrWorker, TdarrLibrary, TdarrFileItem } from "@/lib/types";
 import type { TdarrWorkerType } from "@/services/tdarr-api";
 
@@ -67,6 +72,8 @@ function TdarrScreenInner() {
       <View className="gap-4">
         <StatusCard />
         <StatisticsCard />
+        <QueuesCard />
+        <QueueOptionsCard />
         <NodesCard />
         <LibrariesCard />
         <FilesSearchCard />
@@ -165,6 +172,41 @@ interface PendingKill {
   nodeId: string;
   workerId: string;
   fileLabel: string;
+}
+
+function QueuesCard() {
+  const { data, isLoading } = useTdarrStatistics();
+  const router = useRouter();
+  const stats = data?.[0];
+  return (
+    <Card>
+      <CardHeader>
+        <View className="flex-row items-center gap-2">
+          <Icon icon={ListOrdered} size={18} color="#a1a1aa" />
+          <CardTitle>Queues</CardTitle>
+        </View>
+      </CardHeader>
+      {isLoading ? (
+        <SkeletonCardContent rows={4} />
+      ) : (
+        <View className="gap-1">
+          {TDARR_TABLES.map((t) => (
+            <Pressable
+              key={t.id}
+              onPress={() => { lightHaptic(); router.push(`/tdarr/queue/${t.id}`); }}
+              className="flex-row items-center justify-between bg-surface-light rounded-lg px-3 py-2.5 active:opacity-70"
+            >
+              <Text className="text-zinc-200 text-sm flex-1 mr-2" numberOfLines={1}>{t.label}</Text>
+              <Text className={`text-sm font-semibold ${t.id === "table3" || t.id === "table6" ? "text-red-400" : "text-zinc-100"}`}>
+                {fmt(tableCount(stats, t.id), 0)}
+              </Text>
+              <Icon icon={ChevronRight} size={16} color="#71717a" />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </Card>
+  );
 }
 
 function NodesCard() {
@@ -355,6 +397,7 @@ function NodeRow({
         <View className="flex-row gap-3 flex-wrap mb-2">
           <StatPill label="Transcode Q" value={sumParts(q.transcodecpu, q.transcodegpu)} />
           <StatPill label="Health Q" value={sumParts(q.healthcheckcpu, q.healthcheckgpu)} />
+          <StatPill label="FPS" value={totalFps(node.workers)} />
         </View>
       )}
 
@@ -475,6 +518,7 @@ function WorkerRow({
         </Text>
         <Text className="text-zinc-600 text-xs">
           {pct !== null ? `${fmt(pct, 0)}%` : "—"}
+          {workerFps(worker.fps) ? ` · ${workerFps(worker.fps)}` : ""}
           {worker.ETA ? ` · ETA ${worker.ETA}` : ""}
         </Text>
       </View>
