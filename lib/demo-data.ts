@@ -2572,6 +2572,17 @@ const DEMO_TDARR_STATISTICS = [
   },
 ];
 
+const DEMO_TDARR_GLOBAL_SETTINGS = {
+  _id: "globalsettings",
+  ignoreSchedules: false,
+  queueSortType: "sortSizeSmallest",
+  enableBumpedFiles: true,
+  alternateLibraries: false,
+  prioritiseLibraries: false,
+  prioritiseTranscodes: false,
+  prioritiseHealthChecks: false,
+};
+
 const DEMO_TDARR_LIBRARIES = [
   {
     _id: "demoLib1",
@@ -4049,13 +4060,19 @@ export function getDemoResponse(
       if (normalized === "/cruddb") {
         // Dispatch off the collection named in the POSTed body — cruddb is one
         // endpoint for several JSON "tables" (see services/tdarr-api.ts).
-        const collection = (() => {
+        const { collection, mode } = (() => {
           try {
-            return body ? (JSON.parse(body) as { data?: { collection?: string } }).data?.collection ?? "" : "";
+            const d = body
+              ? (JSON.parse(body) as { data?: { collection?: string; mode?: string } }).data
+              : undefined;
+            return { collection: d?.collection ?? "", mode: d?.mode ?? "" };
           } catch {
-            return "";
+            return { collection: "", mode: "" };
           }
         })();
+        if (collection === "SettingsGlobalJSONDB") {
+          return mode === "update" ? {} : DEMO_TDARR_GLOBAL_SETTINGS;
+        }
         if (collection === "StatisticsJSONDB") return DEMO_TDARR_STATISTICS;
         if (collection === "LibrarySettingsJSONDB") return DEMO_TDARR_LIBRARIES;
         return undefined;

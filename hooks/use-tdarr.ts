@@ -13,6 +13,8 @@ import {
   getStatusTable,
   bulkUpdateFiles,
   setAllStatus,
+  getGlobalSettings,
+  updateGlobalSettings,
   type TdarrScanMode,
   type TdarrWorkerType,
   type SearchFilesOptions,
@@ -20,7 +22,7 @@ import {
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { TDARR_TABLE_PAGE_SIZE, nextStatusTableStart } from "@/lib/tdarr-tables";
-import type { TdarrStatusTableId } from "@/lib/types";
+import type { TdarrGlobalSettings, TdarrStatusTableId } from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 
@@ -153,6 +155,20 @@ export function useTdarrSetAllStatus(instanceId?: string) {
       { table, updatedObj }: { table: TdarrStatusTableId; updatedObj: Record<string, unknown> },
       id,
     ) => setAllStatus(table, updatedObj, id),
+    instanceId,
+  );
+}
+
+export function useTdarrGlobalSettings(instanceId?: string) {
+  return useServiceQuery(
+    "tdarr", ["global-settings"], getGlobalSettings, POLLING_INTERVALS.queue, instanceId,
+  );
+}
+
+export function useTdarrUpdateGlobalSettings(instanceId?: string) {
+  return useServiceMutation(
+    "tdarr",
+    (patch: Partial<TdarrGlobalSettings>, id) => updateGlobalSettings(patch, id),
     instanceId,
   );
 }

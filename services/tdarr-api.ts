@@ -1,6 +1,7 @@
 import { serviceRequest } from "@/lib/http-client";
 import type {
   TdarrFileItem,
+  TdarrGlobalSettings,
   TdarrLibrary,
   TdarrNodes,
   TdarrResStats,
@@ -201,6 +202,31 @@ export function bulkUpdateFiles(
   return serviceRequest("tdarr", "/bulk-update-files", {
     method: "POST",
     body: JSON.stringify({ data: { fileIds, updatedObj } }),
+    instanceId,
+  });
+}
+
+// Global settings are one cruddb doc. Read/update shapes traced from the web
+// UI's cruddb helper: { collection, mode, docID, obj }. getById confirmed live.
+export function getGlobalSettings(instanceId?: string): Promise<TdarrGlobalSettings> {
+  return serviceRequest<TdarrGlobalSettings>("tdarr", "/cruddb", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { collection: "SettingsGlobalJSONDB", mode: "getById", docID: "globalsettings" },
+    }),
+    instanceId,
+  });
+}
+
+export function updateGlobalSettings(
+  patch: Partial<TdarrGlobalSettings>,
+  instanceId?: string,
+): Promise<unknown> {
+  return serviceRequest("tdarr", "/cruddb", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { collection: "SettingsGlobalJSONDB", mode: "update", docID: "globalsettings", obj: patch },
+    }),
     instanceId,
   });
 }

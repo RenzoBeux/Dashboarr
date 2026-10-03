@@ -3772,6 +3772,23 @@ export interface TdarrStatusTablePage {
   totalCount: number;
 }
 
+// Tdarr global settings doc (cruddb SettingsGlobalJSONDB / "globalsettings").
+// Only the keys Dashboarr reads; the doc has many more.
+export interface TdarrGlobalSettings {
+  _id: string;
+  ignoreSchedules?: boolean;
+  queueSortType?: string;
+  enableBumpedFiles?: boolean;
+  alternateLibraries?: boolean;
+  prioritiseLibraries?: boolean;
+  prioritiseTranscodes?: boolean;
+  prioritiseHealthChecks?: boolean;
+}
+
+export type TdarrQueueToggleKey =
+  | "ignoreSchedules" | "enableBumpedFiles" | "alternateLibraries"
+  | "prioritiseLibraries" | "prioritiseTranscodes" | "prioritiseHealthChecks";
+
 // --- Maintainerr Types ---
 // Maintainerr (github.com/jorenn92/Maintainerr) curates Plex libraries: rules
 // build collections of media, and each collection deletes its members

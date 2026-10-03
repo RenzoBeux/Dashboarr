@@ -28,6 +28,7 @@ import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TextInput } from "@/components/ui/text-input";
 import { toast, toastError } from "@/components/ui/toast";
+import { QueueOptionsCard } from "@/components/tdarr/queue-options-card";
 import { StatPill } from "@/components/tdarr/stat-pill";
 import {
   useTdarrStatus,
@@ -72,6 +73,7 @@ function TdarrScreenInner() {
         <StatusCard />
         <StatisticsCard />
         <QueuesCard />
+        <QueueOptionsCard />
         <NodesCard />
         <LibrariesCard />
         <FilesSearchCard />
