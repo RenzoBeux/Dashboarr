@@ -347,6 +347,44 @@ describe("serviceRequest — custom header injection", () => {
   });
 });
 
+describe("serviceRequest — empty success bodies", () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    mockStateRef.current = makeState();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  // Bazarr answers its action PATCHes with `204 NO CONTENT` while still
+  // stamping `Content-Type: application/json` — parsing that empty body threw
+  // "JSON Parse error: Unexpected end of input" on a request that succeeded.
+  it("resolves a 204 labelled application/json without parsing the body", async () => {
+    const json = jest.fn(async () => {
+      throw new SyntaxError("JSON Parse error: Unexpected end of input");
+    });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      statusText: "NO CONTENT",
+      headers: new Headers({ "content-type": "application/json" }),
+      json,
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    }) as any;
+
+    await expect(
+      serviceRequest("radarr", "/episodes/subtitles", { method: "PATCH" }),
+    ).resolves.toBeUndefined();
+    expect(json).not.toHaveBeenCalled();
+  });
+});
+
 describe("pingService — custom header injection", () => {
   let originalFetch: typeof global.fetch;
   let fetchSpy: jest.Mock;

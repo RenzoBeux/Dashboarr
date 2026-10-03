@@ -9,6 +9,7 @@ import {
   searchWantedEpisode,
 } from "@/services/bazarr-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import type { BazarrMissingSubtitle } from "@/lib/types";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 export function useBazarrWantedMovies(instanceId?: string) {
@@ -77,10 +78,12 @@ export function useSearchWantedEpisode(instanceId?: string) {
     mutationFn: ({
       seriesId,
       episodeId,
+      languages,
     }: {
       seriesId: number;
       episodeId: number;
-    }) => searchWantedEpisode(seriesId, episodeId, id ?? undefined),
+      languages: BazarrMissingSubtitle[];
+    }) => searchWantedEpisode(seriesId, episodeId, languages, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bazarr", id, "wanted", "episodes"] });
     },

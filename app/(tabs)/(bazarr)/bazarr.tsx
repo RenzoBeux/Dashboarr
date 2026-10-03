@@ -23,6 +23,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
+import type { BazarrWantedEpisode } from "@/lib/types";
 
 type Tab = "movies" | "episodes" | "history";
 
@@ -154,15 +155,16 @@ function WantedEpisodes() {
     );
   }
 
-  const handleSearch = (
-    seriesId: number,
-    episodeId: number,
-    title: string,
-  ) => {
+  const handleSearch = (episode: BazarrWantedEpisode) => {
     searchEpisode.mutate(
-      { seriesId, episodeId },
       {
-        onSuccess: () => toast(`Searching for "${title}" subtitles`, "success"),
+        seriesId: episode.sonarrSeriesId,
+        episodeId: episode.sonarrEpisodeId,
+        languages: episode.missing_subtitles ?? [],
+      },
+      {
+        onSuccess: () =>
+          toast(`Searching for "${episode.episodeTitle}" subtitles`, "success"),
         onError: (err) => toastError("Failed to start search", err),
       },
     );
@@ -191,13 +193,7 @@ function WantedEpisodes() {
               </View>
             </View>
             <Pressable
-              onPress={() =>
-                handleSearch(
-                  episode.sonarrSeriesId,
-                  episode.sonarrEpisodeId,
-                  episode.episodeTitle,
-                )
-              }
+              onPress={() => handleSearch(episode)}
               className="p-2 active:opacity-70"
               hitSlop={6}
             >
