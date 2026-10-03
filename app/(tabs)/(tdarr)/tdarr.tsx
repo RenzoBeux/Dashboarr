@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable } from "react-native";
+import { useRouter } from "expo-router";
 import {
   Cpu,
   Server,
@@ -13,6 +14,8 @@ import {
   RefreshCw,
   Minus,
   Plus,
+  ListOrdered,
+  ChevronRight,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -42,6 +45,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { TDARR_TABLES, tableCount } from "@/lib/tdarr-tables";
 import { lightHaptic } from "@/lib/haptics";
 import { fmt, fileBaseName, sumParts, workerFps, totalFps } from "@/lib/tdarr-format";
 import type { TdarrNode, TdarrWorker, TdarrLibrary, TdarrFileItem } from "@/lib/types";
@@ -67,6 +71,7 @@ function TdarrScreenInner() {
       <View className="gap-4">
         <StatusCard />
         <StatisticsCard />
+        <QueuesCard />
         <NodesCard />
         <LibrariesCard />
         <FilesSearchCard />
@@ -165,6 +170,41 @@ interface PendingKill {
   nodeId: string;
   workerId: string;
   fileLabel: string;
+}
+
+function QueuesCard() {
+  const { data, isLoading } = useTdarrStatistics();
+  const router = useRouter();
+  const stats = data?.[0];
+  return (
+    <Card>
+      <CardHeader>
+        <View className="flex-row items-center gap-2">
+          <Icon icon={ListOrdered} size={18} color="#a1a1aa" />
+          <CardTitle>Queues</CardTitle>
+        </View>
+      </CardHeader>
+      {isLoading ? (
+        <SkeletonCardContent rows={4} />
+      ) : (
+        <View className="gap-1">
+          {TDARR_TABLES.map((t) => (
+            <Pressable
+              key={t.id}
+              onPress={() => { lightHaptic(); router.push(`/tdarr/queue/${t.id}`); }}
+              className="flex-row items-center justify-between bg-surface-light rounded-lg px-3 py-2.5 active:opacity-70"
+            >
+              <Text className="text-zinc-200 text-sm flex-1 mr-2" numberOfLines={1}>{t.label}</Text>
+              <Text className={`text-sm font-semibold ${t.id === "table3" || t.id === "table6" ? "text-red-400" : "text-zinc-100"}`}>
+                {fmt(tableCount(stats, t.id), 0)}
+              </Text>
+              <Icon icon={ChevronRight} size={16} color="#71717a" />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </Card>
+  );
 }
 
 function NodesCard() {
