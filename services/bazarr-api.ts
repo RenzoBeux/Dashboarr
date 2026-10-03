@@ -1,6 +1,7 @@
 import { serviceRequest } from "@/lib/http-client";
 import type {
   BazarrHistoryResponse,
+  BazarrMissingSubtitle,
   BazarrProvider,
   BazarrWantedEpisodesResponse,
   BazarrWantedMoviesResponse,
@@ -86,18 +87,27 @@ export function searchWantedMovie(
   });
 }
 
-export function searchWantedEpisode(
+// /episodes/wanted is GET-only too (PATCH answers 405), and there is no
+// episode-level "search-missing" action. Bazarr's own Wanted page searches an
+// episode with one PATCH on /episodes/subtitles per missing language, all
+// query params; `forced`/`hi` are read as the strings "True"/"False".
+export async function searchWantedEpisode(
   sonarrSeriesId: number,
   sonarrEpisodeId: number,
+  languages: BazarrMissingSubtitle[],
   instanceId?: string,
 ): Promise<void> {
-  return serviceRequest<void>("bazarr", "/episodes/wanted", {
-    method: "PATCH",
-    body: JSON.stringify({
-      seriesid: sonarrSeriesId,
-      episodeid: sonarrEpisodeId,
-      action: "search-missing",
-    }),
-    instanceId,
-  });
+  for (const lang of languages) {
+    await serviceRequest<void>("bazarr", "/episodes/subtitles", {
+      method: "PATCH",
+      params: {
+        seriesid: sonarrSeriesId,
+        episodeid: sonarrEpisodeId,
+        language: lang.code2,
+        forced: lang.forced ? "True" : "False",
+        hi: lang.hi ? "True" : "False",
+      },
+      instanceId,
+    });
+  }
 }
