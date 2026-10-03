@@ -3758,6 +3758,20 @@ export interface TdarrFileItem {
   createdAt: number; // epoch ms
 }
 
+export type TdarrStatusTableId =
+  | "table0" | "table1" | "table2" | "table3" | "table4" | "table5" | "table6";
+
+/** A row of POST /client/status-tables: a file doc, plus queue flags. */
+export interface TdarrStatusTableRow extends TdarrFileItem {
+  bumped?: boolean;
+  holdUntil?: number; // epoch ms
+}
+
+export interface TdarrStatusTablePage {
+  array: TdarrStatusTableRow[];
+  totalCount: number;
+}
+
 // --- Maintainerr Types ---
 // Maintainerr (github.com/jorenn92/Maintainerr) curates Plex libraries: rules
 // build collections of media, and each collection deletes its members
