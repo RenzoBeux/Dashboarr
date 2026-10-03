@@ -4027,13 +4027,16 @@ export function getDemoResponse(
       if (normalized === "/get-res-stats") return DEMO_TDARR_RES_STATS;
       if (normalized === "/search-db") return DEMO_TDARR_FILES;
       if (normalized === "/client/status-tables") {
-        const table = (() => {
+        const opts = (() => {
           try {
-            return body ? (JSON.parse(body) as { data?: { opts?: { table?: string } } }).data?.opts?.table ?? "" : "";
+            return body ? (JSON.parse(body) as { data?: { opts?: { table?: string; setAll?: boolean } } }).data?.opts ?? {} : {};
           } catch {
-            return "";
+            return {};
           }
-        })();
+        })() as { table?: string; setAll?: boolean };
+        // "<Action> all" — demo data is static, so just acknowledge it.
+        if (opts.setAll) return {};
+        const table = opts.table ?? "";
         // table1 = transcode queue, table2 = success/not required (see lib/tdarr-tables.ts)
         const rows = DEMO_TDARR_FILES.filter((f) =>
           table === "table1" ? f.TranscodeDecisionMaker === "Queued"

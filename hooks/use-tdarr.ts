@@ -12,6 +12,7 @@ import {
   alterWorkerLimit,
   getStatusTable,
   bulkUpdateFiles,
+  setAllStatus,
   type TdarrScanMode,
   type TdarrWorkerType,
   type SearchFilesOptions,
@@ -141,6 +142,17 @@ export function useTdarrBulkUpdateFiles(instanceId?: string) {
       { fileIds, updatedObj }: { fileIds: string[]; updatedObj: Record<string, unknown> },
       id,
     ) => bulkUpdateFiles(fileIds, updatedObj, id),
+    instanceId,
+  );
+}
+
+export function useTdarrSetAllStatus(instanceId?: string) {
+  return useServiceMutation(
+    "tdarr",
+    (
+      { table, updatedObj }: { table: TdarrStatusTableId; updatedObj: Record<string, unknown> },
+      id,
+    ) => setAllStatus(table, updatedObj, id),
     instanceId,
   );
 }

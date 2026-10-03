@@ -1,26 +1,43 @@
-import { useState } from "react";
-import { FlatList, RefreshControl, ScrollView, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { MoreHorizontal } from "lucide-react-native";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { BackHeader } from "@/components/common/back-header";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { StatusTableRow } from "@/components/tdarr/status-table-row";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { Icon } from "@/components/ui/icon";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { toast, toastError } from "@/components/ui/toast";
-import { useTdarrBulkUpdateFiles, useTdarrStatistics, useTdarrStatusTable } from "@/hooks/use-tdarr";
+import { useModalFlow } from "@/hooks/use-modal-flow";
+import {
+  useTdarrBulkUpdateFiles, useTdarrSetAllStatus, useTdarrStatistics, useTdarrStatusTable,
+} from "@/hooks/use-tdarr";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { lightHaptic } from "@/lib/haptics";
 import { fileBaseName } from "@/lib/tdarr-format";
+import { bulkConfirmMessage, pruneSelection, toggleSelected } from "@/lib/tdarr-selection";
 import { TDARR_TABLES, getTableDef, rowActions, tableCount } from "@/lib/tdarr-tables";
 import type { TdarrRowAction } from "@/lib/tdarr-tables";
 import type { TdarrStatusTableId, TdarrStatusTableRow } from "@/lib/types";
 
 const rowName = (r: TdarrStatusTableRow) =>
   r.fileNameWithoutExtension || fileBaseName(r.file) || r._id;
+
+const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
+
+const DONE: Record<TdarrRowAction["key"], string> = {
+  bump: "Bumped", skip: "Skipped", requeue: "Requeued", ignore: "Ignored", unhold: "Unheld",
+};
+
+// Skip/Ignore mark files as needing no work; they leave the queue for good.
+const isDestructive = (a: TdarrRowAction) => a.key === "skip" || a.key === "ignore";
 
 /**
  * One Tdarr status table. A pushed route because ScreenWrapper is a
@@ -47,17 +64,131 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const { refreshing, onRefresh } = usePullToRefresh([["tdarr"]]);
   const stats = useTdarrStatistics().data?.[0];
   const query = useTdarrStatusTable(tableId);
-  const [sheetRow, setSheetRow] = useState<TdarrStatusTableRow | null>(null);
-  const rows = query.data?.pages.flatMap((p) => p.array) ?? [];
+  const bulk = useTdarrBulkUpdateFiles();
+  const setAll = useTdarrSetAllStatus();
+  // Every modal on this screen is a step of one flow, so the "all" sheet →
+  // confirm chain can never race the iOS dismiss (#83). See use-modal-flow.ts.
+  const flow = useModalFlow<{
+    rowActions: TdarrStatusTableRow;
+    allActions: undefined;
+    confirmAll: TdarrRowAction;
+  }>();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+
+  const rows = useMemo(() => query.data?.pages.flatMap((p) => p.array) ?? [], [query.data]);
+  const actions = rowActions(tableId);
+  const count = tableCount(stats, tableId);
+  const canBulk = actions.length > 0 && count !== 0;
+  // A refresh can empty the table mid-selection; the bar hides with it.
+  const inSelection = selecting && canBulk;
+  const listExtra = useMemo(() => ({ selected, inSelection }), [selected, inSelection]);
+
+  const exitSelection = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+
+  // A different table is a different list: start unselected.
+  useEffect(() => {
+    setSelecting(false);
+    setSelected(new Set());
+  }, [tableId]);
+
+  // Drop ids a refetch removed (e.g. a single-row action moved them out).
+  useEffect(() => {
+    setSelected((prev) => {
+      const next = pruneSelection(prev, rows.map((r) => r._id));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
+
+  const runRow = (a: TdarrRowAction) => {
+    const row = flow.payload("rowActions");
+    if (!row) return;
+    lightHaptic();
+    const name = rowName(row);
+    bulk.mutate(
+      { fileIds: [row._id], updatedObj: a.updatedObj },
+      {
+        onSuccess: () => toast(`${a.label}: ${name}`, "success"),
+        onError: (e) => toastError(`${a.label} failed`, e),
+      },
+    );
+  };
+
+  const runSelected = (a: TdarrRowAction) => {
+    const fileIds = [...selected];
+    if (fileIds.length === 0) return;
+    bulk.mutate(
+      { fileIds, updatedObj: a.updatedObj },
+      {
+        onSuccess: () => {
+          toast(`${DONE[a.key]} ${files(fileIds.length)}`, "success");
+          exitSelection();
+        },
+        onError: (e) => toastError(`${a.label} failed`, e),
+      },
+    );
+  };
+
+  const runAll = () => {
+    const a = flow.payload("confirmAll");
+    flow.close();
+    if (!a) return;
+    setAll.mutate(
+      { table: tableId, updatedObj: a.updatedObj },
+      {
+        onSuccess: () => toast(`${DONE[a.key]} all files in "${label}"`, "success"),
+        onError: (e) => toastError(`${a.label} all failed`, e),
+      },
+    );
+  };
+
+  const confirmAction = flow.payload("confirmAll");
 
   return (
     <ScreenWrapper scrollable={false}>
-      <BackHeader title={label} />
+      <BackHeader
+        title={label}
+        right={
+          canBulk ? (
+            <Pressable
+              onPress={() => flow.open("allActions")}
+              className="p-1 active:opacity-70"
+              hitSlop={8}
+              accessibilityLabel={`Actions for all files in ${label}`}
+            >
+              <Icon icon={MoreHorizontal} size={22} color="#e4e4e7" />
+            </Pressable>
+          ) : null
+        }
+      />
       <FlatList
         data={rows}
         keyExtractor={(r) => r._id}
+        extraData={listExtra}
         renderItem={({ item }) => (
-          <StatusTableRow row={item} table={tableId} onPress={() => setSheetRow(item)} />
+          <StatusTableRow
+            row={item}
+            table={tableId}
+            selecting={inSelection}
+            selected={selected.has(item._id)}
+            onPress={() =>
+              inSelection
+                ? setSelected((prev) => toggleSelected(prev, item._id))
+                : flow.open("rowActions", item)
+            }
+            onLongPress={
+              canBulk
+                ? () => {
+                    lightHaptic();
+                    setSelecting(true);
+                    setSelected((prev) => toggleSelected(prev, item._id));
+                  }
+                : undefined
+            }
+          />
         )}
         ItemSeparatorComponent={() => <View className="h-2" />}
         ListHeaderComponent={
@@ -107,34 +238,62 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
         initialNumToRender={20}
         windowSize={7}
       />
-      <RowActionSheet tableId={tableId} row={sheetRow} onClose={() => setSheetRow(null)} />
-    </ScreenWrapper>
-  );
-}
+      {inSelection && (
+        <View
+          className="-mx-4 px-4 pt-3 pb-3 bg-surface border-t border-border"
+        >
+          <Text className="text-zinc-100 text-sm font-semibold mb-2">
+            {selected.size} selected
+          </Text>
+          <View className="flex-row gap-2">
+            {actions.map((a) => (
+              <Button
+                key={a.key}
+                label={a.label}
+                size="sm"
+                variant={isDestructive(a) ? "danger" : "primary"}
+                onPress={() => runSelected(a)}
+                disabled={selected.size === 0 || bulk.isPending}
+                className="flex-1"
+              />
+            ))}
+            <Button
+              label="Cancel"
+              size="sm"
+              variant="outline"
+              onPress={exitSelection}
+              className="flex-1"
+            />
+          </View>
+        </View>
+      )}
 
-/** Single-row actions. Plain state is fine: nothing chains into another modal. */
-function RowActionSheet({
-  tableId, row, onClose,
-}: { tableId: TdarrStatusTableId; row: TdarrStatusTableRow | null; onClose: () => void }) {
-  const bulk = useTdarrBulkUpdateFiles();
-  const run = (a: TdarrRowAction) => {
-    if (!row) return;
-    lightHaptic();
-    const name = rowName(row);
-    bulk.mutate(
-      { fileIds: [row._id], updatedObj: a.updatedObj },
-      {
-        onSuccess: () => toast(`${a.label}: ${name}`, "success"),
-        onError: (e) => toastError(`${a.label} failed`, e),
-      },
-    );
-  };
-  return (
-    <ActionSheet
-      visible={row !== null}
-      onClose={onClose}
-      title={row ? rowName(row) : undefined}
-      actions={rowActions(tableId).map((a) => ({ label: a.label, onPress: () => run(a) }))}
-    />
+      <ActionSheet
+        {...flow.bind("rowActions")}
+        title={(() => {
+          const row = flow.payload("rowActions");
+          return row ? rowName(row) : undefined;
+        })()}
+        actions={actions.map((a) => ({ label: a.label, onPress: () => runRow(a) }))}
+      />
+      <ActionSheet
+        {...flow.bind("allActions")}
+        title={label}
+        actions={actions.map((a) => ({
+          label: `${a.label} all`,
+          subtitle: count !== null ? files(count) : undefined,
+          variant: isDestructive(a) ? "danger" : "default",
+          onPress: () => flow.open("confirmAll", a),
+        }))}
+      />
+      <ConfirmModal
+        {...flow.bind("confirmAll")}
+        title={confirmAction ? `${confirmAction.label} all?` : ""}
+        message={confirmAction ? bulkConfirmMessage(confirmAction, count, label) : ""}
+        tone={confirmAction && isDestructive(confirmAction) ? "danger" : "default"}
+        confirmLabel={confirmAction ? `${confirmAction.label} all` : undefined}
+        onConfirm={runAll}
+      />
+    </ScreenWrapper>
   );
 }

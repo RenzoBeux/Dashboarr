@@ -174,6 +174,23 @@ export function getStatusTable(
   });
 }
 
+// The web UI's "<Action> all" header button: the same status-tables endpoint
+// with pageSize 0 and opts.setAll, applying updatedObj to every row of the
+// table (traced from its bundle). Irreversible in bulk, so callers confirm first.
+export function setAllStatus(
+  table: TdarrStatusTableId,
+  updatedObj: Record<string, unknown>,
+  instanceId?: string,
+): Promise<unknown> {
+  return serviceRequest("tdarr", "/client/status-tables", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { start: 0, pageSize: 0, filters: [], sorts: [], opts: { setAll: true, table, updatedObj } },
+    }),
+    instanceId,
+  });
+}
+
 // Per-file Requeue / Skip / Ignore / Bump / Unhold. The web UI sends the same
 // call with one id per row action (see rowActions in lib/tdarr-tables.ts).
 export function bulkUpdateFiles(
