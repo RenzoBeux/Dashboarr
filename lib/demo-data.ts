@@ -2631,7 +2631,7 @@ const DEMO_TDARR_FILES = [
     lastTranscodeDate: Date.now() - 5 * 86400_000,
     oldSize: 2.4,
     newSize: 1.93,
-    newVsOldRatio: 0.8,
+    newVsOldRatio: 80,
     createdAt: Date.now() - 60 * 86400_000,
   },
 ];
@@ -4026,6 +4026,23 @@ export function getDemoResponse(
       if (normalized === "/get-nodes") return DEMO_TDARR_NODES;
       if (normalized === "/get-res-stats") return DEMO_TDARR_RES_STATS;
       if (normalized === "/search-db") return DEMO_TDARR_FILES;
+      if (normalized === "/client/status-tables") {
+        const table = (() => {
+          try {
+            return body ? (JSON.parse(body) as { data?: { opts?: { table?: string } } }).data?.opts?.table ?? "" : "";
+          } catch {
+            return "";
+          }
+        })();
+        // table1 = transcode queue, table2 = success/not required (see lib/tdarr-tables.ts)
+        const rows = DEMO_TDARR_FILES.filter((f) =>
+          table === "table1" ? f.TranscodeDecisionMaker === "Queued"
+          : table === "table2" ? f.TranscodeDecisionMaker === "Not required"
+          : table === "table5" ? f.HealthCheck === "Success"
+          : false,
+        );
+        return { array: rows, totalCount: rows.length };
+      }
       if (normalized === "/cruddb") {
         // Dispatch off the collection named in the POSTed body — cruddb is one
         // endpoint for several JSON "tables" (see services/tdarr-api.ts).
@@ -4045,7 +4062,8 @@ export function getDemoResponse(
       if (
         normalized === "/update-node" ||
         normalized === "/cancel-worker-item" ||
-        normalized === "/kill-worker"
+        normalized === "/kill-worker" ||
+        normalized === "/bulk-update-files"
       ) {
         return {};
       }

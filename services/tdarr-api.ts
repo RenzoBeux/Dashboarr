@@ -6,6 +6,8 @@ import type {
   TdarrResStats,
   TdarrStatistics,
   TdarrStatus,
+  TdarrStatusTableId,
+  TdarrStatusTablePage,
 } from "@/lib/types";
 
 // Tdarr's REST API lives on the server process (default port 8266, not the
@@ -150,6 +152,38 @@ export function alterWorkerLimit(
   return serviceRequest("tdarr", "/alter-worker-limit", {
     method: "POST",
     body: JSON.stringify({ data: { nodeID: nodeId, process, workerType } }),
+    instanceId,
+  });
+}
+
+// The web UI's home-page status tables (queue, success, error, …). Body and
+// response shape traced from its bundle (`api/v2/client/status-tables`) and
+// confirmed live: { array, totalCount }. Empty sorts → newest first.
+export function getStatusTable(
+  table: TdarrStatusTableId,
+  start: number,
+  pageSize: number,
+  instanceId?: string,
+): Promise<TdarrStatusTablePage> {
+  return serviceRequest<TdarrStatusTablePage>("tdarr", "/client/status-tables", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { start, pageSize, filters: [], sorts: [], opts: { table } },
+    }),
+    instanceId,
+  });
+}
+
+// Per-file Requeue / Skip / Ignore / Bump / Unhold. The web UI sends the same
+// call with one id per row action (see rowActions in lib/tdarr-tables.ts).
+export function bulkUpdateFiles(
+  fileIds: string[],
+  updatedObj: Record<string, unknown>,
+  instanceId?: string,
+): Promise<unknown> {
+  return serviceRequest("tdarr", "/bulk-update-files", {
+    method: "POST",
+    body: JSON.stringify({ data: { fileIds, updatedObj } }),
     instanceId,
   });
 }

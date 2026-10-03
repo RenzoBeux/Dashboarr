@@ -1,5 +1,5 @@
 import {
-  TDARR_TABLES, getTableDef, tableCount, rowActions, rowSizeLine, rowTimestamp,
+  TDARR_TABLES, getTableDef, tableCount, rowActions, rowSizeLine, rowTimestamp, nextStatusTableStart,
 } from "@/lib/tdarr-tables";
 import type { TdarrStatistics, TdarrStatusTableRow } from "@/lib/types";
 
@@ -60,5 +60,29 @@ describe("rowTimestamp", () => {
     expect(rowTimestamp(r, "table2")).toBe(1);
     expect(rowTimestamp(r, "table6")).toBe(2);
     expect(rowTimestamp(r, "table1")).toBeUndefined();
+  });
+});
+
+const page = (n: number, total: number) => ({
+  array: Array.from({ length: n }, (_, i) => ({ _id: String(i) }) as TdarrStatusTableRow),
+  totalCount: total,
+});
+
+describe("nextStatusTableStart", () => {
+  it("stops immediately on an empty table", () => {
+    const p = page(0, 0);
+    expect(nextStatusTableStart(p, [p])).toBeUndefined();
+  });
+  it("continues from the number of rows loaded so far", () => {
+    const p1 = page(25, 60), p2 = page(25, 60);
+    expect(nextStatusTableStart(p2, [p1, p2])).toBe(50);
+  });
+  it("stops on totalCount even when the last page is exactly full", () => {
+    const p1 = page(25, 50), p2 = page(25, 50);
+    expect(nextStatusTableStart(p2, [p1, p2])).toBeUndefined();
+  });
+  it("stops on a short or empty page even if totalCount drifted upward", () => {
+    const p1 = page(25, 100), p2 = page(0, 100);
+    expect(nextStatusTableStart(p2, [p1, p2])).toBeUndefined();
   });
 });

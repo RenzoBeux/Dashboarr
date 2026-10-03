@@ -1,6 +1,6 @@
 import { fmt } from "@/lib/tdarr-format";
 import type {
-  TdarrStatistics, TdarrStatusTableId, TdarrStatusTableRow,
+  TdarrStatistics, TdarrStatusTableId, TdarrStatusTablePage, TdarrStatusTableRow,
 } from "@/lib/types";
 
 // Table ids, titles and per-row actions were copied from the Tdarr web UI
@@ -91,4 +91,18 @@ export function rowTimestamp(
   if (!def?.done) return undefined;
   const t = def.kind === "health" ? row.lastHealthCheckDate : row.lastTranscodeDate;
   return typeof t === "number" && t > 0 ? t : undefined;
+}
+
+export const TDARR_TABLE_PAGE_SIZE = 25;
+
+// Offset pagination. Stop on totalCount (so a last page that is exactly full
+// doesn't trigger one more empty fetch) and on an empty page (totalCount can
+// move between requests as the queue drains).
+export function nextStatusTableStart(
+  lastPage: TdarrStatusTablePage,
+  allPages: TdarrStatusTablePage[],
+): number | undefined {
+  if (!lastPage.array?.length) return undefined;
+  const loaded = allPages.reduce((n, p) => n + (p.array?.length ?? 0), 0);
+  return loaded < (lastPage.totalCount ?? 0) ? loaded : undefined;
 }

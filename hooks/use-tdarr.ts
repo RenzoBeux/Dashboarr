@@ -10,10 +10,16 @@ import {
   scanFiles,
   searchFiles,
   alterWorkerLimit,
+  getStatusTable,
+  bulkUpdateFiles,
   type TdarrScanMode,
   type TdarrWorkerType,
   type SearchFilesOptions,
 } from "@/services/tdarr-api";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { TDARR_TABLE_PAGE_SIZE, nextStatusTableStart } from "@/lib/tdarr-tables";
+import type { TdarrStatusTableId } from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 
@@ -108,6 +114,33 @@ export function useTdarrAlterWorkerLimit(instanceId?: string) {
       }: { nodeId: string; workerType: TdarrWorkerType; process: "increase" | "decrease" },
       id,
     ) => alterWorkerLimit(nodeId, workerType, process, id),
+    instanceId,
+  );
+}
+
+export function useTdarrStatusTable(table: TdarrStatusTableId, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("tdarr", instanceId);
+  return useInfiniteQuery({
+    // Under ["tdarr", id] so useServiceMutation's invalidation and the tab's
+    // pull-to-refresh both reach it. No refetchInterval: refetching an infinite
+    // query re-fetches every loaded page.
+    queryKey: ["tdarr", id, "status-table", table] as const,
+    queryFn: ({ pageParam }) =>
+      getStatusTable(table, pageParam, TDARR_TABLE_PAGE_SIZE, id ?? undefined),
+    initialPageParam: 0,
+    getNextPageParam: nextStatusTableStart,
+    enabled: enabled && !!id,
+    staleTime: 10_000,
+  });
+}
+
+export function useTdarrBulkUpdateFiles(instanceId?: string) {
+  return useServiceMutation(
+    "tdarr",
+    (
+      { fileIds, updatedObj }: { fileIds: string[]; updatedObj: Record<string, unknown> },
+      id,
+    ) => bulkUpdateFiles(fileIds, updatedObj, id),
     instanceId,
   );
 }
