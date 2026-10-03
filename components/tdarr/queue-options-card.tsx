@@ -40,24 +40,27 @@ export function QueueOptionsCard() {
   const { instanceId } = useInstanceTarget("tdarr");
   const pending = useRef(0);
 
-  const apply = (patch: Partial<TdarrGlobalSettings>) => {
+  const apply = async (patch: Partial<TdarrGlobalSettings>) => {
     lightHaptic();
     pending.current += 1;
     setOptimistic((o) => ({ ...o, ...patch }));
-    update.mutate(patch, {
-      onError: (e) => toastError("Failed to update queue options", e),
-      // The mutation settles before the invalidation refetch lands, so wait for
-      // a fresh read and only drop the overlay once no write is outstanding.
-      onSettled: () => {
-        queryClient
-          .refetchQueries({ queryKey: ["tdarr", instanceId, "global-settings"] })
-          .catch(() => {})
-          .finally(() => {
-            pending.current -= 1;
-            if (pending.current === 0) setOptimistic({});
-          });
-      },
-    });
+    try {
+      // mutateAsync (not mutate's per-call callbacks, which TanStack only fires
+      // for the latest call) so every write settles and reports its own error.
+      await update.mutateAsync(patch);
+    } catch (e) {
+      toastError("Failed to update queue options", e);
+    } finally {
+      pending.current -= 1;
+      if (pending.current === 0) {
+        // The mutation settles before the invalidation refetch lands, so wait
+        // for a fresh read before dropping the overlay.
+        try {
+          await queryClient.refetchQueries({ queryKey: ["tdarr", instanceId, "global-settings"] });
+        } catch {}
+        if (pending.current === 0) setOptimistic({});
+      }
+    }
   };
 
   return (
