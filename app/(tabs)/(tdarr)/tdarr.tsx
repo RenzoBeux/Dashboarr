@@ -43,7 +43,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { lightHaptic } from "@/lib/haptics";
-import { fmt, fileBaseName, sumParts } from "@/lib/tdarr-format";
+import { fmt, fileBaseName, sumParts, workerFps, totalFps } from "@/lib/tdarr-format";
 import type { TdarrNode, TdarrWorker, TdarrLibrary, TdarrFileItem } from "@/lib/types";
 import type { TdarrWorkerType } from "@/services/tdarr-api";
 
@@ -355,6 +355,7 @@ function NodeRow({
         <View className="flex-row gap-3 flex-wrap mb-2">
           <StatPill label="Transcode Q" value={sumParts(q.transcodecpu, q.transcodegpu)} />
           <StatPill label="Health Q" value={sumParts(q.healthcheckcpu, q.healthcheckgpu)} />
+          <StatPill label="FPS" value={totalFps(node.workers)} />
         </View>
       )}
 
@@ -475,6 +476,7 @@ function WorkerRow({
         </Text>
         <Text className="text-zinc-600 text-xs">
           {pct !== null ? `${fmt(pct, 0)}%` : "—"}
+          {workerFps(worker.fps) ? ` · ${workerFps(worker.fps)}` : ""}
           {worker.ETA ? ` · ETA ${worker.ETA}` : ""}
         </Text>
       </View>
