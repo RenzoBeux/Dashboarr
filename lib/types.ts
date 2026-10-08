@@ -2051,13 +2051,33 @@ export interface PlexLibrariesResponse {
 
 export interface PlexMediaItem {
   ratingKey: string;
+  // Container items (show, season, artist, album) point this at their
+  // `/children` listing; leaf items at their own metadata path.
   key: string;
-  type: "movie" | "show" | "season" | "episode" | "artist" | "album" | "track";
+  type:
+    | "movie"
+    | "show"
+    | "season"
+    | "episode"
+    | "artist"
+    | "album"
+    | "track"
+    | "photo";
   title: string;
   parentTitle?: string;
   grandparentTitle?: string;
+  parentRatingKey?: string;
+  grandparentRatingKey?: string;
+  // Episodes: index = episode, parentIndex = season. Seasons: index = season.
+  // Tracks: index = track number.
+  index?: number;
+  parentIndex?: number;
   summary?: string;
+  tagline?: string;
   year?: number;
+  originallyAvailableAt?: string;
+  contentRating?: string;
+  studio?: string;
   thumb?: string;
   art?: string;
   parentThumb?: string;
@@ -2066,9 +2086,16 @@ export interface PlexMediaItem {
   addedAt: number;
   updatedAt?: number;
   viewCount?: number;
+  viewOffset?: number;
   lastViewedAt?: number;
+  // Shows: childCount = seasons. Shows and seasons: leafCount = episodes.
+  childCount?: number;
+  leafCount?: number;
+  viewedLeafCount?: number;
   rating?: number;
   audienceRating?: number;
+  // Only on the full /library/metadata/{ratingKey} response.
+  Genre?: { tag: string }[];
   Media?: PlexMedia[];
 }
 
@@ -2084,8 +2111,17 @@ export interface PlexMedia {
 
 export interface PlexMediaContainer<T> {
   MediaContainer: {
+    // Items in this response. When paginated, totalSize is the full count.
     size: number;
+    totalSize?: number;
     Metadata?: T[];
+  };
+}
+
+export interface PlexIdentityResponse {
+  MediaContainer: {
+    machineIdentifier?: string;
+    version?: string;
   };
 }
 

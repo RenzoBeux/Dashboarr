@@ -173,7 +173,7 @@ export type PlexPlayDecision = "direct play" | "copy" | "transcode";
 
 // Plex booleans arrive as `true` in JSON and "1" in XML-shaped payloads (some
 // proxies pass the number through). Covers `selected` and `live`.
-function isPlexTrue(v: boolean | number | string | undefined): boolean {
+export function isPlexTrue(v: boolean | number | string | undefined): boolean {
   return v === true || v === 1 || v === "1";
 }
 
