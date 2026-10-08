@@ -34,6 +34,7 @@ export default function PlexLibraryScreen() {
     isLoading,
     error,
     hasNextPage,
+    isFetching,
     isFetchingNextPage,
     fetchNextPage,
   } = usePlexLibraryContents(sectionKey);
@@ -83,8 +84,10 @@ export default function PlexLibraryScreen() {
             <ActivityIndicator style={{ paddingVertical: 16 }} color={tc("#a1a1aa")} />
           ) : null
         }
+        // isFetching, not isFetchingNextPage: fetchNextPage cancels an
+        // in-flight refetch, which would mix stale and fresh pages.
         onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+          if (hasNextPage && !isFetching) void fetchNextPage();
         }}
         onEndReachedThreshold={0.6}
         refreshControl={
