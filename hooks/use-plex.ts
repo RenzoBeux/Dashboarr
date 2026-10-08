@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   getLibraries,
   getLibraryContents,
@@ -6,8 +6,11 @@ import {
   getOnDeck,
   getSessions,
   getMetadata,
+  getChildren,
+  getMachineIdentifier,
 } from "@/services/plex-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { plexLibraryNextOffset } from "@/lib/plex-items";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
 export function usePlexLibraries(instanceId?: string) {
@@ -20,17 +23,19 @@ export function usePlexLibraries(instanceId?: string) {
   });
 }
 
-export function usePlexLibraryContents(
-  sectionKey: string,
-  start = 0,
-  size = 50,
-  instanceId?: string,
-) {
-  const { instanceId: id } = useInstanceTarget("plex", instanceId);
-  return useQuery({
-    queryKey: ["plex", id, "library", sectionKey, start, size],
-    queryFn: () => getLibraryContents(sectionKey, start, size, id ?? undefined),
-    enabled: !!sectionKey && !!id,
+const PLEX_LIBRARY_PAGE_SIZE = 60;
+
+// Pages through a library section (see plexLibraryNextOffset for when it stops).
+export function usePlexLibraryContents(sectionKey: string, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
+  return useInfiniteQuery({
+    queryKey: ["plex", id, "library", sectionKey],
+    queryFn: ({ pageParam }) =>
+      getLibraryContents(sectionKey, pageParam, PLEX_LIBRARY_PAGE_SIZE, id ?? undefined),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => plexLibraryNextOffset(lastPage, allPages),
+    enabled: enabled && !!sectionKey && !!id,
+    staleTime: 60000,
   });
 }
 
@@ -69,10 +74,34 @@ export function usePlexSessions(instanceId?: string) {
 }
 
 export function usePlexMetadata(ratingKey: string, instanceId?: string) {
-  const { instanceId: id } = useInstanceTarget("plex", instanceId);
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
   return useQuery({
     queryKey: ["plex", id, "metadata", ratingKey],
     queryFn: () => getMetadata(ratingKey, id ?? undefined),
-    enabled: !!ratingKey && !!id,
+    enabled: enabled && !!ratingKey && !!id,
+  });
+}
+
+export function usePlexChildren(
+  ratingKey: string,
+  hasChildren: boolean,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
+  return useQuery({
+    queryKey: ["plex", id, "children", ratingKey],
+    queryFn: () => getChildren(ratingKey, id ?? undefined),
+    enabled: enabled && hasChildren && !!ratingKey && !!id,
+  });
+}
+
+// Never changes for a given server, so it is fetched once per instance.
+export function usePlexMachineIdentifier(instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("plex", instanceId);
+  return useQuery({
+    queryKey: ["plex", id, "machineIdentifier"],
+    queryFn: () => getMachineIdentifier(id ?? undefined),
+    enabled: enabled && !!id,
+    staleTime: Infinity,
   });
 }

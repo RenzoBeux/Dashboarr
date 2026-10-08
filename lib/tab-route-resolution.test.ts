@@ -103,6 +103,9 @@ describe("tab route resolution", () => {
     [at("activity", "activity"), "/tautulli-stats", "(activity)", "tautulli-stats"],
     [at("pihole", "pihole"), "/pihole/queries", "(pihole)", "pihole/queries"],
     [at("navidrome", "navidrome"), "/navidrome/playlist/9", "(navidrome)", "navidrome/playlist/[id]"],
+    [at("plex", "plex"), "/plex/library/1", "(plex)", "plex/library/[key]"],
+    [at("plex", "plex"), "/plex/item/12345", "(plex)", "plex/item/[ratingKey]"],
+    [at("plex", "plex", "item", "[ratingKey]"), "/plex/item/20002", "(plex)", "plex/item/[ratingKey]"],
     [at("requests", "requests"), "/overseerr/discover-list", "(requests)", "overseerr/discover-list"],
   ])("from %j, %s stays in %s", (segments, href, group, leaf) => {
     const result = resolve(href, segments);

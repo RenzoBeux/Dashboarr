@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   FlatList,
   RefreshControl,
@@ -11,6 +10,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import {
   Play,
   Pause,
@@ -20,6 +20,7 @@ import {
   Tv,
   ArrowUpDown,
   Check,
+  ChevronRight,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
@@ -51,8 +52,9 @@ import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale } from "@/hooks/use-ui-scale";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { truncateText } from "@/lib/utils";
-import { plexPlayDecision } from "@/lib/now-playing-stream";
-import type { PlexSession, PlexMediaItem, PlexLibrary } from "@/lib/types";
+import { isPlexTrue, plexPlayDecision } from "@/lib/now-playing-stream";
+import { PlexPosterCell, plexItemHref } from "@/components/plex/plex-poster-cell";
+import type { PlexSession, PlexMediaItem } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 
 type Tab = "playing" | "recent" | "ondeck" | "libraries";
@@ -223,6 +225,7 @@ function NowPlaying() {
 }
 
 function SessionCard({ session }: { session: PlexSession }) {
+  const router = useRouter();
   const progress = session.duration > 0 ? session.viewOffset / session.duration : 0;
   const isPaused = session.Player.state === "paused";
   const isBuffering = session.Player.state === "buffering";
@@ -249,8 +252,16 @@ function SessionCard({ session }: { session: PlexSession }) {
   const transcodeLabel =
     decision === "transcode" ? "Transcode" : decision === "copy" ? "Direct Stream" : "Direct Play";
 
+  // Live TV has no library item behind it to open.
+  const canOpen = !!session.ratingKey && !isPlexTrue(session.live);
+
   return (
-    <Card className="flex-row gap-3">
+    <Card
+      className="flex-row gap-3"
+      onPress={canOpen ? () => router.push(plexItemHref(session.ratingKey)) : undefined}
+      accessibilityRole={canOpen ? "button" : undefined}
+      accessibilityLabel={title}
+    >
       {thumbUrl ? (
         <Image
           source={{ uri: thumbUrl }}
@@ -325,7 +336,7 @@ function RecentlyAdded({
       key={columns}
       data={sorted}
       keyExtractor={(item) => item.ratingKey}
-      renderItem={({ item }) => <MediaPoster item={item} />}
+      renderItem={({ item }) => <PlexPosterCell item={item} />}
       numColumns={columns}
       columnWrapperStyle={{ gap, marginBottom: gap }}
       ListHeaderComponent={listHeader}
@@ -343,6 +354,7 @@ function RecentlyAdded({
 
 function OnDeck() {
   const { data: items, isLoading } = usePlexOnDeck();
+  const router = useRouter();
 
   if (isLoading) return <SkeletonCardContent rows={3} />;
   if (!items?.length) {
@@ -363,7 +375,13 @@ function OnDeck() {
             : item.title;
 
         return (
-          <Card key={item.ratingKey} className="flex-row gap-3">
+          <Card
+            key={item.ratingKey}
+            className="flex-row gap-3"
+            onPress={() => router.push(plexItemHref(item.ratingKey))}
+            accessibilityRole="button"
+            accessibilityLabel={title}
+          >
             {thumbUrl ? (
               <Image
                 source={{ uri: thumbUrl }}
@@ -398,6 +416,7 @@ function OnDeck() {
 
 function Libraries() {
   const { data: libraries, isLoading, error } = usePlexLibraries();
+  const router = useRouter();
 
   if (isLoading) return <SkeletonCardContent rows={3} />;
   if (error) {
@@ -407,18 +426,16 @@ function Libraries() {
     return <EmptyState title="No libraries found" />;
   }
 
-  const iconForType = (type: string) => {
-    switch (type) {
-      case "movie": return "film";
-      case "show": return "tv";
-      default: return "library";
-    }
-  };
-
   return (
     <View className="gap-2">
       {libraries.map((lib) => (
-        <Card key={lib.key} className="flex-row items-center gap-3">
+        <Card
+          key={lib.key}
+          className="flex-row items-center gap-3"
+          onPress={() => router.push(`/plex/library/${encodeURIComponent(lib.key)}`)}
+          accessibilityRole="button"
+          accessibilityLabel={lib.title}
+        >
           <View className="bg-surface-light rounded-xl p-2.5">
             <Icon icon={Library} size={20} color="#a1a1aa" />
           </View>
@@ -426,43 +443,9 @@ function Libraries() {
             <Text className="text-zinc-200 text-sm font-medium">{lib.title}</Text>
             <Text className="text-zinc-500 text-xs capitalize">{lib.type}</Text>
           </View>
+          <Icon icon={ChevronRight} size={16} color="#71717a" />
         </Card>
       ))}
-    </View>
-  );
-}
-
-function MediaPoster({ item }: { item: PlexMediaItem }) {
-  const thumbUrl = getPlexImageUrl(
-    item.grandparentThumb || item.parentThumb || item.thumb,
-    200,
-    300,
-  );
-  const title =
-    item.type === "episode"
-      ? item.grandparentTitle || item.title
-      : item.title;
-  const { width: cellWidth } = usePosterCellLayout();
-
-  return (
-    <View style={{ width: cellWidth }}>
-      {thumbUrl ? (
-        <Image
-          source={{ uri: thumbUrl }}
-          className="w-full aspect-[2/3] rounded-xl bg-surface-light"
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          transition={200}
-          recyclingKey={thumbUrl}
-        />
-      ) : (
-        <View className="w-full aspect-[2/3] rounded-xl bg-surface-light items-center justify-center">
-          <Icon icon={Play} size={24} color="#71717a" />
-        </View>
-      )}
-      <Text className="text-zinc-300 text-sm mt-1" numberOfLines={1}>
-        {title}
-      </Text>
     </View>
   );
 }

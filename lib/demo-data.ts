@@ -1897,17 +1897,42 @@ const DEMO_PLEX_SESSIONS = {
   },
 };
 
+const DEMO_PLEX_DUNE = { ratingKey: "12345", key: "/library/metadata/12345", type: "movie", title: "Dune: Part Two", year: 2024, contentRating: "PG-13", studio: "Legendary Pictures", summary: "Paul Atreides unites with the Fremen while on a path of revenge against the conspirators who destroyed his family.", audienceRating: 8.6, thumb: "", duration: 9960000, addedAt: NOW_TS - 86400, viewCount: 2, Genre: [{ tag: "Science Fiction" }, { tag: "Adventure" }], Media: [{ id: 1, duration: 9960000, bitrate: 24000, videoResolution: "4k", videoCodec: "hevc", audioCodec: "eac3", container: "mkv" }] };
+const DEMO_PLEX_OPPENHEIMER = { ratingKey: "12346", key: "/library/metadata/12346", type: "movie", title: "Oppenheimer", year: 2023, contentRating: "R", summary: "The story of J. Robert Oppenheimer and his role in the development of the atomic bomb.", audienceRating: 9.1, thumb: "", duration: 11040000, addedAt: NOW_TS - 172800, viewCount: 1, Genre: [{ tag: "Drama" }, { tag: "History" }], Media: [{ id: 2, duration: 11040000, bitrate: 12000, videoResolution: "1080", videoCodec: "h264", audioCodec: "dts", container: "mkv" }] };
+const DEMO_PLEX_FALLOUT = { ratingKey: "20001", key: "/library/metadata/20001/children", type: "show", title: "Fallout", year: 2024, contentRating: "TV-MA", summary: "In a future, post-apocalyptic Los Angeles brought about by nuclear decimation, citizens must live in underground bunkers to protect themselves.", audienceRating: 8.4, thumb: "", addedAt: NOW_TS - 3600, childCount: 1, leafCount: 8, viewedLeafCount: 6, Genre: [{ tag: "Drama" }, { tag: "Science Fiction" }] };
+const DEMO_PLEX_FALLOUT_S1 = { ratingKey: "20002", key: "/library/metadata/20002/children", type: "season", title: "Season 1", index: 1, parentTitle: "Fallout", parentRatingKey: "20001", thumb: "", addedAt: NOW_TS - 3600, leafCount: 8, viewedLeafCount: 6 };
+const DEMO_PLEX_EPISODE_BASE = { type: "episode", parentTitle: "Season 1", grandparentTitle: "Fallout", parentRatingKey: "20002", grandparentRatingKey: "20001", parentIndex: 1, thumb: "" };
+const DEMO_PLEX_FALLOUT_EPISODES = [
+  { ...DEMO_PLEX_EPISODE_BASE, ratingKey: "12348", key: "/library/metadata/12348", title: "The End", index: 1, duration: 4200000, originallyAvailableAt: "2024-04-10", addedAt: NOW_TS - 7200, viewCount: 1 },
+  { ...DEMO_PLEX_EPISODE_BASE, ratingKey: "12347", key: "/library/metadata/12347", title: "The Big Door Prize", index: 5, duration: 3720000, originallyAvailableAt: "2024-04-10", addedAt: NOW_TS - 3600 },
+];
+
 const DEMO_PLEX_MEDIA_CONTAINER = {
   MediaContainer: {
     size: 4,
-    Metadata: [
-      { ratingKey: "12345", key: "/library/metadata/12345", type: "movie", title: "Dune: Part Two", year: 2024, thumb: "", duration: 9960000, addedAt: NOW_TS - 86400, viewCount: 2 },
-      { ratingKey: "12346", key: "/library/metadata/12346", type: "movie", title: "Oppenheimer", year: 2023, thumb: "", duration: 11040000, addedAt: NOW_TS - 172800, viewCount: 1 },
-      { ratingKey: "12347", key: "/library/metadata/12347", type: "episode", title: "The Big Door Prize", parentTitle: "Season 1", grandparentTitle: "Fallout", thumb: "", duration: 3720000, addedAt: NOW_TS - 3600 },
-      { ratingKey: "12348", key: "/library/metadata/12348", type: "episode", title: "The End", parentTitle: "Season 1", grandparentTitle: "Fallout", thumb: "", duration: 4200000, addedAt: NOW_TS - 7200 },
-    ],
+    Metadata: [DEMO_PLEX_DUNE, DEMO_PLEX_OPPENHEIMER, DEMO_PLEX_FALLOUT_EPISODES[1], DEMO_PLEX_FALLOUT_EPISODES[0]],
   },
 };
+
+const DEMO_PLEX_METADATA: Record<string, unknown> = Object.fromEntries(
+  [DEMO_PLEX_DUNE, DEMO_PLEX_OPPENHEIMER, DEMO_PLEX_FALLOUT, DEMO_PLEX_FALLOUT_S1, ...DEMO_PLEX_FALLOUT_EPISODES].map(
+    (item) => [item.ratingKey, item],
+  ),
+);
+
+const DEMO_PLEX_CHILDREN: Record<string, unknown[]> = {
+  "20001": [DEMO_PLEX_FALLOUT_S1],
+  "20002": DEMO_PLEX_FALLOUT_EPISODES,
+};
+
+const DEMO_PLEX_SECTION_CONTENTS: Record<string, unknown[]> = {
+  "1": [DEMO_PLEX_DUNE, DEMO_PLEX_OPPENHEIMER],
+  "2": [DEMO_PLEX_FALLOUT],
+};
+
+function demoPlexContainer(items: unknown[]) {
+  return { MediaContainer: { size: items.length, totalSize: items.length, Metadata: items } };
+}
 
 // --- Jellyfin ---
 
@@ -4680,8 +4705,20 @@ export function getDemoPlexResponse(path: string): unknown {
   if (basePath === "/library/recentlyAdded") return DEMO_PLEX_MEDIA_CONTAINER;
   if (basePath === "/library/onDeck") return DEMO_PLEX_MEDIA_CONTAINER;
   if (basePath.includes("/recentlyAdded")) return DEMO_PLEX_MEDIA_CONTAINER;
-  if (basePath.includes("/all")) return DEMO_PLEX_MEDIA_CONTAINER;
-  if (basePath.startsWith("/library/metadata/")) return { MediaContainer: { size: 1, Metadata: [DEMO_PLEX_MEDIA_CONTAINER.MediaContainer.Metadata[0]] } };
-  if (basePath === "/identity") return { MediaContainer: { version: "1.40.0" } };
+  const section = /^\/library\/sections\/([^/]+)\/all$/.exec(basePath);
+  if (section) {
+    // One page holds the whole demo library, so later pages come back empty.
+    const start = Number(/X-Plex-Container-Start=(\d+)/.exec(path)?.[1] ?? 0);
+    const items = start > 0 ? [] : (DEMO_PLEX_SECTION_CONTENTS[section[1]!] ?? []);
+    return { MediaContainer: { size: items.length, totalSize: DEMO_PLEX_SECTION_CONTENTS[section[1]!]?.length ?? 0, Metadata: items } };
+  }
+  const children = /^\/library\/metadata\/([^/]+)\/children$/.exec(basePath);
+  if (children) return demoPlexContainer(DEMO_PLEX_CHILDREN[children[1]!] ?? []);
+  const metadata = /^\/library\/metadata\/([^/]+)$/.exec(basePath);
+  if (metadata) {
+    const item = DEMO_PLEX_METADATA[metadata[1]!];
+    return demoPlexContainer(item ? [item] : []);
+  }
+  if (basePath === "/identity") return { MediaContainer: { machineIdentifier: "demo-plex-server", version: "1.40.0" } };
   return undefined;
 }

@@ -3,6 +3,7 @@ import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { getDemoPlexResponse } from "@/lib/demo-data";
 import type {
+  PlexIdentityResponse,
   PlexLibrariesResponse,
   PlexLibrary,
   PlexMediaItem,
@@ -83,9 +84,11 @@ export async function getLibraryContents(
     `/library/sections/${sectionKey}/all?X-Plex-Container-Start=${start}&X-Plex-Container-Size=${size}`,
     instanceId,
   );
+  // `size` is only this page's item count; Plex reports the library total as
+  // `totalSize` on paginated requests.
   return {
     items: data.MediaContainer.Metadata ?? [],
-    totalSize: data.MediaContainer.size,
+    totalSize: data.MediaContainer.totalSize ?? data.MediaContainer.size,
   };
 }
 
@@ -134,6 +137,29 @@ export async function getMetadata(
     instanceId,
   );
   return data.MediaContainer.Metadata?.[0] ?? null;
+}
+
+// Seasons of a show, episodes of a season, albums of an artist, tracks of an
+// album.
+export async function getChildren(
+  ratingKey: string,
+  instanceId?: string,
+): Promise<PlexMediaItem[]> {
+  const data = await plexRequest<PlexMediaContainer<PlexMediaItem>>(
+    `/library/metadata/${ratingKey}/children`,
+    instanceId,
+  );
+  return data.MediaContainer.Metadata ?? [];
+}
+
+// --- Server identity ---
+
+// The machine identifier keys the server in Plex's own app and web links.
+export async function getMachineIdentifier(
+  instanceId?: string,
+): Promise<string | null> {
+  const data = await plexRequest<PlexIdentityResponse>("/identity", instanceId);
+  return data?.MediaContainer?.machineIdentifier ?? null;
 }
 
 // --- Image URL helpers ---
