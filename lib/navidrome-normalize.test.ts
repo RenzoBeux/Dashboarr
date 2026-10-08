@@ -158,6 +158,16 @@ describe("summarizeLibraries", () => {
     });
   });
 
+  // #473: totalArtists counts every participant role (composers, featured
+  // performers), so getArtists' album-artist count wins when it was fetched.
+  it("takes the artist count from getArtists, but keeps albums on totalAlbums", () => {
+    const summary = summarizeLibraries(
+      [library({ totalArtists: 85, totalAlbums: 40 })],
+      { artists: 33 },
+    );
+    expect(summary).toMatchObject({ artists: 33, albums: 40 });
+  });
+
   it("takes the most recent lastScanAt across libraries", () => {
     const summary = summarizeLibraries([
       library({ id: 1, lastScanAt: "2026-08-01T00:00:00Z" }),

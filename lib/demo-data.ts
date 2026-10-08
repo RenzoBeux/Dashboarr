@@ -3264,6 +3264,29 @@ const DEMO_NAVIDROME_ARTISTS_INDEX = {
   ],
 };
 
+// getArtists is the Overview's album-artist count (#473), so the demo answers it
+// with a plausible library-sized index. The six named artists above stay the
+// search3 corpus; the filler only exists to be counted, and stays under the
+// role-inflated totalArtists on DEMO_NAVIDROME_LIBRARIES.
+const DEMO_NAVIDROME_ALBUM_ARTIST_COUNT = 318;
+const DEMO_NAVIDROME_GET_ARTISTS = {
+  ...DEMO_NAVIDROME_ARTISTS_INDEX,
+  index: [
+    ...DEMO_NAVIDROME_ARTISTS_INDEX.index,
+    {
+      name: "#",
+      artist: Array.from(
+        {
+          length:
+            DEMO_NAVIDROME_ALBUM_ARTIST_COUNT -
+            DEMO_NAVIDROME_ARTISTS_INDEX.index.flatMap((i) => i.artist).length,
+        },
+        (_, i) => ({ id: `ar-f${i}`, name: `Artist ${i + 1}`, albumCount: 1 + (i % 7), coverArt: "" }),
+      ),
+    },
+  ],
+};
+
 const DEMO_NAVIDROME_NOW_PLAYING = {
   entry: [
     {
@@ -4465,7 +4488,7 @@ export function getDemoResponse(
         case "/rest/getNowPlaying":
           return navidromeEnvelope("nowPlaying", DEMO_NAVIDROME_NOW_PLAYING);
         case "/rest/getArtists":
-          return navidromeEnvelope("artists", DEMO_NAVIDROME_ARTISTS_INDEX);
+          return navidromeEnvelope("artists", DEMO_NAVIDROME_GET_ARTISTS);
         case "/rest/getAlbumList2":
           return navidromeEnvelope("albumList2", { album: DEMO_NAVIDROME_ALBUMS });
         case "/rest/getPlaylists":

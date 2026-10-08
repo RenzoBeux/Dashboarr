@@ -151,6 +151,7 @@ export interface NavidromeLibrary {
   fullScanInProgress: boolean;
   totalSongs: number;
   totalAlbums: number;
+  /** Every participant role (composers, performers...), not album artists. */
   totalArtists: number;
   totalFolders: number;
   totalFiles: number;
@@ -197,9 +198,17 @@ function realTimestamp(value: string | undefined | null): string | null {
 /**
  * Fold GET /api/library across every library into one set of counters. This is
  * the only path that can report total size — Subsonic has no equivalent.
+ *
+ * `counts.artists` (from getArtists) replaces the summed totalArtists when
+ * passed. Upstream's RefreshStats counts every library_artist row, so a
+ * composer or featured performer counts as an artist; getArtists is filtered
+ * to RoleAlbumArtist, the number the web UI's Album Artist filter shows (#473).
+ * Albums stay on totalAlbums: summing getArtists' per-artist albumCount
+ * double-counts an album with two album artists.
  */
 export function summarizeLibraries(
   libraries: NavidromeLibrary[],
+  counts?: { artists: number },
 ): NavidromeLibrarySummary {
   const summary: NavidromeLibrarySummary = {
     artists: 0,
@@ -232,6 +241,7 @@ export function summarizeLibraries(
       }
     }
   }
+  if (counts) summary.artists = counts.artists;
   return summary;
 }
 

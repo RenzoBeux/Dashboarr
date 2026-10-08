@@ -57,7 +57,8 @@ import type {
 //   - Total size exists only on the native API. model/library.go's Library row
 //     carries totalSize/totalDuration/totalMissingFiles/lastScanAt; nothing in
 //     Subsonic reports any of them. That, plus DELETE /api/missing, is the whole
-//     reason we log in at all.
+//     reason we log in at all. Its totalArtists is NOT used: it counts every
+//     participant role, so the artist tile comes from getArtists on both paths.
 //
 //   - POST /auth/login is rate limited by default (conf AuthRequestLimit, applied
 //     in server/server.go:mountAuthenticationRoutes), so the jwt is cached per
@@ -251,9 +252,10 @@ export function getNowPlaying(instanceId?: string): Promise<NavidromeNowPlayingE
 }
 
 /**
- * Artist and album counts for the non-admin path. getArtists returns the whole
- * ID3 index in one response, so summing `albumCount` is the only Subsonic way
- * to get an album total.
+ * Album-artist and album counts. getArtists returns the whole ID3 index in one
+ * response, filtered upstream to RoleAlbumArtist (server/subsonic/browsing.go),
+ * so its length is the artist tile on both Overview paths. Summing `albumCount`
+ * is the only Subsonic way to get an album total, used on the non-admin path.
  */
 export async function getArtistCounts(
   instanceId?: string,
@@ -330,16 +332,19 @@ export function getLibraries(instanceId?: string): Promise<NavidromeLibrary[]> {
  * Subsonic otherwise rather than erroring.
  */
 export async function getOverview(instanceId?: string): Promise<NavidromeOverview> {
-  const [user, scan] = await Promise.all([
+  // getArtists is the album-artist count for BOTH paths: /api/library's
+  // totalArtists counts composers and featured performers too (#473).
+  const [user, scan, counts] = await Promise.all([
     getUser(instanceId).catch(() => null),
     getScanStatus(instanceId),
+    getArtistCounts(instanceId).catch(() => undefined),
   ]);
   const isAdmin = user?.adminRole === true;
 
   if (isAdmin) {
     try {
       const libraries = await getLibraries(instanceId);
-      const summary = summarizeLibraries(libraries);
+      const summary = summarizeLibraries(libraries, counts);
       // getScanStatus is the live signal; /api/library's fullScanInProgress
       // only flips for a FULL scan, so a quick scan would read as idle.
       summary.scanning = scan.scanning || summary.scanning;
@@ -350,7 +355,6 @@ export async function getOverview(instanceId?: string): Promise<NavidromeOvervie
     }
   }
 
-  const counts = await getArtistCounts(instanceId).catch(() => undefined);
   return { summary: scanStatusToSummary(scan, counts), serverVersion: null, isAdmin };
 }
 
