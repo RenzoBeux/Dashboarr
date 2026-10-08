@@ -108,6 +108,11 @@ describe("Navidrome demo fixtures", () => {
     const total = (artists.index ?? []).flatMap((i) => i.artist ?? []);
     expect(total.length).toBeGreaterThan(1);
     expect(total.every((a) => (a.albumCount ?? 0) > 0)).toBe(true);
+    // getArtists is the Overview's album-artist tile (#473), so it has to read
+    // like a real library, yet stay under the role-inflated totalArtists.
+    const libraries = demo("/api/library") as NavidromeLibrary[];
+    expect(total.length).toBeGreaterThan(100);
+    expect(total.length).toBeLessThan(libraries[0]!.totalArtists);
   });
 
   it("returns albums with the coverArt id the tiles need", () => {

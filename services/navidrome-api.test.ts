@@ -322,6 +322,10 @@ describe("getOverview", () => {
       if (path === "/rest/getUser") return ok("user", { username: "admin", adminRole: true }) as never;
       if (path === "/rest/getScanStatus")
         return ok("scanStatus", { scanning: false, count: 1234, folderCount: 5 }) as never;
+      if (path === "/rest/getArtists")
+        return ok("artists", {
+          index: [{ name: "A", artist: [{ id: "1", name: "A", albumCount: 50 }, { id: "2", name: "B", albumCount: 50 }] }],
+        }) as never;
       if (path === "/auth/login")
         return { token: "jwt", isAdmin: true, id: "u", name: "A", username: "admin" } as never;
       if (path === "/api/library")
@@ -339,13 +343,39 @@ describe("getOverview", () => {
 
     const overview = await getOverview();
     expect(overview.isAdmin).toBe(true);
+    // Artists come from getArtists (album artists only), not the role-inflated
+    // totalArtists (#473); albums stay on the library's distinct count.
     expect(overview.summary).toMatchObject({
       source: "library",
       songs: 1234,
       albums: 90,
-      artists: 40,
+      artists: 2,
       sizeBytes: 9_999,
       missing: 6,
+    });
+  });
+
+  it("falls back to totalArtists when an admin's getArtists fails", async () => {
+    mockRequest.mockImplementation(async (_id, path) => {
+      if (path === "/rest/getUser") return ok("user", { username: "admin", adminRole: true }) as never;
+      if (path === "/rest/getScanStatus")
+        return ok("scanStatus", { scanning: false, count: 1, folderCount: 1 }) as never;
+      if (path === "/rest/getArtists") throw new HttpError(500, "Internal Server Error", "https://nd.example.com");
+      if (path === "/auth/login")
+        return { token: "jwt", isAdmin: true, id: "u", name: "A", username: "admin" } as never;
+      if (path === "/api/library")
+        return [
+          {
+            id: 1, name: "M", path: "/m", lastScanAt: "2026-08-20T10:00:00Z",
+            lastScanStartedAt: "", fullScanInProgress: false,
+            totalSongs: 1, totalAlbums: 1, totalArtists: 40, totalFolders: 1,
+            totalFiles: 1, totalMissingFiles: 0, totalSize: 1, totalDuration: 1,
+          },
+        ] as never;
+      throw new Error(`unexpected ${path}`);
+    });
+    await expect(getOverview()).resolves.toMatchObject({
+      summary: { source: "library", artists: 40 },
     });
   });
 
@@ -356,6 +386,7 @@ describe("getOverview", () => {
       if (path === "/rest/getUser") return ok("user", { username: "admin", adminRole: true }) as never;
       if (path === "/rest/getScanStatus")
         return ok("scanStatus", { scanning: true, count: 1, folderCount: 1 }) as never;
+      if (path === "/rest/getArtists") return ok("artists", { index: [] }) as never;
       if (path === "/auth/login")
         return { token: "jwt", isAdmin: true, id: "u", name: "A", username: "admin" } as never;
       if (path === "/api/library")
@@ -410,6 +441,8 @@ describe("getOverview", () => {
     const overview = await getOverview();
     expect(overview.summary.source).toBe("scanStatus");
     expect(overview.summary.songs).toBe(7);
+    // Both paths share the one getArtists fetch; the fallback doesn't repeat it.
+    expect(mockRequest.mock.calls.filter((c) => c[1] === "/rest/getArtists")).toHaveLength(1);
   });
 });
 
