@@ -29,6 +29,7 @@ import {
 import type {
   TdarrGlobalSettings, TdarrStatusTableId, TdarrStatusTablePage,
 } from "@/lib/types";
+import { rollbackQueuePatch } from "@/lib/tdarr-queue-options";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 
@@ -196,7 +197,9 @@ const GLOBAL_SETTINGS_MUTATION = ["tdarr", "update-global-settings"] as const;
 
 /**
  * Optimistic: the patch lands in the cache at once and is rolled back if the
- * write fails, so a switch never snaps back while the write is in flight.
+ * write fails, so a switch never snaps back while the write is in flight. The
+ * rollback only touches the failed patch's own fields, so it can't undo a
+ * newer toggle that is still in flight.
  */
 export function useTdarrUpdateGlobalSettings(instanceId?: string) {
   const queryClient = useQueryClient();
@@ -212,8 +215,12 @@ export function useTdarrUpdateGlobalSettings(instanceId?: string) {
       if (prev) queryClient.setQueryData<TdarrGlobalSettings>(key, { ...prev, ...patch });
       return { prev };
     },
-    onError: (_err, _patch, context) => {
-      if (context?.prev) queryClient.setQueryData(key, context.prev);
+    onError: (_err, patch, context) => {
+      const prev = context?.prev;
+      if (!prev) return;
+      queryClient.setQueryData<TdarrGlobalSettings>(key, (current) =>
+        current ? rollbackQueuePatch(current, prev, patch) : prev,
+      );
     },
     onSettled: () => {
       // With several toggles in flight, only the last one to settle refetches;

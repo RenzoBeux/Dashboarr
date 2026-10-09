@@ -58,3 +58,18 @@ export function buildQueueTogglePatch(
   if (on && other) patch[other] = false;
   return patch;
 }
+
+// Undo a failed write without clobbering a newer one still in flight: put back
+// only the fields this patch set, and only where the cache still shows its
+// value (a later toggle that changed the same field owns it now).
+export function rollbackQueuePatch(
+  current: TdarrGlobalSettings,
+  prev: TdarrGlobalSettings,
+  patch: Partial<TdarrGlobalSettings>,
+): TdarrGlobalSettings {
+  const next: Record<string, unknown> = { ...current };
+  for (const k of Object.keys(patch) as (keyof TdarrGlobalSettings)[]) {
+    if (current[k] === patch[k]) next[k] = prev[k];
+  }
+  return next as unknown as TdarrGlobalSettings;
+}
