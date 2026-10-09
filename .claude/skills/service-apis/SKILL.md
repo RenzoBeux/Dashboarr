@@ -120,6 +120,7 @@ Notes:
     - `table4` = Health check queue, actions: Bump `{bumped:true}` · Skip `{HealthCheck:"Success"}`
     - `table5` = Health check: Healthy, action: Requeue `{HealthCheck:"Queued"}`
     - `table6` = Health check: Error/Cancelled, actions: Requeue `{HealthCheck:"Queued"}` · Ignore `{HealthCheck:"Success"}`
+  - **Hold (`table0`) is `transcode_decision_maker='Hold' AND health_check='Hold'`** (server `queryUtils.js` `tableBaseQueries.table0`), not `holdUntil` — a file with only one status set to `Hold`, or a future `holdUntil`, does not appear there. **A bumped row comes back with `bumped: 1`, not `true`** (unbumped rows read `false`), so render it as `!!row.bumped`, never `row.bumped && <View/>`. Every `<Action> all` (Bump/Skip on tables 1 and 4, Ignore on 3 and 6, Unhold on 0) was verified live against Tdarr 2.94.03 with the node paused.
   - Counts (`table0Count` through `table6Count`) are already fetched as part of `TdarrStatistics` in the general stats endpoint.
   - See `services/tdarr-api.ts`, `lib/tdarr-tables.ts`, and `lib/tdarr-queue-options.ts` for the implementation.
 - The `backend/dashboarr-backend/` Node.js service is in-tree and not a third-party API — its surface is whatever we define there.

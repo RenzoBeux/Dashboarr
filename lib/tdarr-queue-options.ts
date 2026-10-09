@@ -30,9 +30,14 @@ export const TDARR_QUEUE_SORTS: readonly { value: string; label: string }[] = [
   { value: "sortDurationLargest", label: "Duration largest" },
 ];
 
-export function queueSortLabel(value?: string): string {
-  if (!value) return "—";
-  return TDARR_QUEUE_SORTS.find((s) => s.value === value)?.label ?? value;
+// Options for the sort Select. A value from a newer server that isn't in the
+// list is kept as its own (raw) option so the current choice still shows.
+export function queueSortOptions(current?: string): { value: string; label: string }[] {
+  const opts = [...TDARR_QUEUE_SORTS];
+  if (current && !opts.some((s) => s.value === current)) {
+    opts.push({ value: current, label: current });
+  }
+  return opts;
 }
 
 // Pairs the web UI keeps mutually exclusive: switching one ON also sends the

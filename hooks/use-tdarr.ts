@@ -19,10 +19,16 @@ import {
   type TdarrWorkerType,
   type SearchFilesOptions,
 } from "@/services/tdarr-api";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery, useMutation, useQueryClient, type InfiniteData,
+} from "@tanstack/react-query";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
-import { TDARR_TABLE_PAGE_SIZE, nextStatusTableStart } from "@/lib/tdarr-tables";
-import type { TdarrGlobalSettings, TdarrStatusTableId } from "@/lib/types";
+import {
+  TDARR_TABLE_PAGE_SIZE, applyRowAction, nextStatusTableStart, type TdarrRowAction,
+} from "@/lib/tdarr-tables";
+import type {
+  TdarrGlobalSettings, TdarrStatusTableId, TdarrStatusTablePage,
+} from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 
@@ -137,38 +143,84 @@ export function useTdarrStatusTable(table: TdarrStatusTableId, instanceId?: stri
   });
 }
 
-export function useTdarrBulkUpdateFiles(instanceId?: string) {
-  return useServiceMutation(
-    "tdarr",
-    (
-      { fileIds, updatedObj }: { fileIds: string[]; updatedObj: Record<string, unknown> },
-      id,
-    ) => bulkUpdateFiles(fileIds, updatedObj, id),
-    instanceId,
-  );
+/**
+ * Per-file actions on one status table. Rather than invalidating the whole
+ * ["tdarr", id] slice (which refetches every loaded page of this table plus
+ * every other Tdarr query), apply the action to the cached pages, refresh the
+ * statistics doc for the chip counts, and only mark the other tables stale.
+ */
+export function useTdarrBulkUpdateFiles(table: TdarrStatusTableId, instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
+  return useMutation({
+    mutationFn: ({ fileIds, action }: { fileIds: string[]; action: TdarrRowAction }) =>
+      bulkUpdateFiles(fileIds, action.updatedObj, id ?? undefined),
+    onSuccess: (_data, { fileIds, action }) => {
+      queryClient.setQueryData<InfiniteData<TdarrStatusTablePage>>(
+        ["tdarr", id, "status-table", table],
+        (data) => applyRowAction(data, fileIds, action),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["tdarr", id, "status-table"],
+        refetchType: "none",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["tdarr", id, "statistics"] });
+    },
+  });
 }
 
+// "<Action> all" rewrites a whole table, so the loaded pages are refetched,
+// along with the counts; the other Tdarr queries are left alone.
 export function useTdarrSetAllStatus(instanceId?: string) {
-  return useServiceMutation(
-    "tdarr",
-    (
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
+  return useMutation({
+    mutationFn: (
       { table, updatedObj }: { table: TdarrStatusTableId; updatedObj: Record<string, unknown> },
-      id,
-    ) => setAllStatus(table, updatedObj, id),
-    instanceId,
-  );
+    ) => setAllStatus(table, updatedObj, id ?? undefined),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["tdarr", id, "status-table"] });
+      void queryClient.invalidateQueries({ queryKey: ["tdarr", id, "statistics"] });
+    },
+  });
 }
 
-export function useTdarrGlobalSettings(instanceId?: string) {
+/** `active` gates fetching and polling (Queue Options only reads it while expanded). */
+export function useTdarrGlobalSettings(active = true, instanceId?: string) {
   return useServiceQuery(
-    "tdarr", ["global-settings"], getGlobalSettings, POLLING_INTERVALS.queue, instanceId,
+    "tdarr", ["global-settings"], getGlobalSettings, POLLING_INTERVALS.queue, instanceId, active,
   );
 }
 
+const GLOBAL_SETTINGS_MUTATION = ["tdarr", "update-global-settings"] as const;
+
+/**
+ * Optimistic: the patch lands in the cache at once and is rolled back if the
+ * write fails, so a switch never snaps back while the write is in flight.
+ */
 export function useTdarrUpdateGlobalSettings(instanceId?: string) {
-  return useServiceMutation(
-    "tdarr",
-    (patch: Partial<TdarrGlobalSettings>, id) => updateGlobalSettings(patch, id),
-    instanceId,
-  );
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
+  const key = ["tdarr", id, "global-settings"] as const;
+  return useMutation({
+    mutationKey: GLOBAL_SETTINGS_MUTATION,
+    mutationFn: (patch: Partial<TdarrGlobalSettings>) =>
+      updateGlobalSettings(patch, id ?? undefined),
+    onMutate: async (patch) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<TdarrGlobalSettings>(key);
+      if (prev) queryClient.setQueryData<TdarrGlobalSettings>(key, { ...prev, ...patch });
+      return { prev };
+    },
+    onError: (_err, _patch, context) => {
+      if (context?.prev) queryClient.setQueryData(key, context.prev);
+    },
+    onSettled: () => {
+      // With several toggles in flight, only the last one to settle refetches;
+      // an earlier refetch would land the server's pre-write value mid-flight.
+      if (queryClient.isMutating({ mutationKey: GLOBAL_SETTINGS_MUTATION }) === 1) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
 }

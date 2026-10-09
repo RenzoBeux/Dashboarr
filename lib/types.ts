@@ -3763,7 +3763,7 @@ export type TdarrStatusTableId =
 
 /** A row of POST /client/status-tables: a file doc, plus queue flags. */
 export interface TdarrStatusTableRow extends TdarrFileItem {
-  bumped?: boolean;
+  bumped?: boolean | number; // Tdarr stores a bump as 1
   holdUntil?: number; // epoch ms
 }
 

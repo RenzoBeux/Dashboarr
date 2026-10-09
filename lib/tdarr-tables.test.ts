@@ -1,5 +1,6 @@
 import {
   TDARR_TABLES, getTableDef, tableCount, rowActions, rowSizeLine, rowTimestamp, nextStatusTableStart, flattenStatusPages,
+  applyRowAction,
 } from "@/lib/tdarr-tables";
 import type { TdarrStatistics, TdarrStatusTableRow } from "@/lib/types";
 
@@ -61,6 +62,11 @@ describe("rowTimestamp", () => {
     expect(rowTimestamp(r, "table6")).toBe(2);
     expect(rowTimestamp(r, "table1")).toBeUndefined();
   });
+
+  it("drops a timestamp a Date can't represent instead of crashing the list", () => {
+    const r = row({ lastTranscodeDate: 9e15 });
+    expect(rowTimestamp(r, "table2")).toBeUndefined();
+  });
 });
 
 const page = (n: number, total: number) => ({
@@ -103,3 +109,31 @@ describe("flattenStatusPages", () => {
     expect(flattenStatusPages(odd).map((r) => r._id)).toEqual(["a"]);
   });
 });
+
+describe("applyRowAction", () => {
+  const ids = (d: { pages: { array: TdarrStatusTableRow[] }[] } | undefined) =>
+    d?.pages.flatMap((p) => p.array.map((r) => r._id));
+  const data = () => ({ pages: [page(3, 5), { ...page(2, 5), array: [
+    { _id: "3" } as TdarrStatusTableRow, { _id: "4" } as TdarrStatusTableRow,
+  ] }], pageParams: [0, 3] });
+  const [bump, skip] = rowActions("table1");
+
+  it("removes moved rows and shrinks the total so paging stays in step", () => {
+    const out = applyRowAction(data(), ["1", "4"], skip);
+    expect(ids(out)).toEqual(["0", "2", "3"]);
+    expect(out?.pages.map((p) => p.totalCount)).toEqual([3, 3]);
+    expect(out?.pageParams).toEqual([0, 3]);
+  });
+
+  it("keeps bumped rows in place and flags them", () => {
+    const out = applyRowAction(data(), ["2"], bump);
+    expect(ids(out)).toEqual(["0", "1", "2", "3", "4"]);
+    expect(out?.pages[0].array[2].bumped).toBe(true);
+    expect(out?.pages[0].totalCount).toBe(5);
+  });
+
+  it("leaves an uncached table alone", () => {
+    expect(applyRowAction(undefined, ["1"], skip)).toBeUndefined();
+  });
+});
+

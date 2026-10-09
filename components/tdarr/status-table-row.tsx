@@ -45,7 +45,7 @@ export function StatusTableRow({
           />
         )}
         <Text className="text-zinc-200 text-xs font-medium flex-1" numberOfLines={1}>{name}</Text>
-        {row.bumped && (
+        {!!row.bumped && (
           <View className="bg-blue-500/15 rounded-md px-1.5 py-0.5">
             <Text className="text-blue-400 text-xs">Bumped</Text>
           </View>

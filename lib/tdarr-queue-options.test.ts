@@ -1,5 +1,5 @@
 import {
-  TDARR_QUEUE_SORTS, queueSortLabel, buildQueueTogglePatch,
+  TDARR_QUEUE_SORTS, queueSortOptions, buildQueueTogglePatch,
 } from "@/lib/tdarr-queue-options";
 
 describe("buildQueueTogglePatch", () => {
@@ -26,9 +26,10 @@ describe("queue sorts", () => {
     expect(TDARR_QUEUE_SORTS).toHaveLength(25);
     expect(TDARR_QUEUE_SORTS[0]).toEqual({ value: "noSort", label: "No Sort" });
   });
-  it("labels known values and degrades unknown/missing ones", () => {
-    expect(queueSortLabel("sortSizeSmallest")).toBe("Smallest");
-    expect(queueSortLabel("someFutureSort")).toBe("someFutureSort");
-    expect(queueSortLabel(undefined)).toBe("—");
+  it("keeps an unknown server value selectable instead of dropping it", () => {
+    expect(queueSortOptions("sortSizeSmallest")).toHaveLength(TDARR_QUEUE_SORTS.length);
+    expect(queueSortOptions(undefined)).toHaveLength(TDARR_QUEUE_SORTS.length);
+    expect(queueSortOptions("someFutureSort").at(-1))
+      .toEqual({ value: "someFutureSort", label: "someFutureSort" });
   });
 });

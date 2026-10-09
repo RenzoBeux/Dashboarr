@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo } from "react";
+import {
+  BackHandler, FlatList, Pressable, RefreshControl, ScrollView, Text, View,
+} from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { MoreHorizontal } from "lucide-react-native";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { BackHeader } from "@/components/common/back-header";
@@ -16,6 +18,7 @@ import { SkeletonCardContent } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { toast, toastError } from "@/components/ui/toast";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { useMultiSelect } from "@/hooks/use-multi-select";
 import {
   useTdarrBulkUpdateFiles, useTdarrSetAllStatus, useTdarrStatistics, useTdarrStatusTable,
 } from "@/hooks/use-tdarr";
@@ -23,13 +26,15 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { getHttpErrorMessage } from "@/lib/http-client";
 import { lightHaptic } from "@/lib/haptics";
 import { fileBaseName } from "@/lib/tdarr-format";
-import { bulkConfirmMessage, pruneSelection, toggleSelected } from "@/lib/tdarr-selection";
+import { bulkConfirmMessage } from "@/lib/tdarr-selection";
 import { TDARR_TABLES, flattenStatusPages, getTableDef, rowActions, tableCount } from "@/lib/tdarr-tables";
 import type { TdarrRowAction } from "@/lib/tdarr-tables";
 import type { TdarrStatusTableId, TdarrStatusTableRow } from "@/lib/types";
 
 const rowName = (r: TdarrStatusTableRow) =>
   r.fileNameWithoutExtension || fileBaseName(r.file) || r._id;
+
+const rowId = (r: TdarrStatusTableRow) => r._id;
 
 const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
 
@@ -65,7 +70,7 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const { refreshing, onRefresh } = usePullToRefresh([["tdarr"]]);
   const stats = useTdarrStatistics().data?.[0];
   const query = useTdarrStatusTable(tableId);
-  const bulk = useTdarrBulkUpdateFiles();
+  const bulk = useTdarrBulkUpdateFiles(tableId);
   const setAll = useTdarrSetAllStatus();
   // Every modal on this screen is a step of one flow, so the "all" sheet →
   // confirm chain can never race the iOS dismiss (#83). See use-modal-flow.ts.
@@ -74,62 +79,64 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
     allActions: undefined;
     confirmAll: TdarrRowAction;
   }>();
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Selection mode is "anything selected": emptying the table (or deselecting
+  // the last row) leaves it, and nothing can switch it back on by itself.
+  const multi = useMultiSelect<TdarrStatusTableRow>(rowId);
+  const { selected, clear: exitSelection } = multi;
 
   const rows = useMemo(() => flattenStatusPages(query.data?.pages), [query.data]);
   const actions = rowActions(tableId);
   // The live total beats the statistics doc, which can lag the table.
   const count = query.data?.pages.at(-1)?.totalCount ?? tableCount(stats, tableId);
   const canBulk = actions.length > 0 && count !== 0;
-  // A refresh can empty the table mid-selection; the bar hides with it.
-  const inSelection = selecting && canBulk;
+  const inSelection = multi.isActive && canBulk;
   const listExtra = useMemo(() => ({ selected, inSelection }), [selected, inSelection]);
-
-  const exitSelection = () => {
-    setSelecting(false);
-    setSelected(new Set());
-  };
 
   // A different table is a different list: start unselected.
   useEffect(() => {
-    setSelecting(false);
-    setSelected(new Set());
-  }, [tableId]);
+    exitSelection();
+  }, [tableId, exitSelection]);
 
-  // Drop ids a refetch removed (e.g. a single-row action moved them out).
+  // Drop ids a refetch or row action removed, so the bar's count stays honest.
+  const { selectedItems, selectAll } = multi;
   useEffect(() => {
-    setSelected((prev) => {
-      const next = pruneSelection(prev, rows.map((r) => r._id));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [rows]);
+    const keep = selectedItems(rows);
+    if (keep.length !== selected.size) selectAll(keep);
+  }, [rows, selected, selectedItems, selectAll]);
 
+  // Android Back leaves selection mode before it leaves the screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (!inSelection) return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        exitSelection();
+        return true;
+      });
+      return () => sub.remove();
+    }, [inSelection, exitSelection]),
+  );
+
+  // mutateAsync, not mutate's per-call callbacks: TanStack only fires those for
+  // the latest call, so an overlapping action's failure would go unreported.
   const runRow = (a: TdarrRowAction) => {
     const row = flow.payload("rowActions");
     if (!row) return;
     const name = rowName(row);
-    bulk.mutate(
-      { fileIds: [row._id], updatedObj: a.updatedObj },
-      {
-        onSuccess: () => toast(`${a.label}: ${name}`, "success"),
-        onError: (e) => toastError(`${a.label} failed`, e),
-      },
+    bulk.mutateAsync({ fileIds: [row._id], action: a }).then(
+      () => toast(`${a.label}: ${name}`, "success"),
+      (e) => toastError(`${a.label} failed`, e),
     );
   };
 
   const runSelected = (a: TdarrRowAction) => {
     const fileIds = [...selected];
     if (fileIds.length === 0) return;
-    bulk.mutate(
-      { fileIds, updatedObj: a.updatedObj },
-      {
-        onSuccess: () => {
-          toast(`${DONE[a.key]} ${files(fileIds.length)}`, "success");
-          exitSelection();
-        },
-        onError: (e) => toastError(`${a.label} failed`, e),
+    bulk.mutateAsync({ fileIds, action: a }).then(
+      () => {
+        toast(`${DONE[a.key]} ${files(fileIds.length)}`, "success");
+        exitSelection();
       },
+      (e) => toastError(`${a.label} failed`, e),
     );
   };
 
@@ -138,12 +145,9 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
     flow.close();
     if (!a || setAll.isPending) return;
     exitSelection();
-    setAll.mutate(
-      { table: tableId, updatedObj: a.updatedObj },
-      {
-        onSuccess: () => toast(`${DONE[a.key]} all files in "${label}"`, "success"),
-        onError: (e) => toastError(`${a.label} all failed`, e),
-      },
+    setAll.mutateAsync({ table: tableId, updatedObj: a.updatedObj }).then(
+      () => toast(`${DONE[a.key]} all files in "${label}"`, "success"),
+      (e) => toastError(`${a.label} all failed`, e),
     );
   };
 
@@ -177,16 +181,13 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
             selecting={inSelection}
             selected={selected.has(item._id)}
             onPress={() =>
-              inSelection
-                ? setSelected((prev) => toggleSelected(prev, item._id))
-                : flow.open("rowActions", item)
+              inSelection ? multi.toggle(item) : flow.open("rowActions", item)
             }
             onLongPress={
               canBulk
                 ? () => {
                     lightHaptic();
-                    setSelecting(true);
-                    setSelected((prev) => toggleSelected(prev, item._id));
+                    multi.toggle(item);
                   }
                 : undefined
             }

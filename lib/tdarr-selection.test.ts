@@ -1,20 +1,4 @@
-import { toggleSelected, pruneSelection, bulkConfirmMessage } from "@/lib/tdarr-selection";
-
-describe("toggleSelected", () => {
-  it("adds and removes without mutating the input", () => {
-    const a = new Set(["x"]);
-    const b = toggleSelected(a, "y");
-    expect([...b].sort()).toEqual(["x", "y"]);
-    expect([...a]).toEqual(["x"]);
-    expect([...toggleSelected(b, "x")]).toEqual(["y"]);
-  });
-});
-
-describe("pruneSelection", () => {
-  it("drops ids that left the list after a refetch", () => {
-    expect([...pruneSelection(new Set(["a", "b"]), ["b", "c"])]).toEqual(["b"]);
-  });
-});
+import { bulkConfirmMessage } from "@/lib/tdarr-selection";
 
 describe("bulkConfirmMessage", () => {
   const requeue = { key: "requeue" as const, label: "Requeue", updatedObj: {} };

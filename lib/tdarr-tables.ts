@@ -90,7 +90,10 @@ export function rowTimestamp(
   const def = getTableDef(id);
   if (!def?.done) return undefined;
   const t = def.kind === "health" ? row.lastHealthCheckDate : row.lastTranscodeDate;
-  return typeof t === "number" && t > 0 ? t : undefined;
+  // Past ±8.64e15 ms a Date is invalid and toISOString() throws.
+  return typeof t === "number" && t > 0 && Number.isFinite(new Date(t).getTime())
+    ? t
+    : undefined;
 }
 
 export const TDARR_TABLE_PAGE_SIZE = 25;
@@ -125,3 +128,38 @@ export function flattenStatusPages(
   }
   return out;
 }
+
+/**
+ * Reflect a successful row action in the cached pages without a refetch. Bump
+ * keeps the file in its table (flagged); every other action moves it to a
+ * different table, so it is dropped here and the total shrinks with it, which
+ * keeps the next page's offset (the loaded row count) in step with the server.
+ */
+export function applyRowAction<T extends { pages: TdarrStatusTablePage[] }>(
+  data: T | undefined,
+  fileIds: readonly string[],
+  action: TdarrRowAction,
+): T | undefined {
+  if (!data) return data;
+  const ids = new Set(fileIds);
+  if (action.key === "bump") {
+    return {
+      ...data,
+      pages: data.pages.map((p) => ({
+        ...p,
+        array: (p.array ?? []).map((r) => (ids.has(r._id) ? { ...r, bumped: true } : r)),
+      })),
+    };
+  }
+  let removed = 0;
+  const pages = data.pages.map((p) => {
+    const array = (p.array ?? []).filter((r) => !ids.has(r._id));
+    removed += (p.array?.length ?? 0) - array.length;
+    return { ...p, array };
+  });
+  return {
+    ...data,
+    pages: pages.map((p) => ({ ...p, totalCount: Math.max(0, (p.totalCount ?? 0) - removed) })),
+  };
+}
+
