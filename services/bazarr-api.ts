@@ -1,4 +1,5 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   BazarrHistoryResponse,
   BazarrMissingSubtitle,
@@ -75,6 +76,10 @@ export function getProviders(instanceId?: string): Promise<BazarrProvider[]> {
 
 // --- Manual search triggers ---
 
+// Before 1.5.6 Bazarr only answers a search PATCH once the search has finished
+// (1.5.4/1.5.5 queue a job but still wait on it), so the default timeout would
+// report a failure while the search carries on server-side.
+
 // The wanted route is GET-only; movie actions are PATCHed on the movie resource.
 export function searchWantedMovie(
   radarrid: number,
@@ -83,6 +88,7 @@ export function searchWantedMovie(
   return serviceRequest<void>("bazarr", "/movies", {
     method: "PATCH",
     body: JSON.stringify({ radarrid, action: "search-missing" }),
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
   });
 }
@@ -97,17 +103,28 @@ export async function searchWantedEpisode(
   languages: BazarrMissingSubtitle[],
   instanceId?: string,
 ): Promise<void> {
-  for (const lang of languages) {
-    await serviceRequest<void>("bazarr", "/episodes/subtitles", {
-      method: "PATCH",
-      params: {
-        seriesid: sonarrSeriesId,
-        episodeid: sonarrEpisodeId,
-        language: lang.code2,
-        forced: lang.forced ? "True" : "False",
-        hi: lang.hi ? "True" : "False",
-      },
-      instanceId,
-    });
+  // Fired in parallel: a slow (blocking) search on one language must not hold
+  // back the rest. Only a total failure is surfaced.
+  const results = await Promise.allSettled(
+    languages.map((lang) =>
+      serviceRequest<void>("bazarr", "/episodes/subtitles", {
+        method: "PATCH",
+        params: {
+          seriesid: sonarrSeriesId,
+          episodeid: sonarrEpisodeId,
+          language: lang.code2,
+          forced: lang.forced ? "True" : "False",
+          hi: lang.hi ? "True" : "False",
+        },
+        timeout: INTERACTIVE_SEARCH_TIMEOUT,
+        instanceId,
+      }),
+    ),
+  );
+  const failures = results.filter(
+    (r): r is PromiseRejectedResult => r.status === "rejected",
+  );
+  if (failures.length > 0 && failures.length === results.length) {
+    throw failures[0].reason;
   }
 }
