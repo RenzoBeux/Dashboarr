@@ -1,6 +1,8 @@
 import { serviceRequest } from "@/lib/http-client";
+import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import type {
   BazarrHistoryResponse,
+  BazarrMissingSubtitle,
   BazarrProvider,
   BazarrWantedEpisodesResponse,
   BazarrWantedMoviesResponse,
@@ -74,6 +76,10 @@ export function getProviders(instanceId?: string): Promise<BazarrProvider[]> {
 
 // --- Manual search triggers ---
 
+// Before 1.5.6 Bazarr only answers a search PATCH once the search has finished
+// (1.5.4/1.5.5 queue a job but still wait on it), so the default timeout would
+// report a failure while the search carries on server-side.
+
 // The wanted route is GET-only; movie actions are PATCHed on the movie resource.
 export function searchWantedMovie(
   radarrid: number,
@@ -82,22 +88,43 @@ export function searchWantedMovie(
   return serviceRequest<void>("bazarr", "/movies", {
     method: "PATCH",
     body: JSON.stringify({ radarrid, action: "search-missing" }),
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
   });
 }
 
-export function searchWantedEpisode(
+// /episodes/wanted is GET-only too (PATCH answers 405), and there is no
+// episode-level "search-missing" action. Bazarr's own Wanted page searches an
+// episode with one PATCH on /episodes/subtitles per missing language, all
+// query params; `forced`/`hi` are read as the strings "True"/"False".
+export async function searchWantedEpisode(
   sonarrSeriesId: number,
   sonarrEpisodeId: number,
+  languages: BazarrMissingSubtitle[],
   instanceId?: string,
 ): Promise<void> {
-  return serviceRequest<void>("bazarr", "/episodes/wanted", {
-    method: "PATCH",
-    body: JSON.stringify({
-      seriesid: sonarrSeriesId,
-      episodeid: sonarrEpisodeId,
-      action: "search-missing",
-    }),
-    instanceId,
-  });
+  // Fired in parallel: a slow (blocking) search on one language must not hold
+  // back the rest. Only a total failure is surfaced.
+  const results = await Promise.allSettled(
+    languages.map((lang) =>
+      serviceRequest<void>("bazarr", "/episodes/subtitles", {
+        method: "PATCH",
+        params: {
+          seriesid: sonarrSeriesId,
+          episodeid: sonarrEpisodeId,
+          language: lang.code2,
+          forced: lang.forced ? "True" : "False",
+          hi: lang.hi ? "True" : "False",
+        },
+        timeout: INTERACTIVE_SEARCH_TIMEOUT,
+        instanceId,
+      }),
+    ),
+  );
+  const failures = results.filter(
+    (r): r is PromiseRejectedResult => r.status === "rejected",
+  );
+  if (failures.length > 0 && failures.length === results.length) {
+    throw failures[0].reason;
+  }
 }

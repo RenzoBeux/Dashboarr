@@ -744,6 +744,13 @@ export async function serviceRequest<T>(
       throw new HttpError(response.status, response.statusText, url, errorBody);
     }
 
+    // 204/205 carry no body by definition, but some servers (Bazarr's action
+    // PATCHes) still stamp them application/json — parsing would throw on a
+    // request that succeeded.
+    if (response.status === 204 || response.status === 205) {
+      return undefined as T;
+    }
+
     if (contentType?.includes("application/json")) {
       return (await response.json()) as T;
     }
