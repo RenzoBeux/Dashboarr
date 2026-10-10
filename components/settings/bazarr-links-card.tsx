@@ -235,9 +235,11 @@ function LinkSelect({
         description:
           a.id === detectedId
             ? `Same API key Bazarr uses for ${label}`
-            : owner
-              ? `Linked to ${owner}. Picking it here moves the link.`
-              : "Not linked to any Bazarr",
+            : a.id === value
+              ? `Linked to ${bazarrName}`
+              : owner
+                ? `Linked to ${owner}. Picking it here moves the link.`
+                : "Not linked to any Bazarr",
       };
     }),
     ...(state.how === "stale" && stored
