@@ -144,9 +144,9 @@ function LinksBody({ instanceId }: { instanceId: string }) {
       </View>
 
       <Text className="text-zinc-500 text-xs">
-        Detection compares the API key and address Bazarr has for each app with
-        the instances on this phone. Nothing else from Bazarr&apos;s settings is
-        read or kept.
+        Detection fetches Bazarr&apos;s settings and compares the API key and
+        address it has for each app with the instances on this phone. Only the
+        result is kept; nothing else from those settings is used or stored.
       </Text>
     </Card>
   );
