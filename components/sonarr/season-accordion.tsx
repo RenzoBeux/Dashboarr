@@ -169,7 +169,7 @@ export function SeasonAccordion({
               <View
                 className="flex-row items-center gap-1"
                 accessible
-                accessibilityLabel={`${subtitleGaps} episodes missing subtitles`}
+                accessibilityLabel={`${subtitleGaps} episode${subtitleGaps === 1 ? "" : "s"} missing subtitles`}
               >
                 <Icon icon={Captions} size={13} color="#fb923c" />
                 <Text className="text-orange-400 text-xs font-bold">
