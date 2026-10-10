@@ -131,8 +131,12 @@ export function useSubtitleActions({
   // Rows whose search request hasn't answered yet: they stay busy when an
   // earlier action's job watch ends.
   const inFlight = useRef(new Map<string, number>());
+  // Rows whose search Bazarr accepted: busy until its job queue drains.
+  const awaitingJob = useRef(new Set<string>());
   useEffect(() => {
-    if (!jobsActive) setBusy(new Set(inFlight.current.keys()));
+    if (jobsActive) return;
+    awaitingJob.current.clear();
+    setBusy(new Set(inFlight.current.keys()));
   }, [jobsActive]);
   // Starts a search for `keys` (row keys of the current target): busy from
   // the tap, since before 1.5.6 the request itself takes the whole search.
@@ -142,8 +146,6 @@ export function useSubtitleActions({
     onSuccess: () => void,
   ) => {
     const full = keys.map((k) => `${targetKey}:${k}`);
-    // Rows another search already has busy stay busy if this one fails.
-    const fresh = full.filter((k) => !busy.has(k));
     for (const k of full) inFlight.current.set(k, (inFlight.current.get(k) ?? 0) + 1);
     setBusy((prev) => new Set([...prev, ...full]));
     const settle = () => {
@@ -156,13 +158,17 @@ export function useSubtitleActions({
     request.then(
       () => {
         settle();
+        for (const k of full) awaitingJob.current.add(k);
         onSuccess();
       },
       (err) => {
         settle();
         setBusy((prev) => {
           const next = new Set(prev);
-          for (const k of fresh) if (!inFlight.current.has(k)) next.delete(k);
+          // Rows another search still runs or awaits stay busy.
+          for (const k of full) {
+            if (!inFlight.current.has(k) && !awaitingJob.current.has(k)) next.delete(k);
+          }
           return next;
         });
         toastError("Couldn't start the search", err);
