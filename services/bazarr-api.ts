@@ -138,28 +138,11 @@ export async function searchWantedEpisode(
 ): Promise<void> {
   // Fired in parallel: a slow (blocking) search on one language must not hold
   // back the rest. Only a total failure is surfaced.
-  const results = await Promise.allSettled(
-    languages.map((lang) =>
-      serviceRequest<void>("bazarr", "/episodes/subtitles", {
-        method: "PATCH",
-        params: {
-          seriesid: sonarrSeriesId,
-          episodeid: sonarrEpisodeId,
-          language: lang.code2,
-          forced: lang.forced ? "True" : "False",
-          hi: lang.hi ? "True" : "False",
-        },
-        timeout: INTERACTIVE_SEARCH_TIMEOUT,
-        instanceId,
-      }),
-    ),
+  const target = { type: "episode" as const, seriesId: sonarrSeriesId, episodeId: sonarrEpisodeId };
+  await searchSubtitles(
+    languages.map((l) => ({ target, lang: { code2: l.code2, forced: l.forced, hi: l.hi } })),
+    instanceId,
   );
-  const failures = results.filter(
-    (r): r is PromiseRejectedResult => r.status === "rejected",
-  );
-  if (failures.length > 0 && failures.length === results.length) {
-    throw failures[0].reason;
-  }
 }
 
 // --- System ---
