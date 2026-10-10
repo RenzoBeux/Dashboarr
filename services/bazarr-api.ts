@@ -1,4 +1,4 @@
-import { HttpError, serviceRequest } from "@/lib/http-client";
+import { AuthProxyResponseError, HttpError, serviceRequest } from "@/lib/http-client";
 import {
   BAZARR_MANUAL_SEARCH_TIMEOUT,
   INTERACTIVE_SEARCH_TIMEOUT,
@@ -189,6 +189,8 @@ export async function getActiveBazarrJobIds(instanceId?: string): Promise<number
     return lists.flatMap((l) => (l?.data ?? []).map((j) => j.job_id));
   } catch (err) {
     if (err instanceof HttpError && (err.status === 404 || err.status === 405)) return null;
+    // Before 1.5.6 the route can fall through to the web UI (HTML, 200).
+    if (err instanceof AuthProxyResponseError) return null;
     throw err;
   }
 }

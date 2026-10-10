@@ -6,10 +6,11 @@ jest.mock("@/lib/http-client", () => {
       this.status = code;
     }
   }
-  return { serviceRequest: jest.fn(), HttpError };
+  class AuthProxyResponseError extends HttpError {}
+  return { serviceRequest: jest.fn(), HttpError, AuthProxyResponseError };
 });
 
-import { HttpError, serviceRequest } from "@/lib/http-client";
+import { AuthProxyResponseError, HttpError, serviceRequest } from "@/lib/http-client";
 import {
   BAZARR_MANUAL_SEARCH_TIMEOUT,
   INTERACTIVE_SEARCH_TIMEOUT,
@@ -324,6 +325,13 @@ describe("getActiveBazarrJobIds", () => {
 
   it("is null when the job queue doesn't exist", async () => {
     mockRequest.mockRejectedValue(new (HttpError as unknown as new (s: number) => Error)(404));
+    await expect(getActiveBazarrJobIds("bz")).resolves.toBeNull();
+  });
+
+  it("is null when an old Bazarr answers with its web UI", async () => {
+    mockRequest.mockRejectedValue(
+      new (AuthProxyResponseError as unknown as new (s: number) => Error)(200),
+    );
     await expect(getActiveBazarrJobIds("bz")).resolves.toBeNull();
   });
 
