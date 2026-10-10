@@ -42,9 +42,15 @@ export function buildSubtitleRows(item: {
   missing_subtitles?: BazarrMissingSubtitle[] | null;
 }): SubtitleRow[] {
   const rows: SubtitleRow[] = [];
+  const seen = new Map<string, number>();
   for (const sub of item.subtitles ?? []) {
+    // Before 1.6 embedded tracks carry no id, so two tracks of one language
+    // would share a key; number the repeats.
+    const base = `${sub.code2}|${sub.forced ? "f" : ""}${sub.hi ? "h" : ""}|${sub.path ?? `track${sub.embedded_track_id ?? sub.id ?? ""}`}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
     rows.push({
-      key: `${sub.code2}|${sub.forced ? "f" : ""}${sub.hi ? "h" : ""}|${sub.path ?? `track${sub.embedded_track_id ?? sub.id ?? ""}`}`,
+      key: n === 0 ? base : `${base}#${n}`,
       code2: sub.code2,
       name: sub.name,
       forced: sub.forced,

@@ -50,6 +50,14 @@ describe("buildSubtitleRows", () => {
     expect(rows.find((r) => r.forced)?.key).toBe("de|f|/m/Film.de.forced.srt");
   });
 
+  it("keeps keys distinct for embedded tracks without ids (before Bazarr 1.6)", () => {
+    const keys = buildSubtitleRows({
+      subtitles: [sub("en", null), sub("en", null)],
+      missing_subtitles: [],
+    }).map((r) => r.key);
+    expect(keys).toEqual(["en||track", "en||track#1"]);
+  });
+
   it("handles a missing or null list", () => {
     expect(buildSubtitleRows({ subtitles: null, missing_subtitles: undefined })).toEqual([]);
   });
