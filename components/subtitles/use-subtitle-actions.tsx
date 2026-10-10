@@ -229,7 +229,14 @@ export function useSubtitleActions({
     targetOf,
   );
   // The file picked in the upload sheet.
-  const [uploadFile, setUploadFile] = useState<PickedSubtitleFile | null>(null);
+  const [uploadFile, setUploadFileState] = useState<PickedSubtitleFile | null>(null);
+  // Read when an upload finishes, to tell whether its sheet is still the one
+  // showing (the user may have closed it and started another).
+  const uploadFileRef = useRef<PickedSubtitleFile | null>(null);
+  const setUploadFile = (file: PickedSubtitleFile | null) => {
+    uploadFileRef.current = file;
+    setUploadFileState(file);
+  };
   const remove = useBazarrSubtitleMutation(
     bazarrId,
     (sub: BazarrSubtitle, id) => deleteSubtitle(target!, sub, id),
@@ -481,12 +488,14 @@ export function useSubtitleActions({
         // The tool mutation is shared by every row; busy only for this one's.
         busy={tool.isPending && tool.variables?.sub === timingRow?.sub}
         onApply={(mod, description) => {
-          if (!timingRow?.sub) return;
-          tool.mutateAsync({ sub: timingRow.sub, action: { kind: "mod", mod } }).then(
+          const row = timingRow;
+          if (!row?.sub) return;
+          tool.mutateAsync({ sub: row.sub, action: { kind: "mod", mod } }).then(
             () => {
-              // The user may have closed the sheet while it ran.
-              if (flow.isOpen("timing")) closeStep();
-              toast(`${description}: ${timingRow.name}`);
+              // Unless the user closed this sheet (or moved on to another
+              // row's) while it ran.
+              if (flow.isOpen("timing") && flow.payload("timing")?.key === row.key) closeStep();
+              toast(`${description}: ${row.name}`);
             },
             (err) => toastError("Bazarr couldn't change the timing", err),
           );
@@ -575,10 +584,11 @@ export function useSubtitleActions({
         busy={upload.isPending && upload.variables?.file === uploadFile}
         onChangeFile={() => void pickFile()}
         onUpload={(lang) => {
-          if (!uploadFile) return;
-          upload.mutateAsync({ file: uploadFile, lang }).then(
+          const file = uploadFile;
+          if (!file) return;
+          upload.mutateAsync({ file, lang }).then(
             () => {
-              if (flow.isOpen("upload")) closeStep();
+              if (flow.isOpen("upload") && uploadFileRef.current === file) closeStep();
               toast(
                 `Uploaded ${uploadLanguages.find((l) => l.code2 === lang.code2)?.name ?? lang.code2} subtitle`,
               );
