@@ -16,10 +16,10 @@ export interface UploadLanguageOption {
 }
 
 /**
- * Confirm an upload: the picked file (with a way to pick another), its
- * language and whether it is forced or hearing-impaired. Language and flags
- * are prefilled from the file name ("Film.de.forced.srt"). The file itself is
- * picked before this sheet opens — the OS picker never stacks on a sheet.
+ * Upload a subtitle: choose the file (the OS picker opens from inside this
+ * sheet, over it, and only updates its state), then its language and whether
+ * it is forced or hearing-impaired. Language and flags are prefilled from the
+ * file name ("Film.de.forced.srt").
  */
 export function UploadSubtitleSheet({
   visible,
@@ -39,6 +39,7 @@ export function UploadSubtitleSheet({
   // Offered languages, profile languages first.
   languages: readonly UploadLanguageOption[];
   busy?: boolean;
+  // Opens the OS file picker.
   onChangeFile: () => void;
   onUpload: (lang: LanguageChoice) => void;
   onClose: () => void;

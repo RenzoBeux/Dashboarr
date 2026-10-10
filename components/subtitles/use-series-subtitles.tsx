@@ -10,7 +10,7 @@ import {
   useBazarrSeriesItem,
   useBazarrSubtitleMutation,
 } from "@/hooks/use-bazarr-subtitles";
-import { searchMissingSubtitles, searchSubtitle } from "@/services/bazarr-api";
+import { searchMissingSubtitles, searchSubtitles } from "@/services/bazarr-api";
 import {
   buildAudioTags,
   buildCoverageGrid,
@@ -110,8 +110,10 @@ export function useSeriesSubtitles({
     target: selected
       ? { type: "episode", seriesId, episodeId: selected.sonarrEpisodeId }
       : null,
-    // Episodes carry no profile of their own; the series' applies.
-    item: selected ? { ...selected, profileId: bazarrSeries?.profileId ?? null } : null,
+    item: selected ?? null,
+    // Episodes carry no profile of their own; the series' applies, also on the
+    // coverage card before any episode is opened.
+    profileId: bazarrSeries?.profileId ?? null,
     title: selected ? `${series?.title ?? ""} · ${code}` : "",
     videoFps: selectedFile?.mediaInfo?.videoFps,
     profileTarget: seriesId > 0 ? { type: "series", seriesId } : null,
@@ -149,16 +151,14 @@ export function useSeriesSubtitles({
     bazarrId,
     async (season: number, id) => {
       const targets = seasonMissingTargets(bazarrEpisodes ?? [], season);
-      await Promise.all(
+      await searchSubtitles(
         targets.flatMap((t) =>
-          t.languages.map((l) =>
-            searchSubtitle(
-              { type: "episode", seriesId, episodeId: t.episode.sonarrEpisodeId },
-              { code2: l.code2, forced: l.forced, hi: l.hi },
-              id,
-            ),
-          ),
+          t.languages.map((l) => ({
+            target: { type: "episode" as const, seriesId, episodeId: t.episode.sonarrEpisodeId },
+            lang: { code2: l.code2, forced: l.forced, hi: l.hi },
+          })),
         ),
+        id,
       );
     },
     () => seriesTarget,

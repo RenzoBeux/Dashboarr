@@ -149,7 +149,15 @@ function watchFor(queryClient: QueryClient, bazarrId: string) {
     const created = {
       active: false,
       watch: createJobWatch<QueryKey>({
-        fetchActiveJobIds: () => getActiveBazarrJobIds(bazarrId),
+        fetchActiveJobIds: async () => {
+          // A Bazarr without a job queue (before 1.5.6) may answer the route
+          // with its web UI instead of a 404; go straight to timed refreshes.
+          const status = queryClient.getQueryData<{ bazarr_version: string }>(
+            bazarrKeys.status(bazarrId),
+          );
+          if (status && !deriveBazarrCapabilities(status.bazarr_version).jobs) return null;
+          return getActiveBazarrJobIds(bazarrId);
+        },
         refresh: (keys) => {
           for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey });
         },

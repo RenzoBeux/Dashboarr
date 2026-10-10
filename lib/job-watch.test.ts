@@ -71,6 +71,23 @@ describe("createJobWatch", () => {
     expect(fetchActiveJobIds.mock.calls.length).toBe(calls);
   });
 
+  it("tracks a key once however often it is passed, compared by value", async () => {
+    const refresh = jest.fn();
+    let call = 0;
+    const queue = [[1], [], []];
+    const watch = createJobWatch<string[]>({
+      fetchActiveJobIds: async () => queue[call++] ?? [],
+      refresh,
+      intervalMs: 1000,
+    });
+    watch.track([["bazarr", "b1", "movie", "1"]]);
+    watch.track([["bazarr", "b1", "movie", "1"]]);
+    await advance(1000);
+    await advance(1000);
+    await advance(1000);
+    expect(refresh).toHaveBeenLastCalledWith([["bazarr", "b1", "movie", "1"]]);
+  });
+
   it("falls back to timed refreshes without a job list", async () => {
     const { watch, refresh } = setup([null]);
     watch.track(["x"]);

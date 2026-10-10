@@ -25,6 +25,7 @@ import {
   runSubtitleTool,
   searchMissingSubtitles,
   searchSubtitle,
+  searchSubtitles,
   setLanguageProfile,
   uploadSubtitle,
   getWantedMovies,
@@ -281,7 +282,8 @@ describe("subtitle actions", () => {
       { provider: "p", subtitle: "tok", forced: "False", hearing_impaired: "True" },
       "bz",
     );
-    expect(mockRequest.mock.calls[0][2].params).toEqual({
+    expect(mockRequest.mock.calls[0][2].params).toBeUndefined();
+    expect(JSON.parse(mockRequest.mock.calls[0][2].body)).toEqual({
       radarrid: 12,
       provider: "p",
       subtitle: "tok",
@@ -328,5 +330,23 @@ describe("getActiveBazarrJobIds", () => {
   it("rethrows other failures", async () => {
     mockRequest.mockRejectedValue(new (HttpError as unknown as new (s: number) => Error)(500));
     await expect(getActiveBazarrJobIds("bz")).rejects.toThrow();
+  });
+});
+
+describe("searchSubtitles", () => {
+  const ep = (episodeId: number) => ({
+    target: { type: "episode" as const, seriesId: 1, episodeId },
+    lang: { code2: "de", forced: false, hi: false },
+  });
+
+  it("succeeds when only some searches fail", async () => {
+    mockRequest.mockRejectedValueOnce(new Error("timeout")).mockResolvedValueOnce(undefined);
+    await expect(searchSubtitles([ep(1), ep(2)])).resolves.toBeUndefined();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails when every search fails", async () => {
+    mockRequest.mockRejectedValue(new Error("down"));
+    await expect(searchSubtitles([ep(1), ep(2)])).rejects.toThrow("down");
   });
 });

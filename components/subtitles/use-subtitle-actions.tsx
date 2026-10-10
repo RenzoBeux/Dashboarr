@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, type Href } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import {
@@ -30,6 +30,7 @@ import {
   runSubtitleTool,
   searchMissingSubtitles,
   searchSubtitle,
+  searchSubtitles,
   setLanguageProfile,
   uploadSubtitle,
   type PickedSubtitleFile,
@@ -75,7 +76,7 @@ export type SubtitleFlowSteps = {
   cleanup: SubtitleRow;
   confirmDelete: SubtitleRow;
   profile: void;
-  upload: PickedSubtitleFile;
+  upload: void;
 };
 
 // PickerSheet values are numbers; "no profile" needs one too.
@@ -85,6 +86,7 @@ export function useSubtitleActions({
   bazarrId,
   target,
   item,
+  profileId: profileIdProp,
   title,
   videoFps,
   profileTarget,
@@ -96,8 +98,11 @@ export function useSubtitleActions({
   item: {
     subtitles: BazarrSubtitle[];
     missing_subtitles: BazarrMissingSubtitle[];
-    profileId: number | null;
+    profileId?: number | null;
   } | null;
+  // The language profile in effect, when it isn't the item's own (a series'
+  // profile applies to every episode, selected or not).
+  profileId?: number | null;
   // "Dune: Part Two" / "S01E02 · Fault Lines", for sheet subtitles.
   title: string;
   videoFps?: number | null;
@@ -114,14 +119,53 @@ export function useSubtitleActions({
   const jobsActive = useBazarrJobsActive(bazarrId);
   const track = useTrackBazarrJobs(bazarrId);
 
+  const profileId = profileIdProp !== undefined ? profileIdProp : (item?.profileId ?? null);
+
   // Rows whose search the user started, until Bazarr's queue drains (or the
-  // refreshed data no longer lists them as missing).
-  const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(new Set());
+  // refreshed data no longer lists them as missing). Keyed per movie/episode,
+  // since one instance serves every episode of a series.
+  const targetKey = !target
+    ? ""
+    : target.type === "movie"
+      ? `m${target.radarrId}`
+      : `e${target.episodeId}`;
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
-    if (!jobsActive) setBusyKeys(new Set());
+    if (!jobsActive) setBusy(new Set());
   }, [jobsActive]);
   const markBusy = (keys: string[]) =>
-    setBusyKeys((prev) => new Set([...prev, ...keys]));
+    setBusy((prev) => new Set([...prev, ...keys.map((k) => `${targetKey}:${k}`)]));
+  const unmarkBusy = (keys: string[]) =>
+    setBusy((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) next.delete(`${targetKey}:${k}`);
+      return next;
+    });
+  const busyKeys = useMemo(
+    () =>
+      new Set(
+        [...busy]
+          .filter((k) => k.startsWith(`${targetKey}:`))
+          .map((k) => k.slice(targetKey.length + 1)),
+      ),
+    [busy, targetKey],
+  );
+
+  // When an action starts from the host sheet (the episode subtitles sheet),
+  // the host comes back once the action — or its cancel — is done.
+  const returnToHost = useRef(false);
+  const closeStep = () => {
+    flow.close();
+    if (returnToHost.current) flow.open("host");
+  };
+  const stepBind = (step: Exclude<keyof SubtitleFlowSteps, "host">) => ({
+    ...flow.bind(step),
+    onClose: closeStep,
+    onCancel: closeStep,
+  });
+  const fromHost = () => {
+    returnToHost.current = flow.isOpen("host");
+  };
 
   const targetOf = () => target;
 
@@ -139,10 +183,12 @@ export function useSubtitleActions({
       if (target.type === "movie") {
         await searchMissingSubtitles({ type: "movie", radarrId: target.radarrId }, id);
       } else {
-        await Promise.all(
-          (item?.missing_subtitles ?? []).map((m) =>
-            searchSubtitle(target, { code2: m.code2, forced: m.forced, hi: m.hi }, id),
-          ),
+        await searchSubtitles(
+          (item?.missing_subtitles ?? []).map((m) => ({
+            target,
+            lang: { code2: m.code2, forced: m.forced, hi: m.hi },
+          })),
+          id,
         );
       }
     },
@@ -154,6 +200,8 @@ export function useSubtitleActions({
       uploadSubtitle(target!, args.file, args.lang, id),
     targetOf,
   );
+  // The file picked in the upload sheet.
+  const [uploadFile, setUploadFile] = useState<PickedSubtitleFile | null>(null);
   const remove = useBazarrSubtitleMutation(
     bazarrId,
     (sub: BazarrSubtitle, id) => deleteSubtitle(target!, sub, id),
@@ -167,27 +215,36 @@ export function useSubtitleActions({
   );
   const profile = useBazarrSubtitleMutation(
     bazarrId,
-    (profileId: number | null, id) => setLanguageProfile(profileTarget!, profileId, id),
-    targetOf,
+    (next: number | null, id) => setLanguageProfile(profileTarget!, next, id),
+    // Refresh what the profile belongs to, whether or not an episode is
+    // selected (any episode target refreshes the whole series' keys).
+    () =>
+      profileTarget?.type === "movie"
+        ? { type: "movie", radarrId: profileTarget.radarrId }
+        : profileTarget
+          ? { type: "episode", seriesId: profileTarget.seriesId, episodeId: 0 }
+          : null,
   );
 
   const profileName =
-    item?.profileId != null
-      ? (profiles?.find((p) => p.profileId === item.profileId)?.name ?? "Unknown profile")
+    profileId != null
+      ? (profiles?.find((p) => p.profileId === profileId)?.name ?? "Unknown profile")
       : null;
 
   // --- Handlers for SubtitlesBlock ---
 
   const onSearchLanguage = (row: SubtitleRow) => {
     lightHaptic();
+    // Busy from the tap: before 1.5.6 the request itself takes the whole search.
+    markBusy([row.key]);
     searchOne.mutate(
       { code2: row.code2, forced: row.forced, hi: row.hi },
       {
-        onSuccess: () => {
-          markBusy([row.key]);
-          toast(`Searching ${row.name} subtitles…`, "info");
+        onSuccess: () => toast(`Searching ${row.name} subtitles…`, "info"),
+        onError: (err) => {
+          unmarkBusy([row.key]);
+          toastError("Couldn't start the search", err);
         },
-        onError: (err) => toastError("Couldn't start the search", err),
       },
     );
   };
@@ -199,9 +256,10 @@ export function useSubtitleActions({
       toast("No subtitles are missing", "info");
       return;
     }
+    const keys = missing.map((m) => `${m.code2}|${m.forced ? "f" : ""}${m.hi ? "h" : ""}|missing`);
+    markBusy(keys);
     searchAll.mutate(undefined, {
       onSuccess: () => {
-        markBusy(missing.map((m) => `${m.code2}|${m.forced ? "f" : ""}${m.hi ? "h" : ""}|missing`));
         toast(
           missing.length === 1
             ? `Searching ${missing[0].name} subtitles…`
@@ -209,41 +267,58 @@ export function useSubtitleActions({
           "info",
         );
       },
-      onError: (err) => toastError("Couldn't start the search", err),
+      onError: (err) => {
+        unmarkBusy(keys);
+        toastError("Couldn't start the search", err);
+      },
     });
   };
 
+  // whenClear closes the host sheet first when Manual is tapped inside it.
   const onManual = () => {
     if (manualSearchHref) flow.whenClear(() => router.push(manualSearchHref));
   };
 
-  // The OS picker never opens over a sheet: it waits until the flow is clear,
-  // then the upload sheet opens with the picked file.
-  const pickFile = () =>
-    flow.whenClear(async () => {
-      const result = await DocumentPicker.getDocumentAsync({
-        // iOS has no UTType for most subtitle formats; validate afterwards.
-        type: "*/*",
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      if (!hasSubtitleExtension(asset.name)) {
-        toast(`${asset.name} isn't a subtitle file. Pick an .srt, .ass or .vtt file.`, "error");
-        return;
-      }
-      flow.open("upload", { uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+  // Upload opens its sheet first and the OS picker opens from inside it, over
+  // a fully presented sheet. Picking only updates the sheet's state, so no new
+  // modal has to appear while the OS picker is still animating away.
+  const openUpload = () => {
+    fromHost();
+    setUploadFile(null);
+    flow.open("upload");
+  };
+  const pickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      // iOS has no UTType for most subtitle formats; validate afterwards.
+      type: "*/*",
+      copyToCacheDirectory: true,
     });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (!hasSubtitleExtension(asset.name)) {
+      toast(`${asset.name} isn't a subtitle file. Pick an .srt, .ass or .vtt file.`, "error");
+      return;
+    }
+    setUploadFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType });
+  };
 
   const blockProps = {
     busyKeys,
     onSearchLanguage,
-    onRowMenu: (row: SubtitleRow) => flow.open("menu", row),
+    onRowMenu: (row: SubtitleRow) => {
+      fromHost();
+      flow.open("menu", row);
+    },
     onSearchAll,
     onManual,
-    onUpload: pickFile,
+    onUpload: openUpload,
     profileName,
-    onPressProfile: profileTarget ? () => flow.open("profile") : undefined,
+    onPressProfile: profileTarget
+      ? () => {
+          fromHost();
+          flow.open("profile");
+        }
+      : undefined,
   };
 
   // --- Row menu ---
@@ -339,7 +414,7 @@ export function useSubtitleActions({
   const uploadLanguages = useMemo(() => {
     const profileCodes =
       profiles
-        ?.find((p) => p.profileId === item?.profileId)
+        ?.find((p) => p.profileId === profileId)
         ?.items.map((i) => i.language) ?? [];
     const codes = [...new Set([...profileCodes, ...(enabledLanguages ?? []).map((l) => l.code2)])];
     return codes.map((code2) => ({
@@ -349,7 +424,7 @@ export function useSubtitleActions({
         normalizeLanguage(code2)?.name ??
         code2,
     }));
-  }, [profiles, item?.profileId, enabledLanguages]);
+  }, [profiles, profileId, enabledLanguages]);
 
   const profileOptions: PickerOption[] = [
     ...(profiles ?? []).map((p) => ({
@@ -363,12 +438,11 @@ export function useSubtitleActions({
   const timingRow = flow.payload("timing");
   const cleanupRow = flow.payload("cleanup");
   const deleteRow = flow.payload("confirmDelete");
-  const uploadFile = flow.payload("upload");
 
   const modals = (
     <>
       <ActionSheet
-        {...flow.bind("menu")}
+        {...stepBind("menu")}
         title={
           menuRow
             ? `${menuRow.name}${menuRow.forced ? " (forced)" : ""}${menuRow.hi ? " (hearing impaired)" : ""}`
@@ -379,7 +453,7 @@ export function useSubtitleActions({
       />
 
       <SubtitleTimingSheet
-        {...flow.bind("timing")}
+        {...stepBind("timing")}
         subtitle={timingRow ? `${timingRow.name} · ${timingRow.sub?.path?.split("/").pop() ?? ""}` : ""}
         videoFps={videoFps}
         busy={tool.isPending}
@@ -389,7 +463,7 @@ export function useSubtitleActions({
             { sub: timingRow.sub, action: { kind: "mod", mod } },
             {
               onSuccess: () => {
-                flow.close();
+                closeStep();
                 toast(`${description}: ${timingRow.name}`);
               },
               onError: (err) => toastError("Bazarr couldn't change the timing", err),
@@ -399,7 +473,7 @@ export function useSubtitleActions({
       />
 
       <PickerSheet<string>
-        {...flow.bind("translate")}
+        {...stepBind("translate")}
         title={translateRow ? `Translate ${translateRow.name}` : "Translate"}
         options={translateOptions}
         selected={[]}
@@ -407,7 +481,7 @@ export function useSubtitleActions({
         emptyMessage="Enable more languages in Bazarr's settings to translate into them."
         onPick={(code2) => {
           const row = translateRow;
-          flow.close();
+          closeStep();
           if (!row) return;
           const name = translateOptions.find((o) => o.value === code2)?.label ?? code2;
           runTool(row, { kind: "translate", to: code2 }, `Translating ${row.name} to ${name}…`);
@@ -415,14 +489,14 @@ export function useSubtitleActions({
       />
 
       <PickerSheet<string>
-        {...flow.bind("cleanup")}
+        {...stepBind("cleanup")}
         title={cleanupRow ? `Clean up ${cleanupRow.name}` : "Clean up"}
         options={CLEANUP_MODS.map((m) => ({ value: m.mod, label: m.label, description: m.description }))}
         selected={[]}
         searchable={false}
         onPick={(mod) => {
           const row = cleanupRow;
-          flow.close();
+          closeStep();
           if (!row) return;
           const label = CLEANUP_MODS.find((m) => m.mod === mod)?.label ?? mod;
           runTool(row, { kind: "mod", mod }, `${label}: ${row.name}`);
@@ -430,16 +504,16 @@ export function useSubtitleActions({
       />
 
       <PickerSheet
-        {...flow.bind("profile")}
+        {...stepBind("profile")}
         title="Language profile"
         options={profileOptions}
-        selected={[item?.profileId ?? NO_PROFILE]}
+        selected={[profileId ?? NO_PROFILE]}
         searchable={false}
         loading={!profiles}
         onPick={(value) => {
-          flow.close();
+          closeStep();
           const next = value === NO_PROFILE ? null : value;
-          if (next === (item?.profileId ?? null)) return;
+          if (next === profileId) return;
           profile.mutate(next, {
             onSuccess: () =>
               toast(
@@ -451,7 +525,7 @@ export function useSubtitleActions({
       />
 
       <ConfirmModal
-        {...flow.bind("confirmDelete")}
+        {...stepBind("confirmDelete")}
         title="Delete subtitle"
         message={
           deleteRow
@@ -463,7 +537,7 @@ export function useSubtitleActions({
         confirmLabel="Delete"
         onConfirm={() => {
           const row = deleteRow;
-          flow.close();
+          closeStep();
           if (!row?.sub) return;
           remove.mutate(row.sub, {
             onSuccess: () => toast(`Deleted ${row.name} subtitle`),
@@ -473,22 +547,19 @@ export function useSubtitleActions({
       />
 
       <UploadSubtitleSheet
-        {...flow.bind("upload")}
+        {...stepBind("upload")}
         title={title}
         fileName={uploadFile?.name ?? null}
         languages={uploadLanguages}
         busy={upload.isPending}
-        onChangeFile={() => {
-          flow.close();
-          pickFile();
-        }}
+        onChangeFile={() => void pickFile()}
         onUpload={(lang) => {
           if (!uploadFile) return;
           upload.mutate(
             { file: uploadFile, lang },
             {
               onSuccess: () => {
-                flow.close();
+                closeStep();
                 toast(
                   `Uploaded ${uploadLanguages.find((l) => l.code2 === lang.code2)?.name ?? lang.code2} subtitle`,
                 );

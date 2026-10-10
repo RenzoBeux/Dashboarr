@@ -267,6 +267,26 @@ export function searchSubtitle(
   });
 }
 
+/**
+ * Several one-language searches at once (an episode's missing languages, a
+ * season's gaps). Sent in parallel so one slow search can't hold back the
+ * rest; fails only when every search failed, since the others did start.
+ */
+export async function searchSubtitles(
+  requests: readonly { target: SubtitleTarget; lang: LanguageChoice }[],
+  instanceId?: string,
+): Promise<void> {
+  const results = await Promise.allSettled(
+    requests.map((r) => searchSubtitle(r.target, r.lang, instanceId)),
+  );
+  const failures = results.filter(
+    (r): r is PromiseRejectedResult => r.status === "rejected",
+  );
+  if (failures.length > 0 && failures.length === results.length) {
+    throw failures[0].reason;
+  }
+}
+
 /** Search every missing language of one movie or one series. */
 export function searchMissingSubtitles(
   target: { type: "movie"; radarrId: number } | { type: "series"; seriesId: number },
@@ -349,7 +369,11 @@ export async function manualSearchSubtitles(
   return res.data ?? [];
 }
 
-/** Download one manual-search result. */
+/**
+ * Download one manual-search result. The fields go in the body: `subtitle` is
+ * Bazarr's serialized result, often several KB, which a reverse proxy's URL
+ * limit would reject as a query string. Bazarr reads JSON bodies as well.
+ */
 export function downloadSubtitleResult(
   target: SubtitleTarget,
   result: ProviderResultRef,
@@ -357,7 +381,7 @@ export function downloadSubtitleResult(
 ): Promise<void> {
   return serviceRequest<void>("bazarr", providersRoute(target), {
     method: "POST",
-    params: downloadResultParams(target, result),
+    body: JSON.stringify(downloadResultParams(target, result)),
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
   });

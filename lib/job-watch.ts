@@ -34,6 +34,9 @@ export interface JobWatchOptions<K> {
   intervalMs?: number;
   maxMs?: number;
   fallbackDelaysMs?: readonly number[];
+  // Identity of a key, for deduplication. Defaults to JSON (array keys built
+  // fresh on every call would otherwise never compare equal).
+  keyId?: (key: K) => string;
 }
 
 export interface JobWatch<K> {
@@ -55,8 +58,10 @@ export function createJobWatch<K>({
   intervalMs = 2000,
   maxMs = 120_000,
   fallbackDelaysMs = [3000, 10_000, 30_000],
+  keyId = (key: K) => JSON.stringify(key),
 }: JobWatchOptions<K>): JobWatch<K> {
   let tracked: K[] = [];
+  const trackedIds = new Set<string>();
   let lastIds = new Set<number>();
   let emptyPolls = 0;
   let deadline = 0;
@@ -70,6 +75,7 @@ export function createJobWatch<K>({
     if (polling) onActiveChange?.(false);
     polling = false;
     tracked = [];
+    trackedIds.clear();
     lastIds = new Set();
     emptyPolls = 0;
   };
@@ -124,7 +130,13 @@ export function createJobWatch<K>({
     track(keys) {
       if (disposed || keys.length === 0) return;
       refresh(keys);
-      for (const key of keys) if (!tracked.includes(key)) tracked.push(key);
+      for (const key of keys) {
+        const id = keyId(key);
+        if (!trackedIds.has(id)) {
+          trackedIds.add(id);
+          tracked.push(key);
+        }
+      }
       deadline = now() + maxMs;
       emptyPolls = 0;
       if (!polling) {
