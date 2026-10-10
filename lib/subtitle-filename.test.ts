@@ -27,6 +27,9 @@ describe("parseSubtitleFilename", () => {
     ["Film.2023.1080p.de.srt", { code2: "de", forced: false, hi: false }],
     ["Spider-Man.No.Way.Home.srt", { code2: undefined, forced: false, hi: false }],
     ["Film.Japanese.srt", { code2: "ja", forced: false, hi: false }],
+    ["A.Foreign.Affair.de.srt", { code2: "de", forced: false, hi: false }],
+    ["Say.Hi.to.Me.en.srt", { code2: "en", forced: false, hi: false }],
+    ["Film.forced.de.srt", { code2: "de", forced: true, hi: false }],
   ])("reads %s", (name, expected) => {
     expect(parseSubtitleFilename(name)).toEqual(expected);
   });
