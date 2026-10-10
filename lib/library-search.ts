@@ -172,15 +172,27 @@ export function filterLibraryIndex<T>(
   const { text, year } = parseLibraryQuery(query);
   if (!text) return index.map((e) => e.item);
   const tokens = text.split(" ").filter(Boolean);
+  // The whole query, trailing number included: "blade runner 2049" is a
+  // title, not "blade runner" from 2049.
+  const full = normalizeSearchText(query);
+  const fullTokens = full.split(" ").filter(Boolean);
   const out: T[] = [];
   for (const entry of index) {
-    const score = Math.max(
-      scoreHaystack(entry.title, text, tokens),
-      scoreHaystack(entry.sortTitle, text, tokens),
-    );
-    if (score === 0) continue;
-    if (year !== undefined && entry.fields.year !== undefined && entry.fields.year !== year) {
-      continue;
+    const matchesFull =
+      year !== undefined &&
+      Math.max(
+        scoreHaystack(entry.title, full, fullTokens),
+        scoreHaystack(entry.sortTitle, full, fullTokens),
+      ) > 0;
+    if (!matchesFull) {
+      const score = Math.max(
+        scoreHaystack(entry.title, text, tokens),
+        scoreHaystack(entry.sortTitle, text, tokens),
+      );
+      if (score === 0) continue;
+      if (year !== undefined && entry.fields.year !== undefined && entry.fields.year !== year) {
+        continue;
+      }
     }
     out.push(entry.item);
   }

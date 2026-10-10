@@ -254,6 +254,19 @@ describe("filterLibraryIndex", () => {
     expect(filterLibraryIndex(index, "  ")).toHaveLength(4);
   });
 
+  it("keeps a title that ends in a number", () => {
+    const idx = buildLibraryIndex(
+      [
+        { title: "Blade Runner 2049", year: 2017 },
+        { title: "Blade Runner", year: 1982 },
+      ],
+      (i) => i,
+    );
+    expect(filterLibraryIndex(idx, "blade runner 2049").map((i) => i.title)).toEqual([
+      "Blade Runner 2049",
+    ]);
+  });
+
   it("requires a trailing year to match", () => {
     expect(filterLibraryIndex(index, "matrix 1999").map((i) => i.title)).toEqual([
       "The Matrix",

@@ -69,6 +69,12 @@ describe("mergeHistoryStreams", () => {
     expect(merged).toHaveLength(3);
   });
 
+  it("drops an entry repeated across pages", () => {
+    const dup = item("10/08/26 12:00:00", { sonarrEpisodeId: 7, subs_id: "x" });
+    const merged = mergeHistoryStreams([], [dup, { ...dup }], { movies: false, episodes: false });
+    expect(merged).toHaveLength(1);
+  });
+
   it("keeps entries without a parseable time at the end", () => {
     const merged = mergeHistoryStreams([item("garbage")], episodes, { movies: false, episodes: false });
     expect(merged[merged.length - 1].at).toBeNull();

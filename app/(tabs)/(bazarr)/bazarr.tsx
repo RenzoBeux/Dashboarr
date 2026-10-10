@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 import { RefreshControl } from "react-native";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
@@ -6,6 +7,7 @@ import { LibraryToolbar } from "@/components/common/library-toolbar";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { BazarrLibraryView, type BazarrLibraryKind } from "@/components/bazarr/library-view";
 import { BazarrHistoryView } from "@/components/bazarr/history-view";
+import type { LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useLibraryView } from "@/hooks/use-library-view";
@@ -30,8 +32,19 @@ export default function BazarrScreen() {
  * scroll container, with the header scrolling along.
  */
 function BazarrScreenInner() {
+  // `?filter=missing&kind=series` opens the tab on a filter (the dashboard's
+  // Wanted card links here, Missing having replaced Wanted).
+  const params = useLocalSearchParams<{ filter?: string; kind?: string }>();
   const [section, setSection] = useState<Section>("library");
   const [kind, setKind] = useState<BazarrLibraryKind>("movies");
+  const [filter, setFilter] = useState<LibraryFilter>("all");
+  useEffect(() => {
+    if (params.filter === "missing" || params.filter === "complete" || params.filter === "noprofile" || params.filter === "all") {
+      setSection("library");
+      setFilter(params.filter);
+    }
+    if (params.kind === "movies" || params.kind === "series") setKind(params.kind);
+  }, [params.filter, params.kind]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 200);
@@ -40,7 +53,18 @@ function BazarrScreenInner() {
   const { instanceId: bazarrId } = useInstanceTarget("bazarr");
   const { data: healthData } = useServiceHealth();
   const online = healthData?.find((s) => s.id === "bazarr")?.online;
-  const { refreshing, onRefresh } = usePullToRefresh([["bazarr"]]);
+  // Not every Bazarr query: link detection re-reads /system/settings, which
+  // holds every provider secret, and only needs that on "Detect again".
+  const refreshKeys = useMemo(
+    () => [
+      ["bazarr", bazarrId, "library"],
+      ["bazarr", bazarrId, "history"],
+      ["bazarr", bazarrId, "profiles"],
+      ["bazarr", bazarrId, "series-episodes"],
+    ],
+    [bazarrId],
+  );
+  const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
   const theme = useAppTheme();
   const tc = useThemeColor();
   const uiScale = useUiScale();
@@ -102,8 +126,14 @@ function BazarrScreenInner() {
           bazarrId={bazarrId}
           kind={kind}
           onKindChange={setKind}
+          filter={filter}
+          onFilterChange={setFilter}
           mode={view.mode}
           query={debouncedQuery}
+          onClearSearch={() => {
+            setQuery("");
+            setSearchOpen(false);
+          }}
           header={header}
           refreshControl={refreshControl}
           contentContainerStyle={contentContainerStyle}

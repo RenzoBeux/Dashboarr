@@ -24,12 +24,15 @@ export function SubtitlesCard({
   radarrInstanceId,
   title,
   videoFps,
+  defaultExpanded = false,
 }: {
   bazarrId: string;
   radarrId: number;
   radarrInstanceId?: string;
   title: string;
   videoFps?: number | null;
+  // Start expanded (opened from Bazarr history).
+  defaultExpanded?: boolean;
 }) {
   const { data: movie, isLoading, error, refetch } = useBazarrMovieSubtitles(
     bazarrId,
@@ -64,6 +67,7 @@ export function SubtitlesCard({
         <SubtitlesNotListed bazarrId={bazarrId} kind="movie" />
       ) : (
         <CollapsibleCard
+          defaultExpanded={defaultExpanded}
           accessibilityLabel={`Subtitles, ${have} of ${total} languages present`}
           title={
             <View className="flex-1 flex-row flex-wrap gap-x-2.5 gap-y-2 pt-1.5">

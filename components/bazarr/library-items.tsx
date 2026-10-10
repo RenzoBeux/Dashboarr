@@ -45,7 +45,11 @@ export interface ArrLookup {
 }
 
 function usePoster(kind: "radarr" | "sonarr", arrInstanceId: string | null, lookup?: ArrLookup) {
-  const poster = lookup?.images?.find((i) => i.coverType === "poster");
+  // No image without a linked instance: useServiceImage would otherwise fall
+  // back to the active instance's server.
+  const poster = arrInstanceId
+    ? lookup?.images?.find((i) => i.coverType === "poster")
+    : undefined;
   return useServiceImage(poster, kind, arrInstanceId ?? undefined);
 }
 
@@ -137,7 +141,7 @@ export function BazarrMoviePoster({
       placeholderIcon={Film}
       title={movie.title}
       footer={movie.year}
-      onPress={onPress ?? (() => {})}
+      onPress={onPress}
       overlay={
         <>
           {complete ? <DoneBadge label="All profile languages present" /> : null}
@@ -357,7 +361,7 @@ export function BazarrSeriesPoster({
       placeholderIcon={Tv}
       title={series.title}
       footer={series.year}
-      onPress={onPress ?? (() => {})}
+      onPress={onPress}
       overlay={
         <>
           {complete ? <DoneBadge label="All episodes subtitled" /> : null}

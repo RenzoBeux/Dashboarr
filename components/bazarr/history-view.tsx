@@ -245,11 +245,17 @@ function openHref(
   sonarrId: string | null,
 ): string | null {
   const { item } = entry;
+  // Land on the subtitles: the movie's section expanded, or the episode's
+  // subtitles sheet open on the series page.
   if (entry.kind === "movie") {
-    return radarrId && item.radarrId ? `/movie/${item.radarrId}?instanceId=${radarrId}` : null;
+    return radarrId && item.radarrId
+      ? `/movie/${item.radarrId}?instanceId=${radarrId}&subtitles=open`
+      : null;
   }
   return sonarrId && item.sonarrSeriesId
-    ? `/series/${item.sonarrSeriesId}?instanceId=${sonarrId}`
+    ? `/series/${item.sonarrSeriesId}?instanceId=${sonarrId}${
+        item.sonarrEpisodeId ? `&subtitlesEpisode=${item.sonarrEpisodeId}` : ""
+      }`
     : null;
 }
 

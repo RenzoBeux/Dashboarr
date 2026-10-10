@@ -121,7 +121,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     <Card>
       <CardHeaderLink
         title="Bazarr Subtitles"
-        onPress={() => router.push("/(tabs)/bazarr")}
+        onPress={() => router.push("/(tabs)/bazarr?filter=missing")}
         trailing={
           totalMissing > 0 ? (
             <Badge label="Missing" variant="missing" count={totalMissing} />
@@ -164,12 +164,17 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
                   </View>
                 }
                 mediaType={item.mediaType}
-                onPress={() => router.push("/(tabs)/bazarr")}
+                // The Bazarr tab's Missing filter took over the Wanted lists.
+                onPress={() =>
+                  router.push(
+                    `/(tabs)/bazarr?filter=missing&kind=${item.mediaType === "tv" ? "series" : "movies"}`,
+                  )
+                }
               />
             );
           })}
           {hasMore && (
-            <ViewAllTile onPress={() => router.push("/(tabs)/bazarr")} />
+            <ViewAllTile onPress={() => router.push("/(tabs)/bazarr?filter=missing")} />
           )}
         </ScrollView>
       )}

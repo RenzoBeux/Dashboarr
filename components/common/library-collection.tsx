@@ -104,6 +104,10 @@ export function LibraryCollection<T>({
       windowSize={5}
       removeClippedSubviews
       showsVerticalScrollIndicator={false}
+      // The header may hold the search field: taps on buttons and items must
+      // land while the keyboard is up instead of only dismissing it.
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     />
   );
 }
@@ -149,7 +153,8 @@ export function LibraryPosterTile({
   tags?: string[];
   status?: PosterStatus;
   overlay?: React.ReactNode;
-  onPress: () => void;
+  // Omitted: the tile isn't interactive (nothing to open).
+  onPress?: () => void;
   onLongPress?: () => void;
   accessibilityLabel?: string;
 }) {
@@ -158,9 +163,10 @@ export function LibraryPosterTile({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
+      disabled={!onPress && !onLongPress}
       style={{ width }}
-      className="active:opacity-80"
-      accessibilityRole="button"
+      className={onPress ? "active:opacity-80" : ""}
+      accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={accessibilityLabel ?? title}
     >
       <View className="relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-surface-light">

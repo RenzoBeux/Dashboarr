@@ -87,14 +87,29 @@ export function mergeHistoryStreams(
   episodes: readonly BazarrHistoryItem[],
   more: { movies: boolean; episodes: boolean },
 ): HistoryEntry[] {
-  const tag = (kind: HistoryKind) => (item: BazarrHistoryItem, i: number): HistoryEntry => ({
-    key: `${kind}-${i}-${item.parsed_timestamp ?? item.timestamp}-${item.radarrId ?? item.sonarrEpisodeId ?? ""}`,
-    kind,
-    item,
-    at: parseBazarrTimestamp(item.parsed_timestamp),
-  });
-  const m = movies.map(tag("movie"));
-  const e = episodes.map(tag("episode"));
+  // Offset paging can hand back an entry twice (a new download shifts every
+  // page by one before a refetch completes), so entries are deduplicated on
+  // what identifies them.
+  const seen = new Set<string>();
+  const tag = (kind: HistoryKind) => (list: readonly BazarrHistoryItem[]): HistoryEntry[] => {
+    const out: HistoryEntry[] = [];
+    for (const item of list) {
+      const key = [
+        kind,
+        item.parsed_timestamp ?? item.timestamp,
+        item.radarrId ?? item.sonarrEpisodeId ?? "",
+        item.action,
+        item.language?.code2 ?? "",
+        item.subs_id ?? "",
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ key, kind, item, at: parseBazarrTimestamp(item.parsed_timestamp) });
+    }
+    return out;
+  };
+  const m = tag("movie")(movies);
+  const e = tag("episode")(episodes);
 
   const lastAt = (list: HistoryEntry[]) => list[list.length - 1]?.at?.getTime();
   let cutoff = -Infinity;

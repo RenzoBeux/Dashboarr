@@ -40,7 +40,7 @@ import { useSonarrSeries } from "@/hooks/use-sonarr";
 import {
   searchAllWanted,
   searchMissingSubtitles,
-  searchSubtitle,
+  searchSubtitles,
 } from "@/services/bazarr-api";
 import {
   classifyMovie,
@@ -77,8 +77,11 @@ export function BazarrLibraryView({
   bazarrId,
   kind,
   onKindChange,
+  filter,
+  onFilterChange: setFilter,
   mode,
   query,
+  onClearSearch,
   header,
   refreshControl,
   contentContainerStyle,
@@ -86,15 +89,19 @@ export function BazarrLibraryView({
   bazarrId: string;
   kind: BazarrLibraryKind;
   onKindChange: (kind: BazarrLibraryKind) => void;
+  // Lifted so other screens can open the tab on a filter (the dashboard's
+  // Wanted card opens Missing).
+  filter: LibraryFilter;
+  onFilterChange: (filter: LibraryFilter) => void;
   mode: LibraryViewMode;
   // Debounced in-list search.
   query: string;
+  onClearSearch: () => void;
   header: React.ReactElement;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<LibraryFilter>("all");
   const [missingLang, setMissingLang] = useState<string | null>(null);
 
   const moviesQuery = useBazarrMovieLibrary(bazarrId, kind === "movies");
@@ -106,13 +113,15 @@ export function BazarrLibraryView({
   const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
   const { data: radarrMovies } = useRadarrMovies(radarrId ?? undefined, !!radarrId && kind === "movies");
   const { data: sonarrSeries } = useSonarrSeries(sonarrId ?? undefined, !!sonarrId && kind === "series");
+  // Unlinked: no lookup at all. A disabled query can still hand back the
+  // active instance's cached library, whose ids mean something else.
   const movieLookup = useMemo(
-    () => new Map<number, ArrLookup>((radarrMovies ?? []).map((m) => [m.id, m])),
-    [radarrMovies],
+    () => new Map<number, ArrLookup>((radarrId ? (radarrMovies ?? []) : []).map((m) => [m.id, m])),
+    [radarrId, radarrMovies],
   );
   const seriesLookup = useMemo(
-    () => new Map<number, ArrLookup>((sonarrSeries ?? []).map((s) => [s.id, s])),
-    [sonarrSeries],
+    () => new Map<number, ArrLookup>((sonarrId ? (sonarrSeries ?? []) : []).map((s) => [s.id, s])),
+    [sonarrId, sonarrSeries],
   );
 
   // Rows whose search the user started, until Bazarr's queue drains.
@@ -136,15 +145,13 @@ export function BazarrLibraryView({
   const searchEpisode = useBazarrSubtitleMutation(
     bazarrId,
     (e: BazarrEpisode, id) =>
-      Promise.all(
-        e.missing_subtitles.map((m) =>
-          searchSubtitle(
-            { type: "episode", seriesId: e.sonarrSeriesId, episodeId: e.sonarrEpisodeId },
-            { code2: m.code2, forced: m.forced, hi: m.hi },
-            id,
-          ),
-        ),
-      ).then(() => undefined),
+      searchSubtitles(
+        e.missing_subtitles.map((m) => ({
+          target: { type: "episode" as const, seriesId: e.sonarrSeriesId, episodeId: e.sonarrEpisodeId },
+          lang: { code2: m.code2, forced: m.forced, hi: m.hi },
+        })),
+        id,
+      ),
     (e) => ({ type: "episode", seriesId: e.sonarrSeriesId, episodeId: e.sonarrEpisodeId }),
   );
   const searchAll = useBazarrSubtitleMutation(
@@ -270,6 +277,7 @@ export function BazarrLibraryView({
             onPress={() => {
               setFilter("all");
               setMissingLang(null);
+              onClearSearch();
             }}
           />
         ) : undefined
@@ -288,17 +296,23 @@ export function BazarrLibraryView({
             movie={m}
             lookup={movieLookup.get(m.radarrId)}
             arrInstanceId={radarrId}
-            showSearch={filter === "missing" && m.missing_subtitles.length > 0}
+            showSearch={(filter === "missing" || !!missingLang) && m.missing_subtitles.length > 0}
             searching={busyMovies.has(m.radarrId)}
-            onSearch={() =>
+            onSearch={() => {
+              // Busy from the tap, cleared when Bazarr's queue drains.
+              setBusyMovies((prev) => new Set([...prev, m.radarrId]));
               searchMovie.mutate(m.radarrId, {
-                onSuccess: () => {
-                  setBusyMovies((prev) => new Set([...prev, m.radarrId]));
-                  toast(`Searching subtitles for ${m.title}…`, "info");
+                onSuccess: () => toast(`Searching subtitles for ${m.title}…`, "info"),
+                onError: (err) => {
+                  setBusyMovies((prev) => {
+                    const next = new Set(prev);
+                    next.delete(m.radarrId);
+                    return next;
+                  });
+                  toastError("Couldn't start the search", err);
                 },
-                onError: (err) => toastError("Couldn't start the search", err),
-              })
-            }
+              });
+            }}
             onPress={openMovie ? () => openMovie(m) : undefined}
           />
         )}
@@ -335,15 +349,20 @@ export function BazarrLibraryView({
           bazarrId={bazarrId}
           expandable={filter === "missing"}
           searchingEpisodes={busyEpisodes}
-          onSearchEpisode={(e) =>
+          onSearchEpisode={(e) => {
+            setBusyEpisodes((prev) => new Set([...prev, e.sonarrEpisodeId]));
             searchEpisode.mutate(e, {
-              onSuccess: () => {
-                setBusyEpisodes((prev) => new Set([...prev, e.sonarrEpisodeId]));
-                toast(`Searching subtitles for ${s.title}…`, "info");
+              onSuccess: () => toast(`Searching subtitles for ${s.title}…`, "info"),
+              onError: (err) => {
+                setBusyEpisodes((prev) => {
+                  const next = new Set(prev);
+                  next.delete(e.sonarrEpisodeId);
+                  return next;
+                });
+                toastError("Couldn't start the search", err);
               },
-              onError: (err) => toastError("Couldn't start the search", err),
-            })
-          }
+            });
+          }}
           onPress={openSeries ? () => openSeries(s) : undefined}
         />
       )}

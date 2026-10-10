@@ -82,9 +82,11 @@ import { SubtitlesCard } from "@/components/subtitles/subtitles-card";
 type DeleteMode = "keep" | "withFiles";
 
 export default function MovieDetailScreen() {
-  const { id, instanceId } = useLocalSearchParams<{
+  const { id, instanceId, subtitles: subtitlesParam } = useLocalSearchParams<{
     id: string;
     instanceId?: string;
+    // "open" expands the Subtitles section (links from Bazarr history).
+    subtitles?: string;
   }>();
   const router = useRouter();
   const { data: movie, isLoading, error } = useRadarrMovie(Number(id), instanceId);
@@ -297,6 +299,7 @@ export default function MovieDetailScreen() {
               radarrInstanceId={instanceId}
               title={movie.title}
               videoFps={movie.movieFile?.mediaInfo?.videoFps}
+              defaultExpanded={subtitlesParam === "open"}
             />
           ) : null}
 

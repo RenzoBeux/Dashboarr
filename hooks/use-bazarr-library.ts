@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   getBazarrMovies,
@@ -23,7 +24,7 @@ export const bazarrLibraryKey = (bazarrId: string, kind: "movies" | "series") =>
 export function useBazarrMovieLibrary(bazarrId: string | null, enabled = true) {
   return useQuery({
     queryKey: bazarrLibraryKey(bazarrId ?? "", "movies"),
-    queryFn: () => getBazarrMovies(bazarrId!),
+    queryFn: ({ signal }) => getBazarrMovies(bazarrId!, signal),
     enabled: !!bazarrId && enabled,
     staleTime: LIBRARY_STALE_MS,
   });
@@ -32,7 +33,7 @@ export function useBazarrMovieLibrary(bazarrId: string | null, enabled = true) {
 export function useBazarrSeriesLibrary(bazarrId: string | null, enabled = true) {
   return useQuery({
     queryKey: bazarrLibraryKey(bazarrId ?? "", "series"),
-    queryFn: () => getBazarrSeriesList(bazarrId!),
+    queryFn: ({ signal }) => getBazarrSeriesList(bazarrId!, signal),
     enabled: !!bazarrId && enabled,
     staleTime: LIBRARY_STALE_MS,
   });
@@ -41,11 +42,12 @@ export function useBazarrSeriesLibrary(bazarrId: string | null, enabled = true) 
 function useHistoryStream(bazarrId: string | null, kind: "movies" | "episodes", enabled: boolean) {
   return useInfiniteQuery({
     queryKey: ["bazarr", bazarrId ?? "", "history", kind, "paged"],
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       (kind === "movies" ? getMovieHistory : getEpisodeHistory)(
         pageParam,
         HISTORY_PAGE,
         bazarrId!,
+        signal,
       ),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
@@ -68,13 +70,22 @@ export function useBazarrHistory(
   const movies = useHistoryStream(bazarrId, "movies", filter !== "episodes");
   const episodes = useHistoryStream(bazarrId, "episodes", filter !== "movies");
 
-  const movieItems = filter === "episodes" ? [] : (movies.data?.pages.flatMap((p) => p.data) ?? []);
-  const episodeItems = filter === "movies" ? [] : (episodes.data?.pages.flatMap((p) => p.data) ?? []);
   const more = {
     movies: filter !== "episodes" && !!movies.hasNextPage,
     episodes: filter !== "movies" && !!episodes.hasNextPage,
   };
-  const entries = mergeHistoryStreams(movieItems, episodeItems, more);
+  // Memoized on the loaded pages, so the list only re-renders when they change.
+  const entries = useMemo(
+    () =>
+      mergeHistoryStreams(
+        filter === "episodes" ? [] : (movies.data?.pages.flatMap((p) => p.data) ?? []),
+        filter === "movies" ? [] : (episodes.data?.pages.flatMap((p) => p.data) ?? []),
+        more,
+      ),
+    // `more` derives from these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filter, movies.data, episodes.data, movies.hasNextPage, episodes.hasNextPage],
+  );
 
   return {
     entries,

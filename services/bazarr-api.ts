@@ -82,10 +82,12 @@ export function getMovieHistory(
   start = 0,
   length = 25,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<BazarrHistoryResponse> {
   return serviceRequest<BazarrHistoryResponse>("bazarr", "/movies/history", {
     params: { start, length },
     instanceId,
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -93,10 +95,12 @@ export function getEpisodeHistory(
   start = 0,
   length = 25,
   instanceId?: string,
+  signal?: AbortSignal,
 ): Promise<BazarrHistoryResponse> {
   return serviceRequest<BazarrHistoryResponse>("bazarr", "/episodes/history", {
     params: { start, length },
     instanceId,
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -234,21 +238,29 @@ export async function getBazarrSeriesEpisodes(
 }
 
 /** Every movie Bazarr manages, with its subtitles. */
-export async function getBazarrMovies(instanceId?: string): Promise<BazarrMovie[]> {
+export async function getBazarrMovies(
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<BazarrMovie[]> {
   const res = await serviceRequest<BazarrListResponse<BazarrMovie>>("bazarr", "/movies", {
     params: { start: 0, length: -1 },
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
+    signal,
   });
   return res.data ?? [];
 }
 
 /** Every series Bazarr manages, with episode counts. */
-export async function getBazarrSeriesList(instanceId?: string): Promise<BazarrSeries[]> {
+export async function getBazarrSeriesList(
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<BazarrSeries[]> {
   const res = await serviceRequest<BazarrListResponse<BazarrSeries>>("bazarr", "/series", {
     params: { start: 0, length: -1 },
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
+    signal,
   });
   return res.data ?? [];
 }

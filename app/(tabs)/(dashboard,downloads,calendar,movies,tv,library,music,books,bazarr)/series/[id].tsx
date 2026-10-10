@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import {
@@ -64,9 +64,11 @@ import { SubtitlesSectionLabel } from "@/components/subtitles/subtitles-card";
 type DeleteMode = "keep" | "withFiles";
 
 export default function SeriesDetailScreen() {
-  const { id, instanceId } = useLocalSearchParams<{
+  const { id, instanceId, subtitlesEpisode } = useLocalSearchParams<{
     id: string;
     instanceId?: string;
+    // Opens that episode's subtitles sheet (links from Bazarr history).
+    subtitlesEpisode?: string;
   }>();
   const {
     data: series,
@@ -112,6 +114,14 @@ export default function SeriesDetailScreen() {
     episodes,
     episodeFileMap,
   });
+
+  // Open the episode sheet once, as soon as Bazarr's episodes are in.
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    if (openedFromLink.current || !subtitlesEpisode || !subtitles.linked) return;
+    openedFromLink.current = true;
+    subtitles.openEpisode(Number(subtitlesEpisode));
+  }, [subtitlesEpisode, subtitles.linked, subtitles.openEpisode]);
 
   // Episodes currently grabbing/downloading, so the per-episode spine, the
   // season bars and the series Progress block can read purple — mirroring the

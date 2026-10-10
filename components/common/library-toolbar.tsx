@@ -47,11 +47,23 @@ export function LibraryToolbar<S extends string>({
   // Extra icon buttons, before search and view (e.g. Add, Scan).
   actions?: React.ReactNode;
 }) {
+  // Focus the search field when the user opens it, not every time the list
+  // remounts its header (switching view mode or tabs) with search still open.
+  const openAtMount = useRef(search?.open ?? false);
+  useEffect(() => {
+    if (!search?.open) openAtMount.current = false;
+  }, [search?.open]);
+
   return (
     <View>
       <View className="flex-row items-center gap-2">
-        <View className="flex-shrink">
-          <ServiceHeader name={title} online={online} serviceId={serviceId} />
+        <View className="flex-shrink min-w-0">
+          <ServiceHeader
+            name={title}
+            online={online}
+            serviceId={serviceId}
+            className="flex-shrink"
+          />
         </View>
         {segments ? (
           // Scrolls instead of clipping when the title, instance name and
@@ -61,7 +73,9 @@ export function LibraryToolbar<S extends string>({
             showsHorizontalScrollIndicator={false}
             // mb-2 lines the chips up with the title, which ServiceHeader
             // offsets with its own mt-2 mb-4.
-            className="flex-1 mb-2"
+            // min-w keeps at least one segment visible (scrollable to the
+            // rest) when the title and instance name fill the row.
+            className="flex-1 mb-2 min-w-[6.5rem]"
             contentContainerClassName="gap-1.5 items-center"
           >
             {segments.options.map((o) => (
@@ -107,6 +121,7 @@ export function LibraryToolbar<S extends string>({
           query={search.query}
           onQuery={search.onQuery}
           placeholder={search.placeholder}
+          autoFocus={!openAtMount.current}
         />
       ) : null}
     </View>
@@ -145,17 +160,22 @@ function LibrarySearchRow({
   query,
   onQuery,
   placeholder,
+  autoFocus,
 }: {
   query: string;
   onQuery: (q: string) => void;
   placeholder: string;
+  autoFocus: boolean;
 }) {
   const tc = useThemeColor();
   const inputRef = useRef<TextInput>(null);
   useEffect(() => {
+    if (!autoFocus) return;
     // Focus once the row has mounted, so the keyboard opens with it.
     const id = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(id);
+    // Only on mount: the decision is made when the row appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
     <View className="flex-row items-center gap-2 h-11 px-3 mb-3 rounded-xl bg-surface border border-primary/60">
