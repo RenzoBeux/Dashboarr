@@ -174,11 +174,18 @@ function LinkSelect({
   );
   const label = KIND_LABEL[kind];
 
-  // Another Bazarr already serving this arr, for the "moves the link" hint.
+  // Another Bazarr serving this arr (the one pages use), for the "moves the
+  // link" hint.
   const ownerOf = (arrId: string) => {
-    const owner = entries.find((e) => e.bazarrId !== bazarrId && e.state.arrId === arrId);
-    return owner ? bazarrs.find((b) => b.id === owner.bazarrId)?.name : undefined;
+    const owner = bazarrForArr(arrId, entries);
+    return owner && owner !== bazarrId
+      ? bazarrs.find((b) => b.id === owner)?.name
+      : undefined;
   };
+  // Any other Bazarr claiming this arr, set by hand or detected — either could
+  // outrank a detected link here.
+  const claimedElsewhere = (arrId: string) =>
+    entries.some((e) => e.bazarrId !== bazarrId && e.state.arrId === arrId);
 
   // Detected but outranked: another Bazarr has this arr set by hand, or
   // detects it too and comes first, so pages use that one. Show it as not
@@ -253,7 +260,7 @@ function LinkSelect({
     // Re-picking a hand-set link that detection also finds returns the row to
     // automatic (when no other Bazarr claims it); any other re-pick is a no-op.
     const backToAutomatic =
-      state.how === "manual" && next === detectedId && !ownerOf(next);
+      state.how === "manual" && next === detectedId && !claimedElsewhere(next);
     if (next === value && !backToAutomatic) return;
     if (next === ARR_LINK_OFF) {
       updateInstance("bazarr", bazarrId, { [linkField(kind)]: ARR_LINK_OFF });
@@ -265,7 +272,7 @@ function LinkSelect({
     // goes back to automatic. Picking the detected instance stores automatic
     // for this Bazarr (that's what detection resolves to) — unless another
     // Bazarr claims it too, which could still outrank a detected link.
-    const automatic = next === detectedId && !ownerOf(next);
+    const automatic = next === detectedId && !claimedElsewhere(next);
     for (const { bazarrId: id, patch } of moveLinkPatches(kind, bazarrs, bazarrId, next)) {
       updateInstance(
         "bazarr",
