@@ -124,8 +124,9 @@ describe("fitChips", () => {
     expect(fitChips(4, 120, 30, 4, 30)).toBe(2);
   });
 
-  it("never shows a +N for a single hidden chip it could have shown", () => {
+  it("shows every chip on an exact fit instead of a +1 in the last one's place", () => {
     expect(fitChips(2, 64, 30, 4, 30)).toBe(2);
+    expect(fitChips(2, 63, 30, 4, 30)).toBe(0);
   });
 
   it("handles no room and no chips", () => {
