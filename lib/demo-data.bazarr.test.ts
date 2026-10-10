@@ -77,6 +77,25 @@ describe("subtitle fixtures", () => {
     expect(even!.subtitles.some((s) => s.forced)).toBe(true);
   });
 
+  it("lists in Wanted exactly what the movie and episode fixtures miss", async () => {
+    const wantedMovies = demo("/movies/wanted") as {
+      data: { radarrId: number; missing_subtitles: unknown[] }[];
+    };
+    expect(wantedMovies.data.length).toBeGreaterThan(0);
+    for (const w of wantedMovies.data) {
+      expect((await getBazarrMovie(w.radarrId))?.missing_subtitles).toEqual(w.missing_subtitles);
+    }
+    const wantedEpisodes = demo("/episodes/wanted") as {
+      data: { sonarrSeriesId: number; sonarrEpisodeId: number; missing_subtitles: unknown[] }[];
+    };
+    expect(wantedEpisodes.data.length).toBeGreaterThan(0);
+    for (const w of wantedEpisodes.data) {
+      const episodes = await getBazarrSeriesEpisodes(w.sonarrSeriesId);
+      const ep = episodes.find((e) => e.sonarrEpisodeId === w.sonarrEpisodeId);
+      expect(ep?.missing_subtitles).toEqual(w.missing_subtitles);
+    }
+  });
+
   it("knows nothing about a movie without a file", async () => {
     await expect(getBazarrMovie(7)).resolves.toBeNull();
   });

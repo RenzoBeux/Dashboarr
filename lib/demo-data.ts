@@ -2083,25 +2083,6 @@ const DEMO_GLANCES_CONTAINERS = [
 
 // --- Bazarr ---
 
-const DEMO_BAZARR_WANTED_MOVIES = {
-  data: [
-    { radarrId: 7, title: "Deadpool & Wolverine", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }], year: "2024" },
-    { radarrId: 8, title: "Kingdom of the Planet of the Apes", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }, { name: "Spanish", code2: "es", code3: "spa", hi: false, forced: false }], year: "2024" },
-    { radarrId: 3, title: "Interstellar", missing_subtitles: [{ name: "French", code2: "fr", code3: "fra", hi: false, forced: false }], year: "2014" },
-  ],
-  total: 3,
-};
-
-const DEMO_BAZARR_WANTED_EPISODES = {
-  data: [
-    { sonarrSeriesId: 1, sonarrEpisodeId: 201, seriesTitle: "House of the Dragon", episodeTitle: "The Burning Mill", episode_number: "2x03", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }] },
-    { sonarrSeriesId: 2, sonarrEpisodeId: 202, seriesTitle: "The Last of Us", episodeTitle: "When Winter Falls", episode_number: "2x05", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }, { name: "Spanish", code2: "es", code3: "spa", hi: false, forced: false }] },
-    { sonarrSeriesId: 3, sonarrEpisodeId: 203, seriesTitle: "Fallout", episodeTitle: "The Radio", episode_number: "1x06", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }] },
-    { sonarrSeriesId: 5, sonarrEpisodeId: 204, seriesTitle: "Severance", episodeTitle: "Goodbye, Mrs. Selvig", episode_number: "2x02", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }] },
-  ],
-  total: 4,
-};
-
 const DEMO_BAZARR_HISTORY = {
   data: [
     { id: 1, action: 1, timestamp: daysFromNowFull(-1), description: "Downloaded English subtitle", language: { name: "English", code2: "en" }, provider: "OpenSubtitles", score: "95", title: "Dune: Part Two" },
@@ -2186,6 +2167,34 @@ function demoBazarrEpisodes(seriesId: number) {
       };
     })
     .sort((a, b) => b.season - a.season || b.episode - a.episode);
+}
+
+// The Wanted lists come from the same per-item fixtures, so the Bazarr tab
+// and the movie/series pages agree on what is missing.
+function demoBazarrWantedMovies() {
+  const data = DEMO_RADARR_MOVIES.flatMap((m) => {
+    const item = demoBazarrMovie(m.id);
+    return item && item.missing_subtitles.length > 0
+      ? [{ radarrId: item.radarrId, title: item.title, missing_subtitles: item.missing_subtitles, year: item.year }]
+      : [];
+  });
+  return { data, total: data.length };
+}
+
+function demoBazarrWantedEpisodes() {
+  const data = DEMO_SONARR_SERIES.flatMap((series) =>
+    demoBazarrEpisodes(series.id)
+      .filter((e) => e.missing_subtitles.length > 0)
+      .map((e) => ({
+        sonarrSeriesId: series.id,
+        sonarrEpisodeId: e.sonarrEpisodeId,
+        seriesTitle: series.title,
+        episodeTitle: e.title,
+        episode_number: `${e.season}x${String(e.episode).padStart(2, "0")}`,
+        missing_subtitles: e.missing_subtitles,
+      })),
+  );
+  return { data, total: data.length };
 }
 
 function demoBazarrSeriesItem(seriesId: number) {
@@ -4243,8 +4252,8 @@ export function getDemoResponse(
         return ["en", "de", "fr"].map((c) => ({ ...demoLang(c), enabled: true }));
       }
       if (normalized === "/system/status") return { data: { bazarr_version: "1.6.2" } };
-      if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;
-      if (normalized.startsWith("/episodes/wanted")) return DEMO_BAZARR_WANTED_EPISODES;
+      if (normalized.startsWith("/movies/wanted")) return demoBazarrWantedMovies();
+      if (normalized.startsWith("/episodes/wanted")) return demoBazarrWantedEpisodes();
       if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
