@@ -213,7 +213,7 @@ export function useSubtitleActions({
   );
   const searchAll = useBazarrSubtitleMutation(
     bazarrId,
-    async (_: void, id) => {
+    async (missing: BazarrMissingSubtitle[], id) => {
       if (!target) return;
       // An episode has no "search missing" action of its own: one search per
       // missing language, as Bazarr's own Wanted page does.
@@ -221,7 +221,7 @@ export function useSubtitleActions({
         await searchMissingSubtitles({ type: "movie", radarrId: target.radarrId }, id);
       } else {
         await searchSubtitles(
-          (item?.missing_subtitles ?? []).map((m) => ({
+          missing.map((m) => ({
             target,
             lang: { code2: m.code2, forced: m.forced, hi: m.hi },
           })),
@@ -292,17 +292,23 @@ export function useSubtitleActions({
 
   const onSearchAll = () => {
     lightHaptic();
-    const missing = item?.missing_subtitles ?? [];
-    if (missing.length === 0) {
+    const all = item?.missing_subtitles ?? [];
+    if (all.length === 0) {
       toast("No subtitles are missing", "info");
       return;
     }
-    const keys = missing.map((m) => `${m.code2}|${m.forced ? "f" : ""}${m.hi ? "h" : ""}|missing`);
+    const keyOf = (m: BazarrMissingSubtitle) =>
+      `${m.code2}|${m.forced ? "f" : ""}${m.hi ? "h" : ""}|missing`;
+    // An episode searches language by language: skip the ones already being
+    // searched. A movie's search-missing is one request for all of them.
+    const missing =
+      target?.type === "movie" ? all : all.filter((m) => !busyKeys.has(keyOf(m)));
+    const keys = missing.map(keyOf);
     if (keys.every((k) => busyKeys.has(k))) {
       toast("Already searching", "info");
       return;
     }
-    searchRows(keys, searchAll.mutateAsync(), () =>
+    searchRows(keys, searchAll.mutateAsync(missing), () =>
       toast(
         missing.length === 1
           ? `Searching ${missing[0].name} subtitles…`
