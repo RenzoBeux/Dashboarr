@@ -179,7 +179,10 @@ export function useSeriesSubtitles({
   // Settled per call: mutate()'s own callbacks only fire for the latest one.
   const running = useRef(new Set<string>());
   const runBulk = (key: string, request: () => Promise<unknown>, started: string) => {
-    if (running.current.has(key)) {
+    // The series search covers every season, so it overlaps them all.
+    const overlaps =
+      key === "series" ? running.current.size > 0 : running.current.has(key) || running.current.has("series");
+    if (overlaps) {
       toast("That search is still running", "info");
       return;
     }
