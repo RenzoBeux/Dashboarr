@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { ChevronRight, Search } from "lucide-react-native";
 import { CollapsibleCard } from "@/components/ui/collapsible-card";
@@ -33,12 +33,10 @@ export function SubtitleCoverageCard({
   profileName: string | null;
   onPressProfile?: () => void;
 }) {
-  const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
-  // Default to the newest season with gaps, else the newest.
-  useEffect(() => {
-    if (seasonNumber !== null && seasons.some((s) => s.season === seasonNumber)) return;
-    setSeasonNumber((seasons.find((s) => s.gaps > 0) ?? seasons[0])?.season ?? null);
-  }, [seasons, seasonNumber]);
+  // Default to the newest season with gaps, else the newest. Picked once, so
+  // a season stays selected after a search fills its gaps.
+  const fallbackSeason = () => seasons.find((s) => s.gaps > 0) ?? seasons[0] ?? null;
+  const [picked, setPicked] = useState<number | null>(() => fallbackSeason()?.season ?? null);
 
   const totals = useMemo(
     () =>
@@ -58,7 +56,7 @@ export function SubtitleCoverageCard({
     [languages, seasons],
   );
 
-  const season = seasons.find((s) => s.season === seasonNumber) ?? null;
+  const season = seasons.find((s) => s.season === picked) ?? fallbackSeason();
 
   return (
     <CollapsibleCard
@@ -96,8 +94,8 @@ export function SubtitleCoverageCard({
                 value: String(s.season),
                 label: s.season === 0 ? "Specials" : `S${s.season}`,
               }))}
-              value={String(seasonNumber)}
-              onChange={(v) => setSeasonNumber(Number(v))}
+              value={String(season?.season)}
+              onChange={(v) => setPicked(Number(v))}
             />
           </View>
         ) : null}
