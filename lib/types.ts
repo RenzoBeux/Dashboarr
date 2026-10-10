@@ -2537,19 +2537,32 @@ export type BazarrWantedMoviesResponse = BazarrWantedResponse<BazarrWantedMovie>
 export type BazarrWantedEpisodesResponse = BazarrWantedResponse<BazarrWantedEpisode>;
 
 export interface BazarrHistoryItem {
+  // 0 Delete, 1 Download, 2 Manual, 3 Upgrade, 4 Upload, 5 Sync,
+  // 6 Translated, 7 Extracted (Bazarr's HistoryAction enum).
   action: number;
+  // Humanised by Bazarr ("2 hours ago"); see parsed_timestamp.
   timestamp: string;
+  // strftime("%x %X") in the server's locale, e.g. "10/09/26 14:22:05".
+  parsed_timestamp?: string;
   description: string;
-  language?: { name: string; code2: string; code3?: string };
+  language?: { name: string; code2: string; code3?: string; forced?: boolean; hi?: boolean };
   provider?: string;
+  // "93.33%".
   score?: string;
+  subs_id?: string;
   title?: string;
   seriesTitle?: string;
   episodeTitle?: string;
+  // "1x02".
+  episode_number?: string;
   subtitles_path?: string;
   radarrId?: number;
   sonarrSeriesId?: number;
   sonarrEpisodeId?: number;
+  upgradable?: boolean;
+  blacklisted?: boolean;
+  matches?: string[];
+  dont_matches?: string[];
 }
 
 export interface BazarrHistoryResponse {
