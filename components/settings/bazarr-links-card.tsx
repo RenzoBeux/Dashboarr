@@ -250,7 +250,11 @@ function LinkSelect({
   ];
 
   const pick = (next: string) => {
-    if (next === value) return;
+    // Re-picking a hand-set link that detection also finds returns the row to
+    // automatic (when no other Bazarr claims it); any other re-pick is a no-op.
+    const backToAutomatic =
+      state.how === "manual" && next === detectedId && !ownerOf(next);
+    if (next === value && !backToAutomatic) return;
     if (next === ARR_LINK_OFF) {
       updateInstance("bazarr", bazarrId, { [linkField(kind)]: ARR_LINK_OFF });
       toast(`${label} unlinked`);
