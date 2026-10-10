@@ -101,6 +101,13 @@ describe("buildAudioTags", () => {
     ).toEqual([{ code2: "fr", name: "French", original: true }]);
   });
 
+  it("marks a base-language track original for a regional original language", () => {
+    expect(buildAudioTags("por/eng", { id: 1, name: "Portuguese (Brazil)" })).toEqual([
+      { code2: "pt", name: "Portuguese", original: true },
+      { code2: "en", name: "English", original: false },
+    ]);
+  });
+
   it("is empty without audio info", () => {
     expect(buildAudioTags(undefined)).toEqual([]);
   });

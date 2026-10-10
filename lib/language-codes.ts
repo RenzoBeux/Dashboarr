@@ -132,6 +132,15 @@ const REGION_VARIANTS: Record<string, string> = {
   "es-mx": "ea",
 };
 
+const VARIANT_BASE: Record<string, string> = Object.fromEntries(
+  Object.entries(REGION_VARIANTS).map(([tag, code2]) => [code2, tag.split("-")[0]]),
+);
+
+/** The language a regional variant belongs to: "pb" → "pt", "ea" → "es". */
+export function baseLanguageCode(code2: string): string {
+  return VARIANT_BASE[code2] ?? code2;
+}
+
 /**
  * Identify a language from any of the spellings above. Null for an empty,
  * unknown or "undetermined" (`und`) tag, so callers can drop it.

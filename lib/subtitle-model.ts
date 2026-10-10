@@ -1,4 +1,4 @@
-import { normalizeLanguage, parseLanguageList } from "@/lib/language-codes";
+import { baseLanguageCode, normalizeLanguage, parseLanguageList } from "@/lib/language-codes";
 import type {
   ArrLanguage,
   BazarrEpisode,
@@ -138,10 +138,14 @@ export function buildAudioTags(
   const original = normalizeLanguage(
     typeof originalLanguage === "string" ? originalLanguage : originalLanguage?.name,
   );
+  // The arr names regional originals ("Portuguese (Brazil)" → pb) that file
+  // tracks only tag by base language (por → pt).
+  const isOriginal = (code2: string) =>
+    !!original && baseLanguageCode(original.code2) === baseLanguageCode(code2);
   return langs.map((l) => ({
     code2: l.code2,
     name: l.name,
-    original: !!original && original.code2 === l.code2,
+    original: isOriginal(l.code2),
   }));
 }
 
