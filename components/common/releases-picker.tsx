@@ -21,6 +21,10 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  SearchingIndicator,
+  SearchElapsed,
+} from "@/components/ui/searching-indicator";
 import { lightHaptic } from "@/lib/haptics";
 import { getHttpErrorMessage, isAbortError } from "@/lib/http-client";
 import { useModalFlow } from "@/hooks/use-modal-flow";
@@ -256,8 +260,15 @@ export function ReleasesPicker({
     [releaseFilters, selectedFilterId],
   );
 
-  const { data, isLoading, isError, error, isFetching, refetch, dataUpdatedAt } =
-    query;
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    isFetching,
+    refetch,
+    dataUpdatedAt,
+  } = query;
 
   // Loading-time progression: skeletons until 8s, then contextual empty state
   // with a "this can take up to a minute" hint, then a "still searching" hint
@@ -317,7 +328,14 @@ export function ReleasesPicker({
     // with the quick chips, matching how the *arr web UI stacks them.
     if (selectedFilter) out = applyArrCustomFilter(out, selectedFilter);
     return sortReleases(out, sortKey);
-  }, [data, hideRejected, protocolFilter, qualityFilter, selectedFilter, sortKey]);
+  }, [
+    data,
+    hideRejected,
+    protocolFilter,
+    qualityFilter,
+    selectedFilter,
+    sortKey,
+  ]);
 
   // If every result was rejected and the user has hideRejected on, auto-flip
   // it once so they aren't staring at an empty list. Track that we did this
@@ -430,7 +448,9 @@ export function ReleasesPicker({
             <>
               <Text className="text-zinc-300 text-sm font-medium">
                 {filtered.length}
-                {filtered.length !== data.length ? ` of ${data.length}` : ""}{" "}
+                {filtered.length !== data.length
+                  ? ` of ${data.length}`
+                  : ""}{" "}
                 result{data.length === 1 ? "" : "s"}
               </Text>
               {dataUpdatedAt > 0 && (
@@ -438,9 +458,7 @@ export function ReleasesPicker({
                   · {formatRelative(dataUpdatedAt)}
                 </Text>
               )}
-              {isFetching && (
-                <ActivityIndicator size="small" color="#3b82f6" />
-              )}
+              {isFetching && <ActivityIndicator size="small" color="#3b82f6" />}
             </>
           ) : (
             <Text className="text-zinc-500 text-sm">
@@ -488,7 +506,7 @@ export function ReleasesPicker({
         <View className="flex-1">
           {showSearchingMessage ? (
             <EmptyState
-              icon={<Icon icon={Search} size={28} color="#71717a" />}
+              icon={<SearchingIndicator />}
               title="Searching indexers…"
               message={
                 showLongSearchingHint
@@ -496,13 +514,16 @@ export function ReleasesPicker({
                   : "This can take up to a minute."
               }
               action={
-                showLongSearchingHint ? (
-                  <Button
-                    label="Restart search"
-                    variant="outline"
-                    onPress={handleRefresh}
-                  />
-                ) : undefined
+                <View className="items-center gap-4">
+                  <SearchElapsed seconds={elapsed} />
+                  {showLongSearchingHint ? (
+                    <Button
+                      label="Restart search"
+                      variant="outline"
+                      onPress={handleRefresh}
+                    />
+                  ) : null}
+                </View>
               }
             />
           ) : (
@@ -522,7 +543,9 @@ export function ReleasesPicker({
             // so an AbortError landing here is always the fetch timeout.
             isAbortError(error)
               ? "Search timed out. Indexers may be slow or unreachable. Try again."
-              : (getHttpErrorMessage(error) ?? error?.message ?? "Unknown error")
+              : (getHttpErrorMessage(error) ??
+                error?.message ??
+                "Unknown error")
           }
           action={<Button label="Retry" onPress={handleRefresh} />}
         />
@@ -565,7 +588,9 @@ export function ReleasesPicker({
       />
 
       <ReleaseDetailSheet
-        release={flow.isOpen("detail") ? (flow.payload("detail") ?? null) : null}
+        release={
+          flow.isOpen("detail") ? (flow.payload("detail") ?? null) : null
+        }
         service={service}
         instanceId={instanceId}
         onClose={flow.close}
