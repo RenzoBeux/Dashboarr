@@ -113,7 +113,7 @@ export function useSubtitleActions({
   const router = useRouter();
   const flow = useModalFlow<SubtitleFlowSteps>();
   const caps = useBazarrCapabilities(bazarrId);
-  const { data: profiles } = useBazarrLanguageProfiles(bazarrId);
+  const { data: profiles, isPending: profilesPending } = useBazarrLanguageProfiles(bazarrId);
   const { data: enabledLanguages } = useBazarrEnabledLanguages(bazarrId);
   const jobsActive = useBazarrJobsActive(bazarrId);
 
@@ -262,9 +262,11 @@ export function useSubtitleActions({
   );
 
   const profileName =
-    profileId != null
-      ? (profiles?.find((p) => p.profileId === profileId)?.name ?? "Unknown profile")
-      : null;
+    profileId == null
+      ? null
+      : profilesPending
+        ? "…" // names not loaded yet; not "Unknown"
+        : (profiles?.find((p) => p.profileId === profileId)?.name ?? "Unknown profile");
 
   // --- Handlers for SubtitlesBlock ---
 
