@@ -4248,7 +4248,6 @@ export function getDemoResponse(
       if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
-      if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
       if (normalized === "/system/settings") return DEMO_BAZARR_SETTINGS;
       return undefined;
     }
