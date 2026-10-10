@@ -108,6 +108,18 @@ describe("buildAudioTags", () => {
     ]);
   });
 
+  it("prefers an exact original over a regional variant's base", () => {
+    expect(
+      buildAudioTags(
+        [
+          { name: "Spanish", code2: "es", code3: "spa" },
+          { name: "Spanish (Latino)", code2: "ea", code3: "spl" },
+        ],
+        "Spanish",
+      ).map((t) => t.original),
+    ).toEqual([true, false]);
+  });
+
   it("is empty without audio info", () => {
     expect(buildAudioTags(undefined)).toEqual([]);
   });

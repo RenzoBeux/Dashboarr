@@ -139,9 +139,14 @@ export function buildAudioTags(
     typeof originalLanguage === "string" ? originalLanguage : originalLanguage?.name,
   );
   // The arr names regional originals ("Portuguese (Brazil)" → pb) that file
-  // tracks only tag by base language (por → pt).
+  // tracks only tag by base language (por → pt): match the base only when no
+  // track matches exactly, so a Spanish film's Latino dub isn't original too.
+  const exact = !!original && langs.some((l) => l.code2 === original.code2);
   const isOriginal = (code2: string) =>
-    !!original && baseLanguageCode(original.code2) === baseLanguageCode(code2);
+    !!original &&
+    (exact
+      ? code2 === original.code2
+      : baseLanguageCode(original.code2) === baseLanguageCode(code2));
   return langs.map((l) => ({
     code2: l.code2,
     name: l.name,
