@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useShallow } from "zustand/react/shallow";
 import { useConfigStore, type ServiceInstance } from "@/store/config-store";
 import {
   useEnabledInstances,
@@ -47,15 +48,22 @@ function readArrCandidates(): Record<ArrKind, ArrCandidate[]> {
   return { radarr: toCandidates("radarr"), sonarr: toCandidates("sonarr") };
 }
 
-// Ids only, never keys: the query key ends up in the cache and devtools. A new
-// or removed arr instance re-runs detection; a changed API key is picked up by
-// "Detect again".
+// Ids and whether each has a key, never the keys: the query key ends up in the
+// cache and devtools. A new or removed arr instance re-runs detection, and so
+// does a key saved after the instance was enabled (the editor's Enabled switch
+// writes before Save); a changed API key is picked up by "Detect again".
 function useCandidateFingerprint(): string {
   const radarr = useEnabledInstances("radarr");
   const sonarr = useEnabledInstances("sonarr");
+  const keyed = useConfigStore(
+    useShallow((s) =>
+      [...radarr, ...sonarr].map((i) => !!s.instanceSecrets[i.id]?.apiKey?.trim()),
+    ),
+  );
   return useMemo(
-    () => [...radarr, ...sonarr].map((i) => i.id).join(","),
-    [radarr, sonarr],
+    () =>
+      [...radarr, ...sonarr].map((i, n) => `${i.id}${keyed[n] ? "" : ":nokey"}`).join(","),
+    [radarr, sonarr, keyed],
   );
 }
 
