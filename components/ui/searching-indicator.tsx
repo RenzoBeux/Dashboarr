@@ -119,7 +119,10 @@ export function SearchElapsed({ seconds }: { seconds: number }) {
   const s = String(seconds % 60).padStart(2, "0");
   return (
     <Text
-      className="text-zinc-500 text-xs text-center tabular-nums"
+      className="text-zinc-500 text-xs text-center"
+      // Inline on purpose: NativeWind drops the tabular-nums class on native
+      // (font-variant-numeric is unsupported), so the digits would jitter.
+      style={{ fontVariant: ["tabular-nums"] }}
       accessibilityLabel={`Searching for ${seconds} second${seconds === 1 ? "" : "s"}`}
     >
       {m}:{s}
