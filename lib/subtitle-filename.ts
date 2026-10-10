@@ -61,8 +61,12 @@ export function parseSubtitleFilename(name: string): {
   const hi = run.some((t) => HI_TAGS.has(t) && (t !== "hi" || code2 !== undefined));
   if (!code2 && run.includes("hi")) {
     // A lone "hi" is more likely Hindi than a flag on an unnamed language;
-    // "sdh"/"cc" next to it still flag Hindi HI.
-    return { code2: "hi", forced, hi: run.some((t) => t === "sdh" || t === "cc") };
+    // "sdh"/"cc" or a second "hi" (Bazarr's own Film.hi.hi.srt) flag Hindi HI.
+    return {
+      code2: "hi",
+      forced,
+      hi: run.filter((t) => t === "hi").length > 1 || run.some((t) => t === "sdh" || t === "cc"),
+    };
   }
   return { code2, forced, hi };
 }

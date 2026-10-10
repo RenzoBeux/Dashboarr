@@ -22,6 +22,7 @@ describe("parseSubtitleFilename", () => {
     ["Film.pt-BR.srt", { code2: "pb", forced: false, hi: false }],
     ["Film.hi.srt", { code2: "hi", forced: false, hi: false }],
     ["Film.hi.sdh.srt", { code2: "hi", forced: false, hi: true }],
+    ["Film.hi.hi.srt", { code2: "hi", forced: false, hi: true }],
     ["Film.srt", { code2: undefined, forced: false, hi: false }],
     ["Film.2023.1080p.srt", { code2: undefined, forced: false, hi: false }],
     ["Film.2023.1080p.de.srt", { code2: "de", forced: false, hi: false }],
