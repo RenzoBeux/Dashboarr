@@ -2098,6 +2098,15 @@ const DEMO_BAZARR_HISTORY = {
   total: 2,
 };
 
+// Only the connection fields link detection reads. Demo instances carry no
+// API keys, so detection finds nothing and the demo links set in
+// config-store's pairDemoBazarrLinks stay in charge.
+const DEMO_BAZARR_SETTINGS = {
+  general: { use_radarr: true, use_sonarr: true },
+  radarr: { ip: "radarr", port: 7878, apikey: "" },
+  sonarr: { ip: "sonarr", port: 8989, apikey: "" },
+};
+
 const DEMO_BAZARR_PROVIDERS = [
   { name: "OpenSubtitles", status: "ok" },
   { name: "Subscene", status: "ok" },
@@ -4055,6 +4064,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
       if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
+      if (normalized === "/system/settings") return DEMO_BAZARR_SETTINGS;
       return undefined;
     }
     case "glances": {

@@ -1,5 +1,12 @@
 import { serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
+import {
+  formatArrAddress,
+  matchArrInstance,
+  type ArrCandidate,
+  type ArrKind,
+  type BazarrArrSide,
+} from "@/lib/bazarr-link";
 import type {
   BazarrHistoryResponse,
   BazarrMissingSubtitle,
@@ -127,4 +134,63 @@ export async function searchWantedEpisode(
   if (failures.length > 0 && failures.length === results.length) {
     throw failures[0].reason;
   }
+}
+
+// --- Radarr/Sonarr link detection ---
+
+export interface ArrLinkSideResult {
+  // The matched app instance, or null.
+  instanceId: string | null;
+  // Where Bazarr says it reaches that arr ("radarr:7878"), for display.
+  address: string | null;
+}
+
+export interface ArrLinkDetection {
+  radarr: ArrLinkSideResult;
+  sonarr: ArrLinkSideResult;
+}
+
+/**
+ * Which of the given Radarr/Sonarr instances this Bazarr is configured
+ * against (see lib/bazarr-link.ts for the model).
+ *
+ * `/system/settings` is the only place Bazarr exposes that, and it returns the
+ * WHOLE configuration — every subtitle-provider password included. So the
+ * response never leaves this function: the match is computed here and only
+ * instance ids and display addresses are returned, which keeps the secrets out
+ * of the React Query cache, devtools and any error report.
+ */
+export async function detectArrLinks(
+  candidates: { radarr: readonly ArrCandidate[]; sonarr: readonly ArrCandidate[] },
+  instanceId?: string,
+): Promise<ArrLinkDetection> {
+  const settings = await serviceRequest<unknown>("bazarr", "/system/settings", {
+    instanceId,
+  });
+  const result = (kind: ArrKind): ArrLinkSideResult => {
+    const side = readArrSide(settings, kind);
+    return {
+      instanceId: matchArrInstance(side, candidates[kind]),
+      address: formatArrAddress(side),
+    };
+  };
+  return { radarr: result("radarr"), sonarr: result("sonarr") };
+}
+
+// Bazarr settings: general.use_radarr / use_sonarr toggle each integration;
+// radarr.{ip, port, apikey} and sonarr.{…} hold the connection.
+function readArrSide(settings: unknown, kind: ArrKind): BazarrArrSide {
+  const root = isRecord(settings) ? settings : {};
+  const general = isRecord(root.general) ? root.general : {};
+  const conn = isRecord(root[kind]) ? root[kind] : {};
+  return {
+    enabled: general[`use_${kind}`] === true,
+    apiKey: typeof conn.apikey === "string" ? conn.apikey : undefined,
+    host: typeof conn.ip === "string" ? conn.ip : undefined,
+    port: typeof conn.port === "number" ? conn.port : undefined,
+  };
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
