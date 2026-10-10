@@ -2131,7 +2131,12 @@ function demoBazarrMovie(radarrId: number) {
     { ...demoLang("en"), path: `${base}.en.srt`, forced: false, hi: radarrId % 3 === 0, file_size: 98304, embedded_track_id: null, id: radarrId * 10 + 1 },
     { ...demoLang("en"), path: null, forced: false, hi: false, file_size: null, embedded_track_id: 3, id: radarrId * 10 + 2 },
     ...(radarrId % 2 === 0
-      ? [{ ...demoLang("de"), path: `${base}.de.forced.srt`, forced: true, hi: false, file_size: 4096, embedded_track_id: null, id: radarrId * 10 + 3 }]
+      ? [
+          // Bazarr counts a forced German file only against a forced item, so
+          // the profile's plain German needs its own file to be covered.
+          { ...demoLang("de"), path: `${base}.de.srt`, forced: false, hi: false, file_size: 90112, embedded_track_id: null, id: radarrId * 10 + 3 },
+          { ...demoLang("de"), path: `${base}.de.forced.srt`, forced: true, hi: false, file_size: 4096, embedded_track_id: null, id: radarrId * 10 + 4 },
+        ]
       : []),
   ];
   return {
