@@ -41,8 +41,8 @@ function Ring({ progress }: { progress: SharedValue<number> }) {
 /**
  * The icon for a long-running search's waiting state: a magnifier sweeping a
  * small circle while rings pulse out from it, so a search that takes a minute
- * never looks frozen. Drop it into `EmptyState`'s `icon` slot with `iconClassName="mt-5 mb-8"`
- * so the rings clear the text; pair it with
+ * never looks frozen. Drop it into `EmptyState`'s `icon` slot with
+ * `iconClassName="mt-5 mb-8"` so the rings clear the text; pair it with
  * `SearchElapsed` so there is a moving number even with reduced motion on.
  */
 export function SearchingIndicator() {
