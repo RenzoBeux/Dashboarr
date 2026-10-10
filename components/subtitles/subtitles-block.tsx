@@ -53,6 +53,8 @@ export function SubtitlesBlock({
 }) {
   const divider = tone === "raised" ? "border-zinc-700" : "border-zinc-800";
   const ring = tone === "raised" ? "border-surface-light" : "border-surface";
+  // Buttons need a fill other than the panel's to read as buttons.
+  const buttonFill = tone === "raised" ? "bg-zinc-700" : "bg-surface-light";
   return (
     <View>
       {rows.length === 0 ? (
@@ -74,9 +76,9 @@ export function SubtitlesBlock({
       )}
 
       <View className={`flex-row gap-2 px-3 py-2.5 border-t ${divider}`}>
-        <ToolButton icon={Search} label="Search" onPress={onSearchAll} />
-        <ToolButton icon={UserSearch} label="Manual" onPress={onManual} />
-        <ToolButton icon={Upload} label="Upload" onPress={onUpload} />
+        <ToolButton icon={Search} label="Search" fill={buttonFill} onPress={onSearchAll} />
+        <ToolButton icon={UserSearch} label="Manual" fill={buttonFill} onPress={onManual} />
+        <ToolButton icon={Upload} label="Upload" fill={buttonFill} onPress={onUpload} />
       </View>
 
       {hideProfile ? null : (
@@ -185,16 +187,18 @@ function SubtitleRowView({
 function ToolButton({
   icon,
   label,
+  fill,
   onPress,
 }: {
   icon: React.ComponentType<any>;
   label: string;
+  fill: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-surface-light py-2 active:opacity-70"
+      className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl ${fill} py-2 active:opacity-70`}
       accessibilityRole="button"
     >
       <Icon icon={icon} size={14} color="#d4d4d8" />
