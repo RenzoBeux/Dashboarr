@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { Download, ExternalLink } from "lucide-react-native";
 import { BottomSheet, SheetTitleRow } from "@/components/ui/bottom-sheet";
 import { DetailStat, DetailStatGrid, MatchList } from "@/components/ui/detail-stat";
@@ -8,6 +8,8 @@ import { Icon } from "@/components/ui/icon";
 import { SubtitleTrackChip } from "@/components/subtitles/subtitle-track-chip";
 import { ScoreBadge } from "@/components/subtitles/subtitle-result-item";
 import { normalizeLanguage } from "@/lib/language-codes";
+import { openInBrowser } from "@/lib/open-in-browser";
+import { toastError } from "@/components/ui/toast";
 import type { BazarrSubtitleResult } from "@/lib/types";
 
 /**
@@ -104,12 +106,18 @@ export function SubtitleResultDetailSheet({
           <MatchList matched={result.matches} missed={result.dont_matches} />
 
           {result.url ? (
-            <View className="flex-row items-center gap-1 mb-3">
+            <Pressable
+              onPress={() =>
+                openInBrowser(result.url!).catch((err) => toastError("Couldn't open the link", err))
+              }
+              className="flex-row items-center gap-1 mb-3 active:opacity-70"
+              accessibilityRole="link"
+            >
               <Icon icon={ExternalLink} size={12} color="#71717a" />
               <Text className="text-zinc-500 text-xs flex-1" numberOfLines={1}>
                 {result.url}
               </Text>
-            </View>
+            </Pressable>
           ) : null}
         </>
       ) : null}
