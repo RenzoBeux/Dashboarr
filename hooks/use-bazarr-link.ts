@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { useConfigStore } from "@/store/config-store";
+import { useConfigStore, type ServiceInstance } from "@/store/config-store";
 import {
   useEnabledInstances,
   useInstanceTarget,
@@ -71,15 +71,15 @@ function detectionQuery(bazarrId: string, fingerprint: string, enabled: boolean)
 }
 
 /**
- * The effective link state of every Bazarr instance in this workspace for one
- * arr kind. `needsDetection(bazarrId)` decides per Bazarr whether its
- * automatic-mode detection may run.
+ * The effective link state of each of `bazarrs` for one arr kind.
+ * `needsDetection(bazarrId)` decides per Bazarr whether its automatic-mode
+ * detection may run.
  */
 function useLinkEntries(
   kind: ArrKind,
+  bazarrs: readonly ServiceInstance[],
   needsDetection: (bazarrId: string) => boolean,
 ): { entries: BazarrLinkEntry[]; detections: (ArrLinkDetection | undefined)[] } {
-  const bazarrs = useAttachedEnabledInstances("bazarr");
   const arrs = useEnabledInstances(kind);
   const fingerprint = useCandidateFingerprint();
   const field = linkField(kind);
@@ -123,18 +123,21 @@ export function useLinkedBazarr(
   const manualOwner = arrId
     ? (bazarrs.find((b) => b[field] === arrId)?.id ?? null)
     : null;
-  const { entries } = useLinkEntries(kind, () => !!arrId && !manualOwner);
+  const { entries } = useLinkEntries(kind, bazarrs, () => !!arrId && !manualOwner);
   const bazarrId = bazarrForArr(arrId, entries);
   const how = entries.find((e) => e.bazarrId === bazarrId)?.state.how ?? null;
   return { bazarrId, how };
 }
 
 /**
- * Every Bazarr instance's link for one kind, detecting wherever automatic —
- * for the settings card's "Linked to …" hints.
+ * Every enabled Bazarr instance's link for one kind, detecting wherever
+ * automatic — for the settings card's "Linked to …" hints and the dashboard
+ * posters. Not limited to the workspace: the settings card edits any instance,
+ * and a widget can be bound to a Bazarr the dashboard doesn't attach.
  */
 export function useBazarrLinkEntries(kind: ArrKind): BazarrLinkEntry[] {
-  return useLinkEntries(kind, () => true).entries;
+  const bazarrs = useEnabledInstances("bazarr");
+  return useLinkEntries(kind, bazarrs, () => true).entries;
 }
 
 /** The Radarr/Sonarr instance a Bazarr instance is linked to, or null. */
@@ -142,7 +145,8 @@ export function useLinkedArrInstance(
   bazarrId: string | null | undefined,
   kind: ArrKind,
 ): string | null {
-  const { entries } = useLinkEntries(kind, (id) => id === bazarrId);
+  const bazarrs = useEnabledInstances("bazarr");
+  const { entries } = useLinkEntries(kind, bazarrs, (id) => id === bazarrId);
   return entries.find((e) => e.bazarrId === bazarrId)?.state.arrId ?? null;
 }
 
