@@ -90,7 +90,10 @@ export function useSeriesSubtitles({
   const audioFor = (be: BazarrEpisode | undefined, ep: SonarrEpisode | undefined): AudioTag[] => {
     const file = ep?.episodeFileId ? episodeFileMap.get(ep.episodeFileId) : undefined;
     const arr = file?.mediaInfo?.audioLanguages;
-    return buildAudioTags(arr || be?.audio_language, series?.originalLanguage);
+    // Parse first: a string of only untagged tracks ("und/und") yields nothing
+    // and should still fall back to Bazarr's languages.
+    const tags = buildAudioTags(arr, series?.originalLanguage);
+    return tags.length > 0 ? tags : buildAudioTags(be?.audio_language, series?.originalLanguage);
   };
   const episodeLanguages = useMemo(() => {
     const map = new Map<number, { audio: AudioTag[]; chips: SubtitleChip[] }>();
