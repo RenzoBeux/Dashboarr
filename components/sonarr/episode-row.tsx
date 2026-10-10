@@ -7,6 +7,7 @@ import {
   Bookmark,
   MoreHorizontal,
   History,
+  Captions,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -28,6 +29,8 @@ import {
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { sonarrEpisodeBarKind, BAR_KIND_COLOR } from "@/lib/arr-poster-status";
 import type { SonarrEpisode, SonarrEpisodeFile } from "@/lib/types";
+import { LanguageLines } from "@/components/subtitles/language-lines";
+import type { AudioTag, SubtitleChip } from "@/lib/subtitle-model";
 
 /**
  * One episode inside a season on the series detail page: status spine, code +
@@ -40,12 +43,17 @@ export function EpisodeRow({
   episode,
   episodeFile,
   isDownloading,
+  languages,
+  onOpenSubtitles,
 }: {
   seriesId: number;
   instanceId?: string;
   episode: SonarrEpisode;
   episodeFile?: SonarrEpisodeFile;
   isDownloading: boolean;
+  // Audio + subtitle tags, when a Bazarr instance serves this series.
+  languages?: { audio: AudioTag[]; chips: SubtitleChip[] };
+  onOpenSubtitles?: () => void;
 }) {
   const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
@@ -76,6 +84,15 @@ export function EpisodeRow({
           ),
         ),
     },
+    ...(onOpenSubtitles
+      ? [
+          {
+            label: "Subtitles",
+            icon: <Icon icon={Captions} size={20} color="#a1a1aa" />,
+            onPress: () => flow.whenClear(onOpenSubtitles),
+          },
+        ]
+      : []),
     {
       label: "History",
       icon: <Icon icon={History} size={20} color="#a1a1aa" />,
@@ -126,6 +143,19 @@ export function EpisodeRow({
             </Text>
           ) : airLabel ? (
             <Text className="text-zinc-600 text-xs">{airLabel}</Text>
+          ) : null}
+          {languages ? (
+            <View className="mt-0.5">
+              <LanguageLines
+                audio={languages.audio}
+                subtitles={languages.chips}
+                onPress={onOpenSubtitles}
+                accessibilityLabel={`${formatEpisodeCode(
+                  episode.seasonNumber,
+                  episode.episodeNumber,
+                )} subtitles`}
+              />
+            </View>
           ) : null}
         </View>
         <View className="flex-row items-center gap-1">

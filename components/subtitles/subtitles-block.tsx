@@ -31,6 +31,8 @@ export function SubtitlesBlock({
   onUpload,
   profileName,
   onPressProfile,
+  hideProfile = false,
+  tone = "surface",
 }: {
   rows: readonly SubtitleRow[];
   // Rows with a search the app is still waiting on.
@@ -43,7 +45,14 @@ export function SubtitlesBlock({
   // null = no profile assigned.
   profileName: string | null;
   onPressProfile?: () => void;
+  // Episodes inherit their series' profile, which is set on the series.
+  hideProfile?: boolean;
+  // The surface the block sits on: a card (surface) or a lighter panel
+  // inside a sheet (raised), which needs stronger dividers and badge rings.
+  tone?: "surface" | "raised";
 }) {
+  const divider = tone === "raised" ? "border-zinc-700" : "border-zinc-800";
+  const ring = tone === "raised" ? "border-surface-light" : "border-surface";
   return (
     <View>
       {rows.length === 0 ? (
@@ -58,31 +67,37 @@ export function SubtitlesBlock({
             busy={busyKeys?.has(row.key) ?? false}
             onSearch={() => onSearchLanguage(row)}
             onMenu={() => onRowMenu(row)}
+            divider={divider}
+            ring={ring}
           />
         ))
       )}
 
-      <View className="flex-row gap-2 px-3 py-2.5 border-t border-zinc-800">
+      <View className={`flex-row gap-2 px-3 py-2.5 border-t ${divider}`}>
         <ToolButton icon={Search} label="Search" onPress={onSearchAll} />
         <ToolButton icon={UserSearch} label="Manual" onPress={onManual} />
         <ToolButton icon={Upload} label="Upload" onPress={onUpload} />
       </View>
 
-      <Pressable
-        onPress={onPressProfile}
-        disabled={!onPressProfile}
-        className="flex-row items-center justify-between px-4 py-3 border-t border-zinc-800 active:opacity-70"
-        accessibilityRole="button"
-        accessibilityLabel={`Language profile: ${profileName ?? "none"}`}
-      >
-        <Text className="text-zinc-500 text-xs">Language profile</Text>
-        <View className="flex-row items-center gap-1">
-          <Text className="text-zinc-200 text-xs">{profileName ?? "None"}</Text>
-          {onPressProfile ? (
-            <Icon icon={ChevronRight} size={14} color="#71717a" />
-          ) : null}
-        </View>
-      </Pressable>
+      {hideProfile ? null : (
+        <Pressable
+          onPress={onPressProfile}
+          disabled={!onPressProfile}
+          className={`flex-row items-center justify-between px-4 py-3 border-t ${divider} active:opacity-70`}
+          accessibilityRole="button"
+          accessibilityLabel={`Language profile: ${profileName ?? "none"}`}
+        >
+          <Text className="text-zinc-500 text-xs">Language profile</Text>
+          <View className="flex-row items-center gap-1">
+            <Text className="text-zinc-200 text-xs">
+              {profileName ?? "None"}
+            </Text>
+            {onPressProfile ? (
+              <Icon icon={ChevronRight} size={14} color="#71717a" />
+            ) : null}
+          </View>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -92,21 +107,26 @@ function SubtitleRowView({
   busy,
   onSearch,
   onMenu,
+  divider,
+  ring,
 }: {
   row: SubtitleRow;
   busy: boolean;
   onSearch: () => void;
   onMenu: () => void;
+  divider: string;
+  ring: string;
 }) {
   const missing = row.state === "missing";
   return (
-    <View className="flex-row items-center gap-3 px-4 py-2.5 border-t border-zinc-800">
+    <View className={`flex-row items-center gap-3 px-4 py-2.5 border-t ${divider}`}>
       <SubtitleTrackChip
         code={row.code2}
         name={row.name}
         state={row.state}
         forced={row.forced}
         hi={row.hi}
+        ringClassName={ring}
       />
       <View className="flex-1 min-w-0">
         <Text

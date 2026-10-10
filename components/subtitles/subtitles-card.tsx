@@ -35,9 +35,7 @@ export function SubtitlesCard({
     bazarrId,
     radarrId,
   );
-  const bazarrName = useConfigStore(
-    (s) => s.serviceInstances.bazarr?.find((b) => b.id === bazarrId)?.name ?? "Bazarr",
-  );
+  const bazarrName = useBazarrName(bazarrId);
   const target = { type: "movie" as const, radarrId };
   const actions = useSubtitleActions({
     bazarrId,
@@ -57,17 +55,7 @@ export function SubtitlesCard({
 
   return (
     <View className="mb-5">
-      <View className="flex-row items-baseline justify-between">
-        <SectionLabel>Subtitles</SectionLabel>
-        {/* Which Bazarr serves this page. Plain text on purpose: the settings
-            editor lives in another tab's stack, so a link would switch tabs. */}
-        <Text
-          className="text-zinc-500 text-xs mr-1 mb-2"
-          accessibilityLabel={`Subtitles come from ${bazarrName}`}
-        >
-          {bazarrName}
-        </Text>
-      </View>
+      <SubtitlesSectionLabel bazarrId={bazarrId} />
 
       {isLoading ? (
         <Skeleton width="100%" height={52} borderRadius={16} />
@@ -126,6 +114,33 @@ export function SubtitlesCard({
       )}
 
       {actions.modals}
+    </View>
+  );
+}
+
+function useBazarrName(bazarrId: string): string {
+  return useConfigStore(
+    (s) => s.serviceInstances.bazarr?.find((b) => b.id === bazarrId)?.name ?? "Bazarr",
+  );
+}
+
+/**
+ * "SUBTITLES" with the serving Bazarr instance's name on the right — the
+ * heading of the movie card and the series coverage card. The name is plain
+ * text on purpose: the settings editor lives in another tab's stack, so a
+ * link would switch tabs.
+ */
+export function SubtitlesSectionLabel({ bazarrId }: { bazarrId: string }) {
+  const bazarrName = useBazarrName(bazarrId);
+  return (
+    <View className="flex-row items-baseline justify-between">
+      <SectionLabel>Subtitles</SectionLabel>
+      <Text
+        className="text-zinc-500 text-xs mr-1 mb-2"
+        accessibilityLabel={`Subtitles come from ${bazarrName}`}
+      >
+        {bazarrName}
+      </Text>
     </View>
   );
 }
