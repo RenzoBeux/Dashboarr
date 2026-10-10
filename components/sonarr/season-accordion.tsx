@@ -197,7 +197,7 @@ export function SeasonAccordion({
           ) : null
         }
       >
-        {episodes && (
+        {expanded && episodes && (
           <View className="mt-3 gap-1">
             {episodes
               // Descending (latest episode first) to match Sonarr's web UI.
