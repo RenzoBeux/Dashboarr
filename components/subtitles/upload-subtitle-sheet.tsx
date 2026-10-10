@@ -49,9 +49,15 @@ export function UploadSubtitleSheet({
   const [forced, setForced] = useState(false);
   const [hi, setHi] = useState(false);
 
-  // Prefill from each newly picked file.
+  // Prefill from each newly picked file; start blank when the sheet opens
+  // again without one (it stays mounted between uploads).
   useEffect(() => {
-    if (!fileName) return;
+    if (!fileName) {
+      setCode2(null);
+      setForced(false);
+      setHi(false);
+      return;
+    }
     const parsed = parseSubtitleFilename(fileName);
     setCode2(parsed.code2 ?? languages[0]?.code2 ?? null);
     setForced(parsed.forced);
