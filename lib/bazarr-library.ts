@@ -14,12 +14,16 @@ export type LibraryFilter = "all" | "missing" | "complete" | "noprofile";
 export type LibraryItemState = Exclude<LibraryFilter, "all">;
 
 /** A movie or series' subtitle state. No profile wins: nothing is wanted. */
-export function classifyMovie(movie: Pick<BazarrMovie, "profileId" | "missing_subtitles">): LibraryItemState {
+export function classifyMovie(
+  movie: Pick<BazarrMovie, "profileId" | "missing_subtitles">,
+): LibraryItemState {
   if (movie.profileId == null) return "noprofile";
   return movie.missing_subtitles.length > 0 ? "missing" : "complete";
 }
 
-export function classifySeries(series: Pick<BazarrSeries, "profileId" | "episodeMissingCount">): LibraryItemState {
+export function classifySeries(
+  series: Pick<BazarrSeries, "profileId" | "episodeMissingCount">,
+): LibraryItemState {
   if (series.profileId == null) return "noprofile";
   return series.episodeMissingCount > 0 ? "missing" : "complete";
 }
@@ -46,6 +50,20 @@ export interface LanguageCoverage {
   total: number;
 }
 
+/** The languages each language profile asks for, by profile id. */
+export type ProfileLanguages = ReadonlyMap<number, readonly string[]>;
+
+export function profileLanguageMap(
+  profiles: readonly BazarrLanguageProfile[],
+): ProfileLanguages {
+  return new Map(
+    profiles.map((p) => [
+      p.profileId,
+      [...new Set(p.items.map((i) => i.language))],
+    ]),
+  );
+}
+
 /**
  * Per-language coverage across movies: for every language any profile asks
  * for, how many of the movies wanting it have it. Ordered by how many movies
@@ -55,9 +73,7 @@ export function computeLanguageCoverage(
   movies: readonly Pick<BazarrMovie, "profileId" | "missing_subtitles">[],
   profiles: readonly BazarrLanguageProfile[],
 ): LanguageCoverage[] {
-  const profileLangs = new Map(
-    profiles.map((p) => [p.profileId, [...new Set(p.items.map((i) => i.language))]]),
-  );
+  const profileLangs = profileLanguageMap(profiles);
   const totals = new Map<string, LanguageCoverage>();
   for (const movie of movies) {
     if (movie.profileId == null) continue;
@@ -69,36 +85,75 @@ export function computeLanguageCoverage(
       totals.set(code2, entry);
     }
   }
-  return [...totals.values()].sort((a, b) => b.total - a.total || a.code2.localeCompare(b.code2));
+  return [...totals.values()].sort(
+    (a, b) => b.total - a.total || a.code2.localeCompare(b.code2),
+  );
 }
 
 /**
- * Apply the filter chips (and an optional "missing this language" filter from
- * a coverage bar) to the movies.
+ * A coverage bar's filter: the movies missing the language, or the movies
+ * that have it. "Have" counts the same way the bar does — the profile wants
+ * the language and it isn't missing — so the list length matches the bar.
  */
-export function filterMovies<T extends Pick<BazarrMovie, "profileId" | "missing_subtitles">>(
+export interface LanguageFilter {
+  code2: string;
+  show: "missing" | "have";
+}
+
+/** A tap on a coverage bar cycles off → missing → have → off. */
+export function nextLanguageFilter(
+  current: LanguageFilter | null,
+  code2: string,
+): LanguageFilter | null {
+  if (current?.code2 !== code2) return { code2, show: "missing" };
+  return current.show === "missing" ? { code2, show: "have" } : null;
+}
+
+function matchesLanguage(
+  movie: Pick<BazarrMovie, "profileId" | "missing_subtitles">,
+  lang: LanguageFilter,
+  profileLangs: ProfileLanguages,
+): boolean {
+  const missing = movie.missing_subtitles.some((s) => s.code2 === lang.code2);
+  if (lang.show === "missing") return missing;
+  if (missing || movie.profileId == null) return false;
+  return profileLangs.get(movie.profileId)?.includes(lang.code2) ?? false;
+}
+
+/**
+ * Apply the filter chips (and an optional language filter from a coverage
+ * bar) to the movies.
+ */
+export function filterMovies<
+  T extends Pick<BazarrMovie, "profileId" | "missing_subtitles">,
+>(
   movies: readonly T[],
   filter: LibraryFilter,
-  missingLanguage?: string | null,
+  lang?: LanguageFilter | null,
+  profileLangs: ProfileLanguages = new Map(),
 ): T[] {
   return movies.filter((m) => {
-    if (missingLanguage && !m.missing_subtitles.some((s) => s.code2 === missingLanguage)) {
-      return false;
-    }
+    if (lang && !matchesLanguage(m, lang, profileLangs)) return false;
     return filter === "all" || classifyMovie(m) === filter;
   });
 }
 
-export function filterSeries<T extends Pick<BazarrSeries, "profileId" | "episodeMissingCount">>(
-  series: readonly T[],
-  filter: LibraryFilter,
-): T[] {
-  return filter === "all" ? [...series] : series.filter((s) => classifySeries(s) === filter);
+export function filterSeries<
+  T extends Pick<BazarrSeries, "profileId" | "episodeMissingCount">,
+>(series: readonly T[], filter: LibraryFilter): T[] {
+  return filter === "all"
+    ? [...series]
+    : series.filter((s) => classifySeries(s) === filter);
 }
 
 /** Share of a series' downloaded episodes with every wanted subtitle (0–1). */
-export function seriesCoverage(series: Pick<BazarrSeries, "episodeFileCount" | "episodeMissingCount">): number {
+export function seriesCoverage(
+  series: Pick<BazarrSeries, "episodeFileCount" | "episodeMissingCount">,
+): number {
   if (series.episodeFileCount <= 0) return 0;
-  const complete = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+  const complete = Math.max(
+    0,
+    series.episodeFileCount - series.episodeMissingCount,
+  );
   return complete / series.episodeFileCount;
 }

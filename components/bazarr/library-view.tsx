@@ -48,6 +48,8 @@ import {
   computeLanguageCoverage,
   filterCounts,
   filterMovies,
+  profileLanguageMap,
+  type LanguageFilter,
   filterSeries,
   type LibraryFilter,
 } from "@/lib/bazarr-library";
@@ -102,7 +104,7 @@ export function BazarrLibraryView({
   contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
   const router = useRouter();
-  const [missingLang, setMissingLang] = useState<string | null>(null);
+  const [langFilter, setLangFilter] = useState<LanguageFilter | null>(null);
 
   const moviesQuery = useBazarrMovieLibrary(bazarrId, kind === "movies");
   const seriesQuery = useBazarrSeriesLibrary(bazarrId, kind === "series");
@@ -111,23 +113,37 @@ export function BazarrLibraryView({
   // Artwork, original language and "open" come from the linked arr.
   const radarrId = useLinkedArrInstance(bazarrId, "radarr");
   const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
-  const { data: radarrMovies } = useRadarrMovies(radarrId ?? undefined, !!radarrId && kind === "movies");
-  const { data: sonarrSeries } = useSonarrSeries(sonarrId ?? undefined, !!sonarrId && kind === "series");
+  const { data: radarrMovies } = useRadarrMovies(
+    radarrId ?? undefined,
+    !!radarrId && kind === "movies",
+  );
+  const { data: sonarrSeries } = useSonarrSeries(
+    sonarrId ?? undefined,
+    !!sonarrId && kind === "series",
+  );
   // Unlinked: no lookup at all. A disabled query can still hand back the
   // active instance's cached library, whose ids mean something else.
   const movieLookup = useMemo(
-    () => new Map<number, ArrLookup>((radarrId ? (radarrMovies ?? []) : []).map((m) => [m.id, m])),
+    () =>
+      new Map<number, ArrLookup>(
+        (radarrId ? (radarrMovies ?? []) : []).map((m) => [m.id, m]),
+      ),
     [radarrId, radarrMovies],
   );
   const seriesLookup = useMemo(
-    () => new Map<number, ArrLookup>((sonarrId ? (sonarrSeries ?? []) : []).map((s) => [s.id, s])),
+    () =>
+      new Map<number, ArrLookup>(
+        (sonarrId ? (sonarrSeries ?? []) : []).map((s) => [s.id, s]),
+      ),
     [sonarrId, sonarrSeries],
   );
 
   // Rows whose search the user started, until Bazarr's queue drains.
   const jobsActive = useBazarrJobsActive(bazarrId);
   const [busyMovies, setBusyMovies] = useState<ReadonlySet<number>>(new Set());
-  const [busyEpisodes, setBusyEpisodes] = useState<ReadonlySet<number>>(new Set());
+  const [busyEpisodes, setBusyEpisodes] = useState<ReadonlySet<number>>(
+    new Set(),
+  );
   const [wasActive, setWasActive] = useState(false);
   if (jobsActive !== wasActive) {
     setWasActive(jobsActive);
@@ -139,7 +155,8 @@ export function BazarrLibraryView({
 
   const searchMovie = useBazarrSubtitleMutation(
     bazarrId,
-    (radarrMovieId: number, id) => searchMissingSubtitles({ type: "movie", radarrId: radarrMovieId }, id),
+    (radarrMovieId: number, id) =>
+      searchMissingSubtitles({ type: "movie", radarrId: radarrMovieId }, id),
     (radarrMovieId) => ({ type: "movie", radarrId: radarrMovieId }),
   );
   const searchEpisode = useBazarrSubtitleMutation(
@@ -147,12 +164,20 @@ export function BazarrLibraryView({
     (e: BazarrEpisode, id) =>
       searchSubtitles(
         e.missing_subtitles.map((m) => ({
-          target: { type: "episode" as const, seriesId: e.sonarrSeriesId, episodeId: e.sonarrEpisodeId },
+          target: {
+            type: "episode" as const,
+            seriesId: e.sonarrSeriesId,
+            episodeId: e.sonarrEpisodeId,
+          },
           lang: { code2: m.code2, forced: m.forced, hi: m.hi },
         })),
         id,
       ),
-    (e) => ({ type: "episode", seriesId: e.sonarrSeriesId, episodeId: e.sonarrEpisodeId }),
+    (e) => ({
+      type: "episode",
+      seriesId: e.sonarrSeriesId,
+      episodeId: e.sonarrEpisodeId,
+    }),
   );
   const searchAll = useBazarrSubtitleMutation(
     bazarrId,
@@ -162,25 +187,49 @@ export function BazarrLibraryView({
 
   // --- Movies ---
   const movies = moviesQuery.data ?? [];
-  const movieCounts = useMemo(() => filterCounts(movies, classifyMovie), [movies]);
+  const movieCounts = useMemo(
+    () => filterCounts(movies, classifyMovie),
+    [movies],
+  );
   const coverage = useMemo(
     () => computeLanguageCoverage(movies, profiles ?? []),
     [movies, profiles],
   );
+  const profileLangs = useMemo(
+    () => profileLanguageMap(profiles ?? []),
+    [profiles],
+  );
   const movieIndex = useMemo(
-    () => buildLibraryIndex(movies, (m) => ({ title: m.title, year: m.year ? Number(m.year) : undefined })),
+    () =>
+      buildLibraryIndex(movies, (m) => ({
+        title: m.title,
+        year: m.year ? Number(m.year) : undefined,
+      })),
     [movies],
   );
   const shownMovies = useMemo(
-    () => filterMovies(filterLibraryIndex(movieIndex, query), filter, missingLang),
-    [movieIndex, query, filter, missingLang],
+    () =>
+      filterMovies(
+        filterLibraryIndex(movieIndex, query),
+        filter,
+        langFilter,
+        profileLangs,
+      ),
+    [movieIndex, query, filter, langFilter, profileLangs],
   );
 
   // --- Series ---
   const series = seriesQuery.data ?? [];
-  const seriesCounts = useMemo(() => filterCounts(series, classifySeries), [series]);
+  const seriesCounts = useMemo(
+    () => filterCounts(series, classifySeries),
+    [series],
+  );
   const seriesIndex = useMemo(
-    () => buildLibraryIndex(series, (s) => ({ title: s.title, year: s.year ? Number(s.year) : undefined })),
+    () =>
+      buildLibraryIndex(series, (s) => ({
+        title: s.title,
+        year: s.year ? Number(s.year) : undefined,
+      })),
     [series],
   );
   const shownSeries = useMemo(
@@ -190,13 +239,15 @@ export function BazarrLibraryView({
 
   const counts = kind === "movies" ? movieCounts : seriesCounts;
   const missingTotal = counts.missing;
-  const filtered = filter !== "all" || !!missingLang || query.trim().length > 0;
+  const filtered = filter !== "all" || !!langFilter || query.trim().length > 0;
 
   const openMovie = radarrId
-    ? (m: BazarrMovie) => router.push(`/movie/${m.radarrId}?instanceId=${radarrId}`)
+    ? (m: BazarrMovie) =>
+        router.push(`/movie/${m.radarrId}?instanceId=${radarrId}`)
     : undefined;
   const openSeries = sonarrId
-    ? (s: BazarrSeries) => router.push(`/series/${s.sonarrSeriesId}?instanceId=${sonarrId}`)
+    ? (s: BazarrSeries) =>
+        router.push(`/series/${s.sonarrSeriesId}?instanceId=${sonarrId}`)
     : undefined;
 
   const listHeader = (
@@ -209,7 +260,7 @@ export function BazarrLibraryView({
         ]}
         value={kind}
         onChange={(k) => {
-          setMissingLang(null);
+          setLangFilter(null);
           onKindChange(k);
         }}
         className="mb-3"
@@ -217,10 +268,10 @@ export function BazarrLibraryView({
       {kind === "movies" ? (
         <CoverageBars
           coverage={coverage}
-          selected={missingLang}
-          onSelect={(code2) => {
+          selected={langFilter}
+          onSelect={(next) => {
             lightHaptic();
-            setMissingLang(code2);
+            setLangFilter(next);
           }}
         />
       ) : null}
@@ -233,7 +284,9 @@ export function BazarrLibraryView({
         {FILTERS.map((f) => (
           <FilterChip
             key={f}
-            label={f === "all" ? FILTER_LABEL[f] : `${FILTER_LABEL[f]} ${counts[f]}`}
+            label={
+              f === "all" ? FILTER_LABEL[f] : `${FILTER_LABEL[f]} ${counts[f]}`
+            }
             selected={filter === f}
             onPress={() => setFilter(f)}
           />
@@ -243,7 +296,11 @@ export function BazarrLibraryView({
         <Pressable
           onPress={() =>
             searchAll.mutate(kind, {
-              onSuccess: () => toast(`Searching every missing ${kind === "movies" ? "movie" : "episode"} subtitle…`, "info"),
+              onSuccess: () =>
+                toast(
+                  `Searching every missing ${kind === "movies" ? "movie" : "episode"} subtitle…`,
+                  "info",
+                ),
               onError: (err) => toastError("Couldn't start the search", err),
             })
           }
@@ -268,7 +325,11 @@ export function BazarrLibraryView({
           ? `No ${kind === "movies" ? "movies" : "series"} match`
           : `Bazarr has no ${kind === "movies" ? "movies" : "series"} yet`
       }
-      message={filtered ? undefined : "They appear once Bazarr syncs with Radarr and Sonarr."}
+      message={
+        filtered
+          ? undefined
+          : "They appear once Bazarr syncs with Radarr and Sonarr."
+      }
       action={
         filtered ? (
           <Button
@@ -276,7 +337,7 @@ export function BazarrLibraryView({
             variant="outline"
             onPress={() => {
               setFilter("all");
-              setMissingLang(null);
+              setLangFilter(null);
               onClearSearch();
             }}
           />
@@ -296,13 +357,17 @@ export function BazarrLibraryView({
             movie={m}
             lookup={movieLookup.get(m.radarrId)}
             arrInstanceId={radarrId}
-            showSearch={(filter === "missing" || !!missingLang) && m.missing_subtitles.length > 0}
+            showSearch={
+              (filter === "missing" || langFilter?.show === "missing") &&
+              m.missing_subtitles.length > 0
+            }
             searching={busyMovies.has(m.radarrId)}
             onSearch={() => {
               // Busy from the tap, cleared when Bazarr's queue drains.
               setBusyMovies((prev) => new Set([...prev, m.radarrId]));
               searchMovie.mutate(m.radarrId, {
-                onSuccess: () => toast(`Searching subtitles for ${m.title}…`, "info"),
+                onSuccess: () =>
+                  toast(`Searching subtitles for ${m.title}…`, "info"),
                 onError: (err) => {
                   setBusyMovies((prev) => {
                     const next = new Set(prev);
@@ -352,7 +417,8 @@ export function BazarrLibraryView({
           onSearchEpisode={(e) => {
             setBusyEpisodes((prev) => new Set([...prev, e.sonarrEpisodeId]));
             searchEpisode.mutate(e, {
-              onSuccess: () => toast(`Searching subtitles for ${s.title}…`, "info"),
+              onSuccess: () =>
+                toast(`Searching subtitles for ${s.title}…`, "info"),
               onError: (err) => {
                 setBusyEpisodes((prev) => {
                   const next = new Set(prev);
