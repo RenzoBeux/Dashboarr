@@ -76,6 +76,8 @@ import type {
   RadarrSearchResult,
 } from "@/lib/types";
 import { SectionLabel } from "@/components/ui/section-label";
+import { useLinkedBazarr } from "@/hooks/use-bazarr-link";
+import { SubtitlesCard } from "@/components/subtitles/subtitles-card";
 
 type DeleteMode = "keep" | "withFiles";
 
@@ -86,6 +88,9 @@ export default function MovieDetailScreen() {
   }>();
   const router = useRouter();
   const { data: movie, isLoading, error } = useRadarrMovie(Number(id), instanceId);
+  // The Bazarr instance managing this Radarr's subtitles; null hides the
+  // Subtitles section entirely.
+  const { bazarrId } = useLinkedBazarr("radarr", instanceId);
   const { data: queue } = useRadarrQueue(instanceId);
   const deleteMutation = useDeleteMovie(instanceId);
   const toggleMonitored = useToggleMovieMonitored(instanceId);
@@ -284,6 +289,16 @@ export default function MovieDetailScreen() {
                 : undefined
             }
           />
+
+          {bazarrId && movie.hasFile ? (
+            <SubtitlesCard
+              bazarrId={bazarrId}
+              radarrId={movie.id}
+              radarrInstanceId={instanceId}
+              title={movie.title}
+              videoFps={movie.movieFile?.mediaInfo?.videoFps}
+            />
+          ) : null}
 
           <OptionsBlock movie={movie} onPress={() => setOptionsVisible(true)} />
 

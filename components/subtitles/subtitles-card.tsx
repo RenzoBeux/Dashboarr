@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +31,10 @@ export function SubtitlesCard({
   title: string;
   videoFps?: number | null;
 }) {
-  const { data: movie, isLoading, error } = useBazarrMovieSubtitles(bazarrId, radarrId);
+  const { data: movie, isLoading, error, refetch } = useBazarrMovieSubtitles(
+    bazarrId,
+    radarrId,
+  );
   const bazarrName = useConfigStore(
     (s) => s.serviceInstances.bazarr?.find((b) => b.id === bazarrId)?.name ?? "Bazarr",
   );
@@ -69,10 +72,16 @@ export function SubtitlesCard({
       {isLoading ? (
         <Skeleton width="100%" height={52} borderRadius={16} />
       ) : error ? (
-        <View className="rounded-2xl bg-surface border border-border px-4 py-3">
-          <Text className="text-zinc-400 text-xs">
-            Couldn&apos;t reach {bazarrName}. Pull to refresh to try again.
-          </Text>
+        <View className="flex-row items-center gap-3 rounded-2xl bg-surface border border-border px-4 py-3">
+          <Text className="flex-1 text-zinc-400 text-xs">Couldn&apos;t reach {bazarrName}.</Text>
+          <Pressable
+            onPress={() => refetch()}
+            hitSlop={8}
+            className="active:opacity-70"
+            accessibilityRole="button"
+          >
+            <Text className="text-primary text-xs font-semibold">Retry</Text>
+          </Pressable>
         </View>
       ) : !movie ? (
         <View className="rounded-2xl bg-surface border border-border px-4 py-3">
