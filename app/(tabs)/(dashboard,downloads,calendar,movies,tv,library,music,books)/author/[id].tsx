@@ -39,6 +39,7 @@ import { useModalFlow } from "@/hooks/use-modal-flow";
 import { binderyImageSource } from "@/lib/bindery-normalize";
 import { BAR_KIND_COLOR, binderyBookBarKind } from "@/lib/arr-poster-status";
 import type { BinderyAuthor, BinderyBook } from "@/lib/types";
+import { SectionLabel } from "@/components/ui/section-label";
 
 type DeleteMode = "keep" | "withFiles";
 
@@ -309,14 +310,6 @@ function buildAuthorStats(
     stats.push({ label: "Monitor", value: author.monitorMode });
   }
   return stats;
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text className="text-zinc-500 text-[0.65rem] font-bold uppercase tracking-widest mb-2 ml-1">
-      {children}
-    </Text>
-  );
 }
 
 function BookRow({
