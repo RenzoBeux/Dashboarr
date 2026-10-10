@@ -142,6 +142,8 @@ export function useSubtitleActions({
     onSuccess: () => void,
   ) => {
     const full = keys.map((k) => `${targetKey}:${k}`);
+    // Rows another search already has busy stay busy if this one fails.
+    const fresh = full.filter((k) => !busy.has(k));
     for (const k of full) inFlight.current.set(k, (inFlight.current.get(k) ?? 0) + 1);
     setBusy((prev) => new Set([...prev, ...full]));
     const settle = () => {
@@ -160,7 +162,7 @@ export function useSubtitleActions({
         settle();
         setBusy((prev) => {
           const next = new Set(prev);
-          for (const k of full) if (!inFlight.current.has(k)) next.delete(k);
+          for (const k of fresh) if (!inFlight.current.has(k)) next.delete(k);
           return next;
         });
         toastError("Couldn't start the search", err);
