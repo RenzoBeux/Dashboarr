@@ -59,7 +59,7 @@ export function SubtitlesCard({
 
       {isLoading ? (
         <Skeleton width="100%" height={52} borderRadius={16} />
-      ) : error ? (
+      ) : error && !movie ? (
         <View className="flex-row items-center gap-3 rounded-2xl bg-surface border border-border px-4 py-3">
           <Text className="flex-1 text-zinc-400 text-xs">Couldn&apos;t reach {bazarrName}.</Text>
           <Pressable
