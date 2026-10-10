@@ -463,7 +463,8 @@ export function useSubtitleActions({
             { sub: timingRow.sub, action: { kind: "mod", mod } },
             {
               onSuccess: () => {
-                closeStep();
+                // The user may have closed the sheet while it ran.
+                if (flow.isOpen("timing")) closeStep();
                 toast(`${description}: ${timingRow.name}`);
               },
               onError: (err) => toastError("Bazarr couldn't change the timing", err),
@@ -559,7 +560,7 @@ export function useSubtitleActions({
             { file: uploadFile, lang },
             {
               onSuccess: () => {
-                closeStep();
+                if (flow.isOpen("upload")) closeStep();
                 toast(
                   `Uploaded ${uploadLanguages.find((l) => l.code2 === lang.code2)?.name ?? lang.code2} subtitle`,
                 );
