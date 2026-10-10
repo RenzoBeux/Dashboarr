@@ -130,17 +130,45 @@ export function useSubtitleActions({
       ? `m${target.radarrId}`
       : `e${target.episodeId}`;
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
+  // Rows whose search request hasn't answered yet: they stay busy when an
+  // earlier action's job watch ends.
+  const inFlight = useRef(new Map<string, number>());
   useEffect(() => {
-    if (!jobsActive) setBusy(new Set());
+    if (!jobsActive) setBusy(new Set(inFlight.current.keys()));
   }, [jobsActive]);
-  const markBusy = (keys: string[]) =>
-    setBusy((prev) => new Set([...prev, ...keys.map((k) => `${targetKey}:${k}`)]));
-  const unmarkBusy = (keys: string[]) =>
-    setBusy((prev) => {
-      const next = new Set(prev);
-      for (const k of keys) next.delete(`${targetKey}:${k}`);
-      return next;
-    });
+  // Starts a search for `keys` (row keys of the current target): busy from
+  // the tap, since before 1.5.6 the request itself takes the whole search.
+  const searchRows = (
+    keys: string[],
+    request: Promise<unknown>,
+    onSuccess: () => void,
+  ) => {
+    const full = keys.map((k) => `${targetKey}:${k}`);
+    for (const k of full) inFlight.current.set(k, (inFlight.current.get(k) ?? 0) + 1);
+    setBusy((prev) => new Set([...prev, ...full]));
+    const settle = () => {
+      for (const k of full) {
+        const n = (inFlight.current.get(k) ?? 1) - 1;
+        if (n > 0) inFlight.current.set(k, n);
+        else inFlight.current.delete(k);
+      }
+    };
+    request.then(
+      () => {
+        settle();
+        onSuccess();
+      },
+      (err) => {
+        settle();
+        setBusy((prev) => {
+          const next = new Set(prev);
+          for (const k of full) if (!inFlight.current.has(k)) next.delete(k);
+          return next;
+        });
+        toastError("Couldn't start the search", err);
+      },
+    );
+  };
   const busyKeys = useMemo(
     () =>
       new Set(
@@ -235,17 +263,10 @@ export function useSubtitleActions({
 
   const onSearchLanguage = (row: SubtitleRow) => {
     lightHaptic();
-    // Busy from the tap: before 1.5.6 the request itself takes the whole search.
-    markBusy([row.key]);
-    searchOne.mutate(
-      { code2: row.code2, forced: row.forced, hi: row.hi },
-      {
-        onSuccess: () => toast(`Searching ${row.name} subtitles…`, "info"),
-        onError: (err) => {
-          unmarkBusy([row.key]);
-          toastError("Couldn't start the search", err);
-        },
-      },
+    searchRows(
+      [row.key],
+      searchOne.mutateAsync({ code2: row.code2, forced: row.forced, hi: row.hi }),
+      () => toast(`Searching ${row.name} subtitles…`, "info"),
     );
   };
 
@@ -257,21 +278,14 @@ export function useSubtitleActions({
       return;
     }
     const keys = missing.map((m) => `${m.code2}|${m.forced ? "f" : ""}${m.hi ? "h" : ""}|missing`);
-    markBusy(keys);
-    searchAll.mutate(undefined, {
-      onSuccess: () => {
-        toast(
-          missing.length === 1
-            ? `Searching ${missing[0].name} subtitles…`
-            : `Searching ${missing.length} missing languages…`,
-          "info",
-        );
-      },
-      onError: (err) => {
-        unmarkBusy(keys);
-        toastError("Couldn't start the search", err);
-      },
-    });
+    searchRows(keys, searchAll.mutateAsync(), () =>
+      toast(
+        missing.length === 1
+          ? `Searching ${missing[0].name} subtitles…`
+          : `Searching ${missing.length} missing languages…`,
+        "info",
+      ),
+    );
   };
 
   // whenClear closes the host sheet first when Manual is tapped inside it.
@@ -326,12 +340,9 @@ export function useSubtitleActions({
   const menuRow = flow.payload("menu");
   const runTool = (row: SubtitleRow, action: SubtitleToolAction, started: string) => {
     if (!row.sub) return;
-    tool.mutate(
-      { sub: row.sub, action },
-      {
-        onSuccess: () => toast(started, "info"),
-        onError: (err) => toastError("Bazarr couldn't run that", err),
-      },
+    tool.mutateAsync({ sub: row.sub, action }).then(
+      () => toast(started, "info"),
+      (err) => toastError("Bazarr couldn't run that", err),
     );
   };
 
@@ -459,16 +470,13 @@ export function useSubtitleActions({
         busy={tool.isPending}
         onApply={(mod, description) => {
           if (!timingRow?.sub) return;
-          tool.mutate(
-            { sub: timingRow.sub, action: { kind: "mod", mod } },
-            {
-              onSuccess: () => {
-                // The user may have closed the sheet while it ran.
-                if (flow.isOpen("timing")) closeStep();
-                toast(`${description}: ${timingRow.name}`);
-              },
-              onError: (err) => toastError("Bazarr couldn't change the timing", err),
+          tool.mutateAsync({ sub: timingRow.sub, action: { kind: "mod", mod } }).then(
+            () => {
+              // The user may have closed the sheet while it ran.
+              if (flow.isOpen("timing")) closeStep();
+              toast(`${description}: ${timingRow.name}`);
             },
+            (err) => toastError("Bazarr couldn't change the timing", err),
           );
         }}
       />
@@ -515,13 +523,13 @@ export function useSubtitleActions({
           closeStep();
           const next = value === NO_PROFILE ? null : value;
           if (next === profileId) return;
-          profile.mutate(next, {
-            onSuccess: () =>
+          profile.mutateAsync(next).then(
+            () =>
               toast(
                 `Language profile set to ${profileOptions.find((o) => o.value === value)?.label ?? "None"}`,
               ),
-            onError: (err) => toastError("Couldn't change the language profile", err),
-          });
+            (err) => toastError("Couldn't change the language profile", err),
+          );
         }}
       />
 
@@ -540,10 +548,10 @@ export function useSubtitleActions({
           const row = deleteRow;
           closeStep();
           if (!row?.sub) return;
-          remove.mutate(row.sub, {
-            onSuccess: () => toast(`Deleted ${row.name} subtitle`),
-            onError: (err) => toastError("Couldn't delete the subtitle", err),
-          });
+          remove.mutateAsync(row.sub).then(
+            () => toast(`Deleted ${row.name} subtitle`),
+            (err) => toastError("Couldn't delete the subtitle", err),
+          );
         }}
       />
 
@@ -556,17 +564,14 @@ export function useSubtitleActions({
         onChangeFile={() => void pickFile()}
         onUpload={(lang) => {
           if (!uploadFile) return;
-          upload.mutate(
-            { file: uploadFile, lang },
-            {
-              onSuccess: () => {
-                if (flow.isOpen("upload")) closeStep();
-                toast(
-                  `Uploaded ${uploadLanguages.find((l) => l.code2 === lang.code2)?.name ?? lang.code2} subtitle`,
-                );
-              },
-              onError: (err) => toastError("Couldn't upload the subtitle", err),
+          upload.mutateAsync({ file: uploadFile, lang }).then(
+            () => {
+              if (flow.isOpen("upload")) closeStep();
+              toast(
+                `Uploaded ${uploadLanguages.find((l) => l.code2 === lang.code2)?.name ?? lang.code2} subtitle`,
+              );
             },
+            (err) => toastError("Couldn't upload the subtitle", err),
           );
         }}
       />
