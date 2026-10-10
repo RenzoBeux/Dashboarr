@@ -124,6 +124,12 @@ describe("buildAudioTags", () => {
     ).toEqual([true, false]);
   });
 
+  it("keeps a Bazarr audio language the code table doesn't know", () => {
+    expect(buildAudioTags([{ name: "Pashto", code2: "ps", code3: "pus" }])).toEqual([
+      { code2: "ps", name: "Pashto", original: false },
+    ]);
+  });
+
   it("is empty without audio info", () => {
     expect(buildAudioTags(undefined)).toEqual([]);
   });

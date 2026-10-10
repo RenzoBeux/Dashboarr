@@ -134,7 +134,15 @@ export function buildAudioTags(
   const langs =
     typeof audio === "string" || audio == null
       ? parseLanguageList(audio ?? "")
-      : dedupe(audio.map((a) => normalizeLanguage(a.code2) ?? normalizeLanguage(a.name)));
+      : dedupe(
+          audio.map(
+            (a) =>
+              normalizeLanguage(a.code2) ??
+              normalizeLanguage(a.name) ??
+              // Bazarr already identified it; keep a language our table lacks.
+              (a.code2 ? { code2: a.code2, code3: a.code3, name: a.name } : null),
+          ),
+        );
   const original = normalizeLanguage(
     typeof originalLanguage === "string" ? originalLanguage : originalLanguage?.name,
   );
