@@ -49,6 +49,9 @@ export function Skeleton({
   }, [translateX]);
 
   const shimmerStyle = useAnimatedStyle(() => ({
+    // Hidden until onLayout measures the box; at width 0 the mapping below
+    // parks the highlight on the left edge for the first frame.
+    opacity: boxWidth.value > 0 ? 0.5 : 0,
     // translateX runs -1 → 1; map it to -0.4w → w.
     transform: [
       {
@@ -82,7 +85,6 @@ export function Skeleton({
             width: "40%",
             backgroundColor: theme.border,
             borderRadius,
-            opacity: 0.5,
           },
           shimmerStyle,
         ]}
