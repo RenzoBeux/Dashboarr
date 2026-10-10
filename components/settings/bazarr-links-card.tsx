@@ -220,10 +220,10 @@ function LinkSelect({
         value: a.id,
         label: a.name,
         badge:
-          a.id === detectedId
-            ? "Detected"
-            : state.how === "manual" && a.id === state.arrId
-              ? "Set by you"
+          state.how === "manual" && a.id === state.arrId
+            ? "Set by you"
+            : a.id === detectedId
+              ? "Detected"
               : undefined,
         description:
           a.id === detectedId
