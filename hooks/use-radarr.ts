@@ -43,12 +43,14 @@ import { useArrTags } from "@/hooks/use-arr-tags";
 // omitted the user's active Radarr is used (single-instance behavior); when
 // passed, queries fan out to that specific instance with its own cache slot.
 
-export function useRadarrMovies(instanceId?: string) {
+// `active: false` keeps the query off, e.g. when there is no instance to read
+// from and the active-instance fallback would be the wrong library.
+export function useRadarrMovies(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
     queryKey: ["radarr", id, "movies"],
     queryFn: () => getMovies(id ?? undefined),
-    enabled: enabled && !!id,
+    enabled: active && enabled && !!id,
   });
 }
 

@@ -44,12 +44,14 @@ import { useArrTags } from "@/hooks/use-arr-tags";
 // Per-instance cache keying: see use-qbittorrent.ts and use-radarr.ts for the
 // rationale. Each hook accepts an optional `instanceId`; omitted = active.
 
-export function useSonarrSeries(instanceId?: string) {
+// `active: false` keeps the query off, e.g. when there is no instance to read
+// from and the active-instance fallback would be the wrong library.
+export function useSonarrSeries(instanceId?: string, active = true) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "series"],
     queryFn: () => getSeries(id ?? undefined),
-    enabled: enabled && !!id,
+    enabled: active && enabled && !!id,
   });
 }
 

@@ -2083,12 +2083,56 @@ const DEMO_GLANCES_CONTAINERS = [
 
 // --- Bazarr ---
 
-const DEMO_BAZARR_HISTORY = {
+// Bazarr formats parsed_timestamp with Python's "%x %X"; Docker images run
+// the C locale, i.e. "10/09/26 14:22:05".
+function bazarrTimestamp(hoursAgo: number): string {
+  const d = new Date(Date.now() - hoursAgo * 3_600_000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${p(d.getFullYear() % 100)} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+const demoHistory = (
+  hoursAgo: number,
+  action: number,
+  code2: "en" | "de" | "fr",
+  extra: Record<string, unknown>,
+) => ({
+  action,
+  timestamp: hoursAgo < 24 ? `${Math.max(1, Math.round(hoursAgo))} hours ago` : `${Math.round(hoursAgo / 24)} days ago`,
+  parsed_timestamp: bazarrTimestamp(hoursAgo),
+  description: "",
+  language: { name: { en: "English", de: "German", fr: "French" }[code2], code2, code3: code2, forced: false, hi: false },
+  provider: action === 4 ? null : "opensubtitlescom",
+  score: action === 1 || action === 2 || action === 3 ? `${90 + (Math.round(hoursAgo) % 9)}.0%` : null,
+  subs_id: `demo-${hoursAgo}-${code2}`,
+  upgradable: action === 1,
+  blacklisted: false,
+  matches: ["title", "year", "source", "resolution"],
+  dont_matches: action === 3 ? [] : ["release_group"],
+  ...extra,
+});
+
+const DEMO_BAZARR_MOVIE_HISTORY = {
   data: [
-    { id: 1, action: 1, timestamp: daysFromNowFull(-1), description: "Downloaded English subtitle", language: { name: "English", code2: "en" }, provider: "OpenSubtitles", score: "95", title: "Dune: Part Two" },
-    { id: 2, action: 1, timestamp: daysFromNowFull(-2), description: "Downloaded English subtitle", language: { name: "English", code2: "en" }, provider: "Subscene", score: "88", seriesTitle: "Fallout", episodeTitle: "The End" },
+    demoHistory(2, 1, "de", { title: "Oppenheimer", radarrId: 2, subtitles_path: "/movies/Oppenheimer (2023)/Oppenheimer.2023.de.srt" }),
+    demoHistory(5, 3, "en", { title: "Dune: Part Two", radarrId: 1, subtitles_path: "/movies/Dune: Part Two (2024)/Dune.Part.Two.2024.en.srt" }),
+    demoHistory(27, 5, "en", { title: "Interstellar", radarrId: 3, subtitles_path: "/movies/Interstellar (2014)/Interstellar.2014.en.srt" }),
+    demoHistory(30, 4, "fr", { title: "Inception", radarrId: 5, subtitles_path: "/movies/Inception (2010)/Inception.2010.fr.srt" }),
+    demoHistory(52, 6, "fr", { title: "The Batman", radarrId: 4, subtitles_path: "/movies/The Batman (2022)/The.Batman.2022.fr.srt" }),
+    demoHistory(80, 2, "en", { title: "Everything Everywhere All at Once", radarrId: 6, subtitles_path: "/movies/x.en.srt" }),
+    demoHistory(120, 7, "en", { title: "Oppenheimer", radarrId: 2, subtitles_path: "/movies/Oppenheimer (2023)/Oppenheimer.2023.en.srt" }),
+    demoHistory(200, 0, "de", { title: "Interstellar", radarrId: 3, subtitles_path: "/movies/Interstellar (2014)/Interstellar.2014.de.srt" }),
   ],
-  total: 2,
+  total: 8,
+};
+
+const DEMO_BAZARR_EPISODE_HISTORY = {
+  data: [
+    demoHistory(1, 1, "en", { seriesTitle: "Fallout", episodeTitle: "Fault Lines", episode_number: "1x02", sonarrSeriesId: 3, sonarrEpisodeId: 3102, subtitles_path: "/tv/Fallout/Season 1/Fallout - S01E02.en.srt" }),
+    demoHistory(26, 1, "de", { seriesTitle: "Severance", episodeTitle: "Static", episode_number: "2x04", sonarrSeriesId: 5, sonarrEpisodeId: 5204, subtitles_path: "/tv/Severance/Season 2/Severance - S02E04.de.srt" }),
+    demoHistory(75, 3, "en", { seriesTitle: "Shogun", episodeTitle: "Cold Open", episode_number: "1x01", sonarrSeriesId: 4, sonarrEpisodeId: 4101, subtitles_path: "/tv/Shogun/Season 1/Shogun - S01E01.en.srt" }),
+  ],
+  total: 3,
 };
 
 // --- Bazarr subtitle fixtures ---
@@ -2125,12 +2169,14 @@ function demoBazarrMovie(radarrId: number) {
     title: movie.title,
     year: String(movie.year),
     path: `${base}.1080p.BluRay.mkv`,
-    profileId: 1,
+    // Inception has no language profile, so the "No profile" chip has a match.
+    profileId: radarrId === 5 ? null : 1,
     monitored: true,
     sceneName: null,
     audio_language: radarrId % 2 === 0 ? [demoLang("en"), demoLang("de")] : [demoLang("en"), demoLang("fr")],
     subtitles,
-    missing_subtitles: radarrId % 2 === 0 ? [] : [{ ...demoLang("de"), forced: false, hi: false }],
+    missing_subtitles:
+      radarrId === 5 || radarrId % 2 === 0 ? [] : [{ ...demoLang("de"), forced: false, hi: false }],
     tags: [],
   };
 }
@@ -2206,7 +2252,8 @@ function demoBazarrSeriesItem(seriesId: number) {
     title: series.title,
     year: String(series.year),
     path: `/tv/${series.title}`,
-    profileId: 1,
+    // Shogun has no language profile, so the "No profile" chip has a match.
+    profileId: seriesId === 4 ? null : 1,
     poster: null,
     audio_language: [demoLang("en")],
     episodeFileCount: episodes.length,
@@ -4233,6 +4280,10 @@ export function getDemoResponse(
       // 204 with no body; GETs are the only reads.
       if (method && method !== "GET") return undefined;
       if (normalized === "/movies") {
+        if (params?.["radarrid[]"] === undefined) {
+          const all = DEMO_RADARR_MOVIES.map((m) => demoBazarrMovie(m.id)).filter(Boolean);
+          return { data: all, total: all.length };
+        }
         const movie = demoBazarrMovie(Number(params?.["radarrid[]"]));
         return { data: movie ? [movie] : [], total: movie ? 1 : 0 };
       }
@@ -4240,6 +4291,10 @@ export function getDemoResponse(
         return { data: demoBazarrEpisodes(Number(params?.["seriesid[]"])) };
       }
       if (normalized === "/series") {
+        if (params?.["seriesid[]"] === undefined) {
+          const all = DEMO_SONARR_SERIES.map((x) => demoBazarrSeriesItem(x.id)).filter(Boolean);
+          return { data: all, total: all.length };
+        }
         const item = demoBazarrSeriesItem(Number(params?.["seriesid[]"]));
         return { data: item ? [item] : [], total: item ? 1 : 0 };
       }
@@ -4254,8 +4309,8 @@ export function getDemoResponse(
       if (normalized === "/system/status") return { data: { bazarr_version: "1.6.2" } };
       if (normalized.startsWith("/movies/wanted")) return demoBazarrWantedMovies();
       if (normalized.startsWith("/episodes/wanted")) return demoBazarrWantedEpisodes();
-      if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_HISTORY;
-      if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_HISTORY;
+      if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_MOVIE_HISTORY;
+      if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_EPISODE_HISTORY;
       if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
       if (normalized === "/system/settings") return DEMO_BAZARR_SETTINGS;
       return undefined;

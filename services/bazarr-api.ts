@@ -4,6 +4,7 @@ import {
   INTERACTIVE_SEARCH_TIMEOUT,
 } from "@/lib/constants";
 import {
+  blacklistRoute,
   deleteParams,
   downloadResultParams,
   providersRoute,
@@ -232,6 +233,26 @@ export async function getBazarrSeriesEpisodes(
   return res.data;
 }
 
+/** Every movie Bazarr manages, with its subtitles. */
+export async function getBazarrMovies(instanceId?: string): Promise<BazarrMovie[]> {
+  const res = await serviceRequest<BazarrListResponse<BazarrMovie>>("bazarr", "/movies", {
+    params: { start: 0, length: -1 },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+    instanceId,
+  });
+  return res.data ?? [];
+}
+
+/** Every series Bazarr manages, with episode counts. */
+export async function getBazarrSeriesList(instanceId?: string): Promise<BazarrSeries[]> {
+  const res = await serviceRequest<BazarrListResponse<BazarrSeries>>("bazarr", "/series", {
+    params: { start: 0, length: -1 },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+    instanceId,
+  });
+  return res.data ?? [];
+}
+
 // --- Subtitle actions ---
 //
 // Since Bazarr 1.5.6 these return 204 at once and run as background jobs; the
@@ -417,6 +438,34 @@ export function setLanguageProfile(
   return serviceRequest<void>("bazarr", target.type === "movie" ? "/movies" : "/series", {
     method: "POST",
     params: { ...idParam, profileid: profileId === null ? "" : profileId },
+    instanceId,
+  });
+}
+
+/** Search every wanted subtitle of every movie, or of every series. */
+export function searchAllWanted(kind: "movies" | "series", instanceId?: string): Promise<void> {
+  return serviceRequest<void>("bazarr", kind === "movies" ? "/movies" : "/series", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "search-wanted" }),
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+    instanceId,
+  });
+}
+
+/**
+ * Blacklist a downloaded subtitle from history: Bazarr deletes the file,
+ * blacklists that provider result and searches the language again — all in
+ * this one call.
+ */
+export function blacklistSubtitle(
+  target: SubtitleTarget,
+  entry: { provider: string; subs_id: string; language: string; subtitles_path: string },
+  instanceId?: string,
+): Promise<void> {
+  return serviceRequest<void>("bazarr", blacklistRoute(target), {
+    method: "POST",
+    params: { ...targetParams(target), ...entry },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
   });
 }

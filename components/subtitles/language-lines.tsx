@@ -28,6 +28,7 @@ export function LanguageLines({
   onPress,
   accessibilityLabel,
   ringClassName,
+  stacked = false,
 }: {
   audio: readonly AudioTag[];
   // Undefined when Bazarr has no data: the column stays as a blank spacer
@@ -37,10 +38,12 @@ export function LanguageLines({
   onPress?: () => void;
   accessibilityLabel?: string;
   ringClassName?: string;
+  // Audio above subtitles instead of side by side (narrow poster overlays).
+  stacked?: boolean;
 }) {
   const body = (
-    <View className="flex-row items-center gap-2.5">
-      <Column icon="audio" size={size} count={audio.length}>
+    <View className={stacked ? "gap-0.5" : "flex-row items-center gap-2.5"}>
+      <Column icon="audio" size={size} count={audio.length} stacked={stacked}>
         {(shown) =>
           audio.slice(0, shown).map((a) => (
             <AudioLanguagePill
@@ -55,7 +58,7 @@ export function LanguageLines({
         }
       </Column>
       {subtitles ? (
-        <Column icon="subtitles" size={size} count={subtitles.length}>
+        <Column icon="subtitles" size={size} count={subtitles.length} stacked={stacked}>
           {(shown) =>
             subtitles.slice(0, shown).map((c) => (
               <SubtitleTrackChip
@@ -70,7 +73,7 @@ export function LanguageLines({
             ))
           }
         </Column>
-      ) : (
+      ) : stacked ? null : (
         <View className="flex-1" />
       )}
     </View>
@@ -94,11 +97,13 @@ function Column({
   icon,
   size,
   count,
+  stacked,
   children,
 }: {
   icon: "audio" | "subtitles";
   size: TagSize;
   count: number;
+  stacked: boolean;
   children: (shown: number) => React.ReactNode;
 }) {
   const scale = useUiScale();
@@ -124,7 +129,9 @@ function Column({
     <View
       // No overflow clipping: corner badges poke above and right of their tag.
       // The top padding gives them room inside the row.
-      className="flex-1 flex-row items-center pt-1.5"
+      // flex-1 splits a side-by-side row in half; stacked lines take the full
+      // width on their own (flex-1 in a column would collapse them).
+      className={`${stacked ? "" : "flex-1 "}flex-row items-center pt-1.5`}
       style={{ gap: w.gap * rem }}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
