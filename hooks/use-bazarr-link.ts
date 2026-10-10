@@ -130,14 +130,18 @@ export function useLinkedBazarr(
 }
 
 /**
- * Every enabled Bazarr instance's link for one kind, detecting wherever
- * automatic — for the settings card's "Linked to …" hints and the dashboard
- * posters. Not limited to the workspace: the settings card edits any instance,
- * and a widget can be bound to a Bazarr the dashboard doesn't attach.
+ * Every enabled Bazarr instance's link for one kind — for the settings card's
+ * "Linked to …" hints and the dashboard posters. Not limited to the workspace:
+ * the settings card edits any instance, and a widget can be bound to a Bazarr
+ * the dashboard doesn't attach. Detects wherever automatic, or only for the
+ * Bazarrs in `detectFor` when given (the widget needs just the ones it shows).
  */
-export function useBazarrLinkEntries(kind: ArrKind): BazarrLinkEntry[] {
+export function useBazarrLinkEntries(
+  kind: ArrKind,
+  detectFor?: ReadonlySet<string>,
+): BazarrLinkEntry[] {
   const bazarrs = useEnabledInstances("bazarr");
-  return useLinkEntries(kind, bazarrs, () => true).entries;
+  return useLinkEntries(kind, bazarrs, (id) => !detectFor || detectFor.has(id)).entries;
 }
 
 /** The Radarr/Sonarr instance a Bazarr instance is linked to, or null. */

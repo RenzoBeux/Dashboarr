@@ -39,8 +39,8 @@ export function useBazarrPosters(
   movies: FromBazarr<BazarrWantedMovie>[],
   episodes: FromBazarr<BazarrWantedEpisode>[],
 ): Map<string, BazarrPosterEntry> {
-  const radarrFor = useArrForBazarr("radarr");
-  const sonarrFor = useArrForBazarr("sonarr");
+  const radarrFor = useArrForBazarr("radarr", movies);
+  const sonarrFor = useArrForBazarr("sonarr", episodes);
 
   const radarrIds = unique(movies.map((m) => radarrFor(m.bazarrInstanceId)));
   const sonarrIds = unique(episodes.map((e) => sonarrFor(e.bazarrInstanceId)));
@@ -61,17 +61,32 @@ export function useBazarrPosters(
   const radarrData = radarrLibs.map((q) => q.data);
   const sonarrData = sonarrLibs.map((q) => q.data);
   // useQueries returns fresh arrays each render; this changes only when a
-  // library actually reloads.
-  const librariesVersion = [...radarrLibs, ...sonarrLibs]
-    .map((q) => q.dataUpdatedAt)
-    .join(",");
+  // library actually reloads (or the set of libraries changes).
+  const librariesVersion = [
+    radarrIds.join(","),
+    sonarrIds.join(","),
+    ...[...radarrLibs, ...sonarrLibs].map((q) => q.dataUpdatedAt),
+  ].join("|");
+
+  // Indexing whole libraries is the expensive part; the wanted lists are
+  // rebuilt by the card every render, so only this is worth memoizing.
+  const { movieLibs, seriesLibs } = useMemo(
+    () => ({
+      movieLibs: new Map(
+        radarrIds.map((id, i) => [id, new Map((radarrData[i] ?? []).map((m) => [m.id, m]))]),
+      ),
+      seriesLibs: new Map(
+        sonarrIds.map((id, i) => [id, new Map((sonarrData[i] ?? []).map((s) => [s.id, s]))]),
+      ),
+    }),
+    // radarrIds/sonarrIds and the data are covered by librariesVersion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [librariesVersion],
+  );
 
   return useMemo(() => {
     const map = new Map<string, BazarrPosterEntry>();
 
-    const movieLibs = new Map(
-      radarrIds.map((id, i) => [id, new Map((radarrData[i] ?? []).map((m) => [m.id, m]))]),
-    );
     for (const wanted of movies) {
       const arrId = radarrFor(wanted.bazarrInstanceId);
       const movie = arrId ? movieLibs.get(arrId)?.get(wanted.radarrId) : undefined;
@@ -83,9 +98,6 @@ export function useBazarrPosters(
       });
     }
 
-    const seriesLibs = new Map(
-      sonarrIds.map((id, i) => [id, new Map((sonarrData[i] ?? []).map((s) => [s.id, s]))]),
-    );
     for (const wanted of episodes) {
       const arrId = sonarrFor(wanted.bazarrInstanceId);
       const series = arrId ? seriesLibs.get(arrId)?.get(wanted.sonarrSeriesId) : undefined;
@@ -98,14 +110,20 @@ export function useBazarrPosters(
     }
 
     return map;
-    // radarrData/sonarrData are covered by librariesVersion.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movies, episodes, radarrFor, sonarrFor, librariesVersion]);
+  }, [movies, episodes, radarrFor, sonarrFor, movieLibs, seriesLibs]);
 }
 
-/** bazarrId → the arr instance to read its items from, or undefined. */
-function useArrForBazarr(kind: ArrKind): (bazarrId: string) => string | undefined {
-  const entries = useBazarrLinkEntries(kind);
+/**
+ * bazarrId → the arr instance to read its items from, or undefined. Detection
+ * runs only for the Bazarrs `items` come from, not every enabled one.
+ */
+function useArrForBazarr(
+  kind: ArrKind,
+  items: readonly { bazarrInstanceId: string }[],
+): (bazarrId: string) => string | undefined {
+  const shownKey = unique(items.map((i) => i.bazarrInstanceId)).join(",");
+  const shown = useMemo(() => new Set(shownKey.split(",")), [shownKey]);
+  const entries = useBazarrLinkEntries(kind, shown);
   const activeId = useConfigStore((s) => s.activeInstance[kind] ?? undefined);
   // Entries are rebuilt each render; key the lookup on their content.
   const signature = entries
