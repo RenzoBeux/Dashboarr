@@ -359,6 +359,9 @@ export function ReleasesPicker({
   // a fresh one — the in-app recovery for a hung search (#290).
   function handleRefresh() {
     lightHaptic();
+    // Reset here, not just in the ticker effect: that runs after paint, so the
+    // restarted search would flash the old m:ss count for a frame.
+    setElapsed(0);
     setSearchEpoch((e) => e + 1);
     refetch();
   }
