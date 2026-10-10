@@ -16,6 +16,7 @@ import {
   useBazarrLinkStatus,
 } from "@/hooks/use-bazarr-link";
 import {
+  bazarrForArr,
   linkField,
   moveLinkPatches,
   type ArrKind,
@@ -60,20 +61,16 @@ export function BazarrLinksCard({
 function LinksBody({ instanceId }: { instanceId: string }) {
   const status = useBazarrLinkStatus(instanceId);
   const [detecting, setDetecting] = useState(false);
-  const updateInstance = useConfigStore((s) => s.updateInstance);
   const instName = useTargetInstance("bazarr", instanceId)?.name ?? "Bazarr";
 
   const addresses = [status.detection?.radarr.address, status.detection?.sonarr.address]
     .filter(Boolean)
     .join(" and ");
 
+  // Re-reads Bazarr's settings only; the user's choices stay. Picking the
+  // detected instance is what returns a row to automatic.
   const detectAgain = async () => {
     setDetecting(true);
-    // Back to automatic for both kinds, then read Bazarr's settings afresh.
-    updateInstance("bazarr", instanceId, {
-      linkedRadarrInstanceId: undefined,
-      linkedSonarrInstanceId: undefined,
-    });
     try {
       const result = await status.redetect();
       const names = (["radarr", "sonarr"] as const)
@@ -181,16 +178,34 @@ function LinkSelect({
     return owner ? bazarrs.find((b) => b.id === owner.bazarrId)?.name : undefined;
   };
 
+  // Detected but outranked: another Bazarr has this arr set by hand, so pages
+  // use that one. Show it as not linked here, with the detected instance
+  // offered to take the link over.
+  const outranked =
+    state.how === "detected" &&
+    !!state.arrId &&
+    bazarrForArr(state.arrId, entries) !== bazarrId;
+
   const value =
     state.how === "off"
       ? ARR_LINK_OFF
       : state.how === "stale"
         ? (stored ?? NOT_LINKED)
-        : (state.arrId ?? NOT_LINKED);
+        : outranked
+          ? NOT_LINKED
+          : (state.arrId ?? NOT_LINKED);
 
   const options: SelectOption<string>[] = [
     ...(value === NOT_LINKED
-      ? [{ value: NOT_LINKED, label: "Not linked", description: "Nothing detected yet" }]
+      ? [
+          {
+            value: NOT_LINKED,
+            label: "Not linked",
+            description: outranked
+              ? "Another Bazarr has the detected instance set by hand"
+              : "Nothing detected yet",
+          },
+        ]
       : []),
     ...arrs.map((a) => {
       const owner = ownerOf(a.id);
@@ -235,13 +250,15 @@ function LinkSelect({
       return;
     }
     if (next === NOT_LINKED) return;
-    if (next === detectedId) {
-      // The detected instance is what automatic mode resolves to.
-      updateInstance("bazarr", bazarrId, { [linkField(kind)]: undefined });
-    } else {
-      for (const { bazarrId: id, patch } of moveLinkPatches(kind, bazarrs, bazarrId, next)) {
-        updateInstance("bazarr", id, patch);
-      }
+    // The link moves here: any other Bazarr that had this arr set by hand
+    // goes back to automatic. Picking the detected instance stores automatic
+    // for this Bazarr (that's what detection resolves to).
+    for (const { bazarrId: id, patch } of moveLinkPatches(kind, bazarrs, bazarrId, next)) {
+      updateInstance(
+        "bazarr",
+        id,
+        id === bazarrId && next === detectedId ? { [linkField(kind)]: undefined } : patch,
+      );
     }
     toast(`Linked ${arrs.find((a) => a.id === next)?.name ?? label}`);
   };
