@@ -58,9 +58,10 @@ export function parseSubtitleFilename(name: string): {
   const hi = tags.some(
     (t, i) => HI_TAGS.has(t) && (t !== "hi" || (code2 !== undefined && i !== langIndex)),
   );
-  if (!code2 && tags.includes("hi") && !tags.some((t) => t === "sdh" || t === "cc")) {
-    // A lone "hi" is more likely Hindi than a flag on an unnamed language.
-    return { code2: "hi", forced, hi: false };
+  if (!code2 && tags.includes("hi")) {
+    // A lone "hi" is more likely Hindi than a flag on an unnamed language;
+    // "sdh"/"cc" next to it still flag Hindi HI.
+    return { code2: "hi", forced, hi: tags.some((t) => t === "sdh" || t === "cc") };
   }
   return { code2, forced, hi };
 }
