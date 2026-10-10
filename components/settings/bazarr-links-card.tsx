@@ -38,8 +38,10 @@ const NOT_LINKED = "";
  * Each row is detected from Bazarr's own settings unless the user picks
  * something else. Picking the detected instance stores "automatic" rather than
  * a fixed id, so the badge always tells the truth: Detected means it follows
- * Bazarr's configuration, Set by you means it doesn't. Writes go straight to
- * the store, like the other per-instance cards.
+ * Bazarr's configuration, Set by you means it doesn't. (When another Bazarr
+ * claims that instance too, the pick is stored by hand so it outranks the
+ * other claim.) Writes go straight to the store, like the other per-instance
+ * cards.
  *
  * Renders nothing for other service kinds, and nothing until the instance is
  * enabled with a URL — detection has to reach it.
@@ -178,13 +180,16 @@ function LinkSelect({
     return owner ? bazarrs.find((b) => b.id === owner.bazarrId)?.name : undefined;
   };
 
-  // Detected but outranked: another Bazarr has this arr set by hand, so pages
-  // use that one. Show it as not linked here, with the detected instance
-  // offered to take the link over.
-  const outranked =
-    state.how === "detected" &&
-    !!state.arrId &&
-    bazarrForArr(state.arrId, entries) !== bazarrId;
+  // Detected but outranked: another Bazarr has this arr set by hand, or
+  // detects it too and comes first, so pages use that one. Show it as not
+  // linked here, with the detected instance offered to take the link over.
+  const winner =
+    state.how === "detected" && state.arrId
+      ? bazarrForArr(state.arrId, entries)
+      : bazarrId;
+  const outranked = winner !== bazarrId;
+  const winnerManual =
+    entries.find((e) => e.bazarrId === winner)?.state.how === "manual";
 
   const value =
     state.how === "off"
@@ -201,9 +206,11 @@ function LinkSelect({
           {
             value: NOT_LINKED,
             label: "Not linked",
-            description: outranked
-              ? "Another Bazarr has the detected instance set by hand"
-              : "Nothing detected yet",
+            description: !outranked
+              ? "Nothing detected yet"
+              : winnerManual
+                ? "Another Bazarr has the detected instance set by hand"
+                : "Another Bazarr is connected to the detected instance too",
           },
         ]
       : []),
@@ -252,12 +259,14 @@ function LinkSelect({
     if (next === NOT_LINKED) return;
     // The link moves here: any other Bazarr that had this arr set by hand
     // goes back to automatic. Picking the detected instance stores automatic
-    // for this Bazarr (that's what detection resolves to).
+    // for this Bazarr (that's what detection resolves to) — unless another
+    // Bazarr claims it too, which could still outrank a detected link.
+    const automatic = next === detectedId && !ownerOf(next);
     for (const { bazarrId: id, patch } of moveLinkPatches(kind, bazarrs, bazarrId, next)) {
       updateInstance(
         "bazarr",
         id,
-        id === bazarrId && next === detectedId ? { [linkField(kind)]: undefined } : patch,
+        id === bazarrId && automatic ? { [linkField(kind)]: undefined } : patch,
       );
     }
     toast(`Linked ${arrs.find((a) => a.id === next)?.name ?? label}`);
