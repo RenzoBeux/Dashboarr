@@ -97,7 +97,9 @@ function useLinkEntries(
       detectionQuery(
         b.id,
         fingerprint,
-        b[field] === undefined && needsDetection(b.id),
+        // With no Radarr/Sonarr here there is nothing to match against, so
+        // don't fetch Bazarr's whole settings document for nothing.
+        arrs.length > 0 && b[field] === undefined && needsDetection(b.id),
       ),
     ),
   });
