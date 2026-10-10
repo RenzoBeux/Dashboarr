@@ -142,6 +142,12 @@ export function useBazarrManualSearch(bazarrId: string | null, target: SubtitleT
 // search started on a movie page still refreshes the library after navigating.
 const watches = new Map<string, { watch: JobWatch<QueryKey>; active: boolean }>();
 const listeners = new Set<() => void>();
+const subscribeJobs = (onChange: () => void) => {
+  listeners.add(onChange);
+  return () => {
+    listeners.delete(onChange);
+  };
+};
 
 function watchFor(queryClient: QueryClient, bazarrId: string) {
   let entry = watches.get(bazarrId);
@@ -186,10 +192,7 @@ export function useTrackBazarrJobs(bazarrId: string | null) {
 /** True while this Bazarr still has background work the app is waiting on. */
 export function useBazarrJobsActive(bazarrId: string | null): boolean {
   return useSyncExternalStore(
-    (onChange) => {
-      listeners.add(onChange);
-      return () => listeners.delete(onChange);
-    },
+    subscribeJobs,
     () => (bazarrId ? (watches.get(bazarrId)?.active ?? false) : false),
   );
 }
