@@ -83,7 +83,7 @@ const ROWS: Row[] = [
   ["mn", "mon", null, "Mongolian"],
   ["ne", "nep", null, "Nepali"],
   ["no", "nor", null, "Norwegian", "Norwegian Bokmal", "Norwegian Bokmål"],
-  ["nb", "nob", null, "Norwegian Bokmål (nb)"],
+  ["nb", "nob", null, "Norwegian Bokmål"],
   ["nn", "nno", null, "Norwegian Nynorsk"],
   ["pl", "pol", null, "Polish"],
   ["pt", "por", null, "Portuguese", "Portuguese (Portugal)"],
