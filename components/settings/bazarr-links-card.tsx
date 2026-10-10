@@ -114,7 +114,9 @@ function LinksBody({ instanceId }: { instanceId: string }) {
         bazarrName={instName}
         state={status.radarr}
         detectedId={status.detection?.radarr.instanceId ?? null}
-        detectionPending={!status.detection && !status.detectError}
+        detectionStatus={
+          status.detection ? "done" : status.detectError ? "failed" : "pending"
+        }
       />
       <LinkSelect
         kind="sonarr"
@@ -122,7 +124,9 @@ function LinksBody({ instanceId }: { instanceId: string }) {
         bazarrName={instName}
         state={status.sonarr}
         detectedId={status.detection?.sonarr.instanceId ?? null}
-        detectionPending={!status.detection && !status.detectError}
+        detectionStatus={
+          status.detection ? "done" : status.detectError ? "failed" : "pending"
+        }
       />
 
       <View className="flex-row items-center gap-3">
@@ -160,15 +164,15 @@ function LinkSelect({
   bazarrName,
   state,
   detectedId,
-  detectionPending,
+  detectionStatus,
 }: {
   kind: ArrKind;
   bazarrId: string;
   bazarrName: string;
   state: LinkState;
   detectedId: string | null;
-  // No detection result or error yet.
-  detectionPending: boolean;
+  // Whether Bazarr's settings have been read yet, or couldn't be.
+  detectionStatus: "pending" | "failed" | "done";
 }) {
   const arrs = useEnabledInstances(kind);
   const entries = useBazarrLinkEntries(kind);
@@ -219,9 +223,11 @@ function LinkSelect({
             value: NOT_LINKED,
             label: "Not linked",
             description: !outranked
-              ? detectionPending
+              ? detectionStatus === "pending"
                 ? "Reading Bazarr's settings…"
-                : "Nothing detected"
+                : detectionStatus === "failed"
+                  ? "Couldn't read Bazarr's settings"
+                  : "Nothing detected"
               : winnerManual
                 ? "Another Bazarr has the detected instance set by hand"
                 : "Another Bazarr is connected to the detected instance too",
