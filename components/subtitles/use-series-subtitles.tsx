@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { toast, toastError } from "@/components/ui/toast";
 import { SubtitleCoverageCard } from "@/components/subtitles/subtitle-coverage-card";
 import { EpisodeSubtitlesSheet } from "@/components/subtitles/episode-subtitles-sheet";
-import { SubtitlesUnreachable } from "@/components/subtitles/subtitles-card";
+import { SubtitlesNotListed, SubtitlesUnreachable } from "@/components/subtitles/subtitles-card";
 import { useSubtitleActions } from "@/components/subtitles/use-subtitle-actions";
 import { useLinkedBazarr } from "@/hooks/use-bazarr-link";
 import {
@@ -215,12 +215,17 @@ export function useSeriesSubtitles({
       `Searching missing subtitles for ${series?.title ?? "this show"}…`,
     );
 
-  const linked = !!bazarrId && !!bazarrEpisodes;
+  // Bazarr knows nothing of a series it hasn't synced yet: its episode list
+  // is empty and a profile set now would update no row.
+  const notListed = !!bazarrId && !seriesPending && bazarrSeries === null;
+  const linked = !!bazarrId && !!bazarrEpisodes && !notListed;
   const seriesGaps = gapOrder.length;
 
   const coverageCard =
     bazarrId && episodesError && !bazarrEpisodes ? (
       <SubtitlesUnreachable bazarrId={bazarrId} onRetry={() => void refetchEpisodes()} />
+    ) : bazarrId && notListed ? (
+      <SubtitlesNotListed bazarrId={bazarrId} kind="series" />
     ) : linked && grid ? (
       <SubtitleCoverageCard
         languages={grid.languages}

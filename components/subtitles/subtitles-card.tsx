@@ -35,7 +35,6 @@ export function SubtitlesCard({
     bazarrId,
     radarrId,
   );
-  const bazarrName = useBazarrName(bazarrId);
   const target = { type: "movie" as const, radarrId };
   const actions = useSubtitleActions({
     bazarrId,
@@ -62,12 +61,7 @@ export function SubtitlesCard({
       ) : error && !movie ? (
         <SubtitlesUnreachable bazarrId={bazarrId} onRetry={() => void refetch()} />
       ) : !movie ? (
-        <View className="rounded-2xl bg-surface border border-border px-4 py-3">
-          <Text className="text-zinc-400 text-xs">
-            {bazarrName} doesn&apos;t list this movie yet. It picks up new Radarr
-            movies on its next sync.
-          </Text>
-        </View>
+        <SubtitlesNotListed bazarrId={bazarrId} kind="movie" />
       ) : (
         <CollapsibleCard
           accessibilityLabel={`Subtitles, ${have} of ${total} languages present`}
@@ -104,6 +98,25 @@ export function SubtitlesCard({
       )}
 
       {actions.modals}
+    </View>
+  );
+}
+
+/** Bazarr hasn't synced this movie/series from Radarr/Sonarr yet. */
+export function SubtitlesNotListed({
+  bazarrId,
+  kind,
+}: {
+  bazarrId: string;
+  kind: "movie" | "series";
+}) {
+  const bazarrName = useBazarrName(bazarrId);
+  return (
+    <View className="rounded-2xl bg-surface border border-border px-4 py-3">
+      <Text className="text-zinc-400 text-xs">
+        {bazarrName} doesn&apos;t list this {kind} yet. It picks up new{" "}
+        {kind === "movie" ? "Radarr movies" : "Sonarr series"} on its next sync.
+      </Text>
     </View>
   );
 }
