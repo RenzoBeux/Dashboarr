@@ -1,9 +1,4 @@
-import {
-  displayCode,
-  normalizeLanguage,
-  parseLanguageList,
-  sameLanguage,
-} from "./language-codes";
+import { normalizeLanguage, parseLanguageList } from "./language-codes";
 
 describe("normalizeLanguage", () => {
   it.each([
@@ -78,17 +73,5 @@ describe("parseLanguageList", () => {
 
   it("accepts commas", () => {
     expect(parseLanguageList("eng, fre").map((l) => l.code2)).toEqual(["en", "fr"]);
-  });
-});
-
-describe("displayCode / sameLanguage", () => {
-  it("upper-cases the 2-letter code", () => {
-    expect(displayCode({ code2: "pb" })).toBe("PB");
-  });
-
-  it("compares across spellings", () => {
-    expect(sameLanguage("German", "ger")).toBe(true);
-    expect(sameLanguage("de", "fr")).toBe(false);
-    expect(sameLanguage("", "")).toBe(false);
   });
 });

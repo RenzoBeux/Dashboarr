@@ -23,7 +23,6 @@ import {
   useBazarrJobsActive,
   useBazarrLanguageProfiles,
   useBazarrSubtitleMutation,
-  useTrackBazarrJobs,
 } from "@/hooks/use-bazarr-subtitles";
 import {
   deleteSubtitle,
@@ -117,7 +116,6 @@ export function useSubtitleActions({
   const { data: profiles } = useBazarrLanguageProfiles(bazarrId);
   const { data: enabledLanguages } = useBazarrEnabledLanguages(bazarrId);
   const jobsActive = useBazarrJobsActive(bazarrId);
-  const track = useTrackBazarrJobs(bazarrId);
 
   const profileId = profileIdProp !== undefined ? profileIdProp : (item?.profileId ?? null);
 
@@ -600,5 +598,5 @@ export function useSubtitleActions({
     </>
   );
 
-  return { flow, blockProps, modals, profileName, track };
+  return { flow, blockProps, modals, profileName };
 }

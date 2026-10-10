@@ -169,17 +169,3 @@ export function parseLanguageList(list: string | null | undefined): Language[] {
   }
   return out;
 }
-
-/** The short tag shown on chips: the 2-letter code, upper-cased ("EN", "PB"). */
-export function displayCode(lang: Pick<Language, "code2">): string {
-  return lang.code2.toUpperCase();
-}
-
-/** Do two spellings name the same language? */
-export function sameLanguage(
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean {
-  const la = normalizeLanguage(a);
-  return !!la && la.code2 === normalizeLanguage(b)?.code2;
-}
