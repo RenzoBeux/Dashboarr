@@ -23,7 +23,7 @@ function Ring({ progress }: { progress: SharedValue<number> }) {
   const tc = useThemeColor();
   const style = useAnimatedStyle(() => ({
     opacity: 0.55 * (1 - progress.value),
-    transform: [{ scale: 1 + progress.value * 0.9 }],
+    transform: [{ scale: 1 + progress.value * 0.6 }],
   }));
   return (
     <Animated.View
@@ -40,7 +40,8 @@ function Ring({ progress }: { progress: SharedValue<number> }) {
 /**
  * The icon for a long-running search's waiting state: a magnifier sweeping a
  * small circle while rings pulse out from it, so a search that takes a minute
- * never looks frozen. Drop it into `EmptyState`'s `icon` slot; pair it with
+ * never looks frozen. Drop it into `EmptyState`'s `icon` slot with `iconClassName="mt-5 mb-8"`
+ * so the rings clear the text; pair it with
  * `SearchElapsed` so there is a moving number even with reduced motion on.
  */
 export function SearchingIndicator() {

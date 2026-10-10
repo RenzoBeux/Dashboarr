@@ -7,6 +7,9 @@ interface EmptyStateProps {
   message?: string;
   action?: React.ReactNode;
   className?: string;
+  // Spacing around the icon circle; an animated icon that draws outside the
+  // circle (SearchingIndicator's rings) needs more than the default.
+  iconClassName?: string;
   /**
    * Renders a thin single-line variant (no icon circle, minimal padding).
    * Use inside dashboard widgets so they collapse instead of taking a full
@@ -21,6 +24,7 @@ export function EmptyState({
   message,
   action,
   className = "",
+  iconClassName = "mb-3",
   compact = false,
 }: EmptyStateProps) {
   if (compact) {
@@ -43,7 +47,10 @@ export function EmptyState({
   return (
     <View className={`items-center justify-center py-8 px-4 ${className}`}>
       {icon && (
-        <Animated.View entering={BounceIn.duration(600)} className="mb-3">
+        <Animated.View
+          entering={BounceIn.duration(600)}
+          className={iconClassName}
+        >
           <View className="w-16 h-16 rounded-full bg-surface-light items-center justify-center">
             {icon}
           </View>

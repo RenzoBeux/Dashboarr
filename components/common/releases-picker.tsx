@@ -20,7 +20,6 @@ import {
 } from "@/components/common/filter-sort-sheet";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   SearchingIndicator,
   SearchElapsed,
@@ -270,9 +269,8 @@ export function ReleasesPicker({
     dataUpdatedAt,
   } = query;
 
-  // Loading-time progression: skeletons until 8s, then contextual empty state
-  // with a "this can take up to a minute" hint, then a "still searching" hint
-  // past 30s.
+  // Loading-time progression: the searching state (with a m:ss counter) from
+  // the start, then a "still searching" hint and Restart past 30s.
   // searchEpoch bumps on a manual restart so the ticker resets even though
   // isFetching never flips across the cancel-and-refetch.
   const [elapsed, setElapsed] = useState(0);
@@ -435,9 +433,8 @@ export function ReleasesPicker({
     });
   }
 
-  const showSkeleton = (isLoading || isFetching) && !data;
-  const showSearchingMessage = showSkeleton && elapsed >= 8;
-  const showLongSearchingHint = showSkeleton && elapsed >= 30;
+  const isSearching = (isLoading || isFetching) && !data;
+  const showLongSearchingHint = isSearching && elapsed >= 30;
 
   return (
     <View className="flex-1">
@@ -460,11 +457,7 @@ export function ReleasesPicker({
               )}
               {isFetching && <ActivityIndicator size="small" color="#3b82f6" />}
             </>
-          ) : (
-            <Text className="text-zinc-500 text-sm">
-              {showSearchingMessage ? "Searching indexers…" : ""}
-            </Text>
-          )}
+          ) : null}
         </View>
       </View>
 
@@ -502,37 +495,30 @@ export function ReleasesPicker({
       )}
 
       {/* Body */}
-      {showSkeleton ? (
+      {isSearching ? (
         <View className="flex-1">
-          {showSearchingMessage ? (
-            <EmptyState
-              icon={<SearchingIndicator />}
-              title="Searching indexers…"
-              message={
-                showLongSearchingHint
-                  ? "Still searching. Some indexers are slower than others."
-                  : "This can take up to a minute."
-              }
-              action={
-                <View className="items-center gap-4">
-                  <SearchElapsed seconds={elapsed} />
-                  {showLongSearchingHint ? (
-                    <Button
-                      label="Restart search"
-                      variant="outline"
-                      onPress={handleRefresh}
-                    />
-                  ) : null}
-                </View>
-              }
-            />
-          ) : (
-            <View className="gap-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} height={88} borderRadius={16} />
-              ))}
-            </View>
-          )}
+          <EmptyState
+            icon={<SearchingIndicator />}
+            iconClassName="mt-5 mb-8"
+            title="Searching indexers…"
+            message={
+              showLongSearchingHint
+                ? "Still searching. Some indexers are slower than others."
+                : "This can take up to a minute."
+            }
+            action={
+              <View className="items-center gap-4">
+                <SearchElapsed seconds={elapsed} />
+                {showLongSearchingHint ? (
+                  <Button
+                    label="Restart search"
+                    variant="outline"
+                    onPress={handleRefresh}
+                  />
+                ) : null}
+              </View>
+            }
+          />
         </View>
       ) : isError ? (
         <EmptyState
