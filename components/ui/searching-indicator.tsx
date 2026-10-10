@@ -4,6 +4,7 @@ import Animated, {
   Easing,
   ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -46,6 +47,9 @@ function Ring({ progress }: { progress: SharedValue<number> }) {
  */
 export function SearchingIndicator() {
   const scale = useUiScale();
+  // Reduce Motion jumps the orbit straight to its end (2π), which would park
+  // the magnifier off-centre; centre it instead.
+  const radius = useReducedMotion() ? 0 : ORBIT * scale;
   const ringA = useSharedValue(0);
   const ringB = useSharedValue(0);
   const orbit = useSharedValue(0);
@@ -82,8 +86,8 @@ export function SearchingIndicator() {
 
   const iconStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: Math.cos(orbit.value) * ORBIT * scale },
-      { translateY: Math.sin(orbit.value) * ORBIT * scale },
+      { translateX: Math.cos(orbit.value) * radius },
+      { translateY: Math.sin(orbit.value) * radius },
     ],
   }));
 
