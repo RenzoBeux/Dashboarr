@@ -2,16 +2,14 @@ import { memo, useState, useMemo } from "react";
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   RefreshControl,
   type RefreshControlProps,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Film, Eye, EyeOff, Trash2, Info, ScanSearch } from "lucide-react-native";
+import { Search, Film, Eye, EyeOff, Trash2, Info, ScanSearch, Plus } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
-import { ServiceHeader } from "@/components/common/service-header";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { QueueIssuesBanner } from "@/components/services/queue-issues-banner";
 import { radarrArrQueueAdapter } from "@/lib/arr-queue-adapters/radarr";
@@ -32,7 +30,6 @@ import {
 import { useSortStore, SORT_DEFAULTS, type MoviesSortKey } from "@/store/sort-store";
 
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { ICON } from "@/lib/constants";
 import { formatRuntime } from "@/lib/utils";
 import { useLibraryTagFilter } from "@/hooks/use-library-tag-filter";
 import { tagLabelResolver } from "@/lib/library-tags";
@@ -62,6 +59,12 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
+import { ArrLibraryRow } from "@/components/common/arr-library-row";
+import { useLibraryView } from "@/hooks/use-library-view";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
+import type { LibraryViewMode } from "@/store/library-view-store";
 
 type MovieSheetTarget =
   | { kind: "movie"; item: RadarrMovie }
@@ -180,6 +183,11 @@ export const MoviesView = memo(function MoviesView({
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const tagFilter = useLibraryTagFilter("radarr");
   const [sheetTarget, setSheetTarget] = useState<MovieSheetTarget>(null);
+  // In-library search and list/poster view (the shared library toolbar).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 200);
+  const view = useLibraryView("radarr", "poster");
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["radarr"]]);
@@ -307,28 +315,44 @@ export const MoviesView = memo(function MoviesView({
   const header = (
     <>
       {topSlot}
-      <View className="flex-row items-center justify-between">
-        <ServiceHeader name="Movies" online={radarrHealth?.online} serviceId="radarr" />
-        <View className="flex-row items-center">
-          {tab === "wanted" && (
-            <Pressable
-              onPress={handleSearchMissing}
-              disabled={searchMissing.isPending}
-              className="p-2 active:opacity-70"
-              accessibilityLabel="Search all missing movies"
-            >
-              <Icon icon={ScanSearch} size={ICON.LG} color="#a1a1aa" />
-            </Pressable>
-          )}
-          <Pressable
-            onPress={() => router.push("/movie/search")}
-            className="p-2 active:opacity-70"
-            accessibilityLabel="Add movie"
-          >
-            <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
-          </Pressable>
-        </View>
-      </View>
+      <LibraryToolbar
+        title="Movies"
+        serviceId="radarr"
+        online={radarrHealth?.online}
+        actions={
+          <>
+            {tab === "wanted" && (
+              <ToolbarIconButton
+                icon={ScanSearch}
+                label="Search all missing movies"
+                onPress={() => {
+                  if (!searchMissing.isPending) handleSearchMissing();
+                }}
+              />
+            )}
+            <ToolbarIconButton
+              icon={Plus}
+              label="Add movie"
+              onPress={() => router.push("/movie/search")}
+            />
+          </>
+        }
+        search={
+          tab === "library"
+            ? {
+                open: searchOpen,
+                onToggle: () => {
+                  if (searchOpen) setQuery("");
+                  setSearchOpen(!searchOpen);
+                },
+                query,
+                onQuery: setQuery,
+                placeholder: "Search your movies",
+              }
+            : undefined
+        }
+        view={tab === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
+      />
 
       <HealthIssuesBanner serviceId="radarr" className="mb-4" />
       <QueueIssuesBanner adapter={radarrArrQueueAdapter} className="mb-4" />
@@ -378,6 +402,8 @@ export const MoviesView = memo(function MoviesView({
         <MovieLibrary
           monitorFilter={monitorFilter}
           sort={sort}
+          query={debouncedQuery}
+          mode={view.mode}
           tagFilter={tagFilter.predicate}
           onLongPress={openMovieSheet}
           listHeader={header}
@@ -468,6 +494,8 @@ export const MoviesView = memo(function MoviesView({
 function MovieLibrary({
   monitorFilter,
   sort,
+  query,
+  mode,
   tagFilter,
   onLongPress,
   listHeader,
@@ -476,6 +504,8 @@ function MovieLibrary({
 }: {
   monitorFilter: MonitorFilter;
   sort: MoviesSortKey;
+  query: string;
+  mode: LibraryViewMode;
   tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
   onLongPress: (movie: RadarrMovie) => void;
   listHeader: React.ReactElement;
@@ -496,13 +526,39 @@ function MovieLibrary({
   // run for every visible cell on every render here.
   const renderTags = useMemo(() => tagLabelResolver<RadarrMovie>(tags), [tags]);
 
+  // In-library search narrows the list without reordering it.
+  const searchFilter = useLibrarySearchFilter(movies, query);
+  // Memoized: the grid re-sorts the whole library when this identity changes.
+  const extraFilter = useMemo(
+    () => combineFilters(tagFilter, searchFilter),
+    [tagFilter, searchFilter],
+  );
+  const statusOf = (m: RadarrMovie) => ({
+    barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
+    cornerColor: cornerColorFor(m.status),
+  });
+
   return (
     <MonitoredLibraryGrid
       data={movies}
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
-      extraFilter={tagFilter}
+      extraFilter={extraFilter}
+      mode={mode}
+      renderRow={(m) => (
+        <ArrLibraryRow
+          images={m.images}
+          serviceId="radarr"
+          placeholderIcon={Film}
+          title={m.title}
+          footer={movieFooter(m)}
+          tags={renderTags(m)}
+          status={statusOf(m)}
+          onPress={() => router.push(`/movie/${m.id}`)}
+          onLongPress={() => onLongPress(m)}
+        />
+      )}
       isMissing={radarrIsMissing}
       sort={sort}
       compare={compareMovies}
@@ -511,10 +567,7 @@ function MovieLibrary({
       nounPlural="movies"
       renderFooter={movieFooter}
       renderTags={renderTags}
-      posterStatus={(m) => ({
-        barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
-        cornerColor: cornerColorFor(m.status),
-      })}
+      posterStatus={statusOf}
       onItemPress={(m) => router.push(`/movie/${m.id}`)}
       onItemLongPress={onLongPress}
       ListHeaderComponent={listHeader}

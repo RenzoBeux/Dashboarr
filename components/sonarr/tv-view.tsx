@@ -2,7 +2,6 @@ import { memo, useState, useMemo } from "react";
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   RefreshControl,
   type RefreshControlProps,
@@ -16,13 +15,13 @@ import {
   Trash2,
   Info,
   ScanSearch,
+  Plus,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import {
   ScreenWrapper,
   useScreenBottomPadding,
 } from "@/components/common/screen-wrapper";
-import { ServiceHeader } from "@/components/common/service-header";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { QueueIssuesBanner } from "@/components/services/queue-issues-banner";
 import { sonarrArrQueueAdapter } from "@/lib/arr-queue-adapters/sonarr";
@@ -49,7 +48,6 @@ import {
   type SeriesSortKey,
 } from "@/store/sort-store";
 import { SkeletonCardContent } from "@/components/ui/skeleton";
-import { ICON } from "@/lib/constants";
 import {
   useSonarrSeries,
   useSonarrQueue,
@@ -89,6 +87,12 @@ import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { groupBy } from "@/lib/group-by";
+import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
+import { ArrLibraryRow } from "@/components/common/arr-library-row";
+import { useLibraryView } from "@/hooks/use-library-view";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
+import type { LibraryViewMode } from "@/store/library-view-store";
 
 type SeriesSheetTarget =
   | { kind: "series"; item: SonarrSeries }
@@ -185,6 +189,11 @@ export const TvView = memo(function TvView({
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const tagFilter = useLibraryTagFilter("sonarr");
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
+  // In-library search and list/poster view (the shared library toolbar).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 200);
+  const view = useLibraryView("sonarr", "poster");
   // All modal sequencing (sheet → confirm, sheet → push) goes through the
   // flow — see hooks/use-modal-flow.ts.
   const flow = useModalFlow<{
@@ -333,30 +342,42 @@ export const TvView = memo(function TvView({
   const header = (
     <>
       {topSlot}
-      <View className="flex-row items-center justify-between">
-        <ServiceHeader
-          name="TV Shows"
-          online={sonarrHealth?.online}
-          serviceId="sonarr"
-        />
-        <View className="flex-row items-center">
-          <Pressable
-            onPress={handleSearchMissing}
-            disabled={searchMissing.isPending}
-            className="p-2 active:opacity-70"
-            accessibilityLabel="Search all missing episodes"
-          >
-            <Icon icon={ScanSearch} size={ICON.LG} color="#a1a1aa" />
-          </Pressable>
-          <Pressable
-            onPress={() => router.push("/series/search")}
-            className="p-2 active:opacity-70"
-            accessibilityLabel="Add series"
-          >
-            <Icon icon={Search} size={ICON.LG} color="#a1a1aa" />
-          </Pressable>
-        </View>
-      </View>
+      <LibraryToolbar
+        title="TV Shows"
+        serviceId="sonarr"
+        online={sonarrHealth?.online}
+        actions={
+          <>
+            <ToolbarIconButton
+              icon={ScanSearch}
+              label="Search all missing episodes"
+              onPress={() => {
+                if (!searchMissing.isPending) handleSearchMissing();
+              }}
+            />
+            <ToolbarIconButton
+              icon={Plus}
+              label="Add series"
+              onPress={() => router.push("/series/search")}
+            />
+          </>
+        }
+        search={
+          tab === "library"
+            ? {
+                open: searchOpen,
+                onToggle: () => {
+                  if (searchOpen) setQuery("");
+                  setSearchOpen(!searchOpen);
+                },
+                query,
+                onQuery: setQuery,
+                placeholder: "Search your shows",
+              }
+            : undefined
+        }
+        view={tab === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
+      />
 
       <HealthIssuesBanner serviceId="sonarr" className="mb-4" />
       <QueueIssuesBanner adapter={sonarrArrQueueAdapter} className="mb-4" />
@@ -411,6 +432,8 @@ export const TvView = memo(function TvView({
         <SeriesLibrary
           monitorFilter={monitorFilter}
           statusFilter={statusFilter}
+          query={debouncedQuery}
+          mode={view.mode}
           tagFilter={tagFilter.predicate}
           sort={sort}
           onLongPress={openSeriesSheet}
@@ -511,6 +534,8 @@ export const TvView = memo(function TvView({
 function SeriesLibrary({
   monitorFilter,
   statusFilter,
+  query,
+  mode,
   tagFilter,
   sort,
   onLongPress,
@@ -520,6 +545,8 @@ function SeriesLibrary({
 }: {
   monitorFilter: MonitorFilter;
   statusFilter: SeriesStatusFilter;
+  query: string;
+  mode: LibraryViewMode;
   tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
   sort: SeriesSortKey;
   onLongPress: (series: SonarrSeries) => void;
@@ -547,19 +574,26 @@ function SeriesLibrary({
     [statusFilter],
   );
 
-  // The grid has ONE extraFilter slot, so status and tags are ANDed here. Both
-  // inputs are memo-stable, so this is too — the grid's `sorted` memo (and with
-  // it a full re-sort of the library) survives every render. Returning the lone
-  // predicate rather than always wrapping keeps the identity stable when only
-  // one is active, and keeps it `undefined` when neither is, so the empty state
-  // still reads "No shows in library" instead of "No shows match filters".
-  const extraFilter = useMemo(() => {
-    if (!statusPredicate) return tagFilter;
-    if (!tagFilter) return statusPredicate;
-    return (s: SonarrSeries) => statusPredicate(s) && tagFilter(s);
-  }, [statusPredicate, tagFilter]);
+  // In-library search narrows the list without reordering it.
+  const searchPredicate = useLibrarySearchFilter(series, query);
+
+  // The grid has ONE extraFilter slot, so status, tags and search are ANDed
+  // here. All inputs are memo-stable, so this is too — the grid's `sorted` memo
+  // (and with it a full re-sort of the library) survives every render.
+  // combineFilters returns a lone predicate as-is, keeping its identity, and
+  // `undefined` when none is active, so the empty state still reads "No shows
+  // in library" instead of "No shows match filters".
+  const extraFilter = useMemo(
+    () => combineFilters<SonarrSeries>(statusPredicate, tagFilter, searchPredicate),
+    [statusPredicate, tagFilter, searchPredicate],
+  );
 
   const renderTags = useMemo(() => tagLabelResolver<SonarrSeries>(tags), [tags]);
+  const statusOf = (s: SonarrSeries) => ({
+    barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
+    cornerColor: cornerColorFor(s.status),
+    progress: sonarrBarProgress(s),
+  });
 
   return (
     <MonitoredLibraryGrid
@@ -574,21 +608,23 @@ function SeriesLibrary({
       serviceId="sonarr"
       placeholderIcon={Tv}
       nounPlural="shows"
-      renderFooter={(s) => {
-        // Sonarr v3 /series has no top-level seasonCount; read statistics (or
-        // count non-special seasons), matching app/series/[id].tsx.
-        const count =
-          s.statistics?.seasonCount ??
-          s.seasons.filter((x) => x.seasonNumber > 0).length ??
-          0;
-        return `${count} season${count !== 1 ? "s" : ""}`;
-      }}
+      renderFooter={seriesFooter}
       renderTags={renderTags}
-      posterStatus={(s) => ({
-        barColor: BAR_KIND_COLOR[sonarrBarKind(s, downloading.has(s.id))],
-        cornerColor: cornerColorFor(s.status),
-        progress: sonarrBarProgress(s),
-      })}
+      posterStatus={statusOf}
+      mode={mode}
+      renderRow={(s) => (
+        <ArrLibraryRow
+          images={s.images}
+          serviceId="sonarr"
+          placeholderIcon={Tv}
+          title={s.title}
+          footer={seriesFooter(s)}
+          tags={renderTags(s)}
+          status={statusOf(s)}
+          onPress={() => router.push(`/series/${s.id}`)}
+          onLongPress={() => onLongPress(s)}
+        />
+      )}
       onItemPress={(s) => router.push(`/series/${s.id}`)}
       onItemLongPress={onLongPress}
       ListHeaderComponent={listHeader}
@@ -684,4 +720,12 @@ function CalendarView({
       })}
     </View>
   );
+}
+
+// Sonarr v3 /series has no top-level seasonCount; read statistics (or count
+// non-special seasons), matching app/series/[id].tsx.
+function seriesFooter(s: SonarrSeries): string {
+  const count =
+    s.statistics?.seasonCount ?? s.seasons.filter((x) => x.seasonNumber > 0).length ?? 0;
+  return `${count} season${count !== 1 ? "s" : ""}`;
 }
