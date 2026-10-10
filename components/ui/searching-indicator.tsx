@@ -110,7 +110,7 @@ export function SearchElapsed({ seconds }: { seconds: number }) {
     <Text
       className="text-zinc-500 text-xs text-center"
       style={{ fontVariant: ["tabular-nums"] }}
-      accessibilityLabel={`Searching for ${seconds} seconds`}
+      accessibilityLabel={`Searching for ${seconds} second${seconds === 1 ? "" : "s"}`}
     >
       {m}:{s}
     </Text>
