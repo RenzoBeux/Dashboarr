@@ -188,7 +188,7 @@ function SeasonGrid({
                 <Cell
                   key={ep.episodeId}
                   cell={ep.cells[li]}
-                  label={`Episode ${ep.episode}, ${lang.code2.toUpperCase()}: ${CELL_LABEL[ep.cells[li]]}`}
+                  label={`Episode ${ep.episode}, ${lang.code2.toUpperCase()}${lang.forced ? " forced" : ""}${lang.hi ? " HI" : ""}: ${CELL_LABEL[ep.cells[li]]}`}
                   onPress={() => onOpenEpisode(ep.episodeId)}
                 />
               ))}
