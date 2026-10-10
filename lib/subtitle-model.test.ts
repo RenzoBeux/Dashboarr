@@ -1,0 +1,183 @@
+import {
+  buildAudioTags,
+  buildCoverageGrid,
+  buildSubtitleChips,
+  buildSubtitleRows,
+  fitChips,
+  seasonMissingTargets,
+  subtitleCoverage,
+} from "./subtitle-model";
+import type { BazarrEpisode, BazarrSubtitle } from "./types";
+
+const sub = (code2: string, path: string | null, extra: Partial<BazarrSubtitle> = {}): BazarrSubtitle => ({
+  name: code2.toUpperCase(),
+  code2,
+  code3: code2,
+  path,
+  forced: false,
+  hi: false,
+  ...extra,
+});
+const miss = (code2: string, extra: { forced?: boolean; hi?: boolean } = {}) => ({
+  name: code2.toUpperCase(),
+  code2,
+  code3: code2,
+  forced: extra.forced ?? false,
+  hi: extra.hi ?? false,
+});
+
+describe("buildSubtitleRows", () => {
+  const rows = buildSubtitleRows({
+    subtitles: [
+      sub("en", null, { embedded_track_id: 2 }),
+      sub("de", "/m/Film.de.srt"),
+      sub("de", "/m/Film.de.forced.srt", { forced: true }),
+    ],
+    missing_subtitles: [miss("fr")],
+  });
+
+  it("orders missing, then files, then embedded", () => {
+    expect(rows.map((r) => `${r.code2}:${r.state}`)).toEqual([
+      "fr:missing",
+      "de:present",
+      "de:present",
+      "en:embedded",
+    ]);
+  });
+
+  it("gives every row a distinct, stable key", () => {
+    expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
+    expect(rows.find((r) => r.forced)?.key).toBe("de|f|/m/Film.de.forced.srt");
+  });
+
+  it("handles a missing or null list", () => {
+    expect(buildSubtitleRows({ subtitles: null, missing_subtitles: undefined })).toEqual([]);
+  });
+});
+
+describe("buildSubtitleChips / subtitleCoverage", () => {
+  it("keeps one chip per language and flags, preferring the best state", () => {
+    const chips = buildSubtitleChips(
+      buildSubtitleRows({
+        subtitles: [sub("en", null), sub("en", "/m/f.en.srt"), sub("de", "/m/f.de.srt", { forced: true })],
+        missing_subtitles: [miss("fr"), miss("de")],
+      }),
+    );
+    expect(chips.map((c) => `${c.code2}${c.forced ? "F" : ""}:${c.state}`)).toEqual([
+      "deF:present",
+      "en:present",
+      "de:missing",
+      "fr:missing",
+    ]);
+    expect(subtitleCoverage(chips)).toEqual({ have: 2, total: 4 });
+  });
+});
+
+describe("buildAudioTags", () => {
+  it("dedupes arr audio tracks and marks the original language", () => {
+    expect(buildAudioTags("eng/eng/ger", { id: 1, name: "English" })).toEqual([
+      { code2: "en", name: "English", original: true },
+      { code2: "de", name: "German", original: false },
+    ]);
+  });
+
+  it("accepts Bazarr's audio_language list", () => {
+    expect(
+      buildAudioTags(
+        [
+          { name: "French", code2: "fr", code3: "fre" },
+          { name: "French", code2: "fr", code3: "fre" },
+        ],
+        "French",
+      ),
+    ).toEqual([{ code2: "fr", name: "French", original: true }]);
+  });
+
+  it("is empty without audio info", () => {
+    expect(buildAudioTags(undefined)).toEqual([]);
+  });
+});
+
+describe("fitChips", () => {
+  // chip 30, gap 4, "+N" 30
+  it("shows everything that fits", () => {
+    expect(fitChips(3, 98, 30, 4, 30)).toBe(3);
+  });
+
+  it("leaves room for the +N chip when it doesn't", () => {
+    // 4 chips need 132; with +N: n*(34) + 30 <= 120 → n = 2
+    expect(fitChips(4, 120, 30, 4, 30)).toBe(2);
+  });
+
+  it("never shows a +N for a single hidden chip it could have shown", () => {
+    expect(fitChips(2, 64, 30, 4, 30)).toBe(2);
+  });
+
+  it("handles no room and no chips", () => {
+    expect(fitChips(5, 20, 30, 4, 30)).toBe(0);
+    expect(fitChips(0, 200, 30, 4, 30)).toBe(0);
+  });
+});
+
+const ep = (
+  season: number,
+  episode: number,
+  subtitles: BazarrSubtitle[],
+  missing: ReturnType<typeof miss>[],
+): BazarrEpisode => ({
+  sonarrSeriesId: 1,
+  sonarrEpisodeId: season * 100 + episode,
+  season,
+  episode,
+  title: `E${episode}`,
+  path: "/tv/x",
+  profileId: 1,
+  audio_language: [],
+  subtitles,
+  missing_subtitles: missing,
+});
+
+describe("buildCoverageGrid", () => {
+  const episodes = [
+    ep(1, 2, [sub("en", "/a.en.srt")], [miss("de")]),
+    ep(1, 1, [sub("en", null), sub("de", "/a.de.srt")], []),
+    ep(2, 1, [], [miss("en"), miss("de")]),
+  ];
+
+  it("uses the profile's languages as columns", () => {
+    const grid = buildCoverageGrid(episodes, {
+      profileId: 1,
+      name: "EN+DE",
+      cutoff: null,
+      items: [
+        { id: 1, language: "en", forced: "False", hi: "False" },
+        { id: 2, language: "de", forced: "False", hi: "False" },
+        { id: 3, language: "fr", forced: "False", hi: "False" },
+      ],
+    });
+    expect(grid.languages.map((l) => l.code2)).toEqual(["en", "de", "fr"]);
+    expect(grid.seasons.map((s) => s.season)).toEqual([2, 1]);
+    const s1 = grid.seasons[1];
+    expect(s1.episodes.map((e) => e.cells)).toEqual([
+      ["embedded", "present", "unwanted"],
+      ["present", "missing", "unwanted"],
+    ]);
+    expect(s1.gaps).toBe(1);
+    expect(grid.seasons[0].gaps).toBe(1);
+  });
+
+  it("falls back to the languages episodes have without a profile", () => {
+    expect(buildCoverageGrid(episodes).languages.map((l) => l.code2)).toEqual(["de", "en"]);
+  });
+});
+
+describe("seasonMissingTargets", () => {
+  it("lists only that season's episodes with missing languages", () => {
+    const targets = seasonMissingTargets(
+      [ep(1, 1, [], [miss("de")]), ep(1, 2, [], []), ep(2, 1, [], [miss("en")])],
+      1,
+    );
+    expect(targets.map((t) => t.episode.episode)).toEqual([1]);
+    expect(targets[0].languages.map((l) => l.code2)).toEqual(["de"]);
+  });
+});
