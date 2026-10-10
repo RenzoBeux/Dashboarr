@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { toast, toastError } from "@/components/ui/toast";
 import { SubtitleCoverageCard } from "@/components/subtitles/subtitle-coverage-card";
 import { EpisodeSubtitlesSheet } from "@/components/subtitles/episode-subtitles-sheet";
+import { SubtitlesUnreachable } from "@/components/subtitles/subtitles-card";
 import { useSubtitleActions } from "@/components/subtitles/use-subtitle-actions";
 import { useLinkedBazarr } from "@/hooks/use-bazarr-link";
 import {
@@ -52,7 +53,11 @@ export function useSeriesSubtitles({
 }) {
   const seriesId = series?.id ?? 0;
   const { bazarrId } = useLinkedBazarr("sonarr", instanceId);
-  const { data: bazarrEpisodes } = useBazarrSeriesEpisodes(bazarrId, seriesId);
+  const {
+    data: bazarrEpisodes,
+    error: episodesError,
+    refetch: refetchEpisodes,
+  } = useBazarrSeriesEpisodes(bazarrId, seriesId);
   const { data: bazarrSeries, isPending: seriesPending } = useBazarrSeriesItem(bazarrId, seriesId);
   const { data: profiles, isPending: profilesPending } = useBazarrLanguageProfiles(bazarrId);
   const profile = profiles?.find((p) => p.profileId === bazarrSeries?.profileId) ?? null;
@@ -214,7 +219,9 @@ export function useSeriesSubtitles({
   const seriesGaps = gapOrder.length;
 
   const coverageCard =
-    linked && grid && grid.languages.length > 0 ? (
+    bazarrId && episodesError && !bazarrEpisodes ? (
+      <SubtitlesUnreachable bazarrId={bazarrId} onRetry={() => void refetchEpisodes()} />
+    ) : linked && grid ? (
       <SubtitleCoverageCard
         languages={grid.languages}
         seasons={grid.seasons}

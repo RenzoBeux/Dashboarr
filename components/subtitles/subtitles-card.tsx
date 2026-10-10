@@ -60,17 +60,7 @@ export function SubtitlesCard({
       {isLoading ? (
         <Skeleton width="100%" height={52} borderRadius={16} />
       ) : error && !movie ? (
-        <View className="flex-row items-center gap-3 rounded-2xl bg-surface border border-border px-4 py-3">
-          <Text className="flex-1 text-zinc-400 text-xs">Couldn&apos;t reach {bazarrName}.</Text>
-          <Pressable
-            onPress={() => refetch()}
-            hitSlop={8}
-            className="active:opacity-70"
-            accessibilityRole="button"
-          >
-            <Text className="text-primary text-xs font-semibold">Retry</Text>
-          </Pressable>
-        </View>
+        <SubtitlesUnreachable bazarrId={bazarrId} onRetry={() => void refetch()} />
       ) : !movie ? (
         <View className="rounded-2xl bg-surface border border-border px-4 py-3">
           <Text className="text-zinc-400 text-xs">
@@ -114,6 +104,25 @@ export function SubtitlesCard({
       )}
 
       {actions.modals}
+    </View>
+  );
+}
+
+/** "Couldn't reach <Bazarr>." with Retry, when its data never loaded. */
+export function SubtitlesUnreachable({
+  bazarrId,
+  onRetry,
+}: {
+  bazarrId: string;
+  onRetry: () => void;
+}) {
+  const bazarrName = useBazarrName(bazarrId);
+  return (
+    <View className="flex-row items-center gap-3 rounded-2xl bg-surface border border-border px-4 py-3">
+      <Text className="flex-1 text-zinc-400 text-xs">Couldn&apos;t reach {bazarrName}.</Text>
+      <Pressable onPress={onRetry} hitSlop={8} className="active:opacity-70" accessibilityRole="button">
+        <Text className="text-primary text-xs font-semibold">Retry</Text>
+      </Pressable>
     </View>
   );
 }

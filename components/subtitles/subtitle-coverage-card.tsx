@@ -58,6 +58,19 @@ export function SubtitleCoverageCard({
 
   const season = seasons.find((s) => s.season === picked) ?? fallbackSeason();
 
+  // No profile and nothing on disk yet: nothing to chart, but the profile
+  // is how the series gets languages at all.
+  if (languages.length === 0) {
+    return (
+      <View className="rounded-2xl bg-surface border border-border overflow-hidden">
+        <Text className="text-zinc-400 text-xs px-4 pt-3 pb-1">
+          No subtitle languages wanted yet. Pick a language profile so Bazarr looks for them.
+        </Text>
+        <ProfileRow profileName={profileName} onPress={onPressProfile} />
+      </View>
+    );
+  }
+
   return (
     <CollapsibleCard
       accessibilityLabel="Subtitle coverage"
@@ -120,21 +133,37 @@ export function SubtitleCoverageCard({
           </Pressable>
         </View>
 
-        <Pressable
-          onPress={onPressProfile}
-          disabled={!onPressProfile}
-          className="flex-row items-center justify-between px-4 py-3 border-t border-zinc-800 active:opacity-70"
-          accessibilityRole="button"
-          accessibilityLabel={`Language profile: ${profileName ?? "none"}`}
-        >
-          <Text className="text-zinc-500 text-xs">Language profile</Text>
-          <View className="flex-row items-center gap-1">
-            <Text className="text-zinc-200 text-xs">{profileName ?? "None"}</Text>
-            {onPressProfile ? <Icon icon={ChevronRight} size={14} color="#71717a" /> : null}
-          </View>
-        </Pressable>
+        <ProfileRow profileName={profileName} onPress={onPressProfile} bordered />
       </View>
     </CollapsibleCard>
+  );
+}
+
+function ProfileRow({
+  profileName,
+  onPress,
+  bordered = false,
+}: {
+  profileName: string | null;
+  onPress?: () => void;
+  bordered?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      className={`flex-row items-center justify-between px-4 py-3 active:opacity-70 ${
+        bordered ? "border-t border-zinc-800" : ""
+      }`}
+      accessibilityRole="button"
+      accessibilityLabel={`Language profile: ${profileName ?? "none"}`}
+    >
+      <Text className="text-zinc-500 text-xs">Language profile</Text>
+      <View className="flex-row items-center gap-1">
+        <Text className="text-zinc-200 text-xs">{profileName ?? "None"}</Text>
+        {onPress ? <Icon icon={ChevronRight} size={14} color="#71717a" /> : null}
+      </View>
+    </Pressable>
   );
 }
 
