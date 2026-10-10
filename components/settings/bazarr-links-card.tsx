@@ -114,6 +114,7 @@ function LinksBody({ instanceId }: { instanceId: string }) {
         bazarrName={instName}
         state={status.radarr}
         detectedId={status.detection?.radarr.instanceId ?? null}
+        detectionPending={!status.detection && !status.detectError}
       />
       <LinkSelect
         kind="sonarr"
@@ -121,6 +122,7 @@ function LinksBody({ instanceId }: { instanceId: string }) {
         bazarrName={instName}
         state={status.sonarr}
         detectedId={status.detection?.sonarr.instanceId ?? null}
+        detectionPending={!status.detection && !status.detectError}
       />
 
       <View className="flex-row items-center gap-3">
@@ -158,12 +160,15 @@ function LinkSelect({
   bazarrName,
   state,
   detectedId,
+  detectionPending,
 }: {
   kind: ArrKind;
   bazarrId: string;
   bazarrName: string;
   state: LinkState;
   detectedId: string | null;
+  // No detection result or error yet.
+  detectionPending: boolean;
 }) {
   const arrs = useEnabledInstances(kind);
   const entries = useBazarrLinkEntries(kind);
@@ -214,7 +219,9 @@ function LinkSelect({
             value: NOT_LINKED,
             label: "Not linked",
             description: !outranked
-              ? "Nothing detected yet"
+              ? detectionPending
+                ? "Reading Bazarr's settings…"
+                : "Nothing detected"
               : winnerManual
                 ? "Another Bazarr has the detected instance set by hand"
                 : "Another Bazarr is connected to the detected instance too",
