@@ -252,23 +252,39 @@ export function searchSubtitle(
   });
 }
 
+// Before 1.5.6 every search request stays open for the whole provider
+// search, and Android's HTTP client runs only 5 at once per host; the rest
+// would wait in its queue while their timeout already runs. A season's gaps
+// go out a few at a time instead.
+const SEARCH_CONCURRENCY = 4;
+
 /**
  * Several one-language searches at once (an episode's missing languages, a
- * season's gaps). Sent in parallel so one slow search can't hold back the
- * rest; fails only when every search failed, since the others did start.
+ * season's gaps). Sent in parallel, up to SEARCH_CONCURRENCY at a time, so
+ * one slow search can't hold back the rest; fails only when every search
+ * failed, since the others did start.
  */
 export async function searchSubtitles(
   requests: readonly { target: SubtitleTarget; lang: LanguageChoice }[],
   instanceId?: string,
 ): Promise<void> {
-  const results = await Promise.allSettled(
-    requests.map((r) => searchSubtitle(r.target, r.lang, instanceId)),
+  const failures: unknown[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < requests.length) {
+      const r = requests[next++];
+      try {
+        await searchSubtitle(r.target, r.lang, instanceId);
+      } catch (err) {
+        failures.push(err);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(SEARCH_CONCURRENCY, requests.length) }, worker),
   );
-  const failures = results.filter(
-    (r): r is PromiseRejectedResult => r.status === "rejected",
-  );
-  if (failures.length > 0 && failures.length === results.length) {
-    throw failures[0].reason;
+  if (failures.length > 0 && failures.length === requests.length) {
+    throw failures[0];
   }
 }
 

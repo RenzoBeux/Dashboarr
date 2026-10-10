@@ -357,4 +357,20 @@ describe("searchSubtitles", () => {
     mockRequest.mockRejectedValue(new Error("down"));
     await expect(searchSubtitles([ep(1), ep(2)])).rejects.toThrow("down");
   });
+
+  it("keeps at most 4 searches open at once, starting the next as one ends", async () => {
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    const pending: (() => void)[] = [];
+    mockRequest.mockImplementation(() => new Promise<void>((resolve) => pending.push(resolve)));
+    const done = searchSubtitles([1, 2, 3, 4, 5, 6].map(ep));
+    expect(mockRequest).toHaveBeenCalledTimes(4);
+    pending[0]();
+    await flush();
+    expect(mockRequest).toHaveBeenCalledTimes(5);
+    pending[1]();
+    await flush();
+    expect(mockRequest).toHaveBeenCalledTimes(6);
+    pending.slice(2).forEach((resolve) => resolve());
+    await expect(done).resolves.toBeUndefined();
+  });
 });
