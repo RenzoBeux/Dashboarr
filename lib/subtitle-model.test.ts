@@ -166,6 +166,18 @@ describe("buildCoverageGrid", () => {
     expect(grid.seasons[0].gaps).toBe(1);
   });
 
+  it("keeps plain and HI columns of one language apart", () => {
+    const grid = buildCoverageGrid([
+      ep(1, 1, [sub("en", "/a.en.srt")], [miss("en", { hi: true })]),
+      ep(1, 2, [sub("en", "/b.en.hi.srt", { hi: true })], []),
+    ]);
+    expect(grid.languages.map((l) => l.key)).toEqual(["en|", "en|h"]);
+    expect(grid.seasons[0].episodes.map((e) => e.cells)).toEqual([
+      ["present", "missing"],
+      ["present", "present"],
+    ]);
+  });
+
   it("falls back to the languages episodes have without a profile", () => {
     expect(buildCoverageGrid(episodes).languages.map((l) => l.code2)).toEqual(["de", "en"]);
   });

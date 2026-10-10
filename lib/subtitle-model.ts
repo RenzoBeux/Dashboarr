@@ -239,10 +239,12 @@ function collectLanguages(episodes: readonly BazarrEpisode[]): CoverageLanguage[
 }
 
 function cellFor(ep: BazarrEpisode, lang: CoverageLanguage): CoverageCell {
-  const matches = (s: { code2: string; forced: boolean }) =>
+  const same = (s: { code2: string; forced: boolean }) =>
     s.code2 === lang.code2 && s.forced === lang.forced;
-  if (ep.missing_subtitles.some(matches)) return "missing";
-  const subs = ep.subtitles.filter(matches);
+  // Bazarr lists exactly what it still wants, flags included. A plain column
+  // is satisfied by an HI subtitle too (as in Bazarr), an HI column only by HI.
+  if (ep.missing_subtitles.some((s) => same(s) && s.hi === lang.hi)) return "missing";
+  const subs = ep.subtitles.filter((s) => same(s) && (s.hi || !lang.hi));
   if (subs.some((s) => s.path)) return "present";
   if (subs.length > 0) return "embedded";
   return "unwanted";
