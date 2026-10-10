@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast, toastError } from "@/components/ui/toast";
 import { SubtitleCoverageCard } from "@/components/subtitles/subtitle-coverage-card";
 import { EpisodeSubtitlesSheet } from "@/components/subtitles/episode-subtitles-sheet";
@@ -53,9 +53,13 @@ export function useSeriesSubtitles({
   const seriesId = series?.id ?? 0;
   const { bazarrId } = useLinkedBazarr("sonarr", instanceId);
   const { data: bazarrEpisodes } = useBazarrSeriesEpisodes(bazarrId, seriesId);
-  const { data: bazarrSeries } = useBazarrSeriesItem(bazarrId, seriesId);
-  const { data: profiles } = useBazarrLanguageProfiles(bazarrId);
+  const { data: bazarrSeries, isPending: seriesPending } = useBazarrSeriesItem(bazarrId, seriesId);
+  const { data: profiles, isPending: profilesPending } = useBazarrLanguageProfiles(bazarrId);
   const profile = profiles?.find((p) => p.profileId === bazarrSeries?.profileId) ?? null;
+  // Without its profile the grid would fall back to every language any
+  // episode has, then jump to the profile's once it loads.
+  const profileSettled =
+    !seriesPending && (bazarrSeries?.profileId == null || !profilesPending);
 
   const byEpisode = useMemo(
     () => new Map((bazarrEpisodes ?? []).map((e) => [e.sonarrEpisodeId, e])),
@@ -67,8 +71,9 @@ export function useSeriesSubtitles({
   );
 
   const grid = useMemo(
-    () => (bazarrEpisodes ? buildCoverageGrid(bazarrEpisodes, profile) : null),
-    [bazarrEpisodes, profile],
+    () =>
+      bazarrEpisodes && profileSettled ? buildCoverageGrid(bazarrEpisodes, profile) : null,
+    [bazarrEpisodes, profile, profileSettled],
   );
   const gapsBySeason = useMemo(
     () => new Map((grid?.seasons ?? []).map((s) => [s.season, s.gaps])),
@@ -169,23 +174,38 @@ export function useSeriesSubtitles({
     () => seriesTarget,
   );
 
+  // Each request of a bulk search can last the whole provider search (before
+  // Bazarr 1.5.6), so a second tap while one runs would send them all again.
+  // Settled per call: mutate()'s own callbacks only fire for the latest one.
+  const running = useRef(new Set<string>());
+  const runBulk = (key: string, request: () => Promise<unknown>, started: string) => {
+    if (running.current.has(key)) {
+      toast("That search is still running", "info");
+      return;
+    }
+    running.current.add(key);
+    request()
+      .finally(() => running.current.delete(key))
+      .then(
+        () => toast(started, "info"),
+        (err) => toastError("Couldn't start the search", err),
+      );
+  };
   const onSearchSeason = (season: number) => {
     const gaps = gapsBySeason.get(season) ?? 0;
     if (gaps === 0) return;
-    searchSeason.mutate(season, {
-      onSuccess: () =>
-        toast(
-          `Searching subtitles for ${gaps} episode${gaps === 1 ? "" : "s"}…`,
-          "info",
-        ),
-      onError: (err) => toastError("Couldn't start the search", err),
-    });
+    runBulk(
+      `s${season}`,
+      () => searchSeason.mutateAsync(season),
+      `Searching subtitles for ${gaps} episode${gaps === 1 ? "" : "s"}…`,
+    );
   };
   const onSearchSeries = () =>
-    searchSeries.mutate(undefined, {
-      onSuccess: () => toast(`Searching missing subtitles for ${series?.title ?? "this show"}…`, "info"),
-      onError: (err) => toastError("Couldn't start the search", err),
-    });
+    runBulk(
+      "series",
+      () => searchSeries.mutateAsync(),
+      `Searching missing subtitles for ${series?.title ?? "this show"}…`,
+    );
 
   const linked = !!bazarrId && !!bazarrEpisodes;
   const seriesGaps = gapOrder.length;
