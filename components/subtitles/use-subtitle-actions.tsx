@@ -278,6 +278,10 @@ export function useSubtitleActions({
       return;
     }
     const keys = missing.map((m) => `${m.code2}|${m.forced ? "f" : ""}${m.hi ? "h" : ""}|missing`);
+    if (keys.every((k) => busyKeys.has(k))) {
+      toast("Already searching", "info");
+      return;
+    }
     searchRows(keys, searchAll.mutateAsync(), () =>
       toast(
         missing.length === 1
@@ -302,11 +306,18 @@ export function useSubtitleActions({
     flow.open("upload");
   };
   const pickFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      // iOS has no UTType for most subtitle formats; validate afterwards.
-      type: "*/*",
-      copyToCacheDirectory: true,
-    });
+    let result: DocumentPicker.DocumentPickerResult;
+    try {
+      result = await DocumentPicker.getDocumentAsync({
+        // iOS has no UTType for most subtitle formats; validate afterwards.
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+    } catch (err) {
+      // E.g. a second picker requested while one is still open.
+      toastError("Couldn't open the file picker", err);
+      return;
+    }
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
     if (!hasSubtitleExtension(asset.name)) {
@@ -467,7 +478,8 @@ export function useSubtitleActions({
         {...stepBind("timing")}
         subtitle={timingRow ? `${timingRow.name} · ${timingRow.sub?.path?.split("/").pop() ?? ""}` : ""}
         videoFps={videoFps}
-        busy={tool.isPending}
+        // The tool mutation is shared by every row; busy only for this one's.
+        busy={tool.isPending && tool.variables?.sub === timingRow?.sub}
         onApply={(mod, description) => {
           if (!timingRow?.sub) return;
           tool.mutateAsync({ sub: timingRow.sub, action: { kind: "mod", mod } }).then(
@@ -560,7 +572,7 @@ export function useSubtitleActions({
         title={title}
         fileName={uploadFile?.name ?? null}
         languages={uploadLanguages}
-        busy={upload.isPending}
+        busy={upload.isPending && upload.variables?.file === uploadFile}
         onChangeFile={() => void pickFile()}
         onUpload={(lang) => {
           if (!uploadFile) return;
