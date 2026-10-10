@@ -132,11 +132,16 @@ const REGION_VARIANTS: Record<string, string> = {
   "es-mx": "ea",
 };
 
-const VARIANT_BASE: Record<string, string> = Object.fromEntries(
-  Object.entries(REGION_VARIANTS).map(([tag, code2]) => [code2, tag.split("-")[0]]),
-);
+const VARIANT_BASE: Record<string, string> = {
+  ...Object.fromEntries(
+    Object.entries(REGION_VARIANTS).map(([tag, code2]) => [code2, tag.split("-")[0]]),
+  ),
+  // The arrs say "Norwegian" (no); files tag the written standard (nob/nno).
+  nb: "no",
+  nn: "no",
+};
 
-/** The language a regional variant belongs to: "pb" → "pt", "ea" → "es". */
+/** The language a variant belongs to: "pb" → "pt", "ea" → "es", "nb" → "no". */
 export function baseLanguageCode(code2: string): string {
   return VARIANT_BASE[code2] ?? code2;
 }

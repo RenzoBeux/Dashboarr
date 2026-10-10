@@ -108,6 +108,10 @@ describe("buildAudioTags", () => {
     ]);
   });
 
+  it("marks a Bokmål track original for a Norwegian production", () => {
+    expect(buildAudioTags("nob", { id: 1, name: "Norwegian" })[0].original).toBe(true);
+  });
+
   it("prefers an exact original over a regional variant's base", () => {
     expect(
       buildAudioTags(
