@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View } from "react-native";
+import { View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -24,6 +24,10 @@ export function Skeleton({
   className,
 }: SkeletonProps) {
   const translateX = useSharedValue(-1);
+  // Measured box width: the highlight (40% wide) travels from fully off the
+  // left edge to fully off the right edge, whatever the skeleton's width. A
+  // fixed pixel distance stopped short on wide boxes.
+  const boxWidth = useSharedValue(0);
   const theme = useAppTheme();
 
   useEffect(() => {
@@ -45,12 +49,22 @@ export function Skeleton({
   }, [translateX]);
 
   const shimmerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value * 200 }],
+    // translateX runs -1 → 1; map it to -0.4w → w.
+    transform: [
+      {
+        translateX:
+          ((translateX.value + 1) / 2) * boxWidth.value * 1.4 -
+          boxWidth.value * 0.4,
+      },
+    ],
   }));
 
   return (
     <View
       className={className}
+      onLayout={(e: LayoutChangeEvent) => {
+        boxWidth.value = e.nativeEvent.layout.width;
+      }}
       style={{
         width: width as any,
         height,
