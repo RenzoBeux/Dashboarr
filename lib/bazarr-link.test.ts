@@ -53,6 +53,16 @@ describe("matchArrInstance", () => {
     ).toBe("vpn");
     expect(matchArrInstance({ enabled: true, apiKey: "same" }, shared)).toBe("lan");
   });
+
+  it("uses the host to pick between candidates on the same port", () => {
+    const shared = [
+      cand("lan", "same", "http://10.0.0.5:7878"),
+      cand("vpn", "same", "http://100.64.0.5:7878"),
+    ];
+    expect(
+      matchArrInstance({ enabled: true, apiKey: "same", host: "100.64.0.5", port: 7878 }, shared),
+    ).toBe("vpn");
+  });
 });
 
 describe("formatArrAddress", () => {

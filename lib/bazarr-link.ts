@@ -42,8 +42,8 @@ export interface ArrCandidate extends HostMatchable {
  * The candidate Bazarr is configured against, or null.
  *
  * The API key must match. Should several candidates share a key (one server
- * added twice, say a LAN and a VPN entry), the one whose URL also carries
- * Bazarr's port wins, then the one on Bazarr's host, then the first.
+ * added twice, say a LAN and a VPN entry), they narrow to the ones whose URL
+ * also carries Bazarr's port, then to the one on Bazarr's host, then the first.
  */
 export function matchArrInstance(
   side: BazarrArrSide,
@@ -55,16 +55,17 @@ export function matchArrInstance(
   const matches = candidates.filter((c) => c.apiKey?.trim() === key);
   if (matches.length <= 1) return matches[0]?.id ?? null;
 
+  let pool = matches;
   if (side.port) {
-    const byPort = matches.filter((c) => portsOf(c).has(side.port!));
-    if (byPort.length > 0) return byPort[0].id;
+    const byPort = pool.filter((c) => portsOf(c).has(side.port!));
+    if (byPort.length > 0) pool = byPort;
   }
   const host = side.host?.trim().toLowerCase();
   if (host) {
-    const byHost = matches.find((c) => hostsOf(c).has(host));
+    const byHost = pool.find((c) => hostsOf(c).has(host));
     if (byHost) return byHost.id;
   }
-  return matches[0].id;
+  return pool[0].id;
 }
 
 function portsOf(c: HostMatchable): Set<number> {
