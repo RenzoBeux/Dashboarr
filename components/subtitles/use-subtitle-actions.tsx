@@ -78,6 +78,9 @@ export type SubtitleFlowSteps = {
   upload: void;
 };
 
+// The file name of a path from Bazarr, which may run on Windows.
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? "";
+
 // PickerSheet values are numbers; "no profile" needs one too.
 const NO_PROFILE = -1;
 
@@ -497,13 +500,13 @@ export function useSubtitleActions({
             ? `${menuRow.name}${menuRow.forced ? " (forced)" : ""}${menuRow.hi ? " (hearing impaired)" : ""}`
             : ""
         }
-        subtitle={menuRow?.sub?.path?.split("/").pop() ?? (menuRow ? "Embedded track" : undefined)}
+        subtitle={(menuRow?.sub?.path && fileName(menuRow.sub.path)) ?? (menuRow ? "Embedded track" : undefined)}
         actions={menuActions}
       />
 
       <SubtitleTimingSheet
         {...stepBind("timing")}
-        subtitle={timingRow ? `${timingRow.name} · ${timingRow.sub?.path?.split("/").pop() ?? ""}` : ""}
+        subtitle={timingRow ? `${timingRow.name} · ${fileName(timingRow.sub?.path ?? "")}` : ""}
         videoFps={videoFps}
         // The tool mutation is shared by every row; busy only for this one's.
         busy={tool.isPending && tool.variables?.sub === timingRow?.sub}
