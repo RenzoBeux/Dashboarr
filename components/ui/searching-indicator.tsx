@@ -119,8 +119,7 @@ export function SearchElapsed({ seconds }: { seconds: number }) {
   const s = String(seconds % 60).padStart(2, "0");
   return (
     <Text
-      className="text-zinc-500 text-xs text-center"
-      style={{ fontVariant: ["tabular-nums"] }}
+      className="text-zinc-500 text-xs text-center tabular-nums"
       accessibilityLabel={`Searching for ${seconds} second${seconds === 1 ? "" : "s"}`}
     >
       {m}:{s}
