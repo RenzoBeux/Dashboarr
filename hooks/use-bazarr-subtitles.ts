@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import {
   getActiveBazarrJobIds,
+  getBazarrEnabledLanguages,
   getBazarrLanguageProfiles,
   getBazarrMovie,
   getBazarrSeriesEpisodes,
@@ -35,6 +36,7 @@ export const bazarrKeys = {
     ["bazarr", bazarrId, "series-episodes", seriesId] as const,
   status: (bazarrId: string) => ["bazarr", bazarrId, "status"] as const,
   profiles: (bazarrId: string) => ["bazarr", bazarrId, "profiles"] as const,
+  languages: (bazarrId: string) => ["bazarr", bazarrId, "languages"] as const,
   manualSearch: (bazarrId: string, target: SubtitleTarget) =>
     [
       "bazarr",
@@ -93,6 +95,15 @@ export function useBazarrLanguageProfiles(bazarrId: string | null) {
     queryFn: () => getBazarrLanguageProfiles(bazarrId!),
     enabled: !!bazarrId,
     staleTime: 10 * 60_000,
+  });
+}
+
+export function useBazarrEnabledLanguages(bazarrId: string | null) {
+  return useQuery({
+    queryKey: bazarrKeys.languages(bazarrId ?? ""),
+    queryFn: () => getBazarrEnabledLanguages(bazarrId!),
+    enabled: !!bazarrId,
+    staleTime: 30 * 60_000,
   });
 }
 

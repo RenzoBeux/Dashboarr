@@ -4234,6 +4234,9 @@ export function getDemoResponse(
       }
       if (normalized === "/system/jobs") return { data: [] };
       if (normalized === "/system/languages/profiles") return DEMO_BAZARR_PROFILES;
+      if (normalized === "/system/languages") {
+        return ["en", "de", "fr"].map((c) => ({ ...demoLang(c), enabled: true }));
+      }
       if (normalized === "/system/status") return { data: { bazarr_version: "1.6.2" } };
       if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;
       if (normalized.startsWith("/episodes/wanted")) return DEMO_BAZARR_WANTED_EPISODES;

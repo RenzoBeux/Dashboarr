@@ -193,6 +193,16 @@ export async function getActiveBazarrJobIds(instanceId?: string): Promise<number
   }
 }
 
+/** The languages enabled in Bazarr's settings (what profiles can use). */
+export async function getBazarrEnabledLanguages(
+  instanceId?: string,
+): Promise<{ name: string; code2: string; code3: string }[]> {
+  const all = await serviceRequest<
+    { name: string; code2: string; code3: string; enabled: boolean }[]
+  >("bazarr", "/system/languages", { instanceId });
+  return all.filter((l) => l.enabled).map(({ name, code2, code3 }) => ({ name, code2, code3 }));
+}
+
 export function getBazarrLanguageProfiles(instanceId?: string): Promise<BazarrLanguageProfile[]> {
   return serviceRequest<BazarrLanguageProfile[]>("bazarr", "/system/languages/profiles", {
     instanceId,
