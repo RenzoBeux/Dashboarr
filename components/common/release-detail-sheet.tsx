@@ -42,9 +42,11 @@ export function ReleaseDetailSheet({
   const grab = service === "radarr" ? radarrGrab : sonarrGrab;
 
   function handleGrab() {
-    if (!release) return;
+    // Closing: the sheet still shows the last release while it animates out,
+    // but a tap then must not send (or re-send) the grab.
+    if (!releaseProp) return;
     grab.mutate(
-      { guid: release.guid, indexerId: release.indexerId },
+      { guid: releaseProp.guid, indexerId: releaseProp.indexerId },
       {
         onSuccess: () => {
           onClose();
