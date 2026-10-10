@@ -8,6 +8,7 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
+  withSequence,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
@@ -51,7 +52,9 @@ export function SearchingIndicator() {
   // the magnifier off-centre; centre it instead.
   const radius = useReducedMotion() ? 0 : ORBIT * scale;
   const ringA = useSharedValue(0);
-  const ringB = useSharedValue(0);
+  // Starts at 1 (fully faded) so it stays hidden through its delay instead of
+  // sitting as a solid outline on the circle until its first pulse.
+  const ringB = useSharedValue(1);
   const orbit = useSharedValue(0);
 
   useEffect(() => {
@@ -70,7 +73,15 @@ export function SearchingIndicator() {
         ReduceMotion.System,
       );
     ringA.value = ring();
-    ringB.value = withDelay(RING_MS / 2, ring(), ReduceMotion.System);
+    ringB.value = withDelay(
+      RING_MS / 2,
+      withSequence(
+        ReduceMotion.System,
+        withTiming(0, { duration: 0, reduceMotion: ReduceMotion.System }),
+        ring(),
+      ),
+      ReduceMotion.System,
+    );
     orbit.value = withRepeat(
       withTiming(2 * Math.PI, {
         duration: 2000,
