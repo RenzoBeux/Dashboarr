@@ -279,10 +279,17 @@ export function ReleasesPicker({
     setElapsed(0);
     if (!isLoading && !isFetching) return;
     const start = Date.now();
-    const id = setInterval(() => {
-      setElapsed(Math.round((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
+    // Re-aim each tick at the next whole second: RN reschedules setInterval
+    // from when it actually fired, so it drifts late and the visible m:ss
+    // counter would skip a number about once a minute.
+    let id: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const ms = Date.now() - start;
+      setElapsed(Math.floor(ms / 1000));
+      id = setTimeout(tick, 1000 - (ms % 1000));
+    };
+    id = setTimeout(tick, 1000);
+    return () => clearTimeout(id);
   }, [isLoading, isFetching, searchEpoch]);
 
   // "Tick" so the relative-time string in the status bar stays fresh once
