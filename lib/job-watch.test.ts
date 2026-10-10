@@ -82,6 +82,25 @@ describe("createJobWatch", () => {
     expect(refresh).toHaveBeenCalledTimes(3);
   });
 
+  it("reports when it starts and stops working", async () => {
+    const onActiveChange = jest.fn();
+    let call = 0;
+    const queue = [[1], [], []];
+    const watch = createJobWatch<string>({
+      fetchActiveJobIds: async () => queue[call++] ?? [],
+      refresh: jest.fn(),
+      onActiveChange,
+      intervalMs: 1000,
+    });
+    watch.track(["a"]);
+    watch.track(["b"]);
+    expect(onActiveChange.mock.calls).toEqual([[true]]);
+    await advance(1000);
+    await advance(1000);
+    await advance(1000);
+    expect(onActiveChange.mock.calls).toEqual([[true], [false]]);
+  });
+
   it("does nothing after dispose", async () => {
     const { watch, refresh } = setup([[1], [], []]);
     watch.track(["x"]);

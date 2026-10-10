@@ -26,6 +26,9 @@ export interface JobWatchOptions<K> {
   fetchActiveJobIds: () => Promise<number[] | null>;
   // Refresh what these keys stand for (e.g. invalidate React Query keys).
   refresh: (keys: K[]) => void;
+  // Fires true when tracking starts and false when it stops, so the UI can
+  // show work in progress (a spinner on the row the user acted on).
+  onActiveChange?: (active: boolean) => void;
   schedule?: (fn: () => void, ms: number) => () => void;
   now?: () => number;
   intervalMs?: number;
@@ -46,6 +49,7 @@ const defaultSchedule = (fn: () => void, ms: number) => {
 export function createJobWatch<K>({
   fetchActiveJobIds,
   refresh,
+  onActiveChange,
   schedule = defaultSchedule,
   now = Date.now,
   intervalMs = 2000,
@@ -63,6 +67,7 @@ export function createJobWatch<K>({
   const stop = () => {
     cancelTimer?.();
     cancelTimer = null;
+    if (polling) onActiveChange?.(false);
     polling = false;
     tracked = [];
     lastIds = new Set();
@@ -124,6 +129,7 @@ export function createJobWatch<K>({
       emptyPolls = 0;
       if (!polling) {
         polling = true;
+        onActiveChange?.(true);
         cancelTimer = schedule(() => void tick(), intervalMs);
       }
     },
