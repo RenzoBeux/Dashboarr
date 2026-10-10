@@ -97,6 +97,12 @@ export function BottomSheet({
           if (finished) runOnJS(setMounted)(false);
         },
       );
+      // If the exit timing is cancelled (a gesture wrote translateY mid-close,
+      // so `finished` never comes), force the unmount anyway — a stuck
+      // `mounted` leaves an invisible Modal eating touches and never delivers
+      // onClosed. Same guard as ActionSheet; cleared if the sheet reopens.
+      const force = setTimeout(() => setMounted(false), 350);
+      return () => clearTimeout(force);
     }
     // Only the visibility edge drives the animation.
   }, [visible]);
@@ -107,6 +113,10 @@ export function BottomSheet({
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
 
   const handlePan = Gesture.Pan()
+    // Disabled while closing: a pan landing mid-close would cancel the exit
+    // withTiming (content stays rendered through the exit, so the handle is
+    // still grabbable).
+    .enabled(visible)
     .onUpdate((e) => {
       translateY.value = Math.max(0, e.translationY);
     })
