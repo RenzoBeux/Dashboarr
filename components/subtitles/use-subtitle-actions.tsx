@@ -272,7 +272,9 @@ export function useSubtitleActions({
       ? null
       : profilesPending
         ? "…" // names not loaded yet; not "Unknown"
-        : (profiles?.find((p) => p.profileId === profileId)?.name ?? "Unknown profile");
+        : !profiles
+          ? "Unavailable"
+          : (profiles.find((p) => p.profileId === profileId)?.name ?? "Unknown profile");
 
   // --- Handlers for SubtitlesBlock ---
 
@@ -469,14 +471,18 @@ export function useSubtitleActions({
     }));
   }, [profiles, profileId, enabledLanguages]);
 
-  const profileOptions: PickerOption[] = [
-    ...(profiles ?? []).map((p) => ({
-      value: p.profileId,
-      label: p.name,
-      description: p.items.map((i) => i.language.toUpperCase()).join(" + "),
-    })),
-    { value: NO_PROFILE, label: "None", description: "Bazarr stops looking for subtitles" },
-  ];
+  // Without the list, offering only "None" would read as "no profiles exist"
+  // and turn searching off; show the load failure instead.
+  const profileOptions: PickerOption[] = profiles
+    ? [
+        ...profiles.map((p) => ({
+          value: p.profileId,
+          label: p.name,
+          description: p.items.map((i) => i.language.toUpperCase()).join(" + "),
+        })),
+        { value: NO_PROFILE, label: "None", description: "Bazarr stops looking for subtitles" },
+      ]
+    : [];
 
   const timingRow = flow.payload("timing");
   const cleanupRow = flow.payload("cleanup");
@@ -554,6 +560,8 @@ export function useSubtitleActions({
         selected={[profileId ?? NO_PROFILE]}
         searchable={false}
         loading={profilesPending}
+        emptyTitle="Couldn't load the profiles"
+        emptyMessage="Bazarr didn't answer. Close this and try again."
         onPick={(value) => {
           closeStep();
           const next = value === NO_PROFILE ? null : value;
