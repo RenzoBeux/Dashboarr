@@ -438,8 +438,14 @@ export function useSubtitleActions({
   const translateRow = flow.payload("translate");
   const translateOptions = useMemo<PickerOption<string>[]>(() => {
     const source = translateRow?.code2;
-    const missing = (item?.missing_subtitles ?? []).filter((m) => m.code2 !== source);
-    const seen = new Set(missing.map((m) => m.code2));
+    // One option per language: a translation target has no forced/HI
+    // variant, though Bazarr may miss several of one language.
+    const seen = new Set<string>();
+    const missing = (item?.missing_subtitles ?? []).filter((m) => {
+      if (m.code2 === source || seen.has(m.code2)) return false;
+      seen.add(m.code2);
+      return true;
+    });
     return [
       ...missing.map((m) => ({ value: m.code2, label: m.name, description: "Missing in the profile" })),
       ...(enabledLanguages ?? [])
@@ -547,7 +553,7 @@ export function useSubtitleActions({
         options={profileOptions}
         selected={[profileId ?? NO_PROFILE]}
         searchable={false}
-        loading={!profiles}
+        loading={profilesPending}
         onPick={(value) => {
           closeStep();
           const next = value === NO_PROFILE ? null : value;
