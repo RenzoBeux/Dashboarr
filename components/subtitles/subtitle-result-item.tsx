@@ -84,7 +84,6 @@ function SubtitleResultItemImpl({
   );
 }
 
-export const SubtitleResultItem = memo(
-  SubtitleResultItemImpl,
-  (a, b) => resultKey(a.result) === resultKey(b.result) && a.onSelect === b.onSelect,
-);
+// Structural sharing keeps unchanged results the same object across
+// refetches, so the default shallow compare skips them without going stale.
+export const SubtitleResultItem = memo(SubtitleResultItemImpl);
