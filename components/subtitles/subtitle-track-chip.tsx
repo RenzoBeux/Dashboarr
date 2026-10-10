@@ -41,12 +41,15 @@ const CHIP_STATE: Record<SubtitleState, { box: string; text: string }> = {
 
 /**
  * Approximate rendered widths in rem, for laying out "+N" overflow
- * (lib/subtitle-model `fitChips`). Two-letter codes fit the minimum width.
+ * (lib/subtitle-model `fitChips`). A two-letter chip fits its minimum width;
+ * a pill's wider padding plus the code and its border outgrow it, so the
+ * pill widths are padding + text + border (erring wide only shows "+N"
+ * sooner, erring narrow overflows into the next column).
  */
 export const TAG_WIDTH_REM: Record<TagSize, { chip: number; pill: number; gap: number }> = {
   md: { chip: 2, pill: 2.2, gap: 0.72 },
-  sm: { chip: 1.6, pill: 1.75, gap: 0.55 },
-  xs: { chip: 1.2, pill: 1.25, gap: 0.3 },
+  sm: { chip: 1.6, pill: 2, gap: 0.55 },
+  xs: { chip: 1.2, pill: 1.55, gap: 0.3 },
 };
 
 const STATE_LABEL: Record<SubtitleState, string> = {
