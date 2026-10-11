@@ -189,6 +189,9 @@ export function BazarrSeriesRow({
   const pct = seriesCoverage(series);
   const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
   const canExpand = expandable && series.episodeMissingCount > 0;
+  // A filter change or the last missing episode getting fixed removes the
+  // toggle: collapse, so the list neither strands nor reopens by itself.
+  if (open && !canExpand) setOpen(false);
 
   return (
     <View className="mb-2 rounded-2xl bg-surface border border-border overflow-hidden">
@@ -249,9 +252,7 @@ export function BazarrSeriesRow({
           </Pressable>
         ) : null}
       </View>
-      {/* Gated on canExpand too: a filter change or the last missing episode
-          getting fixed removes the toggle, which must not strand the list. */}
-      {open && canExpand ? (
+      {open ? (
         <MissingEpisodes
           bazarrId={bazarrId}
           seriesId={series.sonarrSeriesId}
@@ -294,11 +295,12 @@ function MissingEpisodes({
     );
   }
   // The series' missing count can be ahead of its episodes; say so rather
-  // than expanding to nothing.
-  if (error || missing.length === 0) {
+  // than expanding to nothing. Only a failed first load is an error: a failed
+  // background refetch keeps the episodes already loaded.
+  if (!data || missing.length === 0) {
     return (
       <Text className="px-3.5 py-2.5 border-t border-zinc-800 text-zinc-500 text-xs">
-        {error ? "Couldn't load the episodes" : "No episodes are missing subtitles"}
+        {!data && error ? "Couldn't load the episodes" : "No episodes are missing subtitles"}
       </Text>
     );
   }
