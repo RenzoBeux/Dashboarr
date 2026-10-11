@@ -46,12 +46,17 @@ import { useArrTags } from "@/hooks/use-arr-tags";
 
 // `active: false` keeps the query off, e.g. when there is no instance to read
 // from and the active-instance fallback would be the wrong library.
-export function useSonarrSeries(instanceId?: string, active = true) {
+// `staleTime` lets a reader that only needs artwork skip refetching the
+// whole library on every mount.
+export function useSonarrSeries(instanceId?: string, active = true, staleTime?: number) {
   const { instanceId: id, enabled } = useInstanceTarget("sonarr", instanceId);
   return useQuery({
     queryKey: ["sonarr", id, "series"],
     queryFn: () => getSeries(id ?? undefined),
     enabled: active && enabled && !!id,
+    // Spread, not `staleTime: undefined`, which would override the client's
+    // default for every other caller.
+    ...(staleTime !== undefined && { staleTime }),
   });
 }
 

@@ -69,6 +69,7 @@ const FILTER_LABEL: Record<LibraryFilter, string> = {
   noprofile: "No profile",
 };
 const FILTERS: LibraryFilter[] = ["all", "missing", "complete", "noprofile"];
+const ARR_LOOKUP_STALE_MS = 5 * 60_000;
 // Stable empties: a fresh [] per render would rebuild every memo below.
 const NO_MOVIES: BazarrMovie[] = [];
 const NO_SERIES: BazarrSeries[] = [];
@@ -190,13 +191,17 @@ export function BazarrLibraryView({
   // Artwork, original language and "open" come from the linked arr.
   const radarrId = useLinkedArrInstance(bazarrId, "radarr");
   const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
+  // Artwork and original language only: a History visit or kind switch
+  // shouldn't download the whole Radarr/Sonarr library again.
   const { data: radarrMovies } = useRadarrMovies(
     radarrId ?? undefined,
     !!radarrId && kind === "movies",
+    ARR_LOOKUP_STALE_MS,
   );
   const { data: sonarrSeries } = useSonarrSeries(
     sonarrId ?? undefined,
     !!sonarrId && kind === "series",
+    ARR_LOOKUP_STALE_MS,
   );
   // Unlinked: no lookup at all. A disabled query can still hand back the
   // active instance's cached library, whose ids mean something else.
