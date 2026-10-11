@@ -155,16 +155,6 @@ export function useBazarrLinkEntries(
   return useLinkEntries(kind, bazarrs, (id) => !detectFor || detectFor.has(id)).entries;
 }
 
-/** The Radarr/Sonarr instance a Bazarr instance is linked to, or null. */
-export function useLinkedArrInstance(
-  bazarrId: string | null | undefined,
-  kind: ArrKind,
-): string | null {
-  const bazarrs = useEnabledInstances("bazarr");
-  const { entries } = useLinkEntries(kind, bazarrs, (id) => id === bazarrId);
-  return entries.find((e) => e.bazarrId === bazarrId)?.state.arrId ?? null;
-}
-
 /**
  * bazarrId → the Radarr/Sonarr instance its items resolve against
  * (`itemsArrInstance`), for the Bazarrs in `bazarrIds`; detection runs only
