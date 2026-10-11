@@ -13,9 +13,10 @@ import { fitChips, type AudioTag, type SubtitleChip } from "@/lib/subtitle-model
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 
 /**
- * One line, two equal columns: audio languages on the left, subtitles on the
- * right, both left-aligned and each led by its icon (speaker / captions).
- * Used by the Sonarr episode rows and the Bazarr library rows and posters.
+ * Audio languages and subtitles, each led by its icon (speaker / captions):
+ * one line of two equal columns (audio left, subtitles right), or with
+ * `stacked` audio above subtitles for narrow poster overlays. Used by the
+ * Sonarr episode rows and the Bazarr library rows and posters.
  *
  * Each column fills its whole width before collapsing the rest into "+N" —
  * the count is measured, never a fixed cap, so wider screens and the UI scale
