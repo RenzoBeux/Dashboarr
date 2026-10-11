@@ -408,7 +408,9 @@ export const MoviesView = memo(function MoviesView({
         <MovieLibrary
           monitorFilter={monitorFilter}
           sort={sort}
-          query={debouncedQuery}
+          // Closing the search (or leaving the tab) unfilters at once, not after
+          // the debounce catches up with the cleared query.
+          query={searchOpen ? debouncedQuery : ""}
           mode={view.mode}
           tagFilter={tagFilter.predicate}
           onLongPress={openMovieSheet}
