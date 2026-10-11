@@ -10,8 +10,9 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Captions, Search } from "lucide-react-native";
+import { Captions, ScanSearch, Search } from "lucide-react-native";
 import { LibraryCollection } from "@/components/common/library-collection";
+import { ConfirmModal } from "@/components/common/confirm-modal";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -55,7 +56,7 @@ import {
   type LibraryFilter,
 } from "@/lib/bazarr-library";
 import { buildLibraryIndex, filterLibraryIndex } from "@/lib/library-search";
-import { lightHaptic } from "@/lib/haptics";
+import { lightHaptic, mediumHaptic } from "@/lib/haptics";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import type { LibraryViewMode } from "@/store/library-view-store";
 import type { BazarrEpisode, BazarrMovie, BazarrSeries } from "@/lib/types";
@@ -242,6 +243,9 @@ export function BazarrLibraryView({
   );
 
   const { busyMovies, busyEpisodes, searchingAll } = searchBusy;
+  // "Search all"'s confirm. Nothing chains off it, so plain state rather
+  // than useModalFlow; the kind can't change while it covers the screen.
+  const [confirmAll, setConfirmAll] = useState(false);
 
   const searchMovie = useBazarrSubtitleMutation(
     bazarrId,
@@ -389,16 +393,8 @@ export function BazarrLibraryView({
       {filter === "missing" && missingTotal > 0 ? (
         <Pressable
           onPress={() => {
-            const k = kind;
-            searchBusy.startAll(
-              k,
-              () => searchAll.mutateAsync(k),
-              () =>
-                toast(
-                  `Searching every missing ${k === "movies" ? "movie" : "episode"} subtitle…`,
-                  "info",
-                ),
-            );
+            mediumHaptic();
+            setConfirmAll(true);
           }}
           disabled={allBusy}
           className={`flex-row items-center justify-center gap-2 rounded-xl border border-orange-400/40 bg-orange-400/10 py-2.5 mb-3 active:opacity-70 ${
@@ -418,6 +414,33 @@ export function BazarrLibraryView({
         </Pressable>
       ) : null}
     </View>
+  );
+
+  // Like Radarr/Sonarr's "Search Missing": one tap queues a search per item.
+  const confirmSearchAll = (
+    <ConfirmModal
+      visible={confirmAll}
+      title="Search Missing Subtitles"
+      message={`Bazarr will search every missing ${
+        kind === "movies" ? "movie" : "episode"
+      } subtitle in your library. This can queue a lot of searches at once.`}
+      icon={ScanSearch}
+      confirmLabel="Search"
+      onCancel={() => setConfirmAll(false)}
+      onConfirm={() => {
+        const k = kind;
+        setConfirmAll(false);
+        searchBusy.startAll(
+          k,
+          () => searchAll.mutateAsync(k),
+          () =>
+            toast(
+              `Searching every missing ${k === "movies" ? "movie" : "episode"} subtitle…`,
+              "info",
+            ),
+        );
+      }}
+    />
   );
 
   const empty = (
@@ -451,96 +474,102 @@ export function BazarrLibraryView({
 
   if (kind === "movies") {
     return (
+      <>
+        <LibraryCollection
+          // Its own list per kind: the same FlatList would carry the movies'
+          // scroll offset into the series list.
+          key="movies"
+          mode={mode}
+          data={shownMovies}
+          keyOf={(m) => String(m.radarrId)}
+          renderRow={(m) => (
+            <BazarrMovieRow
+              movie={m}
+              lookup={movieLookup.get(m.radarrId)}
+              arrInstanceId={radarrId}
+              showSearch={
+                (filter === "missing" || langFilter?.show === "missing") &&
+                m.missing_subtitles.length > 0
+              }
+              searching={busyMovies.has(m.radarrId)}
+              onSearch={() =>
+                searchBusy.startMovie(
+                  m.radarrId,
+                  () => searchMovie.mutateAsync(m.radarrId),
+                  () => toast(`Searching subtitles for ${m.title}…`, "info"),
+                )
+              }
+              onPress={openMovie ? () => openMovie(m) : undefined}
+            />
+          )}
+          renderCell={(m, width) => (
+            <BazarrMoviePoster
+              movie={m}
+              lookup={movieLookup.get(m.radarrId)}
+              arrInstanceId={radarrId}
+              width={width}
+              onPress={openMovie ? () => openMovie(m) : undefined}
+            />
+          )}
+          isLoading={moviesQuery.isLoading}
+          // Only a failed first load: after a failed refetch the loaded
+          // library still shows, and an empty filter result must still offer
+          // "Clear filters" rather than an error.
+          error={moviesQuery.data ? null : moviesQuery.error}
+          errorTitle="Couldn't load Bazarr's movies"
+          empty={empty}
+          ListHeaderComponent={listHeader}
+          refreshControl={refreshControl}
+          contentContainerStyle={contentContainerStyle}
+        />
+        {confirmSearchAll}
+      </>
+    );
+  }
+
+  return (
+    <>
       <LibraryCollection
-        // Its own list per kind: the same FlatList would carry the movies'
-        // scroll offset into the series list.
-        key="movies"
+        key="series"
         mode={mode}
-        data={shownMovies}
-        keyOf={(m) => String(m.radarrId)}
-        renderRow={(m) => (
-          <BazarrMovieRow
-            movie={m}
-            lookup={movieLookup.get(m.radarrId)}
-            arrInstanceId={radarrId}
-            showSearch={
-              (filter === "missing" || langFilter?.show === "missing") &&
-              m.missing_subtitles.length > 0
-            }
-            searching={busyMovies.has(m.radarrId)}
-            onSearch={() =>
-              searchBusy.startMovie(
-                m.radarrId,
-                () => searchMovie.mutateAsync(m.radarrId),
-                () => toast(`Searching subtitles for ${m.title}…`, "info"),
+        data={shownSeries}
+        keyOf={(s) => String(s.sonarrSeriesId)}
+        renderRow={(s) => (
+          <BazarrSeriesRow
+            series={s}
+            lookup={seriesLookup.get(s.sonarrSeriesId)}
+            arrInstanceId={sonarrId}
+            bazarrId={bazarrId}
+            expandable={filter === "missing"}
+            searchingEpisodes={busyEpisodes}
+            onSearchEpisode={(e) =>
+              searchBusy.startEpisode(
+                e.sonarrEpisodeId,
+                () => searchEpisode.mutateAsync(e),
+                () => toast(`Searching subtitles for ${s.title}…`, "info"),
               )
             }
-            onPress={openMovie ? () => openMovie(m) : undefined}
+            onPress={openSeries ? () => openSeries(s) : undefined}
           />
         )}
-        renderCell={(m, width) => (
-          <BazarrMoviePoster
-            movie={m}
-            lookup={movieLookup.get(m.radarrId)}
-            arrInstanceId={radarrId}
+        renderCell={(s, width) => (
+          <BazarrSeriesPoster
+            series={s}
+            lookup={seriesLookup.get(s.sonarrSeriesId)}
+            arrInstanceId={sonarrId}
             width={width}
-            onPress={openMovie ? () => openMovie(m) : undefined}
+            onPress={openSeries ? () => openSeries(s) : undefined}
           />
         )}
-        isLoading={moviesQuery.isLoading}
-        // Only a failed first load: after a failed refetch the loaded
-        // library still shows, and an empty filter result must still offer
-        // "Clear filters" rather than an error.
-        error={moviesQuery.data ? null : moviesQuery.error}
-        errorTitle="Couldn't load Bazarr's movies"
+        isLoading={seriesQuery.isLoading}
+        error={seriesQuery.data ? null : seriesQuery.error}
+        errorTitle="Couldn't load Bazarr's series"
         empty={empty}
         ListHeaderComponent={listHeader}
         refreshControl={refreshControl}
         contentContainerStyle={contentContainerStyle}
       />
-    );
-  }
-
-  return (
-    <LibraryCollection
-      key="series"
-      mode={mode}
-      data={shownSeries}
-      keyOf={(s) => String(s.sonarrSeriesId)}
-      renderRow={(s) => (
-        <BazarrSeriesRow
-          series={s}
-          lookup={seriesLookup.get(s.sonarrSeriesId)}
-          arrInstanceId={sonarrId}
-          bazarrId={bazarrId}
-          expandable={filter === "missing"}
-          searchingEpisodes={busyEpisodes}
-          onSearchEpisode={(e) =>
-            searchBusy.startEpisode(
-              e.sonarrEpisodeId,
-              () => searchEpisode.mutateAsync(e),
-              () => toast(`Searching subtitles for ${s.title}…`, "info"),
-            )
-          }
-          onPress={openSeries ? () => openSeries(s) : undefined}
-        />
-      )}
-      renderCell={(s, width) => (
-        <BazarrSeriesPoster
-          series={s}
-          lookup={seriesLookup.get(s.sonarrSeriesId)}
-          arrInstanceId={sonarrId}
-          width={width}
-          onPress={openSeries ? () => openSeries(s) : undefined}
-        />
-      )}
-      isLoading={seriesQuery.isLoading}
-      error={seriesQuery.data ? null : seriesQuery.error}
-      errorTitle="Couldn't load Bazarr's series"
-      empty={empty}
-      ListHeaderComponent={listHeader}
-      refreshControl={refreshControl}
-      contentContainerStyle={contentContainerStyle}
-    />
+      {confirmSearchAll}
+    </>
   );
 }
