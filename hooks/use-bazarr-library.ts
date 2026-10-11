@@ -101,7 +101,9 @@ export function useBazarrHistory(
       (filter !== "movies" ? episodes.error : null) ??
       null,
     hasMore: more.movies || more.episodes,
-    isFetchingMore: movies.isFetchingNextPage || episodes.isFetchingNextPage,
+    isFetchingMore:
+      (filter !== "episodes" && movies.isFetchingNextPage) ||
+      (filter !== "movies" && episodes.isFetchingNextPage),
     loadMore: () => {
       const page = historyStreamsToPage(movieItems, episodeItems, more);
       if (page.movies && !movies.isFetchingNextPage) void movies.fetchNextPage();
