@@ -367,7 +367,14 @@ export const MoviesView = memo(function MoviesView({
             key={t}
             label={t.charAt(0).toUpperCase() + t.slice(1)}
             selected={tab === t}
-            onPress={() => setTab(t)}
+            // Leaving the library closes its search, like the Bazarr tab's
+            // segments; re-tapping the current tab is not a switch.
+            onPress={() => {
+              if (t === tab) return;
+              setTab(t);
+              setSearchOpen(false);
+              setQuery("");
+            }}
           />
         ))}
       </ScrollView>
