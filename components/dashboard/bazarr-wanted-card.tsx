@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { bazarrPosterKey, useBazarrPosters } from "@/hooks/use-bazarr-posters";
@@ -64,11 +65,16 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     !movieState.hasAnyData &&
     !episodeState.hasAnyData &&
     (movieState.isInitialLoading || episodeState.isInitialLoading);
-  const moviesMissing = movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
-  const episodesMissing = episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
-  const totalMissing = moviesMissing + episodesMissing;
+  const sum = (qs: typeof movieQueries | typeof episodeQueries) =>
+    qs.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+  const totalMissing = sum(movieQueries) + sum(episodeQueries);
   // Open the kind that has the missing items when only one does; otherwise
-  // the tab keeps its last kind and could show an empty Missing list.
+  // the tab keeps its last kind and could show an empty Missing list. Counted
+  // on the Bazarr the tab opens (the active one), not across the card's.
+  const { instanceId: tabBazarrId } = useInstanceTarget("bazarr");
+  const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
+  const moviesMissing = tabIndex >= 0 ? (movieQueries[tabIndex]?.data?.total ?? 0) : 0;
+  const episodesMissing = tabIndex >= 0 ? (episodeQueries[tabIndex]?.data?.total ?? 0) : 0;
   const missingHref = `/(tabs)/bazarr?filter=missing${
     moviesMissing === 0 && episodesMissing > 0
       ? "&kind=series"
