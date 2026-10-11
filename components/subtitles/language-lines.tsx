@@ -44,13 +44,11 @@ export function LanguageLines({
   ringClassName?: string;
   // Audio above subtitles instead of side by side (narrow poster overlays).
   stacked?: boolean;
-  // The whole component's width in px, when the caller already knows it.
+  // The component's width in px when the caller already knows it (stacked
+  // only: each line then spans it); otherwise the columns measure themselves.
   width?: number;
 }) {
-  const rem = BASE_REM * useUiScale();
-  // Side by side, each column gets half of what the gap-2.5 leaves.
-  const columnWidth =
-    width === undefined ? undefined : stacked ? width : (width - 0.625 * rem) / 2;
+  const columnWidth = stacked ? width : undefined;
   const body = (
     <View className={stacked ? "gap-0.5" : "flex-row items-center gap-2.5"}>
       <Column icon="audio" size={size} count={audio.length} stacked={stacked} knownWidth={columnWidth}>
