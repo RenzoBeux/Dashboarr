@@ -82,6 +82,17 @@ describe("createJobWatch", () => {
     expect(refresh).toHaveBeenCalledTimes(3); // final refresh at 10s
   });
 
+  it("marks refreshes while jobs still run as midway", async () => {
+    const { watch, refresh } = setup([[1, 2], [2], [], []]);
+    watch.track(["x"]);
+    await advance(1000); // [1, 2]
+    await advance(1000); // [2] — job 1 ended, more to come
+    expect(refresh).toHaveBeenLastCalledWith(["x"], { midway: true });
+    await advance(1000); // []
+    await advance(1000); // [] — done
+    expect(refresh).toHaveBeenLastCalledWith(["x"]);
+  });
+
   it("tracks a key once however often it is passed, compared by value", async () => {
     const refresh = jest.fn();
     let call = 0;

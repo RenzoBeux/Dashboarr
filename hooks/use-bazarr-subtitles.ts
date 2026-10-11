@@ -171,8 +171,14 @@ function watchFor(queryClient: QueryClient, bazarrId: string) {
           if (status && !deriveBazarrCapabilities(status.bazarr_version).jobs) return null;
           return getActiveBazarrJobIds(bazarrId);
         },
-        refresh: (keys) => {
-          for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey });
+        // Midway (jobs still running, another refresh follows): don't restart a
+        // fetch already in flight. The whole-library list takes longer than
+        // the 2s poll on a big library, so restarting it on every finished
+        // job meant it never landed until the queue drained.
+        refresh: (keys, opts) => {
+          for (const queryKey of keys) {
+            void queryClient.invalidateQueries({ queryKey }, { cancelRefetch: !opts?.midway });
+          }
         },
         onActiveChange: (active) => {
           created.active = active;
