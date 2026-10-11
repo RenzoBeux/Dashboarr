@@ -40,7 +40,9 @@ export interface JobWatchOptions<K> {
 }
 
 export interface JobWatch<K> {
-  track: (keys: K[]) => void;
+  // `maxMs` extends the deadline for an action whose jobs run long (a
+  // library-wide search); it never shortens a deadline already set.
+  track: (keys: K[], opts?: { maxMs?: number }) => void;
   dispose: () => void;
 }
 
@@ -127,7 +129,7 @@ export function createJobWatch<K>({
   };
 
   return {
-    track(keys) {
+    track(keys, opts) {
       if (disposed || keys.length === 0) return;
       refresh(keys);
       for (const key of keys) {
@@ -137,7 +139,7 @@ export function createJobWatch<K>({
           tracked.push(key);
         }
       }
-      deadline = now() + maxMs;
+      deadline = Math.max(polling ? deadline : 0, now() + (opts?.maxMs ?? maxMs));
       emptyPolls = 0;
       if (!polling) {
         polling = true;

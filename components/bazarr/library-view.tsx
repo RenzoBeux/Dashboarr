@@ -70,6 +70,9 @@ const FILTER_LABEL: Record<LibraryFilter, string> = {
 };
 const FILTERS: LibraryFilter[] = ["all", "missing", "complete", "noprofile"];
 const ARR_LOOKUP_STALE_MS = 5 * 60_000;
+// A library-wide search can keep Bazarr's queue busy far past the job
+// watcher's default 2 minutes; "Searching…" holds until it drains.
+const SEARCH_ALL_WATCH_MS = 30 * 60_000;
 // Stable empties: a fresh [] per render would rebuild every memo below.
 const NO_MOVIES: BazarrMovie[] = [];
 const NO_SERIES: BazarrSeries[] = [];
@@ -270,6 +273,7 @@ export function BazarrLibraryView({
     bazarrId,
     (k: BazarrLibraryKind, id) => searchAllWanted(k, id),
     () => null,
+    SEARCH_ALL_WATCH_MS,
   );
 
   // --- Movies ---

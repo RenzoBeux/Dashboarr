@@ -186,13 +186,16 @@ function watchFor(queryClient: QueryClient, bazarrId: string) {
   return entry;
 }
 
-/** Start tracking Bazarr's job queue after an action on `target`. */
+/**
+ * Start tracking Bazarr's job queue after an action on `target`. `watchMs`
+ * keeps watching longer than the default for an action whose jobs run long.
+ */
 export function useTrackBazarrJobs(bazarrId: string | null) {
   const queryClient = useQueryClient();
-  return (target: SubtitleTarget | null, extraKeys: QueryKey[] = []) => {
+  return (target: SubtitleTarget | null, extraKeys: QueryKey[] = [], watchMs?: number) => {
     if (!bazarrId) return;
     const keys = [...(target ? affectedKeys(bazarrId, target) : bazarrKeys.lists(bazarrId)), ...extraKeys];
-    watchFor(queryClient, bazarrId).watch.track(keys);
+    watchFor(queryClient, bazarrId).watch.track(keys, { maxMs: watchMs });
   };
 }
 
@@ -213,6 +216,8 @@ export function useBazarrSubtitleMutation<TArgs>(
   bazarrId: string | null,
   fn: (args: TArgs, bazarrId: string) => Promise<void>,
   targetOf: (args: TArgs) => SubtitleTarget | null,
+  // How long to keep watching the queue, for actions whose jobs run long.
+  watchMs?: number,
 ) {
   const track = useTrackBazarrJobs(bazarrId);
   return useMutation({
@@ -220,6 +225,6 @@ export function useBazarrSubtitleMutation<TArgs>(
       if (!bazarrId) throw new Error("No Bazarr instance is linked");
       return fn(args, bazarrId);
     },
-    onSuccess: (_data, args) => track(targetOf(args)),
+    onSuccess: (_data, args) => track(targetOf(args), [], watchMs),
   });
 }
