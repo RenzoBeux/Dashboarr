@@ -286,7 +286,10 @@ function openHref(
 function titleOf(entry: HistoryEntry): string {
   const { item } = entry;
   if (entry.kind === "movie") return item.title ?? "Unknown movie";
-  return [item.seriesTitle, item.episode_number, item.episodeTitle].filter(Boolean).join(" · ");
+  return (
+    [item.seriesTitle, item.episode_number, item.episodeTitle].filter(Boolean).join(" · ") ||
+    "Unknown episode"
+  );
 }
 
 function canBlacklist(entry: HistoryEntry): boolean {
