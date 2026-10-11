@@ -337,9 +337,11 @@ export function BazarrLibraryView({
   const missingTotal = counts.missing;
   const filtered = filter !== "all" || !!langFilter || query.trim().length > 0;
 
+  // Opened from the subtitle tab: land on the movie's Subtitles expanded,
+  // as History's links do.
   const openMovie = radarrId
     ? (m: BazarrMovie) =>
-        router.push(`/movie/${m.radarrId}?instanceId=${radarrId}`)
+        router.push(`/movie/${m.radarrId}?instanceId=${radarrId}&subtitles=open`)
     : undefined;
   const openSeries = sonarrId
     ? (s: BazarrSeries) =>

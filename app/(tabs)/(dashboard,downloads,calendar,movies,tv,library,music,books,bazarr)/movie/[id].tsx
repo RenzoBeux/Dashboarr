@@ -85,7 +85,7 @@ export default function MovieDetailScreen() {
   const { id, instanceId, subtitles: subtitlesParam } = useLocalSearchParams<{
     id: string;
     instanceId?: string;
-    // "open" expands the Subtitles section (links from Bazarr history).
+    // "open" expands the Subtitles section (links from the Bazarr tab).
     subtitles?: string;
   }>();
   const router = useRouter();
