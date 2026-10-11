@@ -19,8 +19,7 @@ export interface SegmentOption<T extends string> {
 const DEFAULT_SCROLL_THRESHOLD = 3;
 
 /**
- * Pill-style segmented control (Library Movies/TV, Downloads clients, Bazarr
- * Library/History).
+ * Pill-style segmented control (Library Movies/TV, Downloads clients).
  *
  * `progress` is an optional fractional index of the active segment (0 = first,
  * 1 = second, 0.5 = halfway). When given, the highlight is a pill that slides
