@@ -86,6 +86,13 @@ describe("computeLanguageCoverage", () => {
     expect(de).toEqual({ code2: "de", have: 0, missing: 0, total: 1 });
   });
 
+  it("doesn't count a language Bazarr still lists as missing as had", () => {
+    // Only a forced English track: Bazarr keeps English as missing.
+    expect(
+      computeLanguageCoverage([movie(1, ["en"], ["en"])], profileLanguageMap([profile(1, ["en"])])),
+    ).toEqual([{ code2: "en", have: 0, missing: 1, total: 1 }]);
+  });
+
   it("counts a language listed twice in a profile once", () => {
     const p: BazarrLanguageProfile = {
       ...profile(1, ["en"]),

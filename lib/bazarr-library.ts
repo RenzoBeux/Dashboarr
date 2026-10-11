@@ -45,7 +45,7 @@ export function filterCounts<T>(
 export interface LanguageCoverage {
   code2: string;
   // Movies whose profile wants the language and that have a subtitle in it
-  // (a file or an embedded track).
+  // (a file or an embedded track) that Bazarr doesn't still list as missing.
   have: number;
   // Movies whose profile wants the language and Bazarr lists it as missing.
   missing: number;
@@ -62,10 +62,14 @@ export interface LanguageCoverage {
  */
 type CoverageMovie = Pick<BazarrMovie, "profileId" | "missing_subtitles" | "subtitles">;
 
-const hasLanguage = (movie: CoverageMovie, code2: string) =>
-  movie.subtitles.some((s) => s.code2 === code2);
 const missesLanguage = (movie: CoverageMovie, code2: string) =>
   movie.missing_subtitles.some((s) => s.code2 === code2);
+// A track Bazarr doesn't accept (e.g. only a forced English subtitle when the
+// profile wants regular English) leaves the language listed as missing; it
+// isn't had, so "have" and "missing" never overlap.
+const hasLanguage = (movie: CoverageMovie, code2: string) =>
+  !missesLanguage(movie, code2) &&
+  movie.subtitles.some((s) => s.code2 === code2);
 
 /** The languages each language profile asks for, by profile id. */
 export type ProfileLanguages = ReadonlyMap<number, readonly string[]>;
