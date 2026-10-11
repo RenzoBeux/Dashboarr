@@ -73,7 +73,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
   // The tab opens the active Bazarr, so a link first pins the instance whose
   // items it promises (as the Beszel and Status cards do). Header and View
   // all: the tab's own Bazarr when it has something missing (or its counts
-  // haven't loaded, so we can't tell), else the first of the card's that does.
+  // are still loading, so we can't tell), else the first of the card's that does.
   const { instanceId: tabBazarrId } = useInstanceTarget("bazarr");
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const missingOn = (i: number) => ({
@@ -81,11 +81,13 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     episodes: episodeQueries[i]?.data?.total ?? 0,
   });
   const anyMissing = (i: number) => missingOn(i).movies + missingOn(i).episodes > 0;
-  const loaded = (i: number) =>
-    movieQueries[i]?.data !== undefined && episodeQueries[i]?.data !== undefined;
+  // Still loading, not failed: a Bazarr that keeps failing mustn't hold the
+  // link when another one has missing items.
+  const pending = (i: number) =>
+    movieQueries[i]?.status === "pending" || episodeQueries[i]?.status === "pending";
   const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
   const linkIndex =
-    tabIndex >= 0 && (anyMissing(tabIndex) || !loaded(tabIndex))
+    tabIndex >= 0 && (anyMissing(tabIndex) || pending(tabIndex))
       ? tabIndex
       : instances.findIndex((_, i) => anyMissing(i));
   const openMissing = () => {
