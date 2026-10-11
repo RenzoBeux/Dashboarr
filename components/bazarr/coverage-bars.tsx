@@ -34,8 +34,14 @@ export function CoverageBars({
         contentContainerClassName="gap-1 px-1.5 py-1.5"
       >
         {coverage.map((c) => {
-          // Floored: 199/200 must not read as a complete 100%.
-          const pct = c.total > 0 ? Math.floor((c.have / c.total) * 100) : 0;
+          // 0% and 100% only when literally none / all: 199/200 must not read
+          // as complete, nor 1/200 as absent.
+          const pct =
+            c.have <= 0 || c.total <= 0
+              ? 0
+              : c.have >= c.total
+                ? 100
+                : Math.min(99, Math.max(1, Math.round((c.have / c.total) * 100)));
           const show = selected?.code2 === c.code2 ? selected.show : null;
           const name = normalizeLanguage(c.code2)?.name ?? c.code2;
           const label =
