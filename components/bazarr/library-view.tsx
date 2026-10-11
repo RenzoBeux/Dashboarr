@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   ScrollView,
+  ActivityIndicator,
   type RefreshControlProps,
   type StyleProp,
   type ViewStyle,
@@ -55,6 +56,7 @@ import {
 } from "@/lib/bazarr-library";
 import { buildLibraryIndex, filterLibraryIndex } from "@/lib/library-search";
 import { lightHaptic } from "@/lib/haptics";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import type { LibraryViewMode } from "@/store/library-view-store";
 import type { BazarrEpisode, BazarrMovie, BazarrSeries } from "@/lib/types";
 
@@ -108,6 +110,7 @@ export function BazarrLibraryView({
   contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
   const router = useRouter();
+  const tc = useThemeColor();
   const [langFilter, setLangFilter] = useState<LanguageFilter | null>(null);
   const [seenReset, setSeenReset] = useState(resetFilters);
   if (resetFilters !== seenReset) {
@@ -157,12 +160,16 @@ export function BazarrLibraryView({
   // search's queue draining must not clear them.
   const inFlightMovies = useRef(new Set<number>());
   const inFlightEpisodes = useRef(new Set<number>());
+  // "Search all" answers at once on Bazarr 1.5.6+ while the searches queue;
+  // held until the queue drains so a second tap doesn't queue them again.
+  const [searchingAll, setSearchingAll] = useState(false);
   const [wasActive, setWasActive] = useState(false);
   if (jobsActive !== wasActive) {
     setWasActive(jobsActive);
     if (!jobsActive) {
       setBusyMovies(new Set(inFlightMovies.current));
       setBusyEpisodes(new Set(inFlightEpisodes.current));
+      setSearchingAll(false);
     }
   }
 
@@ -251,6 +258,7 @@ export function BazarrLibraryView({
   );
 
   const counts = kind === "movies" ? movieCounts : seriesCounts;
+  const allBusy = searchingAll || searchAll.isPending;
   const missingTotal = counts.missing;
   const filtered = filter !== "all" || !!langFilter || query.trim().length > 0;
 
@@ -309,23 +317,34 @@ export function BazarrLibraryView({
       </ScrollView>
       {filter === "missing" && missingTotal > 0 ? (
         <Pressable
-          onPress={() =>
+          onPress={() => {
+            setSearchingAll(true);
             searchAll.mutate(kind, {
               onSuccess: () =>
                 toast(
                   `Searching every missing ${kind === "movies" ? "movie" : "episode"} subtitle…`,
                   "info",
                 ),
-              onError: (err) => toastError("Couldn't start the search", err),
-            })
-          }
-          disabled={searchAll.isPending}
-          className="flex-row items-center justify-center gap-2 rounded-xl border border-orange-400/40 bg-orange-400/10 py-2.5 mb-3 active:opacity-70"
+              onError: (err) => {
+                setSearchingAll(false);
+                toastError("Couldn't start the search", err);
+              },
+            });
+          }}
+          disabled={allBusy}
+          className={`flex-row items-center justify-center gap-2 rounded-xl border border-orange-400/40 bg-orange-400/10 py-2.5 mb-3 active:opacity-70 ${
+            allBusy ? "opacity-60" : ""
+          }`}
           accessibilityRole="button"
+          accessibilityState={{ disabled: allBusy, busy: allBusy }}
         >
-          <Icon icon={Search} size={14} color="#fdba74" />
+          {allBusy ? (
+            <ActivityIndicator size="small" color={tc("#fdba74")} />
+          ) : (
+            <Icon icon={Search} size={14} color="#fdba74" />
+          )}
           <Text className="text-orange-300 text-sm font-semibold">
-            Search all {missingTotal} missing
+            {allBusy ? "Searching…" : `Search all ${missingTotal} missing`}
           </Text>
         </Pressable>
       ) : null}
