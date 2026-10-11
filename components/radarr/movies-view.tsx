@@ -500,7 +500,9 @@ function MovieLibrary({
     <MonitoredLibraryGrid
       data={movies}
       isLoading={isLoading}
-      error={error}
+      // Only a failed first load: after a failed refetch the library still
+      // shows, and a filter matching nothing keeps its empty state.
+      error={movies ? null : error}
       monitorFilter={monitorFilter}
       extraFilter={tagFilter}
       isMissing={radarrIsMissing}
@@ -621,7 +623,7 @@ function MovieWanted({
     <MonitoredLibraryGrid
       data={wanted?.records}
       isLoading={isLoading}
-      error={error}
+      error={wanted ? null : error}
       monitorFilter="all"
       isMissing={radarrIsMissing}
       sort="title-asc"

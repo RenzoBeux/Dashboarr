@@ -475,7 +475,9 @@ function ArtistLibrary({
     <MonitoredLibraryGrid
       data={items}
       isLoading={isLoading}
-      error={error}
+      // Only a failed first load: after a failed refetch the library still
+      // shows, and a filter matching nothing keeps its empty state.
+      error={artists ? null : error}
       monitorFilter={monitorFilter}
       extraFilter={tagFilter}
       isMissing={lidarrArtistIsMissing}
@@ -587,7 +589,7 @@ function AlbumWanted({
     <MonitoredLibraryGrid
       data={wanted?.records}
       isLoading={isLoading}
-      error={error}
+      error={wanted ? null : error}
       monitorFilter="all"
       isMissing={lidarrAlbumIsMissing}
       sort="release-desc"

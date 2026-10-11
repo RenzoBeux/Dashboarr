@@ -471,7 +471,9 @@ function AuthorLibrary({
     <MonitoredLibraryGrid
       data={items}
       isLoading={isLoading}
-      error={error}
+      // Only a failed first load: after a failed refetch the library still
+      // shows, and a filter matching nothing keeps its empty state.
+      error={authors ? null : error}
       monitorFilter={monitorFilter}
       // Bindery reports no per-author completion data (see
       // lib/arr-poster-status.ts), so "missing" cannot be answered at author
@@ -627,7 +629,7 @@ function BookWanted({
     <MonitoredLibraryGrid
       data={items}
       isLoading={isLoading}
-      error={error}
+      error={wanted ? null : error}
       monitorFilter="all"
       isMissing={binderyBookIsMissing}
       // The server already returned these newest-release-first (getWantedBooks
