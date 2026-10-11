@@ -82,18 +82,23 @@ export function useBazarrHistory(
     () => (filter === "movies" ? [] : (episodes.data?.pages.flatMap((p) => p.data) ?? [])),
     [filter, episodes.data],
   );
+  // A stream whose first page hasn't come yet has no cutoff to hold the
+  // other one back: showing the faster stream in full would drop most of it
+  // again once the slower one lands. Wait for both.
+  const waiting =
+    (filter !== "episodes" && !movies.data && !movies.error) ||
+    (filter !== "movies" && !episodes.data && !episodes.error);
   // Memoized on the loaded pages, so the list only re-renders when they change.
   const entries = useMemo(
-    () => mergeHistoryStreams(movieItems, episodeItems, more),
+    () => (waiting ? [] : mergeHistoryStreams(movieItems, episodeItems, more)),
     // `more` derives from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [movieItems, episodeItems, more.movies, more.episodes],
+    [waiting, movieItems, episodeItems, more.movies, more.episodes],
   );
 
   return {
     entries,
-    isLoading:
-      (filter !== "episodes" && movies.isLoading) || (filter !== "movies" && episodes.isLoading),
+    isLoading: waiting,
     // Only the streams on screen: a stream the filter turned off keeps its
     // last error.
     error:
