@@ -565,9 +565,7 @@ function SeriesLibrary({
     <MonitoredLibraryGrid
       data={series}
       isLoading={isLoading}
-      // Only a failed first load: after a failed refetch the library still
-      // shows, and a filter matching nothing keeps its empty state.
-      error={series ? null : error}
+      error={error}
       monitorFilter={monitorFilter}
       extraFilter={extraFilter}
       isMissing={sonarrIsMissing}

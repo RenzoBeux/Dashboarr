@@ -39,6 +39,7 @@ interface MonitoredItem {
 }
 
 interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
+  /** Undefined until the first load (an error then shows instead of the list). */
   data: T[] | undefined;
   isLoading: boolean;
   error: Error | null;
@@ -183,7 +184,9 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
         />
       )}
       isLoading={isLoading}
-      error={error}
+      // Only a failed first load: after a failed refetch the library still
+      // shows, and a filter matching nothing keeps its empty state.
+      error={data ? null : error}
       empty={
         <EmptyState
           icon={<Icon icon={placeholderIcon} size={32} color="#71717a" />}

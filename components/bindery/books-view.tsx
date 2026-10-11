@@ -462,8 +462,9 @@ function AuthorLibrary({
   const { data: authors, isLoading, error } = useBinderyAuthors({ sort });
   const router = useRouter();
 
-  const items: AuthorItem[] = useMemo(
-    () => (authors ?? []).map(toAuthorItem),
+  // Undefined until the first load, so the grid can tell it from empty.
+  const items: AuthorItem[] | undefined = useMemo(
+    () => authors?.map(toAuthorItem),
     [authors],
   );
 
@@ -471,9 +472,7 @@ function AuthorLibrary({
     <MonitoredLibraryGrid
       data={items}
       isLoading={isLoading}
-      // Only a failed first load: after a failed refetch the library still
-      // shows, and a filter matching nothing keeps its empty state.
-      error={authors ? null : error}
+      error={error}
       monitorFilter={monitorFilter}
       // Bindery reports no per-author completion data (see
       // lib/arr-poster-status.ts), so "missing" cannot be answered at author
@@ -604,14 +603,16 @@ function BookWanted({
   // both read from one cache entry; mediaType is applied here with upstream's
   // own asymmetric semantics (ebook/audiobook include dual-format books,
   // "both" means dual-format only).
-  const items: BookItem[] = useMemo(() => {
-    const all = (wanted ?? []).map(toBookItem);
+  // Undefined until the first load, so the grid can tell it from empty.
+  const items: BookItem[] | undefined = useMemo(() => {
+    if (!wanted) return undefined;
+    const all = wanted.map(toBookItem);
     if (mediaFilter === "all") return all;
     if (mediaFilter === "both") return all.filter((b) => b.mediaType === "both");
     return all.filter((b) => b.mediaType === mediaFilter || b.mediaType === "both");
   }, [wanted, mediaFilter]);
 
-  const count = items.length;
+  const count = items?.length ?? 0;
   const header = (
     <>
       {listHeader}
@@ -629,7 +630,7 @@ function BookWanted({
     <MonitoredLibraryGrid
       data={items}
       isLoading={isLoading}
-      error={wanted ? null : error}
+      error={error}
       monitorFilter="all"
       isMissing={binderyBookIsMissing}
       // The server already returned these newest-release-first (getWantedBooks
