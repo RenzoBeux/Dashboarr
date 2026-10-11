@@ -53,6 +53,39 @@ function usePoster(kind: "radarr" | "sonarr", arrInstanceId: string | null, look
   return useServiceImage(poster, kind, arrInstanceId ?? undefined);
 }
 
+// The cell's Pressable carries the label, which replaces what its children
+// would read, so the subtitle state goes into it.
+function movieA11yLabel(movie: BazarrMovie): string {
+  const state = classifyMovie(movie);
+  return [
+    movie.title,
+    movie.year,
+    state === "noprofile"
+      ? "No language profile"
+      : state === "missing"
+        ? `Missing ${movie.missing_subtitles.map((m) => m.name).join(", ")} subtitles`
+        : "All profile languages present",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function seriesA11yLabel(series: BazarrSeries): string {
+  const state = classifySeries(series);
+  const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+  return [
+    series.title,
+    series.year,
+    state === "noprofile"
+      ? "No language profile"
+      : series.episodeFileCount <= 0
+        ? "No episode files"
+        : `${done} of ${series.episodeFileCount} episodes subtitled`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
 // --- Movies ---
 
 export function BazarrMovieRow({
@@ -85,7 +118,7 @@ export function BazarrMovieRow({
         disabled={!onPress}
         className="flex-row gap-3 rounded-2xl bg-surface border border-border p-2.5 active:opacity-80"
         accessibilityRole="button"
-        accessibilityLabel={`${movie.title}${movie.year ? ` (${movie.year})` : ""}`}
+        accessibilityLabel={movieA11yLabel(movie)}
       >
         <Thumb src={src} onError={onError} fallback={Film} />
         <View className="flex-1 min-w-0">
@@ -142,6 +175,7 @@ export function BazarrMoviePoster({
       title={movie.title}
       footer={movie.year}
       onPress={onPress}
+      accessibilityLabel={movieA11yLabel(movie)}
       overlay={
         <>
           {complete ? <DoneBadge label="All profile languages present" /> : null}
@@ -188,6 +222,9 @@ export function BazarrSeriesRow({
   const state = classifySeries(series);
   const pct = seriesCoverage(series);
   const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+  const noFiles = series.episodeFileCount <= 0;
+  // Nothing to measure: no profile wants anything, or no episode is on disk.
+  const showProgress = state !== "noprofile" && !noFiles;
   const canExpand = expandable && series.episodeMissingCount > 0;
   // A filter change or the last missing episode getting fixed removes the
   // toggle: collapse, so the list neither strands nor reopens by itself.
@@ -201,7 +238,7 @@ export function BazarrSeriesRow({
           disabled={!onPress}
           className="flex-1 flex-row gap-3 p-2.5 active:opacity-80"
           accessibilityRole="button"
-          accessibilityLabel={series.title}
+          accessibilityLabel={seriesA11yLabel(series)}
         >
           <Thumb src={src} onError={onError} fallback={Tv} />
           <View className="flex-1 min-w-0 justify-center">
@@ -220,23 +257,28 @@ export function BazarrSeriesRow({
                     {series.episodeMissingCount}
                   </Text>
                 </View>
-              ) : state === "complete" ? (
+              ) : state === "complete" && !noFiles ? (
                 <Icon icon={Check} size={14} color="#60a5fa" />
               ) : null}
             </View>
             <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
-              {[series.year, state === "noprofile" ? "No language profile" : null]
+              {[
+                series.year,
+                state === "noprofile" ? "No language profile" : noFiles ? "No episode files" : null,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </Text>
-            <View className="flex-row items-center gap-2 mt-2">
-              <View className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                <View className="h-full bg-primary" style={{ width: `${Math.round(pct * 100)}%` }} />
+            {showProgress ? (
+              <View className="flex-row items-center gap-2 mt-2">
+                <View className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                  <View className="h-full bg-primary" style={{ width: `${Math.round(pct * 100)}%` }} />
+                </View>
+                <Text className="text-zinc-400 text-xs">
+                  {done}/{series.episodeFileCount}
+                </Text>
               </View>
-              <Text className="text-zinc-400 text-xs">
-                {done}/{series.episodeFileCount}
-              </Text>
-            </View>
+            ) : null}
           </View>
         </Pressable>
         {canExpand ? (
@@ -365,7 +407,9 @@ export function BazarrSeriesPoster({
   const { src, onError } = usePoster("sonarr", arrInstanceId, lookup);
   const pct = seriesCoverage(series);
   const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
-  const complete = classifySeries(series) === "complete";
+  const state = classifySeries(series);
+  const noFiles = series.episodeFileCount <= 0;
+  const complete = state === "complete" && !noFiles;
   return (
     <LibraryPosterTile
       width={width}
@@ -375,26 +419,27 @@ export function BazarrSeriesPoster({
       title={series.title}
       footer={series.year}
       onPress={onPress}
+      accessibilityLabel={seriesA11yLabel(series)}
       overlay={
         <>
           {complete ? <DoneBadge label="All episodes subtitled" /> : null}
-          <View
-            className="absolute bottom-0 left-0 right-0 bg-background/85 flex-row items-center gap-1.5 px-1.5 py-1.5"
-            accessible
-            accessibilityLabel={`${done} of ${series.episodeFileCount} episodes subtitled`}
-          >
-            <Icon icon={Captions} size={10} color="#a1a1aa" />
-            <View className="flex-1 h-1 rounded-full bg-zinc-700 overflow-hidden">
-              <View className="h-full bg-primary" style={{ width: `${Math.round(pct * 100)}%` }} />
-            </View>
-            <Text
-              className={`text-[0.55rem] font-extrabold ${
-                complete ? "text-primary" : series.episodeMissingCount > 0 ? "text-orange-400" : "text-zinc-400"
-              }`}
+          {state === "noprofile" || noFiles ? null : (
+            <View
+              className="absolute bottom-0 left-0 right-0 bg-background/85 flex-row items-center gap-1.5 px-1.5 py-1.5"
             >
-              {done}/{series.episodeFileCount}
-            </Text>
-          </View>
+              <Icon icon={Captions} size={10} color="#a1a1aa" />
+              <View className="flex-1 h-1 rounded-full bg-zinc-700 overflow-hidden">
+                <View className="h-full bg-primary" style={{ width: `${Math.round(pct * 100)}%` }} />
+              </View>
+              <Text
+                className={`text-[0.55rem] font-extrabold ${
+                  complete ? "text-primary" : series.episodeMissingCount > 0 ? "text-orange-400" : "text-zinc-400"
+                }`}
+              >
+                {done}/{series.episodeFileCount}
+              </Text>
+            </View>
+          )}
         </>
       }
     />
