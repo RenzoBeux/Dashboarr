@@ -84,6 +84,7 @@ export function BazarrLibraryView({
   mode,
   query,
   onClearSearch,
+  resetFilters,
   header,
   refreshControl,
   contentContainerStyle,
@@ -99,12 +100,20 @@ export function BazarrLibraryView({
   // Debounced in-list search.
   query: string;
   onClearSearch: () => void;
+  // Changes when a link opens the tab: drop the language filter. A remount
+  // would also drop rows still searching.
+  resetFilters: number;
   header: React.ReactElement;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
   const router = useRouter();
   const [langFilter, setLangFilter] = useState<LanguageFilter | null>(null);
+  const [seenReset, setSeenReset] = useState(resetFilters);
+  if (resetFilters !== seenReset) {
+    setSeenReset(resetFilters);
+    setLangFilter(null);
+  }
 
   const moviesQuery = useBazarrMovieLibrary(bazarrId, kind === "movies");
   const seriesQuery = useBazarrSeriesLibrary(bazarrId, kind === "series");

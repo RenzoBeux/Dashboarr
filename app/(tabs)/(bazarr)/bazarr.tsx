@@ -18,6 +18,11 @@ import { useUiScale } from "@/hooks/use-ui-scale";
 
 type Section = "library" | "history";
 
+const linkFilter = (v?: string): LibraryFilter | null =>
+  v === "missing" || v === "complete" || v === "noprofile" || v === "all" ? v : null;
+const linkKind = (v?: string): BazarrLibraryKind | null =>
+  v === "movies" || v === "series" ? v : null;
+
 export default function BazarrScreen() {
   return (
     <WorkspaceServiceGuard kinds={["bazarr"]}>
@@ -37,22 +42,26 @@ function BazarrScreenInner() {
   const router = useRouter();
   const params = useLocalSearchParams<{ filter?: string; kind?: string }>();
   const [section, setSection] = useState<Section>("library");
-  const [kind, setKind] = useState<BazarrLibraryKind>("movies");
-  const [filter, setFilter] = useState<LibraryFilter>("all");
+  // Seeded from a link on the first mount, so a cold link doesn't first
+  // fetch the whole movie library only to switch to series.
+  const [kind, setKind] = useState<BazarrLibraryKind>(() => linkKind(params.kind) ?? "movies");
+  const [filter, setFilter] = useState<LibraryFilter>(() => linkFilter(params.filter) ?? "all");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  // Bumped by a link: remounts the library, dropping its language filter.
+  // Bumped by a link: the library drops its language filter.
   const [linkCount, setLinkCount] = useState(0);
   useEffect(() => {
     if (!params.filter && !params.kind) return;
     // Consumed, so the next tap on the same link changes the params again:
     // the tab stays mounted and would otherwise keep whatever the user picked.
     router.setParams({ filter: undefined, kind: undefined });
-    if (params.filter === "missing" || params.filter === "complete" || params.filter === "noprofile" || params.filter === "all") {
+    const nextFilter = linkFilter(params.filter);
+    if (nextFilter) {
       setSection("library");
-      setFilter(params.filter);
+      setFilter(nextFilter);
     }
-    if (params.kind === "movies" || params.kind === "series") setKind(params.kind);
+    const nextKind = linkKind(params.kind);
+    if (nextKind) setKind(nextKind);
     // The list must match what the link promised (the card's Missing count),
     // not a search or language filter left from before.
     setQuery("");
@@ -137,8 +146,9 @@ function BazarrScreenInner() {
       {section === "library" ? (
         <BazarrLibraryView
           // A language filter or busy rows mean nothing on another instance.
-          key={`${bazarrId}:${linkCount}`}
+          key={bazarrId}
           bazarrId={bazarrId}
+          resetFilters={linkCount}
           kind={kind}
           onKindChange={setKind}
           filter={filter}
@@ -157,6 +167,8 @@ function BazarrScreenInner() {
         />
       ) : (
         <BazarrHistoryView
+          // Blacklisted entries and an open sheet belong to one instance.
+          key={bazarrId}
           bazarrId={bazarrId}
           header={header}
           refreshControl={refreshControl}
