@@ -19,8 +19,10 @@ import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
  * Sonarr episode rows and the Bazarr library rows and posters.
  *
  * Each column fills its whole width before collapsing the rest into "+N" —
- * the count is measured, never a fixed cap, so wider screens and the UI scale
- * show as many tags as actually fit.
+ * never a fixed cap, so wider screens and the UI scale show as many tags as
+ * actually fit. The width is measured, unless the caller knows it (`width`):
+ * a poster cell in a virtualized grid would otherwise render twice per
+ * recycle and visibly snap to its "+N" layout.
  */
 export function LanguageLines({
   audio,
@@ -30,6 +32,7 @@ export function LanguageLines({
   accessibilityLabel,
   ringClassName,
   stacked = false,
+  width,
 }: {
   audio: readonly AudioTag[];
   // Undefined when Bazarr has no data: the column stays as a blank spacer
@@ -41,10 +44,16 @@ export function LanguageLines({
   ringClassName?: string;
   // Audio above subtitles instead of side by side (narrow poster overlays).
   stacked?: boolean;
+  // The whole component's width in px, when the caller already knows it.
+  width?: number;
 }) {
+  const rem = BASE_REM * useUiScale();
+  // Side by side, each column gets half of what the gap-2.5 leaves.
+  const columnWidth =
+    width === undefined ? undefined : stacked ? width : (width - 0.625 * rem) / 2;
   const body = (
     <View className={stacked ? "gap-0.5" : "flex-row items-center gap-2.5"}>
-      <Column icon="audio" size={size} count={audio.length} stacked={stacked}>
+      <Column icon="audio" size={size} count={audio.length} stacked={stacked} knownWidth={columnWidth}>
         {(shown) =>
           audio.slice(0, shown).map((a) => (
             <AudioLanguagePill
@@ -59,7 +68,13 @@ export function LanguageLines({
         }
       </Column>
       {subtitles ? (
-        <Column icon="subtitles" size={size} count={subtitles.length} stacked={stacked}>
+        <Column
+          icon="subtitles"
+          size={size}
+          count={subtitles.length}
+          stacked={stacked}
+          knownWidth={columnWidth}
+        >
           {(shown) =>
             subtitles.slice(0, shown).map((c) => (
               <SubtitleTrackChip
@@ -99,16 +114,19 @@ function Column({
   size,
   count,
   stacked,
+  knownWidth,
   children,
 }: {
   icon: "audio" | "subtitles";
   size: TagSize;
   count: number;
   stacked: boolean;
+  knownWidth?: number;
   children: (shown: number) => React.ReactNode;
 }) {
   const scale = useUiScale();
-  const [width, setWidth] = useState(0);
+  const [measured, setMeasured] = useState(0);
+  const width = knownWidth ?? measured;
   const rem = BASE_REM * scale;
   const w = TAG_WIDTH_REM[size];
   const iconSize = size === "md" ? 14 : size === "sm" ? 12 : 10;
@@ -134,7 +152,7 @@ function Column({
       // width on their own (flex-1 in a column would collapse them).
       className={`${stacked ? "" : "flex-1 "}flex-row items-center pt-1.5`}
       style={{ gap: w.gap * rem }}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      onLayout={knownWidth === undefined ? (e) => setMeasured(e.nativeEvent.layout.width) : undefined}
     >
       <Icon icon={icon === "audio" ? Volume2 : Captions} size={iconSize} color="#71717a" />
       {children(shown)}

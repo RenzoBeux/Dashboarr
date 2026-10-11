@@ -16,6 +16,7 @@ import { LanguageLines } from "@/components/subtitles/language-lines";
 import { SubtitleTrackChip } from "@/components/subtitles/subtitle-track-chip";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 import { useBazarrSeriesEpisodes } from "@/hooks/use-bazarr-subtitles";
 import {
   buildAudioTags,
@@ -172,6 +173,7 @@ export function BazarrMoviePoster({
   onPress?: () => void;
 }) {
   const { src, onError } = usePoster("radarr", arrInstanceId, lookup);
+  const uiScale = useUiScale();
   const chips = buildSubtitleChips(buildSubtitleRows(movie));
   const audio = buildAudioTags(movie.audio_language, lookup?.originalLanguage);
   const complete = classifyMovie(movie) === "complete";
@@ -196,6 +198,8 @@ export function BazarrMoviePoster({
               size="xs"
               stacked
               ringClassName="border-background"
+              // The cell minus the overlay's px-1.5: known, so not measured.
+              width={width - 2 * 0.375 * BASE_REM * uiScale}
             />
           </View>
         </>
