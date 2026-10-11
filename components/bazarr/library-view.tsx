@@ -93,12 +93,19 @@ export function useLibrarySearchBusy(bazarrId: string | null) {
   const inFlightAll = useRef(new Set<BazarrLibraryKind>());
   const [wasActive, setWasActive] = useState(false);
   const [forId, setForId] = useState(bazarrId);
+  const current = useRef(bazarrId);
+  current.current = bazarrId;
   if (forId !== bazarrId) {
-    // Ids of another instance's Radarr/Sonarr.
+    // Ids of another instance's Radarr/Sonarr. Fresh in-flight sets: the
+    // old instance's requests settle into the sets they captured.
     setForId(bazarrId);
+    setWasActive(jobsActive);
     setBusyMovies(new Set());
     setBusyEpisodes(new Set());
     setSearchingAll(new Set());
+    inFlightMovies.current = new Set();
+    inFlightEpisodes.current = new Set();
+    inFlightAll.current = new Set();
   } else if (jobsActive !== wasActive) {
     setWasActive(jobsActive);
     if (!jobsActive) {
@@ -117,6 +124,12 @@ export function useLibrarySearchBusy(bazarrId: string | null) {
     inFlightMovies,
     inFlightEpisodes,
     inFlightAll,
+    // Taken when a search starts: whether its instance is still the one
+    // shown, so a late answer doesn't touch another instance's rows.
+    stillOn: () => {
+      const at = bazarrId;
+      return () => current.current === at;
+    },
   };
 }
 
@@ -212,6 +225,7 @@ export function BazarrLibraryView({
     inFlightMovies,
     inFlightEpisodes,
     inFlightAll,
+    stillOn,
   } = searchBusy;
 
   const searchMovie = useBazarrSubtitleMutation(
@@ -360,12 +374,14 @@ export function BazarrLibraryView({
         <Pressable
           onPress={() => {
             const k = kind;
+            const flight = inFlightAll.current;
+            const still = stillOn();
             setSearchingAll((prev) => new Set([...prev, k]));
-            inFlightAll.current.add(k);
+            flight.add(k);
             // mutateAsync: movies and series can both be started in a row.
             searchAll
               .mutateAsync(k)
-              .finally(() => inFlightAll.current.delete(k))
+              .finally(() => flight.delete(k))
               .then(
                 () =>
                   toast(
@@ -373,11 +389,13 @@ export function BazarrLibraryView({
                     "info",
                   ),
                 (err) => {
-                  setSearchingAll((prev) => {
-                    const next = new Set(prev);
-                    next.delete(k);
-                    return next;
-                  });
+                  if (still()) {
+                    setSearchingAll((prev) => {
+                      const next = new Set(prev);
+                      next.delete(k);
+                      return next;
+                    });
+                  }
                   toastError("Couldn't start the search", err);
                 },
               );
@@ -454,19 +472,23 @@ export function BazarrLibraryView({
               // Busy from the tap, cleared when Bazarr's queue drains.
               // mutateAsync: mutate's per-call callbacks only fire for the
               // latest call, and rows are searched in quick succession.
+              const flight = inFlightMovies.current;
+              const still = stillOn();
               setBusyMovies((prev) => new Set([...prev, m.radarrId]));
-              inFlightMovies.current.add(m.radarrId);
+              flight.add(m.radarrId);
               searchMovie
                 .mutateAsync(m.radarrId)
-                .finally(() => inFlightMovies.current.delete(m.radarrId))
+                .finally(() => flight.delete(m.radarrId))
                 .then(
                   () => toast(`Searching subtitles for ${m.title}…`, "info"),
                   (err) => {
-                    setBusyMovies((prev) => {
-                      const next = new Set(prev);
-                      next.delete(m.radarrId);
-                      return next;
-                    });
+                    if (still()) {
+                      setBusyMovies((prev) => {
+                        const next = new Set(prev);
+                        next.delete(m.radarrId);
+                        return next;
+                      });
+                    }
                     toastError("Couldn't start the search", err);
                   },
                 );
@@ -509,19 +531,23 @@ export function BazarrLibraryView({
           expandable={filter === "missing"}
           searchingEpisodes={busyEpisodes}
           onSearchEpisode={(e) => {
+            const flight = inFlightEpisodes.current;
+            const still = stillOn();
             setBusyEpisodes((prev) => new Set([...prev, e.sonarrEpisodeId]));
-            inFlightEpisodes.current.add(e.sonarrEpisodeId);
+            flight.add(e.sonarrEpisodeId);
             searchEpisode
               .mutateAsync(e)
-              .finally(() => inFlightEpisodes.current.delete(e.sonarrEpisodeId))
+              .finally(() => flight.delete(e.sonarrEpisodeId))
               .then(
                 () => toast(`Searching subtitles for ${s.title}…`, "info"),
                 (err) => {
-                  setBusyEpisodes((prev) => {
-                    const next = new Set(prev);
-                    next.delete(e.sonarrEpisodeId);
-                    return next;
-                  });
+                  if (still()) {
+                    setBusyEpisodes((prev) => {
+                      const next = new Set(prev);
+                      next.delete(e.sonarrEpisodeId);
+                      return next;
+                    });
+                  }
                   toastError("Couldn't start the search", err);
                 },
               );
