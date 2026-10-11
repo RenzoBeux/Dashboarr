@@ -70,6 +70,18 @@ describe("mergeHistoryStreams", () => {
     expect(merged).toHaveLength(3);
   });
 
+  it("holds back from a stream's oldest entry, even when a newer one ends its pages", () => {
+    // Offset paging after new arrivals: the last page ends on a fresh entry.
+    const shifted = [item("10/09/26 14:00:00"), item("10/07/26 09:00:00"), item("10/10/26 08:00:00")];
+    const merged = mergeHistoryStreams(shifted, episodes, { movies: true, episodes: false });
+    expect(merged.map((x) => x.item.parsed_timestamp)).toEqual([
+      "10/10/26 08:00:00",
+      "10/09/26 14:00:00",
+      "10/08/26 12:00:00",
+      "10/07/26 09:00:00",
+    ]);
+  });
+
   it("drops an entry repeated across pages", () => {
     const dup = item("10/08/26 12:00:00", { sonarrEpisodeId: 7, subs_id: "x" });
     const merged = mergeHistoryStreams([], [dup, { ...dup }], { movies: false, episodes: false });

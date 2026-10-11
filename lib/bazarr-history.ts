@@ -77,6 +77,17 @@ export interface HistoryEntry {
 }
 
 /**
+ * A stream's oldest loaded time — not simply its last entry: offset paging
+ * shifts when entries arrive between page fetches, so a later page can end
+ * on a brand-new entry. -Infinity when nothing is dated.
+ */
+function oldestAt(times: readonly (Date | null)[]): number {
+  let oldest = Infinity;
+  for (const t of times) if (t) oldest = Math.min(oldest, t.getTime());
+  return oldest === Infinity ? -Infinity : oldest;
+}
+
+/**
  * Merge movie and episode history (each newest first, possibly paged) into
  * one newest-first list. When a stream still has more pages, entries older
  * than its last loaded one are held back — they might sort below entries of
@@ -115,10 +126,9 @@ export function mergeHistoryStreams(
   const m = tag("movie")(movies);
   const e = tag("episode")(episodes);
 
-  const lastAt = (list: HistoryEntry[]) => list[list.length - 1]?.at?.getTime();
   let cutoff = -Infinity;
-  if (more.movies && m.length > 0) cutoff = Math.max(cutoff, lastAt(m) ?? -Infinity);
-  if (more.episodes && e.length > 0) cutoff = Math.max(cutoff, lastAt(e) ?? -Infinity);
+  if (more.movies) cutoff = Math.max(cutoff, oldestAt(m.map((x) => x.at)));
+  if (more.episodes) cutoff = Math.max(cutoff, oldestAt(e.map((x) => x.at)));
 
   return [...m, ...e]
     .filter((entry) => !entry.at || entry.at.getTime() >= cutoff)
@@ -136,10 +146,10 @@ export function historyStreamsToPage(
   episodes: readonly BazarrHistoryItem[],
   more: { movies: boolean; episodes: boolean },
 ): { movies: boolean; episodes: boolean } {
-  const lastAt = (list: readonly BazarrHistoryItem[]) =>
-    parseBazarrTimestamp(list[list.length - 1]?.parsed_timestamp)?.getTime() ?? -Infinity;
-  const m = more.movies ? lastAt(movies) : -Infinity;
-  const e = more.episodes ? lastAt(episodes) : -Infinity;
+  const oldest = (list: readonly BazarrHistoryItem[]) =>
+    oldestAt(list.map((x) => parseBazarrTimestamp(x.parsed_timestamp)));
+  const m = more.movies ? oldest(movies) : -Infinity;
+  const e = more.episodes ? oldest(episodes) : -Infinity;
   const cutoff = Math.max(m, e);
   if (cutoff === -Infinity) return more;
   return { movies: more.movies && m === cutoff, episodes: more.episodes && e === cutoff };
