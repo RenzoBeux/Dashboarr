@@ -13,7 +13,6 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { LibraryPosterTile } from "@/components/common/library-collection";
 import { LanguageLines } from "@/components/subtitles/language-lines";
-import { SubtitleTrackChip } from "@/components/subtitles/subtitle-track-chip";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
@@ -368,21 +367,17 @@ function MissingEpisodes({
           key={e.sonarrEpisodeId}
           className="flex-row items-center gap-2.5 px-3.5 py-2 border-t border-zinc-800"
         >
-          <Text className="flex-1 text-zinc-300 text-xs" numberOfLines={1}>
-            {formatEpisodeCode(e.season, e.episode)} — {e.title}
-          </Text>
-          <View className="flex-row gap-2 pt-1">
-            {e.missing_subtitles.slice(0, 3).map((m) => (
-              <SubtitleTrackChip
-                key={`${m.code2}${m.forced ? "f" : ""}${m.hi ? "h" : ""}`}
-                code={m.code2}
-                name={m.name}
-                state="missing"
-                forced={m.forced}
-                hi={m.hi}
-                size="sm"
-              />
-            ))}
+          {/* Chips on their own line: it fits as many as the row allows,
+              then "+N", without squeezing the title. */}
+          <View className="flex-1 min-w-0">
+            <Text className="text-zinc-300 text-xs" numberOfLines={1}>
+              {formatEpisodeCode(e.season, e.episode)} — {e.title}
+            </Text>
+            <LanguageLines
+              subtitles={buildSubtitleChips(
+                buildSubtitleRows({ missing_subtitles: e.missing_subtitles }),
+              )}
+            />
           </View>
           <SearchIconButton
             label={`Search subtitles for ${formatEpisodeCode(e.season, e.episode)}`}

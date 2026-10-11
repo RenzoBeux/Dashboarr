@@ -23,6 +23,9 @@ import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
  * actually fit. The width is measured, unless the caller knows it (`width`):
  * a poster cell in a virtualized grid would otherwise render twice per
  * recycle and visibly snap to its "+N" layout.
+ *
+ * Without `audio` only the subtitles line shows, across the full width (the
+ * Bazarr library's missing-episode rows list just what is missing).
  */
 export function LanguageLines({
   audio,
@@ -34,7 +37,8 @@ export function LanguageLines({
   stacked = false,
   width,
 }: {
-  audio: readonly AudioTag[];
+  // Omitted: subtitles only.
+  audio?: readonly AudioTag[];
   // Undefined when Bazarr has no data: the column stays as a blank spacer
   // (no captions icon claiming "none"), aligned with the rows around it.
   subtitles: readonly SubtitleChip[] | undefined;
@@ -51,20 +55,22 @@ export function LanguageLines({
   const columnWidth = stacked ? width : undefined;
   const body = (
     <View className={stacked ? "gap-0.5" : "flex-row items-center gap-2.5"}>
-      <Column icon="audio" size={size} count={audio.length} stacked={stacked} knownWidth={columnWidth}>
-        {(shown) =>
-          audio.slice(0, shown).map((a) => (
-            <AudioLanguagePill
-              key={a.code2}
-              code={a.code2}
-              name={a.name}
-              original={a.original}
-              size={size}
-              ringClassName={ringClassName}
-            />
-          ))
-        }
-      </Column>
+      {audio ? (
+        <Column icon="audio" size={size} count={audio.length} stacked={stacked} knownWidth={columnWidth}>
+          {(shown) =>
+            audio.slice(0, shown).map((a) => (
+              <AudioLanguagePill
+                key={a.code2}
+                code={a.code2}
+                name={a.name}
+                original={a.original}
+                size={size}
+                ringClassName={ringClassName}
+              />
+            ))
+          }
+        </Column>
+      ) : null}
       {subtitles ? (
         <Column
           icon="subtitles"
