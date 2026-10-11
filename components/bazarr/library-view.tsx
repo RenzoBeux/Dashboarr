@@ -294,22 +294,34 @@ export function BazarrLibraryView({
     () => computeLanguageCoverage(movies, profileLangs),
     [movies, profileLangs],
   );
+  // The search index is built once a search starts, for the kind on screen
+  // only, and kept across keystrokes: keyed on searching or not, not on the
+  // query. Browsing never normalizes the whole library.
+  const searching = query.trim().length > 0;
+  const searchingMovies = searching && kind === "movies";
   const movieIndex = useMemo(
     () =>
-      buildLibraryIndex(movies, (m) => ({
-        title: m.title,
-        year: m.year ? Number(m.year) : undefined,
-      })),
-    [movies],
+      searchingMovies
+        ? buildLibraryIndex(movies, (m) => ({
+            title: m.title,
+            year: m.year ? Number(m.year) : undefined,
+          }))
+        : null,
+    [movies, searchingMovies],
   );
   // Only the kind on screen is filtered: each keystroke would otherwise
   // re-score the hidden library too.
   const shownMovies = useMemo(
     () =>
       kind === "movies"
-        ? filterMovies(filterLibraryIndex(movieIndex, query), filter, langFilter, profileLangs)
+        ? filterMovies(
+            movieIndex ? filterLibraryIndex(movieIndex, query) : movies,
+            filter,
+            langFilter,
+            profileLangs,
+          )
         : NO_MOVIES,
-    [kind, movieIndex, query, filter, langFilter, profileLangs],
+    [kind, movies, movieIndex, query, filter, langFilter, profileLangs],
   );
 
   // --- Series ---
@@ -318,24 +330,29 @@ export function BazarrLibraryView({
     () => filterCounts(series, classifySeries),
     [series],
   );
+  const searchingSeries = searching && kind === "series";
   const seriesIndex = useMemo(
     () =>
-      buildLibraryIndex(series, (s) => ({
-        title: s.title,
-        year: s.year ? Number(s.year) : undefined,
-      })),
-    [series],
+      searchingSeries
+        ? buildLibraryIndex(series, (s) => ({
+            title: s.title,
+            year: s.year ? Number(s.year) : undefined,
+          }))
+        : null,
+    [series, searchingSeries],
   );
   const shownSeries = useMemo(
     () =>
-      kind === "series" ? filterSeries(filterLibraryIndex(seriesIndex, query), filter) : NO_SERIES,
-    [kind, seriesIndex, query, filter],
+      kind === "series"
+        ? filterSeries(seriesIndex ? filterLibraryIndex(seriesIndex, query) : series, filter)
+        : NO_SERIES,
+    [kind, series, seriesIndex, query, filter],
   );
 
   const counts = kind === "movies" ? movieCounts : seriesCounts;
   const allBusy = searchingAll.has(kind);
   const missingTotal = counts.missing;
-  const filtered = filter !== "all" || !!langFilter || query.trim().length > 0;
+  const filtered = filter !== "all" || !!langFilter || searching;
 
   // Opened from the subtitle tab: land on the movie's Subtitles expanded,
   // as History's links do.
