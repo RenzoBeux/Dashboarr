@@ -92,6 +92,9 @@ export function BazarrHistoryView({
   const radarrId = useLinkedArrInstance(bazarrId, "radarr");
   const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
   const flow = useModalFlow<{ detail: HistoryEntry; confirmBlacklist: HistoryEntry }>();
+  // Blacklisted from here: the entry's own flag only flips once the job
+  // watcher refetches history, which can take the whole search.
+  const [blacklisted, setBlacklisted] = useState<ReadonlySet<string>>(new Set());
 
   const blacklist = useBazarrSubtitleMutation(
     bazarrId,
@@ -207,6 +210,7 @@ export function BazarrHistoryView({
           flow.close();
           flow.whenClear(() => router.push(openTarget));
         }}
+        blacklisted={blacklisted}
         onBlacklist={() => detail && flow.open("confirmBlacklist", detail)}
       />
 
@@ -227,10 +231,18 @@ export function BazarrHistoryView({
           const entry = confirmEntry;
           flow.close();
           if (!entry) return;
-          blacklist.mutate(entry, {
-            onSuccess: () => toast("Blacklisted. Bazarr is looking for another subtitle…", "info"),
-            onError: (err) => toastError("Couldn't blacklist the subtitle", err),
-          });
+          setBlacklisted((prev) => new Set([...prev, entry.key]));
+          blacklist.mutateAsync(entry).then(
+            () => toast("Blacklisted. Bazarr is looking for another subtitle…", "info"),
+            (err) => {
+              setBlacklisted((prev) => {
+                const next = new Set(prev);
+                next.delete(entry.key);
+                return next;
+              });
+              toastError("Couldn't blacklist the subtitle", err);
+            },
+          );
         }}
       />
     </>
@@ -337,6 +349,7 @@ function HistoryDetailSheet({
   onClosed,
   openLabel,
   onOpen,
+  blacklisted,
   onBlacklist,
 }: {
   entry: HistoryEntry | null;
@@ -345,6 +358,8 @@ function HistoryDetailSheet({
   // null when the movie/episode can't be opened (no linked Radarr/Sonarr).
   openLabel: string | null;
   onOpen: () => void;
+  // Entries blacklisted from this screen, before history catches up.
+  blacklisted: ReadonlySet<string>;
   onBlacklist: () => void;
 }) {
   // Keep showing the last entry while the sheet animates out.
@@ -398,7 +413,7 @@ function HistoryDetailSheet({
               onPress={onOpen}
             />
           ) : null}
-          {canBlacklist(entry) ? (
+          {canBlacklist(entry) && !blacklisted.has(entry.key) ? (
             <SheetAction
               icon={Ban}
               label="Blacklist and search again"
