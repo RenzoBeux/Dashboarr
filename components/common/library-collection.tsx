@@ -167,7 +167,9 @@ export function LibraryPosterTile({
       style={{ width }}
       className={onPress ? "active:opacity-80" : ""}
       accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={accessibilityLabel ?? title}
+      // A label replaces the grouped child text, so the default keeps what a
+      // screen reader read before the tile was shared: footer and tags too.
+      accessibilityLabel={accessibilityLabel ?? [title, footer, ...(tags ?? [])].filter(Boolean).join(", ")}
     >
       <View className="relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-surface-light">
         {src ? (
