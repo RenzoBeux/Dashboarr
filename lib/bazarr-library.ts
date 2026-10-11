@@ -49,8 +49,8 @@ export interface LanguageCoverage {
   have: number;
   // Movies whose profile wants the language and Bazarr lists it as missing.
   missing: number;
-  // Movies whose profile wants the language (and whose audio doesn't
-  // exclude it).
+  // Movies whose profile wants the language, after the profile's audio
+  // rules (exclude if matching / only include if matching audio).
   total: number;
 }
 
