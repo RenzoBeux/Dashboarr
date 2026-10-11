@@ -71,9 +71,9 @@ export function profileLanguageMap(
  */
 export function computeLanguageCoverage(
   movies: readonly Pick<BazarrMovie, "profileId" | "missing_subtitles">[],
-  profiles: readonly BazarrLanguageProfile[],
+  // The same map filterMovies takes, so a bar and its list can't disagree.
+  profileLangs: ProfileLanguages,
 ): LanguageCoverage[] {
-  const profileLangs = profileLanguageMap(profiles);
   const totals = new Map<string, LanguageCoverage>();
   for (const movie of movies) {
     if (movie.profileId == null) continue;

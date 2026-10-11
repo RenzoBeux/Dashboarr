@@ -64,7 +64,7 @@ describe("computeLanguageCoverage", () => {
   it("counts movies wanting each language and those having it", () => {
     const coverage = computeLanguageCoverage(
       [movie(1), movie(1, ["de"]), movie(2, ["en"]), movie(null)],
-      [profile(1, ["en", "de"]), profile(2, ["en"])],
+      profileLanguageMap([profile(1, ["en", "de"]), profile(2, ["en"])]),
     );
     expect(coverage).toEqual([
       { code2: "en", have: 2, total: 3 },
@@ -80,7 +80,7 @@ describe("computeLanguageCoverage", () => {
         { id: 2, language: "en", forced: "True", hi: "False" },
       ],
     };
-    expect(computeLanguageCoverage([movie(1)], [p])).toEqual([
+    expect(computeLanguageCoverage([movie(1)], profileLanguageMap([p]))).toEqual([
       { code2: "en", have: 1, total: 1 },
     ]);
   });
@@ -119,7 +119,7 @@ describe("filters", () => {
     );
     // The no-profile movie doesn't want English, so it isn't counted.
     expect(have).toEqual([movies[0], movies[1]]);
-    const cov = computeLanguageCoverage(movies, [p]).find(
+    const cov = computeLanguageCoverage(movies, profileLanguageMap([p])).find(
       (c) => c.code2 === "en",
     );
     expect(have).toHaveLength(cov!.have);

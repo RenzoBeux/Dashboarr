@@ -211,13 +211,13 @@ export function BazarrLibraryView({
     () => filterCounts(movies, classifyMovie),
     [movies],
   );
-  const coverage = useMemo(
-    () => computeLanguageCoverage(movies, profiles ?? []),
-    [movies, profiles],
-  );
   const profileLangs = useMemo(
     () => profileLanguageMap(profiles ?? []),
     [profiles],
+  );
+  const coverage = useMemo(
+    () => computeLanguageCoverage(movies, profileLangs),
+    [movies, profileLangs],
   );
   const movieIndex = useMemo(
     () =>
