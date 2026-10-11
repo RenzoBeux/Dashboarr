@@ -2100,7 +2100,17 @@ const demoHistory = (
   action,
   timestamp: hoursAgo < 24 ? `${Math.max(1, Math.round(hoursAgo))} hours ago` : `${Math.round(hoursAgo / 24)} days ago`,
   parsed_timestamp: bazarrTimestamp(hoursAgo),
-  description: "",
+  // Bazarr's own wording per action; the detail sheet shows it.
+  description: {
+    0: "Subtitle file deleted.",
+    1: "Subtitle downloaded from opensubtitlescom.",
+    2: "Subtitle manually downloaded from opensubtitlescom.",
+    3: "Subtitle upgraded from opensubtitlescom.",
+    4: "Subtitle uploaded.",
+    5: "Subtitle synced with the audio track (offset 1.2 s).",
+    6: "Subtitle translated from English.",
+    7: "Embedded subtitle extracted.",
+  }[action] ?? "",
   language: {
     name: { en: "English", de: "German", fr: "French" }[code2],
     code2,
@@ -2113,8 +2123,9 @@ const demoHistory = (
   subs_id: `demo-${hoursAgo}-${code2}`,
   upgradable: action === 1,
   blacklisted: false,
-  matches: ["title", "year", "source", "resolution"],
-  dont_matches: action === 3 ? [] : ["release_group"],
+  // Only scored downloads (downloaded, manual, upgraded) carry matches.
+  matches: action >= 1 && action <= 3 ? ["title", "year", "source", "resolution"] : [],
+  dont_matches: action === 1 || action === 2 ? ["release_group"] : [],
   ...extra,
 });
 
