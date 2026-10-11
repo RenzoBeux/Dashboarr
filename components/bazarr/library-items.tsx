@@ -323,6 +323,9 @@ function MissingEpisodes({
   onShowAll?: () => void;
 }) {
   const tc = useThemeColor();
+  // Without a series page to send the rest to (no linked Sonarr), the list
+  // grows in place: every missing episode stays searchable.
+  const [showAll, setShowAll] = useState(false);
   // Loaded only once the row is expanded.
   const { data, isLoading, error } = useBazarrSeriesEpisodes(bazarrId, seriesId);
   const missing = (data ?? [])
@@ -348,7 +351,7 @@ function MissingEpisodes({
   }
   return (
     <View>
-      {missing.slice(0, MISSING_PREVIEW).map((e) => (
+      {(showAll ? missing : missing.slice(0, MISSING_PREVIEW)).map((e) => (
         <View
           key={e.sonarrEpisodeId}
           className="flex-row items-center gap-2.5 px-3.5 py-2 border-t border-zinc-800"
@@ -376,14 +379,16 @@ function MissingEpisodes({
           />
         </View>
       ))}
-      {missing.length > MISSING_PREVIEW && onShowAll ? (
+      {missing.length > MISSING_PREVIEW && !showAll ? (
         <Pressable
-          onPress={onShowAll}
+          onPress={onShowAll ?? (() => setShowAll(true))}
           className="px-3.5 py-2.5 border-t border-zinc-800 active:opacity-70"
           accessibilityRole="button"
         >
           <Text className="text-primary text-xs font-semibold">
-            All {missing.length} episodes on the series page
+            {onShowAll
+              ? `All ${missing.length} episodes on the series page`
+              : `Show all ${missing.length} episodes`}
           </Text>
         </Pressable>
       ) : null}
