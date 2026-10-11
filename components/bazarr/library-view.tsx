@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -144,12 +144,16 @@ export function BazarrLibraryView({
   const [busyEpisodes, setBusyEpisodes] = useState<ReadonlySet<number>>(
     new Set(),
   );
+  // Requests not answered yet: their jobs aren't tracked, so another
+  // search's queue draining must not clear them.
+  const inFlightMovies = useRef(new Set<number>());
+  const inFlightEpisodes = useRef(new Set<number>());
   const [wasActive, setWasActive] = useState(false);
   if (jobsActive !== wasActive) {
     setWasActive(jobsActive);
     if (!jobsActive) {
-      setBusyMovies(new Set());
-      setBusyEpisodes(new Set());
+      setBusyMovies(new Set(inFlightMovies.current));
+      setBusyEpisodes(new Set(inFlightEpisodes.current));
     }
   }
 
@@ -367,17 +371,21 @@ export function BazarrLibraryView({
               // mutateAsync: mutate's per-call callbacks only fire for the
               // latest call, and rows are searched in quick succession.
               setBusyMovies((prev) => new Set([...prev, m.radarrId]));
-              searchMovie.mutateAsync(m.radarrId).then(
-                () => toast(`Searching subtitles for ${m.title}…`, "info"),
-                (err) => {
-                  setBusyMovies((prev) => {
-                    const next = new Set(prev);
-                    next.delete(m.radarrId);
-                    return next;
-                  });
-                  toastError("Couldn't start the search", err);
-                },
-              );
+              inFlightMovies.current.add(m.radarrId);
+              searchMovie
+                .mutateAsync(m.radarrId)
+                .finally(() => inFlightMovies.current.delete(m.radarrId))
+                .then(
+                  () => toast(`Searching subtitles for ${m.title}…`, "info"),
+                  (err) => {
+                    setBusyMovies((prev) => {
+                      const next = new Set(prev);
+                      next.delete(m.radarrId);
+                      return next;
+                    });
+                    toastError("Couldn't start the search", err);
+                  },
+                );
             }}
             onPress={openMovie ? () => openMovie(m) : undefined}
           />
@@ -417,17 +425,21 @@ export function BazarrLibraryView({
           searchingEpisodes={busyEpisodes}
           onSearchEpisode={(e) => {
             setBusyEpisodes((prev) => new Set([...prev, e.sonarrEpisodeId]));
-            searchEpisode.mutateAsync(e).then(
-              () => toast(`Searching subtitles for ${s.title}…`, "info"),
-              (err) => {
-                setBusyEpisodes((prev) => {
-                  const next = new Set(prev);
-                  next.delete(e.sonarrEpisodeId);
-                  return next;
-                });
-                toastError("Couldn't start the search", err);
-              },
-            );
+            inFlightEpisodes.current.add(e.sonarrEpisodeId);
+            searchEpisode
+              .mutateAsync(e)
+              .finally(() => inFlightEpisodes.current.delete(e.sonarrEpisodeId))
+              .then(
+                () => toast(`Searching subtitles for ${s.title}…`, "info"),
+                (err) => {
+                  setBusyEpisodes((prev) => {
+                    const next = new Set(prev);
+                    next.delete(e.sonarrEpisodeId);
+                    return next;
+                  });
+                  toastError("Couldn't start the search", err);
+                },
+              );
           }}
           onPress={openSeries ? () => openSeries(s) : undefined}
         />
