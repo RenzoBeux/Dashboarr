@@ -22,7 +22,12 @@ import {
   buildSubtitleChips,
   buildSubtitleRows,
 } from "@/lib/subtitle-model";
-import { classifyMovie, classifySeries, seriesCoverage } from "@/lib/bazarr-library";
+import {
+  classifyMovie,
+  classifySeries,
+  seriesCoverage,
+  seriesSubtitledCount,
+} from "@/lib/bazarr-library";
 import { formatEpisodeCode } from "@/lib/utils";
 import type {
   ArrLanguage,
@@ -72,7 +77,7 @@ function movieA11yLabel(movie: BazarrMovie): string {
 
 function seriesA11yLabel(series: BazarrSeries): string {
   const state = classifySeries(series);
-  const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+  const done = seriesSubtitledCount(series);
   return [
     series.title,
     series.year,
@@ -221,7 +226,7 @@ export function BazarrSeriesRow({
   const { src, onError } = usePoster("sonarr", arrInstanceId, lookup);
   const state = classifySeries(series);
   const pct = seriesCoverage(series);
-  const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+  const done = seriesSubtitledCount(series);
   const noFiles = series.episodeFileCount <= 0;
   // Nothing to measure: no profile wants anything, or no episode is on disk.
   const showProgress = state !== "noprofile" && !noFiles;
@@ -413,7 +418,7 @@ export function BazarrSeriesPoster({
 }) {
   const { src, onError } = usePoster("sonarr", arrInstanceId, lookup);
   const pct = seriesCoverage(series);
-  const done = Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+  const done = seriesSubtitledCount(series);
   const state = classifySeries(series);
   const noFiles = series.episodeFileCount <= 0;
   const complete = state === "complete" && !noFiles;

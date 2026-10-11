@@ -146,14 +146,17 @@ export function filterSeries<
     : series.filter((s) => classifySeries(s) === filter);
 }
 
+/** Downloaded episodes with every wanted subtitle. */
+export function seriesSubtitledCount(
+  series: Pick<BazarrSeries, "episodeFileCount" | "episodeMissingCount">,
+): number {
+  return Math.max(0, series.episodeFileCount - series.episodeMissingCount);
+}
+
 /** Share of a series' downloaded episodes with every wanted subtitle (0–1). */
 export function seriesCoverage(
   series: Pick<BazarrSeries, "episodeFileCount" | "episodeMissingCount">,
 ): number {
   if (series.episodeFileCount <= 0) return 0;
-  const complete = Math.max(
-    0,
-    series.episodeFileCount - series.episodeMissingCount,
-  );
-  return complete / series.episodeFileCount;
+  return seriesSubtitledCount(series) / series.episodeFileCount;
 }
