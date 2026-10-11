@@ -1,10 +1,8 @@
 import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { useConfigStore } from "@/store/config-store";
-import { useBazarrLinkEntries } from "@/hooks/use-bazarr-link";
+import { useItemsArrResolver } from "@/hooks/use-bazarr-link";
 import { getMovies, getRadarrPoster } from "@/services/radarr-api";
 import { getSeries, getSonarrPoster } from "@/services/sonarr-api";
-import type { ArrKind } from "@/lib/bazarr-link";
 import type { BazarrWantedMovie, BazarrWantedEpisode } from "@/lib/types";
 
 export interface BazarrPosterEntry {
@@ -30,8 +28,8 @@ export function bazarrPosterKey(
  * caches. Bazarr movies carry `radarrId` and Bazarr episodes carry
  * `sonarrSeriesId` — ids that only mean something on the Radarr/Sonarr that
  * Bazarr instance is linked to (lib/bazarr-link.ts), so each item is looked up
- * in its own Bazarr's linked library. A Bazarr with no link (and not switched
- * off) falls back to the active instance, the pre-link behavior. The library
+ * in its own Bazarr's linked library; without a link, only a sole Radarr/Sonarr
+ * is trusted (`itemsArrInstance` in lib/bazarr-link.ts). The library
  * queries share their keys with useRadarrMovies/useSonarrSeries, so a library
  * already loaded elsewhere costs nothing.
  */
@@ -39,8 +37,8 @@ export function useBazarrPosters(
   movies: FromBazarr<BazarrWantedMovie>[],
   episodes: FromBazarr<BazarrWantedEpisode>[],
 ): Map<string, BazarrPosterEntry> {
-  const radarrFor = useArrForBazarr("radarr", movies);
-  const sonarrFor = useArrForBazarr("sonarr", episodes);
+  const radarrFor = useItemsArrResolver("radarr", useShownBazarrs(movies));
+  const sonarrFor = useItemsArrResolver("sonarr", useShownBazarrs(episodes));
 
   const radarrIds = unique(movies.map((m) => radarrFor(m.bazarrInstanceId)));
   const sonarrIds = unique(episodes.map((e) => sonarrFor(e.bazarrInstanceId)));
@@ -113,33 +111,14 @@ export function useBazarrPosters(
   }, [movies, episodes, radarrFor, sonarrFor, movieLibs, seriesLibs]);
 }
 
-/**
- * bazarrId → the arr instance to read its items from, or undefined. Detection
- * runs only for the Bazarrs `items` come from, not every enabled one.
- */
-function useArrForBazarr(
-  kind: ArrKind,
+/** The Bazarr instances `items` come from, stable while that set is. */
+function useShownBazarrs(
   items: readonly { bazarrInstanceId: string }[],
-): (bazarrId: string) => string | undefined {
+): ReadonlySet<string> {
   const shownKey = unique(items.map((i) => i.bazarrInstanceId)).join(",");
-  const shown = useMemo(() => new Set(shownKey.split(",")), [shownKey]);
-  const entries = useBazarrLinkEntries(kind, shown);
-  const activeId = useConfigStore((s) => s.activeInstance[kind] ?? undefined);
-  // Entries are rebuilt each render; key the lookup on their content.
-  const signature = entries
-    .map((e) => `${e.bazarrId}=${e.state.how}:${e.state.arrId ?? ""}`)
-    .join(",");
-  return useMemo(() => {
-    const byBazarr = new Map(entries.map((e) => [e.bazarrId, e.state]));
-    return (bazarrId: string) => {
-      const state = byBazarr.get(bazarrId);
-      if (state?.arrId) return state.arrId;
-      return state?.how === "off" ? undefined : activeId;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, activeId]);
+  return useMemo(() => new Set(shownKey.split(",")), [shownKey]);
 }
 
-function unique(ids: (string | undefined)[]): string[] {
+function unique(ids: (string | null | undefined)[]): string[] {
   return Array.from(new Set(ids.filter((id): id is string => !!id)));
 }

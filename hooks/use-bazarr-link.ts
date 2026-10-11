@@ -10,6 +10,7 @@ import { useAttachedEnabledInstances } from "@/hooks/use-workspace-instances";
 import { detectArrLinks, type ArrLinkDetection } from "@/services/bazarr-api";
 import {
   bazarrForArr,
+  itemsArrInstance,
   linkField,
   resolveLinkState,
   type ArrCandidate,
@@ -162,6 +163,43 @@ export function useLinkedArrInstance(
   const bazarrs = useEnabledInstances("bazarr");
   const { entries } = useLinkEntries(kind, bazarrs, (id) => id === bazarrId);
   return entries.find((e) => e.bazarrId === bazarrId)?.state.arrId ?? null;
+}
+
+/**
+ * bazarrId → the Radarr/Sonarr instance its items resolve against
+ * (`itemsArrInstance`), for the Bazarrs in `bazarrIds`; detection runs only
+ * for those.
+ */
+export function useItemsArrResolver(
+  kind: ArrKind,
+  bazarrIds: ReadonlySet<string>,
+): (bazarrId: string) => string | null {
+  const entries = useBazarrLinkEntries(kind, bazarrIds);
+  const arrs = useEnabledInstances(kind);
+  // Entries are rebuilt each render; key the lookup on their content.
+  const signature = entries
+    .map((e) => `${e.bazarrId}=${e.state.how}:${e.state.arrId ?? ""}`)
+    .join(",");
+  return useMemo(() => {
+    const byBazarr = new Map(entries.map((e) => [e.bazarrId, e.state]));
+    const arrIds = arrs.map((a) => a.id);
+    return (bazarrId: string) => itemsArrInstance(byBazarr.get(bazarrId), arrIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, arrs]);
+}
+
+/**
+ * The Radarr/Sonarr instance one Bazarr instance's items resolve against
+ * (`itemsArrInstance`), or null — for posters and titles of its movies and
+ * series.
+ */
+export function useItemsArrInstance(
+  bazarrId: string | null | undefined,
+  kind: ArrKind,
+): string | null {
+  const ids = useMemo(() => new Set(bazarrId ? [bazarrId] : []), [bazarrId]);
+  const resolve = useItemsArrResolver(kind, ids);
+  return bazarrId ? resolve(bazarrId) : null;
 }
 
 /**

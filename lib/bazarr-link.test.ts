@@ -2,6 +2,7 @@ import { ARR_LINK_OFF } from "@/lib/config-types";
 import {
   bazarrForArr,
   formatArrAddress,
+  itemsArrInstance,
   matchArrInstance,
   moveLinkPatches,
   resolveLinkState,
@@ -122,6 +123,29 @@ describe("bazarrForArr", () => {
   it("is null when nothing claims the arr", () => {
     expect(bazarrForArr("r1", [{ bazarrId: "b1", state: { arrId: null, how: "off" } }])).toBeNull();
     expect(bazarrForArr(undefined, [])).toBeNull();
+  });
+});
+
+describe("itemsArrInstance", () => {
+  it("uses the linked instance, even with several configured", () => {
+    expect(itemsArrInstance({ arrId: "r2", how: "manual" }, ["r1", "r2"])).toBe("r2");
+    expect(itemsArrInstance({ arrId: "r2", how: "detected" }, ["r1", "r2"])).toBe("r2");
+  });
+
+  it("falls back to the only instance when nothing is linked", () => {
+    expect(itemsArrInstance({ arrId: null, how: "none" }, ["r1"])).toBe("r1");
+    expect(itemsArrInstance({ arrId: null, how: "stale" }, ["r1"])).toBe("r1");
+    expect(itemsArrInstance(undefined, ["r1"])).toBe("r1");
+  });
+
+  it("has no instance when nothing is linked and several are configured", () => {
+    expect(itemsArrInstance({ arrId: null, how: "none" }, ["r1", "r2"])).toBeNull();
+    expect(itemsArrInstance(undefined, ["r1", "r2"])).toBeNull();
+    expect(itemsArrInstance(undefined, [])).toBeNull();
+  });
+
+  it("never falls back when the link is switched off", () => {
+    expect(itemsArrInstance({ arrId: null, how: "off" }, ["r1"])).toBeNull();
   });
 });
 

@@ -130,6 +130,29 @@ export function resolveLinkState(
   return { arrId: null, how: "none" };
 }
 
+/**
+ * The Radarr/Sonarr instance a Bazarr instance's items resolve against — the
+ * library its `radarrId` / `sonarrSeriesId` are looked up in for posters and
+ * titles — or null for none.
+ *
+ * Those ids are per instance, so only the linked instance is safe. Without a
+ * link, the one enabled instance of the kind is used when there is exactly
+ * one (a single Radarr whose link wasn't detected is still the right one);
+ * with several, any pick could show another title's poster, so none is used.
+ * A link switched off means this Bazarr has no such arr: no fallback.
+ *
+ * @param state   this Bazarr's link state; undefined when unknown
+ * @param arrIds  ids of the enabled arr instances of the kind
+ */
+export function itemsArrInstance(
+  state: LinkState | undefined,
+  arrIds: readonly string[],
+): string | null {
+  if (state?.arrId) return state.arrId;
+  if (state?.how === "off") return null;
+  return arrIds.length === 1 ? arrIds[0] : null;
+}
+
 export interface BazarrLinkEntry {
   bazarrId: string;
   state: LinkState;
