@@ -81,10 +81,12 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     episodes: episodeQueries[i]?.data?.total ?? 0,
   });
   const anyMissing = (i: number) => missingOn(i).movies + missingOn(i).episodes > 0;
-  // Still loading, not failed: a Bazarr that keeps failing mustn't hold the
-  // link when another one has missing items.
-  const pending = (i: number) =>
-    movieQueries[i]?.status === "pending" || episodeQueries[i]?.status === "pending";
+  // Still on its first load, not failed: a Bazarr that keeps failing mustn't
+  // hold the link when another one has missing items. A query that never got
+  // data goes back to "pending" on every retry, so a past error counts.
+  const firstLoad = (q: (typeof movieQueries)[number] | (typeof episodeQueries)[number] | undefined) =>
+    q?.status === "pending" && q.errorUpdatedAt === 0;
+  const pending = (i: number) => firstLoad(movieQueries[i]) || firstLoad(episodeQueries[i]);
   const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
   const linkIndex =
     tabIndex >= 0 && (anyMissing(tabIndex) || pending(tabIndex))
