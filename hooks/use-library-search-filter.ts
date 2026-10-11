@@ -17,7 +17,13 @@ export function useLibrarySearchFilter<T extends Searchable>(
   items: readonly T[] | undefined,
   query: string,
 ): ((item: T) => boolean) | undefined {
-  const index = useMemo(() => librarySearchIndex(items), [items]);
+  // Built on the first search, not on every library load: most visits never
+  // open search, and normalizing every title is wasted work for them.
+  const searching = query.trim().length > 0;
+  const index = useMemo(
+    () => (searching ? librarySearchIndex(items) : []),
+    [items, searching],
+  );
   return useMemo(() => librarySearchPredicate(index, query), [index, query]);
 }
 
