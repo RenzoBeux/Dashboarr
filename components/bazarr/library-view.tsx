@@ -160,6 +160,7 @@ export function BazarrLibraryView({
   // search's queue draining must not clear them.
   const inFlightMovies = useRef(new Set<number>());
   const inFlightEpisodes = useRef(new Set<number>());
+  const inFlightAll = useRef(new Set<BazarrLibraryKind>());
   // "Search all" answers at once on Bazarr 1.5.6+ while the searches queue;
   // held until the queue drains so a second tap doesn't queue them again.
   const [searchingAll, setSearchingAll] = useState<ReadonlySet<BazarrLibraryKind>>(new Set());
@@ -169,7 +170,7 @@ export function BazarrLibraryView({
     if (!jobsActive) {
       setBusyMovies(new Set(inFlightMovies.current));
       setBusyEpisodes(new Set(inFlightEpisodes.current));
-      setSearchingAll(new Set());
+      setSearchingAll(new Set(inFlightAll.current));
     }
   }
 
@@ -320,22 +321,26 @@ export function BazarrLibraryView({
           onPress={() => {
             const k = kind;
             setSearchingAll((prev) => new Set([...prev, k]));
+            inFlightAll.current.add(k);
             // mutateAsync: movies and series can both be started in a row.
-            searchAll.mutateAsync(k).then(
-              () =>
-                toast(
-                  `Searching every missing ${k === "movies" ? "movie" : "episode"} subtitle…`,
-                  "info",
-                ),
-              (err) => {
-                setSearchingAll((prev) => {
-                  const next = new Set(prev);
-                  next.delete(k);
-                  return next;
-                });
-                toastError("Couldn't start the search", err);
-              },
-            );
+            searchAll
+              .mutateAsync(k)
+              .finally(() => inFlightAll.current.delete(k))
+              .then(
+                () =>
+                  toast(
+                    `Searching every missing ${k === "movies" ? "movie" : "episode"} subtitle…`,
+                    "info",
+                  ),
+                (err) => {
+                  setSearchingAll((prev) => {
+                    const next = new Set(prev);
+                    next.delete(k);
+                    return next;
+                  });
+                  toastError("Couldn't start the search", err);
+                },
+              );
           }}
           disabled={allBusy}
           className={`flex-row items-center justify-center gap-2 rounded-xl border border-orange-400/40 bg-orange-400/10 py-2.5 mb-3 active:opacity-70 ${
