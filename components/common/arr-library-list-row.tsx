@@ -9,7 +9,7 @@ import type { ServiceId } from "@/lib/constants";
  * thumbnail with the same status bar as the poster grid, title, the footer
  * line the poster shows, and tag labels. Same press / long-press as the grid.
  */
-export function ArrLibraryRow({
+export function ArrLibraryListRow({
   images,
   serviceId,
   placeholderIcon,

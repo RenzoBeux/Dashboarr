@@ -69,7 +69,7 @@ import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
-import { ArrLibraryRow } from "@/components/common/arr-library-row";
+import { ArrLibraryListRow } from "@/components/common/arr-library-list-row";
 import { useLibraryView } from "@/hooks/use-library-view";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
@@ -570,7 +570,7 @@ function MovieLibrary({
       extraFilter={extraFilter}
       mode={mode}
       renderRow={(m) => (
-        <ArrLibraryRow
+        <ArrLibraryListRow
           images={m.images}
           serviceId="radarr"
           placeholderIcon={Film}
