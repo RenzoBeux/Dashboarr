@@ -438,9 +438,10 @@ export const TvView = memo(function TvView({
         <SeriesLibrary
           monitorFilter={monitorFilter}
           statusFilter={statusFilter}
-          // Closing the search (or leaving the tab) unfilters at once, not after
-          // the debounce catches up with the cleared query.
-          query={searchOpen ? debouncedQuery : ""}
+          // An empty or closed search unfilters at once, not after the
+          // debounce catches up: closing, leaving the tab, or reopening
+          // within 200 ms never shows the old text's matches.
+          query={searchOpen && query ? debouncedQuery : ""}
           mode={view.mode}
           tagFilter={tagFilter.predicate}
           sort={sort}
