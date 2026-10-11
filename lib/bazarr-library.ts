@@ -49,11 +49,15 @@ export interface LanguageCoverage {
   have: number;
   // Movies whose profile wants the language and Bazarr lists it as missing.
   missing: number;
-  // Movies whose profile wants the language.
+  // Movies whose profile wants the language (and whose audio doesn't
+  // exclude it).
   total: number;
 }
 
-type CoverageMovie = Pick<BazarrMovie, "profileId" | "missing_subtitles" | "subtitles">;
+type CoverageMovie = Pick<
+  BazarrMovie,
+  "profileId" | "missing_subtitles" | "subtitles" | "audio_language"
+>;
 
 const missesLanguage = (movie: CoverageMovie, code2: string) =>
   movie.missing_subtitles.some((s) => s.code2 === code2);
@@ -64,18 +68,44 @@ const hasLanguage = (movie: CoverageMovie, code2: string) =>
   !missesLanguage(movie, code2) &&
   movie.subtitles.some((s) => s.code2 === code2);
 
+export interface ProfileLanguage {
+  code2: string;
+  // Every item for the language is "exclude if matching audio": a movie whose
+  // audio is in it doesn't want the subtitle at all.
+  audioExclude: boolean;
+}
+
 /** The languages each language profile asks for, by profile id. */
-export type ProfileLanguages = ReadonlyMap<number, readonly string[]>;
+export type ProfileLanguages = ReadonlyMap<number, readonly ProfileLanguage[]>;
 
 export function profileLanguageMap(
   profiles: readonly BazarrLanguageProfile[],
 ): ProfileLanguages {
   return new Map(
-    profiles.map((p) => [
-      p.profileId,
-      [...new Set(p.items.map((i) => i.language))],
-    ]),
+    profiles.map((p) => {
+      const langs = new Map<string, boolean>();
+      for (const item of p.items) {
+        const exclude = item.audio_exclude === "True";
+        langs.set(item.language, (langs.get(item.language) ?? true) && exclude);
+      }
+      return [
+        p.profileId,
+        [...langs].map(([code2, audioExclude]) => ({ code2, audioExclude })),
+      ];
+    }),
   );
+}
+
+/** The languages a movie's profile wants for it, after audio exclusions. */
+function wantedLanguages(
+  movie: CoverageMovie,
+  profileLangs: ProfileLanguages,
+): string[] {
+  if (movie.profileId == null) return [];
+  const audio = movie.audio_language ?? [];
+  return (profileLangs.get(movie.profileId) ?? [])
+    .filter((l) => !(l.audioExclude && audio.some((a) => a.code2 === l.code2)))
+    .map((l) => l.code2);
 }
 
 /**
@@ -85,10 +115,11 @@ export function profileLanguageMap(
  * that matter most come first.
  *
  * Coverage counts what is actually there, not "not missing": Bazarr empties
- * `missing_subtitles` once a profile's cutoff is met and leaves out languages
- * excluded by the audio track, so a movie can be neither — it doesn't have
- * the language and Bazarr won't look for it. That movie lowers the share
- * without appearing under "missing".
+ * `missing_subtitles` once a profile's cutoff is met, so a movie can be
+ * neither — it doesn't have the language and Bazarr won't look for it. That
+ * movie lowers the share without appearing under "missing". A language the
+ * profile excludes for the movie's audio track isn't wanted, so that movie
+ * isn't counted for it at all.
  */
 export function computeLanguageCoverage(
   movies: readonly CoverageMovie[],
@@ -97,8 +128,7 @@ export function computeLanguageCoverage(
 ): LanguageCoverage[] {
   const totals = new Map<string, LanguageCoverage>();
   for (const movie of movies) {
-    if (movie.profileId == null) continue;
-    for (const code2 of profileLangs.get(movie.profileId) ?? []) {
+    for (const code2 of wantedLanguages(movie, profileLangs)) {
       const entry = totals.get(code2) ?? { code2, have: 0, missing: 0, total: 0 };
       entry.total += 1;
       if (hasLanguage(movie, code2)) entry.have += 1;
@@ -135,8 +165,7 @@ function matchesLanguage(
   lang: LanguageFilter,
   profileLangs: ProfileLanguages,
 ): boolean {
-  if (movie.profileId == null) return false;
-  if (!profileLangs.get(movie.profileId)?.includes(lang.code2)) return false;
+  if (!wantedLanguages(movie, profileLangs).includes(lang.code2)) return false;
   return lang.show === "missing"
     ? missesLanguage(movie, lang.code2)
     : hasLanguage(movie, lang.code2);

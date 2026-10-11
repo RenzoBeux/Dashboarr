@@ -19,14 +19,21 @@ const miss = (code2: string) => ({
   hi: false,
 });
 const sub = (code2: string) => ({ ...miss(code2), path: `/m/Film.${code2}.srt` });
-const movie = (profileId: number | null, missing: string[] = [], has: string[] = []) => ({
+const movie = (
+  profileId: number | null,
+  missing: string[] = [],
+  has: string[] = [],
+  audio: string[] = ["en"],
+) => ({
   profileId,
   missing_subtitles: missing.map(miss),
   subtitles: has.map(sub),
+  audio_language: audio.map((code2) => ({ name: code2, code2, code3: code2 })),
 });
 const profile = (
   profileId: number,
   langs: string[],
+  audioExclude: string[] = [],
 ): BazarrLanguageProfile => ({
   profileId,
   name: langs.join("+"),
@@ -36,6 +43,7 @@ const profile = (
     language,
     forced: "False",
     hi: "False",
+    audio_exclude: audioExclude.includes(language) ? "True" : "False",
   })),
 });
 
@@ -91,6 +99,38 @@ describe("computeLanguageCoverage", () => {
     expect(
       computeLanguageCoverage([movie(1, ["en"], ["en"])], profileLanguageMap([profile(1, ["en"])])),
     ).toEqual([{ code2: "en", have: 0, missing: 1, total: 1 }]);
+  });
+
+  it("doesn't count a language the profile excludes for the movie's audio", () => {
+    // German excluded when the audio is German: the German-audio movie
+    // doesn't want it, the English-audio one does.
+    const langs = profileLanguageMap([profile(1, ["en", "de"], ["de"])]);
+    const coverage = computeLanguageCoverage(
+      [movie(1, [], ["en"], ["de"]), movie(1, ["de"], ["en"], ["en"])],
+      langs,
+    );
+    expect(coverage.find((c) => c.code2 === "de")).toEqual({
+      code2: "de",
+      have: 0,
+      missing: 1,
+      total: 1,
+    });
+    expect(
+      filterMovies([movie(1, [], ["de"], ["de"])], "all", { code2: "de", show: "have" }, langs),
+    ).toHaveLength(0);
+  });
+
+  it("still wants a language another profile item doesn't exclude", () => {
+    const p: BazarrLanguageProfile = {
+      ...profile(1, ["de"]),
+      items: [
+        { id: 1, language: "de", forced: "False", hi: "False", audio_exclude: "True" },
+        { id: 2, language: "de", forced: "True", hi: "False", audio_exclude: "False" },
+      ],
+    };
+    expect(
+      computeLanguageCoverage([movie(1, [], ["de"], ["de"])], profileLanguageMap([p])),
+    ).toEqual([{ code2: "de", have: 1, missing: 0, total: 1 }]);
   });
 
   it("counts a language listed twice in a profile once", () => {
