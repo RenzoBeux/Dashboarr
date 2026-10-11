@@ -52,12 +52,32 @@ describe("classify", () => {
     expect(classifyMovie(movie(null, ["en"]))).toBe("noprofile");
     expect(classifyMovie(movie(1, ["en"]))).toBe("missing");
     expect(classifyMovie(movie(1))).toBe("complete");
-    expect(classifySeries({ profileId: 1, episodeMissingCount: 3 })).toBe(
-      "missing",
-    );
-    expect(classifySeries({ profileId: null, episodeMissingCount: 3 })).toBe(
-      "noprofile",
-    );
+    expect(
+      classifySeries({ profileId: 1, episodeMissingCount: 3, episodeFileCount: 5 }),
+    ).toBe("missing");
+    expect(
+      classifySeries({ profileId: null, episodeMissingCount: 3, episodeFileCount: 5 }),
+    ).toBe("noprofile");
+    expect(
+      classifySeries({ profileId: 1, episodeMissingCount: 0, episodeFileCount: 5 }),
+    ).toBe("complete");
+  });
+
+  it("puts a series without episode files under All only", () => {
+    const empty = { profileId: 1, episodeMissingCount: 0, episodeFileCount: 0 };
+    expect(classifySeries(empty)).toBe("nofiles");
+    expect(classifySeries({ ...empty, profileId: null })).toBe("noprofile");
+    // Bazarr still listing an episode as missing keeps it searchable.
+    expect(classifySeries({ ...empty, episodeMissingCount: 1 })).toBe("missing");
+    const series = [empty, { ...empty, episodeFileCount: 4 }];
+    expect(filterCounts(series, classifySeries)).toEqual({
+      all: 2,
+      missing: 0,
+      complete: 1,
+      noprofile: 0,
+    });
+    expect(filterSeries(series, "complete")).toEqual([series[1]]);
+    expect(filterSeries(series, "all")).toHaveLength(2);
   });
 
   it("counts every chip", () => {
@@ -220,8 +240,8 @@ describe("filters", () => {
 
   it("filters series", () => {
     const series = [
-      { profileId: 1, episodeMissingCount: 0 },
-      { profileId: 1, episodeMissingCount: 2 },
+      { profileId: 1, episodeMissingCount: 0, episodeFileCount: 4 },
+      { profileId: 1, episodeMissingCount: 2, episodeFileCount: 4 },
     ];
     expect(filterSeries(series, "complete")).toHaveLength(1);
   });

@@ -267,7 +267,7 @@ export function BazarrSeriesRow({
                     {series.episodeMissingCount}
                   </Text>
                 </View>
-              ) : state === "complete" && !noFiles ? (
+              ) : state === "complete" ? (
                 <Icon icon={Check} size={14} color="#60a5fa" />
               ) : null}
             </View>
@@ -426,7 +426,7 @@ export function BazarrSeriesPoster({
   const done = seriesSubtitledCount(series);
   const state = classifySeries(series);
   const noFiles = series.episodeFileCount <= 0;
-  const complete = state === "complete" && !noFiles;
+  const complete = state === "complete";
   return (
     <LibraryPosterTile
       width={width}

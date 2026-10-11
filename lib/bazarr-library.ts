@@ -11,7 +11,9 @@ import type {
 
 export type LibraryFilter = "all" | "missing" | "complete" | "noprofile";
 
-export type LibraryItemState = Exclude<LibraryFilter, "all">;
+// "nofiles": a series with no episode on disk has nothing to subtitle, so it
+// is neither complete nor missing. It has no chip and shows only under All.
+export type LibraryItemState = Exclude<LibraryFilter, "all"> | "nofiles";
 
 /** A movie or series' subtitle state. No profile wins: nothing is wanted. */
 export function classifyMovie(
@@ -21,11 +23,14 @@ export function classifyMovie(
   return movie.missing_subtitles.length > 0 ? "missing" : "complete";
 }
 
+// Missing before no files: an episode Bazarr can search for stays listed
+// under Missing even if the series' file count lags behind.
 export function classifySeries(
-  series: Pick<BazarrSeries, "profileId" | "episodeMissingCount">,
+  series: Pick<BazarrSeries, "profileId" | "episodeMissingCount" | "episodeFileCount">,
 ): LibraryItemState {
   if (series.profileId == null) return "noprofile";
-  return series.episodeMissingCount > 0 ? "missing" : "complete";
+  if (series.episodeMissingCount > 0) return "missing";
+  return series.episodeFileCount > 0 ? "complete" : "nofiles";
 }
 
 export function filterCounts<T>(
@@ -38,7 +43,11 @@ export function filterCounts<T>(
     complete: 0,
     noprofile: 0,
   };
-  for (const item of items) counts[classify(item)] += 1;
+  for (const item of items) {
+    const state = classify(item);
+    // No chip of its own: counted under All only.
+    if (state !== "nofiles") counts[state] += 1;
+  }
   return counts;
 }
 
@@ -198,7 +207,7 @@ export function filterMovies<T extends CoverageMovie>(
 }
 
 export function filterSeries<
-  T extends Pick<BazarrSeries, "profileId" | "episodeMissingCount">,
+  T extends Pick<BazarrSeries, "profileId" | "episodeMissingCount" | "episodeFileCount">,
 >(series: readonly T[], filter: LibraryFilter): T[] {
   return filter === "all"
     ? [...series]
