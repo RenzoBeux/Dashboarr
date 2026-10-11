@@ -69,6 +69,9 @@ const FILTER_LABEL: Record<LibraryFilter, string> = {
   noprofile: "No profile",
 };
 const FILTERS: LibraryFilter[] = ["all", "missing", "complete", "noprofile"];
+// Stable empties: a fresh [] per render would rebuild every memo below.
+const NO_MOVIES: BazarrMovie[] = [];
+const NO_SERIES: BazarrSeries[] = [];
 
 /**
  * The Bazarr tab's Library: every movie or series Bazarr manages with its
@@ -207,7 +210,7 @@ export function BazarrLibraryView({
   );
 
   // --- Movies ---
-  const movies = moviesQuery.data ?? [];
+  const movies = moviesQuery.data ?? NO_MOVIES;
   const movieCounts = useMemo(
     () => filterCounts(movies, classifyMovie),
     [movies],
@@ -228,19 +231,18 @@ export function BazarrLibraryView({
       })),
     [movies],
   );
+  // Only the kind on screen is filtered: each keystroke would otherwise
+  // re-score the hidden library too.
   const shownMovies = useMemo(
     () =>
-      filterMovies(
-        filterLibraryIndex(movieIndex, query),
-        filter,
-        langFilter,
-        profileLangs,
-      ),
-    [movieIndex, query, filter, langFilter, profileLangs],
+      kind === "movies"
+        ? filterMovies(filterLibraryIndex(movieIndex, query), filter, langFilter, profileLangs)
+        : NO_MOVIES,
+    [kind, movieIndex, query, filter, langFilter, profileLangs],
   );
 
   // --- Series ---
-  const series = seriesQuery.data ?? [];
+  const series = seriesQuery.data ?? NO_SERIES;
   const seriesCounts = useMemo(
     () => filterCounts(series, classifySeries),
     [series],
@@ -254,8 +256,9 @@ export function BazarrLibraryView({
     [series],
   );
   const shownSeries = useMemo(
-    () => filterSeries(filterLibraryIndex(seriesIndex, query), filter),
-    [seriesIndex, query, filter],
+    () =>
+      kind === "series" ? filterSeries(filterLibraryIndex(seriesIndex, query), filter) : NO_SERIES,
+    [kind, seriesIndex, query, filter],
   );
 
   const counts = kind === "movies" ? movieCounts : seriesCounts;
