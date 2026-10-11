@@ -100,7 +100,11 @@ export function mergeHistoryStreams(
         item.radarrId ?? item.sonarrEpisodeId ?? "",
         item.action,
         item.language?.code2 ?? "",
+        // A batch can sync or delete "en" and "en forced" in the same second.
+        item.language?.forced ? "f" : "",
+        item.language?.hi ? "h" : "",
         item.subs_id ?? "",
+        item.subtitles_path ?? "",
       ].join("|");
       if (seen.has(key)) continue;
       seen.add(key);

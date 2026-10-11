@@ -76,6 +76,19 @@ describe("mergeHistoryStreams", () => {
     expect(merged).toHaveLength(1);
   });
 
+  it("keeps same-second entries for different variants of a language", () => {
+    const en = { name: "English", code2: "en", code3: "eng", forced: false, hi: false };
+    const merged = mergeHistoryStreams(
+      [
+        item("10/08/26 12:00:00", { radarrId: 3, action: 5, language: en }),
+        item("10/08/26 12:00:00", { radarrId: 3, action: 5, language: { ...en, forced: true } }),
+      ],
+      [],
+      { movies: false, episodes: false },
+    );
+    expect(merged).toHaveLength(2);
+  });
+
   it("keeps entries without a parseable time at the end", () => {
     const merged = mergeHistoryStreams([item("garbage")], episodes, { movies: false, episodes: false });
     expect(merged[merged.length - 1].at).toBeNull();
