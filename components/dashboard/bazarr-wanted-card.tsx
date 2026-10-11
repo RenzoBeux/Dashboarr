@@ -72,8 +72,8 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
   const totalMissing = sum(movieQueries) + sum(episodeQueries);
   // The tab opens the active Bazarr, so a link first pins the instance whose
   // items it promises (as the Beszel and Status cards do). Header and View
-  // all: the tab's own Bazarr when it has something missing, else the first
-  // of the card's that does.
+  // all: the tab's own Bazarr when it has something missing (or its counts
+  // haven't loaded, so we can't tell), else the first of the card's that does.
   const { instanceId: tabBazarrId } = useInstanceTarget("bazarr");
   const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
   const missingOn = (i: number) => ({
@@ -81,11 +81,17 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     episodes: episodeQueries[i]?.data?.total ?? 0,
   });
   const anyMissing = (i: number) => missingOn(i).movies + missingOn(i).episodes > 0;
+  const loaded = (i: number) =>
+    movieQueries[i]?.data !== undefined && episodeQueries[i]?.data !== undefined;
   const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
-  const linkIndex = tabIndex >= 0 && anyMissing(tabIndex) ? tabIndex : instances.findIndex((_, i) => anyMissing(i));
+  const linkIndex =
+    tabIndex >= 0 && (anyMissing(tabIndex) || !loaded(tabIndex))
+      ? tabIndex
+      : instances.findIndex((_, i) => anyMissing(i));
   const openMissing = () => {
-    // Nothing missing anywhere: open the tab as the user left it.
-    if (linkIndex < 0) return router.push("/(tabs)/bazarr");
+    // Nothing (known to be) missing: open the tab as the user left it,
+    // without re-pinning it to another Bazarr.
+    if (linkIndex < 0 || !anyMissing(linkIndex)) return router.push("/(tabs)/bazarr");
     const { movies, episodes } = missingOn(linkIndex);
     if (instances[linkIndex].id !== tabBazarrId) setActiveInstance("bazarr", instances[linkIndex].id);
     // The kind that has the missing items when only one does; otherwise the
