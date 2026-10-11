@@ -44,11 +44,28 @@ export function filterCounts<T>(
 
 export interface LanguageCoverage {
   code2: string;
-  // Movies whose profile wants the language and that have it.
+  // Movies whose profile wants the language and that have a subtitle in it
+  // (a file or an embedded track).
   have: number;
+  // Movies whose profile wants the language and Bazarr lists it as missing.
+  missing: number;
   // Movies whose profile wants the language.
   total: number;
 }
+
+/**
+ * Coverage counts what is actually there, not "not missing": Bazarr empties
+ * `missing_subtitles` once a profile's cutoff is met and leaves out languages
+ * excluded by the audio track, so a movie can be neither — it doesn't have
+ * the language and Bazarr won't look for it. That movie lowers the share
+ * without appearing under "missing".
+ */
+type CoverageMovie = Pick<BazarrMovie, "profileId" | "missing_subtitles" | "subtitles">;
+
+const hasLanguage = (movie: CoverageMovie, code2: string) =>
+  movie.subtitles.some((s) => s.code2 === code2);
+const missesLanguage = (movie: CoverageMovie, code2: string) =>
+  movie.missing_subtitles.some((s) => s.code2 === code2);
 
 /** The languages each language profile asks for, by profile id. */
 export type ProfileLanguages = ReadonlyMap<number, readonly string[]>;
@@ -66,22 +83,23 @@ export function profileLanguageMap(
 
 /**
  * Per-language coverage across movies: for every language any profile asks
- * for, how many of the movies wanting it have it. Ordered by how many movies
- * want it, so the languages that matter most come first.
+ * for, how many of the movies wanting it have it and how many Bazarr still
+ * lists as missing it. Ordered by how many movies want it, so the languages
+ * that matter most come first.
  */
 export function computeLanguageCoverage(
-  movies: readonly Pick<BazarrMovie, "profileId" | "missing_subtitles">[],
+  movies: readonly CoverageMovie[],
   // The same map filterMovies takes, so a bar and its list can't disagree.
   profileLangs: ProfileLanguages,
 ): LanguageCoverage[] {
   const totals = new Map<string, LanguageCoverage>();
   for (const movie of movies) {
     if (movie.profileId == null) continue;
-    const missing = new Set(movie.missing_subtitles.map((m) => m.code2));
     for (const code2 of profileLangs.get(movie.profileId) ?? []) {
-      const entry = totals.get(code2) ?? { code2, have: 0, total: 0 };
+      const entry = totals.get(code2) ?? { code2, have: 0, missing: 0, total: 0 };
       entry.total += 1;
-      if (!missing.has(code2)) entry.have += 1;
+      if (hasLanguage(movie, code2)) entry.have += 1;
+      if (missesLanguage(movie, code2)) entry.missing += 1;
       totals.set(code2, entry);
     }
   }
@@ -92,8 +110,8 @@ export function computeLanguageCoverage(
 
 /**
  * A coverage bar's filter: the movies missing the language, or the movies
- * that have it. "Have" counts the same way the bar does — the profile wants
- * the language and it isn't missing — so the list length matches the bar.
+ * that have it. Both count the way the bar does — only movies whose profile
+ * wants the language — so the list length matches the bar's number.
  */
 export interface LanguageFilter {
   code2: string;
@@ -110,23 +128,22 @@ export function nextLanguageFilter(
 }
 
 function matchesLanguage(
-  movie: Pick<BazarrMovie, "profileId" | "missing_subtitles">,
+  movie: CoverageMovie,
   lang: LanguageFilter,
   profileLangs: ProfileLanguages,
 ): boolean {
-  const missing = movie.missing_subtitles.some((s) => s.code2 === lang.code2);
-  if (lang.show === "missing") return missing;
-  if (missing || movie.profileId == null) return false;
-  return profileLangs.get(movie.profileId)?.includes(lang.code2) ?? false;
+  if (movie.profileId == null) return false;
+  if (!profileLangs.get(movie.profileId)?.includes(lang.code2)) return false;
+  return lang.show === "missing"
+    ? missesLanguage(movie, lang.code2)
+    : hasLanguage(movie, lang.code2);
 }
 
 /**
  * Apply the filter chips (and an optional language filter from a coverage
  * bar) to the movies.
  */
-export function filterMovies<
-  T extends Pick<BazarrMovie, "profileId" | "missing_subtitles">,
->(
+export function filterMovies<T extends CoverageMovie>(
   movies: readonly T[],
   filter: LibraryFilter,
   lang?: LanguageFilter | null,

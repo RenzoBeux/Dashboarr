@@ -46,7 +46,7 @@ export function CoverageBars({
           const name = normalizeLanguage(c.code2)?.name ?? c.code2;
           const label =
             show === "missing"
-              ? `${c.total - c.have} missing`
+              ? `${c.missing} missing`
               : show === "have"
                 ? `${c.have} available`
                 : `${pct}%`;
@@ -69,7 +69,7 @@ export function CoverageBars({
               }`}
               accessibilityRole="button"
               accessibilityState={{ selected: show != null }}
-              accessibilityLabel={`${name}: ${c.have} of ${c.total} movies. ${now}`}
+              accessibilityLabel={`${name}: ${c.have} of ${c.total} movies have it, ${c.missing} missing. ${now}`}
             >
               <SubtitleTrackChip
                 code={c.code2}
