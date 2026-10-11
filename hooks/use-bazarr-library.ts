@@ -111,8 +111,10 @@ export function useBazarrHistory(
       (filter !== "movies" && episodes.isFetchingNextPage),
     loadMore: () => {
       const page = historyStreamsToPage(movieItems, episodeItems, more);
-      if (page.movies && !movies.isFetchingNextPage) void movies.fetchNextPage();
-      if (page.episodes && !episodes.isFetchingNextPage) void episodes.fetchNextPage();
+      // isFetching, not isFetchingNextPage: fetchNextPage cancels a running
+      // refetch (pull-to-refresh, job watcher) and appends to stale pages.
+      if (page.movies && !movies.isFetching) void movies.fetchNextPage();
+      if (page.episodes && !episodes.isFetching) void episodes.fetchNextPage();
     },
   };
 }
