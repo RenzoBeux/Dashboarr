@@ -30,7 +30,7 @@ import { useModalFlow } from "@/hooks/use-modal-flow";
 import { sonarrEpisodeBarKind, BAR_KIND_COLOR } from "@/lib/arr-poster-status";
 import type { SonarrEpisode, SonarrEpisodeFile } from "@/lib/types";
 import { LanguageLines } from "@/components/subtitles/language-lines";
-import type { AudioTag, SubtitleChip } from "@/lib/subtitle-model";
+import type { EpisodeLanguages } from "@/lib/subtitle-model";
 
 /**
  * One episode inside a season on the series detail page: status spine, code +
@@ -52,7 +52,7 @@ export function EpisodeRow({
   episodeFile?: SonarrEpisodeFile;
   isDownloading: boolean;
   // Audio + subtitle tags, when a Bazarr instance serves this series.
-  languages?: { audio: AudioTag[]; chips: SubtitleChip[] };
+  languages?: EpisodeLanguages;
   onOpenSubtitles?: () => void;
 }) {
   const router = useRouter();

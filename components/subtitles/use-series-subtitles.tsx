@@ -14,12 +14,11 @@ import {
 import { searchMissingSubtitles, searchSubtitles } from "@/services/bazarr-api";
 import {
   buildCoverageGrid,
-  buildSubtitleChips,
+  buildEpisodeLanguages,
   buildSubtitleRows,
   mediaAudioTags,
   seasonMissingTargets,
   type AudioTag,
-  type SubtitleChip,
 } from "@/lib/subtitle-model";
 import {
   formatAudioChannels,
@@ -91,18 +90,11 @@ export function useSeriesSubtitles({
     const file = ep?.episodeFileId ? episodeFileMap.get(ep.episodeFileId) : undefined;
     return mediaAudioTags(file?.mediaInfo?.audioLanguages, be?.audio_language, series?.originalLanguage);
   };
-  const episodeLanguages = useMemo(() => {
-    const map = new Map<number, { audio: AudioTag[]; chips: SubtitleChip[] }>();
-    for (const be of bazarrEpisodes ?? []) {
-      map.set(be.sonarrEpisodeId, {
-        audio: audioFor(be, sonarrById.get(be.sonarrEpisodeId)),
-        chips: buildSubtitleChips(buildSubtitleRows(be)),
-      });
-    }
-    return map;
-    // audioFor reads episodeFileMap and series, listed below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bazarrEpisodes, sonarrById, episodeFileMap, series?.originalLanguage]);
+  const episodeLanguages = useMemo(
+    () =>
+      buildEpisodeLanguages(episodes ?? [], episodeFileMap, bazarrEpisodes, series?.originalLanguage),
+    [episodes, episodeFileMap, bazarrEpisodes, series?.originalLanguage],
+  );
 
   // --- Episode sheet ---
 
@@ -275,7 +267,9 @@ export function useSeriesSubtitles({
     linked,
     bazarrId,
     coverageCard,
-    episodeLanguages: linked ? episodeLanguages : undefined,
+    // Kept while Bazarr's list is loading, failed or lacks the series: the
+    // file's audio doesn't depend on it, only the chips and the sheet do.
+    episodeLanguages: bazarrId ? episodeLanguages : undefined,
     gapsBySeason,
     seriesGaps,
     openEpisode,

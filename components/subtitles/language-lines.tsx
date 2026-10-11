@@ -30,7 +30,9 @@ export function LanguageLines({
   ringClassName,
 }: {
   audio: readonly AudioTag[];
-  subtitles: readonly SubtitleChip[];
+  // Undefined when Bazarr has no data: the column stays as a blank spacer
+  // (no captions icon claiming "none"), aligned with the rows around it.
+  subtitles: readonly SubtitleChip[] | undefined;
   size?: TagSize;
   onPress?: () => void;
   accessibilityLabel?: string;
@@ -52,21 +54,25 @@ export function LanguageLines({
           ))
         }
       </Column>
-      <Column icon="subtitles" size={size} count={subtitles.length}>
-        {(shown) =>
-          subtitles.slice(0, shown).map((c) => (
-            <SubtitleTrackChip
-              key={c.key}
-              code={c.code2}
-              state={c.state}
-              forced={c.forced}
-              hi={c.hi}
-              size={size}
-              ringClassName={ringClassName}
-            />
-          ))
-        }
-      </Column>
+      {subtitles ? (
+        <Column icon="subtitles" size={size} count={subtitles.length}>
+          {(shown) =>
+            subtitles.slice(0, shown).map((c) => (
+              <SubtitleTrackChip
+                key={c.key}
+                code={c.code2}
+                state={c.state}
+                forced={c.forced}
+                hi={c.hi}
+                size={size}
+                ringClassName={ringClassName}
+              />
+            ))
+          }
+        </Column>
+      ) : (
+        <View className="flex-1" />
+      )}
     </View>
   );
 

@@ -288,6 +288,42 @@ function cellFor(ep: BazarrEpisode, lang: CoverageLanguage): CoverageCell {
   return "unwanted";
 }
 
+export interface EpisodeLanguages {
+  audio: AudioTag[];
+  // Undefined while Bazarr has no data for the episode (request pending or
+  // failed, or the episode not synced yet): nothing to show or open.
+  chips?: SubtitleChip[];
+}
+
+/**
+ * Per-episode language tags for the season list, keyed by Sonarr episode id.
+ * Driven by Sonarr's episodes with a file, so the file's audio still shows
+ * when Bazarr's list is missing or lags behind Sonarr; subtitle chips only
+ * for episodes Bazarr lists.
+ */
+export function buildEpisodeLanguages(
+  episodes: readonly { id: number; episodeFileId?: number }[],
+  files: ReadonlyMap<number, { mediaInfo?: { audioLanguages?: string } | null }>,
+  bazarrEpisodes: readonly BazarrEpisode[] | undefined,
+  originalLanguage?: ArrLanguage | string | null,
+): Map<number, EpisodeLanguages> {
+  const bazarrById = new Map((bazarrEpisodes ?? []).map((e) => [e.sonarrEpisodeId, e]));
+  const map = new Map<number, EpisodeLanguages>();
+  for (const ep of episodes) {
+    if (!ep.episodeFileId) continue;
+    const be = bazarrById.get(ep.id);
+    const audio = mediaAudioTags(
+      files.get(ep.episodeFileId)?.mediaInfo?.audioLanguages,
+      be?.audio_language,
+      originalLanguage,
+    );
+    // An empty line would only show two bare icons.
+    if (!be && audio.length === 0) continue;
+    map.set(ep.id, { audio, chips: be ? buildSubtitleChips(buildSubtitleRows(be)) : undefined });
+  }
+  return map;
+}
+
 /** Episodes of one season that still miss languages, for "Search missing". */
 export function seasonMissingTargets(
   episodes: readonly BazarrEpisode[],

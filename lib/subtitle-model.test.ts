@@ -1,6 +1,7 @@
 import {
   buildAudioTags,
   buildCoverageGrid,
+  buildEpisodeLanguages,
   buildSubtitleChips,
   buildSubtitleRows,
   fitChips,
@@ -256,5 +257,38 @@ describe("seasonMissingTargets", () => {
     );
     expect(targets.map((t) => t.episode.episode)).toEqual([1]);
     expect(targets[0].languages.map((l) => l.code2)).toEqual(["de"]);
+  });
+});
+
+describe("buildEpisodeLanguages", () => {
+  // Sonarr episode ids match ep()'s season * 100 + episode.
+  const sonarr = [
+    { id: 101, episodeFileId: 11 },
+    { id: 102, episodeFileId: 12 },
+    { id: 103, episodeFileId: 0 },
+  ];
+  const files = new Map([
+    [11, { mediaInfo: { audioLanguages: "eng" } }],
+    [12, { mediaInfo: { audioLanguages: "ger" } }],
+  ]);
+
+  it("keeps the file's audio for episodes Bazarr doesn't list", () => {
+    const map = buildEpisodeLanguages(sonarr, files, [ep(1, 1, [sub("en", "/a.srt")], [])], "English");
+    expect(map.get(101)?.chips?.map((c) => c.code2)).toEqual(["en"]);
+    expect(map.get(102)).toEqual({
+      audio: [{ code2: "de", name: "German", original: false }],
+      chips: undefined,
+    });
+  });
+
+  it("keeps the file's audio without Bazarr's list", () => {
+    const map = buildEpisodeLanguages(sonarr, files, undefined);
+    expect([...map.keys()]).toEqual([101, 102]);
+    expect(map.get(101)?.chips).toBeUndefined();
+  });
+
+  it("skips episodes without a file, or with nothing to show", () => {
+    const untagged = new Map([[11, { mediaInfo: { audioLanguages: "und" } }]]);
+    expect(buildEpisodeLanguages(sonarr, untagged, undefined).size).toBe(0);
   });
 });

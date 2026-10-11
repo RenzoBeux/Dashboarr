@@ -32,7 +32,7 @@ import type {
   SonarrEpisodeFile,
   SonarrSeason,
 } from "@/lib/types";
-import type { AudioTag, SubtitleChip } from "@/lib/subtitle-model";
+import type { EpisodeLanguages } from "@/lib/subtitle-model";
 
 /**
  * One season on the series detail page: a collapsible card with the season's
@@ -58,7 +58,7 @@ export function SeasonAccordion({
   episodeFileMap: Map<number, SonarrEpisodeFile>;
   downloadingEpisodeIds: Set<number>;
   // The rest is set only when a Bazarr instance serves this series.
-  episodeLanguages?: Map<number, { audio: AudioTag[]; chips: SubtitleChip[] }>;
+  episodeLanguages?: Map<number, EpisodeLanguages>;
   // Episodes of this season missing at least one subtitle language.
   subtitleGaps?: number;
   onOpenSubtitles?: (episodeId: number) => void;
@@ -254,7 +254,8 @@ export function SeasonAccordion({
                   isDownloading={downloadingEpisodeIds.has(ep.id)}
                   languages={episodeLanguages?.get(ep.id)}
                   onOpenSubtitles={
-                    onOpenSubtitles && episodeLanguages?.has(ep.id)
+                    // Only episodes Bazarr lists have a sheet to open.
+                    onOpenSubtitles && episodeLanguages?.get(ep.id)?.chips
                       ? () => onOpenSubtitles(ep.id)
                       : undefined
                   }
