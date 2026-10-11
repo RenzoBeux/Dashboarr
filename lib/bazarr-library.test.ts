@@ -135,7 +135,8 @@ describe("filters", () => {
   });
 
   it("only lists a missing language the movie's profile still wants", () => {
-    const stale = [movie(2, ["fr"])];
+    // Profile 1 exists but asks for English and German only.
+    const stale = [movie(1, ["fr"])];
     expect(
       filterMovies(stale, "all", { code2: "fr", show: "missing" }, langs),
     ).toHaveLength(0);
