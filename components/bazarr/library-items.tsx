@@ -249,7 +249,9 @@ export function BazarrSeriesRow({
           </Pressable>
         ) : null}
       </View>
-      {open ? (
+      {/* Gated on canExpand too: a filter change or the last missing episode
+          getting fixed removes the toggle, which must not strand the list. */}
+      {open && canExpand ? (
         <MissingEpisodes
           bazarrId={bazarrId}
           seriesId={series.sonarrSeriesId}
@@ -279,7 +281,7 @@ function MissingEpisodes({
 }) {
   const tc = useThemeColor();
   // Loaded only once the row is expanded.
-  const { data, isLoading } = useBazarrSeriesEpisodes(bazarrId, seriesId);
+  const { data, isLoading, error } = useBazarrSeriesEpisodes(bazarrId, seriesId);
   const missing = (data ?? [])
     .filter((e) => e.missing_subtitles.length > 0)
     .sort((a, b) => b.season - a.season || b.episode - a.episode);
@@ -289,6 +291,15 @@ function MissingEpisodes({
       <View className="py-3 items-center border-t border-zinc-800">
         <ActivityIndicator size="small" color={tc("#a1a1aa")} />
       </View>
+    );
+  }
+  // The series' missing count can be ahead of its episodes; say so rather
+  // than expanding to nothing.
+  if (error || missing.length === 0) {
+    return (
+      <Text className="px-3.5 py-2.5 border-t border-zinc-800 text-zinc-500 text-xs">
+        {error ? "Couldn't load the episodes" : "No episodes are missing subtitles"}
+      </Text>
     );
   }
   return (
