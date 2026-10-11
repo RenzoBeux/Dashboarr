@@ -83,7 +83,11 @@ export function LibraryToolbar<S extends string>({
                 key={o.value}
                 label={o.label}
                 selected={segments.value === o.value}
-                onPress={() => segments.onChange(o.value)}
+                // Re-tapping the current segment is not a switch (callers
+                // reset search on a switch).
+                onPress={() => {
+                  if (o.value !== segments.value) segments.onChange(o.value);
+                }}
               />
             ))}
           </ScrollView>
