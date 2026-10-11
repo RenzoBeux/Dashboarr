@@ -109,10 +109,11 @@ function BazarrScreenInner() {
       ["bazarr", bazarrId, "history"],
       ["bazarr", bazarrId, "profiles"],
       ["bazarr", bazarrId, "series-episodes"],
-      ...(radarrId ? [["radarr", radarrId, "movies"]] : []),
-      ...(sonarrId ? [["sonarr", sonarrId, "series"]] : []),
+      // Only the one on screen: each is a whole-library download.
+      ...(section === "library" && kind === "movies" && radarrId ? [["radarr", radarrId, "movies"]] : []),
+      ...(section === "library" && kind === "series" && sonarrId ? [["sonarr", sonarrId, "series"]] : []),
     ],
-    [bazarrId, radarrId, sonarrId],
+    [bazarrId, section, kind, radarrId, sonarrId],
   );
   const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
   const theme = useAppTheme();
