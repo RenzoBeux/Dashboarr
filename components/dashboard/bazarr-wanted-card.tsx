@@ -17,7 +17,11 @@ import {
   BAZARR_WANTED_DEFAULT_SETTINGS,
   type BazarrWantedSettingsValue,
 } from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
-import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import {
+  aggregateMultiInstanceState,
+  hasFailedWithoutData,
+  type MultiInstanceQueryLike,
+} from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -81,11 +85,11 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     episodes: episodeQueries[i]?.data?.total ?? 0,
   });
   const anyMissing = (i: number) => missingOn(i).movies + missingOn(i).episodes > 0;
-  // Still on its first load, not failed: a Bazarr that keeps failing mustn't
-  // hold the link when another one has missing items. A query that never got
-  // data goes back to "pending" on every retry, so a past error counts.
-  const firstLoad = (q: (typeof movieQueries)[number] | (typeof episodeQueries)[number] | undefined) =>
-    q?.status === "pending" && q.errorUpdatedAt === 0;
+  // Still on its first attempt, nothing failed yet: a Bazarr that is down
+  // mustn't hold the link (not even while its first request retries) when
+  // another one has missing items.
+  const firstLoad = (q: (MultiInstanceQueryLike & { failureCount: number }) | undefined) =>
+    !!q && q.isLoading && q.failureCount === 0 && !hasFailedWithoutData(q);
   const pending = (i: number) => firstLoad(movieQueries[i]) || firstLoad(episodeQueries[i]);
   const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
   const linkIndex =
