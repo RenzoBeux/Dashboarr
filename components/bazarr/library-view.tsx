@@ -364,11 +364,12 @@ export function BazarrLibraryView({
             searching={busyMovies.has(m.radarrId)}
             onSearch={() => {
               // Busy from the tap, cleared when Bazarr's queue drains.
+              // mutateAsync: mutate's per-call callbacks only fire for the
+              // latest call, and rows are searched in quick succession.
               setBusyMovies((prev) => new Set([...prev, m.radarrId]));
-              searchMovie.mutate(m.radarrId, {
-                onSuccess: () =>
-                  toast(`Searching subtitles for ${m.title}…`, "info"),
-                onError: (err) => {
+              searchMovie.mutateAsync(m.radarrId).then(
+                () => toast(`Searching subtitles for ${m.title}…`, "info"),
+                (err) => {
                   setBusyMovies((prev) => {
                     const next = new Set(prev);
                     next.delete(m.radarrId);
@@ -376,7 +377,7 @@ export function BazarrLibraryView({
                   });
                   toastError("Couldn't start the search", err);
                 },
-              });
+              );
             }}
             onPress={openMovie ? () => openMovie(m) : undefined}
           />
@@ -416,10 +417,9 @@ export function BazarrLibraryView({
           searchingEpisodes={busyEpisodes}
           onSearchEpisode={(e) => {
             setBusyEpisodes((prev) => new Set([...prev, e.sonarrEpisodeId]));
-            searchEpisode.mutate(e, {
-              onSuccess: () =>
-                toast(`Searching subtitles for ${s.title}…`, "info"),
-              onError: (err) => {
+            searchEpisode.mutateAsync(e).then(
+              () => toast(`Searching subtitles for ${s.title}…`, "info"),
+              (err) => {
                 setBusyEpisodes((prev) => {
                   const next = new Set(prev);
                   next.delete(e.sonarrEpisodeId);
@@ -427,7 +427,7 @@ export function BazarrLibraryView({
                 });
                 toastError("Couldn't start the search", err);
               },
-            });
+            );
           }}
           onPress={openSeries ? () => openSeries(s) : undefined}
         />
