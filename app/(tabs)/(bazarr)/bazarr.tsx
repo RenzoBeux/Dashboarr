@@ -14,6 +14,7 @@ import { BazarrHistoryView } from "@/components/bazarr/history-view";
 import type { LanguageFilter, LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useLinkedArrInstance } from "@/hooks/use-bazarr-link";
 import { useLibraryView } from "@/hooks/use-library-view";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeColor } from "@/hooks/use-theme-color";
@@ -94,7 +95,10 @@ function BazarrScreenInner() {
     setLangFor(bazarrId);
     setLangFilter(null);
   }
-
+  // Pull-to-refresh also refreshes the linked arr library behind the
+  // artwork and original language (kept 5 minutes otherwise).
+  const radarrId = useLinkedArrInstance(bazarrId, "radarr");
+  const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
   const { data: healthData } = useServiceHealth();
   const online = healthData?.find((s) => s.id === "bazarr")?.online;
   // Not every Bazarr query: link detection re-reads /system/settings, which
@@ -105,8 +109,10 @@ function BazarrScreenInner() {
       ["bazarr", bazarrId, "history"],
       ["bazarr", bazarrId, "profiles"],
       ["bazarr", bazarrId, "series-episodes"],
+      ...(radarrId ? [["radarr", radarrId, "movies"]] : []),
+      ...(sonarrId ? [["sonarr", sonarrId, "series"]] : []),
     ],
-    [bazarrId],
+    [bazarrId, radarrId, sonarrId],
   );
   const { refreshing, onRefresh } = usePullToRefresh(refreshKeys);
   const theme = useAppTheme();
