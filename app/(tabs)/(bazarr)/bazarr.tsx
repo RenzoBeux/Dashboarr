@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { RefreshControl } from "react-native";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
@@ -34,16 +34,22 @@ export default function BazarrScreen() {
 function BazarrScreenInner() {
   // `?filter=missing&kind=series` opens the tab on a filter (the dashboard's
   // Wanted card links here, Missing having replaced Wanted).
+  const router = useRouter();
   const params = useLocalSearchParams<{ filter?: string; kind?: string }>();
   const [section, setSection] = useState<Section>("library");
   const [kind, setKind] = useState<BazarrLibraryKind>("movies");
   const [filter, setFilter] = useState<LibraryFilter>("all");
   useEffect(() => {
+    if (!params.filter && !params.kind) return;
+    // Consumed, so the next tap on the same link changes the params again:
+    // the tab stays mounted and would otherwise keep whatever the user picked.
+    router.setParams({ filter: undefined, kind: undefined });
     if (params.filter === "missing" || params.filter === "complete" || params.filter === "noprofile" || params.filter === "all") {
       setSection("library");
       setFilter(params.filter);
     }
     if (params.kind === "movies" || params.kind === "series") setKind(params.kind);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.filter, params.kind]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
