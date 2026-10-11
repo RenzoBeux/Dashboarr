@@ -11,7 +11,6 @@ import type { LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useLibraryView } from "@/hooks/use-library-view";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -69,7 +68,17 @@ function BazarrScreenInner() {
     setLinkCount((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.filter, params.kind]);
-  const debouncedQuery = useDebouncedValue(query, 200);
+  // Typing is debounced; clearing applies at once and also drops the pending
+  // value, so typing again right after a clear can't bring the old term back.
+  const [appliedQuery, setAppliedQuery] = useState("");
+  useEffect(() => {
+    if (query === "") {
+      setAppliedQuery("");
+      return;
+    }
+    const handle = setTimeout(() => setAppliedQuery(query), 200);
+    return () => clearTimeout(handle);
+  }, [query]);
   const view = useLibraryView(`bazarr-${kind}`);
 
   const { instanceId: bazarrId } = useInstanceTarget("bazarr");
@@ -154,9 +163,8 @@ function BazarrScreenInner() {
           filter={filter}
           onFilterChange={setFilter}
           mode={view.mode}
-          // A cleared search applies at once (a link, closing search); only
-          // typing is debounced.
-          query={query === "" ? "" : debouncedQuery}
+          // "" covers the render before the effect above catches up.
+          query={query === "" ? "" : appliedQuery}
           onClearSearch={() => {
             setQuery("");
             setSearchOpen(false);
