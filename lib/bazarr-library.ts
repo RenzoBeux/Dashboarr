@@ -53,13 +53,6 @@ export interface LanguageCoverage {
   total: number;
 }
 
-/**
- * Coverage counts what is actually there, not "not missing": Bazarr empties
- * `missing_subtitles` once a profile's cutoff is met and leaves out languages
- * excluded by the audio track, so a movie can be neither — it doesn't have
- * the language and Bazarr won't look for it. That movie lowers the share
- * without appearing under "missing".
- */
 type CoverageMovie = Pick<BazarrMovie, "profileId" | "missing_subtitles" | "subtitles">;
 
 const missesLanguage = (movie: CoverageMovie, code2: string) =>
@@ -90,6 +83,12 @@ export function profileLanguageMap(
  * for, how many of the movies wanting it have it and how many Bazarr still
  * lists as missing it. Ordered by how many movies want it, so the languages
  * that matter most come first.
+ *
+ * Coverage counts what is actually there, not "not missing": Bazarr empties
+ * `missing_subtitles` once a profile's cutoff is met and leaves out languages
+ * excluded by the audio track, so a movie can be neither — it doesn't have
+ * the language and Bazarr won't look for it. That movie lowers the share
+ * without appearing under "missing".
  */
 export function computeLanguageCoverage(
   movies: readonly CoverageMovie[],
