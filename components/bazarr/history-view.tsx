@@ -340,7 +340,8 @@ function HistoryRow({
           {titleOf(entry)}
         </Text>
         <View className="flex-row items-center gap-2 mt-1 pt-1">
-          {item.language ? (
+          {/* Bazarr marshals a missing language as an object of nulls, not null. */}
+          {item.language?.code2 ? (
             <SubtitleTrackChip
               code={item.language.code2}
               name={item.language.name}
