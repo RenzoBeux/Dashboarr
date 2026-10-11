@@ -484,7 +484,10 @@ export function BazarrLibraryView({
           />
         )}
         isLoading={moviesQuery.isLoading}
-        error={moviesQuery.error}
+        // Only a failed first load: after a failed refetch the loaded
+        // library still shows, and an empty filter result must still offer
+        // "Clear filters" rather than an error.
+        error={moviesQuery.data ? null : moviesQuery.error}
         errorTitle="Couldn't load Bazarr's movies"
         empty={empty}
         ListHeaderComponent={listHeader}
@@ -528,7 +531,7 @@ export function BazarrLibraryView({
         />
       )}
       isLoading={seriesQuery.isLoading}
-      error={seriesQuery.error}
+      error={seriesQuery.data ? null : seriesQuery.error}
       errorTitle="Couldn't load Bazarr's series"
       empty={empty}
       ListHeaderComponent={listHeader}
