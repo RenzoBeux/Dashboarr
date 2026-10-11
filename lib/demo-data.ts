@@ -2101,7 +2101,13 @@ const demoHistory = (
   timestamp: hoursAgo < 24 ? `${Math.max(1, Math.round(hoursAgo))} hours ago` : `${Math.round(hoursAgo / 24)} days ago`,
   parsed_timestamp: bazarrTimestamp(hoursAgo),
   description: "",
-  language: { name: { en: "English", de: "German", fr: "French" }[code2], code2, code3: code2, forced: false, hi: false },
+  language: {
+    name: { en: "English", de: "German", fr: "French" }[code2],
+    code2,
+    code3: { en: "eng", de: "ger", fr: "fre" }[code2],
+    forced: false,
+    hi: false,
+  },
   provider: action === 4 ? null : "opensubtitlescom",
   score: action === 1 || action === 2 || action === 3 ? `${90 + (Math.round(hoursAgo) % 9)}.0%` : null,
   subs_id: `demo-${hoursAgo}-${code2}`,
@@ -2119,7 +2125,7 @@ const DEMO_BAZARR_MOVIE_HISTORY = {
     demoHistory(27, 5, "en", { title: "Interstellar", radarrId: 3, subtitles_path: "/movies/Interstellar (2014)/Interstellar.2014.en.srt" }),
     demoHistory(30, 4, "fr", { title: "Inception", radarrId: 5, subtitles_path: "/movies/Inception (2010)/Inception.2010.fr.srt" }),
     demoHistory(52, 6, "fr", { title: "The Batman", radarrId: 4, subtitles_path: "/movies/The Batman (2022)/The.Batman.2022.fr.srt" }),
-    demoHistory(80, 2, "en", { title: "Everything Everywhere All at Once", radarrId: 6, subtitles_path: "/movies/x.en.srt" }),
+    demoHistory(80, 2, "en", { title: "Everything Everywhere All at Once", radarrId: 6, subtitles_path: "/movies/Everything Everywhere All at Once (2022)/Everything.Everywhere.All.at.Once.2022.en.srt" }),
     demoHistory(120, 7, "en", { title: "Oppenheimer", radarrId: 2, subtitles_path: "/movies/Oppenheimer (2023)/Oppenheimer.2023.en.srt" }),
     demoHistory(200, 0, "de", { title: "Interstellar", radarrId: 3, subtitles_path: "/movies/Interstellar (2014)/Interstellar.2014.de.srt" }),
   ],
@@ -2187,7 +2193,9 @@ function demoBazarrEpisodes(seriesId: number) {
   return DEMO_SONARR_EPISODES.filter((e) => e.seriesId === seriesId && e.hasFile)
     .map((e) => {
       const base = `/tv/${series.title}/Season ${e.seasonNumber}/${series.title} - S0${e.seasonNumber}E0${e.episodeNumber}`;
-      const germanMissing = e.episodeNumber % 3 === 0;
+      // Shogun has no profile (see demoBazarrSeriesItem): nothing is wanted.
+      const noProfile = seriesId === 4;
+      const germanMissing = !noProfile && e.episodeNumber % 3 === 0;
       return {
         sonarrSeriesId: seriesId,
         sonarrEpisodeId: e.id,
@@ -2195,7 +2203,7 @@ function demoBazarrEpisodes(seriesId: number) {
         episode: e.episodeNumber,
         title: e.title,
         path: `${base}.mkv`,
-        profileId: 1,
+        profileId: noProfile ? null : 1,
         monitored: true,
         sceneName: null,
         audio_language: [demoLang("en")],
