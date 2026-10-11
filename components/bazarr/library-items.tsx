@@ -18,9 +18,9 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 import { useBazarrSeriesEpisodes } from "@/hooks/use-bazarr-subtitles";
 import {
-  buildAudioTags,
   buildSubtitleChips,
   buildSubtitleRows,
+  mediaAudioTags,
 } from "@/lib/subtitle-model";
 import {
   classifyMovie,
@@ -34,6 +34,7 @@ import type {
   BazarrEpisode,
   BazarrMovie,
   BazarrSeries,
+  MediaInfo,
   RadarrImage,
   SonarrImage,
 } from "@/lib/types";
@@ -47,6 +48,10 @@ import type {
 export interface ArrLookup {
   images?: (RadarrImage | SonarrImage)[];
   originalLanguage?: ArrLanguage;
+  // Radarr's probed file audio, preferred over Bazarr's (mediaAudioTags) as
+  // the Sonarr episode rows do. The arr item itself is the lookup, so the
+  // memo copies nothing.
+  movieFile?: { mediaInfo?: Pick<MediaInfo, "audioLanguages"> };
 }
 
 function usePoster(kind: "radarr" | "sonarr", arrInstanceId: string | null, lookup?: ArrLookup) {
@@ -116,7 +121,11 @@ export function BazarrMovieRow({
 }) {
   const { src, onError } = usePoster("radarr", arrInstanceId, lookup);
   const chips = buildSubtitleChips(buildSubtitleRows(movie));
-  const audio = buildAudioTags(movie.audio_language, lookup?.originalLanguage);
+  const audio = mediaAudioTags(
+    lookup?.movieFile?.mediaInfo?.audioLanguages,
+    movie.audio_language,
+    lookup?.originalLanguage,
+  );
   const noProfile = classifyMovie(movie) === "noprofile";
 
   return (
@@ -174,7 +183,11 @@ export function BazarrMoviePoster({
   const { src, onError } = usePoster("radarr", arrInstanceId, lookup);
   const uiScale = useUiScale();
   const chips = buildSubtitleChips(buildSubtitleRows(movie));
-  const audio = buildAudioTags(movie.audio_language, lookup?.originalLanguage);
+  const audio = mediaAudioTags(
+    lookup?.movieFile?.mediaInfo?.audioLanguages,
+    movie.audio_language,
+    lookup?.originalLanguage,
+  );
   const complete = classifyMovie(movie) === "complete";
   return (
     <LibraryPosterTile

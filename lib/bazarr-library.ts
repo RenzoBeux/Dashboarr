@@ -119,6 +119,8 @@ function wantedLanguages(
   profileLangs: ProfileLanguages,
 ): string[] {
   if (movie.profileId == null) return [];
+  // Bazarr's own audio languages, not Radarr's file probe the rows show:
+  // they are what Bazarr applied the audio rules to when it listed missing.
   const audio = movie.audio_language ?? [];
   return (profileLangs.get(movie.profileId) ?? [])
     .filter((l) =>
