@@ -16,14 +16,18 @@ import {
   INTERACTIVE_SEARCH_TIMEOUT,
 } from "@/lib/constants";
 import {
+  blacklistSubtitle,
   deleteSubtitle,
   detectArrLinks,
   downloadSubtitleResult,
   getActiveBazarrJobIds,
   getBazarrMovie,
+  getBazarrMovies,
+  getBazarrSeriesList,
   getBazarrSeriesEpisodes,
   manualSearchSubtitles,
   runSubtitleTool,
+  searchAllWanted,
   searchMissingSubtitles,
   searchSubtitle,
   searchSubtitles,
@@ -372,5 +376,46 @@ describe("searchSubtitles", () => {
     expect(mockRequest).toHaveBeenCalledTimes(6);
     pending.slice(2).forEach((resolve) => resolve());
     await expect(done).resolves.toBeUndefined();
+  });
+});
+
+describe("library", () => {
+  it("reads the whole movie and series libraries in one page", async () => {
+    mockRequest.mockResolvedValue({ data: [{ radarrId: 1 }], total: 1 });
+    await expect(getBazarrMovies("bz")).resolves.toEqual([{ radarrId: 1 }]);
+    expect(mockRequest).toHaveBeenLastCalledWith("bazarr", "/movies", {
+      params: { start: 0, length: -1 },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+      signal: undefined,
+    });
+    await getBazarrSeriesList("bz");
+    expect(mockRequest).toHaveBeenLastCalledWith("bazarr", "/series", {
+      params: { start: 0, length: -1 },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+      signal: undefined,
+    });
+  });
+
+  it("searches every wanted subtitle with a search-wanted action in the body", async () => {
+    await searchAllWanted("series", "bz");
+    expect(mockRequest).toHaveBeenCalledWith("bazarr", "/series", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "search-wanted" }),
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+    });
+  });
+
+  it("blacklists an episode subtitle with every field as a query param", async () => {
+    const entry = { provider: "opensubtitlescom", subs_id: "s1", language: "de", subtitles_path: "/tv/E.de.srt" };
+    await blacklistSubtitle({ type: "episode", seriesId: 3, episodeId: 99 }, entry, "bz");
+    expect(mockRequest).toHaveBeenCalledWith("bazarr", "/episodes/blacklist", {
+      method: "POST",
+      params: { seriesid: 3, episodeid: 99, ...entry },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+    });
   });
 });
