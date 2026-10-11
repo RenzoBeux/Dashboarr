@@ -99,6 +99,10 @@ export function useBazarrHistory(
   // The end reached while a stream refetched: page once the refetch settles,
   // since the list won't fire onEndReached again for the same content.
   const endPending = useRef(false);
+  // Page count each requested next page started from. A refetch that starts
+  // meanwhile cancels the page request (cancelRefetch) and reloads only the
+  // pages held; no new rows means no new onEndReached, so retry on settle.
+  const requested = useRef<{ movies?: number; episodes?: number }>({});
   const loadMore = () => {
     const page = historyStreamsToPage(movieItems, episodeItems, more);
     // isFetching, not isFetchingNextPage: fetchNextPage cancels a running
@@ -107,14 +111,28 @@ export function useBazarrHistory(
     if ((page.movies && refetching(movies)) || (page.episodes && refetching(episodes))) {
       endPending.current = true;
     }
-    if (page.movies && !movies.isFetching) void movies.fetchNextPage();
-    if (page.episodes && !episodes.isFetching) void episodes.fetchNextPage();
+    if (page.movies && !movies.isFetching) {
+      requested.current.movies = movies.data?.pages.length ?? 0;
+      void movies.fetchNextPage();
+    }
+    if (page.episodes && !episodes.isFetching) {
+      requested.current.episodes = episodes.data?.pages.length ?? 0;
+      void episodes.fetchNextPage();
+    }
   };
   const settled = !movies.isFetching && !episodes.isFetching;
   useEffect(() => {
-    if (!settled || !endPending.current) return;
+    if (!settled) return;
+    // A failed page is not retried here (it would loop); scrolling retries.
+    const lost = (q: typeof movies, from?: number) =>
+      from !== undefined && !q.isFetchNextPageError && (q.data?.pages.length ?? 0) <= from;
+    const retry =
+      endPending.current ||
+      lost(movies, requested.current.movies) ||
+      lost(episodes, requested.current.episodes);
     endPending.current = false;
-    if (more.movies || more.episodes) loadMore();
+    requested.current = {};
+    if (retry && (more.movies || more.episodes)) loadMore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled]);
 
