@@ -50,7 +50,7 @@ import {
 } from "@/lib/bazarr-history";
 import type { SubtitleTarget } from "@/lib/bazarr-subtitle-tools";
 
-type HistoryFilter = "all" | "movies" | "episodes";
+export type HistoryFilter = "all" | "movies" | "episodes";
 
 const ACTION_ICON: Record<HistoryActionKind, React.ComponentType<any>> = {
   deleted: Trash2,
@@ -76,18 +76,22 @@ type Row =
  */
 export function BazarrHistoryView({
   bazarrId,
+  filter,
+  onFilterChange: setFilter,
   header,
   refreshControl,
   contentContainerStyle,
 }: {
   bazarrId: string;
+  // Held by the screen: this view unmounts on a switch to Library.
+  filter: HistoryFilter;
+  onFilterChange: (filter: HistoryFilter) => void;
   header: React.ReactElement;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   contentContainerStyle?: StyleProp<ViewStyle>;
 }) {
   const router = useRouter();
   const tc = useThemeColor();
-  const [filter, setFilter] = useState<HistoryFilter>("all");
   const history = useBazarrHistory(bazarrId, filter);
   const radarrId = useLinkedArrInstance(bazarrId, "radarr");
   const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");

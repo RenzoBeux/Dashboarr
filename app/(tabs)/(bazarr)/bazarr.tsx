@@ -10,7 +10,7 @@ import {
   useLibrarySearchBusy,
   type BazarrLibraryKind,
 } from "@/components/bazarr/library-view";
-import { BazarrHistoryView } from "@/components/bazarr/history-view";
+import { BazarrHistoryView, type HistoryFilter } from "@/components/bazarr/history-view";
 import type { LanguageFilter, LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
@@ -55,6 +55,7 @@ function BazarrScreenInner() {
   // A coverage bar's filter. Held here, not in the library view, which
   // unmounts on a switch to History.
   const [langFilter, setLangFilter] = useState<LanguageFilter | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   useEffect(() => {
     if (!params.filter && !params.kind) return;
     // Consumed, so the next tap on the same link changes the params again:
@@ -200,6 +201,8 @@ function BazarrScreenInner() {
           // Blacklisted entries and an open sheet belong to one instance.
           key={bazarrId}
           bazarrId={bazarrId}
+          filter={historyFilter}
+          onFilterChange={setHistoryFilter}
           header={header}
           refreshControl={refreshControl}
           contentContainerStyle={contentContainerStyle}
