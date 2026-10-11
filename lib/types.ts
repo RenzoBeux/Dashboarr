@@ -2570,12 +2570,6 @@ export interface BazarrHistoryResponse {
   total: number;
 }
 
-export interface BazarrProvider {
-  name: string;
-  status: string;
-  retry?: string;
-}
-
 // A language as Bazarr reports it (audio tracks, missing subtitles).
 export interface BazarrLanguage {
   name: string;

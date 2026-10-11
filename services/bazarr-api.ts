@@ -31,9 +31,7 @@ import type {
   BazarrJob,
   BazarrLanguageProfile,
   BazarrListResponse,
-  BazarrMissingSubtitle,
   BazarrMovie,
-  BazarrProvider,
   BazarrSeries,
   BazarrSubtitle,
   BazarrSubtitleResult,
@@ -104,14 +102,6 @@ export function getEpisodeHistory(
   });
 }
 
-// --- Providers ---
-
-export function getProviders(instanceId?: string): Promise<BazarrProvider[]> {
-  return serviceRequest<BazarrProvider[]>("bazarr", "/providers", {
-    instanceId,
-  });
-}
-
 // --- Manual search triggers ---
 
 // Before 1.5.6 Bazarr only answers a search PATCH once the search has finished
@@ -129,25 +119,6 @@ export function searchWantedMovie(
     timeout: INTERACTIVE_SEARCH_TIMEOUT,
     instanceId,
   });
-}
-
-// /episodes/wanted is GET-only too (PATCH answers 405), and there is no
-// episode-level "search-missing" action. Bazarr's own Wanted page searches an
-// episode with one PATCH on /episodes/subtitles per missing language, all
-// query params; `forced`/`hi` are read as the strings "True"/"False".
-export async function searchWantedEpisode(
-  sonarrSeriesId: number,
-  sonarrEpisodeId: number,
-  languages: BazarrMissingSubtitle[],
-  instanceId?: string,
-): Promise<void> {
-  // Fired in parallel: a slow (blocking) search on one language must not hold
-  // back the rest. Only a total failure is surfaced.
-  const target = { type: "episode" as const, seriesId: sonarrSeriesId, episodeId: sonarrEpisodeId };
-  await searchSubtitles(
-    languages.map((l) => ({ target, lang: { code2: l.code2, forced: l.forced, hi: l.hi } })),
-    instanceId,
-  );
 }
 
 // --- System ---
