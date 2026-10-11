@@ -133,10 +133,11 @@ export function BazarrMovieRow({
           >
             {movie.title}
           </Text>
-          <Text className="text-zinc-500 text-xs mt-0.5">
-            {movie.year ?? ""}
-            {noProfile ? `${movie.year ? " · " : ""}No language profile` : ""}
-          </Text>
+          {movie.year || noProfile ? (
+            <Text className="text-zinc-500 text-xs mt-0.5">
+              {[movie.year, noProfile ? "No language profile" : null].filter(Boolean).join(" · ")}
+            </Text>
+          ) : null}
           <View className="mt-1">
             <LanguageLines audio={audio} subtitles={chips} />
           </View>
