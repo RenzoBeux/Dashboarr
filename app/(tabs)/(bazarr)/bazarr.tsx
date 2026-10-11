@@ -144,7 +144,9 @@ function BazarrScreenInner() {
           filter={filter}
           onFilterChange={setFilter}
           mode={view.mode}
-          query={debouncedQuery}
+          // A cleared search applies at once (a link, closing search); only
+          // typing is debounced.
+          query={query === "" ? "" : debouncedQuery}
           onClearSearch={() => {
             setQuery("");
             setSearchOpen(false);
