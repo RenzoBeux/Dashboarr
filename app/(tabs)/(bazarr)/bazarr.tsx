@@ -14,7 +14,7 @@ import { BazarrHistoryView, type HistoryFilter } from "@/components/bazarr/histo
 import type { LanguageFilter, LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
-import { useLinkedArrInstance } from "@/hooks/use-bazarr-link";
+import { useItemsArrInstance } from "@/hooks/use-bazarr-link";
 import { useLibraryView } from "@/hooks/use-library-view";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeColor } from "@/hooks/use-theme-color";
@@ -96,10 +96,10 @@ function BazarrScreenInner() {
     setLangFor(bazarrId);
     setLangFilter(null);
   }
-  // Pull-to-refresh also refreshes the linked arr library behind the
-  // artwork and original language (kept 5 minutes otherwise).
-  const radarrId = useLinkedArrInstance(bazarrId, "radarr");
-  const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
+  // Pull-to-refresh also refreshes the arr library behind the artwork and
+  // original language (kept 5 minutes otherwise), the one the Library reads.
+  const radarrId = useItemsArrInstance(bazarrId, "radarr");
+  const sonarrId = useItemsArrInstance(bazarrId, "sonarr");
   const { data: healthData } = useServiceHealth();
   const online = healthData?.find((s) => s.id === "bazarr")?.online;
   // Not every Bazarr query: link detection re-reads /system/settings, which

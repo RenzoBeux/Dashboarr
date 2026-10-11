@@ -27,7 +27,7 @@ import {
   BazarrSeriesRow,
   type ArrLookup,
 } from "@/components/bazarr/library-items";
-import { useLinkedArrInstance } from "@/hooks/use-bazarr-link";
+import { useItemsArrInstance } from "@/hooks/use-bazarr-link";
 import {
   useBazarrMovieLibrary,
   useBazarrSeriesLibrary,
@@ -210,9 +210,11 @@ export function BazarrLibraryView({
   const seriesQuery = useBazarrSeriesLibrary(bazarrId, kind === "series");
   const { data: profiles } = useBazarrLanguageProfiles(bazarrId);
 
-  // Artwork, original language and "open" come from the linked arr.
-  const radarrId = useLinkedArrInstance(bazarrId, "radarr");
-  const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
+  // Artwork, original language and "open" come from the arr Bazarr's ids
+  // belong to: the linked one, else the only one (useItemsArrInstance, the
+  // dashboard card's rule too).
+  const radarrId = useItemsArrInstance(bazarrId, "radarr");
+  const sonarrId = useItemsArrInstance(bazarrId, "sonarr");
   // Artwork and original language only: a History visit or kind switch
   // shouldn't download the whole Radarr/Sonarr library again.
   const { data: radarrMovies } = useRadarrMovies(
@@ -225,7 +227,7 @@ export function BazarrLibraryView({
     !!sonarrId && kind === "series",
     ARR_LOOKUP_STALE_MS,
   );
-  // Unlinked: no lookup at all. A disabled query can still hand back the
+  // No arr resolved: no lookup at all. A disabled query can still hand back the
   // active instance's cached library, whose ids mean something else.
   const movieLookup = useMemo(
     () =>

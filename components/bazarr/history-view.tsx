@@ -38,7 +38,7 @@ import { toast, toastError } from "@/components/ui/toast";
 import { SubtitleTrackChip } from "@/components/subtitles/subtitle-track-chip";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useThemeColor } from "@/hooks/use-theme-color";
-import { useLinkedArrInstance } from "@/hooks/use-bazarr-link";
+import { useItemsArrInstance } from "@/hooks/use-bazarr-link";
 import { useBazarrHistory } from "@/hooks/use-bazarr-library";
 import { useBazarrSubtitleMutation } from "@/hooks/use-bazarr-subtitles";
 import { blacklistSubtitle } from "@/services/bazarr-api";
@@ -93,8 +93,9 @@ export function BazarrHistoryView({
   const router = useRouter();
   const tc = useThemeColor();
   const history = useBazarrHistory(bazarrId, filter);
-  const radarrId = useLinkedArrInstance(bazarrId, "radarr");
-  const sonarrId = useLinkedArrInstance(bazarrId, "sonarr");
+  // Where "Open" goes: the Library's rule (useItemsArrInstance).
+  const radarrId = useItemsArrInstance(bazarrId, "radarr");
+  const sonarrId = useItemsArrInstance(bazarrId, "sonarr");
   const flow = useModalFlow<{ detail: HistoryEntry; confirmBlacklist: HistoryEntry }>();
   // Blacklisted from here: the entry's own flag only flips once the job
   // watcher refetches history, which can take the whole search.
@@ -378,7 +379,7 @@ function HistoryDetailSheet({
   entry: HistoryEntry | null;
   onClose: () => void;
   onClosed: () => void;
-  // null when the movie/episode can't be opened (no linked Radarr/Sonarr).
+  // null when the movie/episode can't be opened (no Radarr/Sonarr resolved).
   openLabel: string | null;
   onOpen: () => void;
   // Entries blacklisted from this screen, before history catches up.

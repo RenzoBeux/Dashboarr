@@ -41,8 +41,9 @@ import type {
 
 /**
  * Rows and poster cells of the Bazarr library. Artwork and the original
- * language come from the Radarr/Sonarr the Bazarr instance is linked to (its
- * ids only mean something there); without a link the cells show a placeholder.
+ * language come from the Radarr/Sonarr the Bazarr instance's ids belong to
+ * (useItemsArrInstance: the linked one, else the only one); without one the
+ * cells show a placeholder.
  */
 
 export interface ArrLookup {
@@ -55,7 +56,7 @@ export interface ArrLookup {
 }
 
 function usePoster(kind: "radarr" | "sonarr", arrInstanceId: string | null, lookup?: ArrLookup) {
-  // No image without a linked instance: useServiceImage would otherwise fall
+  // No image without a resolved instance: useServiceImage would otherwise fall
   // back to the active instance's server.
   const poster = arrInstanceId
     ? lookup?.images?.find((i) => i.coverType === "poster")
@@ -345,7 +346,7 @@ function MissingEpisodes({
   onShowAll?: () => void;
 }) {
   const tc = useThemeColor();
-  // Without a series page to send the rest to (no linked Sonarr), the list
+  // Without a series page to send the rest to (no Sonarr resolved), the list
   // grows in place: every missing episode stays searchable.
   const [showAll, setShowAll] = useState(false);
   // Loaded only once the row is expanded.
