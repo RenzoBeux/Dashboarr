@@ -18,7 +18,7 @@ describe("librarySearchPredicate", () => {
     expect(librarySearchPredicate(index, "   ")).toBeUndefined();
   });
 
-  it("keeps the matching items in the caller's order", () => {
+  it("matches every title containing the query", () => {
     const match = librarySearchPredicate(index, "dune")!;
     expect(items.filter(match).map((i) => i.id)).toEqual([1, 2]);
   });
