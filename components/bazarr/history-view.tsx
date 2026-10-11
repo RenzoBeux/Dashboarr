@@ -136,6 +136,12 @@ export function BazarrHistoryView({
           />
         ))}
       </ScrollView>
+      {/* With rows on screen the empty-state banner never shows: on "All" one
+          stream can fail while the other loads, which must not pass for the
+          whole history. */}
+      {history.error && rows.length > 0 ? (
+        <ErrorBanner error={history.error} title="Some history couldn't load" className="mb-2" />
+      ) : null}
     </View>
   );
 
