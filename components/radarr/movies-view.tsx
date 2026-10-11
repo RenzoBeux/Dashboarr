@@ -62,7 +62,7 @@ import { useAppTheme } from "@/hooks/use-app-theme";
 import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
 import { ArrLibraryListRow } from "@/components/common/arr-library-list-row";
 import { useLibraryView } from "@/hooks/use-library-view";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useLibrarySearch } from "@/hooks/use-library-search";
 import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
 import type { LibraryViewMode } from "@/store/library-view-store";
 
@@ -184,9 +184,7 @@ export const MoviesView = memo(function MoviesView({
   const tagFilter = useLibraryTagFilter("radarr");
   const [sheetTarget, setSheetTarget] = useState<MovieSheetTarget>(null);
   // In-library search and list/poster view (the shared library toolbar).
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query, 200);
+  const search = useLibrarySearch();
   const view = useLibraryView("radarr", "poster");
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
@@ -338,16 +336,7 @@ export const MoviesView = memo(function MoviesView({
         }
         search={
           tab === "library"
-            ? {
-                open: searchOpen,
-                onToggle: () => {
-                  if (searchOpen) setQuery("");
-                  setSearchOpen(!searchOpen);
-                },
-                query,
-                onQuery: setQuery,
-                placeholder: "Search your movies",
-              }
+            ? { ...search.toolbar, placeholder: "Search your movies" }
             : undefined
         }
         view={tab === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
@@ -372,8 +361,7 @@ export const MoviesView = memo(function MoviesView({
             onPress={() => {
               if (t === tab) return;
               setTab(t);
-              setSearchOpen(false);
-              setQuery("");
+              search.reset();
             }}
           />
         ))}
@@ -408,10 +396,7 @@ export const MoviesView = memo(function MoviesView({
         <MovieLibrary
           monitorFilter={monitorFilter}
           sort={sort}
-          // An empty or closed search unfilters at once, not after the
-          // debounce catches up: closing, leaving the tab, or reopening
-          // within 200 ms never shows the old text's matches.
-          query={searchOpen && query ? debouncedQuery : ""}
+          query={search.applied}
           mode={view.mode}
           tagFilter={tagFilter.predicate}
           onLongPress={openMovieSheet}

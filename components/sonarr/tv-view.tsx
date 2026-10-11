@@ -90,7 +90,7 @@ import { groupBy } from "@/lib/group-by";
 import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
 import { ArrLibraryListRow } from "@/components/common/arr-library-list-row";
 import { useLibraryView } from "@/hooks/use-library-view";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useLibrarySearch } from "@/hooks/use-library-search";
 import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
 import type { LibraryViewMode } from "@/store/library-view-store";
 
@@ -190,9 +190,7 @@ export const TvView = memo(function TvView({
   const tagFilter = useLibraryTagFilter("sonarr");
   const [sheetTarget, setSheetTarget] = useState<SeriesSheetTarget>(null);
   // In-library search and list/poster view (the shared library toolbar).
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query, 200);
+  const search = useLibrarySearch();
   const view = useLibraryView("sonarr", "poster");
   // All modal sequencing (sheet → confirm, sheet → push) goes through the
   // flow — see hooks/use-modal-flow.ts.
@@ -363,16 +361,7 @@ export const TvView = memo(function TvView({
         }
         search={
           tab === "library"
-            ? {
-                open: searchOpen,
-                onToggle: () => {
-                  if (searchOpen) setQuery("");
-                  setSearchOpen(!searchOpen);
-                },
-                query,
-                onQuery: setQuery,
-                placeholder: "Search your shows",
-              }
+            ? { ...search.toolbar, placeholder: "Search your shows" }
             : undefined
         }
         view={tab === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
@@ -397,8 +386,7 @@ export const TvView = memo(function TvView({
             onPress={() => {
               if (t === tab) return;
               setTab(t);
-              setSearchOpen(false);
-              setQuery("");
+              search.reset();
             }}
           />
         ))}
@@ -438,10 +426,7 @@ export const TvView = memo(function TvView({
         <SeriesLibrary
           monitorFilter={monitorFilter}
           statusFilter={statusFilter}
-          // An empty or closed search unfilters at once, not after the
-          // debounce catches up: closing, leaving the tab, or reopening
-          // within 200 ms never shows the old text's matches.
-          query={searchOpen && query ? debouncedQuery : ""}
+          query={search.applied}
           mode={view.mode}
           tagFilter={tagFilter.predicate}
           sort={sort}
