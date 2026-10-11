@@ -64,9 +64,18 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     !movieState.hasAnyData &&
     !episodeState.hasAnyData &&
     (movieState.isInitialLoading || episodeState.isInitialLoading);
-  const totalMissing =
-    movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0) +
-    episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+  const moviesMissing = movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+  const episodesMissing = episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+  const totalMissing = moviesMissing + episodesMissing;
+  // Open the kind that has the missing items when only one does; otherwise
+  // the tab keeps its last kind and could show an empty Missing list.
+  const missingHref = `/(tabs)/bazarr?filter=missing${
+    moviesMissing === 0 && episodesMissing > 0
+      ? "&kind=series"
+      : episodesMissing === 0 && moviesMissing > 0
+        ? "&kind=movies"
+        : ""
+  }` as const;
 
   // Tagged with their Bazarr instance: radarrId/sonarrSeriesId only resolve
   // against that Bazarr's linked Radarr/Sonarr.
@@ -121,7 +130,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     <Card>
       <CardHeaderLink
         title="Bazarr Subtitles"
-        onPress={() => router.push("/(tabs)/bazarr?filter=missing")}
+        onPress={() => router.push(missingHref)}
         trailing={
           totalMissing > 0 ? (
             <Badge label="Missing" variant="missing" count={totalMissing} />
@@ -174,7 +183,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
             );
           })}
           {hasMore && (
-            <ViewAllTile onPress={() => router.push("/(tabs)/bazarr?filter=missing")} />
+            <ViewAllTile onPress={() => router.push(missingHref)} />
           )}
         </ScrollView>
       )}
