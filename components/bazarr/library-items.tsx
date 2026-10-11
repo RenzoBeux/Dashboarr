@@ -327,12 +327,14 @@ function MissingEpisodes({
   // grows in place: every missing episode stays searchable.
   const [showAll, setShowAll] = useState(false);
   // Loaded only once the row is expanded.
-  const { data, isLoading, error } = useBazarrSeriesEpisodes(bazarrId, seriesId);
+  const { data, error } = useBazarrSeriesEpisodes(bazarrId, seriesId);
   const missing = (data ?? [])
     .filter((e) => e.missing_subtitles.length > 0)
     .sort((a, b) => b.season - a.season || b.episode - a.episode);
 
-  if (isLoading) {
+  // Pending, not isLoading: a fetch paused offline isn't "loading" and must
+  // not read as "nothing missing".
+  if (!data && !error) {
     return (
       <View className="py-3 items-center border-t border-zinc-800">
         <ActivityIndicator size="small" color={tc("#a1a1aa")} />
@@ -345,7 +347,7 @@ function MissingEpisodes({
   if (!data || missing.length === 0) {
     return (
       <Text className="px-3.5 py-2.5 border-t border-zinc-800 text-zinc-500 text-xs">
-        {!data && error ? "Couldn't load the episodes" : "No episodes are missing subtitles"}
+        {!data ? "Couldn't load the episodes" : "No episodes are missing subtitles"}
       </Text>
     );
   }
