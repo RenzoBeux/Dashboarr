@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   getBazarrMovies,
@@ -96,6 +96,28 @@ export function useBazarrHistory(
     [waiting, movieItems, episodeItems, more.movies, more.episodes],
   );
 
+  // The end reached while a stream refetched: page once the refetch settles,
+  // since the list won't fire onEndReached again for the same content.
+  const endPending = useRef(false);
+  const loadMore = () => {
+    const page = historyStreamsToPage(movieItems, episodeItems, more);
+    // isFetching, not isFetchingNextPage: fetchNextPage cancels a running
+    // refetch (pull-to-refresh, job watcher) and appends to stale pages.
+    const refetching = (q: typeof movies) => q.isFetching && !q.isFetchingNextPage;
+    if ((page.movies && refetching(movies)) || (page.episodes && refetching(episodes))) {
+      endPending.current = true;
+    }
+    if (page.movies && !movies.isFetching) void movies.fetchNextPage();
+    if (page.episodes && !episodes.isFetching) void episodes.fetchNextPage();
+  };
+  const settled = !movies.isFetching && !episodes.isFetching;
+  useEffect(() => {
+    if (!settled || !endPending.current) return;
+    endPending.current = false;
+    if (more.movies || more.episodes) loadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
+
   return {
     entries,
     isLoading: waiting,
@@ -109,12 +131,6 @@ export function useBazarrHistory(
     isFetchingMore:
       (filter !== "episodes" && movies.isFetchingNextPage) ||
       (filter !== "movies" && episodes.isFetchingNextPage),
-    loadMore: () => {
-      const page = historyStreamsToPage(movieItems, episodeItems, more);
-      // isFetching, not isFetchingNextPage: fetchNextPage cancels a running
-      // refetch (pull-to-refresh, job watcher) and appends to stale pages.
-      if (page.movies && !movies.isFetching) void movies.fetchNextPage();
-      if (page.episodes && !episodes.isFetching) void episodes.fetchNextPage();
-    },
+    loadMore,
   };
 }
