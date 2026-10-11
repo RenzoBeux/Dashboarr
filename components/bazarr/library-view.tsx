@@ -162,14 +162,14 @@ export function BazarrLibraryView({
   const inFlightEpisodes = useRef(new Set<number>());
   // "Search all" answers at once on Bazarr 1.5.6+ while the searches queue;
   // held until the queue drains so a second tap doesn't queue them again.
-  const [searchingAll, setSearchingAll] = useState(false);
+  const [searchingAll, setSearchingAll] = useState<ReadonlySet<BazarrLibraryKind>>(new Set());
   const [wasActive, setWasActive] = useState(false);
   if (jobsActive !== wasActive) {
     setWasActive(jobsActive);
     if (!jobsActive) {
       setBusyMovies(new Set(inFlightMovies.current));
       setBusyEpisodes(new Set(inFlightEpisodes.current));
-      setSearchingAll(false);
+      setSearchingAll(new Set());
     }
   }
 
@@ -258,7 +258,7 @@ export function BazarrLibraryView({
   );
 
   const counts = kind === "movies" ? movieCounts : seriesCounts;
-  const allBusy = searchingAll || searchAll.isPending;
+  const allBusy = searchingAll.has(kind);
   const missingTotal = counts.missing;
   const filtered = filter !== "all" || !!langFilter || query.trim().length > 0;
 
@@ -318,18 +318,24 @@ export function BazarrLibraryView({
       {filter === "missing" && missingTotal > 0 ? (
         <Pressable
           onPress={() => {
-            setSearchingAll(true);
-            searchAll.mutate(kind, {
-              onSuccess: () =>
+            const k = kind;
+            setSearchingAll((prev) => new Set([...prev, k]));
+            // mutateAsync: movies and series can both be started in a row.
+            searchAll.mutateAsync(k).then(
+              () =>
                 toast(
-                  `Searching every missing ${kind === "movies" ? "movie" : "episode"} subtitle…`,
+                  `Searching every missing ${k === "movies" ? "movie" : "episode"} subtitle…`,
                   "info",
                 ),
-              onError: (err) => {
-                setSearchingAll(false);
+              (err) => {
+                setSearchingAll((prev) => {
+                  const next = new Set(prev);
+                  next.delete(k);
+                  return next;
+                });
                 toastError("Couldn't start the search", err);
               },
-            });
+            );
           }}
           disabled={allBusy}
           className={`flex-row items-center justify-center gap-2 rounded-xl border border-orange-400/40 bg-orange-400/10 py-2.5 mb-3 active:opacity-70 ${
