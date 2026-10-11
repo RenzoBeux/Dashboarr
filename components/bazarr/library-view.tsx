@@ -273,6 +273,8 @@ export function BazarrLibraryView({
         ]}
         value={kind}
         onChange={(k) => {
+          // Re-tapping the current kind is not a switch.
+          if (k === kind) return;
           setLangFilter(null);
           onKindChange(k);
         }}
