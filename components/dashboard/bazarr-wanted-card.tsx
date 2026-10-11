@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
 import { bazarrPosterKey, useBazarrPosters } from "@/hooks/use-bazarr-posters";
@@ -29,6 +30,7 @@ interface PreviewItem {
   subtitle: string;
   languages: string;
   mediaType: "movie" | "tv";
+  bazarrInstanceId: string;
 }
 
 const MAX_PREVIEW = 5;
@@ -68,25 +70,32 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
   const sum = (qs: typeof movieQueries | typeof episodeQueries) =>
     qs.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
   const totalMissing = sum(movieQueries) + sum(episodeQueries);
-  // Open the kind that has the missing items when only one does; otherwise
-  // the tab keeps its last kind and could show an empty Missing list. Counted
-  // on the Bazarr the tab opens (the active one), not across the card's.
+  // The tab opens the active Bazarr, so a link first pins the instance whose
+  // items it promises (as the Beszel and Status cards do). Header and View
+  // all: the tab's own Bazarr when it has something missing, else the first
+  // of the card's that does.
   const { instanceId: tabBazarrId } = useInstanceTarget("bazarr");
+  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  const missingOn = (i: number) => ({
+    movies: movieQueries[i]?.data?.total ?? 0,
+    episodes: episodeQueries[i]?.data?.total ?? 0,
+  });
+  const anyMissing = (i: number) => missingOn(i).movies + missingOn(i).episodes > 0;
   const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
-  const moviesMissing = tabIndex >= 0 ? (movieQueries[tabIndex]?.data?.total ?? 0) : 0;
-  const episodesMissing = tabIndex >= 0 ? (episodeQueries[tabIndex]?.data?.total ?? 0) : 0;
-  // Nothing missing on the Bazarr the tab opens (or it isn't one of the
-  // card's): open the tab as the user left it, not an empty Missing list.
-  const missingHref =
-    moviesMissing + episodesMissing === 0
-      ? ("/(tabs)/bazarr" as const)
-      : (`/(tabs)/bazarr?filter=missing${
-          moviesMissing === 0 && episodesMissing > 0
-            ? "&kind=series"
-            : episodesMissing === 0 && moviesMissing > 0
-              ? "&kind=movies"
-              : ""
-        }` as const);
+  const linkIndex = tabIndex >= 0 && anyMissing(tabIndex) ? tabIndex : instances.findIndex((_, i) => anyMissing(i));
+  const openMissing = () => {
+    // Nothing missing anywhere: open the tab as the user left it.
+    if (linkIndex < 0) return router.push("/(tabs)/bazarr");
+    const { movies, episodes } = missingOn(linkIndex);
+    if (instances[linkIndex].id !== tabBazarrId) setActiveInstance("bazarr", instances[linkIndex].id);
+    // The kind that has the missing items when only one does; otherwise the
+    // tab keeps its last kind.
+    router.push(
+      `/(tabs)/bazarr?filter=missing${
+        movies === 0 ? "&kind=series" : episodes === 0 ? "&kind=movies" : ""
+      }`,
+    );
+  };
 
   // Tagged with their Bazarr instance: radarrId/sonarrSeriesId only resolve
   // against that Bazarr's linked Radarr/Sonarr.
@@ -111,6 +120,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
       languages:
         movie.missing_subtitles?.map((s) => s.code2).join(", ") || "—",
       mediaType: "movie",
+      bazarrInstanceId: movie.bazarrInstanceId,
     });
   }
   for (const episode of episodeList) {
@@ -125,6 +135,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
       languages:
         episode.missing_subtitles?.map((s) => s.code2).join(", ") || "—",
       mediaType: "tv",
+      bazarrInstanceId: episode.bazarrInstanceId,
     });
   }
 
@@ -141,7 +152,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     <Card>
       <CardHeaderLink
         title="Bazarr Subtitles"
-        onPress={() => router.push(missingHref)}
+        onPress={openMissing}
         trailing={
           totalMissing > 0 ? (
             <Badge label="Missing" variant="missing" count={totalMissing} />
@@ -185,16 +196,19 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
                 }
                 mediaType={item.mediaType}
                 // The Bazarr tab's Missing filter took over the Wanted lists.
-                onPress={() =>
+                onPress={() => {
+                  if (item.bazarrInstanceId !== tabBazarrId) {
+                    setActiveInstance("bazarr", item.bazarrInstanceId);
+                  }
                   router.push(
                     `/(tabs)/bazarr?filter=missing&kind=${item.mediaType === "tv" ? "series" : "movies"}`,
-                  )
-                }
+                  );
+                }}
               />
             );
           })}
           {hasMore && (
-            <ViewAllTile onPress={() => router.push(missingHref)} />
+            <ViewAllTile onPress={openMissing} />
           )}
         </ScrollView>
       )}
