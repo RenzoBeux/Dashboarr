@@ -351,9 +351,8 @@ export const TvView = memo(function TvView({
             <ToolbarIconButton
               icon={ScanSearch}
               label="Search all missing episodes"
-              onPress={() => {
-                if (!searchMissing.isPending) handleSearchMissing();
-              }}
+              onPress={handleSearchMissing}
+              disabled={searchMissing.isPending}
             />
             <ToolbarIconButton
               icon={Plus}

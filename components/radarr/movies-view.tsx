@@ -325,9 +325,8 @@ export const MoviesView = memo(function MoviesView({
               <ToolbarIconButton
                 icon={ScanSearch}
                 label="Search all missing movies"
-                onPress={() => {
-                  if (!searchMissing.isPending) handleSearchMissing();
-                }}
+                onPress={handleSearchMissing}
+                disabled={searchMissing.isPending}
               />
             )}
             <ToolbarIconButton
