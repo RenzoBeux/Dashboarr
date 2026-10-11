@@ -120,6 +120,21 @@ describe("computeLanguageCoverage", () => {
     ).toHaveLength(0);
   });
 
+  it("only counts an only-if-matching-audio language for movies in that audio", () => {
+    const p: BazarrLanguageProfile = {
+      ...profile(1, ["de"]),
+      items: [
+        { id: 1, language: "de", forced: "False", hi: "False", audio_only_include: "True" },
+      ],
+    };
+    expect(
+      computeLanguageCoverage(
+        [movie(1, [], ["de"], ["de"]), movie(1, [], [], ["en"])],
+        profileLanguageMap([p]),
+      ),
+    ).toEqual([{ code2: "de", have: 1, missing: 0, total: 1 }]);
+  });
+
   it("still wants a language another profile item doesn't exclude", () => {
     const p: BazarrLanguageProfile = {
       ...profile(1, ["de"]),

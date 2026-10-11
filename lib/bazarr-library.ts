@@ -68,11 +68,16 @@ const hasLanguage = (movie: CoverageMovie, code2: string) =>
   !missesLanguage(movie, code2) &&
   movie.subtitles.some((s) => s.code2 === code2);
 
+// Bazarr skips a profile item "exclude if matching audio" when one of the
+// movie's audio tracks is in its language, and one "only include if matching
+// audio" when none is. A language is wanted while any of its items isn't
+// skipped.
 export interface ProfileLanguage {
   code2: string;
-  // Every item for the language is "exclude if matching audio": a movie whose
-  // audio is in it doesn't want the subtitle at all.
-  audioExclude: boolean;
+  // Some item for the language still applies when the audio is in it.
+  ifAudioMatches: boolean;
+  // Some item for the language still applies when the audio isn't in it.
+  ifAudioDiffers: boolean;
 }
 
 /** The languages each language profile asks for, by profile id. */
@@ -83,20 +88,23 @@ export function profileLanguageMap(
 ): ProfileLanguages {
   return new Map(
     profiles.map((p) => {
-      const langs = new Map<string, boolean>();
+      const langs = new Map<string, ProfileLanguage>();
       for (const item of p.items) {
-        const exclude = item.audio_exclude === "True";
-        langs.set(item.language, (langs.get(item.language) ?? true) && exclude);
+        const lang = langs.get(item.language) ?? {
+          code2: item.language,
+          ifAudioMatches: false,
+          ifAudioDiffers: false,
+        };
+        if (item.audio_exclude !== "True") lang.ifAudioMatches = true;
+        if (item.audio_only_include !== "True") lang.ifAudioDiffers = true;
+        langs.set(item.language, lang);
       }
-      return [
-        p.profileId,
-        [...langs].map(([code2, audioExclude]) => ({ code2, audioExclude })),
-      ];
+      return [p.profileId, [...langs.values()]];
     }),
   );
 }
 
-/** The languages a movie's profile wants for it, after audio exclusions. */
+/** The languages a movie's profile wants for it, given its audio tracks. */
 function wantedLanguages(
   movie: CoverageMovie,
   profileLangs: ProfileLanguages,
@@ -104,7 +112,9 @@ function wantedLanguages(
   if (movie.profileId == null) return [];
   const audio = movie.audio_language ?? [];
   return (profileLangs.get(movie.profileId) ?? [])
-    .filter((l) => !(l.audioExclude && audio.some((a) => a.code2 === l.code2)))
+    .filter((l) =>
+      audio.some((a) => a.code2 === l.code2) ? l.ifAudioMatches : l.ifAudioDiffers,
+    )
     .map((l) => l.code2);
 }
 
@@ -118,8 +128,8 @@ function wantedLanguages(
  * `missing_subtitles` once a profile's cutoff is met, so a movie can be
  * neither — it doesn't have the language and Bazarr won't look for it. That
  * movie lowers the share without appearing under "missing". A language the
- * profile excludes for the movie's audio track isn't wanted, so that movie
- * isn't counted for it at all.
+ * profile skips for the movie's audio (exclude if matching / only include if
+ * matching) isn't wanted, so that movie isn't counted for it at all.
  */
 export function computeLanguageCoverage(
   movies: readonly CoverageMovie[],

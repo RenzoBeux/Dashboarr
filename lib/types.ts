@@ -2643,6 +2643,8 @@ export interface BazarrLanguageProfileItem {
   forced: "True" | "False";
   hi: "True" | "False";
   audio_exclude?: "True" | "False";
+  // "Only include if matching audio" (newer Bazarr).
+  audio_only_include?: "True" | "False";
 }
 
 export interface BazarrLanguageProfile {
