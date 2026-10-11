@@ -86,6 +86,9 @@ function seriesA11yLabel(series: BazarrSeries): string {
       : series.episodeFileCount <= 0
         ? "No episode files"
         : `${done} of ${series.episodeFileCount} episodes subtitled`,
+    state === "missing"
+      ? `${series.episodeMissingCount} ${series.episodeMissingCount === 1 ? "episode" : "episodes"} missing subtitles`
+      : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -253,11 +256,8 @@ export function BazarrSeriesRow({
                 {series.title}
               </Text>
               {state === "missing" ? (
-                <View
-                  className="flex-row items-center gap-1"
-                  accessible
-                  accessibilityLabel={`${series.episodeMissingCount} episodes missing subtitles`}
-                >
+                // Announced through the row's label (seriesA11yLabel).
+                <View className="flex-row items-center gap-1">
                   <Icon icon={Captions} size={13} color="#fb923c" />
                   <Text className="text-orange-400 text-xs font-bold">
                     {series.episodeMissingCount}
