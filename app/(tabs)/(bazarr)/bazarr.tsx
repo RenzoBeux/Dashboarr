@@ -129,6 +129,8 @@ function BazarrScreenInner() {
     <ScreenWrapper scrollable={false}>
       {section === "library" ? (
         <BazarrLibraryView
+          // A language filter or busy rows mean nothing on another instance.
+          key={bazarrId}
           bazarrId={bazarrId}
           kind={kind}
           onKindChange={setKind}
