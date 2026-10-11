@@ -376,6 +376,13 @@ function HistoryDetailSheet({
             <DetailStat label="Provider" value={item.provider ?? "—"} />
             <DetailStat label="When" value={when} />
           </DetailStatGrid>
+          {/* Bazarr's own explanation: the only detail a sync, translation
+              or unknown action has. */}
+          {item.description ? (
+            <Text selectable className="text-zinc-400 text-sm leading-5 mb-3">
+              {item.description}
+            </Text>
+          ) : null}
           <MatchList matched={item.matches ?? []} missed={item.dont_matches ?? []} />
           {item.subtitles_path ? (
             <Text selectable className="text-zinc-500 text-xs leading-5 mb-3">
