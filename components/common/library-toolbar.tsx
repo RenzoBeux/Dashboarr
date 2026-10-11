@@ -138,22 +138,25 @@ export function ToolbarIconButton({
   label,
   onPress,
   active = false,
+  disabled = false,
 }: {
   icon: React.ComponentType<any>;
   label: string;
   onPress: () => void;
   active?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       hitSlop={4}
       className={`w-9 h-9 rounded-xl items-center justify-center active:opacity-70 mb-2 ${
         active ? "bg-primary/15" : "bg-surface"
       }`}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
+      accessibilityState={{ selected: active, disabled }}
     >
       <Icon icon={icon} size={18} color={active ? "#60a5fa" : "#d4d4d8"} />
     </Pressable>
