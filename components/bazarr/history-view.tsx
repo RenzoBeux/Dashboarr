@@ -156,6 +156,8 @@ export function BazarrHistoryView({
     <>
       <FlatList
         data={rows}
+        // Rows read the local blacklisted set too.
+        extraData={blacklisted}
         keyExtractor={(r) => r.key}
         renderItem={({ item }) =>
           item.type === "day" ? (
@@ -163,7 +165,11 @@ export function BazarrHistoryView({
               {item.label}
             </Text>
           ) : (
-            <HistoryRow entry={item.entry} onPress={() => flow.open("detail", item.entry)} />
+            <HistoryRow
+              entry={item.entry}
+              blacklisted={!!item.entry.item.blacklisted || blacklisted.has(item.entry.key)}
+              onPress={() => flow.open("detail", item.entry)}
+            />
           )
         }
         ListHeaderComponent={listHeader}
@@ -302,7 +308,16 @@ function timeOf(entry: HistoryEntry): string {
     : entry.item.timestamp;
 }
 
-function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => void }) {
+function HistoryRow({
+  entry,
+  blacklisted,
+  onPress,
+}: {
+  entry: HistoryEntry;
+  // Bazarr's flag, or blacklisted from this screen before history caught up.
+  blacklisted: boolean;
+  onPress: () => void;
+}) {
   const { item } = entry;
   const meta = historyActionMeta(item.action);
   const ActionIcon = ACTION_ICON[meta.kind];
@@ -337,7 +352,7 @@ function HistoryRow({ entry, onPress }: { entry: HistoryEntry; onPress: () => vo
           </Text>
         </View>
       </View>
-      {item.blacklisted ? <Icon icon={Ban} size={14} color="#f87171" /> : null}
+      {blacklisted ? <Icon icon={Ban} size={14} color="#f87171" /> : null}
       <Text className="text-zinc-500 text-xs">{timeOf(entry)}</Text>
     </Pressable>
   );
