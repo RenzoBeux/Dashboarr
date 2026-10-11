@@ -39,6 +39,10 @@ function BazarrScreenInner() {
   const [section, setSection] = useState<Section>("library");
   const [kind, setKind] = useState<BazarrLibraryKind>("movies");
   const [filter, setFilter] = useState<LibraryFilter>("all");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  // Bumped by a link: remounts the library, dropping its language filter.
+  const [linkCount, setLinkCount] = useState(0);
   useEffect(() => {
     if (!params.filter && !params.kind) return;
     // Consumed, so the next tap on the same link changes the params again:
@@ -49,10 +53,13 @@ function BazarrScreenInner() {
       setFilter(params.filter);
     }
     if (params.kind === "movies" || params.kind === "series") setKind(params.kind);
+    // The list must match what the link promised (the card's Missing count),
+    // not a search or language filter left from before.
+    setQuery("");
+    setSearchOpen(false);
+    setLinkCount((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.filter, params.kind]);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 200);
   const view = useLibraryView(`bazarr-${kind}`);
 
@@ -130,7 +137,7 @@ function BazarrScreenInner() {
       {section === "library" ? (
         <BazarrLibraryView
           // A language filter or busy rows mean nothing on another instance.
-          key={bazarrId}
+          key={`${bazarrId}:${linkCount}`}
           bazarrId={bazarrId}
           kind={kind}
           onKindChange={setKind}
