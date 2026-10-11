@@ -75,13 +75,17 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
   const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
   const moviesMissing = tabIndex >= 0 ? (movieQueries[tabIndex]?.data?.total ?? 0) : 0;
   const episodesMissing = tabIndex >= 0 ? (episodeQueries[tabIndex]?.data?.total ?? 0) : 0;
-  const missingHref = `/(tabs)/bazarr?filter=missing${
-    moviesMissing === 0 && episodesMissing > 0
-      ? "&kind=series"
-      : episodesMissing === 0 && moviesMissing > 0
-        ? "&kind=movies"
-        : ""
-  }` as const;
+  // Nothing missing: open the tab as the user left it, not an empty Missing list.
+  const missingHref =
+    totalMissing === 0
+      ? ("/(tabs)/bazarr" as const)
+      : (`/(tabs)/bazarr?filter=missing${
+          moviesMissing === 0 && episodesMissing > 0
+            ? "&kind=series"
+            : episodesMissing === 0 && moviesMissing > 0
+              ? "&kind=movies"
+              : ""
+        }` as const);
 
   // Tagged with their Bazarr instance: radarrId/sonarrSeriesId only resolve
   // against that Bazarr's linked Radarr/Sonarr.
