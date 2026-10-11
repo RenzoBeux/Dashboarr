@@ -17,7 +17,7 @@ import {
   manualSearchSubtitles,
 } from "@/services/bazarr-api";
 import { createJobWatch, type JobWatch } from "@/lib/job-watch";
-import { deriveBazarrCapabilities } from "@/lib/bazarr-capabilities";
+import { bazarrVersionState, deriveBazarrCapabilities } from "@/lib/bazarr-capabilities";
 import type { SubtitleTarget } from "@/lib/bazarr-subtitle-tools";
 
 /**
@@ -107,15 +107,22 @@ export function useBazarrEnabledLanguages(bazarrId: string | null) {
   });
 }
 
-/** Version-gated features of this Bazarr; all false until the version is known. */
+/**
+ * Version-gated features of this Bazarr; all false until the version is known.
+ * `versionState` says whether it's still being read or couldn't be, so a
+ * disabled feature doesn't blame the version before it's known.
+ */
 export function useBazarrCapabilities(bazarrId: string | null) {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: bazarrKeys.status(bazarrId ?? ""),
     queryFn: () => getBazarrStatus(bazarrId!),
     enabled: !!bazarrId,
     staleTime: 60 * 60_000,
   });
-  return deriveBazarrCapabilities(data?.bazarr_version);
+  return {
+    ...deriveBazarrCapabilities(data?.bazarr_version),
+    versionState: bazarrVersionState(data, isError),
+  };
 }
 
 /**

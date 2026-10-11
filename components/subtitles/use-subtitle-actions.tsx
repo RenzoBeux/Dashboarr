@@ -42,6 +42,7 @@ import {
   type SubtitleTarget,
   type SubtitleToolAction,
 } from "@/lib/bazarr-subtitle-tools";
+import { versionGateNote } from "@/lib/bazarr-capabilities";
 import { hasSubtitleExtension } from "@/lib/subtitle-filename";
 import { normalizeLanguage } from "@/lib/language-codes";
 import { lightHaptic } from "@/lib/haptics";
@@ -388,24 +389,29 @@ export function useSubtitleActions({
     if (!row?.sub) return [];
     const icon = (c: React.ComponentType<any>) => <Icon icon={c} size={20} color="#a1a1aa" />;
     if (isEmbedded(row.sub)) {
-      const actions: ActionSheetAction[] = [];
-      actions.push({
-        label: "Translate…",
-        subtitle: caps.translateEmbedded
-          ? "Extracts the track, then translates it"
-          : "Needs Bazarr 1.6.2 or later",
-        icon: icon(Languages),
-        disabled: !caps.translateEmbedded || row.sub.id == null,
-        onPress: () => flow.open("translate", row),
-      });
-      actions.push({
-        label: "Extract to file",
-        subtitle: caps.extract ? "Saves this track next to the video" : "Needs Bazarr 1.6.1 or later",
-        icon: icon(FileDown),
-        disabled: !caps.extract || row.sub.id == null,
-        onPress: () => runTool(row, { kind: "extract" }, `Extracting the ${row.name} track…`),
-      });
-      return actions;
+      // Both tools address the track by Bazarr's subtitle id, which a
+      // supporting version can still lack for a track it hasn't indexed.
+      const hasId = row.sub.id != null;
+      const gate = (feature: "translateEmbedded" | "extract", available: string) =>
+        !caps[feature]
+          ? { subtitle: versionGateNote(caps.versionState, feature), disabled: true }
+          : !hasId
+            ? { subtitle: "Bazarr hasn't indexed this track yet", disabled: true }
+            : { subtitle: available, disabled: false };
+      return [
+        {
+          label: "Translate…",
+          ...gate("translateEmbedded", "Extracts the track, then translates it"),
+          icon: icon(Languages),
+          onPress: () => flow.open("translate", row),
+        },
+        {
+          label: "Extract to file",
+          ...gate("extract", "Saves this track next to the video"),
+          icon: icon(FileDown),
+          onPress: () => runTool(row, { kind: "extract" }, `Extracting the ${row.name} track…`),
+        },
+      ];
     }
     const srt = isModifiable(row.sub);
     return [
