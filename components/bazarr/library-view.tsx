@@ -74,6 +74,53 @@ const NO_MOVIES: BazarrMovie[] = [];
 const NO_SERIES: BazarrSeries[] = [];
 
 /**
+ * Searches the user started from the library, until Bazarr's queue drains.
+ * Held by the screen, not the library view, which unmounts on a switch to
+ * History: coming back mid-search must not re-enable "Search all" (a second
+ * tap queues every search again) or drop the rows' spinners.
+ */
+export function useLibrarySearchBusy(bazarrId: string | null) {
+  const jobsActive = useBazarrJobsActive(bazarrId);
+  const [busyMovies, setBusyMovies] = useState<ReadonlySet<number>>(new Set());
+  const [busyEpisodes, setBusyEpisodes] = useState<ReadonlySet<number>>(new Set());
+  // "Search all" answers at once on Bazarr 1.5.6+ while the searches queue;
+  // held until the queue drains so a second tap doesn't queue them again.
+  const [searchingAll, setSearchingAll] = useState<ReadonlySet<BazarrLibraryKind>>(new Set());
+  // Requests not answered yet: their jobs aren't tracked, so another
+  // search's queue draining must not clear them.
+  const inFlightMovies = useRef(new Set<number>());
+  const inFlightEpisodes = useRef(new Set<number>());
+  const inFlightAll = useRef(new Set<BazarrLibraryKind>());
+  const [wasActive, setWasActive] = useState(false);
+  const [forId, setForId] = useState(bazarrId);
+  if (forId !== bazarrId) {
+    // Ids of another instance's Radarr/Sonarr.
+    setForId(bazarrId);
+    setBusyMovies(new Set());
+    setBusyEpisodes(new Set());
+    setSearchingAll(new Set());
+  } else if (jobsActive !== wasActive) {
+    setWasActive(jobsActive);
+    if (!jobsActive) {
+      setBusyMovies(new Set(inFlightMovies.current));
+      setBusyEpisodes(new Set(inFlightEpisodes.current));
+      setSearchingAll(new Set(inFlightAll.current));
+    }
+  }
+  return {
+    busyMovies,
+    setBusyMovies,
+    busyEpisodes,
+    setBusyEpisodes,
+    searchingAll,
+    setSearchingAll,
+    inFlightMovies,
+    inFlightEpisodes,
+    inFlightAll,
+  };
+}
+
+/**
  * The Bazarr tab's Library: every movie or series Bazarr manages with its
  * audio and subtitle languages — not just the ones missing something. The
  * Missing filter takes over the old Wanted lists: it adds "Search all
@@ -90,6 +137,7 @@ export function BazarrLibraryView({
   query,
   onClearSearch,
   resetFilters,
+  searchBusy,
   header,
   refreshControl,
   contentContainerStyle,
@@ -108,6 +156,7 @@ export function BazarrLibraryView({
   // Changes when a link opens the tab: drop the language filter. A remount
   // would also drop rows still searching.
   resetFilters: number;
+  searchBusy: ReturnType<typeof useLibrarySearchBusy>;
   header: React.ReactElement;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -153,29 +202,17 @@ export function BazarrLibraryView({
     [sonarrId, sonarrSeries],
   );
 
-  // Rows whose search the user started, until Bazarr's queue drains.
-  const jobsActive = useBazarrJobsActive(bazarrId);
-  const [busyMovies, setBusyMovies] = useState<ReadonlySet<number>>(new Set());
-  const [busyEpisodes, setBusyEpisodes] = useState<ReadonlySet<number>>(
-    new Set(),
-  );
-  // Requests not answered yet: their jobs aren't tracked, so another
-  // search's queue draining must not clear them.
-  const inFlightMovies = useRef(new Set<number>());
-  const inFlightEpisodes = useRef(new Set<number>());
-  const inFlightAll = useRef(new Set<BazarrLibraryKind>());
-  // "Search all" answers at once on Bazarr 1.5.6+ while the searches queue;
-  // held until the queue drains so a second tap doesn't queue them again.
-  const [searchingAll, setSearchingAll] = useState<ReadonlySet<BazarrLibraryKind>>(new Set());
-  const [wasActive, setWasActive] = useState(false);
-  if (jobsActive !== wasActive) {
-    setWasActive(jobsActive);
-    if (!jobsActive) {
-      setBusyMovies(new Set(inFlightMovies.current));
-      setBusyEpisodes(new Set(inFlightEpisodes.current));
-      setSearchingAll(new Set(inFlightAll.current));
-    }
-  }
+  const {
+    busyMovies,
+    setBusyMovies,
+    busyEpisodes,
+    setBusyEpisodes,
+    searchingAll,
+    setSearchingAll,
+    inFlightMovies,
+    inFlightEpisodes,
+    inFlightAll,
+  } = searchBusy;
 
   const searchMovie = useBazarrSubtitleMutation(
     bazarrId,

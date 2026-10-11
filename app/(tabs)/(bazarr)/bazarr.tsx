@@ -5,7 +5,11 @@ import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/scree
 import { WorkspaceServiceGuard } from "@/components/common/workspace-service-guard";
 import { LibraryToolbar } from "@/components/common/library-toolbar";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
-import { BazarrLibraryView, type BazarrLibraryKind } from "@/components/bazarr/library-view";
+import {
+  BazarrLibraryView,
+  useLibrarySearchBusy,
+  type BazarrLibraryKind,
+} from "@/components/bazarr/library-view";
 import { BazarrHistoryView } from "@/components/bazarr/history-view";
 import type { LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
@@ -82,6 +86,7 @@ function BazarrScreenInner() {
   const view = useLibraryView(`bazarr-${kind}`);
 
   const { instanceId: bazarrId } = useInstanceTarget("bazarr");
+  const searchBusy = useLibrarySearchBusy(bazarrId);
   const { data: healthData } = useServiceHealth();
   const online = healthData?.find((s) => s.id === "bazarr")?.online;
   // Not every Bazarr query: link detection re-reads /system/settings, which
@@ -158,6 +163,7 @@ function BazarrScreenInner() {
           key={bazarrId}
           bazarrId={bazarrId}
           resetFilters={linkCount}
+          searchBusy={searchBusy}
           kind={kind}
           onKindChange={setKind}
           filter={filter}
