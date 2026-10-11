@@ -4,6 +4,7 @@ import {
   buildSubtitleChips,
   buildSubtitleRows,
   fitChips,
+  mediaAudioTags,
   seasonMissingTargets,
   subtitleCoverage,
 } from "./subtitle-model";
@@ -132,6 +133,32 @@ describe("buildAudioTags", () => {
 
   it("is empty without audio info", () => {
     expect(buildAudioTags(undefined)).toEqual([]);
+  });
+});
+
+describe("mediaAudioTags", () => {
+  const bazarr = [{ name: "French", code2: "fr", code3: "fre" }];
+
+  it("prefers the file's audio languages", () => {
+    expect(mediaAudioTags("eng/ger", bazarr, "English")).toEqual([
+      { code2: "en", name: "English", original: true },
+      { code2: "de", name: "German", original: false },
+    ]);
+  });
+
+  it("falls back to Bazarr when the file has only untagged tracks", () => {
+    expect(mediaAudioTags("und/und", bazarr, "French")).toEqual([
+      { code2: "fr", name: "French", original: true },
+    ]);
+  });
+
+  it("falls back to Bazarr without file audio info", () => {
+    expect(mediaAudioTags(undefined, bazarr).map((t) => t.code2)).toEqual(["fr"]);
+  });
+
+  it("is empty with neither", () => {
+    expect(mediaAudioTags(undefined, undefined)).toEqual([]);
+    expect(mediaAudioTags("", null)).toEqual([]);
   });
 });
 

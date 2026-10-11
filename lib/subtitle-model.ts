@@ -162,6 +162,21 @@ export function buildAudioTags(
   }));
 }
 
+/**
+ * Audio tags for one movie or episode file: the arr's probed
+ * `mediaInfo.audioLanguages` (Radarr and Sonarr share the shape), else
+ * Bazarr's `audio_language`. Parsed first, so a file with only untagged
+ * tracks ("und/und") still falls back to Bazarr's languages.
+ */
+export function mediaAudioTags(
+  arrAudio: string | null | undefined,
+  bazarrAudio: readonly BazarrLanguage[] | null | undefined,
+  originalLanguage?: ArrLanguage | string | null,
+): AudioTag[] {
+  const tags = buildAudioTags(arrAudio, originalLanguage);
+  return tags.length > 0 ? tags : buildAudioTags(bazarrAudio, originalLanguage);
+}
+
 function dedupe<T extends { code2: string }>(list: (T | null)[]): T[] {
   const seen = new Set<string>();
   const out: T[] = [];

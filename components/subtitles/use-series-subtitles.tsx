@@ -13,10 +13,10 @@ import {
 } from "@/hooks/use-bazarr-subtitles";
 import { searchMissingSubtitles, searchSubtitles } from "@/services/bazarr-api";
 import {
-  buildAudioTags,
   buildCoverageGrid,
   buildSubtitleChips,
   buildSubtitleRows,
+  mediaAudioTags,
   seasonMissingTargets,
   type AudioTag,
   type SubtitleChip,
@@ -89,11 +89,7 @@ export function useSeriesSubtitles({
   // subtitles from Bazarr.
   const audioFor = (be: BazarrEpisode | undefined, ep: SonarrEpisode | undefined): AudioTag[] => {
     const file = ep?.episodeFileId ? episodeFileMap.get(ep.episodeFileId) : undefined;
-    const arr = file?.mediaInfo?.audioLanguages;
-    // Parse first: a string of only untagged tracks ("und/und") yields nothing
-    // and should still fall back to Bazarr's languages.
-    const tags = buildAudioTags(arr, series?.originalLanguage);
-    return tags.length > 0 ? tags : buildAudioTags(be?.audio_language, series?.originalLanguage);
+    return mediaAudioTags(file?.mediaInfo?.audioLanguages, be?.audio_language, series?.originalLanguage);
   };
   const episodeLanguages = useMemo(() => {
     const map = new Map<number, { audio: AudioTag[]; chips: SubtitleChip[] }>();
