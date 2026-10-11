@@ -11,7 +11,7 @@ import {
   type BazarrLibraryKind,
 } from "@/components/bazarr/library-view";
 import { BazarrHistoryView } from "@/components/bazarr/history-view";
-import type { LibraryFilter } from "@/lib/bazarr-library";
+import type { LanguageFilter, LibraryFilter } from "@/lib/bazarr-library";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useLibraryView } from "@/hooks/use-library-view";
@@ -51,8 +51,9 @@ function BazarrScreenInner() {
   const [filter, setFilter] = useState<LibraryFilter>(() => linkFilter(params.filter) ?? "all");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  // Bumped by a link: the library drops its language filter.
-  const [linkCount, setLinkCount] = useState(0);
+  // A coverage bar's filter. Held here, not in the library view, which
+  // unmounts on a switch to History.
+  const [langFilter, setLangFilter] = useState<LanguageFilter | null>(null);
   useEffect(() => {
     if (!params.filter && !params.kind) return;
     // Consumed, so the next tap on the same link changes the params again:
@@ -69,7 +70,7 @@ function BazarrScreenInner() {
     // not a search or language filter left from before.
     setQuery("");
     setSearchOpen(false);
-    setLinkCount((n) => n + 1);
+    setLangFilter(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.filter, params.kind]);
   // Typing is debounced; clearing applies at once and also drops the pending
@@ -87,6 +88,13 @@ function BazarrScreenInner() {
 
   const { instanceId: bazarrId } = useInstanceTarget("bazarr");
   const searchBusy = useLibrarySearchBusy(bazarrId);
+  // A language another instance's profiles may not ask for.
+  const [langFor, setLangFor] = useState(bazarrId);
+  if (langFor !== bazarrId) {
+    setLangFor(bazarrId);
+    setLangFilter(null);
+  }
+
   const { data: healthData } = useServiceHealth();
   const online = healthData?.find((s) => s.id === "bazarr")?.online;
   // Not every Bazarr query: link detection re-reads /system/settings, which
@@ -162,7 +170,8 @@ function BazarrScreenInner() {
           // A language filter or busy rows mean nothing on another instance.
           key={bazarrId}
           bazarrId={bazarrId}
-          resetFilters={linkCount}
+          langFilter={langFilter}
+          onLangFilterChange={setLangFilter}
           searchBusy={searchBusy}
           kind={kind}
           onKindChange={setKind}
