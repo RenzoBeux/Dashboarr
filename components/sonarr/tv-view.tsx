@@ -88,7 +88,7 @@ import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { groupBy } from "@/lib/group-by";
 import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
-import { ArrLibraryRow } from "@/components/common/arr-library-row";
+import { ArrLibraryListRow } from "@/components/common/arr-library-list-row";
 import { useLibraryView } from "@/hooks/use-library-view";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
@@ -621,7 +621,7 @@ function SeriesLibrary({
       posterStatus={statusOf}
       mode={mode}
       renderRow={(s) => (
-        <ArrLibraryRow
+        <ArrLibraryListRow
           images={s.images}
           serviceId="sonarr"
           placeholderIcon={Tv}
