@@ -2344,12 +2344,6 @@ const DEMO_BAZARR_SETTINGS = {
   sonarr: { ip: "sonarr", port: 8989, apikey: "" },
 };
 
-const DEMO_BAZARR_PROVIDERS = [
-  { name: "OpenSubtitles", status: "ok" },
-  { name: "Subscene", status: "ok" },
-  { name: "Addic7ed", status: "throttled", retry: daysFromNowFull(1) },
-];
-
 const DEMO_SYSTEM_STATUS = { version: "5.14.0.9376", isDebug: false, isProduction: true };
 
 // --- Lookup functions ---
@@ -4330,7 +4324,6 @@ export function getDemoResponse(
       if (normalized.startsWith("/episodes/wanted")) return demoBazarrWantedEpisodes();
       if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_MOVIE_HISTORY;
       if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_EPISODE_HISTORY;
-      if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
       if (normalized === "/system/settings") return DEMO_BAZARR_SETTINGS;
       return undefined;
     }
