@@ -121,6 +121,26 @@ export function mergeHistoryStreams(
     .sort((x, y) => (y.at?.getTime() ?? -Infinity) - (x.at?.getTime() ?? -Infinity));
 }
 
+/**
+ * Which streams "load more" should page: those holding the merge cutoff (the
+ * newest last-loaded entry among streams with more pages), since paging the
+ * other one only adds entries that stay held back. With no cutoff (no stream
+ * has a dated last entry) every stream with more pages is paged.
+ */
+export function historyStreamsToPage(
+  movies: readonly BazarrHistoryItem[],
+  episodes: readonly BazarrHistoryItem[],
+  more: { movies: boolean; episodes: boolean },
+): { movies: boolean; episodes: boolean } {
+  const lastAt = (list: readonly BazarrHistoryItem[]) =>
+    parseBazarrTimestamp(list[list.length - 1]?.parsed_timestamp)?.getTime() ?? -Infinity;
+  const m = more.movies ? lastAt(movies) : -Infinity;
+  const e = more.episodes ? lastAt(episodes) : -Infinity;
+  const cutoff = Math.max(m, e);
+  if (cutoff === -Infinity) return more;
+  return { movies: more.movies && m === cutoff, episodes: more.episodes && e === cutoff };
+}
+
 export const EARLIER_GROUP = "earlier";
 
 /** Day sections ("Today", "Yesterday", "Mon Oct 6", "Earlier"), newest first. */

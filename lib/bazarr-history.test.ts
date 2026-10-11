@@ -1,6 +1,7 @@
 import {
   groupHistoryByDay,
   historyActionMeta,
+  historyStreamsToPage,
   mergeHistoryStreams,
   parseBazarrTimestamp,
 } from "./bazarr-history";
@@ -78,6 +79,29 @@ describe("mergeHistoryStreams", () => {
   it("keeps entries without a parseable time at the end", () => {
     const merged = mergeHistoryStreams([item("garbage")], episodes, { movies: false, episodes: false });
     expect(merged[merged.length - 1].at).toBeNull();
+  });
+});
+
+describe("historyStreamsToPage", () => {
+  const movies = [item("10/09/26 14:00:00"), item("10/07/26 09:00:00")];
+  const episodes = [item("10/08/26 12:00:00"), item("10/01/26 12:00:00")];
+  const both = { movies: true, episodes: true };
+
+  it("pages only the stream holding the cutoff", () => {
+    // Movies end Oct 7, episodes Oct 1: the list waits on movies.
+    expect(historyStreamsToPage(movies, episodes, both)).toEqual({ movies: true, episodes: false });
+  });
+
+  it("pages a stream only while it has more", () => {
+    expect(historyStreamsToPage(movies, episodes, { movies: false, episodes: true })).toEqual({
+      movies: false,
+      episodes: true,
+    });
+  });
+
+  it("pages both on a tie or when no last entry has a time", () => {
+    expect(historyStreamsToPage([item("10/01/26 12:00:00")], episodes, both)).toEqual(both);
+    expect(historyStreamsToPage([item("garbage")], [item("nope")], both)).toEqual(both);
   });
 });
 

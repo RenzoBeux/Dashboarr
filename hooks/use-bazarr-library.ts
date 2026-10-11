@@ -6,7 +6,7 @@ import {
   getEpisodeHistory,
   getMovieHistory,
 } from "@/services/bazarr-api";
-import { mergeHistoryStreams } from "@/lib/bazarr-history";
+import { historyStreamsToPage, mergeHistoryStreams } from "@/lib/bazarr-history";
 
 /**
  * The Bazarr tab's data: the whole movie/series library and paged history.
@@ -74,29 +74,38 @@ export function useBazarrHistory(
     movies: filter !== "episodes" && !!movies.hasNextPage,
     episodes: filter !== "movies" && !!episodes.hasNextPage,
   };
+  const movieItems = useMemo(
+    () => (filter === "episodes" ? [] : (movies.data?.pages.flatMap((p) => p.data) ?? [])),
+    [filter, movies.data],
+  );
+  const episodeItems = useMemo(
+    () => (filter === "movies" ? [] : (episodes.data?.pages.flatMap((p) => p.data) ?? [])),
+    [filter, episodes.data],
+  );
   // Memoized on the loaded pages, so the list only re-renders when they change.
   const entries = useMemo(
-    () =>
-      mergeHistoryStreams(
-        filter === "episodes" ? [] : (movies.data?.pages.flatMap((p) => p.data) ?? []),
-        filter === "movies" ? [] : (episodes.data?.pages.flatMap((p) => p.data) ?? []),
-        more,
-      ),
+    () => mergeHistoryStreams(movieItems, episodeItems, more),
     // `more` derives from these.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filter, movies.data, episodes.data, movies.hasNextPage, episodes.hasNextPage],
+    [movieItems, episodeItems, more.movies, more.episodes],
   );
 
   return {
     entries,
     isLoading:
       (filter !== "episodes" && movies.isLoading) || (filter !== "movies" && episodes.isLoading),
-    error: movies.error ?? episodes.error ?? null,
+    // Only the streams on screen: a stream the filter turned off keeps its
+    // last error.
+    error:
+      (filter !== "episodes" ? movies.error : null) ??
+      (filter !== "movies" ? episodes.error : null) ??
+      null,
     hasMore: more.movies || more.episodes,
     isFetchingMore: movies.isFetchingNextPage || episodes.isFetchingNextPage,
     loadMore: () => {
-      if (more.movies && !movies.isFetchingNextPage) void movies.fetchNextPage();
-      if (more.episodes && !episodes.isFetchingNextPage) void episodes.fetchNextPage();
+      const page = historyStreamsToPage(movieItems, episodeItems, more);
+      if (page.movies && !movies.isFetchingNextPage) void movies.fetchNextPage();
+      if (page.episodes && !episodes.isFetchingNextPage) void episodes.fetchNextPage();
     },
   };
 }
