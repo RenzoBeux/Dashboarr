@@ -16,6 +16,7 @@ import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useItemsArrInstance } from "@/hooks/use-bazarr-link";
 import { useLibraryView } from "@/hooks/use-library-view";
+import { useLibrarySearch } from "@/hooks/use-library-search";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -50,8 +51,7 @@ function BazarrScreenInner() {
   // fetch the whole movie library only to switch to series.
   const [kind, setKind] = useState<BazarrLibraryKind>(() => linkKind(params.kind) ?? "movies");
   const [filter, setFilter] = useState<LibraryFilter>(() => linkFilter(params.filter) ?? "all");
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const search = useLibrarySearch();
   // A coverage bar's filter. Held here, not in the library view, which
   // unmounts on a switch to History.
   const [langFilter, setLangFilter] = useState<LanguageFilter | null>(null);
@@ -70,22 +70,10 @@ function BazarrScreenInner() {
     if (nextKind) setKind(nextKind);
     // The list must match what the link promised (the card's Missing count),
     // not a search or language filter left from before.
-    setQuery("");
-    setSearchOpen(false);
+    search.reset();
     setLangFilter(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.filter, params.kind]);
-  // Typing is debounced; clearing applies at once and also drops the pending
-  // value, so typing again right after a clear can't bring the old term back.
-  const [appliedQuery, setAppliedQuery] = useState("");
-  useEffect(() => {
-    if (query === "") {
-      setAppliedQuery("");
-      return;
-    }
-    const handle = setTimeout(() => setAppliedQuery(query), 200);
-    return () => clearTimeout(handle);
-  }, [query]);
   const view = useLibraryView(`bazarr-${kind}`);
 
   const { instanceId: bazarrId } = useInstanceTarget("bazarr");
@@ -147,20 +135,13 @@ function BazarrScreenInner() {
         value: section,
         onChange: (next) => {
           setSection(next);
-          setSearchOpen(false);
-          setQuery("");
+          search.reset();
         },
       }}
       search={
         section === "library"
           ? {
-              open: searchOpen,
-              onToggle: () => {
-                if (searchOpen) setQuery("");
-                setSearchOpen(!searchOpen);
-              },
-              query,
-              onQuery: setQuery,
+              ...search.toolbar,
               placeholder: kind === "movies" ? "Search movies" : "Search series",
             }
           : undefined
@@ -186,12 +167,8 @@ function BazarrScreenInner() {
           filter={filter}
           onFilterChange={setFilter}
           mode={view.mode}
-          // "" covers the render before the effect above catches up.
-          query={query === "" ? "" : appliedQuery}
-          onClearSearch={() => {
-            setQuery("");
-            setSearchOpen(false);
-          }}
+          query={search.applied}
+          onClearSearch={search.reset}
           header={header}
           refreshControl={refreshControl}
           contentContainerStyle={contentContainerStyle}
