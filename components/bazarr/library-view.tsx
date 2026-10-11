@@ -397,6 +397,9 @@ export function BazarrLibraryView({
   if (kind === "movies") {
     return (
       <LibraryCollection
+        // Its own list per kind: the same FlatList would carry the movies'
+        // scroll offset into the series list.
+        key="movies"
         mode={mode}
         data={shownMovies}
         keyOf={(m) => String(m.radarrId)}
@@ -456,6 +459,7 @@ export function BazarrLibraryView({
 
   return (
     <LibraryCollection
+      key="series"
       mode={mode}
       data={shownSeries}
       keyOf={(s) => String(s.sonarrSeriesId)}
