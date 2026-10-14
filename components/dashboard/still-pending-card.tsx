@@ -47,6 +47,7 @@ import {
   BAR_KIND_COLOR,
 } from "@/lib/arr-poster-status";
 import type { SonarrEpisode, RadarrMovie } from "@/lib/types";
+import { groupBy } from "@/lib/group-by";
 
 type PendingItem =
   | { kind: "episode"; date: string; entry: SonarrEpisode; instanceId: string }
@@ -177,7 +178,9 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
     (a, b) => b.date.localeCompare(a.date) || titleOf(a).localeCompare(titleOf(b)),
   );
   const totalCount = items.length;
-  const grouped = groupByDate(items.slice(0, settings.maxItems));
+  // Items arrive sorted date-descending, so first-seen group order already
+  // yields newest-due groups first.
+  const grouped = groupBy(items.slice(0, settings.maxItems), (item) => item.date);
 
   const noSources = !showSonarr && !showRadarr;
   const noServicesEnabled = !sonarrEnabled && !radarrEnabled;
@@ -222,7 +225,7 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
         />
       ) : (
         <View className="gap-4">
-          {grouped.map(({ date, entries }) => (
+          {grouped.map(({ key: date, items: entries }) => (
             <View key={date} className="gap-2">
               <Text
                 className={`text-xs font-semibold ${
@@ -287,23 +290,6 @@ function StillPendingSkeleton() {
       ))}
     </View>
   );
-}
-
-function groupByDate(
-  items: PendingItem[],
-): { date: string; entries: PendingItem[] }[] {
-  // Items arrive sorted date-descending, so Map insertion order already
-  // yields newest-due groups first.
-  const groups = new Map<string, PendingItem[]>();
-  for (const item of items) {
-    const list = groups.get(item.date);
-    if (list) list.push(item);
-    else groups.set(item.date, [item]);
-  }
-  return Array.from(groups.entries()).map(([date, entries]) => ({
-    date,
-    entries,
-  }));
 }
 
 function titleOf(item: PendingItem): string {

@@ -900,6 +900,18 @@ function pairDemoDiskIo(instances: Record<ServiceId, ServiceInstance[]>): void {
   if (unraid && glances) unraid.diskIoInstanceId = glances.id;
 }
 
+// Demo instances carry no API keys, so automatic detection (which matches
+// keys) can never link them. Pin the demo Bazarr to the demo Radarr/Sonarr so
+// the subtitle UI shows up in demo mode.
+function pairDemoBazarrLinks(instances: Record<ServiceId, ServiceInstance[]>): void {
+  const bazarr = instances.bazarr?.[0];
+  if (!bazarr) return;
+  const radarr = instances.radarr?.[0];
+  const sonarr = instances.sonarr?.[0];
+  if (radarr) bazarr.linkedRadarrInstanceId = radarr.id;
+  if (sonarr) bazarr.linkedSonarrInstanceId = sonarr.id;
+}
+
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
   instanceSecrets: {},
@@ -1422,6 +1434,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         instances[id] = [demoInst];
       }
       pairDemoDiskIo(instances);
+      pairDemoBazarrLinks(instances);
       // v22: drop curated attachments in memory so demo UUIDs resolve. Mirrors
       // the enableDemoMode action; not persisted (real attachments come back
       // on disableDemoMode → hydrate).
@@ -2701,6 +2714,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       demoInstances[id] = [inst];
     }
     pairDemoDiskIo(demoInstances);
+    pairDemoBazarrLinks(demoInstances);
     set((state) => {
       // v22: force every dashboard into auto-attach mode in memory (not
       // persisted) so the resolver picks up the freshly-generated demo UUIDs.

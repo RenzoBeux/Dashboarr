@@ -1,0 +1,311 @@
+import { useState } from "react";
+import { View, Text } from "react-native";
+import { ScanSearch } from "lucide-react-native";
+import { Card } from "@/components/ui/card";
+import { Select, type SelectOption } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import { toast, toastError } from "@/components/ui/toast";
+import { useConfigStore } from "@/store/config-store";
+import {
+  useEnabledInstances,
+  useTargetInstance,
+} from "@/hooks/use-instance-target";
+import {
+  useBazarrLinkEntries,
+  useBazarrLinkStatus,
+} from "@/hooks/use-bazarr-link";
+import {
+  bazarrForArr,
+  linkField,
+  moveLinkPatches,
+  type ArrKind,
+  type LinkState,
+} from "@/lib/bazarr-link";
+import { ARR_LINK_OFF } from "@/lib/config-types";
+import type { ServiceId } from "@/lib/constants";
+
+const KIND_LABEL: Record<ArrKind, string> = { radarr: "Radarr", sonarr: "Sonarr" };
+
+// Select needs a value for "automatic with nothing detected"; instance ids are
+// UUIDs, so this never collides.
+const NOT_LINKED = "";
+
+/**
+ * "Connected apps" on a Bazarr instance: which Radarr and Sonarr this Bazarr
+ * serves subtitles for (model: lib/bazarr-link.ts).
+ *
+ * Each row is detected from Bazarr's own settings unless the user picks
+ * something else. Picking the detected instance stores "automatic" rather than
+ * a fixed id, so the badge always tells the truth: Detected means it follows
+ * Bazarr's configuration, Set by you means it doesn't. (When another Bazarr
+ * claims that instance too, the pick is stored by hand so it outranks the
+ * other claim.) Writes go straight to the store, like the other per-instance
+ * cards.
+ *
+ * Renders nothing for other service kinds, and nothing until the instance is
+ * enabled with a URL — detection has to reach it.
+ */
+export function BazarrLinksCard({
+  serviceId,
+  instanceId,
+}: {
+  serviceId: ServiceId;
+  instanceId: string;
+}) {
+  const inst = useTargetInstance("bazarr", instanceId);
+  if (serviceId !== "bazarr" || !inst?.enabled || !(inst.localUrl || inst.remoteUrl)) {
+    return null;
+  }
+  return <LinksBody instanceId={instanceId} />;
+}
+
+function LinksBody({ instanceId }: { instanceId: string }) {
+  const status = useBazarrLinkStatus(instanceId);
+  const [detecting, setDetecting] = useState(false);
+  const instName = useTargetInstance("bazarr", instanceId)?.name ?? "Bazarr";
+
+  const addresses = [status.detection?.radarr.address, status.detection?.sonarr.address]
+    .filter(Boolean)
+    .join(" and ");
+
+  // Re-reads Bazarr's settings only; the user's choices stay. Picking the
+  // detected instance is what returns a row to automatic.
+  const detectAgain = async () => {
+    setDetecting(true);
+    try {
+      const result = await status.redetect();
+      const names = (["radarr", "sonarr"] as const)
+        .map((k) => {
+          const id = result[k].instanceId;
+          return id
+            ? useConfigStore.getState().serviceInstances[k]?.find((i) => i.id === id)?.name
+            : undefined;
+        })
+        .filter(Boolean);
+      toast(
+        names.length > 0
+          ? `Found ${names.join(" and ")}`
+          : "Bazarr isn't connected to any Radarr or Sonarr set up here",
+        names.length > 0 ? "success" : "info",
+      );
+    } catch (err) {
+      toastError("Couldn't read Bazarr's settings", err);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  return (
+    <Card className="gap-4 mb-4">
+      <View className="gap-1">
+        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+          Connected apps
+        </Text>
+        <Text className="text-zinc-500 text-xs">
+          Subtitles from this Bazarr show on the movie and series pages of these
+          instances.
+        </Text>
+      </View>
+
+      <LinkSelect
+        kind="radarr"
+        bazarrId={instanceId}
+        bazarrName={instName}
+        state={status.radarr}
+        detectedId={status.detection?.radarr.instanceId ?? null}
+        detectionStatus={
+          status.detection ? "done" : status.detectError ? "failed" : "pending"
+        }
+      />
+      <LinkSelect
+        kind="sonarr"
+        bazarrId={instanceId}
+        bazarrName={instName}
+        state={status.sonarr}
+        detectedId={status.detection?.sonarr.instanceId ?? null}
+        detectionStatus={
+          status.detection ? "done" : status.detectError ? "failed" : "pending"
+        }
+      />
+
+      <View className="flex-row items-center gap-3">
+        <Text className="text-zinc-500 text-xs flex-1">
+          {status.detectError
+            ? "Couldn't read Bazarr's settings. Check the connection above."
+            : addresses
+              ? `Bazarr reaches ${addresses}`
+              : status.detecting
+                ? "Reading Bazarr's settings…"
+                : "Bazarr has no Radarr or Sonarr set up."}
+        </Text>
+        <Button
+          label={detecting ? "Detecting…" : "Detect again"}
+          variant="outline"
+          size="sm"
+          onPress={detectAgain}
+          loading={detecting}
+          icon={detecting ? undefined : <Icon icon={ScanSearch} size={14} color="#a1a1aa" />}
+        />
+      </View>
+
+      <Text className="text-zinc-500 text-xs">
+        Detection fetches Bazarr&apos;s settings and compares the API key and
+        address it has for each app with the instances on this phone. Only the
+        result is kept; nothing else from those settings is used or stored.
+      </Text>
+    </Card>
+  );
+}
+
+function LinkSelect({
+  kind,
+  bazarrId,
+  bazarrName,
+  state,
+  detectedId,
+  detectionStatus,
+}: {
+  kind: ArrKind;
+  bazarrId: string;
+  bazarrName: string;
+  state: LinkState;
+  detectedId: string | null;
+  // Whether Bazarr's settings have been read yet, or couldn't be.
+  detectionStatus: "pending" | "failed" | "done";
+}) {
+  const arrs = useEnabledInstances(kind);
+  const entries = useBazarrLinkEntries(kind);
+  const bazarrs = useConfigStore((s) => s.serviceInstances.bazarr ?? []);
+  const updateInstance = useConfigStore((s) => s.updateInstance);
+  const stored = useConfigStore(
+    (s) => s.serviceInstances.bazarr?.find((b) => b.id === bazarrId)?.[linkField(kind)],
+  );
+  const label = KIND_LABEL[kind];
+
+  // Another Bazarr serving this arr (the one pages use), for the "moves the
+  // link" hint.
+  const ownerOf = (arrId: string) => {
+    const owner = bazarrForArr(arrId, entries);
+    return owner && owner !== bazarrId
+      ? bazarrs.find((b) => b.id === owner)?.name
+      : undefined;
+  };
+  // Any other Bazarr claiming this arr, set by hand or detected — either could
+  // outrank a detected link here.
+  const claimedElsewhere = (arrId: string) =>
+    entries.some((e) => e.bazarrId !== bazarrId && e.state.arrId === arrId);
+
+  // Detected but outranked: another Bazarr has this arr set by hand, or
+  // detects it too and comes first, so pages use that one. Show it as not
+  // linked here, with the detected instance offered to take the link over.
+  const winner =
+    state.how === "detected" && state.arrId
+      ? bazarrForArr(state.arrId, entries)
+      : bazarrId;
+  const outranked = winner !== bazarrId;
+  const winnerManual =
+    entries.find((e) => e.bazarrId === winner)?.state.how === "manual";
+
+  const value =
+    state.how === "off"
+      ? ARR_LINK_OFF
+      : state.how === "stale"
+        ? (stored ?? NOT_LINKED)
+        : outranked
+          ? NOT_LINKED
+          : (state.arrId ?? NOT_LINKED);
+
+  const options: SelectOption<string>[] = [
+    ...(value === NOT_LINKED
+      ? [
+          {
+            value: NOT_LINKED,
+            label: "Not linked",
+            description: !outranked
+              ? detectionStatus === "pending"
+                ? "Reading Bazarr's settings…"
+                : detectionStatus === "failed"
+                  ? "Couldn't read Bazarr's settings"
+                  : "Nothing detected"
+              : winnerManual
+                ? "Another Bazarr has the detected instance set by hand"
+                : "Another Bazarr is connected to the detected instance too",
+          },
+        ]
+      : []),
+    ...arrs.map((a) => {
+      const owner = ownerOf(a.id);
+      return {
+        value: a.id,
+        label: a.name,
+        badge:
+          state.how === "manual" && a.id === state.arrId
+            ? "Set by you"
+            : a.id === detectedId
+              ? "Detected"
+              : undefined,
+        description:
+          a.id === detectedId
+            ? `Same API key Bazarr uses for ${label}`
+            : a.id === value
+              ? `Linked to ${bazarrName}`
+              : owner
+                ? `Linked to ${owner}. Picking it here moves the link.`
+                : "Not linked to any Bazarr",
+      };
+    }),
+    ...(state.how === "stale" && stored
+      ? [
+          {
+            value: stored,
+            label: "Unavailable instance",
+            description: "Deleted or disabled. Pick another one, or None.",
+          },
+        ]
+      : []),
+    {
+      value: ARR_LINK_OFF,
+      label: "None",
+      description: `Don't show subtitles on ${label} pages`,
+    },
+  ];
+
+  const pick = (next: string) => {
+    // Re-picking a hand-set link that detection also finds returns the row to
+    // automatic (when no other Bazarr claims it); any other re-pick is a no-op.
+    const backToAutomatic =
+      state.how === "manual" && next === detectedId && !claimedElsewhere(next);
+    if (next === value && !backToAutomatic) return;
+    if (next === ARR_LINK_OFF) {
+      updateInstance("bazarr", bazarrId, { [linkField(kind)]: ARR_LINK_OFF });
+      toast(`${label} unlinked`);
+      return;
+    }
+    if (next === NOT_LINKED) return;
+    // The link moves here: any other Bazarr that had this arr set by hand
+    // goes back to automatic. Picking the detected instance stores automatic
+    // for this Bazarr (that's what detection resolves to) — unless another
+    // Bazarr claims it too, which could still outrank a detected link.
+    const automatic = next === detectedId && !claimedElsewhere(next);
+    for (const { bazarrId: id, patch } of moveLinkPatches(kind, bazarrs, bazarrId, next)) {
+      updateInstance(
+        "bazarr",
+        id,
+        id === bazarrId && automatic ? { [linkField(kind)]: undefined } : patch,
+      );
+    }
+    toast(`Linked ${arrs.find((a) => a.id === next)?.name ?? label}`);
+  };
+
+  return (
+    <Select<string>
+      label={`${label} for ${bazarrName}`}
+      value={value}
+      options={options}
+      onChange={pick}
+      placeholder="Not linked"
+    />
+  );
+}
+
