@@ -83,6 +83,7 @@ import {
   WEBHOOK_KINDS,
 } from "@/components/settings/service-kind-shared";
 import { AddToDashboardsSheet } from "@/components/dashboard/add-to-dashboards-sheet";
+import { BazarrLinksCard } from "@/components/settings/bazarr-links-card";
 
 export function ServiceEditor({
   serviceId,
@@ -1044,6 +1045,8 @@ export function ServiceEditor({
       <SeerrRequestUserCard serviceId={serviceId} instanceId={instanceId} />
 
       <UnraidDiskIoCard serviceId={serviceId} instanceId={instanceId} />
+
+      <BazarrLinksCard serviceId={serviceId} instanceId={instanceId} />
 
       <InstanceNotificationsCard serviceId={serviceId} instanceId={instanceId} />
 

@@ -1,4 +1,5 @@
 import {
+  filterLibraryIndex,
   buildLibraryIndex,
   matchLibraryItems,
   mergeLibraryFirst,
@@ -229,5 +230,46 @@ describe("mergeLibraryFirst", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].kind).toBe("library");
+  });
+});
+
+describe("filterLibraryIndex", () => {
+  const items = [
+    { title: "The Matrix Reloaded", year: 2003 },
+    { title: "Amélie", year: 2001 },
+    { title: "The Matrix", year: 1999 },
+    { title: "Dune", year: 2021 },
+  ];
+  const index = buildLibraryIndex(items, (i) => i);
+
+  it("keeps the caller's order instead of ranking", () => {
+    expect(filterLibraryIndex(index, "matrix").map((i) => i.title)).toEqual([
+      "The Matrix Reloaded",
+      "The Matrix",
+    ]);
+  });
+
+  it("ignores accents and keeps everything for an empty query", () => {
+    expect(filterLibraryIndex(index, "amelie").map((i) => i.title)).toEqual(["Amélie"]);
+    expect(filterLibraryIndex(index, "  ")).toHaveLength(4);
+  });
+
+  it("keeps a title that ends in a number", () => {
+    const idx = buildLibraryIndex(
+      [
+        { title: "Blade Runner 2049", year: 2017 },
+        { title: "Blade Runner", year: 1982 },
+      ],
+      (i) => i,
+    );
+    expect(filterLibraryIndex(idx, "blade runner 2049").map((i) => i.title)).toEqual([
+      "Blade Runner 2049",
+    ]);
+  });
+
+  it("requires a trailing year to match", () => {
+    expect(filterLibraryIndex(index, "matrix 1999").map((i) => i.title)).toEqual([
+      "The Matrix",
+    ]);
   });
 });

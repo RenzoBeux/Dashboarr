@@ -7,15 +7,21 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
+import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useConfigStore } from "@/store/config-store";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
-import { useBazarrPosters } from "@/hooks/use-bazarr-posters";
+import { bazarrPosterKey, useBazarrPosters } from "@/hooks/use-bazarr-posters";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   BAZARR_WANTED_DEFAULT_SETTINGS,
   type BazarrWantedSettingsValue,
 } from "@/components/dashboard/widget-settings/bazarr-wanted-settings";
-import { aggregateMultiInstanceState } from "@/lib/multi-instance-query";
+import {
+  aggregateMultiInstanceState,
+  hasFailedWithoutData,
+  type MultiInstanceQueryLike,
+} from "@/lib/multi-instance-query";
 import type { WidgetComponentProps } from "@/components/dashboard/widget-registry";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
@@ -28,6 +34,7 @@ interface PreviewItem {
   subtitle: string;
   languages: string;
   mediaType: "movie" | "tv";
+  bazarrInstanceId: string;
 }
 
 const MAX_PREVIEW = 5;
@@ -64,37 +71,85 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     !movieState.hasAnyData &&
     !episodeState.hasAnyData &&
     (movieState.isInitialLoading || episodeState.isInitialLoading);
-  const totalMissing =
-    movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0) +
-    episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+  const sum = (qs: typeof movieQueries | typeof episodeQueries) =>
+    qs.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
+  const totalMissing = sum(movieQueries) + sum(episodeQueries);
+  // The tab opens the active Bazarr, so a link first pins the instance whose
+  // items it promises (as the Beszel and Status cards do). Header and View
+  // all: the tab's own Bazarr when it has something missing (or its counts
+  // are still loading, so we can't tell), else the first of the card's that does.
+  const { instanceId: tabBazarrId } = useInstanceTarget("bazarr");
+  const setActiveInstance = useConfigStore((s) => s.setActiveInstance);
+  const missingOn = (i: number) => ({
+    movies: movieQueries[i]?.data?.total ?? 0,
+    episodes: episodeQueries[i]?.data?.total ?? 0,
+  });
+  const anyMissing = (i: number) => missingOn(i).movies + missingOn(i).episodes > 0;
+  // Still on its first attempt, nothing failed yet: a Bazarr that is down
+  // mustn't hold the link (not even while its first request retries) when
+  // another one has missing items.
+  const firstLoad = (q: (MultiInstanceQueryLike & { failureCount: number }) | undefined) =>
+    !!q && q.isLoading && q.failureCount === 0 && !hasFailedWithoutData(q);
+  const pending = (i: number) => firstLoad(movieQueries[i]) || firstLoad(episodeQueries[i]);
+  const tabIndex = instances.findIndex((inst) => inst.id === tabBazarrId);
+  const linkIndex =
+    tabIndex >= 0 && (anyMissing(tabIndex) || pending(tabIndex))
+      ? tabIndex
+      : instances.findIndex((_, i) => anyMissing(i));
+  const openMissing = () => {
+    // Nothing (known to be) missing: open the tab as the user left it,
+    // without re-pinning it to another Bazarr.
+    if (linkIndex < 0 || !anyMissing(linkIndex)) return router.push("/(tabs)/bazarr");
+    const { movies, episodes } = missingOn(linkIndex);
+    if (instances[linkIndex].id !== tabBazarrId) setActiveInstance("bazarr", instances[linkIndex].id);
+    // The kind that has the missing items when only one does; otherwise the
+    // tab keeps its last kind.
+    router.push(
+      `/(tabs)/bazarr?filter=missing${
+        movies === 0 ? "&kind=series" : episodes === 0 ? "&kind=movies" : ""
+      }`,
+    );
+  };
 
+  // Tagged with their Bazarr instance: radarrId/sonarrSeriesId only resolve
+  // against that Bazarr's linked Radarr/Sonarr.
   const movieList = movieQueries
-    .flatMap((q) => q.data?.data ?? [])
+    .flatMap((q, i) =>
+      (q.data?.data ?? []).map((m) => ({ ...m, bazarrInstanceId: instances[i].id })),
+    )
     .slice(0, 3);
   const episodeList = episodeQueries
-    .flatMap((q) => q.data?.data ?? [])
+    .flatMap((q, i) =>
+      (q.data?.data ?? []).map((e) => ({ ...e, bazarrInstanceId: instances[i].id })),
+    )
     .slice(0, 3);
   const posterMap = useBazarrPosters(movieList, episodeList);
 
   const previewItems: PreviewItem[] = [];
   for (const movie of movieList) {
     previewItems.push({
-      key: `movie-${movie.radarrId}`,
+      key: bazarrPosterKey(movie.bazarrInstanceId, "movie", movie.radarrId),
       title: movie.title,
       subtitle: "Movie",
       languages:
         movie.missing_subtitles?.map((s) => s.code2).join(", ") || "—",
       mediaType: "movie",
+      bazarrInstanceId: movie.bazarrInstanceId,
     });
   }
   for (const episode of episodeList) {
     previewItems.push({
-      key: `episode-${episode.sonarrEpisodeId}`,
+      key: bazarrPosterKey(
+        episode.bazarrInstanceId,
+        "episode",
+        episode.sonarrEpisodeId,
+      ),
       title: episode.seriesTitle,
       subtitle: `${episode.episode_number} — ${episode.episodeTitle}`,
       languages:
         episode.missing_subtitles?.map((s) => s.code2).join(", ") || "—",
       mediaType: "tv",
+      bazarrInstanceId: episode.bazarrInstanceId,
     });
   }
 
@@ -111,7 +166,7 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     <Card>
       <CardHeaderLink
         title="Bazarr Subtitles"
-        onPress={() => router.push("/(tabs)/bazarr")}
+        onPress={openMissing}
         trailing={
           totalMissing > 0 ? (
             <Badge label="Missing" variant="missing" count={totalMissing} />
@@ -154,12 +209,20 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
                   </View>
                 }
                 mediaType={item.mediaType}
-                onPress={() => router.push("/(tabs)/bazarr")}
+                // The Bazarr tab's Missing filter took over the Wanted lists.
+                onPress={() => {
+                  if (item.bazarrInstanceId !== tabBazarrId) {
+                    setActiveInstance("bazarr", item.bazarrInstanceId);
+                  }
+                  router.push(
+                    `/(tabs)/bazarr?filter=missing&kind=${item.mediaType === "tv" ? "series" : "movies"}`,
+                  );
+                }}
               />
             );
           })}
           {hasMore && (
-            <ViewAllTile onPress={() => router.push("/(tabs)/bazarr")} />
+            <ViewAllTile onPress={openMissing} />
           )}
         </ScrollView>
       )}

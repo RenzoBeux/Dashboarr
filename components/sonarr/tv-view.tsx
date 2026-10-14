@@ -88,6 +88,7 @@ import {
 import { mediumHaptic } from "@/lib/haptics";
 import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { groupBy } from "@/lib/group-by";
 
 type SeriesSheetTarget =
   | { kind: "series"; item: SonarrSeries }
@@ -630,25 +631,22 @@ function CalendarView({
   // day extra on each side for timezone boundary airings.
   const todayKey = getDateOffset(0);
   const horizonKey = getDateOffset(7);
-  const grouped = new Map<string, SonarrCalendarEntry[]>();
-  for (const ep of episodes ?? []) {
-    const key = airDateKey(ep);
-    if (!key || key < todayKey || key > horizonKey) continue;
-    const list = grouped.get(key) ?? [];
-    list.push(ep);
-    grouped.set(key, list);
-  }
+  const grouped = groupBy(
+    (episodes ?? []).filter((ep) => {
+      const key = airDateKey(ep);
+      return !!key && key >= todayKey && key <= horizonKey;
+    }),
+    (ep) => airDateKey(ep)!,
+    { sortKeys: (a, b) => a.localeCompare(b) },
+  );
 
-  if (grouped.size === 0) {
+  if (grouped.length === 0) {
     return <EmptyState title="Nothing airing this week" />;
   }
 
-  const sortedDates = Array.from(grouped.keys()).sort();
-
   return (
     <View className="gap-4">
-      {sortedDates.map((date) => {
-        const entries = grouped.get(date)!;
+      {grouped.map(({ key: date, items: entries }) => {
         const isToday = date === localDateKey();
 
         return (

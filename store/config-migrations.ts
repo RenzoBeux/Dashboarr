@@ -221,8 +221,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         "Remote URL needs a VPN" toggle, #394). Pure version stamp:
  *         absence means the Remote URL is probed like any other, which is
  *         the pre-v60 behavior.
+ *   v61 - optional per-instance `linkedRadarrInstanceId` /
+ *         `linkedSonarrInstanceId` on ServiceConfig (Bazarr → Radarr/Sonarr
+ *         link for the subtitle UI). Pure version stamp: absence means the
+ *         link is detected automatically.
  */
-export const CURRENT_CONFIG_VERSION = 60;
+export const CURRENT_CONFIG_VERSION = 61;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -801,6 +805,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // v59 → v60: optional per-instance `remoteRequiresVpn` on ServiceConfig
   // (#394). Pure version stamp: absence means the pre-v60 behavior.
   59: (payload) => ({ ...payload, version: 60 }),
+  // v60 → v61: optional Bazarr `linkedRadarrInstanceId` /
+  // `linkedSonarrInstanceId` on ServiceConfig. Pure version stamp.
+  60: (payload) => ({ ...payload, version: 61 }),
 };
 
 /**

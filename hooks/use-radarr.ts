@@ -43,12 +43,19 @@ import { useArrTags } from "@/hooks/use-arr-tags";
 // omitted the user's active Radarr is used (single-instance behavior); when
 // passed, queries fan out to that specific instance with its own cache slot.
 
-export function useRadarrMovies(instanceId?: string) {
+// `active: false` keeps the query off, e.g. when there is no instance to read
+// from and the active-instance fallback would be the wrong library.
+// `staleTime` lets a reader that only needs artwork skip refetching the
+// whole library on every mount.
+export function useRadarrMovies(instanceId?: string, active = true, staleTime?: number) {
   const { instanceId: id, enabled } = useInstanceTarget("radarr", instanceId);
   return useQuery({
     queryKey: ["radarr", id, "movies"],
     queryFn: () => getMovies(id ?? undefined),
-    enabled: enabled && !!id,
+    enabled: active && enabled && !!id,
+    // Spread, not `staleTime: undefined`, which would override the client's
+    // default for every other caller.
+    ...(staleTime !== undefined && { staleTime }),
   });
 }
 

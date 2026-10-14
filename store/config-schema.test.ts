@@ -1,4 +1,5 @@
 import { validateExportPayload } from "./config-schema";
+import { ARR_LINK_OFF } from "@/lib/config-types";
 
 const TEST_INSTANCE_ID = "11111111-1111-1111-1111-111111111111";
 const TEST_DASHBOARD_ID = "22222222-2222-2222-2222-222222222222";
@@ -387,6 +388,41 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.unraid[0].diskIoInstanceId).toBeUndefined();
     expect(result.services.unraid[1].diskIoInstanceId).toBeUndefined();
     expect(result.services.unraid[2].diskIoInstanceId).toBeUndefined();
+  });
+
+  it("round-trips the Bazarr → Radarr/Sonarr links (v61)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        bazarr: [
+          validInstance({
+            linkedRadarrInstanceId: "radarr-uuid-1",
+            linkedSonarrInstanceId: ARR_LINK_OFF,
+          }),
+          validInstance({ id: "uuid-2" }),
+        ],
+      },
+    });
+    expect(result.services.bazarr[0].linkedRadarrInstanceId).toBe("radarr-uuid-1");
+    expect(result.services.bazarr[0].linkedSonarrInstanceId).toBe(ARR_LINK_OFF);
+    // Absent stays absent: that is what "detect automatically" means.
+    expect("linkedRadarrInstanceId" in result.services.bazarr[1]).toBe(false);
+  });
+
+  it("drops an invalid Bazarr link without rejecting the instance", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        bazarr: [
+          validInstance({ linkedRadarrInstanceId: "" }),
+          validInstance({ id: "uuid-2", linkedSonarrInstanceId: 7 }),
+          validInstance({ id: "uuid-3", linkedRadarrInstanceId: "x".repeat(129) }),
+        ],
+      },
+    });
+    expect(result.services.bazarr[0].linkedRadarrInstanceId).toBeUndefined();
+    expect(result.services.bazarr[1].linkedSonarrInstanceId).toBeUndefined();
+    expect(result.services.bazarr[2].linkedRadarrInstanceId).toBeUndefined();
   });
 
   it("round-trips the Seerr session sign-in modes (v53)", () => {
