@@ -29,6 +29,7 @@ import {
   DOWNLOAD_INDICATOR_COLOR,
 } from "@/lib/arr-poster-status";
 import type { LidarrAlbum, LidarrTrack } from "@/lib/types";
+import { SectionLabel } from "@/components/ui/section-label";
 
 export default function AlbumDetailScreen() {
   const { id, instanceId } = useLocalSearchParams<{
@@ -235,14 +236,6 @@ function formatTrackDuration(ms?: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text className="text-zinc-500 text-[0.65rem] font-bold uppercase tracking-widest mb-2 ml-1">
-      {children}
-    </Text>
-  );
 }
 
 function TrackRow({

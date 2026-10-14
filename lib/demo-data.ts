@@ -466,9 +466,21 @@ function makeMovie(id: number, title: string, year: number, tmdbId: number, hasF
             relativePath: `${title.replace(/[\s:]/g, ".")}.${year}.1080p.BluRay.mkv`,
             size: 14495514624,
             quality: { quality: { name: "Bluray-1080p" } },
+            mediaInfo: {
+              audioChannels: 5.1,
+              audioCodec: "EAC3",
+              audioLanguages: id % 2 === 0 ? "eng/ger" : "eng/eng/fre",
+              videoCodec: "x264",
+              videoDynamicRange: "",
+              videoDynamicRangeType: "",
+              resolution: "1920x1080",
+              subtitles: "eng",
+              videoFps: 23.976,
+            },
           },
         }
       : {}),
+    originalLanguage: { id: 1, name: "English" },
   };
 }
 
@@ -2071,31 +2083,199 @@ const DEMO_GLANCES_CONTAINERS = [
 
 // --- Bazarr ---
 
-const DEMO_BAZARR_WANTED_MOVIES = {
-  data: [
-    { radarrId: 7, title: "Deadpool & Wolverine", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }], year: "2024" },
-    { radarrId: 8, title: "Kingdom of the Planet of the Apes", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }, { name: "Spanish", code2: "es", code3: "spa", hi: false, forced: false }], year: "2024" },
-    { radarrId: 3, title: "Interstellar", missing_subtitles: [{ name: "French", code2: "fr", code3: "fra", hi: false, forced: false }], year: "2014" },
-  ],
-  total: 3,
-};
-
-const DEMO_BAZARR_WANTED_EPISODES = {
-  data: [
-    { sonarrSeriesId: 1, sonarrEpisodeId: 201, seriesTitle: "House of the Dragon", episodeTitle: "The Burning Mill", episode_number: "2x03", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }] },
-    { sonarrSeriesId: 2, sonarrEpisodeId: 202, seriesTitle: "The Last of Us", episodeTitle: "When Winter Falls", episode_number: "2x05", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }, { name: "Spanish", code2: "es", code3: "spa", hi: false, forced: false }] },
-    { sonarrSeriesId: 3, sonarrEpisodeId: 203, seriesTitle: "Fallout", episodeTitle: "The Radio", episode_number: "1x06", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }] },
-    { sonarrSeriesId: 5, sonarrEpisodeId: 204, seriesTitle: "Severance", episodeTitle: "Goodbye, Mrs. Selvig", episode_number: "2x02", missing_subtitles: [{ name: "English", code2: "en", code3: "eng", hi: false, forced: false }] },
-  ],
-  total: 4,
-};
-
 const DEMO_BAZARR_HISTORY = {
   data: [
     { id: 1, action: 1, timestamp: daysFromNowFull(-1), description: "Downloaded English subtitle", language: { name: "English", code2: "en" }, provider: "OpenSubtitles", score: "95", title: "Dune: Part Two" },
     { id: 2, action: 1, timestamp: daysFromNowFull(-2), description: "Downloaded English subtitle", language: { name: "English", code2: "en" }, provider: "Subscene", score: "88", seriesTitle: "Fallout", episodeTitle: "The End" },
   ],
   total: 2,
+};
+
+// --- Bazarr subtitle fixtures ---
+// Derived from the demo Radarr/Sonarr libraries so radarrId / sonarrSeriesId /
+// sonarrEpisodeId always match what the movie and series screens ask for, and
+// varied by id so every chip state (file, embedded, forced, HI, missing) shows.
+
+const demoLang = (code2: string) =>
+  ({
+    en: { name: "English", code2: "en", code3: "eng" },
+    de: { name: "German", code2: "de", code3: "ger" },
+    fr: { name: "French", code2: "fr", code3: "fre" },
+  })[code2]!;
+
+function demoBazarrMovie(radarrId: number) {
+  const movie = DEMO_RADARR_MOVIES.find((m) => m.id === radarrId);
+  if (!movie || !movie.hasFile) return null;
+  const dir = `/movies/${movie.title} (${movie.year})`;
+  const base = `${dir}/${movie.title.replace(/[\s:]/g, ".")}.${movie.year}`;
+  const subtitles = [
+    { ...demoLang("en"), path: `${base}.en.srt`, forced: false, hi: radarrId % 3 === 0, file_size: 98304, embedded_track_id: null, id: radarrId * 10 + 1 },
+    { ...demoLang("en"), path: null, forced: false, hi: false, file_size: null, embedded_track_id: 3, id: radarrId * 10 + 2 },
+    ...(radarrId % 2 === 0
+      ? [
+          // Bazarr counts a forced German file only against a forced item, so
+          // the profile's plain German needs its own file to be covered.
+          { ...demoLang("de"), path: `${base}.de.srt`, forced: false, hi: false, file_size: 90112, embedded_track_id: null, id: radarrId * 10 + 3 },
+          { ...demoLang("de"), path: `${base}.de.forced.srt`, forced: true, hi: false, file_size: 4096, embedded_track_id: null, id: radarrId * 10 + 4 },
+        ]
+      : []),
+  ];
+  return {
+    radarrId,
+    title: movie.title,
+    year: String(movie.year),
+    path: `${base}.1080p.BluRay.mkv`,
+    profileId: 1,
+    monitored: true,
+    sceneName: null,
+    audio_language: radarrId % 2 === 0 ? [demoLang("en"), demoLang("de")] : [demoLang("en"), demoLang("fr")],
+    subtitles,
+    missing_subtitles: radarrId % 2 === 0 ? [] : [{ ...demoLang("de"), forced: false, hi: false }],
+    tags: [],
+  };
+}
+
+function demoBazarrEpisodes(seriesId: number) {
+  const series = DEMO_SONARR_SERIES.find((x) => x.id === seriesId);
+  if (!series) return [];
+  return DEMO_SONARR_EPISODES.filter((e) => e.seriesId === seriesId && e.hasFile)
+    .map((e) => {
+      const base = `/tv/${series.title}/Season ${e.seasonNumber}/${series.title} - S0${e.seasonNumber}E0${e.episodeNumber}`;
+      const germanMissing = e.episodeNumber % 3 === 0;
+      return {
+        sonarrSeriesId: seriesId,
+        sonarrEpisodeId: e.id,
+        season: e.seasonNumber,
+        episode: e.episodeNumber,
+        title: e.title,
+        path: `${base}.mkv`,
+        profileId: 1,
+        monitored: true,
+        sceneName: null,
+        audio_language: [demoLang("en")],
+        subtitles: [
+          { ...demoLang("en"), path: `${base}.en.srt`, forced: false, hi: e.episodeNumber === 2, file_size: 52000, embedded_track_id: null, id: e.id * 10 + 1 },
+          ...(germanMissing
+            ? []
+            : [
+                e.episodeNumber % 2 === 0
+                  ? { ...demoLang("de"), path: null, forced: false, hi: false, file_size: null, embedded_track_id: 4, id: e.id * 10 + 2 }
+                  : { ...demoLang("de"), path: `${base}.de.srt`, forced: false, hi: false, file_size: 51000, embedded_track_id: null, id: e.id * 10 + 2 },
+              ]),
+        ],
+        missing_subtitles: germanMissing ? [{ ...demoLang("de"), forced: false, hi: false }] : [],
+      };
+    })
+    .sort((a, b) => b.season - a.season || b.episode - a.episode);
+}
+
+// The Wanted lists come from the same per-item fixtures, so the Bazarr tab
+// and the movie/series pages agree on what is missing.
+function demoBazarrWantedMovies() {
+  const data = DEMO_RADARR_MOVIES.flatMap((m) => {
+    const item = demoBazarrMovie(m.id);
+    return item && item.missing_subtitles.length > 0
+      ? [{ radarrId: item.radarrId, title: item.title, missing_subtitles: item.missing_subtitles, year: item.year }]
+      : [];
+  });
+  return { data, total: data.length };
+}
+
+function demoBazarrWantedEpisodes() {
+  const data = DEMO_SONARR_SERIES.flatMap((series) =>
+    demoBazarrEpisodes(series.id)
+      .filter((e) => e.missing_subtitles.length > 0)
+      .map((e) => ({
+        sonarrSeriesId: series.id,
+        sonarrEpisodeId: e.sonarrEpisodeId,
+        seriesTitle: series.title,
+        episodeTitle: e.title,
+        episode_number: `${e.season}x${String(e.episode).padStart(2, "0")}`,
+        missing_subtitles: e.missing_subtitles,
+      })),
+  );
+  return { data, total: data.length };
+}
+
+function demoBazarrSeriesItem(seriesId: number) {
+  const series = DEMO_SONARR_SERIES.find((x) => x.id === seriesId);
+  if (!series) return null;
+  const episodes = demoBazarrEpisodes(seriesId);
+  return {
+    sonarrSeriesId: seriesId,
+    title: series.title,
+    year: String(series.year),
+    path: `/tv/${series.title}`,
+    profileId: 1,
+    poster: null,
+    audio_language: [demoLang("en")],
+    episodeFileCount: episodes.length,
+    episodeMissingCount: episodes.filter((e) => e.missing_subtitles.length > 0).length,
+    ended: false,
+    monitored: true,
+    tags: [],
+  };
+}
+
+const DEMO_BAZARR_PROFILES = [
+  {
+    profileId: 1,
+    name: "English + German",
+    cutoff: null,
+    items: [
+      { id: 1, language: "en", forced: "False", hi: "False", audio_exclude: "False" },
+      { id: 2, language: "de", forced: "False", hi: "False", audio_exclude: "False" },
+    ],
+  },
+  {
+    profileId: 2,
+    name: "English only",
+    cutoff: null,
+    items: [{ id: 1, language: "en", forced: "False", hi: "False", audio_exclude: "False" }],
+  },
+];
+
+const demoResult = (
+  provider: string,
+  language: string,
+  score: number,
+  release: string,
+  extra: { hi?: boolean; forced?: boolean; misses?: string[] } = {},
+) => ({
+  provider,
+  subtitle: `demo:${provider}:${language}:${score}`,
+  language,
+  forced: extra.forced ? "True" : "False",
+  hearing_impaired: extra.hi ? "True" : "False",
+  original_format: "False",
+  release_info: [release],
+  matches: ["title", "year", "source", "resolution", ...(extra.misses?.includes("release_group") ? [] : ["release_group"])],
+  dont_matches: extra.misses ?? [],
+  score,
+  orig_score: score,
+  score_without_hash: score,
+  uploader: provider === "opensubtitlescom" ? "subsmaster" : null,
+  url: null,
+});
+
+const DEMO_BAZARR_MANUAL_RESULTS = [
+  demoResult("opensubtitlescom", "de", 96, "Movie.2024.1080p.BluRay.x264-GROUP"),
+  demoResult("subdl", "de", 88, "Movie.2024.1080p.WEB-DL.DDP5.1-OTHER", { misses: ["release_group"] }),
+  demoResult("addic7ed", "de", 71, "Movie.2024.720p.HDTV", { misses: ["release_group", "resolution"] }),
+  demoResult("opensubtitlescom", "en", 97, "Movie.2024.1080p.BluRay.x264-GROUP", { hi: true }),
+  demoResult("podnapisi", "en", 90, "Movie.2024.1080p.BluRay.x264-GROUP"),
+  demoResult("subdl", "en", 64, "Movie.2024.2160p.WEB-DL", { misses: ["resolution", "source"] }),
+  demoResult("opensubtitlescom", "de", 82, "Movie.2024.1080p.BluRay.x264-GROUP.Forced", { forced: true }),
+  demoResult("gestdown", "en", 58, "Movie.2024.DVDRip", { misses: ["source", "resolution", "release_group"] }),
+];
+
+// Only the connection fields link detection reads. Demo instances carry no
+// API keys, so detection finds nothing and the demo links set in
+// config-store's pairDemoBazarrLinks stay in charge.
+const DEMO_BAZARR_SETTINGS = {
+  general: { use_radarr: true, use_sonarr: true },
+  radarr: { ip: "radarr", port: 7878, apikey: "" },
+  sonarr: { ip: "sonarr", port: 8989, apikey: "" },
 };
 
 const DEMO_BAZARR_PROVIDERS = [
@@ -4049,12 +4229,35 @@ export function getDemoResponse(
       return undefined;
     }
     case "bazarr": {
-      if (normalized.startsWith("/movies/wanted")) return DEMO_BAZARR_WANTED_MOVIES;
-      if (normalized.startsWith("/episodes/wanted")) return DEMO_BAZARR_WANTED_EPISODES;
+      // Every Bazarr write (search, upload, tools, profile, blacklist) answers
+      // 204 with no body; GETs are the only reads.
+      if (method && method !== "GET") return undefined;
+      if (normalized === "/movies") {
+        const movie = demoBazarrMovie(Number(params?.["radarrid[]"]));
+        return { data: movie ? [movie] : [], total: movie ? 1 : 0 };
+      }
+      if (normalized === "/episodes") {
+        return { data: demoBazarrEpisodes(Number(params?.["seriesid[]"])) };
+      }
+      if (normalized === "/series") {
+        const item = demoBazarrSeriesItem(Number(params?.["seriesid[]"]));
+        return { data: item ? [item] : [], total: item ? 1 : 0 };
+      }
+      if (normalized === "/providers/movies" || normalized === "/providers/episodes") {
+        return { data: DEMO_BAZARR_MANUAL_RESULTS };
+      }
+      if (normalized === "/system/jobs") return { data: [] };
+      if (normalized === "/system/languages/profiles") return DEMO_BAZARR_PROFILES;
+      if (normalized === "/system/languages") {
+        return ["en", "de", "fr"].map((c) => ({ ...demoLang(c), enabled: true }));
+      }
+      if (normalized === "/system/status") return { data: { bazarr_version: "1.6.2" } };
+      if (normalized.startsWith("/movies/wanted")) return demoBazarrWantedMovies();
+      if (normalized.startsWith("/episodes/wanted")) return demoBazarrWantedEpisodes();
       if (normalized.startsWith("/movies/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/episodes/history")) return DEMO_BAZARR_HISTORY;
       if (normalized.startsWith("/providers")) return DEMO_BAZARR_PROVIDERS;
-      if (normalized.startsWith("/system/status")) return DEMO_SYSTEM_STATUS;
+      if (normalized === "/system/settings") return DEMO_BAZARR_SETTINGS;
       return undefined;
     }
     case "glances": {
