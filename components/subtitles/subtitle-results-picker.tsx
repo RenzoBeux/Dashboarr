@@ -104,7 +104,6 @@ export function SubtitleResultsPicker({
         keyOf={resultKey}
         renderItem={renderItem}
         labels={LABELS}
-        skeletonHeight={96}
         onClearFilters={() => setLanguage("all")}
         filterSort={
           <FilterSortButton
