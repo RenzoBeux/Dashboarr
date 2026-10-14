@@ -12,16 +12,19 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  SearchingIndicator,
+  SearchElapsed,
+} from "@/components/ui/searching-indicator";
 import { lightHaptic } from "@/lib/haptics";
 import { getHttpErrorMessage, isAbortError } from "@/lib/http-client";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeColor } from "@/hooks/use-theme-color";
 
 export interface SearchResultsLabels {
-  // Status row + empty-state title once the search runs long ("Searching indexers…").
+  // Title of the searching state ("Searching indexers…").
   searching: string;
-  // Shown under `searching` from 8s on ("This can take up to a minute.").
+  // Shown under `searching` ("This can take up to a minute.").
   searchingHint: string;
   // Replaces the hint from 30s on, alongside a Restart button.
   longSearchingHint: string;
@@ -38,9 +41,9 @@ export interface SearchResultsLabels {
 
 /**
  * The shell of a slow, user-triggered search screen: the "N of M results ·
- * 2m ago" status row, skeletons that turn into a "still searching" state and
- * then a Restart button, the abort-vs-HTTP error state, and a tuned FlatList
- * whose empty state stays pull-to-retry.
+ * 2m ago" status row, an animated searching state with a counter that
+ * turns into a "still searching" hint and Restart button, the abort-vs-HTTP
+ * error state, and a tuned FlatList whose empty state stays pull-to-retry.
  *
  * Domain logic (filtering, sorting, the row and detail components) stays with
  * the caller, which passes the already filtered + sorted `items`. Used by the
@@ -59,7 +62,6 @@ export function SearchResultsList<T>({
   filterSort,
   banner,
   onClearFilters,
-  skeletonHeight = 88,
 }: {
   query: UseQueryResult<T[], Error>;
   items: T[];
@@ -73,15 +75,21 @@ export function SearchResultsList<T>({
   // Notice between the pill and the list.
   banner?: React.ReactNode;
   onClearFilters: () => void;
-  skeletonHeight?: number;
 }) {
   const tc = useThemeColor();
-  const { data, isLoading, isError, error, isFetching, refetch, dataUpdatedAt } =
-    query;
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    isFetching,
+    refetch,
+    dataUpdatedAt,
+  } = query;
   const noun = labels.noun ?? "result";
 
-  // Loading-time progression: skeletons until 8s, then the searching state
-  // with a hint, then a "still searching" hint and Restart past 30s.
+  // Loading-time progression: the searching state (with a m:ss counter) from
+  // the start, then a "still searching" hint and Restart past 30s.
   // searchEpoch bumps on a manual restart so the ticker resets even though
   // isFetching never flips across the cancel-and-refetch.
   const [elapsed, setElapsed] = useState(0);
@@ -90,10 +98,17 @@ export function SearchResultsList<T>({
     setElapsed(0);
     if (!isLoading && !isFetching) return;
     const start = Date.now();
-    const id = setInterval(() => {
-      setElapsed(Math.round((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
+    // Re-aim each tick at the next whole second: RN reschedules setInterval
+    // from when it actually fired, so it drifts late and the visible m:ss
+    // counter would skip a number about once a minute.
+    let id: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const ms = Date.now() - start;
+      setElapsed(Math.floor(ms / 1000));
+      id = setTimeout(tick, 1000 - (ms % 1000));
+    };
+    id = setTimeout(tick, 1000);
+    return () => clearTimeout(id);
   }, [isLoading, isFetching, searchEpoch]);
 
   // "Tick" so the relative-time string in the status row stays fresh once
@@ -110,13 +125,15 @@ export function SearchResultsList<T>({
   // a fresh one.
   const handleRefresh = useCallback(() => {
     lightHaptic();
+    // Reset here, not just in the ticker effect: that runs after paint, so the
+    // restarted search would flash the old m:ss count for a frame.
+    setElapsed(0);
     setSearchEpoch((e) => e + 1);
     refetch();
   }, [refetch]);
 
-  const showSkeleton = (isLoading || isFetching) && !data;
-  const showSearchingMessage = showSkeleton && elapsed >= 8;
-  const showLongSearchingHint = showSkeleton && elapsed >= 30;
+  const isSearching = (isLoading || isFetching) && !data;
+  const showLongSearchingHint = isSearching && elapsed >= 30;
 
   return (
     <View className="flex-1">
@@ -140,11 +157,7 @@ export function SearchResultsList<T>({
                 <ActivityIndicator size="small" color={tc("#3b82f6")} />
               )}
             </>
-          ) : (
-            <Text className="text-zinc-500 text-sm">
-              {showSearchingMessage ? labels.searching : ""}
-            </Text>
-          )}
+          ) : null}
         </View>
       </View>
 
@@ -154,34 +167,30 @@ export function SearchResultsList<T>({
 
       {banner}
 
-      {showSkeleton ? (
+      {isSearching ? (
         <View className="flex-1">
-          {showSearchingMessage ? (
-            <EmptyState
-              icon={<Icon icon={Search} size={28} color="#71717a" />}
-              title={labels.searching}
-              message={
-                showLongSearchingHint
-                  ? labels.longSearchingHint
-                  : labels.searchingHint
-              }
-              action={
-                showLongSearchingHint ? (
+          <EmptyState
+            icon={<SearchingIndicator />}
+            iconClassName="mt-5 mb-8"
+            title={labels.searching}
+            message={
+              showLongSearchingHint
+                ? labels.longSearchingHint
+                : labels.searchingHint
+            }
+            action={
+              <View className="items-center gap-4">
+                <SearchElapsed seconds={elapsed} />
+                {showLongSearchingHint ? (
                   <Button
                     label="Restart search"
                     variant="outline"
                     onPress={handleRefresh}
                   />
-                ) : undefined
-              }
-            />
-          ) : (
-            <View className="gap-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} height={skeletonHeight} borderRadius={16} />
-              ))}
-            </View>
-          )}
+                ) : null}
+              </View>
+            }
+          />
         </View>
       ) : isError ? (
         <EmptyState
@@ -192,7 +201,9 @@ export function SearchResultsList<T>({
             // so an AbortError landing here is always the fetch timeout.
             isAbortError(error)
               ? labels.timedOut
-              : (getHttpErrorMessage(error) ?? error?.message ?? "Unknown error")
+              : (getHttpErrorMessage(error) ??
+                error?.message ??
+                "Unknown error")
           }
           action={<Button label="Retry" onPress={handleRefresh} />}
         />
