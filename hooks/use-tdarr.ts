@@ -24,7 +24,8 @@ import {
 } from "@tanstack/react-query";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import {
-  TDARR_TABLE_PAGE_SIZE, applyRowAction, nextStatusTableStart, type TdarrRowAction,
+  TDARR_TABLE_PAGE_SIZE, applyRowAction, needsRefetchAfterAction, nextStatusTableStart,
+  type TdarrRowAction,
 } from "@/lib/tdarr-tables";
 import type {
   TdarrGlobalSettings, TdarrStatusTableId, TdarrStatusTablePage,
@@ -149,23 +150,36 @@ export function useTdarrStatusTable(table: TdarrStatusTableId, instanceId?: stri
  * ["tdarr", id] slice (which refetches every loaded page of this table plus
  * every other Tdarr query), apply the action to the cached pages, refresh the
  * statistics doc for the chip counts, and only mark the other tables stale.
+ *
+ * The table and instance travel with each mutation (variables / onMutate
+ * context) rather than through the hook's closure: TanStack hands a pending
+ * mutation the options of the latest render, so switching tables mid-action
+ * would otherwise patch the newly selected table's cache.
  */
-export function useTdarrBulkUpdateFiles(table: TdarrStatusTableId, instanceId?: string) {
+export function useTdarrBulkUpdateFiles(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
   return useMutation({
-    mutationFn: ({ fileIds, action }: { fileIds: string[]; action: TdarrRowAction }) =>
-      bulkUpdateFiles(fileIds, action.updatedObj, id ?? undefined),
-    onSuccess: (_data, { fileIds, action }) => {
-      queryClient.setQueryData<InfiniteData<TdarrStatusTablePage>>(
-        ["tdarr", id, "status-table", table],
+    mutationFn: (
+      { fileIds, action }: { table: TdarrStatusTableId; fileIds: string[]; action: TdarrRowAction },
+    ) => bulkUpdateFiles(fileIds, action.updatedObj, id ?? undefined),
+    onMutate: () => ({ id }),
+    onSuccess: (_data, { table, fileIds, action }, onMutateResult) => {
+      const target = onMutateResult.id;
+      const tableKey = ["tdarr", target, "status-table", table] as const;
+      const next = queryClient.setQueryData<InfiniteData<TdarrStatusTablePage>>(
+        tableKey,
         (data) => applyRowAction(data, fileIds, action),
       );
       void queryClient.invalidateQueries({
-        queryKey: ["tdarr", id, "status-table"],
+        queryKey: ["tdarr", target, "status-table"],
         refetchType: "none",
       });
-      void queryClient.invalidateQueries({ queryKey: ["tdarr", id, "statistics"] });
+      // An emptied last page reads as the end of the table; refetch to page on.
+      if (needsRefetchAfterAction(next)) {
+        void queryClient.invalidateQueries({ queryKey: tableKey, exact: true });
+      }
+      void queryClient.invalidateQueries({ queryKey: ["tdarr", target, "statistics"] });
     },
   });
 }
@@ -193,20 +207,22 @@ export function useTdarrGlobalSettings(active = true, instanceId?: string) {
   );
 }
 
-const GLOBAL_SETTINGS_MUTATION = ["tdarr", "update-global-settings"] as const;
-
 /**
  * Optimistic: the patch lands in the cache at once and is rolled back if the
  * write fails, so a switch never snaps back while the write is in flight. The
  * rollback only touches the failed patch's own fields, so it can't undo a
- * newer toggle that is still in flight.
+ * newer toggle that is still in flight. Writes share a per-instance scope, so
+ * they reach the server one at a time in tap order (onMutate still runs at
+ * once, so the switch stays instant).
  */
 export function useTdarrUpdateGlobalSettings(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
   const key = ["tdarr", id, "global-settings"] as const;
+  const mutationKey = ["tdarr", id, "update-global-settings"] as const;
   return useMutation({
-    mutationKey: GLOBAL_SETTINGS_MUTATION,
+    mutationKey,
+    scope: { id: `tdarr-global-settings-${id}` },
     mutationFn: (patch: Partial<TdarrGlobalSettings>) =>
       updateGlobalSettings(patch, id ?? undefined),
     onMutate: async (patch) => {
@@ -225,7 +241,7 @@ export function useTdarrUpdateGlobalSettings(instanceId?: string) {
     onSettled: () => {
       // With several toggles in flight, only the last one to settle refetches;
       // an earlier refetch would land the server's pre-write value mid-flight.
-      if (queryClient.isMutating({ mutationKey: GLOBAL_SETTINGS_MUTATION }) === 1) {
+      if (queryClient.isMutating({ mutationKey }) === 1) {
         void queryClient.invalidateQueries({ queryKey: key });
       }
     },

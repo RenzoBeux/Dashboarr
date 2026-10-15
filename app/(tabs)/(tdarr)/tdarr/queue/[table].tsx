@@ -70,7 +70,7 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const { refreshing, onRefresh } = usePullToRefresh([["tdarr"]]);
   const stats = useTdarrStatistics().data?.[0];
   const query = useTdarrStatusTable(tableId);
-  const bulk = useTdarrBulkUpdateFiles(tableId);
+  const bulk = useTdarrBulkUpdateFiles();
   const setAll = useTdarrSetAllStatus();
   // Every modal on this screen is a step of one flow, so the "all" sheet →
   // confirm chain can never race the iOS dismiss (#83). See use-modal-flow.ts.
@@ -122,7 +122,7 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
     const row = flow.payload("rowActions");
     if (!row) return;
     const name = rowName(row);
-    bulk.mutateAsync({ fileIds: [row._id], action: a }).then(
+    bulk.mutateAsync({ table: tableId, fileIds: [row._id], action: a }).then(
       () => toast(`${a.label}: ${name}`, "success"),
       (e) => toastError(`${a.label} failed`, e),
     );
@@ -131,7 +131,7 @@ function QueueList({ tableId, label }: { tableId: TdarrStatusTableId; label: str
   const runSelected = (a: TdarrRowAction) => {
     const fileIds = [...selected];
     if (fileIds.length === 0) return;
-    bulk.mutateAsync({ fileIds, action: a }).then(
+    bulk.mutateAsync({ table: tableId, fileIds, action: a }).then(
       () => {
         toast(`${DONE[a.key]} ${files(fileIds.length)}`, "success");
         exitSelection();

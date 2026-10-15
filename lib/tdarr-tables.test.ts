@@ -1,6 +1,6 @@
 import {
   TDARR_TABLES, getTableDef, tableCount, rowActions, rowSizeLine, rowTimestamp, nextStatusTableStart, flattenStatusPages,
-  applyRowAction,
+  applyRowAction, needsRefetchAfterAction,
 } from "@/lib/tdarr-tables";
 import type { TdarrStatistics, TdarrStatusTableRow } from "@/lib/types";
 
@@ -134,6 +134,40 @@ describe("applyRowAction", () => {
 
   it("leaves an uncached table alone", () => {
     expect(applyRowAction(undefined, ["1"], skip)).toBeUndefined();
+  });
+
+  it("subtracts a row repeated across two pages once", () => {
+    const dup = { pages: [page(3, 5), { ...page(2, 5), array: [
+      { _id: "2" } as TdarrStatusTableRow, { _id: "3" } as TdarrStatusTableRow,
+    ] }], pageParams: [0, 3] };
+    const out = applyRowAction(dup, ["2"], skip);
+    expect(ids(out)).toEqual(["0", "1", "3"]);
+    expect(out?.pages.map((p) => p.totalCount)).toEqual([4, 4]);
+  });
+});
+
+describe("needsRefetchAfterAction", () => {
+  const [, skip] = rowActions("table1");
+
+  it("flags a last page emptied by an action while files remain", () => {
+    const data = { pages: [page(25, 100)], pageParams: [0] };
+    const all = data.pages[0].array.map((r) => r._id);
+    const out = applyRowAction(data, all, skip);
+    expect(out?.pages[0].totalCount).toBe(75);
+    expect(nextStatusTableStart(out!.pages[0], out!.pages)).toBeUndefined();
+    expect(needsRefetchAfterAction(out)).toBe(true);
+  });
+
+  it("does not flag a table the action fully drained", () => {
+    const data = { pages: [page(3, 3)], pageParams: [0] };
+    const out = applyRowAction(data, ["0", "1", "2"], skip);
+    expect(needsRefetchAfterAction(out)).toBe(false);
+  });
+
+  it("does not flag a last page that still has rows, or an uncached table", () => {
+    const data = { pages: [page(25, 100)], pageParams: [0] };
+    expect(needsRefetchAfterAction(applyRowAction(data, ["0"], skip))).toBe(false);
+    expect(needsRefetchAfterAction(undefined)).toBe(false);
   });
 });
 

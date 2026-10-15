@@ -151,15 +151,33 @@ export function applyRowAction<T extends { pages: TdarrStatusTablePage[] }>(
       })),
     };
   }
-  let removed = 0;
+  // A row can sit on two pages (see flattenStatusPages) but is one file on
+  // the server, so count each removed id once.
+  const removedIds = new Set<string>();
   const pages = data.pages.map((p) => {
-    const array = (p.array ?? []).filter((r) => !ids.has(r._id));
-    removed += (p.array?.length ?? 0) - array.length;
+    const array = (p.array ?? []).filter((r) => {
+      if (!ids.has(r._id)) return true;
+      removedIds.add(r._id);
+      return false;
+    });
     return { ...p, array };
   });
+  const removed = removedIds.size;
   return {
     ...data,
     pages: pages.map((p) => ({ ...p, totalCount: Math.max(0, (p.totalCount ?? 0) - removed) })),
   };
+}
+
+/**
+ * True when a row action emptied the last loaded page while the server still
+ * has files. nextStatusTableStart reads an empty last page as the end of the
+ * table, so the cached pages have to be refetched to page on.
+ */
+export function needsRefetchAfterAction(
+  data: { pages: TdarrStatusTablePage[] } | undefined,
+): boolean {
+  const last = data?.pages.at(-1);
+  return !!last && !last.array?.length && (last.totalCount ?? 0) > 0;
 }
 
