@@ -3794,6 +3794,37 @@ export interface TdarrFileItem {
   createdAt: number; // epoch ms
 }
 
+export type TdarrStatusTableId =
+  | "table0" | "table1" | "table2" | "table3" | "table4" | "table5" | "table6";
+
+/** A row of POST /client/status-tables: a file doc, plus queue flags. */
+export interface TdarrStatusTableRow extends TdarrFileItem {
+  bumped?: boolean | number; // Tdarr stores a bump as 1
+  holdUntil?: number; // epoch ms
+}
+
+export interface TdarrStatusTablePage {
+  array: TdarrStatusTableRow[];
+  totalCount: number;
+}
+
+// Tdarr global settings doc (cruddb SettingsGlobalJSONDB / "globalsettings").
+// Only the keys Dashboarr reads; the doc has many more.
+export interface TdarrGlobalSettings {
+  _id: string;
+  ignoreSchedules?: boolean;
+  queueSortType?: string;
+  enableBumpedFiles?: boolean;
+  alternateLibraries?: boolean;
+  prioritiseLibraries?: boolean;
+  prioritiseTranscodes?: boolean;
+  prioritiseHealthChecks?: boolean;
+}
+
+export type TdarrQueueToggleKey =
+  | "ignoreSchedules" | "enableBumpedFiles" | "alternateLibraries"
+  | "prioritiseLibraries" | "prioritiseTranscodes" | "prioritiseHealthChecks";
+
 // --- Maintainerr Types ---
 // Maintainerr (github.com/jorenn92/Maintainerr) curates Plex libraries: rules
 // build collections of media, and each collection deletes its members
