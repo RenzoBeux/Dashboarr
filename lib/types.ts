@@ -290,6 +290,16 @@ export interface MediaInfo {
   videoDynamicRangeType: string;
   resolution: string;
   videoBitDepth?: number;
+  // Slash-joined subtitle track languages as probed from the file.
+  subtitles?: string;
+  // Frame rate, rounded to 3 decimals (23.976); 0 when unknown.
+  videoFps?: number;
+}
+
+// The *arr Language object (originalLanguage, release languages).
+export interface ArrLanguage {
+  id: number;
+  name: string;
 }
 
 // --- Radarr Types ---
@@ -310,6 +320,8 @@ export interface RadarrMovie {
   year: number;
   tmdbId: number;
   imdbId?: string;
+  // Spoken language of the production (marks the "original" audio track).
+  originalLanguage?: ArrLanguage;
   overview: string;
   monitored: boolean;
   hasFile: boolean;
@@ -662,6 +674,8 @@ export interface SonarrSeries {
   // itself rather than guessing when this is absent.
   tmdbId?: number;
   imdbId?: string;
+  // Spoken language of the production (marks the "original" audio track).
+  originalLanguage?: ArrLanguage;
   monitored: boolean;
   added: string;
   images: SonarrImage[];
@@ -2523,19 +2537,32 @@ export type BazarrWantedMoviesResponse = BazarrWantedResponse<BazarrWantedMovie>
 export type BazarrWantedEpisodesResponse = BazarrWantedResponse<BazarrWantedEpisode>;
 
 export interface BazarrHistoryItem {
+  // 0 Delete, 1 Download, 2 Manual, 3 Upgrade, 4 Upload, 5 Sync,
+  // 6 Translated, 7 Extracted (Bazarr's HistoryAction enum).
   action: number;
+  // Humanised by Bazarr ("2 hours ago"); see parsed_timestamp.
   timestamp: string;
+  // strftime("%x %X") in the server's locale, e.g. "10/09/26 14:22:05".
+  parsed_timestamp?: string;
   description: string;
-  language?: { name: string; code2: string; code3?: string };
+  language?: { name: string; code2: string; code3?: string; forced?: boolean; hi?: boolean };
   provider?: string;
+  // "93.33%".
   score?: string;
+  subs_id?: string;
   title?: string;
   seriesTitle?: string;
   episodeTitle?: string;
+  // "1x02".
+  episode_number?: string;
   subtitles_path?: string;
   radarrId?: number;
   sonarrSeriesId?: number;
   sonarrEpisodeId?: number;
+  upgradable?: boolean;
+  blacklisted?: boolean;
+  matches?: string[];
+  dont_matches?: string[];
 }
 
 export interface BazarrHistoryResponse {
@@ -2543,10 +2570,121 @@ export interface BazarrHistoryResponse {
   total: number;
 }
 
-export interface BazarrProvider {
+// A language as Bazarr reports it (audio tracks, missing subtitles).
+export interface BazarrLanguage {
   name: string;
-  status: string;
-  retry?: string;
+  code2: string;
+  code3: string;
+}
+
+// One subtitle Bazarr knows about for a movie or episode.
+export interface BazarrSubtitle extends BazarrLanguage {
+  // External file path, already path-mapped for Bazarr; null for a track
+  // embedded in the video file.
+  path: string | null;
+  forced: boolean;
+  hi: boolean;
+  file_size?: number | null;
+  // Stream index of an embedded track.
+  embedded_track_id?: number | null;
+  // Bazarr's subtitle row id (1.6+): `subtitles_id` for extract/translate.
+  id?: number | null;
+}
+
+interface BazarrMediaItem {
+  title: string;
+  path: string;
+  profileId: number | null;
+  monitored?: boolean;
+  sceneName?: string | null;
+  audio_language: BazarrLanguage[];
+  subtitles: BazarrSubtitle[];
+  missing_subtitles: BazarrMissingSubtitle[];
+}
+
+export interface BazarrMovie extends BazarrMediaItem {
+  radarrId: number;
+  year?: string;
+  poster?: string | null;
+  tags?: string[];
+}
+
+export interface BazarrEpisode extends BazarrMediaItem {
+  sonarrSeriesId: number;
+  sonarrEpisodeId: number;
+  season: number;
+  episode: number;
+}
+
+export interface BazarrSeries {
+  sonarrSeriesId: number;
+  title: string;
+  year?: string;
+  path: string;
+  profileId: number | null;
+  poster?: string | null;
+  audio_language: BazarrLanguage[];
+  episodeFileCount: number;
+  // Episodes with at least one missing subtitle.
+  episodeMissingCount: number;
+  ended?: boolean;
+  monitored?: boolean;
+  tags?: string[];
+}
+
+export interface BazarrListResponse<T> {
+  data: T[];
+  total?: number;
+}
+
+export interface BazarrLanguageProfileItem {
+  id: number;
+  language: string; // code2
+  forced: "True" | "False";
+  hi: "True" | "False";
+  audio_exclude?: "True" | "False";
+  // "Only include if matching audio" (newer Bazarr).
+  audio_only_include?: "True" | "False";
+}
+
+export interface BazarrLanguageProfile {
+  profileId: number;
+  name: string;
+  cutoff: number | null;
+  items: BazarrLanguageProfileItem[];
+}
+
+export interface BazarrSystemStatus {
+  bazarr_version: string;
+}
+
+// A background job from /system/jobs (Bazarr 1.5.6+).
+export interface BazarrJob {
+  job_id: number;
+  job_name: string;
+  status: "pending" | "running" | "failed" | "completed";
+  progress_value?: number;
+  progress_max?: number;
+  progress_message?: string;
+}
+
+// One manual-search candidate from /providers/movies|episodes.
+export interface BazarrSubtitleResult {
+  provider: string;
+  // Opaque token; send back verbatim to download this result.
+  subtitle: string;
+  language: string; // code2
+  forced: string; // "True" / "False"
+  hearing_impaired: string; // "True" / "False"
+  original_format?: string;
+  release_info: string[];
+  matches: string[];
+  dont_matches: string[];
+  score: number;
+  orig_score?: number;
+  score_without_hash?: number;
+  uploader?: string | null;
+  url?: string | null;
 }
 
 // --- unRAID Types ---
