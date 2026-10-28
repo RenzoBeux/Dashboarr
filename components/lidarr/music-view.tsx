@@ -464,8 +464,9 @@ function ArtistLibrary({
     [queue],
   );
 
-  const items: ArtistItem[] = useMemo(
-    () => (artists ?? []).map((a) => ({ ...a, title: a.artistName })),
+  // Undefined until the first load, so the grid can tell it from empty.
+  const items: ArtistItem[] | undefined = useMemo(
+    () => artists?.map((a) => ({ ...a, title: a.artistName })),
     [artists],
   );
 
