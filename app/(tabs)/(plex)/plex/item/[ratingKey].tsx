@@ -30,6 +30,7 @@ import {
   plexRuntimeLabel,
 } from "@/lib/plex-items";
 import type { PlexMediaItem } from "@/lib/types";
+import { SectionLabel } from "@/components/ui/section-label";
 
 const CHILDREN_LABEL: Partial<Record<PlexMediaItem["type"], string>> = {
   show: "Seasons",
@@ -173,14 +174,6 @@ export default function PlexItemScreen() {
         ) : null}
       </View>
     </ScreenWrapper>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text className="text-zinc-500 text-[0.65rem] font-bold uppercase tracking-widest mb-2 ml-1">
-      {children}
-    </Text>
   );
 }
 

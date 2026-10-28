@@ -12,13 +12,21 @@ interface ServiceImage {
  * Resolves a service image URL with automatic fallback.
  * Tries local service URL first (with apikey query param), falls back to remoteUrl,
  * then returns undefined so the placeholder icon renders.
+ *
+ * `instanceId` targets a specific instance (e.g. the Radarr a Bazarr instance
+ * is linked to); omitted, the active instance serves the image.
  */
 export function useServiceImage(
   image: ServiceImage | undefined,
   serviceId: ServiceId,
+  instanceId?: string,
 ) {
-  const baseUrl = useConfigStore((s) => s.getActiveUrl(serviceId));
-  const apiKey = useConfigStore((s) => s.secrets[serviceId]?.apiKey);
+  const baseUrl = useConfigStore((s) => s.getActiveUrl(serviceId, instanceId));
+  const apiKey = useConfigStore((s) =>
+    instanceId
+      ? s.instanceSecrets[instanceId]?.apiKey
+      : s.secrets[serviceId]?.apiKey,
+  );
   const [failCount, setFailCount] = useState(0);
 
   // TMDB original images are ~6MB each — use w500 to avoid memory pool exhaustion

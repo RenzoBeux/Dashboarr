@@ -9,7 +9,7 @@ import { getWantedMovies, getWantedEpisodes } from "@/services/bazarr-api";
 import { useWorkspaceScopedInstances } from "@/hooks/use-workspace-instances";
 import { useWidgetSettings } from "@/hooks/use-widget-settings";
 import { useHideWhenEmpty } from "@/hooks/use-hide-when-empty";
-import { useBazarrPosters } from "@/hooks/use-bazarr-posters";
+import { bazarrPosterKey, useBazarrPosters } from "@/hooks/use-bazarr-posters";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import {
   BAZARR_WANTED_DEFAULT_SETTINGS,
@@ -68,18 +68,24 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
     movieQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0) +
     episodeQueries.reduce((acc, q) => acc + (q.data?.total ?? 0), 0);
 
+  // Tagged with their Bazarr instance: radarrId/sonarrSeriesId only resolve
+  // against that Bazarr's linked Radarr/Sonarr.
   const movieList = movieQueries
-    .flatMap((q) => q.data?.data ?? [])
+    .flatMap((q, i) =>
+      (q.data?.data ?? []).map((m) => ({ ...m, bazarrInstanceId: instances[i].id })),
+    )
     .slice(0, 3);
   const episodeList = episodeQueries
-    .flatMap((q) => q.data?.data ?? [])
+    .flatMap((q, i) =>
+      (q.data?.data ?? []).map((e) => ({ ...e, bazarrInstanceId: instances[i].id })),
+    )
     .slice(0, 3);
   const posterMap = useBazarrPosters(movieList, episodeList);
 
   const previewItems: PreviewItem[] = [];
   for (const movie of movieList) {
     previewItems.push({
-      key: `movie-${movie.radarrId}`,
+      key: bazarrPosterKey(movie.bazarrInstanceId, "movie", movie.radarrId),
       title: movie.title,
       subtitle: "Movie",
       languages:
@@ -89,7 +95,11 @@ export function BazarrWantedCard({ slotId }: WidgetComponentProps) {
   }
   for (const episode of episodeList) {
     previewItems.push({
-      key: `episode-${episode.sonarrEpisodeId}`,
+      key: bazarrPosterKey(
+        episode.bazarrInstanceId,
+        "episode",
+        episode.sonarrEpisodeId,
+      ),
       title: episode.seriesTitle,
       subtitle: `${episode.episode_number} — ${episode.episodeTitle}`,
       languages:
