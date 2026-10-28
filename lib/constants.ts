@@ -327,6 +327,11 @@ export const POLLING_INTERVALS = {
 // which otherwise aborts a search that was going to succeed.
 export const INTERACTIVE_SEARCH_TIMEOUT = 90_000;
 
+// Bazarr's manual subtitle search (GET /providers/movies|episodes) queries every
+// enabled subtitle provider in turn, synchronously, and some throttle hard; two
+// minutes is not unusual on a big provider list.
+export const BAZARR_MANUAL_SEARCH_TIMEOUT = 180_000;
+
 // POST /api/action/gravity shells out to `pihole -g`, which re-downloads every
 // blocklist and rebuilds the database. Two to five minutes is normal on a Pi
 // with many lists, so it needs its own ceiling well past the interactive-search

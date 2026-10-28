@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  RefreshControl,
-  ActivityIndicator,
-  Pressable,
-} from "react-native";
-import { Search, AlertTriangle, X } from "lucide-react-native";
+import { View, Text, Pressable } from "react-native";
+import { X } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { ArrRelease, SonarrRelease, ArrCustomFilter } from "@/lib/types";
@@ -18,14 +11,11 @@ import {
   FilterSortSheet,
   type SheetSection,
 } from "@/components/common/filter-sort-sheet";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Button } from "@/components/ui/button";
 import {
-  SearchingIndicator,
-  SearchElapsed,
-} from "@/components/ui/searching-indicator";
+  SearchResultsList,
+  type SearchResultsLabels,
+} from "@/components/common/search-results-list";
 import { lightHaptic } from "@/lib/haptics";
-import { getHttpErrorMessage, isAbortError } from "@/lib/http-client";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { useSortStore, type ReleasesSortKey } from "@/store/sort-store";
 import {
@@ -35,7 +25,6 @@ import {
 } from "@/store/releases-filter-store";
 import { useArrCustomFilters } from "@/hooks/use-arr-custom-filters";
 import { applyArrCustomFilter } from "@/lib/arr-custom-filters";
-import { useAppTheme } from "@/hooks/use-app-theme";
 
 type Release = ArrRelease | SonarrRelease;
 
@@ -74,6 +63,18 @@ const SORT_SUMMARY: Record<ReleasesSortKey, string> = {
   "title-asc": "Title",
 };
 
+const RELEASE_SEARCH_LABELS: SearchResultsLabels = {
+  searching: "Searching indexers…",
+  searchingHint: "This can take up to a minute.",
+  longSearchingHint: "Still searching. Some indexers are slower than others.",
+  timedOut: "Search timed out. Indexers may be slow or unreachable. Try again.",
+  emptyTitle: "No releases found",
+  emptyMessage: "Indexers returned 0 results. Pull to retry or check Prowlarr.",
+  filteredEmptyTitle: "No releases match filters",
+};
+
+const releaseKey = (r: Release) => r.guid;
+
 function sortReleases(list: Release[], key: ReleasesSortKey): Release[] {
   const copy = [...list];
   switch (key) {
@@ -101,104 +102,6 @@ function sortReleases(list: Release[], key: ReleasesSortKey): Release[] {
   return copy;
 }
 
-interface ReleaseFlatListProps {
-  data: Release[];
-  // Unfiltered result count, so the empty state can tell "indexers returned 0"
-  // apart from "filters hid everything" (only the latter offers Clear filters).
-  totalCount: number;
-  onSelect: (r: Release) => void;
-  isFetching: boolean;
-  onRefresh: () => void;
-  onClearFilters: () => void;
-}
-
-function ReleaseFlatList({
-  data,
-  totalCount,
-  onSelect,
-  isFetching,
-  onRefresh,
-  onClearFilters,
-}: ReleaseFlatListProps) {
-  // Row heights vary (rejected releases add a third text line), so we don't
-  // pass getItemLayout — a wrong estimate makes FlatList compute incorrect
-  // scroll offsets and the list jumps around. We also leave
-  // removeClippedSubviews off because on Android it causes mount/unmount
-  // churn that shows up as scroll jank.
-  const renderItem = useCallback(
-    ({ item, index }: { item: Release; index: number }) => (
-      <ReleaseListItem release={item} index={index} onSelect={onSelect} />
-    ),
-    [onSelect],
-  );
-  const theme = useAppTheme();
-
-  const keyExtractor = useCallback((r: Release) => r.guid, []);
-
-  return (
-    <FlatList
-      data={data}
-      keyExtractor={keyExtractor}
-      renderItem={renderItem}
-      contentContainerStyle={{ paddingBottom: 32 }}
-      showsVerticalScrollIndicator={false}
-      initialNumToRender={12}
-      maxToRenderPerBatch={6}
-      updateCellsBatchingPeriod={80}
-      windowSize={7}
-      refreshControl={
-        <RefreshControl
-          refreshing={isFetching}
-          onRefresh={onRefresh}
-          tintColor="#3b82f6"
-          colors={["#3b82f6"]}
-          progressBackgroundColor={theme.surface}
-        />
-      }
-      ListEmptyComponent={
-        // Rendered inside the FlatList (not as a bare View) so its
-        // RefreshControl + iOS bounce stay attached — that's what makes the
-        // "Pull to retry" affordance below actually work when 0 results come
-        // back (#209).
-        <View className="mt-4">
-          {totalCount === 0 ? (
-            // size 28 keeps this consistent with the "Searching…"/"Search
-            // failed" states it transitions between; the filters-hid variant
-            // below stays at 24.
-            <EmptyState
-              icon={<Icon icon={Search} size={28} color="#71717a" />}
-              title="No releases found"
-              message="Indexers returned 0 results. Pull to retry or check Prowlarr."
-            />
-          ) : (
-            <EmptyState
-              icon={<Icon icon={Search} size={24} color="#71717a" />}
-              title="No releases match filters"
-              action={
-                <Button
-                  label="Clear filters"
-                  variant="outline"
-                  onPress={onClearFilters}
-                />
-              }
-            />
-          )}
-        </View>
-      }
-    />
-  );
-}
-
-function formatRelative(timestamp: number): string {
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  return `${hours}h ago`;
-}
-
 export function ReleasesPicker({
   service,
   query,
@@ -211,6 +114,12 @@ export function ReleasesPicker({
   const handleSelect = useCallback(
     (r: Release) => flow.open("detail", r),
     [flow],
+  );
+  const renderItem = useCallback(
+    ({ item, index }: { item: Release; index: number }) => (
+      <ReleaseListItem release={item} index={index} onSelect={handleSelect} />
+    ),
+    [handleSelect],
   );
   const sortKey = useSortStore((s) => s.releases);
   const setSortKey = useSortStore((s) => s.setReleases);
@@ -259,47 +168,7 @@ export function ReleasesPicker({
     [releaseFilters, selectedFilterId],
   );
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    isFetching,
-    refetch,
-    dataUpdatedAt,
-  } = query;
-
-  // Loading-time progression: the searching state (with a m:ss counter) from
-  // the start, then a "still searching" hint and Restart past 30s.
-  // searchEpoch bumps on a manual restart so the ticker resets even though
-  // isFetching never flips across the cancel-and-refetch.
-  const [elapsed, setElapsed] = useState(0);
-  const [searchEpoch, setSearchEpoch] = useState(0);
-  useEffect(() => {
-    setElapsed(0);
-    if (!isLoading && !isFetching) return;
-    const start = Date.now();
-    // Re-aim each tick at the next whole second: RN reschedules setInterval
-    // from when it actually fired, so it drifts late and the visible m:ss
-    // counter would skip a number about once a minute.
-    let id: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      const ms = Date.now() - start;
-      setElapsed(Math.floor(ms / 1000));
-      id = setTimeout(tick, 1000 - (ms % 1000));
-    };
-    id = setTimeout(tick, 1000);
-    return () => clearTimeout(id);
-  }, [isLoading, isFetching, searchEpoch]);
-
-  // "Tick" so the relative-time string in the status bar stays fresh once
-  // results are in.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!dataUpdatedAt) return;
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, [dataUpdatedAt]);
+  const { data } = query;
 
   const protocols = useMemo(() => {
     const set = new Set<string>();
@@ -333,14 +202,7 @@ export function ReleasesPicker({
     // with the quick chips, matching how the *arr web UI stacks them.
     if (selectedFilter) out = applyArrCustomFilter(out, selectedFilter);
     return sortReleases(out, sortKey);
-  }, [
-    data,
-    hideRejected,
-    protocolFilter,
-    qualityFilter,
-    selectedFilter,
-    sortKey,
-  ]);
+  }, [data, hideRejected, protocolFilter, qualityFilter, selectedFilter, sortKey]);
 
   // If every result was rejected and the user has hideRejected on, auto-flip
   // it once so they aren't staring at an empty list. Track that we did this
@@ -360,18 +222,6 @@ export function ReleasesPicker({
       setAutoFlippedRejected(true);
     }
   }, [data, prefHideRejected]);
-
-  // No isFetching guard: with the queryFn consuming the abort signal, v5's
-  // refetch (cancelRefetch defaults true) aborts an in-flight search and starts
-  // a fresh one — the in-app recovery for a hung search (#290).
-  function handleRefresh() {
-    lightHaptic();
-    // Reset here, not just in the ticker effect: that runs after paint, so the
-    // restarted search would flash the old m:ss count for a frame.
-    setElapsed(0);
-    setSearchEpoch((e) => e + 1);
-    refetch();
-  }
 
   function handleClearFilters() {
     lightHaptic();
@@ -443,37 +293,16 @@ export function ReleasesPicker({
     });
   }
 
-  const isSearching = (isLoading || isFetching) && !data;
-  const showLongSearchingHint = isSearching && elapsed >= 30;
-
   return (
     <View className="flex-1">
-      {/* Status row */}
-      <View className="flex-row items-center justify-between px-1 mb-3">
-        <View className="flex-row items-center gap-2 flex-1">
-          {data ? (
-            <>
-              <Text className="text-zinc-300 text-sm font-medium">
-                {filtered.length}
-                {filtered.length !== data.length
-                  ? ` of ${data.length}`
-                  : ""}{" "}
-                result{data.length === 1 ? "" : "s"}
-              </Text>
-              {dataUpdatedAt > 0 && (
-                <Text className="text-zinc-500 text-xs">
-                  · {formatRelative(dataUpdatedAt)}
-                </Text>
-              )}
-              {isFetching && <ActivityIndicator size="small" color="#3b82f6" />}
-            </>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Filter + sort */}
-      {data && data.length > 0 && (
-        <View className="mb-3">
+      <SearchResultsList
+        query={query}
+        items={filtered}
+        keyOf={releaseKey}
+        renderItem={renderItem}
+        labels={RELEASE_SEARCH_LABELS}
+        onClearFilters={handleClearFilters}
+        filterSort={
           <FilterSortButton
             summary={summary}
             active={filterSortActive}
@@ -482,83 +311,28 @@ export function ReleasesPicker({
               setFilterSortOpen(true);
             }}
           />
-        </View>
-      )}
-
-      {/* Auto-flip notice. Only when the flip actually made rows visible — if a
-          custom filter still hides everything, "showing them so you can review"
-          would be false and the "No releases match filters" empty state is the
-          accurate message (#331). */}
-      {autoFlippedRejected && filtered.length > 0 && (
-        <View className="bg-amber-950/60 border border-amber-900/60 rounded-xl px-3 py-2 mb-3 flex-row items-center justify-between">
-          <Text className="text-amber-100 text-xs flex-1 leading-4">
-            All releases were rejected — showing them so you can review.
-          </Text>
-          <Pressable
-            onPress={() => setAutoFlippedRejected(false)}
-            hitSlop={8}
-            className="ml-2"
-          >
-            <Icon icon={X} size={14} color="#fde68a" />
-          </Pressable>
-        </View>
-      )}
-
-      {/* Body */}
-      {isSearching ? (
-        <View className="flex-1">
-          <EmptyState
-            icon={<SearchingIndicator />}
-            iconClassName="mt-5 mb-8"
-            title="Searching indexers…"
-            message={
-              showLongSearchingHint
-                ? "Still searching. Some indexers are slower than others."
-                : "This can take up to a minute."
-            }
-            action={
-              <View className="items-center gap-4">
-                <SearchElapsed seconds={elapsed} />
-                {showLongSearchingHint ? (
-                  <Button
-                    label="Restart search"
-                    variant="outline"
-                    onPress={handleRefresh}
-                  />
-                ) : null}
-              </View>
-            }
-          />
-        </View>
-      ) : isError ? (
-        <EmptyState
-          icon={<Icon icon={AlertTriangle} size={28} color="#ef4444" />}
-          title="Search failed"
-          message={
-            // A TanStack-initiated cancel reverts the query instead of erroring,
-            // so an AbortError landing here is always the fetch timeout.
-            isAbortError(error)
-              ? "Search timed out. Indexers may be slow or unreachable. Try again."
-              : (getHttpErrorMessage(error) ??
-                error?.message ??
-                "Unknown error")
-          }
-          action={<Button label="Retry" onPress={handleRefresh} />}
-        />
-      ) : (
-        // The 0-results case routes through the FlatList too (via
-        // ListEmptyComponent) so the RefreshControl is present and pull-to-retry
-        // works — a bare EmptyState isn't scrollable, so there was nothing to
-        // pull (#209).
-        <ReleaseFlatList
-          data={filtered}
-          totalCount={data?.length ?? 0}
-          onSelect={handleSelect}
-          isFetching={isFetching && !!data}
-          onRefresh={handleRefresh}
-          onClearFilters={handleClearFilters}
-        />
-      )}
+        }
+        banner={
+          // Auto-flip notice. Only when the flip actually made rows visible —
+          // if a custom filter still hides everything, "showing them so you can
+          // review" would be false and the "No releases match filters" empty
+          // state is the accurate message (#331).
+          autoFlippedRejected && filtered.length > 0 ? (
+            <View className="bg-amber-950/60 border border-amber-900/60 rounded-xl px-3 py-2 mb-3 flex-row items-center justify-between">
+              <Text className="text-amber-100 text-xs flex-1 leading-4">
+                All releases were rejected — showing them so you can review.
+              </Text>
+              <Pressable
+                onPress={() => setAutoFlippedRejected(false)}
+                hitSlop={8}
+                className="ml-2"
+              >
+                <Icon icon={X} size={14} color="#fde68a" />
+              </Pressable>
+            </View>
+          ) : null
+        }
+      />
 
       <FilterSortSheet
         visible={filterSortOpen}
@@ -584,9 +358,7 @@ export function ReleasesPicker({
       />
 
       <ReleaseDetailSheet
-        release={
-          flow.isOpen("detail") ? (flow.payload("detail") ?? null) : null
-        }
+        release={flow.isOpen("detail") ? (flow.payload("detail") ?? null) : null}
         service={service}
         instanceId={instanceId}
         onClose={flow.close}

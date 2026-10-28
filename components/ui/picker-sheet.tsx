@@ -11,18 +11,20 @@ import { useModalClosed } from "@/hooks/use-modal-closed";
 import { lightHaptic } from "@/lib/haptics";
 import { useThemeColor } from "@/hooks/use-theme-color";
 
-export interface PickerOption {
-  value: number;
+// Values are ids (numbers) for library pickers, codes (strings) for things
+// like subtitle languages. Defaults to number so existing callers read as-is.
+export interface PickerOption<T extends string | number = number> {
+  value: T;
   label: string;
   description?: string;
 }
 
-interface PickerSheetProps {
+interface PickerSheetProps<T extends string | number> {
   visible: boolean;
   title: string;
-  options: PickerOption[];
+  options: PickerOption<T>[];
   /** Values currently ticked. Single-select passes at most one. */
-  selected: readonly number[];
+  selected: readonly T[];
   /** Keeps the sheet open per tap and shows a Done button. */
   multiple?: boolean;
   loading?: boolean;
@@ -30,7 +32,7 @@ interface PickerSheetProps {
   searchable?: boolean;
   emptyTitle?: string;
   emptyMessage?: string;
-  onPick: (value: number) => void;
+  onPick: (value: T) => void;
   onClose: () => void;
   /**
    * Fired once the native `<Modal>` is fully gone. Required whenever picking
@@ -53,7 +55,7 @@ interface PickerSheetProps {
  * It wires `onClosed`, so it is safe to use as a `useModalFlow` step and to
  * chain one picker into the next.
  */
-export function PickerSheet({
+export function PickerSheet<T extends string | number = number>({
   visible,
   title,
   options,
@@ -66,7 +68,7 @@ export function PickerSheet({
   onPick,
   onClose,
   onClosed,
-}: PickerSheetProps) {
+}: PickerSheetProps<T>) {
   const tc = useThemeColor();
   const handleDismiss = useModalClosed(visible, onClosed);
   const listPadding = useSheetBottomPadding(16);

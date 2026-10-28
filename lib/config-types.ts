@@ -94,6 +94,16 @@ export interface ServiceConfig {
   // Absent/undefined means no I/O is shown and no Glances query is made. A
   // stale id (instance deleted) reads as absent.
   diskIoInstanceId?: string;
+  // v61: Bazarr-only — which Radarr / Sonarr instance this Bazarr manages
+  // subtitles for, so the movie and series pages know which Bazarr to ask.
+  //   absent/undefined → automatic: the app reads Bazarr's own Radarr/Sonarr
+  //                      settings and links the instance whose API key matches
+  //                      (an API key identifies one server, unlike a hostname)
+  //   an instance id   → set by the user, wins over detection
+  //   ARR_LINK_OFF     → explicitly not linked; nothing is detected
+  // A stale id (instance deleted) reads as unlinked until changed.
+  linkedRadarrInstanceId?: string;
+  linkedSonarrInstanceId?: string;
   // v53 (#332): Seerr-only sign-in mode. Absent/undefined means the admin
   // API key (the pre-v53 behavior). The three session values ride Seerr's
   // login cookie instead; see lib/seerr-auth.ts for what each one posts and
@@ -101,6 +111,11 @@ export interface ServiceConfig {
   // `undefined` rather than "apiKey" so exports keep the absent shape.
   authMode?: SeerrAuthMode;
 }
+
+// Stored in linkedRadarrInstanceId / linkedSonarrInstanceId to switch the
+// automatic Bazarr → Radarr/Sonarr link off. Instance ids are UUIDs, so this
+// never collides with a real one.
+export const ARR_LINK_OFF = "none";
 
 // A configured service instance: a ServiceConfig plus a stable UUID `id` that
 // keys per-instance secrets, query cache, and per-instance widget bindings.

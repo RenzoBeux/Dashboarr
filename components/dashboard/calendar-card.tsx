@@ -41,6 +41,7 @@ import {
   BAR_KIND_COLOR,
 } from "@/lib/arr-poster-status";
 import type { SonarrCalendarEntry, RadarrMovie } from "@/lib/types";
+import { groupBy } from "@/lib/group-by";
 
 type CalendarItem =
   | {
@@ -166,7 +167,10 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
     });
   }
 
-  const grouped = groupByDate(items);
+  const grouped = groupBy(items, (item) => item.date, {
+    sortKeys: (a, b) => a.localeCompare(b),
+    sortItems: (a, b) => titleOf(a).localeCompare(titleOf(b)),
+  });
 
   const noSources = !showSonarr && !showRadarr;
   const noServicesEnabled = !sonarrEnabled && !radarrEnabled;
@@ -215,7 +219,7 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
         />
       ) : (
         <View className="gap-4">
-          {grouped.map(({ date, entries }) => (
+          {grouped.map(({ key: date, items: entries }) => (
             <View key={date} className="gap-2">
               <Text
                 className={`text-xs font-semibold ${
@@ -278,24 +282,6 @@ function CalendarSkeleton() {
       ))}
     </View>
   );
-}
-
-function groupByDate(
-  items: CalendarItem[],
-): { date: string; entries: CalendarItem[] }[] {
-  const groups = new Map<string, CalendarItem[]>();
-  for (const item of items) {
-    const list = groups.get(item.date);
-    if (list) list.push(item);
-    else groups.set(item.date, [item]);
-  }
-
-  return Array.from(groups.entries())
-    .map(([date, entries]) => ({
-      date,
-      entries: entries.sort((a, b) => titleOf(a).localeCompare(titleOf(b))),
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function titleOf(item: CalendarItem): string {
