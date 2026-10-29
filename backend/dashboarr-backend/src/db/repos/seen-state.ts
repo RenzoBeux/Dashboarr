@@ -8,6 +8,7 @@ import { getDb } from "../client.js";
  *   - `sonarr:<instance>:history:seen`  → JSON-encoded array of imported-history record IDs already announced
  *   - `radarr|sonarr:<instance>:history:grabbed:seen` → same, for "grabbed" history records (#464)
  *   - `overseerr:pending:ids`           → JSON-encoded array of request IDs in pending
+ *   - `cleanuparr:<instance>:events:<EventType>` → `{ ids, newest }` of the last events page seen (#486)
  *   - `health:<serviceId>:online`       → "1" or "0"
  *   - `event:<source>:<type>:<extId>`   → "1" once an event has been dispatched
  *     (grab keys hold the occurrence time instead, see claimEventOccurrence)

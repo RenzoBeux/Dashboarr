@@ -15,6 +15,11 @@ import type { NotificationCategory, QbtMutedCategories } from "../types.js";
 import type { RadarrHistoryRecord } from "../services/radarr.js";
 import type { SonarrHistoryRecord } from "../services/sonarr.js";
 import type { OverseerrRequest } from "../services/overseerr.js";
+import type {
+  CleanuparrEventItem,
+  CleanuparrWatchedEventType,
+} from "../services/cleanuparr.js";
+import { planCleanuparrPushes, type CleanuparrSnapshot } from "./cleanuparr-events.js";
 
 /**
  * State-transition logic ported from
@@ -557,6 +562,35 @@ export async function diffOverseerrPending(
         dedupeKey: `overseerr:${instanceId}:new:${req.id}`,
       });
     }
+  }
+}
+
+// ---------------- Cleanuparr ----------------
+
+// Diffs the newest page of one Cleanuparr event type (#486). The planner in
+// cleanuparr-events.ts picks the fresh events and builds the copy. The poller
+// keeps running while the category is off (the dispatcher gates it), so the
+// baseline never goes stale and turning it on later doesn't push a backlog.
+export async function diffCleanuparrEvents(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  eventType: CleanuparrWatchedEventType,
+  items: CleanuparrEventItem[],
+): Promise<void> {
+  const key = `cleanuparr:${instanceId}:events:${eventType}`;
+  const prev = getState<CleanuparrSnapshot>(key);
+  const plan = planCleanuparrPushes(prev, items, {
+    instanceId,
+    instanceName,
+    multipleOfKind,
+    eventType,
+  });
+
+  // Persist first, dispatch after.
+  setState(key, plan.next);
+  for (const event of plan.pushes) {
+    await dispatchPush(event);
   }
 }
 

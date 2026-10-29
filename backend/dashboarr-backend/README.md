@@ -446,6 +446,7 @@ trust-score + stream events off) and the per-instance toggles have no effect.
 | **Bazarr** | ✅ (logged) | — | Payload is unstructured; no default category yet |
 | **Tautulli** | ✅ (logged) | — | User-scripted payloads; no default category yet |
 | **Tracearr** | ✅ | — | "JSON Webhook" agent → per-event categories: violation / new device / trust score / server down / server up (on by default) and stream started / stopped (off by default). Toggles are per-instance only — use `?instance=<uuid>`. Path-secret URL only (Tracearr can't send a custom header) |
+| **Cleanuparr** | ❌ | ✅ 60s | Polls `GET /api/events` for `QueueItemDeleted` ("Download removed", on by default) and `DownloadCleaned` ("Download cleaned", off by default): release name plus the delete or clean reason. Dry-run events never push, the first poll only seeds the baseline, and more than 3 new events in one poll become a single summary push. Toggles are per-instance only, in each Cleanuparr instance editor |
 | **Prowlarr** | ❌ | ✅ 5m | Currently advisory — no user-facing category yet |
 | **Glances** | ❌ | ✅ 30s | Health-only; threshold alerts TBD |
 | **Plex** | ❌ | — | Nothing polled; reserved |

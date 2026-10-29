@@ -130,6 +130,11 @@ export const notifCategoryEnum = z.enum([
   "tracearrServerUp",
   "tracearrStreamStarted",
   "tracearrStreamStopped",
+  // Cleanuparr events poller (#486): QueueItemDeleted (a QueueCleaner or
+  // MalwareBlocker removal) and DownloadCleaned (a seeding rule cleanup).
+  // Surfaced per-instance only, like the Tracearr ones.
+  "cleanuparrRemoved",
+  "cleanuparrCleaned",
 ]);
 
 export type NotifCategory = z.infer<typeof notifCategoryEnum>;
@@ -221,6 +226,10 @@ export const notificationSettingsSchema = z.object({
   tracearrServerUp: z.boolean().default(true),
   tracearrStreamStarted: z.boolean().default(false),
   tracearrStreamStopped: z.boolean().default(false),
+  // Cleanuparr: removals are what users ask for; seeding cleanups are routine
+  // housekeeping, so they are opt-in.
+  cleanuparrRemoved: z.boolean().default(true),
+  cleanuparrCleaned: z.boolean().default(false),
   perInstance: perInstanceOverridesSchema,
   apprise: appriseConfigSchema,
   qbtMutedCategories: qbtMutedCategoriesSchema,
@@ -246,6 +255,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   tracearrServerUp: true,
   tracearrStreamStarted: false,
   tracearrStreamStopped: false,
+  cleanuparrRemoved: true,
+  cleanuparrCleaned: false,
 };
 
 const KNOWN_SERVICE_IDS = new Set<string>(SERVICE_IDS);
@@ -505,7 +516,9 @@ export type NotificationCategory =
   | "tracearrServerDown"
   | "tracearrServerUp"
   | "tracearrStreamStarted"
-  | "tracearrStreamStopped";
+  | "tracearrStreamStopped"
+  | "cleanuparrRemoved"
+  | "cleanuparrCleaned";
 
 export interface PushEvent {
   category: NotificationCategory;

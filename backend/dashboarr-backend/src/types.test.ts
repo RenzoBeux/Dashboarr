@@ -207,3 +207,26 @@ test("perInstance stays optional", () => {
   if (!result.success) return;
   assert.equal(result.data.perInstance, undefined);
 });
+
+// Cleanuparr categories (#486). An older app never sends the keys, so they
+// must fall back to the same defaults the app uses: removals on, cleanups off.
+
+test("cleanuparrRemoved defaults on and cleanuparrCleaned off when absent", () => {
+  const { cleanuparrRemoved: _r, cleanuparrCleaned: _c, ...older } = DEFAULT_NOTIFICATION_SETTINGS;
+  const result = notificationSettingsSchema.safeParse(older);
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.cleanuparrRemoved, true);
+  assert.equal(result.data.cleanuparrCleaned, false);
+});
+
+test("perInstance accepts the Cleanuparr categories", () => {
+  const perInstance = { "uuid-c": { cleanuparrRemoved: false, cleanuparrCleaned: true } };
+  const result = configPayloadSchema.safeParse({
+    instances: [],
+    notifications: { ...DEFAULT_NOTIFICATION_SETTINGS, perInstance },
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.data.notifications.perInstance, perInstance);
+});

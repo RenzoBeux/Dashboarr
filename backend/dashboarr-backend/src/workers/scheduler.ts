@@ -13,6 +13,7 @@ import { pollSonarr } from "./pollers/sonarr.js";
 import { pollOverseerr } from "./pollers/overseerr.js";
 import { pollProwlarr } from "./pollers/prowlarr.js";
 import { pollGlances } from "./pollers/glances.js";
+import { pollCleanuparr } from "./pollers/cleanuparr.js";
 import { pollServiceHealth } from "./pollers/service-health.js";
 import { skipsPollerWithoutApiKey } from "./poller-eligibility.js";
 
@@ -43,6 +44,9 @@ const POLLERS: PollerDef[] = [
   { kind: "overseerr", defaultIntervalMs: 60_000, run: pollOverseerr },
   { kind: "prowlarr", defaultIntervalMs: 300_000, run: pollProwlarr },
   { kind: "glances", defaultIntervalMs: 30_000, run: pollGlances },
+  // Two cheap filtered GETs of the events feed per tick (removals, cleanups).
+  // Cleanuparr's jobs run on multi-minute schedules, so a minute is plenty.
+  { kind: "cleanuparr", defaultIntervalMs: 60_000, run: pollCleanuparr },
 ];
 
 const POLLER_BY_KIND = new Map<ServiceId, PollerDef>(POLLERS.map((p) => [p.kind, p]));
