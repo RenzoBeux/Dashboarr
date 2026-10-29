@@ -59,6 +59,8 @@ import {
   lidarrArtistIsMissing,
   lidarrAlbumBarKind,
   lidarrAlbumIsMissing,
+  queueActivityMap,
+  queueTimeCaption,
 } from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum, LidarrQueueItem } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
@@ -454,13 +456,9 @@ function ArtistLibrary({
   const { data: tags } = useLidarrTags();
   const router = useRouter();
 
-  const downloading = useMemo(
-    () =>
-      new Set(
-        (queue?.records ?? [])
-          .map((r) => r.artistId)
-          .filter((x): x is number => typeof x === "number"),
-      ),
+  // Absent = not queued; "held" = only delay-profile holds, drawn dashed (#484).
+  const activity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.artistId),
     [queue],
   );
 
@@ -490,9 +488,10 @@ function ArtistLibrary({
       }}
       renderTags={renderTags}
       posterStatus={(a) => ({
-        barColor: BAR_KIND_COLOR[lidarrArtistBarKind(a, downloading.has(a.id))],
+        barColor: BAR_KIND_COLOR[lidarrArtistBarKind(a, activity.has(a.id))],
         cornerColor: cornerColorFor(a.status),
         progress: lidarrArtistBarProgress(a),
+        held: activity.get(a.id) === "held",
       })}
       onItemPress={(a) => router.push(`/artist/${a.id}`)}
       onItemLongPress={onLongPress}
@@ -517,27 +516,32 @@ function AlbumQueue() {
 
   return (
     <View className="gap-2">
-      {queue.records.map((item: LidarrQueueItem) => (
-        <Card
-          key={item.id}
-          onPress={() => item.albumId && router.push(`/album/${item.albumId}`)}
-        >
-          <View className="flex-row items-center justify-between">
-            <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
-              {item.album?.title || item.title}
-            </Text>
-            <Badge label={item.quality.quality.name} />
-          </View>
-          {item.artist?.artistName ? (
-            <Text className="text-zinc-500 text-xs mt-1" numberOfLines={1}>
-              {item.artist.artistName}
-            </Text>
-          ) : null}
-          {item.timeleft && (
-            <Text className="text-zinc-500 text-xs mt-1">ETA {item.timeleft}</Text>
-          )}
-        </Card>
-      ))}
+      {queue.records.map((item: LidarrQueueItem) => {
+        // "ETA ..." for a real download, "Delayed ..." for a release Lidarr is
+        // still holding (delay profile, #484).
+        const caption = queueTimeCaption(item);
+        return (
+          <Card
+            key={item.id}
+            onPress={() => item.albumId && router.push(`/album/${item.albumId}`)}
+          >
+            <View className="flex-row items-center justify-between">
+              <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>
+                {item.album?.title || item.title}
+              </Text>
+              <Badge label={item.quality.quality.name} />
+            </View>
+            {item.artist?.artistName ? (
+              <Text className="text-zinc-500 text-xs mt-1" numberOfLines={1}>
+                {item.artist.artistName}
+              </Text>
+            ) : null}
+            {caption ? (
+              <Text className="text-zinc-500 text-xs mt-1">{caption}</Text>
+            ) : null}
+          </Card>
+        );
+      })}
     </View>
   );
 }
@@ -559,13 +563,9 @@ function AlbumWanted({
   const { data: queue } = useLidarrQueue();
   const router = useRouter();
 
-  const downloading = useMemo(
-    () =>
-      new Set(
-        (queue?.records ?? [])
-          .map((r) => r.albumId)
-          .filter((x): x is number => typeof x === "number"),
-      ),
+  // Absent = not queued; "held" = only delay-profile holds, drawn dashed (#484).
+  const activity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.albumId),
     [queue],
   );
 
@@ -598,8 +598,9 @@ function AlbumWanted({
       nounPlural="missing albums"
       renderFooter={(album) => albumYear(album)}
       posterStatus={(album) => ({
-        barColor: BAR_KIND_COLOR[lidarrAlbumBarKind(album, downloading.has(album.id))],
+        barColor: BAR_KIND_COLOR[lidarrAlbumBarKind(album, activity.has(album.id))],
         cornerColor: null,
+        held: activity.get(album.id) === "held",
       })}
       onItemPress={(album) => router.push(`/album/${album.id}`)}
       onItemLongPress={onLongPress}

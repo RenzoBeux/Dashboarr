@@ -7,6 +7,7 @@ import {
 import type { RadarrQueue, RadarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
 import { fetchRadarrQueue } from "@/lib/arr-queue-query";
+import { isHeldQueueRecord, queueEtaLabel } from "@/lib/arr-poster-status";
 import {
   queueImportBlocked,
   queueIssueMessages,
@@ -38,9 +39,10 @@ export const radarrArrQueueAdapter: ArrQueueAdapter = {
         id: item.id,
         posterUrl: getRadarrPoster(item.movie?.images),
         title: item.movie?.title || item.title,
-        subtitle: item.timeleft ? `ETA ${item.timeleft}` : undefined,
+        subtitle: queueEtaLabel(item),
         qualityLabel: item.quality.quality.name,
         progress: item.size > 0 ? (item.size - item.sizeleft) / item.size : 0,
+        held: isHeldQueueRecord(item),
         detailPath: movieId
           ? `/movie/${movieId}?instanceId=${instanceId}`
           : null,

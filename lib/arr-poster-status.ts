@@ -80,6 +80,91 @@ export const DOWNLOAD_INDICATOR_COLOR: Record<DownloadIndicator, string> = {
   pending: "#52525b", // zinc-600 — the long-standing "no file yet" neutral
 };
 
+/**
+ * Queue records the *arr is still holding itself (issue #484): a delay profile
+ * is waiting out its window, or the download client was unreachable when the
+ * grab was due. Sonarr/Radarr/Lidarr's GET /queue appends these pending
+ * releases to the tracked downloads (QueueController: `Concat(pending)`), so
+ * they look like any other record except for `status`, which comes from the
+ * QueueStatus enum serialized camelCase ("delay", "downloadClientUnavailable").
+ * They carry no trackedDownload* fields and `sizeleft === size`. Upstream's own
+ * queue and calendar group both under a clock "Pending" icon. Lidarr still
+ * emits the status as a lowercased-first-char string, hence the
+ * case-insensitive compare. Fallback releases never reach the queue.
+ *
+ * Named "held", not "pending": DownloadIndicator's `pending` above already means
+ * "no file and not queued", and the dashboard has a "Still Pending" card.
+ *
+ * A held item keeps the purple bar kind (upstream's posters paint every queue
+ * entry purple too); surfaces draw that purple dashed instead of solid, and it
+ * goes solid once the download client has the release. Queued or paused items
+ * inside the download client are real downloads and stay solid.
+ */
+const HELD_QUEUE_STATUSES = new Set(["delay", "downloadclientunavailable"]);
+
+/** User-facing word for a held record, on badges, Progress blocks and queue rows. */
+export const HELD_QUEUE_LABEL = "Delayed";
+
+export type QueueActivity = "active" | "held";
+
+export function isHeldQueueRecord(record: { status?: string | null }): boolean {
+  return HELD_QUEUE_STATUSES.has((record.status ?? "").toLowerCase());
+}
+
+/**
+ * Collapses queue records onto the item they belong to (an episode, movie,
+ * series, album...). A key is `held` only when every record for it is held: one
+ * record actually downloading makes the whole item `active`, whatever the
+ * record order. Absent keys are not in the queue at all, so `map.has(id)` is
+ * the old "is downloading" test. Records whose key is null/undefined are
+ * skipped (Lidarr can omit albumId/artistId).
+ */
+export function queueActivityMap<R extends { status?: string | null }, K>(
+  records: readonly R[] | null | undefined,
+  keyOf: (record: R) => K | null | undefined,
+): Map<K, QueueActivity> {
+  const map = new Map<K, QueueActivity>();
+  for (const record of records ?? []) {
+    const key = keyOf(record);
+    if (key == null) continue;
+    if (map.get(key) === "active") continue;
+    map.set(key, isHeldQueueRecord(record) ? "held" : "active");
+  }
+  return map;
+}
+
+interface QueueTimingRecord {
+  status?: string | null;
+  timeleft?: string | null;
+}
+
+/**
+ * Short time label for a narrow queue tile: "ETA 1:02:03" for a real download.
+ * A held record's `timeleft` counts down to when the *arr hands the release to
+ * the client, not to a finished download, so it is no ETA: just "Delayed".
+ */
+export function queueEtaLabel(record: QueueTimingRecord): string | undefined {
+  if (isHeldQueueRecord(record)) return HELD_QUEUE_LABEL;
+  return record.timeleft ? `ETA ${record.timeleft}` : undefined;
+}
+
+/**
+ * Time caption under a full-width queue row. Like queueEtaLabel, but a held
+ * record says when or why, after upstream's own queue: "Delaying download
+ * until..." for a delay, "Pending - Download client is unavailable" for the
+ * other hold.
+ */
+export function queueTimeCaption(record: QueueTimingRecord): string | undefined {
+  const status = (record.status ?? "").toLowerCase();
+  if (status === "downloadclientunavailable") {
+    return `${HELD_QUEUE_LABEL} · download client unavailable`;
+  }
+  if (status === "delay" && record.timeleft) {
+    return `${HELD_QUEUE_LABEL} · starts in ${record.timeleft}`;
+  }
+  return queueEtaLabel(record);
+}
+
 const CORNER_ENDED = "#ef4444"; // danger
 const CORNER_DELETED = "#71717a"; // gray
 

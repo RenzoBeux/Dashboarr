@@ -16,6 +16,13 @@ import {
   lidarrArtistIsMissing,
   lidarrArtistTrackCounts,
 } from "@/lib/arr-poster-status";
+import {
+  HELD_QUEUE_LABEL,
+  isHeldQueueRecord,
+  queueActivityMap,
+  queueEtaLabel,
+  queueTimeCaption,
+} from "@/lib/arr-poster-status";
 import type {
   RadarrMovie,
   SonarrSeries,
@@ -419,5 +426,105 @@ describe("lidarrArtistBarProgress", () => {
   it("nothing wanted and nothing on disk reads as complete", () => {
     const a = artist({ trackFileCount: 0, trackCount: 0, totalTrackCount: 120 });
     expect(lidarrArtistBarProgress(a)).toBe(100);
+  });
+});
+
+// Issue #484: a release the *arr is still holding (delay profile / download
+// client unavailable) is appended to /queue like any download, and only its
+// `status` tells it apart.
+describe("isHeldQueueRecord", () => {
+  it("matches the two pending-release statuses, case-insensitively", () => {
+    expect(isHeldQueueRecord({ status: "delay" })).toBe(true);
+    expect(isHeldQueueRecord({ status: "Delay" })).toBe(true);
+    expect(isHeldQueueRecord({ status: "downloadClientUnavailable" })).toBe(true);
+    expect(isHeldQueueRecord({ status: "DownloadClientUnavailable" })).toBe(true);
+  });
+
+  it("leaves everything the download client already has alone", () => {
+    // Queued/paused in the client are real downloads: they stay solid.
+    for (const status of ["downloading", "queued", "paused", "completed", "warning", "failed"]) {
+      expect(isHeldQueueRecord({ status })).toBe(false);
+    }
+  });
+
+  it("treats a missing status as not held", () => {
+    expect(isHeldQueueRecord({})).toBe(false);
+    expect(isHeldQueueRecord({ status: null })).toBe(false);
+  });
+});
+
+describe("queueActivityMap", () => {
+  const delay = (id: number | undefined) => ({ id, status: "delay" });
+  const live = (id: number | undefined) => ({ id, status: "downloading" });
+
+  it("marks an item held when its only record is held", () => {
+    const map = queueActivityMap([delay(1), live(2)], (r) => r.id);
+    expect(map.get(1)).toBe("held");
+    expect(map.get(2)).toBe("active");
+    expect(map.has(3)).toBe(false);
+  });
+
+  it("an active record wins over a held one, in either order", () => {
+    expect(queueActivityMap([delay(1), live(1)], (r) => r.id).get(1)).toBe("active");
+    expect(queueActivityMap([live(1), delay(1)], (r) => r.id).get(1)).toBe("active");
+  });
+
+  it("stays held when every record for the item is held", () => {
+    const map = queueActivityMap(
+      [delay(1), { id: 1, status: "downloadClientUnavailable" }],
+      (r) => r.id,
+    );
+    expect(map.get(1)).toBe("held");
+  });
+
+  it("skips records without a key", () => {
+    const map = queueActivityMap([live(undefined), delay(1)], (r) => r.id);
+    expect([...map.keys()]).toEqual([1]);
+  });
+
+  it("handles a missing or empty queue", () => {
+    expect(queueActivityMap(undefined, () => 1).size).toBe(0);
+    expect(queueActivityMap([], () => 1).size).toBe(0);
+  });
+});
+
+describe("queueEtaLabel", () => {
+  it("is the ETA for a real download", () => {
+    expect(queueEtaLabel({ status: "downloading", timeleft: "01:02:03" })).toBe(
+      "ETA 01:02:03",
+    );
+    expect(queueEtaLabel({ status: "queued" })).toBeUndefined();
+  });
+
+  it("is never an ETA for a held release", () => {
+    // Its timeleft counts down to the grab, not to a finished download.
+    expect(queueEtaLabel({ status: "delay", timeleft: "00:42:00" })).toBe(
+      HELD_QUEUE_LABEL,
+    );
+    expect(queueEtaLabel({ status: "downloadClientUnavailable" })).toBe(
+      HELD_QUEUE_LABEL,
+    );
+  });
+});
+
+describe("queueTimeCaption", () => {
+  it("says when a delay ends", () => {
+    expect(queueTimeCaption({ status: "delay", timeleft: "00:42:00" })).toBe(
+      "Delayed · starts in 00:42:00",
+    );
+    expect(queueTimeCaption({ status: "delay" })).toBe("Delayed");
+  });
+
+  it("names the cause of a client-unavailable hold", () => {
+    expect(
+      queueTimeCaption({ status: "downloadClientUnavailable", timeleft: "00:05:00" }),
+    ).toBe("Delayed · download client unavailable");
+  });
+
+  it("falls back to the ETA for a real download", () => {
+    expect(queueTimeCaption({ status: "downloading", timeleft: "00:10:00" })).toBe(
+      "ETA 00:10:00",
+    );
+    expect(queueTimeCaption({ status: "downloading" })).toBeUndefined();
   });
 });

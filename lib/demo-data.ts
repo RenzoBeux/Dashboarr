@@ -486,7 +486,7 @@ const DEMO_RADARR_MOVIES = [
 const DEMO_RADARR_QUEUE = {
   page: 1,
   pageSize: 100,
-  totalRecords: 3,
+  totalRecords: 4,
   records: [
     {
       id: 101,
@@ -548,6 +548,23 @@ const DEMO_RADARR_QUEUE = {
       downloadId: "DEMO-FURIOSA-2160P",
       quality: { quality: { name: "Bluray-2160p" } },
       movie: makeMovie(11, "Furiosa: A Mad Max Saga", 2024, 786892, false),
+    },
+    // Held by a delay profile (#484): Radarr's own pending release, which
+    // /queue appends with status "delay", no trackedDownload* fields, no
+    // downloadId and nothing downloaded. Its timeleft counts down to the grab.
+    // Drives the dashed purple on the calendar rows, Queue tab and widget.
+    {
+      id: 104,
+      movieId: 10,
+      title: "Twisters.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP",
+      status: "delay",
+      size: 7516192768,
+      sizeleft: 7516192768,
+      timeleft: "00:42:00",
+      estimatedCompletionTime: daysFromNowFull(0.03),
+      protocol: "usenet",
+      quality: { quality: { name: "WEBDL-1080p" } },
+      movie: makeMovie(10, "Twisters", 2024, 1019237, false),
     },
   ],
 };
@@ -750,7 +767,7 @@ const DEMO_SONARR_CALENDAR = [
 const DEMO_SONARR_QUEUE = {
   page: 1,
   pageSize: 100,
-  totalRecords: 2,
+  totalRecords: 3,
   records: [
     {
       id: 301,
@@ -794,6 +811,23 @@ const DEMO_SONARR_QUEUE = {
       downloadId: "DEMO-FALLOUT-S01E07",
       quality: { quality: { name: "WEBDL-1080p" } },
       series: demoSeries(3),
+    },
+    // Held by a delay profile (#484), the same shape as the Radarr one: the
+    // episode that aired today (S02E07, see makeEpisodes) waits out its delay,
+    // so the TV grid, series screen and widget draw it dashed.
+    {
+      id: 303,
+      seriesId: 1,
+      episodeId: 1207,
+      title: "House.of.the.Dragon.S02E07.1080p.WEB.H264-GROUP",
+      status: "delay",
+      size: 3221225472,
+      sizeleft: 3221225472,
+      timeleft: "00:18:00",
+      estimatedCompletionTime: daysFromNowFull(0.0125),
+      protocol: "usenet",
+      quality: { quality: { name: "WEBDL-1080p" } },
+      series: demoSeries(1),
     },
   ],
 };

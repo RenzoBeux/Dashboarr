@@ -14,6 +14,7 @@ import { Icon } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusFill } from "@/components/ui/status-fill";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { usePosterCellLayout } from "@/hooks/use-poster-cell";
 import { useUiScale, BASE_REM } from "@/hooks/use-ui-scale";
@@ -32,6 +33,11 @@ export interface PosterStatus {
    * `barColor` fill sized to the percentage, like the *arr index posters.
    */
   progress?: number;
+  /**
+   * Draw the `barColor` fill dashed: every queue record for this item is one
+   * the *arr is still holding (delay profile / client unavailable, #484).
+   */
+  held?: boolean;
 }
 
 export type MonitorFilter = "monitored" | "unmonitored" | "missing" | "all";
@@ -294,10 +300,11 @@ function LibraryPoster<T extends MonitoredItem>({
             className="absolute bottom-0 left-0 right-0 h-1.5"
             style={{ backgroundColor: BAR_TRACK_COLOR }}
           >
-            <View
+            <StatusFill
               className="absolute left-0 top-0 bottom-0"
+              color={status.barColor}
+              held={status.held}
               style={{
-                backgroundColor: status.barColor,
                 width: `${Math.max(0, Math.min(100, status.progress ?? 100))}%`,
               }}
             />

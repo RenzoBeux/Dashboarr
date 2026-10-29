@@ -106,7 +106,8 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
   // Download queues per instance, so a release already grabbing reads purple —
   // same indicator as the poster grid, detail screens and Calendar tab (#207).
   // Shares the ["sonarr"/"radarr", id, "queue"] cache the rest of the app polls.
-  const queuedKeys = useArrDownloadingKeys(
+  // `heldKeys`: the ones the *arr is still holding, drawn dashed (#484).
+  const { queued: queuedKeys, held: heldKeys } = useArrDownloadingKeys(
     showSonarr ? sonarrInstances : NO_INSTANCES,
     showRadarr ? radarrInstances : NO_INSTANCES,
   );
@@ -233,6 +234,9 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
                       downloading={downloadingKeys.has(
                         `${item.instanceId}:${item.entry.id}`,
                       )}
+                      held={heldKeys.has(
+                        `${item.instanceId}:${item.entry.id}`,
+                      )}
                       onPress={() =>
                         router.push(
                           `/series/${item.entry.seriesId}?instanceId=${item.instanceId}`,
@@ -244,6 +248,9 @@ export function CalendarCard({ slotId }: WidgetComponentProps) {
                       key={`mv-${item.instanceId}-${item.movie.id}`}
                       movie={item.movie}
                       downloading={downloadingKeys.has(
+                        `${item.instanceId}:${item.movie.id}`,
+                      )}
+                      held={heldKeys.has(
                         `${item.instanceId}:${item.movie.id}`,
                       )}
                       onPress={() =>
@@ -305,10 +312,12 @@ function titleOf(item: CalendarItem): string {
 function EpisodeRow({
   entry,
   downloading,
+  held,
   onPress,
 }: {
   entry: SonarrCalendarEntry;
   downloading: boolean;
+  held: boolean;
   onPress: () => void;
 }) {
   const badge = isSeasonPremiere(entry) ? PREMIERE_BADGE : undefined;
@@ -321,6 +330,7 @@ function EpisodeRow({
       badge={badge}
       hasFile={entry.hasFile}
       downloading={downloading}
+      held={held}
       barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
       onPress={onPress}
     />
@@ -330,10 +340,12 @@ function EpisodeRow({
 function MovieRow({
   movie,
   downloading,
+  held,
   onPress,
 }: {
   movie: RadarrMovie;
   downloading: boolean;
+  held: boolean;
   onPress: () => void;
 }) {
   return (
@@ -344,6 +356,7 @@ function MovieRow({
       subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
       hasFile={movie.hasFile}
       downloading={downloading}
+      held={held}
       barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
       onPress={onPress}
     />

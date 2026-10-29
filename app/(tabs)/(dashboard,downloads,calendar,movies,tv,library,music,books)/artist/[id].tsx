@@ -30,6 +30,7 @@ import { ExpandableText } from "@/components/common/expandable-text";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { StatusFill } from "@/components/ui/status-fill";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
@@ -50,7 +51,12 @@ import { useServiceImage } from "@/hooks/use-service-image";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import { getLidarrAlbumCover } from "@/services/lidarr-api";
 import { formatBytes } from "@/lib/utils";
-import { BAR_KIND_COLOR, lidarrArtistTrackCounts } from "@/lib/arr-poster-status";
+import {
+  BAR_KIND_COLOR,
+  HELD_QUEUE_LABEL,
+  lidarrArtistTrackCounts,
+  queueActivityMap,
+} from "@/lib/arr-poster-status";
 import type { LidarrArtist, LidarrAlbum } from "@/lib/types";
 
 type DeleteMode = "keep" | "withFiles";
@@ -164,16 +170,11 @@ export default function ArtistDetailScreen() {
 
   // Albums of this artist currently grabbing → purple, mirroring the series
   // screen and the poster grid (issue #207). Lidarr queues per album/release;
-  // the queue is global, so the per-album set (ids are unique) drives the album
-  // rows while the artist-level flag filters by artistId.
-  const downloadingAlbumIds = new Set(
-    (queue?.records ?? [])
-      .map((r) => r.albumId)
-      .filter((aId): aId is number => aId != null),
-  );
-  const artistDownloading = (queue?.records ?? []).some(
-    (r) => r.artistId === artist.id,
-  );
+  // the queue is global, so the per-album map (ids are unique) drives the album
+  // rows while the artist-level state keys by artistId. "held" (only
+  // delay-profile holds, nothing downloading yet) draws dashed (#484).
+  const albumActivity = queueActivityMap(queue?.records, (r) => r.albumId);
+  const artistActivity = queueActivityMap(queue?.records, (r) => r.artistId);
 
   return (
     <>
@@ -201,7 +202,8 @@ export default function ArtistDetailScreen() {
 
           <TrackProgressBlock
             artist={artist}
-            downloading={artistDownloading}
+            downloading={artistActivity.has(artist.id)}
+            held={artistActivity.get(artist.id) === "held"}
           />
 
           <AboutBlock
@@ -246,7 +248,8 @@ export default function ArtistDetailScreen() {
                     key={album.id}
                     album={album}
                     instanceId={instanceId}
-                    downloading={downloadingAlbumIds.has(album.id)}
+                    downloading={albumActivity.has(album.id)}
+                    held={albumActivity.get(album.id) === "held"}
                   />
                 ))}
             </View>
@@ -421,9 +424,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function TrackProgressBlock({
   artist,
   downloading,
+  held,
 }: {
   artist: LidarrArtist;
   downloading: boolean;
+  held: boolean;
 }) {
   // Wanted tracks only: an unmonitored album must not read as missing (#383).
   const { have, total } = lidarrArtistTrackCounts(artist);
@@ -442,7 +447,12 @@ function TrackProgressBlock({
     <View className="mb-5">
       <SectionLabel>Progress</SectionLabel>
       <View className="rounded-2xl bg-surface border border-border overflow-hidden flex-row">
-        <View className="w-1" style={{ backgroundColor: accent }} />
+        <StatusFill
+          className="w-1"
+          color={accent}
+          held={downloading && held}
+          vertical
+        />
         <View className="flex-1 p-4">
           <View className="flex-row items-end justify-between mb-2.5">
             <Text className="text-zinc-100 text-2xl font-bold">
@@ -456,7 +466,11 @@ function TrackProgressBlock({
               {Math.round(ratio * 100)}%
             </Text>
           </View>
-          <ProgressBar progress={ratio} fillColor={accent} />
+          <ProgressBar
+            progress={ratio}
+            fillColor={accent}
+            held={downloading && held}
+          />
           <Text
             className="text-xs mt-2.5"
             style={{
@@ -464,7 +478,9 @@ function TrackProgressBlock({
             }}
           >
             {downloading
-              ? "Downloading…"
+              ? held
+                ? `${HELD_QUEUE_LABEL}, not downloading yet`
+                : "Downloading…"
               : allDownloaded
                 ? "All tracks downloaded"
                 : `${missing} track${missing !== 1 ? "s" : ""} missing`}
@@ -539,10 +555,12 @@ function AlbumRow({
   album,
   instanceId,
   downloading,
+  held,
 }: {
   album: LidarrAlbum;
   instanceId?: string;
   downloading: boolean;
+  held: boolean;
 }) {
   const router = useRouter();
   const toggleAlbum = useToggleAlbumMonitored(instanceId);
@@ -591,6 +609,7 @@ function AlbumRow({
             <ProgressBar
               progress={ratio}
               fillColor={downloading ? BAR_KIND_COLOR.purple : undefined}
+              held={held}
               className="mt-1.5"
             />
           ) : null}

@@ -14,6 +14,7 @@ import {
 import { MediaStatsStrip } from "@/components/common/media-stats-strip";
 import { ExpandableText } from "@/components/common/expandable-text";
 import { Badge } from "@/components/ui/badge";
+import { StatusFill } from "@/components/ui/status-fill";
 import {
   useLidarrAlbum,
   useLidarrTracks,
@@ -27,6 +28,8 @@ import { formatBytes } from "@/lib/utils";
 import {
   downloadIndicator,
   DOWNLOAD_INDICATOR_COLOR,
+  HELD_QUEUE_LABEL,
+  queueActivityMap,
 } from "@/lib/arr-poster-status";
 import type { LidarrAlbum, LidarrTrack } from "@/lib/types";
 
@@ -69,10 +72,11 @@ export default function AlbumDetailScreen() {
   const stats = album.statistics;
   const hasFiles = (stats?.trackFileCount ?? 0) > 0;
   // Lidarr queues a whole album/release, not individual tracks, so a queued
-  // album turns every still-missing track purple (issue #207).
-  const albumDownloading = (queue?.records ?? []).some(
-    (r) => r.albumId === album.id,
-  );
+  // album turns every still-missing track purple (issue #207). "held": Lidarr
+  // is only holding the release (delay profile), drawn dashed (#484).
+  const activity = queueActivityMap(queue?.records, (r) => r.albumId);
+  const albumDownloading = activity.has(album.id);
+  const albumHeld = activity.get(album.id) === "held";
 
   const actions: MediaActionItem[] = [
     {
@@ -122,18 +126,22 @@ export default function AlbumDetailScreen() {
           <>
             <Badge
               label={
-                albumDownloading
-                  ? "Downloading"
-                  : hasFiles
-                    ? "Downloaded"
-                    : "Missing"
+                albumHeld
+                  ? HELD_QUEUE_LABEL
+                  : albumDownloading
+                    ? "Downloading"
+                    : hasFiles
+                      ? "Downloaded"
+                      : "Missing"
               }
               variant={
-                albumDownloading
-                  ? "grabbing"
-                  : hasFiles
-                    ? "success"
-                    : "missing"
+                albumHeld
+                  ? "held"
+                  : albumDownloading
+                    ? "grabbing"
+                    : hasFiles
+                      ? "success"
+                      : "missing"
               }
             />
             {album.albumType ? <Badge label={album.albumType} variant="default" /> : null}
@@ -180,6 +188,7 @@ export default function AlbumDetailScreen() {
                     key={track.id}
                     track={track}
                     albumDownloading={albumDownloading}
+                    albumHeld={albumHeld}
                   />
                 ))}
             </View>
@@ -248,9 +257,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function TrackRow({
   track,
   albumDownloading,
+  albumHeld,
 }: {
   track: LidarrTrack;
   albumDownloading: boolean;
+  albumHeld: boolean;
 }) {
   const duration = formatTrackDuration(track.duration);
   // A downloaded track stays green even while the album re-grabs; only the
@@ -261,9 +272,11 @@ function TrackRow({
   );
   return (
     <View className="flex-row items-center px-4 py-2.5 border-b border-border/30 last:border-b-0">
-      <View
+      <StatusFill
         className="w-1.5 h-6 rounded-full mr-3"
-        style={{ backgroundColor: DOWNLOAD_INDICATOR_COLOR[indicator] }}
+        color={DOWNLOAD_INDICATOR_COLOR[indicator]}
+        held={albumHeld && indicator === "downloading"}
+        vertical
       />
       <Text className="text-zinc-500 text-xs w-6">{track.trackNumber ?? ""}</Text>
       <Text className="text-zinc-200 text-sm flex-1" numberOfLines={1}>

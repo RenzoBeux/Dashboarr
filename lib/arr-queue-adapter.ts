@@ -16,6 +16,11 @@ export interface ArrQueueItem {
   qualityLabel: string;
   // Download progress, 0..1.
   progress: number;
+  // The *arr is still holding this release itself (delay profile / download
+  // client unavailable, #484): it never reached the client, so `progress` is 0
+  // and the tile draws a full dashed strip instead. Unset by Bindery, whose
+  // queue never lists its pending releases.
+  held?: boolean;
   // Detail-screen deep link already carrying `?instanceId=`, or null when the
   // underlying media record id is unavailable (then the tile doesn't navigate).
   detailPath: string | null;

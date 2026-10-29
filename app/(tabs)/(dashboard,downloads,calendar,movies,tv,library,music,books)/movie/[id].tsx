@@ -54,7 +54,12 @@ import { RequestedByBlock } from "@/components/overseerr/requested-by-block";
 import { MediaPosterTile } from "@/components/dashboard/media-poster-tile";
 import { PosterSkeletonRow } from "@/components/dashboard/poster-skeleton-row";
 import { PosterProgressStrip } from "@/components/dashboard/poster-progress-strip";
-import { BAR_KIND_COLOR, radarrBarKind } from "@/lib/arr-poster-status";
+import {
+  BAR_KIND_COLOR,
+  HELD_QUEUE_LABEL,
+  queueActivityMap,
+  radarrBarKind,
+} from "@/lib/arr-poster-status";
 import { getRadarrPoster } from "@/services/radarr-api";
 import {
   imdbTitleUrl,
@@ -145,9 +150,11 @@ export default function MovieDetailScreen() {
 
   // A grab in flight wins over the downloaded/missing badge — mirrors the
   // poster grid's purple bar and Radarr's "downloading" state (issue #207).
-  const isDownloading = (queue?.records ?? []).some(
-    (r) => r.movieId === movie.id,
-  );
+  // "held": Radarr is only holding it (delay profile), nothing downloading yet
+  // (#484).
+  const activity = queueActivityMap(queue?.records, (r) => r.movieId);
+  const isDownloading = activity.has(movie.id);
+  const isHeld = activity.get(movie.id) === "held";
 
   const qualityProfileName = qualityProfiles?.find(
     (p) => p.id === movie.qualityProfileId,
@@ -247,18 +254,22 @@ export default function MovieDetailScreen() {
             <>
               <Badge
                 label={
-                  isDownloading
-                    ? "Downloading"
-                    : movie.hasFile
-                      ? "Downloaded"
-                      : "Missing"
+                  isHeld
+                    ? HELD_QUEUE_LABEL
+                    : isDownloading
+                      ? "Downloading"
+                      : movie.hasFile
+                        ? "Downloaded"
+                        : "Missing"
                 }
                 variant={
-                  isDownloading
-                    ? "grabbing"
-                    : movie.hasFile
-                      ? "success"
-                      : "missing"
+                  isHeld
+                    ? "held"
+                    : isDownloading
+                      ? "grabbing"
+                      : movie.hasFile
+                        ? "success"
+                        : "missing"
                 }
               />
               {movie.certification ? (
@@ -712,8 +723,8 @@ function CollectionBlock({
     () => new Map((library ?? []).map((m) => [m.tmdbId, m])),
     [library],
   );
-  const downloadingIds = useMemo(
-    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+  const activity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.movieId),
     [queue],
   );
 
@@ -768,10 +779,11 @@ function CollectionBlock({
                     color={
                       owned
                         ? BAR_KIND_COLOR[
-                            radarrBarKind(owned, downloadingIds.has(owned.id))
+                            radarrBarKind(owned, activity.has(owned.id))
                           ]
                         : BAR_KIND_COLOR.default
                     }
+                    held={!!owned && activity.get(owned.id) === "held"}
                   />
                 ) : undefined
               }

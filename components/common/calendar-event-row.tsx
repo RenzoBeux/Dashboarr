@@ -1,8 +1,9 @@
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { Tv, Film, Check, Download, type LucideIcon } from "lucide-react-native";
+import { Tv, Film, Check, Clock, Download, type LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
+import { StatusFill } from "@/components/ui/status-fill";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useUiScale } from "@/hooks/use-ui-scale";
@@ -46,6 +47,13 @@ export interface CalendarEventRowProps {
    */
   downloading?: boolean;
   /**
+   * Every queue record for this item is one the *arr is still holding (delay
+   * profile / client unavailable, issue #484): the spine goes dashed and the
+   * badge shows a clock, Sonarr/Radarr's own "Pending" icon. Only read
+   * together with `downloading`.
+   */
+  held?: boolean;
+  /**
    * Explicit left-spine color, so the row matches the poster grid's bar for the
    * same item (red = missing, blue = upcoming, etc. via radarr/sonarr bar kinds
    * — issue #217). When omitted the spine falls back to the green/purple/gray
@@ -79,6 +87,7 @@ export function CalendarEventRow({
   badge,
   hasFile,
   downloading = false,
+  held = false,
   barColor,
   onPress,
   onLongPress,
@@ -104,8 +113,10 @@ export function CalendarEventRow({
   const statusColor = barColor ?? DOWNLOAD_INDICATOR_COLOR[indicator];
   // Trailing badge tracks the SAME color as the spine (a missing item now reads
   // red on both, not red spine + gray badge). Check when downloaded, download
-  // glyph otherwise. `+ "33"` = ~20% alpha (8-digit hex) for the tinted pill.
-  const BadgeIcon = hasFile ? Check : Download;
+  // glyph otherwise, or a clock while the *arr holds the release (#484).
+  // `+ "33"` = ~20% alpha (8-digit hex) for the tinted pill.
+  const isHeld = downloading && held;
+  const BadgeIcon = isHeld ? Clock : hasFile ? Check : Download;
 
   return (
     <Pressable
@@ -135,9 +146,11 @@ export function CalendarEventRow({
       />
 
       {/* Status spine — quick scan cue down the list. */}
-      <View
+      <StatusFill
         className="absolute left-0 top-0 bottom-0 w-1"
-        style={{ backgroundColor: statusColor }}
+        color={statusColor}
+        held={isHeld}
+        vertical
       />
 
       <View className="flex-row items-center h-full pl-3 pr-3 gap-3">

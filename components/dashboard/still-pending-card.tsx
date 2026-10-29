@@ -101,7 +101,8 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
   // Download queues per instance: an overdue item that's already grabbing reads
   // purple instead of the neutral "pending" spine — same indicator as the rest
   // of the app (issue #207). Shares the ["sonarr"/"radarr", id, "queue"] cache.
-  const queuedKeys = useArrDownloadingKeys(
+  // `heldKeys`: the ones the *arr is still holding, drawn dashed (#484).
+  const { queued: queuedKeys, held: heldKeys } = useArrDownloadingKeys(
     showSonarr ? sonarrInstances : NO_INSTANCES,
     showRadarr ? radarrInstances : NO_INSTANCES,
   );
@@ -241,6 +242,9 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
                       downloading={downloadingKeys.has(
                         `${item.instanceId}:${item.entry.id}`,
                       )}
+                      held={heldKeys.has(
+                        `${item.instanceId}:${item.entry.id}`,
+                      )}
                       onPress={() =>
                         router.push(
                           `/series/${item.entry.seriesId}?instanceId=${item.instanceId}`,
@@ -253,6 +257,9 @@ export function StillPendingCard({ slotId }: WidgetComponentProps) {
                       movie={item.movie}
                       instanceId={item.instanceId}
                       downloading={downloadingKeys.has(
+                        `${item.instanceId}:${item.movie.id}`,
+                      )}
+                      held={heldKeys.has(
                         `${item.instanceId}:${item.movie.id}`,
                       )}
                       onPress={() =>
@@ -320,11 +327,13 @@ function PendingEpisodeRow({
   entry,
   instanceId,
   downloading,
+  held,
   onPress,
 }: {
   entry: SonarrEpisode;
   instanceId: string;
   downloading: boolean;
+  held: boolean;
   onPress: () => void;
 }) {
   const router = useRouter();
@@ -358,6 +367,7 @@ function PendingEpisodeRow({
         subtitle={`${formatEpisodeCode(entry.seasonNumber, entry.episodeNumber)} — ${entry.title}`}
         hasFile={false}
         downloading={downloading}
+        held={held}
         barColor={BAR_KIND_COLOR[sonarrEpisodeBarKind(entry, downloading)]}
         onPress={onPress}
         action={{
@@ -380,11 +390,13 @@ function PendingMovieRow({
   movie,
   instanceId,
   downloading,
+  held,
   onPress,
 }: {
   movie: RadarrMovie;
   instanceId: string;
   downloading: boolean;
+  held: boolean;
   onPress: () => void;
 }) {
   const router = useRouter();
@@ -416,6 +428,7 @@ function PendingMovieRow({
         subtitle={movie.year ? `${movie.year} • Movie` : "Movie"}
         hasFile={false}
         downloading={downloading}
+        held={held}
         barColor={BAR_KIND_COLOR[radarrBarKind(movie, downloading)]}
         onPress={onPress}
         action={{

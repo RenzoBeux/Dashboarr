@@ -57,6 +57,9 @@ import {
   radarrBarKind,
   radarrIsMissing,
   DOWNLOAD_INDICATOR_COLOR,
+  isHeldQueueRecord,
+  queueActivityMap,
+  queueTimeCaption,
 } from "@/lib/arr-poster-status";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { radarrReleaseTime } from "@/lib/radarr-release-date";
@@ -487,8 +490,9 @@ function MovieLibrary({
   const { data: tags } = useRadarrTags();
   const router = useRouter();
 
-  const downloading = useMemo(
-    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+  // Absent = not queued; "held" = only delay-profile holds, drawn dashed (#484).
+  const activity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.movieId),
     [queue],
   );
 
@@ -512,8 +516,9 @@ function MovieLibrary({
       renderFooter={movieFooter}
       renderTags={renderTags}
       posterStatus={(m) => ({
-        barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
+        barColor: BAR_KIND_COLOR[radarrBarKind(m, activity.has(m.id))],
         cornerColor: cornerColorFor(m.status),
+        held: activity.get(m.id) === "held",
       })}
       onItemPress={(m) => router.push(`/movie/${m.id}`)}
       onItemLongPress={onLongPress}
@@ -539,9 +544,17 @@ function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => v
   return (
     <View className="gap-2">
       {queue.records.map((item) => {
+        // A release Radarr is still holding (delay profile) never reached the
+        // client, so it has no progress to show: draw the whole bar dashed
+        // instead of an empty track (#484).
+        const held = isHeldQueueRecord(item);
+        const caption = queueTimeCaption(item);
         // Downloaded fraction; queue items carry size + sizeleft.
-        const progress =
-          item.size > 0 ? (item.size - item.sizeleft) / item.size : 0;
+        const progress = held
+          ? 1
+          : item.size > 0
+            ? (item.size - item.sizeleft) / item.size
+            : 0;
         // Colour the bar by tracked status, mirroring Sonarr/Radarr: a stalled
         // grab warns amber, a failed one reads red, everything else is the
         // app's purple "downloading" (issue #207 consistency).
@@ -564,10 +577,15 @@ function MovieQueue({ onLongPress }: { onLongPress: (item: RadarrQueueItem) => v
               </Text>
               <Badge label={item.quality.quality.name} />
             </View>
-            <ProgressBar progress={progress} fillColor={barColor} className="mt-2" />
-            {item.timeleft && (
-              <Text className="text-zinc-500 text-xs mt-1">ETA {item.timeleft}</Text>
-            )}
+            <ProgressBar
+              progress={progress}
+              fillColor={barColor}
+              held={held}
+              className="mt-2"
+            />
+            {caption ? (
+              <Text className="text-zinc-500 text-xs mt-1">{caption}</Text>
+            ) : null}
           </Card>
         );
       })}
@@ -593,8 +611,9 @@ function MovieWanted({
   const { data: tags } = useRadarrTags();
   const router = useRouter();
 
-  const downloading = useMemo(
-    () => new Set((queue?.records ?? []).map((r) => r.movieId)),
+  // Absent = not queued; "held" = only delay-profile holds, drawn dashed (#484).
+  const activity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.movieId),
     [queue],
   );
 
@@ -632,8 +651,9 @@ function MovieWanted({
       renderFooter={movieFooter}
       renderTags={renderTags}
       posterStatus={(m) => ({
-        barColor: BAR_KIND_COLOR[radarrBarKind(m, downloading.has(m.id))],
+        barColor: BAR_KIND_COLOR[radarrBarKind(m, activity.has(m.id))],
         cornerColor: cornerColorFor(m.status),
+        held: activity.get(m.id) === "held",
       })}
       onItemPress={(m) => router.push(`/movie/${m.id}`)}
       onItemLongPress={onLongPress}

@@ -128,9 +128,12 @@ export function ArrQueueCard({ slotId, adapter }: Props) {
                   : undefined
               }
               bottomOverlay={
+                // A held release has nothing downloaded yet (progress 0), so it
+                // gets a full dashed strip rather than an empty one (#484).
                 <PosterProgressStrip
-                  progress={item.progress}
+                  progress={item.held ? 1 : item.progress}
                   color={DOWNLOAD_INDICATOR_COLOR.downloading}
+                  held={item.held}
                 />
               }
               onPress={() => item.detailPath && router.push(item.detailPath)}

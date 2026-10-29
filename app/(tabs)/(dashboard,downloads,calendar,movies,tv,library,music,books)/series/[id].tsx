@@ -36,6 +36,7 @@ import { RequestedByBlock } from "@/components/overseerr/requested-by-block";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { StatusFill } from "@/components/ui/status-fill";
 import {
   ActionSheet,
   type ActionSheetAction,
@@ -76,6 +77,9 @@ import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   sonarrEpisodeBarKind,
   BAR_KIND_COLOR,
+  HELD_QUEUE_LABEL,
+  queueActivityMap,
+  type QueueActivity,
 } from "@/lib/arr-poster-status";
 import type {
   SonarrEpisode,
@@ -129,16 +133,18 @@ export default function SeriesDetailScreen() {
 
   // Episodes currently grabbing/downloading, so the per-episode spine, the
   // season bars and the series Progress block can read purple — mirroring the
-  // poster grid (issue #207). The queue is the shared global query (≤20 records,
-  // same cache the TV list uses); episode ids are unique so the per-episode
-  // lookup is exact, and the series-level flag filters by seriesId.
-  const downloadingEpisodeIds = useMemo(
-    () => new Set((queue?.records ?? []).map((r) => r.episodeId)),
+  // poster grid (issue #207). The queue is the shared global query (first 100
+  // records, same cache the TV list uses); episode ids are unique so the
+  // per-episode lookup is exact, and the series-level state keys by seriesId.
+  // "held" (only delay-profile holds, nothing downloading yet) draws dashed
+  // (#484); absent means not queued.
+  const episodeActivity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.episodeId),
     [queue],
   );
-  const seriesDownloading = useMemo(
-    () => (queue?.records ?? []).some((r) => r.seriesId === Number(id)),
-    [queue, id],
+  const seriesActivity = useMemo(
+    () => queueActivityMap(queue?.records, (r) => r.seriesId),
+    [queue],
   );
 
   const poster = series?.images.find((i) => i.coverType === "poster");
@@ -293,7 +299,8 @@ export default function SeriesDetailScreen() {
 
           <EpisodeProgressBlock
             series={series}
-            downloading={seriesDownloading}
+            downloading={seriesActivity.has(Number(id))}
+            held={seriesActivity.get(Number(id)) === "held"}
           />
 
           <AboutBlock
@@ -362,7 +369,7 @@ export default function SeriesDetailScreen() {
                       (ep) => ep.seasonNumber === season.seasonNumber,
                     )}
                     episodeFileMap={episodeFileMap}
-                    downloadingEpisodeIds={downloadingEpisodeIds}
+                    episodeActivity={episodeActivity}
                   />
                 ))}
             </View>
@@ -560,9 +567,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function EpisodeProgressBlock({
   series,
   downloading,
+  held,
 }: {
   series: SonarrSeries;
   downloading: boolean;
+  held: boolean;
 }) {
   const have = series.episodeFileCount;
   const total = series.totalEpisodeCount;
@@ -583,7 +592,12 @@ function EpisodeProgressBlock({
     <View className="mb-5">
       <SectionLabel>Progress</SectionLabel>
       <View className="rounded-2xl bg-surface border border-border overflow-hidden flex-row">
-        <View className="w-1" style={{ backgroundColor: accent }} />
+        <StatusFill
+          className="w-1"
+          color={accent}
+          held={downloading && held}
+          vertical
+        />
         <View className="flex-1 p-4">
           <View className="flex-row items-end justify-between mb-2.5">
             <Text className="text-zinc-100 text-2xl font-bold">
@@ -600,7 +614,11 @@ function EpisodeProgressBlock({
               {Math.round(ratio * 100)}%
             </Text>
           </View>
-          <ProgressBar progress={ratio} fillColor={accent} />
+          <ProgressBar
+            progress={ratio}
+            fillColor={accent}
+            held={downloading && held}
+          />
           <Text
             className="text-xs mt-2.5"
             style={{
@@ -608,7 +626,9 @@ function EpisodeProgressBlock({
             }}
           >
             {downloading
-              ? "Downloading…"
+              ? held
+                ? `${HELD_QUEUE_LABEL}, not downloading yet`
+                : "Downloading…"
               : allDownloaded
                 ? "All episodes downloaded"
                 : `${missing} episode${missing !== 1 ? "s" : ""} missing`}
@@ -748,14 +768,14 @@ function SeasonAccordion({
   season,
   episodes,
   episodeFileMap,
-  downloadingEpisodeIds,
+  episodeActivity,
 }: {
   seriesId: number;
   instanceId?: string;
   season: SonarrSeason;
   episodes?: SonarrEpisode[];
   episodeFileMap: Map<number, SonarrEpisodeFile>;
-  downloadingEpisodeIds: Set<number>;
+  episodeActivity: Map<number, QueueActivity>;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -765,10 +785,14 @@ function SeasonAccordion({
   const deleteSeasonFiles = useDeleteEpisodeFiles(instanceId);
   const stats = season.statistics;
   const progress = stats ? stats.percentOfEpisodes / 100 : 0;
-  // Any episode of this season currently grabbing turns the season bar purple.
-  const seasonDownloading = (episodes ?? []).some((ep) =>
-    downloadingEpisodeIds.has(ep.id),
-  );
+  // Any episode of this season currently grabbing turns the season bar purple;
+  // dashed while every one of them is only held (#484).
+  const seasonQueued = (episodes ?? [])
+    .map((ep) => episodeActivity.get(ep.id))
+    .filter((a) => a !== undefined);
+  const seasonDownloading = seasonQueued.length > 0;
+  const seasonHeld =
+    seasonDownloading && seasonQueued.every((a) => a === "held");
 
   const seasonLabel =
     season.seasonNumber === 0 ? "Specials" : `Season ${season.seasonNumber}`;
@@ -907,6 +931,7 @@ function SeasonAccordion({
         <ProgressBar
           progress={progress}
           fillColor={seasonDownloading ? BAR_KIND_COLOR.purple : undefined}
+          held={seasonHeld}
           className="mt-2"
         />
       )}
@@ -927,7 +952,8 @@ function SeasonAccordion({
                     ? episodeFileMap.get(ep.episodeFileId)
                     : undefined
                 }
-                isDownloading={downloadingEpisodeIds.has(ep.id)}
+                isDownloading={episodeActivity.has(ep.id)}
+                held={episodeActivity.get(ep.id) === "held"}
               />
             ))}
         </View>
@@ -963,12 +989,14 @@ function EpisodeRow({
   episode,
   episodeFile,
   isDownloading,
+  held,
 }: {
   seriesId: number;
   instanceId?: string;
   episode: SonarrEpisode;
   episodeFile?: SonarrEpisodeFile;
   isDownloading: boolean;
+  held: boolean;
 }) {
   const router = useRouter();
   const toggleMonitored = useToggleEpisodeMonitored(instanceId);
@@ -1026,12 +1054,11 @@ function EpisodeRow({
   return (
     <>
       <View className="flex-row items-center py-1.5 border-b border-border/30">
-        <View
+        <StatusFill
           className="w-1.5 h-6 rounded-full mr-2"
-          style={{
-            backgroundColor:
-              BAR_KIND_COLOR[sonarrEpisodeBarKind(episode, isDownloading)],
-          }}
+          color={BAR_KIND_COLOR[sonarrEpisodeBarKind(episode, isDownloading)]}
+          held={held}
+          vertical
         />
         <View className="flex-1">
           <Text className="text-zinc-300 text-xs" numberOfLines={1}>
