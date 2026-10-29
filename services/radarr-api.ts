@@ -136,10 +136,11 @@ export function getManualImportCandidates(
 
 /**
  * The import candidates in any folder on the Radarr host (#470), for files
- * copied there by hand. `filterExistingFiles: true` only hides files already
- * inside the matched movie's own folder (MediaFileService.FilterExistingFiles
- * compares against movie.Path), so after a copy import from a drop folder the
- * same files are listed again on the next scan.
+ * copied there by hand. `filterExistingFiles: true` only drops files already
+ * recorded for the matched movie (MediaFileService.FilterExistingFiles compares
+ * against its movie files' paths), so a new file in a movie's own folder still
+ * shows, and after a copy import from a drop folder the same files are listed
+ * again on the next scan.
  *
  * Never add `movieId` here: with a movieId and no downloadId the controller
  * returns that movie's EXISTING files and ignores `folder` entirely

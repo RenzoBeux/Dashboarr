@@ -236,10 +236,11 @@ export function getManualImportCandidates(
 
 /**
  * The import candidates in any folder on the Sonarr host (#470), for files
- * copied there by hand. `filterExistingFiles: true` only hides files already
- * inside the matched series' own folder (MediaFileService.FilterExistingFiles
- * compares against series.Path), so after a copy import from a drop folder the
- * same files are listed again on the next scan.
+ * copied there by hand. `filterExistingFiles: true` only drops files already
+ * recorded for the matched series (MediaFileService.FilterExistingFiles
+ * compares against its episode files' paths), so a new file in a series' own
+ * folder still shows, and after a copy import from a drop folder the same
+ * files are listed again on the next scan.
  *
  * Never add `seriesId` here: with a seriesId and no downloadId the controller
  * returns that series' EXISTING files and ignores `folder` entirely

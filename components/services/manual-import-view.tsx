@@ -418,7 +418,7 @@ export function ManualImportView({
             title="No files to import"
             message={
               isFolder
-                ? `${serviceName} found no video files to import in this folder. Files already inside a ${isSonarr ? "series'" : "movie's"} own folder are hidden.`
+                ? `${serviceName} found no video files to import in this folder. Files ${serviceName} has already imported are hidden.`
                 : `${serviceName} found nothing in this download's folder. It may already have been imported or moved.`
             }
           />
