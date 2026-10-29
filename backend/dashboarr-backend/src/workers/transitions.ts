@@ -503,7 +503,7 @@ export async function diffSonarrHistory(
 }
 
 // Sonarr counterpart of diffRadarrGrabs. Sonarr writes one "grabbed" record
-// per episode, so a season pack is grouped into a single push by downloadId.
+// per episode, so a season pack is grouped into a single push by release.
 export async function diffSonarrGrabs(
   instanceId: string,
   instanceName: string,

@@ -57,16 +57,38 @@ export function formatGrabBody({ subject, quality, sizeBytes, indexer }: GrabBod
 }
 
 /**
- * Group "grabbed" history records by downloadId, keeping first-seen order.
- * Sonarr writes one record per episode of a grab, so a season pack is N
- * records sharing a downloadId and should raise one notification, not N.
+ * Release identity of a "grabbed" record, as the backend's grab-format.ts
+ * builds it: the downloadId, else `<movie|series>-<id>:<sourceTitle>`
+ * (Blackhole clients return no download id, so upstream leaves it unset),
+ * else the record id.
  */
-export function groupGrabRecords<T extends { id: number; downloadId?: string }>(
-  records: readonly T[],
-): T[][] {
+function grabRelease(
+  media: "movie" | "series",
+  mediaId: number | undefined,
+  r: { id: number; downloadId?: string; sourceTitle?: string },
+): string {
+  if (r.downloadId) return r.downloadId;
+  if (mediaId !== undefined && r.sourceTitle) return `${media}-${mediaId}:${r.sourceTitle}`;
+  return `history:${r.id}`;
+}
+
+export function radarrGrabRelease(r: RadarrHistoryRecord): string {
+  return grabRelease("movie", r.movieId ?? r.movie?.id, r);
+}
+
+export function sonarrGrabRelease(r: SonarrHistoryRecord): string {
+  return grabRelease("series", r.seriesId ?? r.series?.id, r);
+}
+
+/**
+ * Group "grabbed" history records by release, keeping first-seen order.
+ * Sonarr writes one record per episode of a grab, so a season pack is N
+ * records of one release and should raise one notification, not N.
+ */
+export function groupGrabRecords<T>(records: readonly T[], releaseOf: (r: T) => string): T[][] {
   const groups = new Map<string, T[]>();
   for (const r of records) {
-    const key = r.downloadId ? `dl:${r.downloadId}` : `id:${r.id}`;
+    const key = releaseOf(r);
     const group = groups.get(key);
     if (group) group.push(r);
     else groups.set(key, [r]);
@@ -85,7 +107,7 @@ export function radarrGrabNotices(
   fresh: readonly RadarrHistoryRecord[],
   instanceId: string,
 ): GrabNotice[] {
-  return groupGrabRecords(fresh).map(([r]) => {
+  return groupGrabRecords(fresh, radarrGrabRelease).map(([r]) => {
     const entry = normalizeRadarrHistory(r);
     const subject = r.movie?.title
       ? r.movie.year
@@ -110,7 +132,7 @@ export function sonarrGrabNotices(
   fresh: readonly SonarrHistoryRecord[],
   instanceId: string,
 ): GrabNotice[] {
-  return groupGrabRecords(fresh).map((group) => {
+  return groupGrabRecords(fresh, sonarrGrabRelease).map((group) => {
     const r = group[0];
     const entry = normalizeSonarrHistory(r);
     const span = formatEpisodeSpan(group.map((g) => g.episode ?? {}));

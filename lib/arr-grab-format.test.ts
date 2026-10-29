@@ -4,6 +4,7 @@ import {
   groupGrabRecords,
   radarrGrabNotices,
   sonarrGrabNotices,
+  sonarrGrabRelease,
 } from "@/lib/arr-grab-format";
 import type { RadarrHistoryRecord, SonarrHistoryRecord, SonarrEpisode } from "@/lib/types";
 
@@ -51,14 +52,26 @@ describe("formatGrabBody", () => {
 });
 
 describe("groupGrabRecords", () => {
-  it("groups by downloadId and keeps records without one apart", () => {
-    const groups = groupGrabRecords([
-      { id: 1, downloadId: "A" },
-      { id: 2, downloadId: "B" },
-      { id: 3, downloadId: "A" },
-      { id: 4 },
-    ]);
-    expect(groups.map((g) => g.map((r) => r.id))).toEqual([[1, 3], [2], [4]]);
+  it("groups by release: downloadId, else series and title, else record id", () => {
+    const rec = (id: number, extra: Partial<SonarrHistoryRecord>): SonarrHistoryRecord => ({
+      id,
+      eventType: "grabbed",
+      ...extra,
+    });
+    const groups = groupGrabRecords(
+      [
+        rec(1, { downloadId: "A" }),
+        rec(2, { downloadId: "B" }),
+        rec(3, { downloadId: "A" }),
+        rec(4, { seriesId: 3, sourceTitle: "Show.S01" }),
+        rec(5, { seriesId: 3, sourceTitle: "Show.S01" }),
+        rec(6, { seriesId: 4, sourceTitle: "Show.S01" }),
+        rec(7, {}),
+        rec(8, {}),
+      ],
+      sonarrGrabRelease,
+    );
+    expect(groups.map((g) => g.map((r) => r.id))).toEqual([[1, 3], [2], [4, 5], [6], [7], [8]]);
   });
 });
 
@@ -112,6 +125,20 @@ describe("sonarrGrabNotices", () => {
         data: { type: "sonarr", seriesId: 3, historyId: 53, instanceId: "inst-s" },
       },
     ]);
+  });
+
+  it("raises one notice for a season pack without a downloadId (Blackhole)", () => {
+    const pack: SonarrHistoryRecord[] = Array.from({ length: 10 }, (_, i) => ({
+      id: 70 + i,
+      eventType: "grabbed",
+      seriesId: 3,
+      series: { id: 3, title: "Severance" } as SonarrHistoryRecord["series"],
+      episode: episode(i + 1),
+      sourceTitle: "Severance.S01.1080p.WEB-DL",
+    }));
+    const notices = sonarrGrabNotices(pack, "inst-s");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].body).toBe("Severance S01E01-E10");
   });
 
   it("names a single episode with its title", () => {

@@ -12,11 +12,13 @@ import type { SonarrHistoryRecord } from "../services/sonarr.js";
  * whatever the source didn't send (every webhook field is optional upstream:
  * Newtonsoft drops nulls).
  *
- * Dedupe key: `<kind>:grabbed:<instanceId | "any">:<downloadId>`. A grab and
- * the later import of the same release share the downloadId, so the grab needs
- * its own `grabbed` segment or it would claim the key the "Movie downloaded"
- * push uses. The webhook (once it resolves the instance) and the poller build
- * the identical string, so the two sources collapse into one push.
+ * Dedupe key: `<kind>:grabbed:<instanceId | "any">:<release>`, where release
+ * is the downloadId, or `<movie|series>-<id>:<release title>` when the client
+ * returned none (see grabReleaseFallback). A grab and the later import of the
+ * same release share the downloadId, so the grab needs its own `grabbed`
+ * segment or it would claim the key the "Movie downloaded" push uses. The
+ * webhook (once it resolves the instance) and the poller build the identical
+ * string, so the two sources collapse into one push.
  */
 
 /** Same output as the app's formatBytes (lib/utils.ts): 1024 base, 1 decimal. */
@@ -76,13 +78,23 @@ export function formatGrabBody({ subject, quality, sizeBytes, indexer }: GrabBod
   return [subject, quality, size, indexer].filter((p): p is string => !!p).join(" · ");
 }
 
-export function grabDedupeKey(
-  kind: "radarr" | "sonarr",
-  namespace: string,
-  downloadId: string | undefined,
-  fallback: string,
-): string {
-  return `${kind}:grabbed:${namespace}:${downloadId || fallback}`;
+export function grabDedupeKey(kind: "radarr" | "sonarr", namespace: string, release: string): string {
+  return `${kind}:grabbed:${namespace}:${release}`;
+}
+
+/**
+ * Release identity for a grab without a downloadId. Upstream only sets
+ * DownloadId when the download client returns one, and the Blackhole clients
+ * return none. The Grab webhook's release.releaseTitle and the history
+ * record's sourceTitle are both Release.Title, so this is the same string from
+ * either source. Undefined when the media id or the title is missing.
+ */
+export function grabReleaseFallback(
+  media: "movie" | "series",
+  mediaId: number | undefined,
+  releaseTitle: string | undefined,
+): string | undefined {
+  return mediaId !== undefined && releaseTitle ? `${media}-${mediaId}:${releaseTitle}` : undefined;
 }
 
 function movieSubject(movie: { title?: string; year?: number } | undefined, fallback = ""): string {
@@ -144,8 +156,7 @@ export function buildRadarrGrabWebhookEvent(
     dedupeKey: grabDedupeKey(
       "radarr",
       instanceId ?? "any",
-      payload.downloadId,
-      `movie-${movie.id}:${release?.releaseTitle ?? ""}`,
+      payload.downloadId || grabReleaseFallback("movie", movie.id, release?.releaseTitle) || `movie-${movie.id}:`,
     ),
   };
 }
@@ -181,24 +192,35 @@ export function buildSonarrGrabWebhookEvent(
     dedupeKey: grabDedupeKey(
       "sonarr",
       instanceId ?? "any",
-      payload.downloadId,
-      `series-${series.id}:${release?.releaseTitle ?? ""}`,
+      payload.downloadId || grabReleaseFallback("series", series.id, release?.releaseTitle) || `series-${series.id}:`,
     ),
   };
 }
 
 // ---------------- History poller ----------------
 
+/** Release identity of a Radarr "grabbed" record: the grab webhook's key suffix. */
+export function radarrGrabRelease(r: RadarrHistoryRecord): string {
+  return r.downloadId || grabReleaseFallback("movie", r.movieId ?? r.movie?.id, r.sourceTitle) || `history:${r.id}`;
+}
+
 /**
- * Group "grabbed" history records by downloadId, keeping first-seen order.
- * Sonarr writes one record per episode of a grab (a season pack is N records
- * sharing one downloadId), and the user wants one push per release, not per
- * episode. Records without a downloadId stand alone.
+ * Release identity of a Sonarr "grabbed" record. Every episode record of one
+ * grab carries the same downloadId (or none, with the same sourceTitle).
  */
-export function groupGrabRecords<T extends { id: number; downloadId?: string }>(records: readonly T[]): T[][] {
+export function sonarrGrabRelease(r: SonarrHistoryRecord): string {
+  return r.downloadId || grabReleaseFallback("series", r.seriesId ?? r.series?.id, r.sourceTitle) || `history:${r.id}`;
+}
+
+/**
+ * Group "grabbed" history records by release, keeping first-seen order.
+ * Sonarr writes one record per episode of a grab (a season pack is N records
+ * of one release), and the user wants one push per release, not per episode.
+ */
+export function groupGrabRecords<T>(records: readonly T[], releaseOf: (r: T) => string): T[][] {
   const groups = new Map<string, T[]>();
   for (const r of records) {
-    const key = r.downloadId ? `dl:${r.downloadId}` : `id:${r.id}`;
+    const key = releaseOf(r);
     const group = groups.get(key);
     if (group) group.push(r);
     else groups.set(key, [r]);
@@ -217,7 +239,7 @@ export function buildRadarrHistoryGrabEvents(
   instanceId: string,
   prefix: string,
 ): PushEvent[] {
-  return groupGrabRecords(fresh).map((group) => {
+  return groupGrabRecords(fresh, radarrGrabRelease).map((group) => {
     const r = group[0]!;
     return {
       category: "radarrGrabbed",
@@ -229,7 +251,7 @@ export function buildRadarrHistoryGrabEvents(
         indexer: r.data?.indexer,
       }),
       data: { type: "radarr", movieId: r.movieId ?? r.movie?.id, instanceId },
-      dedupeKey: grabDedupeKey("radarr", instanceId, r.downloadId, `history:${r.id}`),
+      dedupeKey: grabDedupeKey("radarr", instanceId, radarrGrabRelease(r)),
     };
   });
 }
@@ -240,7 +262,7 @@ export function buildSonarrHistoryGrabEvents(
   instanceId: string,
   prefix: string,
 ): PushEvent[] {
-  return groupGrabRecords(fresh).map((group) => {
+  return groupGrabRecords(fresh, sonarrGrabRelease).map((group) => {
     const r = group[0]!;
     const episodes = group.map((g) => g.episode ?? {});
     return {
@@ -253,7 +275,7 @@ export function buildSonarrHistoryGrabEvents(
         indexer: r.data?.indexer,
       }),
       data: { type: "sonarr", seriesId: r.seriesId ?? r.series?.id, instanceId },
-      dedupeKey: grabDedupeKey("sonarr", instanceId, r.downloadId, `history:${r.id}`),
+      dedupeKey: grabDedupeKey("sonarr", instanceId, sonarrGrabRelease(r)),
     };
   });
 }

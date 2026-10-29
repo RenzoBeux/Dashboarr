@@ -464,7 +464,7 @@ function sonarrHistoryDisplayTitle(r: SonarrHistoryRecord): string {
 // Runs on the same page-1 history the import watchers below already poll (one
 // query per instance), so grab notifications cost no extra request. Same
 // prev-id baseline as the import diff. Sonarr writes one record per episode of
-// a grab; the notices group them by downloadId so a season pack raises one.
+// a grab; the notices group them by release so a season pack raises one.
 function useGrabNotifications<R extends { id: number; eventType: string }>(
   records: R[] | undefined,
   active: boolean,

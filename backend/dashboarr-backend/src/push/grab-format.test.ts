@@ -9,7 +9,9 @@ import {
   formatEpisodeSpan,
   formatGrabBody,
   groupGrabRecords,
+  sonarrGrabRelease,
 } from "./grab-format.js";
+import type { RadarrHistoryRecord } from "../services/radarr.js";
 import type { SonarrHistoryRecord } from "../services/sonarr.js";
 
 test("formatBytes mirrors the app's 1024-base, 1-decimal output", () => {
@@ -120,17 +122,28 @@ test("Sonarr Grab webhook spans a season pack in one push", () => {
   assert.equal(buildSonarrGrabWebhookEvent({ episodes }, undefined, ""), null);
 });
 
-test("groupGrabRecords groups by downloadId and keeps records without one apart", () => {
-  const groups = groupGrabRecords([
-    { id: 1, downloadId: "A" },
-    { id: 2, downloadId: "B" },
-    { id: 3, downloadId: "A" },
-    { id: 4 },
-    { id: 5 },
-  ]);
+test("groupGrabRecords groups by release: downloadId, else series and title, else record id", () => {
+  const rec = (id: number, extra: Partial<SonarrHistoryRecord>): SonarrHistoryRecord => ({
+    id,
+    eventType: "grabbed",
+    ...extra,
+  });
+  const groups = groupGrabRecords(
+    [
+      rec(1, { downloadId: "A" }),
+      rec(2, { downloadId: "B" }),
+      rec(3, { downloadId: "A" }),
+      rec(4, { seriesId: 3, sourceTitle: "Show.S01" }),
+      rec(5, { seriesId: 3, sourceTitle: "Show.S01" }),
+      rec(6, { seriesId: 4, sourceTitle: "Show.S01" }),
+      rec(7, {}),
+      rec(8, {}),
+    ],
+    sonarrGrabRelease,
+  );
   assert.deepEqual(
     groups.map((g) => g.map((r) => r.id)),
-    [[1, 3], [2], [4], [5]],
+    [[1, 3], [2], [4, 5], [6], [7], [8]],
   );
 });
 
@@ -187,7 +200,63 @@ test("Sonarr history grabs: a season pack's per-episode records become one push"
   assert.equal(events[0]!.dedupeKey, "sonarr:grabbed:inst-s:PACK");
   assert.deepEqual(events[0]!.data, { type: "sonarr", seriesId: 3, instanceId: "inst-s" });
   assert.equal(events[1]!.body, "Andor S02E01 - One Year Later");
-  assert.equal(events[1]!.dedupeKey, "sonarr:grabbed:inst-s:history:60");
+  assert.equal(events[1]!.dedupeKey, "sonarr:grabbed:inst-s:series-4:Andor.S02E01");
+});
+
+// Blackhole clients return no download id, so upstream leaves DownloadId unset
+// on the grab. The release title is then what ties the records together.
+test("Sonarr history grabs: a season pack without a downloadId is still one push", () => {
+  const pack: SonarrHistoryRecord[] = Array.from({ length: 10 }, (_, i) => ({
+    id: 70 + i,
+    eventType: "grabbed",
+    seriesId: 3,
+    series: { id: 3, title: "Severance" },
+    episode: { seasonNumber: 1, episodeNumber: i + 1 },
+    sourceTitle: "Severance.S01.1080p.WEB-DL",
+  }));
+  const events = buildSonarrHistoryGrabEvents(pack, "inst-s", "");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.body, "Severance S01E01-E10");
+  assert.equal(events[0]!.dedupeKey, "sonarr:grabbed:inst-s:series-3:Severance.S01.1080p.WEB-DL");
+});
+
+test("without a downloadId the webhook and the poller still build the same key", () => {
+  const radarrHook = buildRadarrGrabWebhookEvent(
+    { movie: { id: 7, title: "Dune" }, release: { releaseTitle: "Dune.2021.1080p" } },
+    "inst-r",
+    "",
+  );
+  const radarrRecord: RadarrHistoryRecord = {
+    id: 9,
+    eventType: "grabbed",
+    movieId: 7,
+    movie: { id: 7, title: "Dune" },
+    sourceTitle: "Dune.2021.1080p",
+  };
+  const [radarrPoll] = buildRadarrHistoryGrabEvents([radarrRecord], "inst-r", "");
+  assert.equal(radarrHook?.dedupeKey, "radarr:grabbed:inst-r:movie-7:Dune.2021.1080p");
+  assert.equal(radarrPoll!.dedupeKey, radarrHook?.dedupeKey);
+
+  const sonarrHook = buildSonarrGrabWebhookEvent(
+    {
+      series: { id: 3, title: "Severance" },
+      episodes: [1, 2].map((n) => ({ id: n, seasonNumber: 1, episodeNumber: n })),
+      release: { releaseTitle: "Severance.S01.1080p" },
+    },
+    "inst-s",
+    "",
+  );
+  const sonarrRecords: SonarrHistoryRecord[] = [1, 2].map((n) => ({
+    id: 80 + n,
+    eventType: "grabbed",
+    seriesId: 3,
+    episode: { seasonNumber: 1, episodeNumber: n },
+    sourceTitle: "Severance.S01.1080p",
+  }));
+  const sonarrPoll = buildSonarrHistoryGrabEvents(sonarrRecords, "inst-s", "");
+  assert.equal(sonarrPoll.length, 1);
+  assert.equal(sonarrHook?.dedupeKey, "sonarr:grabbed:inst-s:series-3:Severance.S01.1080p");
+  assert.equal(sonarrPoll[0]!.dedupeKey, sonarrHook?.dedupeKey);
 });
 
 test("history grabs fall back to the release name when the series/movie is missing", () => {

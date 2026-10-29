@@ -454,7 +454,9 @@ Events are deduped per instance using keys that carry the instance UUID — e.g.
 `event:qbt:<instanceId>:completed:<hash>` for poller-driven pushes and
 `event:radarr:webhook:<instanceId-or-"any">:<downloadId>` for webhook-driven
 ones. Grab pushes use `event:radarr:grabbed:<instanceId-or-"any">:<downloadId>`
-(and the `sonarr` equivalent) from both the webhook and the poller, so a grab
+(and the `sonarr` equivalent) from both the webhook and the poller, falling back
+to `movie-<id>:<release title>` / `series-<id>:<release title>` when the
+download client returns no id (Blackhole), so a grab
 seen by both sources pushes once whenever the webhook resolves the instance
 (a single instance, or `?instance=<uuid>`). The instance namespace prevents two enabled instances of the same kind
 from collapsing each other's events when they happen to share an upstream id

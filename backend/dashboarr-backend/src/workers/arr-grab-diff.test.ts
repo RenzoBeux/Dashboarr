@@ -101,3 +101,22 @@ test("a Sonarr season pack split across two polls pushes once", async () => {
   await diffSonarrGrabs("s1", "Sonarr", false, [ep(1), ep(3), ep(2)]);
   assert.deepEqual(getState<number[]>("sonarr:s1:history:grabbed:seen"), [41, 43, 42]);
 });
+
+test("a Sonarr season pack with no downloadId (Blackhole) pushes once", async () => {
+  saveNotificationSettings({ ...DEFAULT_NOTIFICATION_SETTINGS, sonarrGrabbed: true });
+  const ep = (n: number): SonarrRecord => ({
+    id: 60 + n,
+    eventType: "grabbed",
+    seriesId: 3,
+    series: { id: 3, title: "Severance" },
+    episode: { seasonNumber: 1, episodeNumber: n },
+    sourceTitle: "Severance.S01.1080p",
+  });
+
+  await diffSonarrGrabs("s2", "Sonarr", false, []);
+  await diffSonarrGrabs("s2", "Sonarr", false, [ep(1), ep(2), ep(3)]);
+  assert.equal(claimed("sonarr:grabbed:s2:series-3:Severance.S01.1080p"), true);
+  for (const n of [1, 2, 3]) {
+    assert.equal(claimed(`sonarr:grabbed:s2:history:${60 + n}`), false);
+  }
+});
