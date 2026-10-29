@@ -103,13 +103,26 @@ export function samePath(a: string, b: string): boolean {
 }
 
 /**
- * Whether a folder is worth scanning. The server root and the Windows drive
- * list are never a release folder, and scanning either would walk every disk.
+ * Whether `parent` is `child` or one of its ancestors. A scan recurses into
+ * every subfolder it can't parse a title from, so scanning a parent of a root
+ * folder reads that whole library too.
+ */
+export function containsPath(parent: string, child: string): boolean {
+  const p = withTrailingSeparator(parent);
+  return p !== "" && withTrailingSeparator(child).startsWith(p);
+}
+
+/**
+ * Whether a folder is worth scanning. The server root, the Windows drive list
+ * and a bare drive root ("C:\", that disk's "/") are never a release folder,
+ * and scanning one would walk the whole disk: the app gives up at its timeout,
+ * the server keeps going.
  */
 export function isScannableFolder(path: string | null): path is string {
   if (path === null) return false;
   const trimmed = path.trim();
-  return trimmed !== "" && trimmed !== "/" && trimmed !== "\\";
+  if (trimmed === "" || /^[\\/]+$/.test(trimmed)) return false;
+  return !/^[A-Za-z]:[\\/]?$/.test(trimmed);
 }
 
 /**

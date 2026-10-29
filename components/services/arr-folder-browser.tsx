@@ -31,6 +31,7 @@ import {
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import {
+  containsPath,
   isScannableFolder,
   samePath,
   withTrailingSeparator,
@@ -144,12 +145,28 @@ export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps)
   const scanTarget =
     typedPath && !samePath(typedPath, path ?? "") ? typedPath : path;
 
-  // Scanning a whole library folder walks and parses every file in it, which
-  // the 90s scan timeout may not survive, and is rarely what the user means.
-  const isRootFolder =
-    isScannableFolder(scanTarget) &&
-    (rootFolders.data ?? []).some((folder) => samePath(folder.path, scanTarget));
+  // Scanning a whole library folder, or a folder above one, walks and parses
+  // every file in it, which the 90s scan timeout may not survive, and is
+  // rarely what the user means.
+  const coveredRoots = isScannableFolder(scanTarget)
+    ? (rootFolders.data ?? []).filter((folder) =>
+        containsPath(scanTarget, folder.path),
+      )
+    : [];
+  const isRootFolder = coveredRoots.some((folder) =>
+    samePath(folder.path, scanTarget ?? ""),
+  );
   const noun = service === "sonarr" ? "series" : "movie";
+  const rootHint =
+    coveredRoots.length === 0
+      ? null
+      : `${
+          isRootFolder
+            ? "This is a root folder"
+            : coveredRoots.length === 1
+              ? `This folder holds the root folder ${coveredRoots[0].path}`
+              : `This folder holds ${coveredRoots.length} root folders`
+        }, so a scan reads every ${noun} in it and can take a long time. For files copied into a ${noun}'s own folder, use Rescan folder on its page instead.`;
 
   function scan() {
     if (!isScannableFolder(scanTarget)) return;
@@ -185,7 +202,7 @@ export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps)
         contentContainerClassName="pb-4"
         ItemSeparatorComponent={() => <View className="h-2" />}
         ListHeaderComponent={
-          error || isRootFolder ? (
+          error || rootHint ? (
             <View className="gap-2 mb-2">
               {error ? (
                 <ErrorBanner
@@ -197,11 +214,7 @@ export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps)
                   }
                 />
               ) : null}
-              {isRootFolder ? (
-                <ImportHint
-                  text={`This is a root folder, so a scan reads every ${noun} in it and can take a long time. For files copied into a ${noun}'s own folder, use Rescan folder on its page instead.`}
-                />
-              ) : null}
+              {rootHint ? <ImportHint text={rootHint} /> : null}
             </View>
           ) : null
         }

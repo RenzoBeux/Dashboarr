@@ -1,4 +1,5 @@
 import {
+  containsPath,
   isScannableFolder,
   normalizeFolderListing,
   samePath,
@@ -73,12 +74,31 @@ describe("samePath", () => {
   });
 });
 
+describe("containsPath", () => {
+  it("matches the folder itself and its ancestors only", () => {
+    expect(containsPath("/movies", "/movies/")).toBe(true);
+    expect(containsPath("/data/", "/data/movies")).toBe(true);
+    expect(containsPath("D:\\", "D:\\Movies")).toBe(true);
+    expect(containsPath("/data/movies/Alien/", "/data/movies")).toBe(false);
+    // A shared name prefix is not an ancestor.
+    expect(containsPath("/data/mov", "/data/movies")).toBe(false);
+    expect(containsPath("", "/data/movies")).toBe(false);
+  });
+});
+
 describe("isScannableFolder", () => {
   it("refuses the start view, the server root and the drive list", () => {
     expect(isScannableFolder(null)).toBe(false);
     expect(isScannableFolder("")).toBe(false);
     expect(isScannableFolder("/")).toBe(false);
+    expect(isScannableFolder("\\")).toBe(false);
     expect(isScannableFolder("/downloads/manual/")).toBe(true);
     expect(isScannableFolder("D:\\Import\\")).toBe(true);
+  });
+
+  it("refuses a bare Windows drive root", () => {
+    expect(isScannableFolder("C:\\")).toBe(false);
+    expect(isScannableFolder("d:/")).toBe(false);
+    expect(isScannableFolder("D:")).toBe(false);
   });
 });
