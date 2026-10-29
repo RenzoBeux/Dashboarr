@@ -10,6 +10,7 @@ import { getDb } from "../client.js";
  *   - `overseerr:pending:ids`           → JSON-encoded array of request IDs in pending
  *   - `health:<serviceId>:online`       → "1" or "0"
  *   - `event:<source>:<type>:<extId>`   → "1" once an event has been dispatched
+ *     (grab keys hold the occurrence time instead, see claimEventOccurrence)
  */
 
 export function getState<T>(key: string): T | null {
@@ -66,4 +67,24 @@ export function claimEvent(key: string): boolean {
     )
     .run(key, Date.now());
   return result.changes === 1;
+}
+
+/**
+ * Claim for an event that can recur under the same key (#464: the same
+ * torrent grabbed again after a delete). The row holds the occurrence time
+ * last claimed; another occurrence within `windowMs` of it is the same event
+ * seen again (false), anything further apart is a new one and re-claims the
+ * key (true).
+ */
+export function claimEventOccurrence(key: string, at: number, windowMs: number): boolean {
+  const db = getDb();
+  return db.transaction(() => {
+    const row = db
+      .prepare<[string], { value: string }>("SELECT value FROM seen_state WHERE key = ?")
+      .get(key);
+    const last = row ? Number(row.value) : NaN;
+    if (Number.isFinite(last) && Math.abs(at - last) <= windowMs) return false;
+    setState(key, at);
+    return true;
+  })();
 }

@@ -1,6 +1,6 @@
 import { listActiveDevices } from "../db/repos/devices.js";
 import { loadNotificationSettings } from "../db/repos/config.js";
-import { claimEvent } from "../db/repos/seen-state.js";
+import { claimEvent, claimEventOccurrence } from "../db/repos/seen-state.js";
 import { sendExpoPush } from "./expo.js";
 import { sendApprise } from "./apprise.js";
 import type { ExpoPushMessage } from "./expo.js";
@@ -34,7 +34,11 @@ export async function dispatchPush(event: PushEvent): Promise<void> {
   }
 
   if (event.dedupeKey) {
-    const isFirst = claimEvent(`event:${event.dedupeKey}`);
+    const key = `event:${event.dedupeKey}`;
+    const occurrence = event.dedupeOccurrence;
+    const isFirst = occurrence
+      ? claimEventOccurrence(key, occurrence.at, occurrence.windowMs)
+      : claimEvent(key);
     if (!isFirst) return;
   }
 

@@ -19,7 +19,24 @@ import type { SonarrHistoryRecord } from "../services/sonarr.js";
  * segment or it would claim the key the "Movie downloaded" push uses. The
  * webhook (once it resolves the instance) and the poller build the identical
  * string, so the two sources collapse into one push.
+ *
+ * The key alone can't tell one grab from a later re-grab of the same torrent,
+ * so each push also carries when the grab happened (dedupeOccurrence): the
+ * webhook's arrival time, or the history record's date. Two sightings within
+ * GRAB_REPEAT_WINDOW_MS are one grab; further apart, the release was grabbed
+ * again and pushes again.
  */
+
+/**
+ * Covers webhook delivery, Sonarr writing a pack's per-episode records one by
+ * one, and clock drift between the *arr host and the backend. A manual re-grab
+ * of the same release inside it stays quiet.
+ */
+export const GRAB_REPEAT_WINDOW_MS = 10 * 60 * 1000;
+
+function grabOccurrence(at: number): { at: number; windowMs: number } {
+  return { at, windowMs: GRAB_REPEAT_WINDOW_MS };
+}
 
 /** Same output as the app's formatBytes (lib/utils.ts): 1024 base, 1 decimal. */
 export function formatBytes(bytes: number): string {
@@ -134,11 +151,13 @@ export interface SonarrGrabWebhook {
 /**
  * Push for a Radarr Grab webhook, or null when the payload names no movie.
  * `instanceId` is the resolved instance (undefined = kind-only attribution).
+ * The payload carries no timestamp, so the grab happened on arrival.
  */
 export function buildRadarrGrabWebhookEvent(
   payload: RadarrGrabWebhook,
   instanceId: string | undefined,
   prefix: string,
+  receivedAt: number = Date.now(),
 ): PushEvent | null {
   const movie = payload.movie;
   if (!movie?.title) return null;
@@ -158,6 +177,7 @@ export function buildRadarrGrabWebhookEvent(
       instanceId ?? "any",
       payload.downloadId || grabReleaseFallback("movie", movie.id, release?.releaseTitle) || `movie-${movie.id}:`,
     ),
+    dedupeOccurrence: grabOccurrence(receivedAt),
   };
 }
 
@@ -169,6 +189,7 @@ export function buildSonarrGrabWebhookEvent(
   payload: SonarrGrabWebhook,
   instanceId: string | undefined,
   prefix: string,
+  receivedAt: number = Date.now(),
 ): PushEvent | null {
   const series = payload.series;
   if (!series?.title) return null;
@@ -194,6 +215,7 @@ export function buildSonarrGrabWebhookEvent(
       instanceId ?? "any",
       payload.downloadId || grabReleaseFallback("series", series.id, release?.releaseTitle) || `series-${series.id}:`,
     ),
+    dedupeOccurrence: grabOccurrence(receivedAt),
   };
 }
 
@@ -228,6 +250,15 @@ export function groupGrabRecords<T>(records: readonly T[], releaseOf: (r: T) => 
   return [...groups.values()];
 }
 
+/**
+ * When a group's grab happened: its earliest record date (a pack's records
+ * are written moments apart), or `now` when no record has a usable date.
+ */
+export function grabGroupTime(group: readonly { date?: string }[], now: number): number {
+  const times = group.map((r) => (r.date ? Date.parse(r.date) : NaN)).filter(Number.isFinite);
+  return times.length > 0 ? Math.min(...times) : now;
+}
+
 function historySize(data: Record<string, string | undefined> | undefined): number | undefined {
   const size = data?.size ? Number(data.size) : NaN;
   return Number.isFinite(size) && size > 0 ? size : undefined;
@@ -238,6 +269,7 @@ export function buildRadarrHistoryGrabEvents(
   fresh: readonly RadarrHistoryRecord[],
   instanceId: string,
   prefix: string,
+  now: number = Date.now(),
 ): PushEvent[] {
   return groupGrabRecords(fresh, radarrGrabRelease).map((group) => {
     const r = group[0]!;
@@ -252,6 +284,7 @@ export function buildRadarrHistoryGrabEvents(
       }),
       data: { type: "radarr", movieId: r.movieId ?? r.movie?.id, instanceId },
       dedupeKey: grabDedupeKey("radarr", instanceId, radarrGrabRelease(r)),
+      dedupeOccurrence: grabOccurrence(grabGroupTime(group, now)),
     };
   });
 }
@@ -261,6 +294,7 @@ export function buildSonarrHistoryGrabEvents(
   fresh: readonly SonarrHistoryRecord[],
   instanceId: string,
   prefix: string,
+  now: number = Date.now(),
 ): PushEvent[] {
   return groupGrabRecords(fresh, sonarrGrabRelease).map((group) => {
     const r = group[0]!;
@@ -276,6 +310,7 @@ export function buildSonarrHistoryGrabEvents(
       }),
       data: { type: "sonarr", seriesId: r.seriesId ?? r.series?.id, instanceId },
       dedupeKey: grabDedupeKey("sonarr", instanceId, sonarrGrabRelease(r)),
+      dedupeOccurrence: grabOccurrence(grabGroupTime(group, now)),
     };
   });
 }

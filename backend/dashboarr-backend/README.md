@@ -458,7 +458,9 @@ ones. Grab pushes use `event:radarr:grabbed:<instanceId-or-"any">:<downloadId>`
 to `movie-<id>:<release title>` / `series-<id>:<release title>` when the
 download client returns no id (Blackhole), so a grab
 seen by both sources pushes once whenever the webhook resolves the instance
-(a single instance, or `?instance=<uuid>`). The instance namespace prevents two enabled instances of the same kind
+(a single instance, or `?instance=<uuid>`). A grab key stores when the grab
+happened, so sightings within 10 minutes of each other are one grab and a later
+re-grab of the same torrent pushes again. The instance namespace prevents two enabled instances of the same kind
 from collapsing each other's events when they happen to share an upstream id
 (e.g. two Radarrs both grabbing the same release via the same qBittorrent
 hash).

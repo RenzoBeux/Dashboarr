@@ -8,6 +8,8 @@ import {
   formatBytes,
   formatEpisodeSpan,
   formatGrabBody,
+  GRAB_REPEAT_WINDOW_MS,
+  grabGroupTime,
   groupGrabRecords,
   sonarrGrabRelease,
 } from "./grab-format.js";
@@ -78,6 +80,7 @@ test("Radarr Grab webhook builds the push with its own grabbed dedupe segment", 
     },
     undefined,
     "",
+    1_000,
   );
   assert.deepEqual(event, {
     category: "radarrGrabbed",
@@ -85,6 +88,7 @@ test("Radarr Grab webhook builds the push with its own grabbed dedupe segment", 
     body: "Dune: Part Two (2024) · WEBDL-2160p · 60.0 GB · NZBgeek (Prowlarr)",
     data: { type: "radarr", movieId: 7, instanceId: undefined },
     dedupeKey: "radarr:grabbed:any:SABnzbd_nzo_abc",
+    dedupeOccurrence: { at: 1_000, windowMs: GRAB_REPEAT_WINDOW_MS },
   });
 });
 
@@ -111,6 +115,7 @@ test("Sonarr Grab webhook spans a season pack in one push", () => {
     },
     "inst-s",
     "",
+    2_000,
   );
   assert.deepEqual(event, {
     category: "sonarrGrabbed",
@@ -118,6 +123,7 @@ test("Sonarr Grab webhook spans a season pack in one push", () => {
     body: "Severance S02E01-E10 · WEBDL-1080p · 20.0 GB · DrunkenSlug",
     data: { type: "sonarr", seriesId: 3, episodeId: 100, instanceId: "inst-s" },
     dedupeKey: "sonarr:grabbed:inst-s:HASH",
+    dedupeOccurrence: { at: 2_000, windowMs: GRAB_REPEAT_WINDOW_MS },
   });
   assert.equal(buildSonarrGrabWebhookEvent({ episodes }, undefined, ""), null);
 });
@@ -153,6 +159,7 @@ test("Radarr history grabs read quality, size and indexer from the record", () =
       {
         id: 9,
         eventType: "grabbed",
+        date: "2026-10-29T10:00:00Z",
         movieId: 7,
         movie: { id: 7, title: "Dune", year: 2021 },
         downloadId: "HASH",
@@ -171,6 +178,7 @@ test("Radarr history grabs read quality, size and indexer from the record", () =
     data: { type: "radarr", movieId: 7, instanceId: "inst-1" },
     // Identical to the webhook's key once it resolves the same instance.
     dedupeKey: "radarr:grabbed:inst-1:HASH",
+    dedupeOccurrence: { at: Date.parse("2026-10-29T10:00:00Z"), windowMs: GRAB_REPEAT_WINDOW_MS },
   });
 });
 
@@ -272,4 +280,14 @@ test("history grabs fall back to the release name when the series/movie is missi
     "",
   );
   assert.equal(sonarr!.body, "Some.Show.S01E01");
+});
+
+test("grabGroupTime: a pack's earliest record date, else now", () => {
+  const pack = [
+    { date: "2026-10-29T10:00:02Z" },
+    { date: "2026-10-29T10:00:00Z" },
+    { date: "not a date" },
+  ];
+  assert.equal(grabGroupTime(pack, 5), Date.parse("2026-10-29T10:00:00Z"));
+  assert.equal(grabGroupTime([{}, { date: "" }], 5), 5);
 });

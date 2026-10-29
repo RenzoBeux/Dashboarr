@@ -515,6 +515,13 @@ export interface PushEvent {
   /** Used for dedupe — if set, backend won't send duplicate pushes for the same key. */
   dedupeKey?: string;
   /**
+   * For a dedupeKey whose event can legitimately recur (the same release
+   * grabbed again later): when this occurrence happened (ms) and how close
+   * another occurrence must be to count as the same one. Without it the key
+   * is claimed for good.
+   */
+  dedupeOccurrence?: { at: number; windowMs: number };
+  /**
    * Ignore the per-category notification toggle. Used by the "send test push"
    * button so the test works even when the chosen category is disabled.
    * The global `notifications.enabled` master flag is still respected.

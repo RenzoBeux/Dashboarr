@@ -15,6 +15,8 @@ const { diffRadarrGrabs, diffSonarrGrabs, diffRadarrHistory } = await import("./
 const { saveNotificationSettings } = await import("../db/repos/config.js");
 const { getState } = await import("../db/repos/seen-state.js");
 const { DEFAULT_NOTIFICATION_SETTINGS } = await import("../types.js");
+const { dispatchPush } = await import("../push/dispatcher.js");
+const { buildRadarrGrabWebhookEvent, buildSonarrGrabWebhookEvent } = await import("../push/grab-format.js");
 
 type RadarrRecord = Parameters<typeof diffRadarrGrabs>[3][number];
 type SonarrRecord = Parameters<typeof diffSonarrGrabs>[3][number];
@@ -119,4 +121,70 @@ test("a Sonarr season pack with no downloadId (Blackhole) pushes once", async ()
   for (const n of [1, 2, 3]) {
     assert.equal(claimed(`sonarr:grabbed:s2:history:${60 + n}`), false);
   }
+});
+
+// A grab key holds the occurrence it last claimed, so its value tells which
+// sighting actually pushed.
+function claimedAt(key: string): number | null {
+  return getState<number>(`event:${key}`);
+}
+
+test("the webhook and the poller push one grab once, a later re-grab of the same hash pushes again", async () => {
+  saveNotificationSettings({ ...DEFAULT_NOTIFICATION_SETTINGS, radarrGrabbed: true });
+  const grabbedAt = Date.parse("2026-10-29T10:00:00Z");
+  const movie = { id: 7, title: "Dune", year: 2021 };
+
+  await diffRadarrGrabs("r6", "Radarr", false, []);
+  const hook = buildRadarrGrabWebhookEvent({ movie, downloadId: "SAME" }, "r6", "", grabbedAt + 2_000);
+  await dispatchPush(hook!);
+  assert.equal(claimedAt("radarr:grabbed:r6:SAME"), grabbedAt + 2_000);
+
+  // The poller sees the same grab's record on its next tick: no second push.
+  const first: RadarrRecord = { ...radarrGrab(70, "SAME"), date: "2026-10-29T10:00:00Z" };
+  await diffRadarrGrabs("r6", "Radarr", false, [first]);
+  assert.equal(claimedAt("radarr:grabbed:r6:SAME"), grabbedAt + 2_000);
+
+  // Deleted and grabbed again the next day: same hash, new record.
+  const again: RadarrRecord = { ...radarrGrab(71, "SAME"), date: "2026-10-30T10:00:00Z" };
+  await diffRadarrGrabs("r6", "Radarr", false, [again, first]);
+  assert.equal(claimedAt("radarr:grabbed:r6:SAME"), Date.parse("2026-10-30T10:00:00Z"));
+});
+
+test("a re-grab seen by the webhook first pushes again, and its poll stays quiet", async () => {
+  saveNotificationSettings({ ...DEFAULT_NOTIFICATION_SETTINGS, sonarrGrabbed: true });
+  const series = { id: 3, title: "Severance" };
+  const ep = (id: number, n: number, date: string): SonarrRecord => ({
+    id,
+    eventType: "grabbed",
+    date,
+    seriesId: 3,
+    series,
+    episode: { seasonNumber: 1, episodeNumber: n },
+    downloadId: "REPACK",
+  });
+
+  await diffSonarrGrabs("s3", "Sonarr", false, []);
+  await diffSonarrGrabs("s3", "Sonarr", false, [ep(80, 1, "2026-10-29T10:00:00Z")]);
+  assert.equal(claimedAt("sonarr:grabbed:s3:REPACK"), Date.parse("2026-10-29T10:00:00Z"));
+  // The rest of that pack, written a moment later, is the same grab.
+  await diffSonarrGrabs("s3", "Sonarr", false, [ep(81, 2, "2026-10-29T10:00:01Z"), ep(80, 1, "2026-10-29T10:00:00Z")]);
+  assert.equal(claimedAt("sonarr:grabbed:s3:REPACK"), Date.parse("2026-10-29T10:00:00Z"));
+
+  const regrabAt = Date.parse("2026-10-30T09:00:00Z");
+  const hook = buildSonarrGrabWebhookEvent(
+    { series, episodes: [{ seasonNumber: 1, episodeNumber: 1 }, { seasonNumber: 1, episodeNumber: 2 }], downloadId: "REPACK" },
+    "s3",
+    "",
+    regrabAt,
+  );
+  await dispatchPush(hook!);
+  assert.equal(claimedAt("sonarr:grabbed:s3:REPACK"), regrabAt);
+
+  await diffSonarrGrabs("s3", "Sonarr", false, [
+    ep(83, 2, "2026-10-30T08:59:59Z"),
+    ep(82, 1, "2026-10-30T08:59:59Z"),
+    ep(81, 2, "2026-10-29T10:00:01Z"),
+    ep(80, 1, "2026-10-29T10:00:00Z"),
+  ]);
+  assert.equal(claimedAt("sonarr:grabbed:s3:REPACK"), regrabAt);
 });
