@@ -496,9 +496,16 @@ describe("departedHolds", () => {
     expect(departedHolds(set(), set("a"), set("b"))).toEqual(set("a"));
   });
 
-  it("ignores a departed key that was a real download", () => {
-    // "b" was queued but not held: it settles solid, as a finished download.
+  it("does not remember a hold that is still queued", () => {
     expect(departedHolds(set(), set("a"), set("a"))).toEqual(set());
+  });
+
+  it("ignores a departed key that was a real download", () => {
+    // Previous snapshot queued "a" (held) and "b" (downloading); both left.
+    // Only the hold is carried, so "b" settles solid as a finished download.
+    expect(departedHolds(set(), set("a"), set())).toEqual(set("a"));
+    // "b" alone leaving, with nothing held, carries nothing.
+    expect(departedHolds(set(), set(), set("a"))).toEqual(set());
   });
 
   it("keeps remembering until the key is queued again", () => {
