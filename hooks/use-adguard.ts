@@ -16,13 +16,24 @@ import {
   getStatus,
   refreshFilters,
   setProtection,
+  setUserRules,
 } from "@/services/adguard-api";
-import { useInstanceTarget } from "@/hooks/use-instance-target";
+import { useEnabledInstances, useInstanceTarget } from "@/hooks/use-instance-target";
+import {
+  addRuleLine,
+  applyDomainRule,
+  removeRuleLine,
+  userRulesOf,
+  type AdguardDomainRuleChange,
+  type DomainRuleEdit,
+} from "@/lib/adguard-rules";
 import type {
+  AdguardFilterStatus,
   AdguardQueryLogFilters,
   AdguardRewriteEntry,
   AdguardServerStatus,
 } from "@/lib/types";
+import type { ServiceInstance } from "@/store/config-store";
 
 /**
  * Cadences live here, not in POLLING_INTERVALS: they are AdGuard Home-specific
@@ -211,6 +222,125 @@ export function useRefreshAdguardFilters(instanceId?: string) {
     mutationFn: (whitelist: boolean) => refreshFilters(whitelist, id ?? undefined),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: adguardKeys.filterStatus(id) }),
+  });
+}
+
+// --- Custom (user) rules -------------------------------------------------
+
+/**
+ * Every rule write is a read-modify-write on a FRESH `/filtering/status`:
+ * set_rules replaces the whole list, and the cached copy can be up to 60 s
+ * old (useAdguardFilterStatus's staleTime), so editing it would silently
+ * drop a rule added from the web UI or another phone in between. On success
+ * the cache is seeded from the list we sent — the same "no response body"
+ * pattern as useSetAdguardProtection — and the counters are refreshed, since
+ * a new allow rule changes what gets blocked from the next query on.
+ */
+async function writeRules(
+  id: string | undefined,
+  edit: (current: string[]) => { rules: string[]; changed: boolean },
+): Promise<string[]> {
+  const status = await getFilterStatus(id);
+  const result = edit(userRulesOf(status));
+  if (result.changed) await setUserRules(result.rules, id);
+  return result.rules;
+}
+
+function seedUserRules(
+  queryClient: QueryClient,
+  id: string | null | undefined,
+  rules: string[],
+): void {
+  queryClient.setQueryData(
+    adguardKeys.filterStatus(id),
+    (prev: AdguardFilterStatus | undefined) => prev && { ...prev, user_rules: rules },
+  );
+  invalidateAdguardStats(queryClient, id);
+}
+
+export interface AdguardDomainRuleVars {
+  domain: string;
+  change: AdguardDomainRuleChange;
+}
+
+/** Allow, block or clear one domain on the targeted instance. */
+export function useAdguardDomainRule(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
+  return useMutation({
+    mutationFn: async (vars: AdguardDomainRuleVars): Promise<DomainRuleEdit> => {
+      let edit: DomainRuleEdit | undefined;
+      await writeRules(id ?? undefined, (current) => {
+        edit = applyDomainRule(current, vars.domain, vars.change);
+        return edit;
+      });
+      return edit!;
+    },
+    onSuccess: (edit) => seedUserRules(queryClient, id, edit.rules),
+  });
+}
+
+export interface AdguardDomainRuleEverywhereResult {
+  ok: { instance: ServiceInstance; edit: DomainRuleEdit }[];
+  failed: { instance: ServiceInstance; error: unknown }[];
+}
+
+/**
+ * The same change fanned out to EVERY enabled AdGuard Home instance — for a
+ * home running a second instance (a DHCP box, a fallback resolver) that must
+ * agree with the first, or a domain is only unblocked on whichever resolver
+ * the client happened to ask. Instances are written independently; one
+ * failing (offline, wrong password) never rolls back the others, and the
+ * result names each so the caller can say which ones did not take.
+ */
+export function useAdguardDomainRuleEverywhere() {
+  const queryClient = useQueryClient();
+  const instances = useEnabledInstances("adguard");
+  return useMutation({
+    mutationFn: async (vars: AdguardDomainRuleVars): Promise<AdguardDomainRuleEverywhereResult> => {
+      const settled = await Promise.allSettled(
+        instances.map(async (instance) => {
+          let edit: DomainRuleEdit | undefined;
+          await writeRules(instance.id, (current) => {
+            edit = applyDomainRule(current, vars.domain, vars.change);
+            return edit;
+          });
+          return { instance, edit: edit! };
+        }),
+      );
+      const result: AdguardDomainRuleEverywhereResult = { ok: [], failed: [] };
+      settled.forEach((outcome, i) => {
+        if (outcome.status === "fulfilled") result.ok.push(outcome.value);
+        else result.failed.push({ instance: instances[i]!, error: outcome.reason });
+      });
+      return result;
+    },
+    onSuccess: (result) => {
+      for (const { instance, edit } of result.ok) {
+        seedUserRules(queryClient, instance.id, edit.rules);
+      }
+    },
+  });
+}
+
+/** Append one raw rule line (the rules screen's advanced mode). */
+export function useAddAdguardRule(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
+  return useMutation({
+    mutationFn: (line: string) => writeRules(id ?? undefined, (current) => addRuleLine(current, line)),
+    onSuccess: (rules) => seedUserRules(queryClient, id, rules),
+  });
+}
+
+/** Remove one rule line verbatim (the rules screen's trash button). */
+export function useRemoveAdguardRule(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("adguard", instanceId);
+  return useMutation({
+    mutationFn: (line: string) =>
+      writeRules(id ?? undefined, (current) => removeRuleLine(current, line)),
+    onSuccess: (rules) => seedUserRules(queryClient, id, rules),
   });
 }
 

@@ -12,6 +12,7 @@ import type {
   AdguardQueryLogFilters,
   AdguardFilterStatus,
   AdguardRewriteEntry,
+  AdguardSetRulesRequest,
 } from "@/lib/types";
 
 // iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
@@ -385,6 +386,24 @@ export function refreshFilters(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ whitelist }),
+    },
+    instanceId,
+  );
+}
+
+/**
+ * Replace the custom ("user") filtering rules. Whole-list semantics — see
+ * AdguardSetRulesRequest. Answers 200 with no body, like /protection, so there
+ * is nothing to return; callers seed their cache from the list they sent.
+ */
+export async function setUserRules(rules: string[], instanceId?: string): Promise<void> {
+  const body: AdguardSetRulesRequest = { rules };
+  await adguardRequest<void>(
+    "/filtering/set_rules",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     },
     instanceId,
   );
