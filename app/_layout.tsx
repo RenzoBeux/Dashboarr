@@ -206,6 +206,11 @@ function NotificationRouter() {
           break;
         case "cleanuparr":
           // Removals and cleanups are listed in the Cleanuparr events feed.
+          // The tab follows the selected instance, so select the one that
+          // sent the push (a no-op when it is not enabled or attached).
+          if (instanceId) {
+            useConfigStore.getState().setActiveInstance("cleanuparr", instanceId);
+          }
           router.push("/(tabs)/cleanuparr");
           break;
         case "health":
