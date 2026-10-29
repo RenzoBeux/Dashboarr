@@ -46,6 +46,10 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   tracearrServerUp: true,
   tracearrStreamStarted: false,
   tracearrStreamStopped: false,
+  // Cleanuparr (#486): removals on, routine seeding cleanups opt-in. Must match
+  // the backend's schema defaults, which is what "Use default" reports.
+  cleanuparrRemoved: true,
+  cleanuparrCleaned: false,
 };
 
 export function defaultServiceConfig(id: ServiceId): ServiceConfig {

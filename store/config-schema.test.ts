@@ -1123,6 +1123,26 @@ describe("validateExportPayload — notification settings", () => {
     });
   });
 
+  it("accepts the optional Cleanuparr toggles and overrides (v62, #486)", () => {
+    const settings = {
+      ...fullSettings,
+      cleanuparrRemoved: false,
+      cleanuparrCleaned: true,
+      perInstance: { "inst-cleanuparr-1": { cleanuparrRemoved: true, cleanuparrCleaned: false } },
+    };
+    const result = validateExportPayload({ ...baseValid(), notificationSettings: settings });
+    expect(result.notificationSettings).toEqual(settings);
+  });
+
+  it("rejects a Cleanuparr toggle with the wrong type", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        notificationSettings: { ...fullSettings, cleanuparrCleaned: "on" as any },
+      }),
+    ).toThrow(/notificationSettings/);
+  });
+
   it("rejects a grab toggle with the wrong type", () => {
     expect(() =>
       validateExportPayload({

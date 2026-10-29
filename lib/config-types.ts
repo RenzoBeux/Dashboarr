@@ -241,7 +241,12 @@ export type NotifCategory =
   | "tracearrServerDown"
   | "tracearrServerUp"
   | "tracearrStreamStarted"
-  | "tracearrStreamStopped";
+  | "tracearrStreamStopped"
+  // v62 (#486): Cleanuparr events from the backend poller, QueueItemDeleted
+  // ("Download removed") and DownloadCleaned ("Download cleaned"). Exposed
+  // per-instance only, like the Tracearr ones; no in-app watcher.
+  | "cleanuparrRemoved"
+  | "cleanuparrCleaned";
 
 // v34 (issue #220): optional Apprise sink. Persistent config-key model — the
 // user configures their service URLs in the Apprise server's own UI under a key
@@ -271,6 +276,8 @@ export interface NotificationSettings {
   tracearrServerUp: boolean;
   tracearrStreamStarted: boolean;
   tracearrStreamStopped: boolean;
+  cleanuparrRemoved: boolean;
+  cleanuparrCleaned: boolean;
   // v21: per-instance overrides keyed by instance UUID. A category absent from
   // an instance's override map falls through to the global toggle. Allows
   // "notify me from the primary Radarr but stay silent from the testing one"

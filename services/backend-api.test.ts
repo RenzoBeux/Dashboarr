@@ -98,6 +98,23 @@ describe("pushConfigSnapshot", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("sends the Cleanuparr toggles (#486), the defaults its per-instance overrides inherit", async () => {
+    setNotifications({ cleanuparrCleaned: true });
+    fetchSpy.mockResolvedValueOnce(respond(200));
+    await pushConfigSnapshot();
+    expect(sentNotifications(0)).toMatchObject({ cleanuparrRemoved: true, cleanuparrCleaned: true });
+  });
+
+  it("retries without Cleanuparr overrides on a backend that predates them", async () => {
+    setNotifications({
+      perInstance: { c1: { cleanuparrRemoved: false, serviceOffline: false }, c2: { cleanuparrCleaned: true } },
+    });
+    fetchSpy.mockResolvedValueOnce(respond(400)).mockResolvedValueOnce(respond(200));
+    await pushConfigSnapshot();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(sentNotifications(1).perInstance).toEqual({ c1: { serviceOffline: false } });
+  });
+
   it("surfaces the retry's own failure", async () => {
     setNotifications({ perInstance: { r1: { radarrGrabbed: true } } });
     fetchSpy.mockResolvedValueOnce(respond(400)).mockResolvedValueOnce(respond(500));

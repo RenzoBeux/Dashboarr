@@ -29,6 +29,51 @@ describe("grab categories (#464)", () => {
   });
 });
 
+describe("Cleanuparr categories (#486)", () => {
+  it("are surfaced only on the Cleanuparr instance editor", () => {
+    expect(CATEGORIES_FOR_KIND.cleanuparr).toEqual([
+      "cleanuparrRemoved",
+      "cleanuparrCleaned",
+      "serviceOffline",
+    ]);
+    for (const [kind, cats] of Object.entries(CATEGORIES_FOR_KIND)) {
+      if (kind === "cleanuparr") continue;
+      expect(cats).not.toContain("cleanuparrRemoved");
+      expect(cats).not.toContain("cleanuparrCleaned");
+    }
+  });
+
+  it("have labels and are listed in NOTIF_CATEGORIES", () => {
+    expect(CATEGORY_LABELS.cleanuparrRemoved).toBe("Download removed");
+    expect(CATEGORY_LABELS.cleanuparrCleaned).toBe("Download cleaned");
+    expect(NOTIF_CATEGORIES).toEqual(
+      expect.arrayContaining(["cleanuparrRemoved", "cleanuparrCleaned"]),
+    );
+  });
+
+  it("default to removals on and cleanups off, overridable per instance", () => {
+    expect(shouldNotifyForInstance("cleanuparrRemoved", "c1", DEFAULT_NOTIFICATION_SETTINGS)).toBe(true);
+    expect(shouldNotifyForInstance("cleanuparrCleaned", "c1", DEFAULT_NOTIFICATION_SETTINGS)).toBe(false);
+    const settings = {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      perInstance: { c1: { cleanuparrRemoved: false, cleanuparrCleaned: true } },
+    };
+    expect(shouldNotifyForInstance("cleanuparrRemoved", "c1", settings)).toBe(false);
+    expect(shouldNotifyForInstance("cleanuparrCleaned", "c1", settings)).toBe(true);
+  });
+
+  it("are dropped from overrides sent to a legacy backend", () => {
+    expect(LEGACY_BACKEND_NOTIF_CATEGORIES).not.toContain("cleanuparrRemoved");
+    expect(LEGACY_BACKEND_NOTIF_CATEGORIES).not.toContain("cleanuparrCleaned");
+    expect(
+      restrictPerInstanceCategories(
+        { c1: { cleanuparrRemoved: false, serviceOffline: false }, c2: { cleanuparrCleaned: true } },
+        LEGACY_BACKEND_NOTIF_CATEGORIES,
+      ),
+    ).toEqual({ c1: { serviceOffline: false } });
+  });
+});
+
 describe("LEGACY_BACKEND_NOTIF_CATEGORIES", () => {
   it("is the frozen v1.9.0 backend enum, without the newer categories", () => {
     expect(LEGACY_BACKEND_NOTIF_CATEGORIES).toHaveLength(14);

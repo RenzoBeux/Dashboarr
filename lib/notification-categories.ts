@@ -66,7 +66,9 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   // mirroring how SABnzbd/NZBGet detect completion.
   tdarr:       ["serviceOffline"],
   autobrr:     ["serviceOffline"],
-  cleanuparr:  ["serviceOffline"],
+  // Cleanuparr events come from the backend poller only (#486), so like the
+  // Tracearr ones they have no global toggle rows and live here per instance.
+  cleanuparr:  ["cleanuparrRemoved", "cleanuparrCleaned", "serviceOffline"],
   // No blocking/gravity watcher in the app and no backend poller, so a
   // "blocking disabled" toggle would be a switch nothing emits. Offline is the
   // only category with a real source — the rtorrent/Lidarr/Bindery stance.
@@ -102,6 +104,8 @@ export const CATEGORY_LABELS: Record<NotifCategory, string> = {
   tracearrServerUp: "Server back online",
   tracearrStreamStarted: "Stream started",
   tracearrStreamStopped: "Stream stopped",
+  cleanuparrRemoved: "Download removed",
+  cleanuparrCleaned: "Download cleaned",
 };
 
 export const NOTIF_CATEGORIES = Object.keys(CATEGORY_LABELS) as NotifCategory[];

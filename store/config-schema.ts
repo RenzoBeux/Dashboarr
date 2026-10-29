@@ -376,6 +376,8 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
     "tracearrServerUp",
     "tracearrStreamStarted",
     "tracearrStreamStopped",
+    "cleanuparrRemoved",
+    "cleanuparrCleaned",
   ] as const;
   const out: Partial<NotificationSettings> = {};
   for (const key of requiredKeys) {

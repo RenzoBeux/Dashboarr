@@ -204,6 +204,10 @@ function NotificationRouter() {
           // All Tracearr webhook events (streams + alerts) surface in Activity.
           router.push("/(tabs)/activity");
           break;
+        case "cleanuparr":
+          // Removals and cleanups are listed in the Cleanuparr events feed.
+          router.push("/(tabs)/cleanuparr");
+          break;
         case "health":
           router.push("/(tabs)/services");
           break;

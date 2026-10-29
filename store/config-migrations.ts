@@ -226,8 +226,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         coerceNotificationSettings treats them as optional keys, so older
  *         exports validate and the missing entries fall back to
  *         DEFAULT_NOTIFICATION_SETTINGS at hydrate/import time.
+ *   v62 - added the cleanuparrRemoved / cleanuparrCleaned notification
+ *         categories for the backend Cleanuparr events poller (#486). Pure
+ *         version stamp, same as v61.
  */
-export const CURRENT_CONFIG_VERSION = 61;
+export const CURRENT_CONFIG_VERSION = 62;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -809,6 +812,10 @@ const migrations: Record<number, (payload: any) => any> = {
   // v60 → v61: radarrGrabbed / sonarrGrabbed notification categories (#464).
   // Pure version stamp: they are optional keys in coerceNotificationSettings.
   60: (payload) => ({ ...payload, version: 61 }),
+  // v61 → v62: cleanuparrRemoved / cleanuparrCleaned notification categories
+  // (#486). Pure version stamp: they are optional keys in
+  // coerceNotificationSettings.
+  61: (payload) => ({ ...payload, version: 62 }),
 };
 
 /**

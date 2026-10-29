@@ -898,6 +898,11 @@
           three-way picker: <strong>Use default</strong>, <strong>Always notify</strong>,
           <strong>Never notify</strong>. Every service kind has at least "Service offline". Tracearr
           additionally exposes seven categories that exist only per instance, with no global toggles.
+          Cleanuparr exposes two the same way: <strong>Download removed</strong> (on by default), when
+          its Queue Cleaner or Malware Blocker removes a download, and <strong>Download cleaned</strong>
+          (off by default), when its Download Cleaner deletes a torrent that reached its seeding limit.
+          Both push the release name and the reason, and both need the backend, which polls
+          Cleanuparr's event feed every minute. Dry-run events never push.
         </p>
         <div class="note">
           <strong>Two notifications for one download is expected.</strong> Your download client fires

@@ -320,6 +320,8 @@ export async function pushConfigSnapshot(): Promise<void> {
     sonarrGrabbed,
     serviceOffline,
     overseerrNewRequest,
+    cleanuparrRemoved,
+    cleanuparrCleaned,
     perInstance,
     apprise,
     qbtMutedCategories,
@@ -342,6 +344,10 @@ export async function pushConfigSnapshot(): Promise<void> {
           sonarrGrabbed,
           serviceOffline,
           overseerrNewRequest,
+          // v62 (#486): the defaults the per-instance Cleanuparr toggles
+          // inherit. Older backends strip unknown top-level keys (zod v3).
+          cleanuparrRemoved,
+          cleanuparrCleaned,
           // v21: per-instance overrides. Sent as `undefined` when no overrides
           // exist so the backend treats it the same as a pre-v21 client.
           perInstance: overrides,

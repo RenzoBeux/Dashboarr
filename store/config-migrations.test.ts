@@ -1787,6 +1787,45 @@ describe("v60 → v61 (grab notification categories stamp, #464)", () => {
   });
 });
 
+describe("v61 → v62 (Cleanuparr notification categories stamp, #486)", () => {
+  it("just stamps the version and preserves the Cleanuparr toggles and overrides", () => {
+    const result: any = migrateConfig({
+      version: 61,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: {
+        enabled: true,
+        torrentCompleted: true,
+        radarrDownloaded: true,
+        sonarrDownloaded: true,
+        serviceOffline: true,
+        overseerrNewRequest: true,
+        cleanuparrCleaned: true,
+        perInstance: { c1: { cleanuparrRemoved: false } },
+      },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings.cleanuparrCleaned).toBe(true);
+    expect(result.notificationSettings.perInstance).toEqual({ c1: { cleanuparrRemoved: false } });
+  });
+
+  it("leaves the Cleanuparr keys absent when a v61 export omitted them", () => {
+    const result: any = migrateConfig({
+      version: 61,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings).not.toHaveProperty("cleanuparrRemoved");
+    expect(result.notificationSettings).not.toHaveProperty("cleanuparrCleaned");
+  });
+});
+
 describe("v39 → v40 (weekStart stamp)", () => {
   it("just stamps the version and preserves an already-set weekStart", () => {
     const result: any = migrateConfig({
