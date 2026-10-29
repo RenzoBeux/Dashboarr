@@ -1,13 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { Modal, View, Text, ScrollView } from "react-native";
+import { Modal, View, Text, Platform } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { cssInterop } from "nativewind";
 import { Image } from "expo-image";
 import { Plus, type LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
-import { FilterChip } from "@/components/ui/filter-chip";
 import { SheetHeader } from "@/components/ui/sheet-header";
+import { ArrTagPicker } from "@/components/common/arr-tag-picker";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useTargetInstance } from "@/hooks/use-instance-target";
@@ -18,6 +20,13 @@ import {
   tagsToRemember,
 } from "@/store/add-defaults-store";
 import { formatBytes } from "@/lib/utils";
+
+// The tag picker's "New tag" input lives in this pageSheet, so it uses the
+// pageSheet keyboard pattern (KeyboardAwareScrollView), see CLAUDE.md.
+cssInterop(KeyboardAwareScrollView, {
+  className: "style",
+  contentContainerClassName: "contentContainerStyle",
+});
 
 export interface AddMediaSheetCommonState {
   qualityProfileId: number;
@@ -141,13 +150,6 @@ export function AddMediaSheet({
   const poster = result?.images.find((i) => i.coverType === "poster");
   const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, serviceId);
 
-  const toggleTag = (tagId: number) => {
-    setSelectedTags((prev) => {
-      const base = prev ?? effectiveTags;
-      return base.includes(tagId) ? base.filter((t) => t !== tagId) : [...base, tagId];
-    });
-  };
-
   // tags is undefined only when there is no list to show yet and no error (still
   // loading, or the query is disabled). The call sites pass any cached list
   // through and [] only on a hard failure, so Add is gated only while genuinely
@@ -193,7 +195,13 @@ export function AddMediaSheet({
       <View className="flex-1 bg-background">
         <SheetHeader title={sheetTitle} onClose={onClose} />
 
-        <ScrollView contentContainerClassName="px-4 py-4 pb-8">
+        <KeyboardAwareScrollView
+          className="flex-1"
+          contentContainerClassName="px-4 py-4 pb-8"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          bottomOffset={20}
+        >
           <View className="flex-row gap-3 mb-5">
             {posterUrl ? (
               <Image
@@ -253,21 +261,15 @@ export function AddMediaSheet({
 
           {children}
 
-          {tags && tags.length > 0 ? (
-            <View className="my-3">
-              <Text className="text-zinc-400 text-sm mb-2">Tags</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <FilterChip
-                    key={tag.id}
-                    label={tag.label}
-                    selected={effectiveTags.includes(tag.id)}
-                    onPress={() => toggleTag(tag.id)}
-                  />
-                ))}
-              </View>
-            </View>
-          ) : null}
+          {/* Shown even with zero tags, so the first one can be created (#485). */}
+          <ArrTagPicker
+            service={serviceId}
+            instanceId={instanceId}
+            tags={tags}
+            selected={effectiveTags}
+            onChange={setSelectedTags}
+            className="my-3"
+          />
 
           <Toggle
             label="Start Search on Add"
@@ -281,7 +283,7 @@ export function AddMediaSheet({
               {formatBytes(selectedFolder.freeSpace)} free on {selectedFolder.path}
             </Text>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <View
           className="px-4 pb-6 pt-3 border-t border-border bg-background"

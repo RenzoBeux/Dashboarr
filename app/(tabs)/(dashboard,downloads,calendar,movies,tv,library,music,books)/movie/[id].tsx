@@ -62,6 +62,7 @@ import {
   tmdbMovieUrl,
 } from "@/lib/external-links";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { formatTagSummary } from "@/lib/arr-tag-input";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
   formatBytes,
@@ -284,7 +285,11 @@ export default function MovieDetailScreen() {
             }
           />
 
-          <OptionsBlock movie={movie} onPress={() => setOptionsVisible(true)} />
+          <OptionsBlock
+            movie={movie}
+            tagsRow={tags ? formatTagSummary(tagLabels) : undefined}
+            onPress={() => setOptionsVisible(true)}
+          />
 
           {movie.overview ? (
             <View className="mb-5">
@@ -598,12 +603,15 @@ function MovieFileBlock({
 
 // Editable Radarr movie options (issue #216): minimum availability + path. The
 // whole card is one tap target and opens the MovieOptionsSheet editor — mirrors
-// Sonarr's OptionsBlock.
+// Sonarr's OptionsBlock. The Tags row (#485) is hidden while `tagsRow` is
+// undefined, i.e. while the tag list is unavailable.
 function OptionsBlock({
   movie,
+  tagsRow,
   onPress,
 }: {
   movie: RadarrMovie;
+  tagsRow?: string;
   onPress: () => void;
 }) {
   const availabilityLabel =
@@ -622,6 +630,7 @@ function OptionsBlock({
         <View className="flex-1 gap-2.5">
           <OptionRow label="Availability" value={availabilityLabel} />
           {movie.path ? <OptionRow label="Path" value={movie.path} /> : null}
+          {tagsRow != null ? <OptionRow label="Tags" value={tagsRow} /> : null}
         </View>
         <View className="ml-3 w-9 h-9 rounded-full bg-surface-light items-center justify-center">
           <Icon icon={Pencil} size={16} color="#a1a1aa" />

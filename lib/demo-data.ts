@@ -435,6 +435,21 @@ const DEMO_LIDARR_ARTIST_TAGS: Record<number, number[]> = {
   3: [1, 2],
 };
 
+// POST /tag (#485) echoes the new tag the way TagService.Add does, lowercased.
+// Fixtures are static, so it lives only in the app's tag cache until a refetch.
+// Ids start well above the fixtures' so a demo tag never collides with one.
+let demoNextTagId = 1000;
+function demoCreatedTag(body?: string): { id: number; label: string } {
+  let label = "";
+  try {
+    const parsed = body ? (JSON.parse(body) as { label?: unknown }) : undefined;
+    if (typeof parsed?.label === "string") label = parsed.label;
+  } catch {
+    // Malformed body: fall through to an empty label, as the server would 400.
+  }
+  return { id: demoNextTagId++, label: label.toLowerCase() };
+}
+
 // --- Radarr ---
 
 function makeMovie(id: number, title: string, year: number, tmdbId: number, hasFile: boolean) {
@@ -3812,6 +3827,16 @@ export function getDemoResponse(
   // way the real one does. POST/PUT are deliberately excluded: NZBGet,
   // Transmission, Deluge and rtorrent dispatch their reads off a POST body.
   if (method === "DELETE") return undefined;
+
+  // Creating an *arr tag (#485) answers with the one new tag, not the list the
+  // read route below returns.
+  if (
+    method === "POST" &&
+    normalized === "/tag" &&
+    (serviceId === "radarr" || serviceId === "sonarr" || serviceId === "lidarr")
+  ) {
+    return demoCreatedTag(body);
+  }
 
   switch (serviceId) {
     case "radarr": {

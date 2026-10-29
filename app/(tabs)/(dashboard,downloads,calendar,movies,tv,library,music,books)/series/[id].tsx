@@ -71,6 +71,7 @@ import {
   formatResolution,
 } from "@/lib/utils";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { formatTagSummary } from "@/lib/arr-tag-input";
 import { imdbTitleUrl, openExternalUrl } from "@/lib/external-links";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
@@ -307,6 +308,7 @@ export default function SeriesDetailScreen() {
 
           <OptionsBlock
             series={series}
+            tagsRow={tags ? formatTagSummary(tagLabels) : undefined}
             onPress={() => setOptionsVisible(true)}
           />
 
@@ -690,11 +692,15 @@ function AboutRow({
 // Sonarr series options (issue #184): series type, season folders,
 // monitor-new-seasons. The whole card is one tap target — small per-row
 // targets are fiddly on phones — and opens the SeriesOptionsSheet editor.
+// The Tags row (#485) is hidden while `tagsRow` is undefined (tag list
+// unavailable), and is a short summary because OptionRow does not truncate.
 function OptionsBlock({
   series,
+  tagsRow,
   onPress,
 }: {
   series: SonarrSeries;
+  tagsRow?: string;
   onPress: () => void;
 }) {
   const typeLabel =
@@ -722,6 +728,7 @@ function OptionsBlock({
               value={series.monitorNewItems === "all" ? "All Seasons" : "None"}
             />
           ) : null}
+          {tagsRow != null ? <OptionRow label="Tags" value={tagsRow} /> : null}
         </View>
         <View className="ml-3 w-9 h-9 rounded-full bg-surface-light items-center justify-center">
           <Icon icon={Pencil} size={16} color="#a1a1aa" />
