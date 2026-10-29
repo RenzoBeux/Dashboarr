@@ -18,6 +18,7 @@ import {
 } from "@/lib/arr-poster-status";
 import {
   HELD_QUEUE_LABEL,
+  departedHolds,
   isHeldQueueRecord,
   queueActivityMap,
   queueEtaLabel,
@@ -485,6 +486,27 @@ describe("queueActivityMap", () => {
   it("handles a missing or empty queue", () => {
     expect(queueActivityMap(undefined, () => 1).size).toBe(0);
     expect(queueActivityMap([], () => 1).size).toBe(0);
+  });
+});
+
+describe("departedHolds", () => {
+  const set = (...keys: string[]) => new Set(keys);
+
+  it("remembers a hold that left the queue", () => {
+    expect(departedHolds(set(), set("a"), set("b"))).toEqual(set("a"));
+  });
+
+  it("ignores a departed key that was a real download", () => {
+    // "b" was queued but not held: it settles solid, as a finished download.
+    expect(departedHolds(set(), set("a"), set("a"))).toEqual(set());
+  });
+
+  it("keeps remembering until the key is queued again", () => {
+    const first = departedHolds(set(), set("a"), set());
+    // Same snapshot again (a re-render): nothing changes.
+    expect(departedHolds(first, set(), set())).toEqual(set("a"));
+    // Back in the queue (as a real download now): forgotten.
+    expect(departedHolds(first, set(), set("a"))).toEqual(set());
   });
 });
 

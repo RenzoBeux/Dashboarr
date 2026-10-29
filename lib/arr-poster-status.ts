@@ -134,6 +134,27 @@ export function queueActivityMap<R extends { status?: string | null }, K>(
   return map;
 }
 
+/**
+ * Keys that were held when they left the queue, carried from one queue
+ * snapshot to the next (issue #484). The calendar surfaces keep a departed key
+ * "downloading" for a moment while their refetch lands
+ * (useRefreshOnDownloadComplete), but the held flag would drop at once, so a
+ * hold removed from the queue flashed solid purple, as if the download client
+ * had it, for that window. Adds what `previousHeld` had that `queued` lost, and
+ * forgets any key queued again. `held` is always a subset of `queued`, so a
+ * repeat call with the same sets returns the same keys.
+ */
+export function departedHolds<K>(
+  remembered: ReadonlySet<K>,
+  previousHeld: ReadonlySet<K>,
+  queued: ReadonlySet<K>,
+): Set<K> {
+  const next = new Set<K>();
+  for (const key of remembered) if (!queued.has(key)) next.add(key);
+  for (const key of previousHeld) if (!queued.has(key)) next.add(key);
+  return next;
+}
+
 interface QueueTimingRecord {
   status?: string | null;
   timeleft?: string | null;

@@ -74,6 +74,7 @@ import {
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useRefreshOnDownloadComplete } from "@/hooks/use-refresh-on-download-complete";
+import { useHeldThroughSettle } from "@/hooks/use-arr-downloading-keys";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
 import { CalendarEventRow } from "@/components/common/calendar-event-row";
 import { isSeasonPremiere, PREMIERE_BADGE } from "@/lib/season-premiere";
@@ -621,6 +622,17 @@ function CalendarView({
     () => new Set(episodeActivity.keys()),
     [episodeActivity],
   );
+  const liveHeldIds = useMemo(
+    () =>
+      new Set(
+        [...episodeActivity]
+          .filter(([, state]) => state === "held")
+          .map(([id]) => id),
+      ),
+    [episodeActivity],
+  );
+  // Still dashed while a hold that just left the queue settles below.
+  const heldEpisodeIds = useHeldThroughSettle(queuedEpisodeIds, liveHeldIds);
 
   // `hasFile` only lives in the calendar payload, which nothing else
   // invalidates — without this an imported episode reverts from purple to red
@@ -681,7 +693,7 @@ function CalendarView({
                   badge={isSeasonPremiere(ep) ? PREMIERE_BADGE : undefined}
                   hasFile={ep.hasFile}
                   downloading={downloadingEpisodeIds.has(ep.id)}
-                  held={episodeActivity.get(ep.id) === "held"}
+                  held={heldEpisodeIds.has(ep.id)}
                   barColor={
                     BAR_KIND_COLOR[
                       sonarrEpisodeBarKind(ep, downloadingEpisodeIds.has(ep.id))
