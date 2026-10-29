@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Keyboard, Text, View } from "react-native";
 import { Plus } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -24,6 +24,12 @@ interface ArrTagPickerProps {
   tags: ArrTag[] | undefined;
   selected: number[];
   onChange: (ids: number[]) => void;
+  /**
+   * True while a new tag is being created or typed but not yet added. The host
+   * disables its Save/Add button then: saving would drop the tag, and closing
+   * the sheet would drop the create's callback that selects it.
+   */
+  onBusyChange?: (busy: boolean) => void;
   className?: string;
 }
 
@@ -50,6 +56,7 @@ export function ArrTagPicker({
   tags,
   selected,
   onChange,
+  onBusyChange,
   className = "",
 }: ArrTagPickerProps) {
   const createTag = useCreateArrTag(service, instanceId);
@@ -62,6 +69,14 @@ export function ArrTagPicker({
   // new id is appended.
   const latest = useRef({ selected, onChange });
   latest.current = { selected, onChange };
+
+  const busy =
+    !!tags && editing && (createTag.isPending || draft.trim().length > 0);
+  // The cleanup also clears it on unmount, when the host sheet closes.
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
 
   if (!tags) return null;
 

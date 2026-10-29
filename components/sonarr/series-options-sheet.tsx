@@ -61,6 +61,7 @@ export function SeriesOptionsSheet({
     series.monitorNewItems,
   );
   const [selectedTags, setSelectedTags] = useState<number[]>(series.tags ?? []);
+  const [tagBusy, setTagBusy] = useState(false);
   const scrollPadding = useSheetBottomPadding(32);
 
   // Re-seed from the server values whenever the sheet opens.
@@ -82,7 +83,7 @@ export function SeriesOptionsSheet({
   const dirty = Object.keys(fields).length > 0;
 
   const handleSave = () => {
-    if (!dirty) return;
+    if (!dirty || tagBusy) return;
     // Optimistic update keeps the Options card in sync immediately; on error
     // the hook rolls the caches back and shows a toast.
     updateFields.mutate({
@@ -144,10 +145,15 @@ export function SeriesOptionsSheet({
             tags={tags}
             selected={selectedTags}
             onChange={setSelectedTags}
+            onBusyChange={setTagBusy}
             className="mb-6"
           />
 
-          <Button label="Save" onPress={handleSave} disabled={!dirty} />
+          <Button
+            label="Save"
+            onPress={handleSave}
+            disabled={!dirty || tagBusy}
+          />
         </KeyboardAwareScrollView>
       </View>
     </Modal>

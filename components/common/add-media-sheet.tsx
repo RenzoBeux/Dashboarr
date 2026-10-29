@@ -106,6 +106,7 @@ export function AddMediaSheet({
   const [rootFolderPath, setRootFolderPath] = useState<string | undefined>();
   const [selectedTags, setSelectedTags] = useState<number[] | undefined>();
   const [searchOnAdd, setSearchOnAdd] = useState<boolean | undefined>();
+  const [tagBusy, setTagBusy] = useState(false);
   const footerPadding = useSheetBottomPadding();
 
   // User-configured defaults for this instance (Settings → Add Defaults), with
@@ -158,7 +159,7 @@ export function AddMediaSheet({
     !!effectiveQualityProfileId && !!effectiveRootFolderPath && !!result && tags !== undefined;
 
   const handleAdd = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || tagBusy) return;
     // Remember only what the user actually picked this time (falling back to the
     // previously remembered pick), not the resolved effective* values. Persisting
     // effective* would freeze the Settings default into the store on the first
@@ -268,6 +269,7 @@ export function AddMediaSheet({
             tags={tags}
             selected={effectiveTags}
             onChange={setSelectedTags}
+            onBusyChange={setTagBusy}
             className="my-3"
           />
 
@@ -292,7 +294,7 @@ export function AddMediaSheet({
           <Button
             label={submitLabel}
             onPress={handleAdd}
-            disabled={!canSubmit}
+            disabled={!canSubmit || tagBusy}
             loading={isSubmitting}
             icon={<Icon icon={Plus} size={16} color="#fff" />}
             size="lg"

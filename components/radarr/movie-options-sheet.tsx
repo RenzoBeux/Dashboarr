@@ -56,6 +56,7 @@ export function MovieOptionsSheet({
   const [path, setPath] = useState(movie.path ?? "");
   const [moveFiles, setMoveFiles] = useState(false);
   const [selectedTags, setSelectedTags] = useState<number[]>(movie.tags ?? []);
+  const [tagBusy, setTagBusy] = useState(false);
   const scrollPadding = useSheetBottomPadding(32);
 
   // Re-seed from the server values whenever the sheet opens.
@@ -86,7 +87,7 @@ export function MovieOptionsSheet({
   const dirty = Object.keys(fields).length > 0;
 
   const handleSave = () => {
-    if (!dirty) return;
+    if (!dirty || tagBusy) return;
     // Optimistic update keeps the Options card in sync immediately; on error the
     // hook rolls the caches back and shows a toast.
     updateFields.mutate({
@@ -160,13 +161,14 @@ export function MovieOptionsSheet({
             tags={tags}
             selected={selectedTags}
             onChange={setSelectedTags}
+            onBusyChange={setTagBusy}
             className="mt-4"
           />
 
           <Button
             label="Save"
             onPress={handleSave}
-            disabled={!dirty}
+            disabled={!dirty || tagBusy}
             className="mt-6"
           />
         </KeyboardAwareScrollView>
