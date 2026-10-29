@@ -508,9 +508,27 @@ describe("queueEtaLabel", () => {
 });
 
 describe("queueTimeCaption", () => {
-  it("says when a delay ends", () => {
-    expect(queueTimeCaption({ status: "delay", timeleft: "00:42:00" })).toBe(
-      "Delayed · starts in 00:42:00",
+  it("says when a delay ends, from the raw TimeSpan", () => {
+    // Upstream never rounds a pending release's timeleft (ect - UtcNow), so it
+    // carries the TimeSpan's 7-digit fraction.
+    expect(
+      queueTimeCaption({ status: "delay", timeleft: "00:41:59.5123456" }),
+    ).toBe("Delayed · starts in 42m");
+    expect(
+      queueTimeCaption({ status: "delay", timeleft: "1.02:03:04.1234567" }),
+    ).toBe("Delayed · starts in 26h 3m");
+    expect(queueTimeCaption({ status: "delay", timeleft: "00:00:12" })).toBe(
+      "Delayed · starts in 12s",
+    );
+  });
+
+  it("is just the label when the delay is overdue or unknown", () => {
+    // Clamped to zero once the window passed but the next RSS sync hasn't run.
+    expect(queueTimeCaption({ status: "delay", timeleft: "00:00:00" })).toBe(
+      "Delayed",
+    );
+    expect(queueTimeCaption({ status: "delay", timeleft: "garbage" })).toBe(
+      "Delayed",
     );
     expect(queueTimeCaption({ status: "delay" })).toBe("Delayed");
   });

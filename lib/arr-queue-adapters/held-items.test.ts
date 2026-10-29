@@ -15,7 +15,7 @@ const held = {
   status: "delay",
   size: 1000,
   sizeleft: 1000,
-  timeleft: "00:42:00",
+  timeleft: "00:41:59.5123456",
   quality: { quality: { name: "WEBDL-1080p" } },
 };
 const downloading = {

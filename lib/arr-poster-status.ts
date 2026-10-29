@@ -5,6 +5,7 @@ import type {
   LidarrAlbum,
   BinderyBook,
 } from "@/lib/types";
+import { formatEta } from "@/lib/utils";
 
 /**
  * Sonarr/Radarr-style poster status indicators (issue #47).
@@ -149,18 +150,45 @@ export function queueEtaLabel(record: QueueTimingRecord): string | undefined {
 }
 
 /**
+ * Whole seconds in a serialized .NET TimeSpan ("[-][d.]hh:mm:ss[.fffffff]"),
+ * or null when it doesn't parse.
+ */
+function timeSpanSeconds(value: string | null | undefined): number | null {
+  const m = /^(-)?(?:(\d+)\.)?(\d+):(\d{2}):(\d{2})(?:\.(\d+))?$/.exec(
+    (value ?? "").trim(),
+  );
+  if (!m) return null;
+  const [, neg, days, h, min, sec, frac] = m;
+  const total =
+    Number(days ?? 0) * 86400 +
+    Number(h) * 3600 +
+    Number(min) * 60 +
+    Number(sec) +
+    (frac ? Number(`0.${frac}`) : 0);
+  return Math.round(neg ? -total : total);
+}
+
+/**
  * Time caption under a full-width queue row. Like queueEtaLabel, but a held
  * record says when or why, after upstream's own queue: "Delaying download
  * until..." for a delay, "Pending - Download client is unavailable" for the
  * other hold.
+ *
+ * A delay's timeleft is `ect - UtcNow`, never rounded, so it arrives with the
+ * TimeSpan's 7-digit fraction ("00:41:59.5123456"); it is reformatted like an
+ * ETA. Past the window but before the next RSS sync it is clamped to
+ * "00:00:00", which says nothing, so the caption is just the label.
  */
 export function queueTimeCaption(record: QueueTimingRecord): string | undefined {
   const status = (record.status ?? "").toLowerCase();
   if (status === "downloadclientunavailable") {
     return `${HELD_QUEUE_LABEL} · download client unavailable`;
   }
-  if (status === "delay" && record.timeleft) {
-    return `${HELD_QUEUE_LABEL} · starts in ${record.timeleft}`;
+  if (status === "delay") {
+    const seconds = timeSpanSeconds(record.timeleft);
+    return seconds != null && seconds > 0
+      ? `${HELD_QUEUE_LABEL} · starts in ${formatEta(seconds)}`
+      : HELD_QUEUE_LABEL;
   }
   return queueEtaLabel(record);
 }
