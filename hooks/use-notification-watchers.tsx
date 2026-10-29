@@ -19,7 +19,15 @@ import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
-import { radarrGrabNotices, sonarrGrabNotices, type GrabNotice } from "@/lib/arr-grab-format";
+import {
+  diffGrabRecords,
+  radarrGrabNotices,
+  radarrGrabRelease,
+  sonarrGrabNotices,
+  sonarrGrabRelease,
+  type GrabNotice,
+  type GrabWatchState,
+} from "@/lib/arr-grab-format";
 import { urlBlock } from "@/lib/http-client";
 import { toast } from "@/components/ui/toast";
 import type {
@@ -462,33 +470,31 @@ function sonarrHistoryDisplayTitle(r: SonarrHistoryRecord): string {
 
 // --- Radarr / Sonarr: new `grabbed` history record appears (#464) ---
 // Runs on the same page-1 history the import watchers below already poll (one
-// query per instance), so grab notifications cost no extra request. Same
-// prev-id baseline as the import diff. Sonarr writes one record per episode of
-// a grab; the notices group them by release so a season pack raises one.
-function useGrabNotifications<R extends { id: number; eventType: string }>(
+// query per instance), so grab notifications cost no extra request. Sonarr
+// writes one record per episode of a grab, possibly across two polls;
+// diffGrabRecords keeps a season pack to one notice while a later re-grab of
+// the same release still raises its own.
+function useGrabNotifications<R extends { id: number; eventType: string; date?: string }>(
   records: R[] | undefined,
   active: boolean,
   instanceId: string,
+  releaseOf: (r: R) => string,
   toNotices: (fresh: R[], instanceId: string) => GrabNotice[],
 ) {
-  const prevIds = useRef<Set<number> | null>(null);
+  const state = useRef<GrabWatchState | null>(null);
 
   useEffect(() => {
     if (!active) {
-      prevIds.current = null;
+      state.current = null;
       return;
     }
     if (!Array.isArray(records)) return;
-    const grabbed = records.filter((r) => r.eventType === "grabbed");
-    const prev = prevIds.current;
-    if (prev !== null) {
-      const fresh = grabbed.filter((r) => !prev.has(r.id));
-      for (const notice of toNotices(fresh, instanceId)) {
-        sendLocalNotification(notice);
-      }
+    const { fresh, next } = diffGrabRecords(state.current, records, releaseOf);
+    state.current = next;
+    for (const notice of toNotices(fresh, instanceId)) {
+      sendLocalNotification(notice);
     }
-    prevIds.current = new Set(grabbed.map((r) => r.id));
-  }, [records, active, instanceId, toNotices]);
+  }, [records, active, instanceId, releaseOf, toNotices]);
 }
 
 // --- Radarr: new `downloadFolderImported` history record appears ---
@@ -506,7 +512,7 @@ function RadarrHistoryWatcher({
 }) {
   const { data: history } = useRadarrHistory(instanceId, active || grabActive);
   const prevIds = useRef<Set<number> | null>(null);
-  useGrabNotifications(history?.records, grabActive, instanceId, radarrGrabNotices);
+  useGrabNotifications(history?.records, grabActive, instanceId, radarrGrabRelease, radarrGrabNotices);
 
   useEffect(() => {
     if (!active) {
@@ -552,7 +558,7 @@ function SonarrHistoryWatcher({
 }) {
   const { data: history } = useSonarrHistory(instanceId, active || grabActive);
   const prevIds = useRef<Set<number> | null>(null);
-  useGrabNotifications(history?.records, grabActive, instanceId, sonarrGrabNotices);
+  useGrabNotifications(history?.records, grabActive, instanceId, sonarrGrabRelease, sonarrGrabNotices);
 
   useEffect(() => {
     if (!active) {

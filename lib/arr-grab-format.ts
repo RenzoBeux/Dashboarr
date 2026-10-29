@@ -96,6 +96,57 @@ export function groupGrabRecords<T>(records: readonly T[], releaseOf: (r: T) => 
   return [...groups.values()];
 }
 
+/**
+ * Mirrors the backend's GRAB_REPEAT_WINDOW_MS: sightings of one release within
+ * it are the same grab, further apart the release was grabbed again.
+ */
+export const GRAB_REPEAT_WINDOW_MS = 10 * 60 * 1000;
+
+/** When a group's grab happened: its earliest record date, else `now`. */
+export function grabGroupTime(group: readonly { date?: string }[], now: number): number {
+  const times = group.map((r) => (r.date ? Date.parse(r.date) : NaN)).filter(Number.isFinite);
+  return times.length > 0 ? Math.min(...times) : now;
+}
+
+/** What the grab watcher keeps between polls of one instance's history page. */
+export interface GrabWatchState {
+  seenIds: ReadonlySet<number>;
+  /** Release -> when its last announced (or baselined) grab happened. */
+  announced: ReadonlyMap<string, number>;
+}
+
+/**
+ * One poll of the in-app grab watcher. Returns the new "grabbed" records worth
+ * a notice and the state for the next poll; `prev` null seeds the baseline.
+ * New ids alone aren't enough: Sonarr writes a pack's per-episode records one
+ * by one, so a poll can catch half of them and the next poll the rest. Those
+ * stragglers date from a grab already announced and stay quiet, while a later
+ * re-grab of the same release (new records, a later date) notifies again.
+ */
+export function diffGrabRecords<R extends { id: number; eventType: string; date?: string }>(
+  prev: GrabWatchState | null,
+  records: readonly R[],
+  releaseOf: (r: R) => string,
+  now: number = Date.now(),
+): { fresh: R[]; next: GrabWatchState } {
+  const grabbed = records.filter((r) => r.eventType === "grabbed");
+  // Only releases still on the page matter: a straggler of a grab that has
+  // scrolled off can't appear above it.
+  const onPage = new Set(grabbed.map(releaseOf));
+  const announced = new Map([...(prev?.announced ?? [])].filter(([release]) => onPage.has(release)));
+  const unseen = prev ? grabbed.filter((r) => !prev.seenIds.has(r.id)) : grabbed;
+  const fresh: R[] = [];
+  for (const group of groupGrabRecords(unseen, releaseOf)) {
+    const release = releaseOf(group[0]);
+    const at = grabGroupTime(group, now);
+    const last = announced.get(release);
+    if (last !== undefined && Math.abs(at - last) <= GRAB_REPEAT_WINDOW_MS) continue;
+    announced.set(release, at);
+    if (prev) fresh.push(...group);
+  }
+  return { fresh, next: { seenIds: new Set(grabbed.map((r) => r.id)), announced } };
+}
+
 export interface GrabNotice {
   title: string;
   body: string;

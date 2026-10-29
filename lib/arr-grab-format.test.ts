@@ -1,10 +1,15 @@
 import {
+  diffGrabRecords,
   formatEpisodeSpan,
   formatGrabBody,
+  grabGroupTime,
   groupGrabRecords,
   radarrGrabNotices,
+  radarrGrabRelease,
   sonarrGrabNotices,
   sonarrGrabRelease,
+  type GrabNotice,
+  type GrabWatchState,
 } from "@/lib/arr-grab-format";
 import type { RadarrHistoryRecord, SonarrHistoryRecord, SonarrEpisode } from "@/lib/types";
 
@@ -155,5 +160,114 @@ describe("sonarrGrabNotices", () => {
       "i",
     );
     expect(notice.body).toBe("Andor S02E01 - One Year Later");
+  });
+});
+
+describe("grabGroupTime", () => {
+  it("takes a pack's earliest record date, else now", () => {
+    const pack = [{ date: "2026-10-29T10:00:02Z" }, { date: "2026-10-29T10:00:00Z" }, { date: "not a date" }];
+    expect(grabGroupTime(pack, 5)).toBe(Date.parse("2026-10-29T10:00:00Z"));
+    expect(grabGroupTime([{}, { date: "" }], 5)).toBe(5);
+  });
+});
+
+// Drives diffGrabRecords poll by poll exactly as useGrabNotifications does and
+// collects every notice the watcher would have raised.
+function watchGrabs<R extends { id: number; eventType: string; date?: string }>(
+  polls: { records: R[]; now?: number }[],
+  releaseOf: (r: R) => string,
+  toNotices: (fresh: R[], instanceId: string) => GrabNotice[],
+): GrabNotice[] {
+  let state: GrabWatchState | null = null;
+  const sent: GrabNotice[] = [];
+  for (const poll of polls) {
+    const step: { fresh: R[]; next: GrabWatchState } = diffGrabRecords(state, poll.records, releaseOf, poll.now);
+    state = step.next;
+    sent.push(...toNotices(step.fresh, "inst"));
+  }
+  return sent;
+}
+
+describe("grab watcher across polls", () => {
+  const series = { id: 3, title: "Severance" } as SonarrHistoryRecord["series"];
+  const ep = (id: number, n: number, date?: string, downloadId = "SAME-PACK"): SonarrHistoryRecord => ({
+    id,
+    eventType: "grabbed",
+    date,
+    seriesId: 3,
+    series,
+    episode: { id: 100 + n, seriesId: 3, seasonNumber: 1, episodeNumber: n } as SonarrEpisode,
+    downloadId,
+  });
+  const watch = (polls: { records: SonarrHistoryRecord[]; now?: number }[]) =>
+    watchGrabs(polls, sonarrGrabRelease, sonarrGrabNotices);
+
+  it("raises one notice for a season pack split across two polls", () => {
+    const e1 = ep(1, 1, "2026-10-29T10:00:00Z");
+    const e2 = ep(2, 2, "2026-10-29T10:00:01Z");
+    const sent = watch([{ records: [] }, { records: [e1] }, { records: [e2, e1] }]);
+    expect(sent.map((n) => n.body)).toEqual(["Severance S01E01"]);
+  });
+
+  it("stays quiet for the rest of a pack whose start was in the baseline", () => {
+    const e1 = ep(1, 1, "2026-10-29T10:00:00Z");
+    const e2 = ep(2, 2, "2026-10-29T10:00:01Z");
+    expect(watch([{ records: [e1] }, { records: [e2, e1] }])).toEqual([]);
+  });
+
+  it("notifies again for a later re-grab of the same release", () => {
+    const e1 = ep(1, 1, "2026-10-29T10:00:00Z");
+    const e2 = ep(2, 2, "2026-10-29T10:00:00Z");
+    const again1 = ep(3, 1, "2026-10-30T10:00:00Z");
+    const again2 = ep(4, 2, "2026-10-30T10:00:01Z");
+    const sent = watch([
+      { records: [] },
+      { records: [e2, e1] },
+      { records: [again1, e2, e1] },
+      { records: [again2, again1, e2, e1] },
+    ]);
+    expect(sent.map((n) => n.body)).toEqual(["Severance S01E01-E02", "Severance S01E01"]);
+  });
+
+  it("falls back to the poll time for records without a date", () => {
+    const t = Date.parse("2026-10-29T10:00:00Z");
+    const e1 = ep(1, 1);
+    const e2 = ep(2, 2);
+    const later = ep(3, 1, undefined);
+    const sent = watch([
+      { records: [], now: t },
+      { records: [e1], now: t + 30_000 },
+      { records: [e2, e1], now: t + 60_000 },
+      { records: [later, e2, e1], now: t + 24 * 3_600_000 },
+    ]);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("forgets releases once they leave the page", () => {
+    const old = ep(1, 1, "2026-10-29T10:00:00Z", "OLD");
+    const other = ep(2, 1, "2026-10-29T11:00:00Z", "OTHER");
+    const { next } = diffGrabRecords(null, [old], sonarrGrabRelease);
+    const { next: after } = diffGrabRecords(next, [other], sonarrGrabRelease);
+    expect([...after.announced.keys()]).toEqual(["OTHER"]);
+  });
+
+  it("raises one Radarr notice per new grab", () => {
+    const grab = (id: number, downloadId: string, date: string): RadarrHistoryRecord => ({
+      id,
+      eventType: "grabbed",
+      date,
+      movieId: 7,
+      movie: { id: 7, title: "Dune", year: 2021 } as RadarrHistoryRecord["movie"],
+      downloadId,
+    });
+    const a = grab(1, "A", "2026-10-29T10:00:00Z");
+    const b = grab(2, "B", "2026-10-29T10:05:00Z");
+    const aAgain = grab(3, "A", "2026-10-30T10:00:00Z");
+    const sent = watchGrabs(
+      [{ records: [] }, { records: [b, a] }, { records: [aAgain, b, a] }],
+      radarrGrabRelease,
+      radarrGrabNotices,
+    );
+    expect(sent.map((n) => n.data.historyId)).toEqual([2, 1, 3]);
   });
 });
