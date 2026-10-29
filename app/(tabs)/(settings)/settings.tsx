@@ -14,13 +14,15 @@ import { NATIVE_VERSION } from "@/lib/app-version";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 
-// The 7 per-category notification toggles, for the hub row's "On · X of 7
+// The 9 per-category notification toggles, for the hub row's "On · X of 9
 // alerts" subtitle. Must mirror the toggles on /settings/notifications.
 const NOTIF_CATEGORY_KEYS = [
   "torrentCompleted",
   "sabnzbdCompleted",
   "nzbgetCompleted",
+  "radarrGrabbed",
   "radarrDownloaded",
+  "sonarrGrabbed",
   "sonarrDownloaded",
   "serviceOffline",
   "overseerrNewRequest",

@@ -877,8 +877,11 @@
         </p>
         <p>
           <strong>Settings, Notifications</strong> has a master <strong>Enable notifications</strong>
-          switch and, when on, seven category toggles: Torrent completed, SABnzbd completed, NZBGet
-          completed, Movie downloaded, Episode downloaded, Service offline, New Seerr request.
+          switch and, when on, nine category toggles: Torrent completed, SABnzbd completed, NZBGet
+          completed, Movie grabbed, Movie downloaded, Episode grabbed, Episode downloaded, Service
+          offline, New Seerr request. Movie grabbed and Episode grabbed fire when Radarr or Sonarr
+          sends a release to your download client, with its quality, size and indexer. They are off
+          by default because grabs are much more frequent than downloads.
         </p>
         <p>
           Every instance editor also has a <strong>Notifications</strong> card where each category is a
@@ -1022,10 +1025,13 @@
         <p>
           Two URL shapes are supported: the secret in an <code>X-Dashboarr-Secret</code> header
           (preferred, keeps it out of proxy logs), or the secret as a path segment for services that
-          cannot send custom headers. Configure Radarr and Sonarr as a Custom webhook connection on
-          the <strong>Download</strong> event, and Seerr on <strong>MEDIA_PENDING</strong>. Each of
-          those sends a test event that produces a confirmation push, so you can verify the wiring
-          without waiting for a real download. Tracearr is path-secret only, configured as its JSON
+          cannot send custom headers. Configure Radarr and Sonarr as a <strong>Webhook</strong>
+          connection with <strong>On File Import</strong> and <strong>On File Upgrade</strong> ticked
+          for download pushes, plus <strong>On Grab</strong> for grab pushes, and Seerr on
+          <strong>MEDIA_PENDING</strong>. Without a webhook the backend still picks downloads and
+          grabs up from Radarr and Sonarr history within about 30 seconds. Each of those services
+          sends a test event that produces a confirmation push, so you can verify the wiring without
+          waiting for a real download. Tracearr is path-secret only, configured as its JSON
           Webhook agent, and must include <code>?instance=&lt;uuid&gt;</code>.
         </p>
         <p>

@@ -19,6 +19,7 @@ import type { ServiceId } from "@/lib/constants";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
 import { sendLocalNotification } from "@/lib/notifications";
 import { shouldNotifyForInstance } from "@/lib/notification-categories";
+import { radarrGrabNotices, sonarrGrabNotices, type GrabNotice } from "@/lib/arr-grab-format";
 import { urlBlock } from "@/lib/http-client";
 import { toast } from "@/components/ui/toast";
 import type {
@@ -143,17 +144,19 @@ export function NotificationWatchers() {
         />
       ))}
       {radarrInstances.map((inst) => (
-        <RadarrImportWatcher
+        <RadarrHistoryWatcher
           key={inst.id}
           instanceId={inst.id}
           active={liveActive("radarrDownloaded", inst.id)}
+          grabActive={liveActive("radarrGrabbed", inst.id)}
         />
       ))}
       {sonarrInstances.map((inst) => (
-        <SonarrImportWatcher
+        <SonarrHistoryWatcher
           key={inst.id}
           instanceId={inst.id}
           active={liveActive("sonarrDownloaded", inst.id)}
+          grabActive={liveActive("sonarrGrabbed", inst.id)}
         />
       ))}
       {overseerrInstances.map((inst) => (
@@ -457,18 +460,53 @@ function sonarrHistoryDisplayTitle(r: SonarrHistoryRecord): string {
   return r.sourceTitle ?? "";
 }
 
+// --- Radarr / Sonarr: new `grabbed` history record appears (#464) ---
+// Runs on the same page-1 history the import watchers below already poll (one
+// query per instance), so grab notifications cost no extra request. Same
+// prev-id baseline as the import diff. Sonarr writes one record per episode of
+// a grab; the notices group them by downloadId so a season pack raises one.
+function useGrabNotifications<R extends { id: number; eventType: string }>(
+  records: R[] | undefined,
+  active: boolean,
+  instanceId: string,
+  toNotices: (fresh: R[], instanceId: string) => GrabNotice[],
+) {
+  const prevIds = useRef<Set<number> | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      prevIds.current = null;
+      return;
+    }
+    if (!Array.isArray(records)) return;
+    const grabbed = records.filter((r) => r.eventType === "grabbed");
+    const prev = prevIds.current;
+    if (prev !== null) {
+      const fresh = grabbed.filter((r) => !prev.has(r.id));
+      for (const notice of toNotices(fresh, instanceId)) {
+        sendLocalNotification(notice);
+      }
+    }
+    prevIds.current = new Set(grabbed.map((r) => r.id));
+  }, [records, active, instanceId, toNotices]);
+}
+
 // --- Radarr: new `downloadFolderImported` history record appears ---
 // Queue diffing produced false positives (delay-profile holds, internal state
 // transitions); history records are immutable and explicit about completion.
-function RadarrImportWatcher({
+// `grabActive` adds the grab diff on the same query.
+function RadarrHistoryWatcher({
   instanceId,
   active,
+  grabActive,
 }: {
   instanceId: string;
   active: boolean;
+  grabActive: boolean;
 }) {
-  const { data: history } = useRadarrHistory(instanceId, active);
+  const { data: history } = useRadarrHistory(instanceId, active || grabActive);
   const prevIds = useRef<Set<number> | null>(null);
+  useGrabNotifications(history?.records, grabActive, instanceId, radarrGrabNotices);
 
   useEffect(() => {
     if (!active) {
@@ -503,15 +541,18 @@ function RadarrImportWatcher({
 }
 
 // --- Sonarr: new `downloadFolderImported` history record appears ---
-function SonarrImportWatcher({
+function SonarrHistoryWatcher({
   instanceId,
   active,
+  grabActive,
 }: {
   instanceId: string;
   active: boolean;
+  grabActive: boolean;
 }) {
-  const { data: history } = useSonarrHistory(instanceId, active);
+  const { data: history } = useSonarrHistory(instanceId, active || grabActive);
   const prevIds = useRef<Set<number> | null>(null);
+  useGrabNotifications(history?.records, grabActive, instanceId, sonarrGrabNotices);
 
   useEffect(() => {
     if (!active) {

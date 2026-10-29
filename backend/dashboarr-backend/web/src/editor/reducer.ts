@@ -1,6 +1,6 @@
 import { SERVICE_DEFAULTS, SERVICE_IDS } from "@/lib/constants";
 import type { ServiceId } from "@/lib/constants";
-import { makeInstance } from "@/lib/config-defaults";
+import { DEFAULT_NOTIFICATION_SETTINGS, makeInstance } from "@/lib/config-defaults";
 import type {
   AppriseConfig,
   ExportPayload,
@@ -129,24 +129,9 @@ export function setApprise(payload: ExportPayload, patch: Partial<AppriseConfig>
   return { ...payload, notificationSettings: { ...base, apprise } };
 }
 
+// The app's own defaults, so a category added there (#464) can't drift here.
 function emptyNotifications(): NotificationSettings {
-  return {
-    enabled: true,
-    torrentCompleted: true,
-    sabnzbdCompleted: true,
-    nzbgetCompleted: true,
-    radarrDownloaded: true,
-    sonarrDownloaded: true,
-    serviceOffline: true,
-    overseerrNewRequest: true,
-    tracearrViolation: true,
-    tracearrNewDevice: true,
-    tracearrTrustScore: false,
-    tracearrServerDown: true,
-    tracearrServerUp: true,
-    tracearrStreamStarted: false,
-    tracearrStreamStopped: false,
-  };
+  return { ...DEFAULT_NOTIFICATION_SETTINGS };
 }
 
 /**

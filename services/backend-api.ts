@@ -4,7 +4,12 @@ import { SERVICE_IDS } from "@/lib/constants";
 import { seerrAuthMode, seerrUsesSession } from "@/lib/seerr-auth";
 import { isPrivateHost } from "@/lib/url-validation";
 import { describeBackendTransportError } from "@/lib/backend-error";
+import {
+  LEGACY_BACKEND_NOTIF_CATEGORIES,
+  restrictPerInstanceCategories,
+} from "@/lib/notification-categories";
 import type { EncryptedEnvelope } from "@/lib/config-crypto";
+import type { NotificationSettings } from "@/lib/config-types";
 
 const DEFAULT_TIMEOUT = 10000;
 
@@ -259,7 +264,7 @@ export function deleteConfigBackup(deviceId: string): Promise<void> {
  * that hasn't been upgraded yet won't reject this payload, it'll just
  * normalize legacy single-instance entries internally.
  */
-export function pushConfigSnapshot(): Promise<void> {
+export async function pushConfigSnapshot(): Promise<void> {
   const configState = useConfigStore.getState();
 
   const instances = SERVICE_IDS.flatMap((kind) => {
@@ -311,6 +316,8 @@ export function pushConfigSnapshot(): Promise<void> {
     nzbgetCompleted,
     radarrDownloaded,
     sonarrDownloaded,
+    radarrGrabbed,
+    sonarrGrabbed,
     serviceOffline,
     overseerrNewRequest,
     perInstance,
@@ -318,29 +325,59 @@ export function pushConfigSnapshot(): Promise<void> {
     qbtMutedCategories,
   } = configState.notificationSettings;
 
-  return request<void>("/config", {
-    method: "PUT",
-    body: JSON.stringify({
-      instances,
-      notifications: {
-        enabled,
-        torrentCompleted,
-        sabnzbdCompleted,
-        nzbgetCompleted,
-        radarrDownloaded,
-        sonarrDownloaded,
-        serviceOffline,
-        overseerrNewRequest,
-        // v21: per-instance overrides. Sent as `undefined` when no overrides
-        // exist so the backend treats it the same as a pre-v21 client.
-        perInstance,
-        // v34: Apprise sink config. Sent as `undefined` when unset so older
-        // backends ignore it.
-        apprise,
-        // v42: per-qbt-instance muted categories (#310). Sent as `undefined`
-        // when unset; older backends strip the unknown key (zod v3).
-        qbtMutedCategories,
-      },
-    }),
-  });
+  const send = (overrides: NotificationSettings["perInstance"]) =>
+    request<void>("/config", {
+      method: "PUT",
+      body: JSON.stringify({
+        instances,
+        notifications: {
+          enabled,
+          torrentCompleted,
+          sabnzbdCompleted,
+          nzbgetCompleted,
+          radarrDownloaded,
+          sonarrDownloaded,
+          // v61 (#464). Older backends strip unknown top-level keys (zod v3).
+          radarrGrabbed,
+          sonarrGrabbed,
+          serviceOffline,
+          overseerrNewRequest,
+          // v21: per-instance overrides. Sent as `undefined` when no overrides
+          // exist so the backend treats it the same as a pre-v21 client.
+          perInstance: overrides,
+          // v34: Apprise sink config. Sent as `undefined` when unset so older
+          // backends ignore it.
+          apprise,
+          // v42: per-qbt-instance muted categories (#310). Sent as `undefined`
+          // when unset; older backends strip the unknown key (zod v3).
+          qbtMutedCategories,
+        },
+      }),
+    });
+
+  // Backends up to v1.9.0 validate perInstance keys with a strict enum, so one
+  // override for a category they predate (e.g. "Always notify" on Movie
+  // grabbed) 400s the whole payload and the backend silently keeps its last
+  // good config. Retry such a 400 once without those overrides so everything
+  // else still lands; newer backends drop unknown categories themselves.
+  const legacyPerInstance = restrictPerInstanceCategories(
+    perInstance,
+    LEGACY_BACKEND_NOTIF_CATEGORIES,
+  );
+  try {
+    await send(perInstance);
+  } catch (err) {
+    const status = (err as { status?: number } | null)?.status;
+    if (status !== 400 || overrideCount(legacyPerInstance) === overrideCount(perInstance)) {
+      throw err;
+    }
+    await send(legacyPerInstance);
+  }
+}
+
+function overrideCount(perInstance: NotificationSettings["perInstance"]): number {
+  return Object.values(perInstance ?? {}).reduce(
+    (n, overrides) => n + Object.keys(overrides ?? {}).length,
+    0,
+  );
 }

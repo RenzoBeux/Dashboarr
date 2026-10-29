@@ -21,8 +21,10 @@ export const CATEGORIES_FOR_KIND: Record<ServiceId, NotifCategory[]> = {
   deluge: ["torrentCompleted", "serviceOffline"],
   sabnzbd:     ["sabnzbdCompleted", "serviceOffline"],
   nzbget:      ["nzbgetCompleted",  "serviceOffline"],
-  radarr:      ["radarrDownloaded", "serviceOffline"],
-  sonarr:      ["sonarrDownloaded", "serviceOffline"],
+  // Grab pushes (#464) come from the Grab webhook, the backend history poller
+  // and the in-app watcher, the same three sources as the import pushes.
+  radarr:      ["radarrGrabbed", "radarrDownloaded", "serviceOffline"],
+  sonarr:      ["sonarrGrabbed", "sonarrDownloaded", "serviceOffline"],
   // Lidarr has no album-import completion watcher/backend poller in v1, so only
   // the offline category is surfaced (an "album downloaded" toggle would be a
   // dead switch nothing emits yet). Mirrors rtorrent's offline-only stance.
@@ -89,6 +91,8 @@ export const CATEGORY_LABELS: Record<NotifCategory, string> = {
   nzbgetCompleted: "NZBGet completed",
   radarrDownloaded: "Movie downloaded",
   sonarrDownloaded: "Episode downloaded",
+  radarrGrabbed: "Movie grabbed",
+  sonarrGrabbed: "Episode grabbed",
   serviceOffline: "Service offline",
   overseerrNewRequest: "New Seerr request",
   tracearrViolation: "Rule violation",
@@ -101,6 +105,48 @@ export const CATEGORY_LABELS: Record<NotifCategory, string> = {
 };
 
 export const NOTIF_CATEGORIES = Object.keys(CATEGORY_LABELS) as NotifCategory[];
+
+// The categories a backend up to v1.9.0 accepts inside `perInstance`. Those
+// builds validate its keys with a strict enum, so a single newer category
+// there makes the whole PUT /config 400 and the backend silently keeps its
+// last good config (the #230 failure class). pushConfigSnapshot retries such
+// a 400 once with perInstance restricted to this list. FROZEN: newer backends
+// drop unknown categories themselves, so never add to it.
+export const LEGACY_BACKEND_NOTIF_CATEGORIES: readonly NotifCategory[] = [
+  "torrentCompleted",
+  "sabnzbdCompleted",
+  "nzbgetCompleted",
+  "radarrDownloaded",
+  "sonarrDownloaded",
+  "serviceOffline",
+  "overseerrNewRequest",
+  "tracearrViolation",
+  "tracearrNewDevice",
+  "tracearrTrustScore",
+  "tracearrServerDown",
+  "tracearrServerUp",
+  "tracearrStreamStarted",
+  "tracearrStreamStopped",
+];
+
+// Copy of a perInstance override map keeping only the `allowed` categories.
+// Instances left with no override are dropped, and undefined comes back when
+// nothing at all remains (the "no overrides" shape the backend expects).
+export function restrictPerInstanceCategories(
+  perInstance: NotificationSettings["perInstance"],
+  allowed: readonly NotifCategory[],
+): NotificationSettings["perInstance"] {
+  if (!perInstance) return undefined;
+  const allowedSet = new Set<string>(allowed);
+  const out: NonNullable<NotificationSettings["perInstance"]> = {};
+  for (const [instanceId, overrides] of Object.entries(perInstance)) {
+    const kept = Object.fromEntries(
+      Object.entries(overrides ?? {}).filter(([cat]) => allowedSet.has(cat)),
+    ) as Partial<Record<NotifCategory, boolean>>;
+    if (Object.keys(kept).length > 0) out[instanceId] = kept;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 // Resolves the effective per-instance notification preference.
 // Per-instance override (when present) wins over the global category toggle.

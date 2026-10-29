@@ -225,6 +225,11 @@ export type NotifCategory =
   | "nzbgetCompleted"
   | "radarrDownloaded"
   | "sonarrDownloaded"
+  // v61 (#464): a release sent to the download client, from the Radarr/Sonarr
+  // Grab webhook, the backend history poller or the in-app watcher. Off by
+  // default: grabs are far chattier than imports.
+  | "radarrGrabbed"
+  | "sonarrGrabbed"
   | "serviceOffline"
   | "overseerrNewRequest"
   // Tracearr webhook events. Exposed per-instance only (in each Tracearr
@@ -255,6 +260,8 @@ export interface NotificationSettings {
   nzbgetCompleted: boolean;
   radarrDownloaded: boolean;
   sonarrDownloaded: boolean;
+  radarrGrabbed: boolean;
+  sonarrGrabbed: boolean;
   serviceOffline: boolean;
   overseerrNewRequest: boolean;
   tracearrViolation: boolean;

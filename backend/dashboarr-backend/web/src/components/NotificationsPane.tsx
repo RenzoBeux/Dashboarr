@@ -1,4 +1,5 @@
 import type { AppriseConfig, NotificationSettings } from "@/lib/config-types";
+import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/config-defaults";
 import { CATEGORY_LABELS, NOTIF_CATEGORIES } from "@/lib/notification-categories";
 
 interface Props {
@@ -21,9 +22,16 @@ export function NotificationsPane({ settings, onToggle, onApprise }: Props) {
         <span>Enable notifications</span>
       </label>
       <div className="toggle-grid">
+        {/* A backup older than a category has no key for it (the phone fills
+            in its default at hydrate time), so mirror that here. */}
         {NOTIF_CATEGORIES.map((c) => (
           <label key={c} className="field toggle">
-            <input type="checkbox" checked={settings[c]} disabled={!settings.enabled} onChange={(e) => onToggle(c, e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={settings[c] ?? DEFAULT_NOTIFICATION_SETTINGS[c]}
+              disabled={!settings.enabled}
+              onChange={(e) => onToggle(c, e.target.checked)}
+            />
             <span>{CATEGORY_LABELS[c]}</span>
           </label>
         ))}

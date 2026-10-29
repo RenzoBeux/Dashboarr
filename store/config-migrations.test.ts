@@ -1748,6 +1748,45 @@ describe("v59 → v60 (remoteRequiresVpn stamp, #394)", () => {
   });
 });
 
+describe("v60 → v61 (grab notification categories stamp, #464)", () => {
+  it("just stamps the version and preserves grab toggles and overrides", () => {
+    const result: any = migrateConfig({
+      version: 60,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: {
+        enabled: true,
+        torrentCompleted: true,
+        radarrDownloaded: true,
+        sonarrDownloaded: true,
+        serviceOffline: true,
+        overseerrNewRequest: true,
+        radarrGrabbed: true,
+        perInstance: { r1: { sonarrGrabbed: true } },
+      },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings.radarrGrabbed).toBe(true);
+    expect(result.notificationSettings.perInstance).toEqual({ r1: { sonarrGrabbed: true } });
+  });
+
+  it("leaves the grab keys absent when a v60 export omitted them", () => {
+    const result: any = migrateConfig({
+      version: 60,
+      services: {},
+      secrets: {},
+      dashboards: [{ id: "d1", name: "Default", widgets: [] }],
+      activeDashboardId: "d1",
+      notificationSettings: { enabled: true },
+    });
+    expect(result.version).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.notificationSettings).not.toHaveProperty("radarrGrabbed");
+    expect(result.notificationSettings).not.toHaveProperty("sonarrGrabbed");
+  });
+});
+
 describe("v39 → v40 (weekStart stamp)", () => {
   it("just stamps the version and preserves an already-set weekStart", () => {
     const result: any = migrateConfig({

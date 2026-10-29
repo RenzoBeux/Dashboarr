@@ -16,6 +16,8 @@ export default function NotificationsSettingsScreen() {
   const nzbgetCompleted = useConfigStore((s) => s.notificationSettings.nzbgetCompleted);
   const radarrDownloaded = useConfigStore((s) => s.notificationSettings.radarrDownloaded);
   const sonarrDownloaded = useConfigStore((s) => s.notificationSettings.sonarrDownloaded);
+  const radarrGrabbed = useConfigStore((s) => s.notificationSettings.radarrGrabbed);
+  const sonarrGrabbed = useConfigStore((s) => s.notificationSettings.sonarrGrabbed);
   const serviceOffline = useConfigStore((s) => s.notificationSettings.serviceOffline);
   const overseerrNewRequest = useConfigStore((s) => s.notificationSettings.overseerrNewRequest);
   const setNotifSetting = useConfigStore((s) => s.setNotificationSetting);
@@ -58,9 +60,25 @@ export default function NotificationsSettingsScreen() {
         ) : null}
         {notifEnabled ? (
           <SettingsToggleRow
+            label="Movie grabbed"
+            description="When Radarr sends a release to your download client"
+            value={radarrGrabbed}
+            onValueChange={(v) => setNotifSetting("radarrGrabbed", v)}
+          />
+        ) : null}
+        {notifEnabled ? (
+          <SettingsToggleRow
             label="Movie downloaded"
             value={radarrDownloaded}
             onValueChange={(v) => setNotifSetting("radarrDownloaded", v)}
+          />
+        ) : null}
+        {notifEnabled ? (
+          <SettingsToggleRow
+            label="Episode grabbed"
+            description="When Sonarr sends a release to your download client"
+            value={sonarrGrabbed}
+            onValueChange={(v) => setNotifSetting("sonarrGrabbed", v)}
           />
         ) : null}
         {notifEnabled ? (

@@ -367,6 +367,8 @@ function coerceNotificationSettings(v: unknown): NotificationSettings | null {
   const optionalKeys = [
     "sabnzbdCompleted",
     "nzbgetCompleted",
+    "radarrGrabbed",
+    "sonarrGrabbed",
     "tracearrViolation",
     "tracearrNewDevice",
     "tracearrTrustScore",

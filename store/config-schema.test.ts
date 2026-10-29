@@ -1105,6 +1105,33 @@ describe("validateExportPayload — notification settings", () => {
     ).toThrow(/notificationSettings/);
   });
 
+  it("accepts the optional grab toggles and grab overrides (v61, #464)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      notificationSettings: {
+        ...fullSettings,
+        radarrGrabbed: true,
+        sonarrGrabbed: false,
+        perInstance: { "inst-radarr-1": { radarrGrabbed: false } },
+      },
+    });
+    expect(result.notificationSettings).toEqual({
+      ...fullSettings,
+      radarrGrabbed: true,
+      sonarrGrabbed: false,
+      perInstance: { "inst-radarr-1": { radarrGrabbed: false } },
+    });
+  });
+
+  it("rejects a grab toggle with the wrong type", () => {
+    expect(() =>
+      validateExportPayload({
+        ...baseValid(),
+        notificationSettings: { ...fullSettings, sonarrGrabbed: 1 as any },
+      }),
+    ).toThrow(/notificationSettings/);
+  });
+
   it("round-trips perInstance overrides (v21)", () => {
     const perInstance = {
       "inst-radarr-1": { radarrDownloaded: false, serviceOffline: true },

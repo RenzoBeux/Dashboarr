@@ -31,6 +31,10 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   nzbgetCompleted: true,
   radarrDownloaded: true,
   sonarrDownloaded: true,
+  // Opt-in (#464), and must match the backend's schema default so the
+  // per-instance "Use default" label is truthful there too.
+  radarrGrabbed: false,
+  sonarrGrabbed: false,
   serviceOffline: true,
   overseerrNewRequest: true,
   // Tracearr defaults mirror Tracearr's own webhook-channel routing: alerts and
