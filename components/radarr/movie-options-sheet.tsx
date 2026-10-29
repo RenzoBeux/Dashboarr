@@ -7,7 +7,10 @@ import { TextInput } from "@/components/ui/text-input";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
-import { ArrTagPicker } from "@/components/common/arr-tag-picker";
+import {
+  ArrTagPicker,
+  useArrTagPickerBottomOffset,
+} from "@/components/common/arr-tag-picker";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { MIN_AVAILABILITY_OPTIONS } from "@/components/radarr/add-movie-sheet";
 import { useRadarrTags, useUpdateMovieFields } from "@/hooks/use-radarr";
@@ -58,6 +61,7 @@ export function MovieOptionsSheet({
   const [selectedTags, setSelectedTags] = useState<number[]>(movie.tags ?? []);
   const [tagBusy, setTagBusy] = useState(false);
   const scrollPadding = useSheetBottomPadding(32);
+  const keyboardBottomOffset = useArrTagPickerBottomOffset();
 
   // Re-seed from the server values whenever the sheet opens.
   useEffect(() => {
@@ -115,7 +119,7 @@ export function MovieOptionsSheet({
           contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-          bottomOffset={20}
+          bottomOffset={keyboardBottomOffset}
         >
           <Select
             label="Minimum Availability"

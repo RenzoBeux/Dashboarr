@@ -9,7 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
 import { SheetHeader } from "@/components/ui/sheet-header";
-import { ArrTagPicker } from "@/components/common/arr-tag-picker";
+import {
+  ArrTagPicker,
+  useArrTagPickerBottomOffset,
+} from "@/components/common/arr-tag-picker";
 import { useServiceImage } from "@/hooks/use-service-image";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { useTargetInstance } from "@/hooks/use-instance-target";
@@ -108,6 +111,7 @@ export function AddMediaSheet({
   const [searchOnAdd, setSearchOnAdd] = useState<boolean | undefined>();
   const [tagBusy, setTagBusy] = useState(false);
   const footerPadding = useSheetBottomPadding();
+  const keyboardBottomOffset = useArrTagPickerBottomOffset();
 
   // User-configured defaults for this instance (Settings → Add Defaults), with
   // first-in-list as the fallback when unset or when the stored value no longer
@@ -201,7 +205,7 @@ export function AddMediaSheet({
           contentContainerClassName="px-4 py-4 pb-8"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-          bottomOffset={20}
+          bottomOffset={keyboardBottomOffset}
         >
           <View className="flex-row gap-3 mb-5">
             {posterUrl ? (

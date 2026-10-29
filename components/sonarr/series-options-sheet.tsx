@@ -6,7 +6,10 @@ import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
 import { SheetHeader } from "@/components/ui/sheet-header";
-import { ArrTagPicker } from "@/components/common/arr-tag-picker";
+import {
+  ArrTagPicker,
+  useArrTagPickerBottomOffset,
+} from "@/components/common/arr-tag-picker";
 import { useSheetBottomPadding } from "@/hooks/use-bottom-inset";
 import { SERIES_TYPE_OPTIONS } from "@/components/sonarr/add-series-sheet";
 import { useSonarrTags, useUpdateSeriesFields } from "@/hooks/use-sonarr";
@@ -63,6 +66,7 @@ export function SeriesOptionsSheet({
   const [selectedTags, setSelectedTags] = useState<number[]>(series.tags ?? []);
   const [tagBusy, setTagBusy] = useState(false);
   const scrollPadding = useSheetBottomPadding(32);
+  const keyboardBottomOffset = useArrTagPickerBottomOffset();
 
   // Re-seed from the server values whenever the sheet opens.
   useEffect(() => {
@@ -110,7 +114,7 @@ export function SeriesOptionsSheet({
           contentContainerStyle={scrollPadding}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-          bottomOffset={20}
+          bottomOffset={keyboardBottomOffset}
         >
           {/* "Monitor New Seasons" only exists on Sonarr v4+ — hide otherwise. */}
           {series.monitorNewItems != null ? (

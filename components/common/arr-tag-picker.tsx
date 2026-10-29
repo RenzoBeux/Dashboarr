@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { TextInput } from "@/components/ui/text-input";
 import { useCreateArrTag } from "@/hooks/use-arr-tags";
+import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 import { HttpError, getHttpErrorMessage } from "@/lib/http-client";
 import {
   addTagId,
@@ -41,6 +42,17 @@ function createErrorMessage(err: unknown): string {
   );
 }
 
+// KeyboardAwareScrollView keeps only the focused input plus `bottomOffset`
+// above the keyboard, but the New tag editor has an error line (mt-1 + text-xs,
+// 1.25rem) and its Cancel / Add Tag row (mt-2 + md Button, 3rem) under the
+// input. Hosts pass this as their bottomOffset so those stay visible too.
+const EDITOR_BELOW_INPUT_REM = 4.25;
+
+export function useArrTagPickerBottomOffset(): number {
+  const uiScale = useUiScale();
+  return Math.round(20 + EDITOR_BELOW_INPUT_REM * BASE_REM * uiScale);
+}
+
 // Radarr/Sonarr/Lidarr tag chips plus a "New tag" chip that opens an inline
 // input (issue #485), shared by the add sheet and the Movie/Series Options
 // sheets. A new tag is created on the server right away, as the *arr web UI's
@@ -49,7 +61,8 @@ function createErrorMessage(err: unknown): string {
 //
 // Every host is a pageSheet Modal: a toast would render behind it, so errors
 // stay inline, and the host must use the pageSheet keyboard pattern
-// (KeyboardAwareScrollView, see CLAUDE.md) so the input is never covered.
+// (KeyboardAwareScrollView, see CLAUDE.md) with useArrTagPickerBottomOffset()
+// as its bottomOffset, so neither the input nor its buttons are covered.
 export function ArrTagPicker({
   service,
   instanceId,
