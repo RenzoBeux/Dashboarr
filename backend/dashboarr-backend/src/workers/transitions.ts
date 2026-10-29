@@ -577,6 +577,7 @@ export async function diffCleanuparrEvents(
   multipleOfKind: boolean,
   eventType: CleanuparrWatchedEventType,
   items: CleanuparrEventItem[],
+  totalCount?: number,
 ): Promise<void> {
   const key = `cleanuparr:${instanceId}:events:${eventType}`;
   const prev = getState<CleanuparrSnapshot>(key);
@@ -585,6 +586,7 @@ export async function diffCleanuparrEvents(
     instanceName,
     multipleOfKind,
     eventType,
+    totalCount,
   });
 
   // Persist first, dispatch after.

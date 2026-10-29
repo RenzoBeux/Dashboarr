@@ -17,6 +17,13 @@ export async function pollCleanuparr(instance: StoredServiceInstance): Promise<v
     if (!Array.isArray(page?.items)) {
       throw new Error(`cleanuparr: unexpected /api/events response for ${eventType}`);
     }
-    await diffCleanuparrEvents(instance.id, instance.name, multiple, eventType, page.items);
+    await diffCleanuparrEvents(
+      instance.id,
+      instance.name,
+      multiple,
+      eventType,
+      page.items,
+      page.totalCount,
+    );
   }
 }

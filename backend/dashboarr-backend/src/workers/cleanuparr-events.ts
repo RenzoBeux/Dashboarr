@@ -96,8 +96,9 @@ interface PushCopy {
   single: string;
   /** Title after the "<instance name>: " prefix. */
   prefixed: string;
-  summary: (n: number) => string;
-  prefixedSummary: (n: number) => string;
+  /** `n` is a count, or a lower bound like "50+" when the page overflowed. */
+  summary: (n: string) => string;
+  prefixedSummary: (n: string) => string;
 }
 
 const COPY: Record<CleanuparrWatchedEventType, PushCopy> = {
@@ -121,6 +122,12 @@ export interface CleanuparrPushContext {
   /** Prefix titles with the instance name, as every poller does with 2+ of a kind. */
   multipleOfKind: boolean;
   eventType: CleanuparrWatchedEventType;
+  /**
+   * The page's totalCount. When the server holds more events than the page
+   * returned and none of the seen ids is on it, the fresh events may run past
+   * the page, so the summary count becomes a lower bound ("50+").
+   */
+  totalCount?: number;
 }
 
 function parseTime(value: string | null | undefined): number {
@@ -147,6 +154,10 @@ export function planCleanuparrPushes(
   if (!prev) return { next, pushes: [] };
 
   const seen = new Set(prev.ids);
+  const overflowed =
+    typeof ctx.totalCount === "number" &&
+    ctx.totalCount > items.length &&
+    !matching.some((i) => seen.has(i.id));
   const floor = parseTime(prev.newest) - OUT_OF_ORDER_SLACK_MS;
   const fresh = matching
     .filter((i) => !seen.has(i.id))
@@ -185,13 +196,15 @@ export function planCleanuparrPushes(
   const newest = fresh[n - 1]!;
   const names = fresh.slice(-SUMMARY_NAMES).reverse().map(itemName);
   const rest = n - names.length;
+  const plus = overflowed ? "+" : "";
+  const count = `${n}${plus}`;
   return {
     next,
     pushes: [
       {
         category,
-        title: ctx.multipleOfKind ? `${prefix}${copy.prefixedSummary(n)}` : copy.summary(n),
-        body: rest > 0 ? `${names.join(", ")} and ${rest} more` : names.join(", "),
+        title: ctx.multipleOfKind ? `${prefix}${copy.prefixedSummary(count)}` : copy.summary(count),
+        body: rest > 0 ? `${names.join(", ")} and ${rest}${plus} more` : names.join(", "),
         data: { ...baseData, eventId: newest.id },
         dedupeKey: `${keyBase}:batch:${newest.id}`,
       },

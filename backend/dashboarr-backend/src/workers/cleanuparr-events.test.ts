@@ -142,6 +142,26 @@ test("a burst becomes one summary push", () => {
   ]);
 });
 
+test("a burst past the page says its count is a lower bound", () => {
+  const { next } = planCleanuparrPushes(null, page(removed(0)), removedCtx);
+  // 70 removals since the last poll: the page holds the newest 50 and none of
+  // the seen ids, so the rest sit on later pages.
+  const full = Array.from({ length: 50 }, (_, i) => removed(i + 10));
+  const [push] = planCleanuparrPushes(next, page(...full), { ...removedCtx, totalCount: 71 }).pushes;
+  assert.equal(push?.title, "Cleanuparr removed 50+ downloads");
+  assert.equal(
+    push?.body,
+    "Release.59.1080p.WEB-DL, Release.58.1080p.WEB-DL, Release.57.1080p.WEB-DL and 47+ more",
+  );
+});
+
+test("a burst that reaches a seen id keeps its exact count", () => {
+  const { next } = planCleanuparrPushes(null, page(removed(0)), removedCtx);
+  const items = page(...[0, 1, 2, 3, 4, 5].map((m) => removed(m)));
+  const [push] = planCleanuparrPushes(next, items, { ...removedCtx, totalCount: 200 }).pushes;
+  assert.equal(push?.title, "Cleanuparr removed 5 downloads");
+});
+
 test("titles carry the instance name when there are several Cleanuparrs", () => {
   const ctx: Ctx = { ...removedCtx, instanceName: "Cleanuparr Cabin", multipleOfKind: true };
   const { next } = planCleanuparrPushes(null, [], ctx);
