@@ -309,7 +309,13 @@ export const MoviesView = memo(function MoviesView({
     <>
       {topSlot}
       <View className="flex-row items-center justify-between">
-        <ServiceHeader name="Movies" online={radarrHealth?.online} serviceId="radarr" />
+        {/* flex-1 lets the instance name truncate before the actions clip. */}
+        <ServiceHeader
+          name="Movies"
+          online={radarrHealth?.online}
+          serviceId="radarr"
+          className="flex-1"
+        />
         <View className="flex-row items-center">
           {tab === "wanted" && (
             <Pressable

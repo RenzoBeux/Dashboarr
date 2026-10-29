@@ -334,10 +334,12 @@ export const TvView = memo(function TvView({
     <>
       {topSlot}
       <View className="flex-row items-center justify-between">
+        {/* flex-1 lets the instance name truncate before the actions clip. */}
         <ServiceHeader
           name="TV Shows"
           online={sonarrHealth?.online}
           serviceId="sonarr"
+          className="flex-1"
         />
         <View className="flex-row items-center">
           <Pressable

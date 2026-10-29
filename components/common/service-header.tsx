@@ -125,11 +125,13 @@ function InstancePickerInline({ serviceId }: { serviceId: ServiceId }) {
           setOpen(true);
         }}
         hitSlop={8}
-        className="flex-row items-center gap-1 ml-1 px-2 py-1 -my-1 rounded-md active:bg-surface-light"
+        className="shrink flex-row items-center gap-1 ml-1 px-2 py-1 -my-1 rounded-md active:bg-surface-light"
       >
         <Text className="text-zinc-500 text-base">·</Text>
+        {/* shrink: a header that gives this row a bounded width (flex-1)
+            truncates the name instead of pushing its actions off-screen. */}
         <Text
-          className="text-primary text-base font-medium max-w-[10rem]"
+          className="shrink text-primary text-base font-medium max-w-[10rem]"
           numberOfLines={1}
         >
           {activeName}
