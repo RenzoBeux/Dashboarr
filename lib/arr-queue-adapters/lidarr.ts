@@ -7,7 +7,7 @@ import {
 } from "@/services/lidarr-api";
 import type { LidarrQueue, LidarrWantedMissing } from "@/lib/types";
 import type { ArrQueueAdapter } from "@/lib/arr-queue-adapter";
-import { isHeldQueueRecord, queueEtaLabel } from "@/lib/arr-poster-status";
+import { isHeldQueueRecord, queueTileSubtitle } from "@/lib/arr-poster-status";
 import {
   queueIssueMessages,
   queueIssueSeverity,
@@ -33,9 +33,9 @@ export const lidarrArrQueueAdapter: ArrQueueAdapter = {
       id: item.id,
       posterUrl: getLidarrAlbumCover(item.album?.images),
       title: item.album?.title || item.title,
-      // Prefer the artist name; fall back to the ETA (or "Delayed", #484) when
-      // it's unknown.
-      subtitle: item.artist?.artistName ?? queueEtaLabel(item),
+      // Prefer the artist name ("Delayed · Artist" while Lidarr holds it,
+      // #484); fall back to the ETA (or "Delayed") when it's unknown.
+      subtitle: queueTileSubtitle(item, item.artist?.artistName),
       qualityLabel: item.quality.quality.name,
       progress: item.size > 0 ? (item.size - item.sizeleft) / item.size : 0,
       held: isHeldQueueRecord(item),

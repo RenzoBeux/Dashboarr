@@ -150,6 +150,20 @@ export function queueEtaLabel(record: QueueTimingRecord): string | undefined {
 }
 
 /**
+ * Subtitle for a narrow queue tile whose identity line ("S02E07", an artist
+ * name) normally replaces the ETA. A held record leads with "Delayed" so the
+ * tile still says it, and a long identity truncates instead of the label.
+ * Without an identity it is queueEtaLabel.
+ */
+export function queueTileSubtitle(
+  record: QueueTimingRecord,
+  identity: string | null | undefined,
+): string | undefined {
+  if (!identity) return queueEtaLabel(record);
+  return isHeldQueueRecord(record) ? `${HELD_QUEUE_LABEL} · ${identity}` : identity;
+}
+
+/**
  * Whole seconds in a serialized .NET TimeSpan ("[-][d.]hh:mm:ss[.fffffff]"),
  * or null when it doesn't parse.
  */

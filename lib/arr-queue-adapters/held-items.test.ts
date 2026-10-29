@@ -39,31 +39,39 @@ describe("queue adapters flag held releases (#484)", () => {
     expect(d).toMatchObject({ held: false, subtitle: "ETA 00:05:00", progress: 0.75 });
   });
 
-  it("Sonarr: held, falling back to Delayed when the episode is unknown", () => {
-    const [h, d] = sonarrArrQueueAdapter.toItems(
+  it("Sonarr: held, and the episode code says Delayed", () => {
+    const episode = { seasonNumber: 2, episodeNumber: 7 };
+    const [h, d, hNoEp, dNoEp] = sonarrArrQueueAdapter.toItems(
       {
         records: [
-          { ...held, seriesId: 3, episodeId: 31 },
-          { ...downloading, seriesId: 3, episodeId: 32 },
+          { ...held, seriesId: 3, episodeId: 31, episode },
+          { ...downloading, seriesId: 3, episodeId: 32, episode },
+          { ...held, id: 3, seriesId: 3, episodeId: 33 },
+          { ...downloading, id: 4, seriesId: 3, episodeId: 34 },
         ],
       },
       "home",
     );
-    expect(h).toMatchObject({ held: true, subtitle: "Delayed" });
-    expect(d).toMatchObject({ held: false, subtitle: "ETA 00:05:00" });
+    expect(h).toMatchObject({ held: true, subtitle: "Delayed · S02E07" });
+    expect(d).toMatchObject({ held: false, subtitle: "S02E07" });
+    expect(hNoEp).toMatchObject({ held: true, subtitle: "Delayed" });
+    expect(dNoEp).toMatchObject({ held: false, subtitle: "ETA 00:05:00" });
   });
 
-  it("Lidarr: held, prefers the artist name as before", () => {
-    const [h, d] = lidarrArrQueueAdapter.toItems(
+  it("Lidarr: held, and the artist name says Delayed", () => {
+    const artist = { artistName: "Radiohead" };
+    const [h, d, dNoArtist] = lidarrArrQueueAdapter.toItems(
       {
         records: [
-          { ...held, albumId: 11, artist: { artistName: "Radiohead" } },
-          { ...downloading, albumId: 12 },
+          { ...held, albumId: 11, artist },
+          { ...downloading, albumId: 12, artist },
+          { ...downloading, id: 3, albumId: 13 },
         ],
       },
       "home",
     );
-    expect(h).toMatchObject({ held: true, subtitle: "Radiohead" });
-    expect(d).toMatchObject({ held: false, subtitle: "ETA 00:05:00" });
+    expect(h).toMatchObject({ held: true, subtitle: "Delayed · Radiohead" });
+    expect(d).toMatchObject({ held: false, subtitle: "Radiohead" });
+    expect(dNoArtist).toMatchObject({ held: false, subtitle: "ETA 00:05:00" });
   });
 });
