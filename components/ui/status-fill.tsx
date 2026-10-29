@@ -71,26 +71,40 @@ export function StatusFill({
     if (next !== length) setLength(next);
   };
 
+  // The dashes sit in an absolute layer so they never count toward the box's
+  // own size. In flow they would: the spare dash makes the column longer than
+  // what was measured, and a spine that only stretches to its row (the series
+  // and artist Progress blocks) would grow the row, re-measure, add a dash and
+  // grow again, forever.
   return (
     <View
       key="held"
       className={className}
-      style={[
-        { flexDirection: vertical ? "column" : "row", overflow: "hidden" },
-        style,
-      ]}
+      style={[{ overflow: "hidden" }, style]}
       onLayout={onLayout}
     >
-      {Array.from({ length: count }, (_, i) => (
-        <View
-          key={i}
-          style={
-            vertical
-              ? { height: dash, marginBottom: gap, backgroundColor: color }
-              : { width: dash, marginRight: gap, backgroundColor: color }
-          }
-        />
-      ))}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          flexDirection: vertical ? "column" : "row",
+          overflow: "hidden",
+        }}
+      >
+        {Array.from({ length: count }, (_, i) => (
+          <View
+            key={i}
+            style={
+              vertical
+                ? { height: dash, marginBottom: gap, backgroundColor: color }
+                : { width: dash, marginRight: gap, backgroundColor: color }
+            }
+          />
+        ))}
+      </View>
     </View>
   );
 }
