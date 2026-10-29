@@ -3,34 +3,52 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast, toastError } from "@/components/ui/toast";
 import {
   radarrImportFiles,
+  resolveImportMode,
   sonarrImportFiles,
   toRadarrCandidates,
   toSonarrCandidates,
+  type ArrImportMode,
+  type FolderImportMode,
   type ManualImportCandidate,
   type ManualImportRow,
   type ManualImportService,
+  type ManualImportSource,
 } from "@/lib/manual-import";
 import {
+  getFolderImportCandidates as getRadarrFolderCandidates,
   getManualImportCandidates as getRadarrCandidates,
   getMovies,
   getQualityDefinitions as getRadarrQualityDefinitions,
+  getRootFolders as getRadarrRootFolders,
   runManualImport as runRadarrManualImport,
 } from "@/services/radarr-api";
 import {
+  getFolderImportCandidates as getSonarrFolderCandidates,
   getManualImportCandidates as getSonarrCandidates,
   getQualityDefinitions as getSonarrQualityDefinitions,
+  getRootFolders as getSonarrRootFolders,
   getSeries,
   runManualImport as runSonarrManualImport,
 } from "@/services/sonarr-api";
+import { getArrFolderContents } from "@/services/arr-filesystem";
+import { normalizeFolderListing } from "@/lib/arr-filesystem";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import type { ArrQualityDefinition } from "@/lib/types";
 
+/** A Radarr/Sonarr root folder; both services return the same shape. */
+export interface ArrRootFolder {
+  id: number;
+  path: string;
+  freeSpace: number;
+}
+
 /**
- * Data layer for the manual-import screen (#306) — the by-hand counterpart of
- * the one-tap force import in use-arr-queue-issues.ts.
+ * Data layer for the manual-import screen: the by-hand counterpart of the
+ * one-tap force import in use-arr-queue-issues.ts (#306), and the review step
+ * of importing from any folder on the *arr host (#470).
  *
- * Radarr and Sonarr expose the same three endpoints with different payload
- * shapes, so the difference is confined to this table; every hook below is
+ * Radarr and Sonarr expose the same endpoints with different payload shapes,
+ * so the difference is confined to this table; every hook below is
  * service-agnostic. Normalization happens in the queryFn because nothing else
  * reads these keys (unlike the queue, whose cache entry is shared).
  */
@@ -38,56 +56,94 @@ const MANUAL_IMPORT: Record<
   ManualImportService,
   {
     displayName: string;
+    /** The cache key the library tab reads, so an import can refresh it. */
+    libraryKey: "movies" | "series";
     fetchCandidates: (
-      downloadId: string,
+      source: ManualImportSource,
       instanceId: string,
+      signal?: AbortSignal,
     ) => Promise<ManualImportCandidate[]>;
     fetchQualities: (instanceId: string) => Promise<ArrQualityDefinition[]>;
+    fetchRootFolders: (instanceId: string) => Promise<ArrRootFolder[]>;
     runImport: (
       rows: ManualImportRow[],
-      downloadId: string,
+      source: ManualImportSource,
       instanceId: string,
+      importMode: ArrImportMode,
     ) => Promise<void>;
   }
 > = {
   radarr: {
     displayName: "Radarr",
-    fetchCandidates: async (downloadId, instanceId) =>
-      toRadarrCandidates(await getRadarrCandidates(downloadId, instanceId)),
+    libraryKey: "movies",
+    fetchCandidates: async (source, instanceId, signal) =>
+      toRadarrCandidates(
+        source.kind === "download"
+          ? await getRadarrCandidates(source.downloadId, instanceId)
+          : await getRadarrFolderCandidates(source.folder, instanceId, signal),
+      ),
     fetchQualities: (instanceId) => getRadarrQualityDefinitions(instanceId),
-    runImport: (rows, downloadId, instanceId) =>
-      runRadarrManualImport(radarrImportFiles(rows, downloadId), instanceId),
+    fetchRootFolders: (instanceId) => getRadarrRootFolders(instanceId),
+    runImport: (rows, source, instanceId, importMode) =>
+      runRadarrManualImport(
+        radarrImportFiles(rows, downloadIdOf(source)),
+        instanceId,
+        importMode,
+      ),
   },
   sonarr: {
     displayName: "Sonarr",
-    fetchCandidates: async (downloadId, instanceId) =>
-      toSonarrCandidates(await getSonarrCandidates(downloadId, instanceId)),
+    libraryKey: "series",
+    fetchCandidates: async (source, instanceId, signal) =>
+      toSonarrCandidates(
+        source.kind === "download"
+          ? await getSonarrCandidates(source.downloadId, instanceId)
+          : await getSonarrFolderCandidates(source.folder, instanceId, signal),
+      ),
     fetchQualities: (instanceId) => getSonarrQualityDefinitions(instanceId),
-    runImport: (rows, downloadId, instanceId) =>
-      runSonarrManualImport(sonarrImportFiles(rows, downloadId), instanceId),
+    fetchRootFolders: (instanceId) => getSonarrRootFolders(instanceId),
+    runImport: (rows, source, instanceId, importMode) =>
+      runSonarrManualImport(
+        sonarrImportFiles(rows, downloadIdOf(source)),
+        instanceId,
+        importMode,
+      ),
   },
 };
+
+function downloadIdOf(source: ManualImportSource): string | undefined {
+  return source.kind === "download" ? source.downloadId : undefined;
+}
+
+function sourceValue(source: ManualImportSource): string {
+  return source.kind === "download" ? source.downloadId : source.folder;
+}
 
 export function manualImportServiceName(service: ManualImportService): string {
   return MANUAL_IMPORT[service].displayName;
 }
 
 /**
- * The files *arr found for one completed download, plus whatever it managed to
- * match them to. Not polled: the scan result only changes when the user acts,
- * and a refetch mid-mapping would fight the selections on screen.
+ * The files *arr found for one completed download or one folder, plus whatever
+ * it managed to match them to. Not polled: the scan result only changes when
+ * the user acts, and a refetch mid-mapping would fight the selections on
+ * screen. A folder scan parses every file under it and can run for a minute on
+ * a big folder, so a failure is shown rather than silently re-run twice.
  */
 export function useManualImportCandidates(
   service: ManualImportService,
-  downloadId: string,
+  source: ManualImportSource,
   instanceId?: string,
 ) {
   const { instanceId: id, enabled } = useInstanceTarget(service, instanceId);
+  const value = sourceValue(source);
   return useQuery({
-    queryKey: [service, id, "manualimport", downloadId],
-    queryFn: () => MANUAL_IMPORT[service].fetchCandidates(downloadId, id!),
-    enabled: enabled && !!id && !!downloadId,
+    queryKey: [service, id, "manualimport", source.kind, value],
+    queryFn: ({ signal }) =>
+      MANUAL_IMPORT[service].fetchCandidates(source, id!, signal),
+    enabled: enabled && !!id && !!value,
     gcTime: 0,
+    ...(source.kind === "folder" ? { retry: false } : {}),
   });
 }
 
@@ -137,7 +193,7 @@ export function useManualImportLibrary(
     enabled: enabled && !!id && service === "sonarr",
   });
   const movies = useQuery({
-    queryKey: ["radarr", id, "movie"],
+    queryKey: ["radarr", id, "movies"],
     queryFn: () => getMovies(id!),
     enabled: enabled && !!id && service === "radarr",
   });
@@ -162,26 +218,89 @@ export function useManualImportLibrary(
  * accepted the command — the import itself runs async on the server, so the
  * toast says "started" and the invalidated queue refetch is what clears the
  * stuck grab.
+ *
+ * `importMode` is required for a folder source and ignored for a download
+ * (see resolveImportMode), so a folder import can never fall back to "auto".
  */
 export function useRunManualImport(
   service: ManualImportService,
-  downloadId: string,
+  source: ManualImportSource,
   instanceId?: string,
 ) {
   const { instanceId: id } = useInstanceTarget(service, instanceId);
   const queryClient = useQueryClient();
-  const displayName = MANUAL_IMPORT[service].displayName;
+  const { displayName, libraryKey } = MANUAL_IMPORT[service];
 
   return useMutation({
-    mutationFn: (rows: ManualImportRow[]) =>
-      MANUAL_IMPORT[service].runImport(rows, downloadId, id!),
-    onSuccess: () => {
-      toast(`Import started, ${displayName} is processing it`);
+    mutationFn: async ({
+      rows,
+      importMode,
+    }: {
+      rows: ManualImportRow[];
+      importMode?: FolderImportMode;
+    }) => {
+      const mode = resolveImportMode(source, importMode);
+      await MANUAL_IMPORT[service].runImport(rows, source, id!, mode);
+      return mode;
+    },
+    onSuccess: (mode) => {
+      if (source.kind === "folder") {
+        toast(
+          `Import started, ${displayName} is ${mode === "move" ? "moving" : "copying"} the files`,
+        );
+      } else {
+        toast(`Import started, ${displayName} is processing it`);
+      }
       if (!id) return;
       queryClient.invalidateQueries({ queryKey: [service, id, "queue"] });
       // Prefix match — the imported media leaves wanted/missing too.
       queryClient.invalidateQueries({ queryKey: [service, id, "wanted"] });
+      if (source.kind === "folder") {
+        queryClient.invalidateQueries({ queryKey: [service, id, libraryKey] });
+        // A move empties the folder the browser behind this screen lists.
+        queryClient.invalidateQueries({ queryKey: [service, id, "filesystem"] });
+      }
     },
     onError: (err) => toastError("Manual import failed", err),
+  });
+}
+
+/**
+ * The instance's root folders, the folder browser's starting points. Same key
+ * and fetcher as useRadarrRootFolders / useSonarrRootFolders, so the entry is
+ * shared with the movie and series pages.
+ */
+export function useArrRootFolders(
+  service: ManualImportService,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget(service, instanceId);
+  return useQuery({
+    queryKey: [service, id, "rootFolders"],
+    queryFn: () => MANUAL_IMPORT[service].fetchRootFolders(id!),
+    enabled: enabled && !!id,
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * One folder on the *arr host, for the "Import from folder" browser (#470).
+ * `path === null` is the browser's start view (root folders), which needs no
+ * request; `""` is the server root. Not polled: a folder only changes when the
+ * user copies something in, and pull-to-refresh covers that.
+ */
+export function useArrFolderListing(
+  service: ManualImportService,
+  path: string | null,
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget(service, instanceId);
+  return useQuery({
+    queryKey: [service, id, "filesystem", path],
+    queryFn: async ({ signal }) =>
+      normalizeFolderListing(
+        await getArrFolderContents(service, path ?? "", id!, signal),
+      ),
+    enabled: enabled && !!id && path !== null,
   });
 }

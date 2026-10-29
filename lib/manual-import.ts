@@ -16,11 +16,48 @@ import type {
  * a normalized candidate shape both services share, and the two `files[]`
  * payloads their `ManualImport` command takes.
  *
+ * `GET /manualimport?folder=` is the same scan over any folder on the *arr host
+ * (#470); its files carry no downloadId, so the payloads below simply omit it.
+ *
  * Kept pure (no React, no network) so the payload shapes — the part that fails
  * silently against a real server — are unit-testable.
  */
 
 export type ManualImportService = "radarr" | "sonarr";
+
+/**
+ * Where the files come from: a stuck download (#306), or any folder on the
+ * *arr host (#470). The two differ in the /manualimport lookup and, more
+ * importantly, in what the command does with the source files.
+ */
+export type ManualImportSource =
+  | { kind: "download"; downloadId: string }
+  | { kind: "folder"; folder: string };
+
+/** The ManualImport command's `importMode` (ImportMode: Auto, Move, Copy). */
+export type ArrImportMode = "auto" | "move" | "copy";
+
+/** The two modes a folder import may use. "copy" hardlinks when *arr is set to. */
+export type FolderImportMode = Exclude<ArrImportMode, "auto">;
+
+/**
+ * The importMode to send for a source.
+ *
+ * A download keeps "auto", which lets *arr follow the download client (copy
+ * while a torrent still seeds, move otherwise). A folder must never send it:
+ * "auto" only copies when there is a download-client item that can't move, and
+ * a folder import has none, so on the server it means MOVE
+ * (ImportApprovedMovie / ImportApprovedEpisodes). The user picks instead, the
+ * same choice Radarr's and Sonarr's own folder import forces.
+ */
+export function resolveImportMode(
+  source: ManualImportSource,
+  chosen: FolderImportMode | undefined,
+): ArrImportMode {
+  if (source.kind === "download") return "auto";
+  if (!chosen) throw new Error("Choose whether to move or copy the files.");
+  return chosen;
+}
 
 /** A candidate file from `GET /manualimport`, normalized across both services. */
 export interface ManualImportCandidate {
@@ -258,6 +295,46 @@ export function radarrImportFiles(
     indexerFlags: row.candidate.indexerFlags,
     downloadId,
   }));
+}
+
+// The rejection a folder scan puts on a file whose title is not in the library
+// (ManualImportService.ProcessFile, ImportRejectionReason.UnknownMovie /
+// UnknownSeries). Server-side English constants, not localized.
+const UNKNOWN_TITLE_REJECTION: Record<ManualImportService, string> = {
+  radarr: "Unknown Movie",
+  sonarr: "Unknown Series",
+};
+
+/**
+ * Whether any file was refused because *arr has no such movie or series. A
+ * folder can hold a title the user never added; the screen can only map files
+ * to titles already in the library, so it points them at Search instead.
+ */
+export function hasUnknownTitle(
+  service: ManualImportService,
+  candidates: ManualImportCandidate[],
+): boolean {
+  const reason = UNKNOWN_TITLE_REJECTION[service];
+  return candidates.some((c) => c.rejections.includes(reason));
+}
+
+/**
+ * Files *arr matched to some title other than the chosen destination that the
+ * import will leave out. The screen imports into one title per pass, so a
+ * folder holding two movies needs a second pass for the other one. A file the
+ * user mapped by hand anyway is in `rows` and not counted.
+ */
+export function countMatchedElsewhere(
+  candidates: ManualImportCandidate[],
+  mediaId: number | undefined,
+  rows: ManualImportRow[],
+): number {
+  if (mediaId === undefined) return 0;
+  const importing = new Set(rows.map((row) => row.candidate.id));
+  return candidates.filter(
+    (c) =>
+      c.mediaId !== undefined && c.mediaId !== mediaId && !importing.has(c.id),
+  ).length;
 }
 
 /** "WEBDL-1080p", with the proper/repack revision appended when there is one. */

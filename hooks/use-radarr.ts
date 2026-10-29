@@ -17,6 +17,7 @@ import {
   deleteMovie,
   searchForMovie,
   searchAllMissingMovies,
+  rescanMovie,
   toggleMovieMonitored,
   updateMovie,
   changeMovieRootFolder,
@@ -34,6 +35,7 @@ import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { radarrQueueQuery } from "@/lib/arr-queue-query";
 import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
+import { DISK_RESCAN_RECHECK_MS } from "@/lib/arr-filesystem";
 import { describeGrabFailure } from "@/lib/download-client-error";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
@@ -224,6 +226,33 @@ export function useSearchForMovie(instanceId?: string) {
     mutationFn: (movieId: number) => searchForMovie(movieId, id ?? undefined),
     onSuccess: () => toast("Search started"),
     onError: (err) => toastError("Search failed", err),
+  });
+}
+
+/**
+ * "Rescan folder" on the movie page (#470). The command only queues the scan,
+ * so the movie, the library and wanted are re-read on a short burst while
+ * Radarr works through it (scheduleGrabRecheck replaces any burst already
+ * running for the same movie).
+ */
+export function useRescanMovie(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("radarr", instanceId);
+  return useMutation({
+    mutationFn: (movieId: number) => rescanMovie(movieId, id ?? undefined),
+    onSuccess: (_data, movieId) => {
+      toast("Rescan started, Radarr is checking the folder");
+      scheduleGrabRecheck(
+        `radarr:${id}:rescan:${movieId}`,
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["radarr", id, "movie", movieId] });
+          queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
+          queryClient.invalidateQueries({ queryKey: ["radarr", id, "wanted"] });
+        },
+        DISK_RESCAN_RECHECK_MS,
+      );
+    },
+    onError: (err) => toastError("Rescan failed", err),
   });
 }
 

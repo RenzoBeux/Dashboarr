@@ -668,6 +668,8 @@ export interface SonarrSeries {
   seasons: SonarrSeason[];
   qualityProfileId: number;
   rootFolderPath: string;
+  // Full series folder path (e.g. "/tv/Severance"), the folder RescanSeries reads.
+  path?: string;
   seriesType: SonarrSeriesType;
   seasonFolder: boolean;
   // "Monitor New Seasons" — Sonarr v4+; absent on older v3 servers.

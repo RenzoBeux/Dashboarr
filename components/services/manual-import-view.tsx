@@ -11,8 +11,11 @@ import {
   AlertTriangle,
   Check,
   Clapperboard,
+  Copy,
   FileVideo,
   FolderInput,
+  Info,
+  Move,
   Tv,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
@@ -20,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { PickerSheet, type PickerOption } from "@/components/ui/picker-sheet";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
@@ -31,12 +35,16 @@ import {
 } from "@/hooks/use-manual-import";
 import { useSonarrEpisodes } from "@/hooks/use-sonarr";
 import {
+  countMatchedElsewhere,
+  hasUnknownTitle,
   qualityFromDefinition,
   qualityLabel,
   seedMapping,
+  type FolderImportMode,
   type ManualImportCandidate,
   type ManualImportRow,
   type ManualImportService,
+  type ManualImportSource,
 } from "@/lib/manual-import";
 import { formatBytes, formatEpisodeCode } from "@/lib/utils";
 import { lightHaptic } from "@/lib/haptics";
@@ -45,20 +53,25 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 
 interface ManualImportViewProps {
   service: ManualImportService;
-  /** Download-client id of the stuck grab — the /manualimport lookup key. */
-  downloadId: string;
+  /** A stuck grab's download id, or a folder on the *arr host (#470). */
+  source: ManualImportSource;
   instanceId?: string;
-  /** Release name of the grab, shown so the user knows what they are mapping. */
-  releaseTitle?: string;
+  /**
+   * Shown under the header so the user knows what they are mapping: the
+   * grab's release name, or the folder path.
+   */
+  subtitle?: string;
 }
 
 // The picker chain. `season`/`episodes`/`quality` carry the file they act on;
 // `media` is screen-wide (a download folder belongs to one series or movie).
+// `importMode` is the folder-only Move vs Hardlink/copy choice.
 type PickerStep = {
   media: void;
   season: number;
   episodes: { candidateId: number; season: number };
   quality: number;
+  importMode: void;
 };
 
 /**
@@ -71,25 +84,31 @@ type PickerStep = {
  * that case: pick the destination, map each file to its episodes, and send the
  * same ManualImport command with the mapping filled in.
  *
+ * The same screen reviews a folder on the *arr host (#470): files copied
+ * there by hand rather than downloaded. The mapping works the same; the only
+ * difference is the import itself, which asks whether to move or copy the
+ * files instead of letting *arr decide (see resolveImportMode).
+ *
  * Radarr and Sonarr differ only in what a file needs to be importable — a
  * movie, versus a series plus at least one episode — so the branches here are
  * narrow and the payload shapes live in lib/manual-import.ts.
  */
 export function ManualImportView({
   service,
-  downloadId,
+  source,
   instanceId,
-  releaseTitle,
+  subtitle,
 }: ManualImportViewProps) {
   const tc = useThemeColor();
   const isSonarr = service === "sonarr";
+  const isFolder = source.kind === "folder";
   const serviceName = manualImportServiceName(service);
 
-  const candidatesQuery = useManualImportCandidates(service, downloadId, instanceId);
+  const candidatesQuery = useManualImportCandidates(service, source, instanceId);
   const candidates = candidatesQuery.data;
 
   const library = useManualImportLibrary(service, instanceId);
-  const importMutation = useRunManualImport(service, downloadId, instanceId);
+  const importMutation = useRunManualImport(service, source, instanceId);
 
   // Destination: the series (Sonarr) or movie (Radarr) every file goes to.
   const [mediaId, setMediaId] = useState<number>();
@@ -269,15 +288,34 @@ export function ManualImportView({
   }
 
   // The import runs async on the server, so leaving right away is correct: the
-  // queue screen behind picks the result up on its next poll.
-  function runImport() {
-    importMutation.mutate(rows, { onSuccess: () => flow.back() });
+  // queue screen behind picks the result up on its next poll. A folder import
+  // first asks what to do with the source files; the flow pops only once that
+  // sheet is fully dismissed.
+  function runImport(importMode?: FolderImportMode) {
+    importMutation.mutate(
+      { rows, importMode },
+      { onSuccess: () => flow.back() },
+    );
   }
+
+  const matchedElsewhere = useMemo(
+    () => (isFolder ? countMatchedElsewhere(candidates ?? [], mediaId, rows) : 0),
+    [isFolder, candidates, mediaId, rows],
+  );
+  const unknownTitle = useMemo(
+    () => isFolder && hasUnknownTitle(service, candidates ?? []),
+    [isFolder, service, candidates],
+  );
 
   if (candidatesQuery.isLoading) {
     return (
-      <View className="flex-1 items-center justify-center">
+      <View className="flex-1 items-center justify-center gap-3 px-6">
         <ActivityIndicator color={tc("#a1a1aa")} />
+        {isFolder ? (
+          <Text className="text-zinc-500 text-xs text-center">
+            {serviceName} is scanning the folder. A big one can take a minute.
+          </Text>
+        ) : null}
       </View>
     );
   }
@@ -297,16 +335,20 @@ export function ManualImportView({
           />
         }
       >
-        {releaseTitle ? (
+        {subtitle ? (
           <Text className="text-zinc-500 text-xs" numberOfLines={2}>
-            {releaseTitle}
+            {subtitle}
           </Text>
         ) : null}
 
         {candidatesQuery.isError ? (
           <ErrorBanner
             error={candidatesQuery.error}
-            title={`${serviceName} couldn't list this download's files`}
+            title={
+              isFolder
+                ? `${serviceName} couldn't scan this folder`
+                : `${serviceName} couldn't list this download's files`
+            }
           />
         ) : null}
 
@@ -340,11 +382,33 @@ export function ManualImportView({
           </Text>
         ) : null}
 
+        {/* "Start Search on Add" defaults on, and would have *arr download a
+            copy of what the user already has on disk. */}
+        {unknownTitle ? (
+          <ImportHint
+            text={`Not in ${serviceName} yet? Add the ${isSonarr ? "series" : "movie"} from Search first with "Start Search on Add" off, then pull down here to scan again.`}
+          />
+        ) : null}
+
+        {matchedElsewhere > 0 ? (
+          <ImportHint
+            text={`${
+              matchedElsewhere === 1 ? "1 file is" : `${matchedElsewhere} files are`
+            } matched to another ${isSonarr ? "series" : "movie"} and left out. Import ${
+              matchedElsewhere === 1 ? "it" : "them"
+            } in another pass.`}
+          />
+        ) : null}
+
         {candidates?.length === 0 && !candidatesQuery.isError ? (
           <EmptyState
             icon={<Icon icon={FileVideo} size={24} color="#71717a" />}
             title="No files to import"
-            message={`${serviceName} found nothing in this download's folder. It may already have been imported or moved.`}
+            message={
+              isFolder
+                ? `${serviceName} found no new video files in this folder. Files it has already imported are hidden.`
+                : `${serviceName} found nothing in this download's folder. It may already have been imported or moved.`
+            }
           />
         ) : null}
 
@@ -471,9 +535,29 @@ export function ManualImportView({
           icon={<Icon icon={FolderInput} size={18} color="#ffffff" />}
           disabled={rows.length === 0 || importMutation.isPending}
           loading={importMutation.isPending}
-          onPress={runImport}
+          onPress={() => (isFolder ? flow.open("importMode") : runImport())}
         />
       </View>
+
+      <ActionSheet
+        {...flow.bind("importMode")}
+        title={`How should ${serviceName} import these files?`}
+        subtitle={subtitle}
+        actions={[
+          {
+            label: "Move files",
+            subtitle: "They leave this folder",
+            icon: <Icon icon={Move} size={18} color="#a1a1aa" />,
+            onPress: () => runImport("move"),
+          },
+          {
+            label: "Hardlink/copy files",
+            subtitle: "The originals stay in this folder",
+            icon: <Icon icon={Copy} size={18} color="#a1a1aa" />,
+            onPress: () => runImport("copy"),
+          },
+        ]}
+      />
 
       <PickerSheet
         {...flow.bind("media")}
@@ -544,5 +628,17 @@ export function ManualImportView({
         }}
       />
     </>
+  );
+}
+
+/** A short note for the folder import's edge cases, shared with the folder browser. */
+export function ImportHint({ text }: { text: string }) {
+  return (
+    <View className="flex-row items-start gap-2 rounded-xl bg-surface-light px-3 py-2">
+      <View className="pt-0.5">
+        <Icon icon={Info} size={14} color="#a1a1aa" />
+      </View>
+      <Text className="text-zinc-400 text-xs flex-1">{text}</Text>
+    </View>
   );
 }

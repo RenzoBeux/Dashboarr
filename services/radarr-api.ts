@@ -4,6 +4,7 @@ import {
   autoRows,
   radarrImportFiles,
   toRadarrCandidates,
+  type ArrImportMode,
   type RadarrManualImportFile,
 } from "@/lib/manual-import";
 import type {
@@ -134,6 +135,30 @@ export function getManualImportCandidates(
 }
 
 /**
+ * The import candidates in any folder on the Radarr host (#470), for files
+ * copied there by hand. `filterExistingFiles: true` hides files Radarr already
+ * has on record, so a rescan of a half-imported folder lists only what is new.
+ *
+ * Never add `movieId` here: with a movieId and no downloadId the controller
+ * returns that movie's EXISTING files and ignores `folder` entirely
+ * (ManualImportController.GetMediaFiles). The scan walks the folder and parses
+ * every file, so it gets the interactive-search timeout and the caller's abort
+ * signal.
+ */
+export function getFolderImportCandidates(
+  folder: string,
+  instanceId?: string,
+  signal?: AbortSignal,
+): Promise<RadarrManualImportItem[]> {
+  return serviceRequest<RadarrManualImportItem[]>("radarr", "/manualimport", {
+    params: { folder, filterExistingFiles: true },
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+    instanceId,
+    signal,
+  });
+}
+
+/**
  * Every quality this instance knows. The manual-import screen offers these
  * when Radarr parsed no quality off the file name, which is exactly the case
  * where the release is named in a way it can't read (#306).
@@ -149,16 +174,18 @@ export function getQualityDefinitions(
 /**
  * Issues the ManualImport command for already-built file payloads. The command
  * imports regardless of rejections, which is what makes it a *force*.
- * `importMode: "auto"` matches Radarr's own default (copy vs. hardlink/move is
- * decided from the download client's setting).
+ * `importMode: "auto"` (the default) matches Radarr's own download import:
+ * copy vs. hardlink/move follows the download client. A folder import must
+ * pass "move" or "copy" instead, see resolveImportMode in lib/manual-import.ts.
  */
 export function runManualImport(
   files: RadarrManualImportFile[],
   instanceId?: string,
+  importMode: ArrImportMode = "auto",
 ): Promise<void> {
   return serviceRequest<void>("radarr", "/command", {
     method: "POST",
-    body: JSON.stringify({ name: "ManualImport", files, importMode: "auto" }),
+    body: JSON.stringify({ name: "ManualImport", files, importMode }),
     instanceId,
   });
 }
@@ -333,6 +360,19 @@ export function searchForMovie(movieId: number, instanceId?: string): Promise<vo
   return serviceRequest<void>("radarr", "/command", {
     method: "POST",
     body: JSON.stringify({ name: "MoviesSearch", movieIds: [movieId] }),
+    instanceId,
+  });
+}
+
+// Rescans the movie's folder on disk (#470): drops records of files that are
+// gone and imports new video files found in it, in place. Deliberately not
+// RefreshMovie (Radarr's "Refresh & Scan" button): that refreshes TMDB
+// metadata first and then skips the scan when the instance's "Rescan Movie
+// Folder after Refresh" is set to Never. RescanMovie scans unconditionally.
+export function rescanMovie(movieId: number, instanceId?: string): Promise<void> {
+  return serviceRequest<void>("radarr", "/command", {
+    method: "POST",
+    body: JSON.stringify({ name: "RescanMovie", movieId }),
     instanceId,
   });
 }

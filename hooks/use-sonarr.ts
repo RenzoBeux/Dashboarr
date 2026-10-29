@@ -25,6 +25,7 @@ import {
   searchForEpisodes,
   searchForSeason,
   searchAllMissingEpisodes,
+  rescanSeries,
   getQualityProfiles,
   getRootFolders,
   getReleasesForEpisode,
@@ -37,6 +38,7 @@ import { POLLING_INTERVALS } from "@/lib/constants";
 import { sonarrQueueQuery } from "@/lib/arr-queue-query";
 import { describeGrabFailure } from "@/lib/download-client-error";
 import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
+import { DISK_RESCAN_RECHECK_MS } from "@/lib/arr-filesystem";
 import { getDateOffset } from "@/lib/utils";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { useArrTags } from "@/hooks/use-arr-tags";
@@ -274,6 +276,39 @@ export function useSearchForSeason(instanceId?: string) {
     }) => searchForSeason(seriesId, seasonNumber, id ?? undefined),
     onSuccess: () => toast("Search started"),
     onError: (err) => toastError("Search failed", err),
+  });
+}
+
+/**
+ * "Rescan folder" on the series page (#470). The command only queues the scan,
+ * so the series, its episodes and files, and wanted are re-read on a short
+ * burst while Sonarr works through it (scheduleGrabRecheck replaces any burst
+ * already running for the same series).
+ */
+export function useRescanSeries(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("sonarr", instanceId);
+  return useMutation({
+    mutationFn: (seriesId: number) => rescanSeries(seriesId, id ?? undefined),
+    onSuccess: (_data, seriesId) => {
+      toast("Rescan started, Sonarr is checking the folder");
+      scheduleGrabRecheck(
+        `sonarr:${id}:rescan:${seriesId}`,
+        () => {
+          // Prefix match: the library list and this series' own entry.
+          queryClient.invalidateQueries({ queryKey: ["sonarr", id, "series"] });
+          queryClient.invalidateQueries({
+            queryKey: ["sonarr", id, "episodes", seriesId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["sonarr", id, "episodeFiles", seriesId],
+          });
+          queryClient.invalidateQueries({ queryKey: ["sonarr", id, "wanted"] });
+        },
+        DISK_RESCAN_RECHECK_MS,
+      );
+    },
+    onError: (err) => toastError("Rescan failed", err),
   });
 }
 

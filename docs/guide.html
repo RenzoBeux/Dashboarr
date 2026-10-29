@@ -839,6 +839,16 @@
           after the app says the import started.
         </p>
 
+        <h3>Files you copied yourself (Radarr, Sonarr)</h3>
+        <p>
+          The *arr only imports what it downloaded, so files you copy onto the server by hand need
+          a nudge:
+        </p>
+        <ul>
+          <li><strong>Rescan folder</strong> (the <strong>More</strong> menu on a movie or series page): rescans that title&rsquo;s own folder and imports any new files in place. Use it after copying a file into a folder the *arr already manages.</li>
+          <li><strong>Import from folder</strong> (the folder button in the Movies and TV headers): browse the server, starting from your root folders, pick the folder holding the files and tap <strong>Scan this folder</strong>. Review the matches the same way as Manual import, then choose <strong>Move files</strong> or <strong>Hardlink/copy files</strong>. The app asks every time, since a move takes the files out of that folder. Only titles already in the *arr can be imported; add a missing one from Search first, with &ldquo;Start Search on Add&rdquo; off.</li>
+        </ul>
+
         <h3>Global search</h3>
         <p>
           The magnifier in the Dashboard header opens <strong>Search</strong>. It needs two characters

@@ -25,6 +25,7 @@ import {
 import { ServiceHeader } from "@/components/common/service-header";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
 import { QueueIssuesBanner } from "@/components/services/queue-issues-banner";
+import { FolderImportButton } from "@/components/services/folder-import-button";
 import { sonarrArrQueueAdapter } from "@/lib/arr-queue-adapters/sonarr";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
@@ -347,6 +348,7 @@ export const TvView = memo(function TvView({
           >
             <Icon icon={ScanSearch} size={ICON.LG} color="#a1a1aa" />
           </Pressable>
+          <FolderImportButton service="sonarr" />
           <Pressable
             onPress={() => router.push("/series/search")}
             className="p-2 active:opacity-70"

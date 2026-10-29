@@ -12,6 +12,7 @@ import {
   Check,
   ChevronRight,
   FolderTree,
+  FolderSync,
   History,
   Pencil,
   Plus,
@@ -44,6 +45,7 @@ import {
   useRadarrRootFolders,
   useUpdateMovieRootFolder,
   useRadarrTags,
+  useRescanMovie,
 } from "@/hooks/use-radarr";
 import { MovieOptionsSheet } from "@/components/radarr/movie-options-sheet";
 import {
@@ -93,6 +95,7 @@ export default function MovieDetailScreen() {
   const { data: rootFolders } = useRadarrRootFolders(instanceId);
   const updateRootFolder = useUpdateMovieRootFolder(instanceId);
   const { data: tags } = useRadarrTags(instanceId);
+  const rescan = useRescanMovie(instanceId);
   const [optionsVisible, setOptionsVisible] = useState(false);
   // Missing collection member being added. Plain useState, not a flow step:
   // AddMediaSheet is a pageSheet Modal without onClosed plumbing, and nothing
@@ -337,6 +340,15 @@ export default function MovieDetailScreen() {
         {...flow.bind("actions")}
         title={movie.title}
         actions={[
+          // Picks up files copied into the movie's folder by hand (#470).
+          // Non-destructive, so no confirm.
+          {
+            label: "Rescan folder",
+            subtitle: movie.path,
+            icon: <Icon icon={FolderSync} size={18} color="#a1a1aa" />,
+            disabled: rescan.isPending,
+            onPress: () => rescan.mutate(movie.id),
+          },
           {
             label: "History",
             icon: <Icon icon={History} size={18} color="#a1a1aa" />,

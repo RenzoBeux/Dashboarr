@@ -582,6 +582,26 @@ const DEMO_ARR_QUALITY_DEFINITIONS = [
   { id: 6, title: "Bluray-2160p", weight: 6, quality: { id: 19, name: "Bluray-2160p", resolution: 2160 } },
 ];
 
+// GET /filesystem for the "Import from folder" browser (#470). A tiny tree: the
+// server root holds the library and a downloads folder with one hand-copied
+// drop; anything deeper is an empty folder, the shape the real endpoint gives
+// a folder with no subfolders.
+function demoArrFilesystem(path: unknown, libraryRoot: string) {
+  const dir = (p: string) => ({
+    type: "folder",
+    name: p.split("/").filter(Boolean).pop(),
+    path: p,
+  });
+  const at = typeof path === "string" ? path : "";
+  if (at === "" || at === "/") {
+    return { directories: [dir("/downloads/"), dir(`${libraryRoot}/`)], files: [] };
+  }
+  if (at === "/downloads/") {
+    return { parent: "/", directories: [dir("/downloads/manual/")], files: [] };
+  }
+  return { parent: at.replace(/[^/]+\/?$/, "") || "/", directories: [], files: [] };
+}
+
 const DEMO_RADARR_WANTED = {
   page: 1,
   pageSize: 20,
@@ -3827,6 +3847,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualitydefinition")) return DEMO_ARR_QUALITY_DEFINITIONS;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "HD-1080p" }, { id: 2, name: "Ultra-HD" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/movies", freeSpace: 2199023255552 }];
+      if (normalized.startsWith("/filesystem")) return demoArrFilesystem(params?.path, "/movies");
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
       if (normalized.startsWith("/tag")) return DEMO_RADARR_TAGS;
       if (normalized.startsWith("/customfilter")) return [];
@@ -3846,6 +3867,7 @@ export function getDemoResponse(
       if (normalized.startsWith("/qualitydefinition")) return DEMO_ARR_QUALITY_DEFINITIONS;
       if (normalized.startsWith("/qualityprofile")) return [{ id: 1, name: "Any" }, { id: 2, name: "HD-1080p" }];
       if (normalized.startsWith("/rootfolder")) return [{ id: 1, path: "/tv", freeSpace: 2199023255552 }];
+      if (normalized.startsWith("/filesystem")) return demoArrFilesystem(params?.path, "/tv");
       if (normalized.startsWith("/diskspace")) return DEMO_ARR_DISKSPACE;
       if (normalized.startsWith("/tag")) return DEMO_SONARR_TAGS;
       if (normalized.startsWith("/customfilter")) return [];
