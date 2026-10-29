@@ -7,6 +7,7 @@ import {
   qualityLabel,
   radarrImportFiles,
   resolveImportMode,
+  seedForDestination,
   sonarrImportFiles,
   toRadarrCandidates,
   toSonarrCandidates,
@@ -195,6 +196,35 @@ describe("seedMapping", () => {
       candidate({ id: 2, mediaId: undefined, episodeIds: [] }),
     ]);
     expect(seed.included).toEqual({ 1: true });
+  });
+});
+
+// A folder holding two titles (#470): switching the destination must swap the
+// selection, never carry one title's file into the other.
+describe("seedForDestination", () => {
+  const alien = candidate({ id: 1, mediaId: 7, episodeIds: [42], size: 900 });
+  const heat = candidate({ id: 2, mediaId: 8, episodeIds: [88], size: 500 });
+  const unknown = candidate({ id: 3, mediaId: undefined, episodeIds: [], size: 100 });
+
+  it("selects only the files matched to the new destination", () => {
+    expect(seedForDestination([alien, heat, unknown], 8)).toEqual({
+      episodeIds: { 2: [88] },
+      included: { 2: true },
+    });
+  });
+
+  it("falls back to the largest unmatched file, never one matched elsewhere", () => {
+    expect(seedForDestination([alien, heat, unknown], 99)).toEqual({
+      episodeIds: {},
+      included: { 3: true },
+    });
+  });
+
+  it("selects nothing when every file belongs to another title", () => {
+    expect(seedForDestination([alien, heat], 99)).toEqual({
+      episodeIds: {},
+      included: {},
+    });
   });
 });
 

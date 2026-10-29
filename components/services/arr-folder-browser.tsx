@@ -29,6 +29,7 @@ import {
   useArrRootFolders,
 } from "@/hooks/use-manual-import";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   isScannableFolder,
   samePath,
@@ -75,6 +76,7 @@ function upRow(up: string | null): BrowserRow {
 export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps) {
   const router = useRouter();
   const tc = useThemeColor();
+  const theme = useAppTheme();
   const serviceName = manualImportServiceName(service);
 
   // null = the start view (root folders); "" = the server root / drive list.
@@ -136,18 +138,26 @@ export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps)
   const loading = path === null ? rootFolders.isLoading : listing.isLoading;
   const error = path === null ? rootFolders.error : listing.error;
 
+  // The field can be edited without pressing Go, so Scan reads what it shows:
+  // a typed path wins over the folder last opened.
+  const typedPath = withTrailingSeparator(typed);
+  const scanTarget =
+    typedPath && !samePath(typedPath, path ?? "") ? typedPath : path;
+
   // Scanning a whole library folder walks and parses every file in it, which
   // the 90s scan timeout may not survive, and is rarely what the user means.
   const isRootFolder =
-    isScannableFolder(path) &&
-    (rootFolders.data ?? []).some((folder) => samePath(folder.path, path));
+    isScannableFolder(scanTarget) &&
+    (rootFolders.data ?? []).some((folder) => samePath(folder.path, scanTarget));
   const noun = service === "sonarr" ? "series" : "movie";
 
   function scan() {
-    if (!isScannableFolder(path)) return;
+    if (!isScannableFolder(scanTarget)) return;
+    // Open the typed folder too, so coming back lands where the scan ran.
+    if (scanTarget !== path) go(scanTarget);
     router.push({
       pathname: "/manual-import",
-      params: { service, folder: path, ...(instanceId ? { instanceId } : {}) },
+      params: { service, folder: scanTarget, ...(instanceId ? { instanceId } : {}) },
     });
   }
 
@@ -234,6 +244,7 @@ export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps)
             onRefresh={onRefresh}
             tintColor="#3b82f6"
             colors={["#3b82f6"]}
+            progressBackgroundColor={theme.surface}
           />
         }
       />
@@ -243,7 +254,7 @@ export function ArrFolderBrowser({ service, instanceId }: ArrFolderBrowserProps)
           label="Scan this folder"
           size="lg"
           icon={<Icon icon={FolderSearch} size={18} color="#ffffff" />}
-          disabled={!isScannableFolder(path)}
+          disabled={!isScannableFolder(scanTarget)}
           onPress={scan}
         />
       </View>

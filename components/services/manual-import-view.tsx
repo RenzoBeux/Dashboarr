@@ -39,6 +39,7 @@ import {
   hasUnknownTitle,
   qualityFromDefinition,
   qualityLabel,
+  seedForDestination,
   seedMapping,
   type FolderImportMode,
   type ManualImportCandidate,
@@ -50,6 +51,7 @@ import { formatBytes, formatEpisodeCode } from "@/lib/utils";
 import { lightHaptic } from "@/lib/haptics";
 import type { ArrQualityModel } from "@/lib/types";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { useAppTheme } from "@/hooks/use-app-theme";
 
 interface ManualImportViewProps {
   service: ManualImportService;
@@ -100,6 +102,7 @@ export function ManualImportView({
   subtitle,
 }: ManualImportViewProps) {
   const tc = useThemeColor();
+  const theme = useAppTheme();
   const isSonarr = service === "sonarr";
   const isFolder = source.kind === "folder";
   const serviceName = manualImportServiceName(service);
@@ -250,9 +253,17 @@ export function ManualImportView({
   }, [candidates, mediaId, qualities, episodeIds, included, isSonarr]);
 
   function pickMedia(value: number) {
-    // A different destination invalidates every episode mapping — those ids
-    // belong to the previous series.
-    if (value !== mediaId) setEpisodeIds({});
+    if (value !== mediaId) {
+      // A different destination invalidates the episode mapping, whose ids
+      // belong to the previous series; keep only what *arr matched to the new
+      // one. A folder can hold several titles, so its file selection is
+      // re-seeded too, or the previous title's file would be imported under
+      // this one. A download is one release, so there a switch corrects a
+      // mismatch and its selected files stay.
+      const seed = seedForDestination(candidates ?? [], value);
+      setEpisodeIds(seed.episodeIds);
+      if (isFolder) setIncluded(seed.included);
+    }
     setMediaId(value);
     flow.close();
   }
@@ -332,6 +343,7 @@ export function ManualImportView({
             onRefresh={onRefresh}
             tintColor="#3b82f6"
             colors={["#3b82f6"]}
+            progressBackgroundColor={theme.surface}
           />
         }
       >
@@ -406,7 +418,7 @@ export function ManualImportView({
             title="No files to import"
             message={
               isFolder
-                ? `${serviceName} found no new video files in this folder. Files it has already imported are hidden.`
+                ? `${serviceName} found no video files to import in this folder. Files already inside a ${isSonarr ? "series'" : "movie's"} own folder are hidden.`
                 : `${serviceName} found nothing in this download's folder. It may already have been imported or moved.`
             }
           />
@@ -552,7 +564,7 @@ export function ManualImportView({
           },
           {
             label: "Hardlink/copy files",
-            subtitle: "The originals stay in this folder",
+            subtitle: "The originals stay here and show up in later scans",
             icon: <Icon icon={Copy} size={18} color="#a1a1aa" />,
             onPress: () => runImport("copy"),
           },

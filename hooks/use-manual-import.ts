@@ -31,7 +31,11 @@ import {
   runManualImport as runSonarrManualImport,
 } from "@/services/sonarr-api";
 import { getArrFolderContents } from "@/services/arr-filesystem";
-import { normalizeFolderListing } from "@/lib/arr-filesystem";
+import {
+  DISK_RESCAN_RECHECK_MS,
+  normalizeFolderListing,
+} from "@/lib/arr-filesystem";
+import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import type { ArrQualityDefinition } from "@/lib/types";
 
@@ -56,8 +60,11 @@ const MANUAL_IMPORT: Record<
   ManualImportService,
   {
     displayName: string;
-    /** The cache key the library tab reads, so an import can refresh it. */
-    libraryKey: "movies" | "series";
+    /**
+     * Cache key prefixes an import changes: the library tab, the title's own
+     * page and its files. A folder import re-reads them once it has run.
+     */
+    importedKeys: readonly string[];
     fetchCandidates: (
       source: ManualImportSource,
       instanceId: string,
@@ -75,7 +82,7 @@ const MANUAL_IMPORT: Record<
 > = {
   radarr: {
     displayName: "Radarr",
-    libraryKey: "movies",
+    importedKeys: ["movies", "movie"],
     fetchCandidates: async (source, instanceId, signal) =>
       toRadarrCandidates(
         source.kind === "download"
@@ -93,7 +100,8 @@ const MANUAL_IMPORT: Record<
   },
   sonarr: {
     displayName: "Sonarr",
-    libraryKey: "series",
+    // "series" also covers each series' own entry (prefix match).
+    importedKeys: ["series", "episodes", "episodeFiles"],
     fetchCandidates: async (source, instanceId, signal) =>
       toSonarrCandidates(
         source.kind === "download"
@@ -229,7 +237,7 @@ export function useRunManualImport(
 ) {
   const { instanceId: id } = useInstanceTarget(service, instanceId);
   const queryClient = useQueryClient();
-  const { displayName, libraryKey } = MANUAL_IMPORT[service];
+  const { displayName, importedKeys } = MANUAL_IMPORT[service];
 
   return useMutation({
     mutationFn: async ({
@@ -253,13 +261,25 @@ export function useRunManualImport(
       }
       if (!id) return;
       queryClient.invalidateQueries({ queryKey: [service, id, "queue"] });
-      // Prefix match — the imported media leaves wanted/missing too.
-      queryClient.invalidateQueries({ queryKey: [service, id, "wanted"] });
-      if (source.kind === "folder") {
-        queryClient.invalidateQueries({ queryKey: [service, id, libraryKey] });
-        // A move empties the folder the browser behind this screen lists.
-        queryClient.invalidateQueries({ queryKey: [service, id, "filesystem"] });
+      if (source.kind === "download") {
+        // Prefix match — the imported media leaves wanted/missing too.
+        queryClient.invalidateQueries({ queryKey: [service, id, "wanted"] });
+        return;
       }
+      // A move empties the folder the browser behind this screen lists.
+      queryClient.invalidateQueries({ queryKey: [service, id, "filesystem"] });
+      // The command only queues the import, and a folder has no queue item
+      // whose completion would refresh the library, so re-read it on the
+      // same burst Rescan uses (replacing any burst already running).
+      scheduleGrabRecheck(
+        `${service}:${id}:folder-import`,
+        () => {
+          for (const key of [...importedKeys, "wanted"]) {
+            queryClient.invalidateQueries({ queryKey: [service, id, key] });
+          }
+        },
+        DISK_RESCAN_RECHECK_MS,
+      );
     },
     onError: (err) => toastError("Manual import failed", err),
   });

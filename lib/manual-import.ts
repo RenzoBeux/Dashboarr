@@ -238,18 +238,39 @@ export function seedMapping(candidates: ManualImportCandidate[]): {
   included: Record<number, boolean>;
 } {
   const mediaId = candidates.find((c) => c.mediaId)?.mediaId;
+  return { mediaId, ...seedForDestination(candidates, mediaId) };
+}
+
+/**
+ * The per-file mapping for one destination: the episodes *arr matched to it,
+ * and which files start selected. Also what the screen re-seeds from when the
+ * user picks another destination on a folder import, where files matched to
+ * the previous title must not ride along into the new one.
+ *
+ * Radarr has no per-file mapping to imply intent, so inclusion is explicit:
+ * start from the files matched to the destination, or the largest UNMATCHED
+ * one when none were (sample and subtitle files are exactly what the user
+ * deselects). A file matched to some other title is never picked as that
+ * fallback, since it would be imported under the wrong movie.
+ */
+export function seedForDestination(
+  candidates: ManualImportCandidate[],
+  mediaId: number | undefined,
+): {
+  episodeIds: Record<number, number[]>;
+  included: Record<number, boolean>;
+} {
   const onTarget =
     mediaId === undefined ? [] : candidates.filter((c) => c.mediaId === mediaId);
 
-  // Radarr has no per-file mapping to imply intent, so inclusion is explicit:
-  // start from the files it matched, or the largest one when it matched none
-  // (sample and subtitle files are exactly what the user deselects).
   const seedIncluded = onTarget.length
     ? onTarget
-    : candidates.slice().sort((a, b) => b.size - a.size).slice(0, 1);
+    : candidates
+        .filter((c) => c.mediaId === undefined)
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 1);
 
   return {
-    mediaId,
     episodeIds: Object.fromEntries(
       onTarget.filter((c) => c.episodeIds.length).map((c) => [c.id, c.episodeIds]),
     ),
