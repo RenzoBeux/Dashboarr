@@ -693,7 +693,7 @@ function AboutRow({
 // monitor-new-seasons. The whole card is one tap target — small per-row
 // targets are fiddly on phones — and opens the SeriesOptionsSheet editor.
 // The Tags row (#485) is hidden while `tagsRow` is undefined (tag list
-// unavailable), and is a short summary because OptionRow does not truncate.
+// unavailable).
 function OptionsBlock({
   series,
   tagsRow,
@@ -738,13 +738,18 @@ function OptionsBlock({
   );
 }
 
+// The label keeps its natural width and the value shrinks to one line: a tag
+// summary is user-typed and unbounded, and a flex-1 label would collapse to
+// zero width under a long one.
 function OptionRow({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center">
-      <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider flex-1">
+      <Text className="text-zinc-500 text-[0.65rem] uppercase font-semibold tracking-wider grow">
         {label}
       </Text>
-      <Text className="text-zinc-300 text-xs ml-2">{value}</Text>
+      <Text className="text-zinc-300 text-xs ml-2 shrink" numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
