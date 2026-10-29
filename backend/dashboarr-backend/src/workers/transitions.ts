@@ -2,6 +2,10 @@ import { getState, setState } from "../db/repos/seen-state.js";
 import { loadNotificationSettings } from "../db/repos/config.js";
 import { getEnv } from "../env.js";
 import { dispatchPush } from "../push/dispatcher.js";
+import {
+  buildRadarrHistoryGrabEvents,
+  buildSonarrHistoryGrabEvents,
+} from "../push/grab-format.js";
 import type { TorrentState, QBTorrent } from "../services/qbittorrent.js";
 import type { TransmissionTorrent } from "../services/transmission.js";
 import type { DelugeTorrent } from "../services/deluge.js";
@@ -424,6 +428,32 @@ export async function diffRadarrHistory(
   }
 }
 
+// Diffs the same /history page for new "grabbed" records (#464). Its own seen
+// key keeps the grab baseline independent of the import one above, so the
+// first poll after upgrading only seeds it (no backlog of old grabs). The
+// dedupe key matches the Grab webhook's (see push/grab-format.ts), so a user
+// with both sources gets one push.
+export async function diffRadarrGrabs(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  records: RadarrHistoryRecord[],
+): Promise<void> {
+  const key = `radarr:${instanceId}:history:grabbed:seen`;
+  const prev = getState<number[]>(key);
+
+  const grabbed = records.filter((r) => r.eventType === "grabbed");
+  setState(key, grabbed.map((r) => r.id));
+  if (!prev) return;
+
+  const prevSet = new Set(prev);
+  const fresh = grabbed.filter((r) => !prevSet.has(r.id));
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+  for (const event of buildRadarrHistoryGrabEvents(fresh, instanceId, prefix)) {
+    await dispatchPush(event);
+  }
+}
+
 // ---------------- Sonarr ----------------
 
 function sonarrDisplayTitle(r: SonarrHistoryRecord): string {
@@ -469,6 +499,29 @@ export async function diffSonarrHistory(
         ? `sonarr:${instanceId}:downloaded:${r.downloadId}`
         : `sonarr:${instanceId}:history:${r.id}`,
     });
+  }
+}
+
+// Sonarr counterpart of diffRadarrGrabs. Sonarr writes one "grabbed" record
+// per episode, so a season pack is grouped into a single push by downloadId.
+export async function diffSonarrGrabs(
+  instanceId: string,
+  instanceName: string,
+  multipleOfKind: boolean,
+  records: SonarrHistoryRecord[],
+): Promise<void> {
+  const key = `sonarr:${instanceId}:history:grabbed:seen`;
+  const prev = getState<number[]>(key);
+
+  const grabbed = records.filter((r) => r.eventType === "grabbed");
+  setState(key, grabbed.map((r) => r.id));
+  if (!prev) return;
+
+  const prevSet = new Set(prev);
+  const fresh = grabbed.filter((r) => !prevSet.has(r.id));
+  const prefix = instancePrefix(instanceName, multipleOfKind);
+  for (const event of buildSonarrHistoryGrabEvents(fresh, instanceId, prefix)) {
+    await dispatchPush(event);
   }
 }
 

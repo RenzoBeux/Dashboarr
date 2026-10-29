@@ -145,3 +145,65 @@ test("a Seerr instance with no secrets at all validates", () => {
   assert.equal(result.data.instances?.[0]?.apiKey, undefined);
   assert.equal(result.data.instances?.[0]?.username, undefined);
 });
+
+// Grab categories (#464). Opt-in, so an older app that never sends the keys
+// must leave them off.
+
+test("radarrGrabbed / sonarrGrabbed default to false when absent", () => {
+  const { radarrGrabbed: _r, sonarrGrabbed: _s, ...older } = DEFAULT_NOTIFICATION_SETTINGS;
+  const result = notificationSettingsSchema.safeParse(older);
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.radarrGrabbed, false);
+  assert.equal(result.data.sonarrGrabbed, false);
+});
+
+test("perInstance accepts the grab categories", () => {
+  const perInstance = { "uuid-r": { radarrGrabbed: true }, "uuid-s": { sonarrGrabbed: false } };
+  const result = notificationSettingsSchema.safeParse({ ...DEFAULT_NOTIFICATION_SETTINGS, perInstance });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.data.perInstance, perInstance);
+});
+
+/**
+ * #230 failure class for categories: a strict key enum on perInstance made one
+ * category this build doesn't know (a newer app's per-instance "Always
+ * notify") 400 the whole PUT /config. The unknown key is dropped instead.
+ */
+test("perInstance drops an unknown category instead of failing the payload", () => {
+  const result = configPayloadSchema.safeParse({
+    instances: [],
+    notifications: {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      perInstance: {
+        "uuid-1": { radarrGrabbed: true, someFutureCategory: false },
+        "uuid-2": { someFutureCategory: true },
+      },
+    },
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.deepEqual(result.data.notifications.perInstance, {
+    "uuid-1": { radarrGrabbed: true },
+    "uuid-2": {},
+  });
+});
+
+test("perInstance still rejects a non-boolean override and a non-object entry", () => {
+  for (const perInstance of [
+    { "uuid-1": { radarrGrabbed: "yes" } },
+    { "uuid-1": true },
+    { "uuid-1": ["radarrGrabbed"] },
+  ]) {
+    const result = notificationSettingsSchema.safeParse({ ...DEFAULT_NOTIFICATION_SETTINGS, perInstance });
+    assert.equal(result.success, false, JSON.stringify(perInstance));
+  }
+});
+
+test("perInstance stays optional", () => {
+  const result = notificationSettingsSchema.safeParse(DEFAULT_NOTIFICATION_SETTINGS);
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.perInstance, undefined);
+});

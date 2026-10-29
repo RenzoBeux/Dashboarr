@@ -1,16 +1,21 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { dispatchPush } from "../../push/dispatcher.js";
+import { buildSonarrGrabWebhookEvent, type WebhookGrabRelease } from "../../push/grab-format.js";
 import {
   checkWebhookSecret,
   resolveWebhookInstance,
   webhookTitlePrefix,
 } from "./shared.js";
 
+// Same eventType handling as the Radarr route: `Download`, `Grab` (#464) and
+// `Test`. A Grab's `episodes` lists every episode the release covers.
 interface SonarrWebhookPayload {
   eventType?: string;
   series?: { id?: number; title?: string };
   episodes?: { id?: number; title?: string; seasonNumber?: number; episodeNumber?: number }[];
+  // Grab only: the release sent to the download client.
+  release?: WebhookGrabRelease;
   downloadId?: string;
 }
 
@@ -61,6 +66,11 @@ export async function sonarrWebhook(app: FastifyInstance): Promise<void> {
         },
         dedupeKey: `sonarr:webhook:${dedupeNs}:${payload.downloadId ?? firstEp?.id ?? payload.series.id}`,
       });
+    }
+
+    if (payload.eventType === "Grab") {
+      const event = buildSonarrGrabWebhookEvent(payload, inst?.id, prefix);
+      if (event) await dispatchPush(event);
     }
 
     return { ok: true };

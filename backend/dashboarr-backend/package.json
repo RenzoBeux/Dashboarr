@@ -15,7 +15,7 @@
     "start": "node dist/index.js",
     "test": "npm run test:server && npm run test:web",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
-    "test:server": "tsx --test src/types.test.ts src/services/qbittorrent.test.ts src/push/apprise.test.ts src/routes/health.test.ts src/workers/poller-eligibility.test.ts src/auth/ui-session.test.ts src/ui/webhook-summary.test.ts src/ui/overview.test.ts src/routes/ui.test.ts src/routes/config-backup.test.ts src/auth/same-origin.test.ts src/routes/ui-backups.test.ts",
+    "test:server": "tsx --test src/types.test.ts src/services/qbittorrent.test.ts src/push/apprise.test.ts src/routes/health.test.ts src/workers/poller-eligibility.test.ts src/auth/ui-session.test.ts src/ui/webhook-summary.test.ts src/ui/overview.test.ts src/routes/ui.test.ts src/routes/config-backup.test.ts src/auth/same-origin.test.ts src/routes/ui-backups.test.ts src/push/grab-format.test.ts src/routes/webhooks/arr-grab.test.ts src/workers/arr-grab-diff.test.ts",
     "test:web": "vitest run --config web/vite.config.ts"
   },
   "dependencies": {

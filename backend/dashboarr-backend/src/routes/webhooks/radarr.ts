@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { recordWebhook } from "../../db/repos/events.js";
 import { dispatchPush } from "../../push/dispatcher.js";
+import { buildRadarrGrabWebhookEvent, type WebhookGrabRelease } from "../../push/grab-format.js";
 import {
   checkWebhookSecret,
   resolveWebhookInstance,
@@ -8,8 +9,9 @@ import {
 } from "./shared.js";
 
 /**
- * Radarr "Custom" webhook payload. We only care about the `Download` (import
- * complete) and `Grab` events — both live in `eventType`.
+ * Radarr "Webhook" connection payload. We act on `Download` (import complete,
+ * "On File Import" / "On File Upgrade" in Radarr), `Grab` ("On Grab", #464)
+ * and `Test`, all distinguished by `eventType`.
  *
  * Sample Download payload:
  * {
@@ -26,6 +28,8 @@ interface RadarrWebhookPayload {
   eventType?: string;
   movie?: { id?: number; title?: string; year?: number };
   movieFile?: { quality?: { quality?: { name?: string } } };
+  // Grab only: the release sent to the download client.
+  release?: WebhookGrabRelease;
   downloadId?: string;
 }
 
@@ -70,6 +74,11 @@ export async function radarrWebhook(app: FastifyInstance): Promise<void> {
         data: { type: "radarr", movieId: payload.movie.id, instanceId: inst?.id },
         dedupeKey: `radarr:webhook:${dedupeNs}:${payload.downloadId ?? payload.movie.id}`,
       });
+    }
+
+    if (payload.eventType === "Grab") {
+      const event = buildRadarrGrabWebhookEvent(payload, inst?.id, prefix);
+      if (event) await dispatchPush(event);
     }
 
     return { ok: true };

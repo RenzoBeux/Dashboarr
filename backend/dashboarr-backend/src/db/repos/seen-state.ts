@@ -6,6 +6,7 @@ import { getDb } from "../client.js";
  *   - `qbt:hashes:downloading`          → JSON-encoded array of torrent hashes currently downloading
  *   - `radarr:<instance>:history:seen`  → JSON-encoded array of imported-history record IDs already announced
  *   - `sonarr:<instance>:history:seen`  → JSON-encoded array of imported-history record IDs already announced
+ *   - `radarr|sonarr:<instance>:history:grabbed:seen` → same, for "grabbed" history records (#464)
  *   - `overseerr:pending:ids`           → JSON-encoded array of request IDs in pending
  *   - `health:<serviceId>:online`       → "1" or "0"
  *   - `event:<source>:<type>:<extId>`   → "1" once an event has been dispatched

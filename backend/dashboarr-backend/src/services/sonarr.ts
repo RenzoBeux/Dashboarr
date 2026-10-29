@@ -31,6 +31,10 @@ export interface SonarrHistoryRecord {
   episodeId?: number;
   series?: { id?: number; title?: string };
   episode?: { title?: string; seasonNumber?: number; episodeNumber?: number };
+  quality?: { quality?: { name?: string } };
+  // Event-specific string map with camelCased keys; a "grabbed" record
+  // carries indexer and size (bytes, as a string) here.
+  data?: Record<string, string | undefined>;
 }
 
 export interface SonarrHistory {

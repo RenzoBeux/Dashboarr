@@ -358,6 +358,13 @@ Sonarr 4+, Seerr) — the secret stays out of reverse-proxy / CDN access
 logs. The path variant remains available for services that can't send custom
 headers.
 
+In Radarr and Sonarr, add a **Webhook** connection and tick **On File Import**
+/ **On File Upgrade** for "Movie downloaded" / "Episode downloaded" pushes and
+**On Grab** for "Movie grabbed" / "Episode grabbed" pushes. Grab pushes are
+off by default: turn them on in the app under Settings, Notifications (or per
+instance). Without a webhook the history poller still picks grabs up, just up
+to 30 seconds later.
+
 Rate limits: `/pair/*` is capped at 5 req/min, `/webhooks/*` at 60 req/min,
 `PUT /config/backup`, `DELETE /config/backups/:id`, `PUT /ui/api/backups/web` and
 `DELETE /ui/api/backups/web` at 10 req/min,
@@ -433,8 +440,8 @@ trust-score + stream events off) and the per-instance toggles have no effect.
 | **qBittorrent** | ❌ | ✅ 15s | "downloading → not downloading" transition; torrent hash dedupe |
 | **SABnzbd** | ❌ | ✅ 30s | New history entry with `Completed` status; `nzo_id` dedupe; skips `radarr`/`sonarr` categories |
 | **NZBGet** | ❌ | ✅ 30s | New history entry with `SUCCESS`/`WARNING` status; `NZBID` dedupe; skips `radarr`/`sonarr` categories |
-| **Radarr** | ✅ (preferred) | ✅ 30s | Webhook for `Download` event; poll diffs the queue |
-| **Sonarr** | ✅ (preferred) | ✅ 30s | Same as Radarr |
+| **Radarr** | ✅ (preferred) | ✅ 30s | Webhook for `Download` and `Grab` events; poll diffs history for imported and grabbed records. Grab pushes (title, quality, size, indexer) are off by default |
+| **Sonarr** | ✅ (preferred) | ✅ 30s | Same as Radarr; a season-pack grab is one push |
 | **Seerr** | ✅ (preferred) | ✅ 60s | Webhook for `MEDIA_PENDING`; poll diffs pending requests |
 | **Bazarr** | ✅ (logged) | — | Payload is unstructured; no default category yet |
 | **Tautulli** | ✅ (logged) | — | User-scripted payloads; no default category yet |
@@ -446,7 +453,10 @@ trust-score + stream events off) and the per-instance toggles have no effect.
 Events are deduped per instance using keys that carry the instance UUID — e.g.
 `event:qbt:<instanceId>:completed:<hash>` for poller-driven pushes and
 `event:radarr:webhook:<instanceId-or-"any">:<downloadId>` for webhook-driven
-ones. The instance namespace prevents two enabled instances of the same kind
+ones. Grab pushes use `event:radarr:grabbed:<instanceId-or-"any">:<downloadId>`
+(and the `sonarr` equivalent) from both the webhook and the poller, so a grab
+seen by both sources pushes once whenever the webhook resolves the instance
+(a single instance, or `?instance=<uuid>`). The instance namespace prevents two enabled instances of the same kind
 from collapsing each other's events when they happen to share an upstream id
 (e.g. two Radarrs both grabbing the same release via the same qBittorrent
 hash).

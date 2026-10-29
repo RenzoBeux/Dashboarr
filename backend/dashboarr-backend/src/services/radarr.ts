@@ -28,6 +28,10 @@ export interface RadarrHistoryRecord {
   downloadId?: string;
   movieId?: number;
   movie?: { id?: number; title?: string; year?: number };
+  quality?: { quality?: { name?: string } };
+  // Event-specific string map with camelCased keys; a "grabbed" record
+  // carries indexer and size (bytes, as a string) here.
+  data?: Record<string, string | undefined>;
 }
 
 export interface RadarrHistory {

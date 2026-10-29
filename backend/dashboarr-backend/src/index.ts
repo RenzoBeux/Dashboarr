@@ -54,6 +54,8 @@ async function writeWebhookUrlsFile(publicUrl: string, dataDir: string): Promise
   const lines: string[] = [
     "# Dashboarr webhook URLs",
     "# Copy into each service's Custom / Webhook notification connection.",
+    "# Radarr/Sonarr: tick On File Import / On File Upgrade for download pushes,",
+    "# and On Grab for grab pushes (off by default in the app's notification settings).",
     "#",
     "# Preferred — use a custom header (keeps the secret out of reverse-proxy access logs):",
     `#   URL:    ${webhookBase}/<service>`,

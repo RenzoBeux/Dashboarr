@@ -114,6 +114,10 @@ export const notifCategoryEnum = z.enum([
   "nzbgetCompleted",
   "radarrDownloaded",
   "sonarrDownloaded",
+  // A release sent to the download client (#464): the Radarr/Sonarr "Grab"
+  // webhook plus the history poller's "grabbed" records. Off by default.
+  "radarrGrabbed",
+  "sonarrGrabbed",
   "serviceOffline",
   "overseerrNewRequest",
   // Tracearr webhook events. Surfaced per-instance only (no global toggle),
@@ -130,11 +134,38 @@ export const notifCategoryEnum = z.enum([
 
 export type NotifCategory = z.infer<typeof notifCategoryEnum>;
 
+const KNOWN_NOTIF_CATEGORIES = new Set<string>(notifCategoryEnum.options);
+
+/**
+ * Drop per-instance override keys for categories this backend doesn't know,
+ * keeping the rest. A strict key enum made a single unknown category (a newer
+ * app's "Always notify" on a category added after this build) fail the whole
+ * `PUT /config` with a 400, which silently froze every notification setting:
+ * the #230 failure class that dropUnknownKinds below guards for service kinds.
+ * Anything that isn't a plain object passes through untouched, so a malformed
+ * value (or a non-boolean override) still fails validation.
+ */
+export function dropUnknownNotifCategories(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [instanceId, overrides] of Object.entries(value)) {
+    if (overrides === null || typeof overrides !== "object" || Array.isArray(overrides)) {
+      out[instanceId] = overrides;
+      continue;
+    }
+    out[instanceId] = Object.fromEntries(
+      Object.entries(overrides).filter(([cat]) => KNOWN_NOTIF_CATEGORIES.has(cat)),
+    );
+  }
+  return out;
+}
+
 // Each instance maps to a subset of category booleans (records in Zod are
 // inherently partial — omitted keys mean "no override for that category").
-export const perInstanceOverridesSchema = z
-  .record(z.string().min(1), z.record(notifCategoryEnum, z.boolean()))
-  .optional();
+export const perInstanceOverridesSchema = z.preprocess(
+  dropUnknownNotifCategories,
+  z.record(z.string().min(1), z.record(notifCategoryEnum, z.boolean())).optional(),
+);
 
 // Apprise (issue #220): a second notification sink alongside Expo push. We use
 // the persistent config-key model — the user saves their service URLs in the
@@ -176,6 +207,10 @@ export const notificationSettingsSchema = z.object({
   nzbgetCompleted: z.boolean().default(true),
   radarrDownloaded: z.boolean().default(true),
   sonarrDownloaded: z.boolean().default(true),
+  // Grabs are much chattier than imports (RSS grabs, upgrades, retries), so
+  // they are opt-in. Also what an older app that never sends the key gets.
+  radarrGrabbed: z.boolean().default(false),
+  sonarrGrabbed: z.boolean().default(false),
   serviceOffline: z.boolean().default(true),
   overseerrNewRequest: z.boolean().default(true),
   // Tracearr — defaults mirror Tracearr's own webhook-channel routing.
@@ -200,6 +235,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   nzbgetCompleted: true,
   radarrDownloaded: true,
   sonarrDownloaded: true,
+  radarrGrabbed: false,
+  sonarrGrabbed: false,
   serviceOffline: true,
   overseerrNewRequest: true,
   tracearrViolation: true,
@@ -458,6 +495,8 @@ export type NotificationCategory =
   | "nzbgetCompleted"
   | "radarrDownloaded"
   | "sonarrDownloaded"
+  | "radarrGrabbed"
+  | "sonarrGrabbed"
   | "serviceOffline"
   | "overseerrNewRequest"
   | "tracearrViolation"
