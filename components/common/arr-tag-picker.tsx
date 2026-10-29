@@ -9,9 +9,7 @@ import { useCreateArrTag } from "@/hooks/use-arr-tags";
 import { HttpError, getHttpErrorMessage } from "@/lib/http-client";
 import {
   addTagId,
-  findTagByLabel,
-  normalizeTagLabel,
-  tagLabelError,
+  resolveTagInput,
   toggleTagId,
   validationFailureMessage,
 } from "@/lib/arr-tag-input";
@@ -80,21 +78,19 @@ export function ArrTagPicker({
 
   const submit = () => {
     if (createTag.isPending) return;
-    const label = normalizeTagLabel(draft);
-    const invalid = tagLabelError(label);
-    if (invalid) {
-      setError(invalid);
+    // The server only dedupes an exact-case match, so an existing tag is
+    // reused here instead of POSTing a near-duplicate.
+    const input = resolveTagInput(tags, draft);
+    if (input.kind === "invalid") {
+      setError(input.error);
       return;
     }
-    // The server only dedupes an exact-case match, so reuse an existing tag
-    // here instead of POSTing a near-duplicate.
-    const existing = findTagByLabel(tags, label);
-    if (existing) {
-      select(existing.id);
+    if (input.kind === "existing") {
+      select(input.tag.id);
       closeEditor();
       return;
     }
-    createTag.mutate(label, {
+    createTag.mutate(input.label, {
       onSuccess: (tag) => {
         select(tag.id);
         closeEditor();

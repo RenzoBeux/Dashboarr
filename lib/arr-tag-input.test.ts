@@ -3,6 +3,7 @@ import {
   findTagByLabel,
   formatTagSummary,
   normalizeTagLabel,
+  resolveTagInput,
   sameTagIds,
   tagLabelError,
   toggleTagId,
@@ -61,6 +62,49 @@ describe("findTagByLabel", () => {
   it("returns undefined for a new label or a missing list", () => {
     expect(findTagByLabel(TAGS, "documentary")).toBeUndefined();
     expect(findTagByLabel(undefined, "anime")).toBeUndefined();
+  });
+});
+
+describe("resolveTagInput", () => {
+  it("selects an existing tag case-insensitively instead of creating one", () => {
+    expect(resolveTagInput(TAGS, " Anime ")).toEqual({
+      kind: "existing",
+      tag: { id: 2, label: "anime" },
+    });
+  });
+
+  it("selects an existing label the character rule would reject (Lidarr)", () => {
+    const tags: ArrTag[] = [{ id: 7, label: "flac_24bit" }];
+    expect(resolveTagInput(tags, "FLAC_24bit")).toEqual({
+      kind: "existing",
+      tag: { id: 7, label: "flac_24bit" },
+    });
+  });
+
+  it("creates a new, valid label in its normalized form", () => {
+    expect(resolveTagInput(TAGS, " Documentary ")).toEqual({
+      kind: "create",
+      label: "documentary",
+    });
+  });
+
+  it("rejects an empty or invalid new label", () => {
+    expect(resolveTagInput(TAGS, "   ")).toEqual({
+      kind: "invalid",
+      error: "Enter a tag name",
+    });
+    expect(resolveTagInput(TAGS, "my_tag")).toEqual({
+      kind: "invalid",
+      error: "Only letters, numbers and - are allowed",
+    });
+  });
+
+  it("still validates when the tag list is unavailable", () => {
+    expect(resolveTagInput(undefined, "kids")).toEqual({
+      kind: "create",
+      label: "kids",
+    });
+    expect(resolveTagInput(undefined, "my tag").kind).toBe("invalid");
   });
 });
 

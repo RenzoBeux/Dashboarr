@@ -44,6 +44,29 @@ export function findTagByLabel(
   return tags?.find((t) => t.label.toLowerCase() === wanted);
 }
 
+export type TagInputResolution =
+  | { kind: "invalid"; error: string }
+  | { kind: "existing"; tag: ArrTag }
+  | { kind: "create"; label: string };
+
+/**
+ * What submitting the New tag input does: select an existing tag, create a
+ * new one, or show an error. The existing-tag lookup runs before the character
+ * rule because a label the rule rejects can already be on the server (Lidarr
+ * only checks NotEmpty), and selecting it never POSTs.
+ */
+export function resolveTagInput(
+  tags: ArrTag[] | undefined,
+  raw: string,
+): TagInputResolution {
+  const label = normalizeTagLabel(raw);
+  if (label.length === 0) return { kind: "invalid", error: "Enter a tag name" };
+  const existing = findTagByLabel(tags, label);
+  if (existing) return { kind: "existing", tag: existing };
+  const error = tagLabelError(label);
+  return error ? { kind: "invalid", error } : { kind: "create", label };
+}
+
 /**
  * Merge a freshly created tag into the cached tag list. An undefined list stays
  * undefined: the caller refetches instead, because seeding a one-item list into
