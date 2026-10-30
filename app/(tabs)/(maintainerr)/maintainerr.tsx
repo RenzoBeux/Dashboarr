@@ -1,5 +1,17 @@
-import { View, Text } from "react-native";
-import { ArrowUp, Ban, EyeOff, Film, Layers, SlidersHorizontal, Trash2, TriangleAlert, Tv } from "lucide-react-native";
+import { Pressable, View, Text } from "react-native";
+import { router } from "expo-router";
+import {
+  ArrowUp,
+  Ban,
+  ChevronRight,
+  EyeOff,
+  Film,
+  Layers,
+  SlidersHorizontal,
+  Trash2,
+  TriangleAlert,
+  Tv,
+} from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
@@ -149,8 +161,12 @@ function CollectionRow({ collection }: { collection: MaintainerrCollection }) {
   const TypeIcon = TYPE_ICON[collection.type] ?? Layers;
   const action = maintainerrActionLabel(collection.arrAction, collection.deleteAfterDays);
 
+  // Opens the collection's media, where single items can be excluded.
   return (
-    <View className="flex-row items-start gap-3">
+    <Pressable
+      onPress={() => router.push(`/maintainerr/collection/${collection.id}`)}
+      className="flex-row items-start gap-3 active:opacity-70"
+    >
       <Icon icon={TypeIcon} size={18} color="#a1a1aa" />
       <View className="flex-1 gap-0.5">
         <View className="flex-row items-center gap-2">
@@ -170,7 +186,10 @@ function CollectionRow({ collection }: { collection: MaintainerrCollection }) {
         <Text className="text-zinc-200 text-sm font-semibold tabular-nums">{collection.mediaCount}</Text>
         <Text className="text-zinc-500 text-[0.7rem]">item{collection.mediaCount === 1 ? "" : "s"}</Text>
       </View>
-    </View>
+      <View className="self-center">
+        <Icon icon={ChevronRight} size={16} color="#71717a" />
+      </View>
+    </Pressable>
   );
 }
 

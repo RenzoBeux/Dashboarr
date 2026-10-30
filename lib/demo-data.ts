@@ -3778,6 +3778,23 @@ const DEMO_MAINTAINERR_COLLECTIONS = [
   },
 ];
 
+// Members shown on a collection's page. Titles are public-domain films so the
+// screen can be screenshotted; every collection shows the same handful.
+const DEMO_MAINTAINERR_MEDIA = [
+  { title: "Night of the Living Dead", year: 1968, sizeBytes: 4_831_838_208 },
+  { title: "His Girl Friday", year: 1940, sizeBytes: 3_221_225_472 },
+  { title: "Charade", year: 1963, sizeBytes: 6_442_450_944 },
+].map((m, i) => ({
+  id: 900 + i,
+  collectionId: 1,
+  mediaServerId: String(5000 + i),
+  addDate: `2026-0${7 + i}-10T00:00:00.000Z`,
+  image_path: undefined,
+  sizeBytes: m.sizeBytes,
+  isManual: false,
+  mediaData: { title: m.title, year: m.year, type: "movie" },
+}));
+
 // --- AdGuard Home ------------------------------------------------------------
 // Domains are the same recognisable-but-generic tracker names Pi-hole's demo
 // data uses, for the same reason: this screen is one people screenshot.
@@ -4533,6 +4550,24 @@ export function getDemoResponse(
       if (normalized === "/api/collections") return DEMO_MAINTAINERR_COLLECTIONS;
       if (normalized === "/api/collections/media/count") {
         return DEMO_MAINTAINERR_COLLECTIONS.reduce((sum, c) => sum + c.mediaCount, 0);
+      }
+      // The page number is the trailing segment `normalized` folds to :id, so
+      // match the raw path; only page 1 has members.
+      const contentPage = /^\/api\/collections\/media\/(\d+)\/content\/(\d+)$/.exec(basePath);
+      if (contentPage) {
+        const items = contentPage[2] === "1"
+          ? DEMO_MAINTAINERR_MEDIA.map((m) => ({ ...m, collectionId: Number(contentPage[1]) }))
+          : [];
+        return { totalSize: DEMO_MAINTAINERR_MEDIA.length, items };
+      }
+      // Demo exclusions succeed without changing the fixtures.
+      if (normalized === "/api/rules/exclusions/bulk" && method === "POST" && body) {
+        try {
+          const { mediaIds } = JSON.parse(body) as { mediaIds?: string[] };
+          return { results: (mediaIds ?? []).map((mediaId) => ({ mediaId, code: 1 })) };
+        } catch {
+          return { results: [] };
+        }
       }
       return undefined;
     }

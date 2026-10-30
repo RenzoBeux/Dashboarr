@@ -3905,6 +3905,38 @@ export interface MaintainerrCollectionMedia {
   image_path?: string;
   sizeBytes: number | null;
   isManual: boolean;
+  /**
+   * The media server's own record for the item, joined in by the paged content
+   * route only (absent on the `media` array GET /api/collections embeds, and
+   * when the server could not resolve the item).
+   */
+  mediaData?: MaintainerrMediaData;
+}
+
+/** The subset of Maintainerr's media-server item the app reads. */
+export interface MaintainerrMediaData {
+  title: string;
+  year?: number;
+  /** "movie" | "show" | "season" | "episode". */
+  type?: string;
+}
+
+/** GET /api/collections/media/:id/content/:page. */
+export interface MaintainerrCollectionMediaPage {
+  totalSize: number;
+  items: MaintainerrCollectionMedia[];
+}
+
+/** One item of POST /api/rules/exclusions/bulk's per-item results. */
+export interface MaintainerrBulkMediaResult {
+  mediaId: string;
+  /** 1 = done, 0 = failed (Maintainerr's ReturnStatus code). */
+  code: 0 | 1;
+  message?: string;
+}
+
+export interface MaintainerrBulkMediaResponse {
+  results: MaintainerrBulkMediaResult[];
 }
 
 // --- Beszel Types ---

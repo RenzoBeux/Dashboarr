@@ -1,6 +1,8 @@
 import { serviceRequest, HttpError } from "@/lib/http-client";
 import type {
+  MaintainerrBulkMediaResponse,
   MaintainerrCollection,
+  MaintainerrCollectionMediaPage,
   MaintainerrHealth,
   MaintainerrVersion,
 } from "@/lib/types";
@@ -72,7 +74,87 @@ export async function getMediaCount(collectionId?: number, instanceId?: string):
   return typeof raw === "string" ? Number(raw) : raw;
 }
 
+/**
+ * One page of a collection's members (GET /api/collections/media/:id/content/:page,
+ * 1-based). Unlike the `media` array GET /api/collections embeds, each item here
+ * carries `mediaData` (title, year) from the media server.
+ */
+export function getCollectionMedia(
+  collectionId: number,
+  page: number,
+  size: number,
+  instanceId?: string,
+): Promise<MaintainerrCollectionMediaPage> {
+  return serviceRequest<MaintainerrCollectionMediaPage>(
+    "maintainerr",
+    `/api/collections/media/${collectionId}/content/${page}`,
+    { params: { size }, instanceId },
+  );
+}
+
+/**
+ * Excludes one item from a collection's rule group, the collection page's
+ * "Exclude" action. Goes through POST /api/rules/exclusions/bulk (Maintainerr
+ * 3.22+) rather than the singular POST /api/rules/exclusion: only the bulk route
+ * also drops the item from the collection, so the singular one would leave it
+ * listed (and still scheduled) until the next rule run. The route answers 201
+ * with per-item results, so a refused exclusion arrives as code 0 in the body
+ * and is rethrown here; a 409 means a rule or collection run held the lock.
+ */
+export async function excludeFromCollection(
+  collectionId: number,
+  mediaServerId: string,
+  instanceId?: string,
+): Promise<void> {
+  const response = await serviceRequest<MaintainerrBulkMediaResponse>(
+    "maintainerr",
+    "/api/rules/exclusions/bulk",
+    {
+      method: "POST",
+      body: JSON.stringify({ mediaIds: [mediaServerId], collectionId, action: 0 }),
+      instanceId,
+    },
+  );
+  const failure = bulkFailureMessage(response, mediaServerId);
+  if (failure) throw new Error(failure);
+}
+
 // --- Pure helpers (unit-tested) ---
+
+/**
+ * The reason a bulk media action failed for `mediaId`, or null when it
+ * succeeded. Maintainerr prefixes its own failure messages with "Failed - ",
+ * which reads twice inside the app's "Couldn't exclude …" toast, so it is
+ * stripped. A missing result counts as a failure: the server answered without
+ * confirming the item.
+ */
+export function bulkFailureMessage(
+  response: MaintainerrBulkMediaResponse | null | undefined,
+  mediaId: string,
+): string | null {
+  const result = response?.results?.find((r) => r.mediaId === mediaId);
+  if (!result) return "Maintainerr did not confirm the change";
+  if (result.code === 1) return null;
+  const message = result.message?.replace(/^Failed - /, "").trim();
+  return message || "Maintainerr refused the change";
+}
+
+/**
+ * The date Maintainerr's worker acts on a collection member: its addDate plus
+ * the collection's retention window. Null when the collection will not act on
+ * it (same predicate as the row label), or for an immediate action, which has
+ * no window.
+ */
+export function maintainerrActionDate(
+  addDate: string,
+  arrAction: number,
+  deleteAfterDays: number | null,
+): Date | null {
+  if (!maintainerrWillAct(arrAction, deleteAfterDays) || deleteAfterDays == null) return null;
+  const added = new Date(addDate).getTime();
+  if (Number.isNaN(added)) return null;
+  return new Date(added + deleteAfterDays * 86_400_000);
+}
 
 /**
  * Normalizes GET /api/app/status. Upstream returns JSON.stringify(status) with a
