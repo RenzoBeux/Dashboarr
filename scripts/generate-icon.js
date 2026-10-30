@@ -45,18 +45,47 @@ const BRAND_GRAD = `
 // D box center is (512,512), but the right bowl only touches its extreme at
 // the midline, so the glyph reads left-of-center inside the ring. Translating
 // from x=487 shifts it 15px right at 0.6 scale for optical centering.
-const BADGE = `
-    <path d="${RING_ARC}" fill="none" stroke="url(#brand)" stroke-width="60" stroke-linecap="round"/>
+const badge = (ringStroke, dFill) => `
+    <path d="${RING_ARC}" fill="none" stroke="${ringStroke}" stroke-width="60" stroke-linecap="round"/>
     <g transform="translate(512 512) scale(0.6) translate(-487 -512)">
-      <path d="${D_PATH}" fill="${D_COLOR}" fill-rule="evenodd"/>
+      <path d="${D_PATH}" fill="${dFill}" fill-rule="evenodd"/>
     </g>
 `;
+
+const BADGE = badge("url(#brand)", D_COLOR);
 
 // ── Main app icon (1024x1024) ────────────────────────────────────────────────
 const iconSvg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 1024 1024">
   <defs>${BRAND_GRAD}</defs>
   <rect width="1024" height="1024" rx="224" fill="${BG_COLOR}"/>
+  ${BADGE}
+</svg>
+`;
+
+// ── iOS 18+ Home Screen appearance variants (1024x1024) ──────────────────────
+// Picked by iOS when the user customizes the Home Screen to Dark or Tinted
+// (ios.icon in app.config.ts). Same geometry as icon.png.
+//
+// Dark drops the background plate: Expo keeps this variant's alpha and iOS
+// composites it over its own dark backdrop, like Apple's dark icons.
+const iconDarkSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 1024 1024">
+  <defs>${BRAND_GRAD}</defs>
+  ${BADGE}
+</svg>
+`;
+
+// Tinted is opaque grayscale (generate() desaturates it): iOS recolors it by
+// luminance with the user's tint, black reading as background and white as
+// full tint. The plate is full-bleed black, not the rounded rect, because Expo
+// flattens a tinted icon's transparency onto white, which would light up the
+// corners. Desaturating the brand ring keeps it dimmer than the D, the same
+// hierarchy as the light icon.
+const iconTintedSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 1024 1024">
+  <defs>${BRAND_GRAD}</defs>
+  <rect width="1024" height="1024" fill="#000000"/>
   ${BADGE}
 </svg>
 `;
@@ -76,6 +105,19 @@ const adaptiveIconSvg = `
   <!-- Badge centered in safe zone on transparent background -->
   <g transform="translate(512 512) scale(0.68) translate(-512 -512)">
     ${BADGE}
+  </g>
+</svg>
+`;
+
+// ── Android 13+ themed icon layer (1024x1024, transparent bg) ────────────────
+// The adaptive icon's <monochrome> layer: with themed icons on, the launcher
+// recolors this silhouette from the wallpaper palette. Same placement as the
+// foreground above (490px = ~52dp, inside the 48-66dp logo range), drawn as a
+// flat white silhouette for the launcher to tint.
+const adaptiveMonochromeSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="0 0 1024 1024">
+  <g transform="translate(512 512) scale(0.68) translate(-512 -512)">
+    ${badge("#ffffff", "#ffffff")}
   </g>
 </svg>
 `;
@@ -204,11 +246,30 @@ async function generate() {
       .toFile(path.join(assetsDir, "icon.png"))
       .then(() => console.log("Generated icon.png (1024x1024)")),
 
+    sharp(Buffer.from(iconDarkSvg))
+      .resize(ICON_SIZE, ICON_SIZE)
+      .png()
+      .toFile(path.join(assetsDir, "icon-dark.png"))
+      .then(() => console.log("Generated icon-dark.png (1024x1024, iOS dark)")),
+
+    sharp(Buffer.from(iconTintedSvg))
+      .resize(ICON_SIZE, ICON_SIZE)
+      .grayscale()
+      .png()
+      .toFile(path.join(assetsDir, "icon-tinted.png"))
+      .then(() => console.log("Generated icon-tinted.png (1024x1024, iOS tinted)")),
+
     sharp(Buffer.from(adaptiveIconSvg))
       .resize(ICON_SIZE, ICON_SIZE)
       .png()
       .toFile(path.join(assetsDir, "adaptive-icon.png"))
       .then(() => console.log("Generated adaptive-icon.png (1024x1024)")),
+
+    sharp(Buffer.from(adaptiveMonochromeSvg))
+      .resize(ICON_SIZE, ICON_SIZE)
+      .png()
+      .toFile(path.join(assetsDir, "adaptive-icon-monochrome.png"))
+      .then(() => console.log("Generated adaptive-icon-monochrome.png (1024x1024)")),
 
     sharp(Buffer.from(iconSvg))
       .resize(512, 512)
