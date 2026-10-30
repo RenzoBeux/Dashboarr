@@ -19,8 +19,9 @@ import {
   type TdarrWorkerType,
   type SearchFilesOptions,
 } from "@/services/tdarr-api";
+import { useMemo } from "react";
 import {
-  useInfiniteQuery, useMutation, useQueryClient, type InfiniteData,
+  useInfiniteQuery, useMutation, useMutationState, useQueryClient, type InfiniteData,
 } from "@tanstack/react-query";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import {
@@ -164,9 +165,13 @@ export function useTdarrBulkUpdateFiles(instanceId?: string) {
       { fileIds, action }: { table: TdarrStatusTableId; fileIds: string[]; action: TdarrRowAction },
     ) => bulkUpdateFiles(fileIds, action.updatedObj, id ?? undefined),
     onMutate: () => ({ id }),
-    onSuccess: (_data, { table, fileIds, action }, onMutateResult) => {
+    onSuccess: async (_data, { table, fileIds, action }, onMutateResult) => {
       const target = onMutateResult.id;
       const tableKey = ["tdarr", target, "status-table", table] as const;
+      // A page load still in flight started from the pre-action pages and would
+      // write the acted-on rows back when it lands, so cancel it first.
+      const loading = queryClient.isFetching({ queryKey: tableKey, exact: true }) > 0;
+      if (loading) await queryClient.cancelQueries({ queryKey: tableKey, exact: true });
       const next = queryClient.setQueryData<InfiniteData<TdarrStatusTablePage>>(
         tableKey,
         (data) => applyRowAction(data, fileIds, action),
@@ -175,8 +180,9 @@ export function useTdarrBulkUpdateFiles(instanceId?: string) {
         queryKey: ["tdarr", target, "status-table"],
         refetchType: "none",
       });
-      // An emptied last page reads as the end of the table; refetch to page on.
-      if (needsRefetchAfterAction(next)) {
+      // Reload after a cancelled page load, or when an emptied last page reads
+      // as the end of the table.
+      if (loading || needsRefetchAfterAction(next)) {
         void queryClient.invalidateQueries({ queryKey: tableKey, exact: true });
       }
       void queryClient.invalidateQueries({ queryKey: ["tdarr", target, "statistics"] });
@@ -200,11 +206,29 @@ export function useTdarrSetAllStatus(instanceId?: string) {
   });
 }
 
-/** `active` gates fetching and polling (Queue Options only reads it while expanded). */
+const globalSettingsMutationKey = (id: string | null | undefined) =>
+  ["tdarr", id, "update-global-settings"] as const;
+
+/**
+ * `active` gates fetching and polling (Queue Options only reads it while expanded).
+ * A read that lands while a write is pending (pull-to-refresh, the poll) carries
+ * the server's pre-write values, so the pending patches are laid back over it,
+ * in tap order.
+ */
 export function useTdarrGlobalSettings(active = true, instanceId?: string) {
-  return useServiceQuery(
+  const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
+  const query = useServiceQuery(
     "tdarr", ["global-settings"], getGlobalSettings, POLLING_INTERVALS.queue, instanceId, active,
   );
+  const pending = useMutationState({
+    filters: { mutationKey: globalSettingsMutationKey(id), status: "pending" },
+    select: (m) => m.state.variables as Partial<TdarrGlobalSettings>,
+  });
+  const data = useMemo(
+    () => query.data && pending.reduce<TdarrGlobalSettings>((acc, p) => ({ ...acc, ...p }), query.data),
+    [query.data, pending],
+  );
+  return { data, isLoading: query.isLoading };
 }
 
 /**
@@ -219,7 +243,7 @@ export function useTdarrUpdateGlobalSettings(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("tdarr", instanceId);
   const key = ["tdarr", id, "global-settings"] as const;
-  const mutationKey = ["tdarr", id, "update-global-settings"] as const;
+  const mutationKey = globalSettingsMutationKey(id);
   return useMutation({
     mutationKey,
     scope: { id: `tdarr-global-settings-${id}` },
@@ -230,6 +254,14 @@ export function useTdarrUpdateGlobalSettings(instanceId?: string) {
       const prev = queryClient.getQueryData<TdarrGlobalSettings>(key);
       if (prev) queryClient.setQueryData<TdarrGlobalSettings>(key, { ...prev, ...patch });
       return { prev };
+    },
+    onSuccess: (_data, patch) => {
+      // A read that landed mid-write may hold the pre-write values. Put the
+      // patch back before the pending overlay lets go of it, so the switch
+      // doesn't flick back until the refetch below lands.
+      queryClient.setQueryData<TdarrGlobalSettings>(key, (current) =>
+        current ? { ...current, ...patch } : current,
+      );
     },
     onError: (_err, patch, context) => {
       const prev = context?.prev;
