@@ -153,7 +153,10 @@ pnpm build:android:prod
 # (creates the release with auto-generated notes if it doesn't exist yet)
 pnpm release:android:apk
 
-# Build + upload in one go
+# Upload the locally-built AAB to Play's internal track as a draft (Play API)
+pnpm release:android:play
+
+# Build + upload in one go (build:android:prod, release:android:apk, release:android:play)
 pnpm release:android
 
 # Publish that build from Play's internal track (where release:android leaves it
@@ -169,7 +172,7 @@ pnpm release:ios:submit
 
 The two publish steps ask for the release notes, print what they are about to change and wait for a confirmation before touching the store. For unattended runs pass `--notes-file <path>` and `--yes`; `--dry-run` only prints the plan.
 
-The `release:*` scripts require the [GitHub CLI](https://cli.github.com/) (`gh`) to be installed and authenticated against the repo. The APK is read from `android/app/build/outputs/apk/release/app-release.apk` and uploaded to the tag `v<version>` from `package.json`.
+The `release:*` scripts require the [GitHub CLI](https://cli.github.com/) (`gh`) to be installed and authenticated against the repo. The APK is read from `android/app/build/outputs/apk/release/app-release.apk` and uploaded to the tag `v<version>` from `package.json`. The Play steps authenticate with a Play Console service account key at `play-service-account.json` (gitignored).
 
 ## Backend (Optional — Push Notifications)
 
