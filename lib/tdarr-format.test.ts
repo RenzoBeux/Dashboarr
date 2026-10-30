@@ -1,4 +1,4 @@
-import { fmt, fileBaseName, sumParts } from "@/lib/tdarr-format";
+import { fmt, fileBaseName, sumParts, workerFps, totalFps } from "@/lib/tdarr-format";
 
 // Tdarr's response shapes were mapped from a live instance rather than from
 // its (field-less) OpenAPI stubs, so every helper here has to survive a field
@@ -46,5 +46,27 @@ describe("sumParts", () => {
   it("falls back to a dash only when nothing was reported", () => {
     expect(sumParts(undefined, undefined)).toBe("—");
     expect(sumParts()).toBe("—");
+  });
+});
+
+describe("workerFps", () => {
+  it("labels a positive fps, like the web UI's `fps > 0` gate", () => {
+    expect(workerFps(62)).toBe("62 fps");
+    expect(workerFps("24.5")).toBe("25 fps");
+  });
+  it("hides zero, missing and garbage fps (health-check workers report none)", () => {
+    expect(workerFps(0)).toBeNull();
+    expect(workerFps(undefined)).toBeNull();
+    expect(workerFps("abc")).toBeNull();
+  });
+});
+
+describe("totalFps", () => {
+  it("sums every worker's fps and skips the non-numeric ones", () => {
+    expect(totalFps({ a: { fps: 60 }, b: { fps: 30 }, c: {} })).toBe("90");
+  });
+  it("is 0 for an idle node or a missing workers map", () => {
+    expect(totalFps({})).toBe("0");
+    expect(totalFps(undefined)).toBe("0");
   });
 });

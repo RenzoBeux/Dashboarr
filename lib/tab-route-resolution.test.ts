@@ -102,6 +102,7 @@ describe("tab route resolution", () => {
     [at("settings", "settings"), "/shortcuts", "(settings)", "shortcuts"],
     [at("activity", "activity"), "/tautulli-stats", "(activity)", "tautulli-stats"],
     [at("pihole", "pihole"), "/pihole/queries", "(pihole)", "pihole/queries"],
+    [at("tdarr", "tdarr"), "/tdarr/queue/table2", "(tdarr)", "tdarr/queue/[table]"],
     [at("navidrome", "navidrome"), "/navidrome/playlist/9", "(navidrome)", "navidrome/playlist/[id]"],
     [at("plex", "plex"), "/plex/library/1", "(plex)", "plex/library/[key]"],
     [at("plex", "plex"), "/plex/item/12345", "(plex)", "plex/item/[ratingKey]"],

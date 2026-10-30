@@ -1,11 +1,14 @@
 import { serviceRequest } from "@/lib/http-client";
 import type {
   TdarrFileItem,
+  TdarrGlobalSettings,
   TdarrLibrary,
   TdarrNodes,
   TdarrResStats,
   TdarrStatistics,
   TdarrStatus,
+  TdarrStatusTableId,
+  TdarrStatusTablePage,
 } from "@/lib/types";
 
 // Tdarr's REST API lives on the server process (default port 8266, not the
@@ -150,6 +153,80 @@ export function alterWorkerLimit(
   return serviceRequest("tdarr", "/alter-worker-limit", {
     method: "POST",
     body: JSON.stringify({ data: { nodeID: nodeId, process, workerType } }),
+    instanceId,
+  });
+}
+
+// The web UI's home-page status tables (queue, success, error, …). Body and
+// response shape traced from its bundle (`api/v2/client/status-tables`) and
+// confirmed live: { array, totalCount }. Empty sorts → newest first.
+export function getStatusTable(
+  table: TdarrStatusTableId,
+  start: number,
+  pageSize: number,
+  instanceId?: string,
+): Promise<TdarrStatusTablePage> {
+  return serviceRequest<TdarrStatusTablePage>("tdarr", "/client/status-tables", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { start, pageSize, filters: [], sorts: [], opts: { table } },
+    }),
+    instanceId,
+  });
+}
+
+// The web UI's "<Action> all" header button: the same status-tables endpoint
+// with pageSize 0 and opts.setAll, applying updatedObj to every row of the
+// table (traced from its bundle). Irreversible in bulk, so callers confirm first.
+export function setAllStatus(
+  table: TdarrStatusTableId,
+  updatedObj: Record<string, unknown>,
+  instanceId?: string,
+): Promise<unknown> {
+  return serviceRequest("tdarr", "/client/status-tables", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { start: 0, pageSize: 0, filters: [], sorts: [], opts: { setAll: true, table, updatedObj } },
+    }),
+    instanceId,
+  });
+}
+
+// Per-file Requeue / Skip / Ignore / Bump / Unhold. The web UI sends the same
+// call with one id per row action (see rowActions in lib/tdarr-tables.ts).
+export function bulkUpdateFiles(
+  fileIds: string[],
+  updatedObj: Record<string, unknown>,
+  instanceId?: string,
+): Promise<unknown> {
+  return serviceRequest("tdarr", "/bulk-update-files", {
+    method: "POST",
+    body: JSON.stringify({ data: { fileIds, updatedObj } }),
+    instanceId,
+  });
+}
+
+// Global settings are one cruddb doc. Read/update shapes traced from the web
+// UI's cruddb helper: { collection, mode, docID, obj }. getById confirmed live.
+export function getGlobalSettings(instanceId?: string): Promise<TdarrGlobalSettings> {
+  return serviceRequest<TdarrGlobalSettings>("tdarr", "/cruddb", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { collection: "SettingsGlobalJSONDB", mode: "getById", docID: "globalsettings" },
+    }),
+    instanceId,
+  });
+}
+
+export function updateGlobalSettings(
+  patch: Partial<TdarrGlobalSettings>,
+  instanceId?: string,
+): Promise<unknown> {
+  return serviceRequest("tdarr", "/cruddb", {
+    method: "POST",
+    body: JSON.stringify({
+      data: { collection: "SettingsGlobalJSONDB", mode: "update", docID: "globalsettings", obj: patch },
+    }),
     instanceId,
   });
 }
