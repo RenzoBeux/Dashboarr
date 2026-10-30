@@ -77,6 +77,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     policy: "fingerprint",
   },
   ios: {
+    // iOS 18+ Home Screen appearances (Edit > Customize): iOS swaps in the
+    // dark or tinted variant when the user picks that look, and the tinted
+    // one takes whatever tint color they choose (#415). All three come from
+    // scripts/generate-icon.js. Native assets: needs a new binary.
+    icon: {
+      light: "./assets/icon.png",
+      dark: "./assets/icon-dark.png",
+      tinted: "./assets/icon-tinted.png",
+    },
     supportsTablet: true,
     bundleIdentifier: BUNDLE_ID,
     buildNumber: String(nativeBuildNumber),
@@ -142,6 +151,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
+      // Android 13+ themed icons: with the system's themed-icons toggle on,
+      // the launcher draws this silhouette in the wallpaper palette instead
+      // of the colored foreground (#415).
+      monochromeImage: "./assets/adaptive-icon-monochrome.png",
       backgroundColor: "#09090b",
     },
     // Always the base id at prebuild time. The dev variant suffix (".dev") is
