@@ -2585,6 +2585,7 @@ export interface UnraidContainer {
   isOrphaned?: boolean;
 }
 
+// All storage sizes below are normalized to bytes by the API adapter.
 export interface UnraidCapacity {
   free: number;
   used: number;

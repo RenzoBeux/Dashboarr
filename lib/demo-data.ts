@@ -2638,23 +2638,23 @@ const DEMO_UNRAID_CONTAINERS = [
 // the red bar), a 2-disk "cache" pool + a named "nvme" pool.
 const DEMO_UNRAID_ARRAY = {
   state: "STARTED",
-  capacity: { disks: { free: "14200000000000", used: "25800000000000", total: "40000000000000" } },
+  capacity: { disks: { free: "24", used: "4", total: "28" }, kilobytes: { free: "14200000000", used: "25800000000", total: "40000000000" } },
   parities: [
-    { idx: 0, name: "parity", device: "sdb", size: "10000831348736", status: "DISK_OK", type: "PARITY", temp: 34, rotational: true, isSpinning: true, fsSize: null, fsFree: null, fsUsed: null, fsType: null },
-    { idx: 29, name: "parity2", device: "sdc", size: "10000831348736", status: "DISK_OK", type: "PARITY", temp: 33, rotational: true, isSpinning: false, fsSize: null, fsFree: null, fsUsed: null, fsType: null },
+    { idx: 0, name: "parity", device: "sdb", size: "9766436864", status: "DISK_OK", type: "PARITY", temp: 34, rotational: true, isSpinning: true, fsSize: null, fsFree: null, fsUsed: null, fsType: null },
+    { idx: 29, name: "parity2", device: "sdc", size: "9766436864", status: "DISK_OK", type: "PARITY", temp: 33, rotational: true, isSpinning: false, fsSize: null, fsFree: null, fsUsed: null, fsType: null },
   ],
   disks: [
-    { idx: 1, name: "disk1", device: "sdd", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 36, rotational: true, isSpinning: true, fsSize: "10000000000000", fsFree: "1400000000000", fsUsed: "8600000000000", fsType: "xfs" },
-    { idx: 2, name: "disk2", device: "sde", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 35, rotational: true, isSpinning: true, fsSize: "10000000000000", fsFree: "4200000000000", fsUsed: "5800000000000", fsType: "xfs" },
-    { idx: 3, name: "disk3", device: "sdf", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 31, rotational: true, isSpinning: false, fsSize: "10000000000000", fsFree: "5100000000000", fsUsed: "4900000000000", fsType: "xfs" },
-    { idx: 4, name: "disk4", device: "sdg", size: "10000831348736", status: "DISK_OK", type: "DATA", temp: 30, rotational: true, isSpinning: false, fsSize: "10000000000000", fsFree: "3500000000000", fsUsed: "6500000000000", fsType: "xfs" },
+    { idx: 1, name: "disk1", device: "sdd", size: "9766436864", status: "DISK_OK", type: "DATA", temp: 36, rotational: true, isSpinning: true, fsSize: "10000000000", fsFree: "1400000000", fsUsed: "8600000000", fsType: "xfs" },
+    { idx: 2, name: "disk2", device: "sde", size: "9766436864", status: "DISK_OK", type: "DATA", temp: 35, rotational: true, isSpinning: true, fsSize: "10000000000", fsFree: "4200000000", fsUsed: "5800000000", fsType: "xfs" },
+    { idx: 3, name: "disk3", device: "sdf", size: "9766436864", status: "DISK_OK", type: "DATA", temp: 31, rotational: true, isSpinning: false, fsSize: "10000000000", fsFree: "5100000000", fsUsed: "4900000000", fsType: "xfs" },
+    { idx: 4, name: "disk4", device: "sdg", size: "9766436864", status: "DISK_OK", type: "DATA", temp: 30, rotational: true, isSpinning: false, fsSize: "10000000000", fsFree: "3500000000", fsUsed: "6500000000", fsType: "xfs" },
   ],
   caches: [
-    { idx: 30, name: "cache", device: "nvme0n1", size: "1000204886016", status: "DISK_OK", type: "CACHE", temp: 42, rotational: false, isSpinning: true, fsSize: "2000000000000", fsFree: "1240000000000", fsUsed: "760000000000", fsType: "btrfs" },
-    { idx: 31, name: "cache2", device: "nvme1n1", size: "1000204886016", status: "DISK_OK", type: "CACHE", temp: 44, rotational: false, isSpinning: true, fsSize: "2000000000000", fsFree: "1240000000000", fsUsed: "760000000000", fsType: "btrfs" },
-    { idx: 32, name: "apps", device: "nvme2n1", size: "500107862016", status: "DISK_OK", type: "CACHE", temp: 39, rotational: false, isSpinning: true, fsSize: "500000000000", fsFree: "310000000000", fsUsed: "190000000000", fsType: "btrfs" },
+    { idx: 30, name: "cache", device: "nvme0n1", size: "976762584", status: "DISK_OK", type: "CACHE", temp: 42, rotational: false, isSpinning: true, fsSize: "2000000000", fsFree: "1240000000", fsUsed: "760000000", fsType: "btrfs" },
+    { idx: 31, name: "cache2", device: "nvme1n1", size: "976762584", status: "DISK_OK", type: "CACHE", temp: 44, rotational: false, isSpinning: true, fsSize: "2000000000", fsFree: "1240000000", fsUsed: "760000000", fsType: "btrfs" },
+    { idx: 32, name: "apps", device: "nvme2n1", size: "488386584", status: "DISK_OK", type: "CACHE", temp: 39, rotational: false, isSpinning: true, fsSize: "500000000", fsFree: "310000000", fsUsed: "190000000", fsType: "btrfs" },
   ],
-  boot: { idx: 33, name: "flash", device: "sda", size: "31029460992" },
+  boot: { idx: 33, name: "flash", device: "sda", size: "30302208" },
 };
 
 // Physical disks: everything the array claims plus two unassigned devices

@@ -11,6 +11,9 @@ import {
   getUnraidContainers,
   groupUnraidStorage,
   mapContainer,
+  mapArrayDisk,
+  mapPhysicalDisk,
+  getUnraidStorage,
   toNum,
   toNumOrNull,
   unraidGraphql,
@@ -181,13 +184,62 @@ describe("groupUnraidStorage", () => {
     const grouped = groupUnraidStorage(
       {
         state: "STARTED",
-        capacity: { disks: { free: "100", used: "900", total: "1000" } },
+        capacity: { kilobytes: { free: "100", used: "900", total: "1000" } },
         disks: [arrayDisk("disk1", "sdc", "DATA")],
       },
       [],
     );
-    expect(grouped.capacity).toEqual({ free: 100, used: 900, total: 1000 });
-    expect(grouped.dataDisks[0]!.fsUsed).toBe(600);
-    expect(grouped.dataDisks[0]!.size).toBe(1000);
+    expect(grouped.capacity).toEqual({ free: 100000, used: 900000, total: 1000000 });
+    expect(grouped.dataDisks[0]!.fsUsed).toBe(600000);
+    expect(grouped.dataDisks[0]!.size).toBe(1024000);
+  });
+});
+
+describe("unRAID storage unit contract", () => {
+  it("matches /dev-prefixed physical devices to their assigned array and boot devices", () => {
+    const storage = groupUnraidStorage({
+      disks: [{ device: "sda" }],
+      caches: [{ name: "cache", device: "nvme0n1" }],
+      boot: { device: "sdc" },
+    }, ["/dev/sda", "/dev/nvme0n1", "/dev/sdc", "/dev/sdaa"].map(device => ({ id: device, device })));
+    expect(storage.unassigned.map(d => d.device)).toEqual(["/dev/sdaa"]);
+  });
+
+  it("queries storage capacity rather than slot counts and normalizes decimal KB", async () => {
+    mockRequest.mockResolvedValue({ data: { array: {
+      state: "STARTED",
+      capacity: {
+        disks: { free: "24", used: "4", total: "28" },
+        kilobytes: { free: "14200000000", used: "25800000000", total: "40000000000" },
+      },
+    } } });
+    const storage = await getUnraidStorage();
+    expect(storage.capacity).toEqual({ free: 14200000000000, used: 25800000000000, total: 40000000000000 });
+    const query = JSON.parse(mockRequest.mock.calls[0][2].body).query;
+    expect(query).toContain("capacity { kilobytes { free used total } }");
+    expect(query).not.toContain("capacity { disks");
+  });
+
+  it("converts array size from KiB, filesystem fields from decimal KB, and physical size from bytes", () => {
+    // Values from the official API's 18 TB disk fixture. Its slots parser
+    // converts only fs* from KiB to decimal KB; size remains raw KiB.
+    const disk = mapArrayDisk({
+      size: "17578328012", fsSize: "17998742753",
+      fsUsed: "4116003021", fsFree: "13882739732",
+    });
+    expect(disk.size).toBe(17578328012 * 1024);
+    expect(disk.fsSize).toBe(17998742753000);
+    expect(disk.fsUsed).toBe(4116003021000);
+    expect(disk.fsFree).toBe(13882739732000);
+    expect(mapPhysicalDisk({ id: "physical", size: "18000207937536" }).size).toBe(18000207937536);
+  });
+
+  it("preserves missing parity filesystem values and zero capacity", () => {
+    const disk = mapArrayDisk({ size: "17578328012", fsSize: null });
+    expect(disk.fsSize).toBeNull();
+    expect(disk.fsUsed).toBeNull();
+    expect(disk.fsFree).toBeNull();
+    expect(groupUnraidStorage({}, []).capacity).toEqual({ free: 0, used: 0, total: 0 });
+    expect(mapArrayDisk({ fsSize: "0", fsUsed: "0", fsFree: "0" }).fsSize).toBe(0);
   });
 });
