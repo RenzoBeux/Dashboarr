@@ -41,6 +41,7 @@ import { useModalFlow } from "@/hooks/use-modal-flow";
 import { binderyImageSource } from "@/lib/bindery-normalize";
 import { formatBytes, formatRuntime } from "@/lib/utils";
 import type { BinderyBook, BinderyBookFile } from "@/lib/types";
+import { SectionLabel } from "@/components/ui/section-label";
 
 type DeleteMode = "keep" | "withFiles";
 type PendingFileDelete = { bookId: number; format: "ebook" | "audiobook"; path: string };
@@ -358,14 +359,6 @@ function buildBookStats(book: BinderyBook, files: BinderyBookFile[]): MediaStat[
   return stats;
 }
 
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text className="text-zinc-500 text-[0.65rem] font-bold uppercase tracking-widest mb-2 ml-1">
-      {children}
-    </Text>
-  );
-}
 
 function FileRow({
   file,

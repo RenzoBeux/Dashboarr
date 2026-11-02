@@ -2,6 +2,11 @@ import { Platform } from "react-native";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
+import { compareVersions } from "@/lib/version-compare";
+
+// Re-exported so existing importers keep working; the implementation is pure
+// so capability gates can share it without pulling in expo-updates.
+export { compareVersions };
 
 export const NATIVE_VERSION: string =
   Constants.expoConfig?.version ?? Constants.nativeAppVersion ?? "unknown";
@@ -182,14 +187,3 @@ function extractPlayStoreVersion(html: string): string | null {
   return null;
 }
 
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split(".").map((p) => parseInt(p, 10) || 0);
-  const pb = b.split(".").map((p) => parseInt(p, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const da = pa[i] ?? 0;
-    const db = pb[i] ?? 0;
-    if (da !== db) return da - db;
-  }
-  return 0;
-}

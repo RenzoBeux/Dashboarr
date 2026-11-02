@@ -114,6 +114,7 @@ import { useBackendStore } from "@/store/backend-store";
 import { requireDeviceAuth } from "@/lib/device-auth";
 import { useAddDefaultsStore, addDefaultsKey } from "@/store/add-defaults-store";
 import { queryClient } from "@/lib/query-client";
+import { ARR_LINK_DETECTION } from "@/lib/bazarr-link";
 import type { ServiceId, WidgetId } from "@/lib/constants";
 import { normalizeBssid } from "@/lib/wifi";
 import {
@@ -900,6 +901,18 @@ function pairDemoDiskIo(instances: Record<ServiceId, ServiceInstance[]>): void {
   if (unraid && glances) unraid.diskIoInstanceId = glances.id;
 }
 
+// Demo instances carry no API keys, so automatic detection (which matches
+// keys) can never link them. Pin the demo Bazarr to the demo Radarr/Sonarr so
+// the subtitle UI shows up in demo mode.
+function pairDemoBazarrLinks(instances: Record<ServiceId, ServiceInstance[]>): void {
+  const bazarr = instances.bazarr?.[0];
+  if (!bazarr) return;
+  const radarr = instances.radarr?.[0];
+  const sonarr = instances.sonarr?.[0];
+  if (radarr) bazarr.linkedRadarrInstanceId = radarr.id;
+  if (sonarr) bazarr.linkedSonarrInstanceId = sonarr.id;
+}
+
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
   instanceSecrets: {},
@@ -1422,6 +1435,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         instances[id] = [demoInst];
       }
       pairDemoDiskIo(instances);
+      pairDemoBazarrLinks(instances);
       // v22: drop curated attachments in memory so demo UUIDs resolve. Mirrors
       // the enableDemoMode action; not persisted (real attachments come back
       // on disableDemoMode → hydrate).
@@ -1815,6 +1829,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     void queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[1] === instanceId,
     });
+    // Bazarr's Radarr/Sonarr link detection matches on these API keys, which
+    // stay out of its query key, so a Radarr/Sonarr save re-runs it too.
+    const { serviceInstances } = get();
+    const isArr = [
+      ...(serviceInstances.radarr ?? []),
+      ...(serviceInstances.sonarr ?? []),
+    ].some((i) => i.id === instanceId);
+    if (isArr) {
+      void queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey[2] === ARR_LINK_DETECTION,
+      });
+    }
   },
 
   setAutoSwitch: (enabled) => {
@@ -2701,6 +2727,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       demoInstances[id] = [inst];
     }
     pairDemoDiskIo(demoInstances);
+    pairDemoBazarrLinks(demoInstances);
     set((state) => {
       // v22: force every dashboard into auto-attach mode in memory (not
       // persisted) so the resolver picks up the freshly-generated demo UUIDs.

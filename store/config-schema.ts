@@ -136,6 +136,15 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   ) {
     out.diskIoInstanceId = v.diskIoInstanceId;
   }
+  // v61: optional Bazarr → Radarr/Sonarr links. Same id shape (plus the
+  // ARR_LINK_OFF sentinel, which fits it); a dangling id is kept for the same
+  // reason as diskIoInstanceId.
+  for (const key of ["linkedRadarrInstanceId", "linkedSonarrInstanceId"] as const) {
+    const id = v[key];
+    if (typeof id === "string" && id.length > 0 && id.length <= 128) {
+      out[key] = id;
+    }
+  }
   return out;
 }
 

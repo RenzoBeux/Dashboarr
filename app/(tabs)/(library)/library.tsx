@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
-  Text,
-  Pressable,
   useWindowDimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
@@ -10,9 +8,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, {
   useAnimatedScrollHandler,
-  useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
-  type SharedValue,
 } from "react-native-reanimated";
 import { useLocalSearchParams } from "expo-router";
 import { ScreenWrapper, useScreenSafeAreaEdges } from "@/components/common/screen-wrapper";
@@ -25,6 +22,7 @@ import { useAttachedKinds } from "@/hooks/use-active-dashboard";
 import { lightHaptic } from "@/lib/haptics";
 import { MoviesView } from "@/components/radarr/movies-view";
 import { TvView } from "@/components/sonarr/tv-view";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 type LibrarySection = "movies" | "tv";
 
@@ -113,6 +111,12 @@ function LibraryPager({
   // Live horizontal scroll position (0..(n-1)*width), used to drive the
   // segmented control's sliding highlight so it tracks the swipe.
   const scrollX = useSharedValue(activeIndex * width);
+  // Live page position as a fractional index; the segmented control's pill
+  // tracks it so the header glides in lockstep with the swipe (and with the
+  // animated scroll on tap).
+  const pageProgress = useDerivedValue(() =>
+    width > 0 ? scrollX.value / width : 0,
+  );
   // Pages need an explicit height inside a horizontal ScrollView; measure the
   // available area once it lays out.
   const [pageHeight, setPageHeight] = useState(0);
@@ -186,12 +190,12 @@ function LibraryPager({
     <SafeAreaView edges={safeAreaEdges} className="flex-1 bg-background">
       <DemoBanner />
       <View className="px-4">
-        <LibrarySegmentedControl
+        <SegmentedControl
+          options={sections.map((s) => ({ value: s, label: SECTION_LABELS[s] }))}
           value={activeSection}
-          sections={sections}
           onChange={handleTap}
-          scrollX={scrollX}
-          pageWidth={width}
+          progress={pageProgress}
+          className="mt-2 mb-2"
         />
       </View>
       <View
@@ -225,79 +229,3 @@ const SECTION_LABELS: Record<LibrarySection, string> = {
   movies: "Movies",
   tv: "TV",
 };
-
-function LibrarySegmentedControl({
-  value,
-  sections,
-  onChange,
-  scrollX,
-  pageWidth,
-}: {
-  value: LibrarySection;
-  sections: LibrarySection[];
-  onChange: (next: LibrarySection) => void;
-  // Live page scroll position; the highlight pill tracks it so the header
-  // glides in lockstep with the swipe (and with the animated scroll on tap).
-  scrollX: SharedValue<number>;
-  pageWidth: number;
-}) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const segWidth = sections.length > 0 ? trackWidth / sections.length : 0;
-
-  const pillStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: pageWidth > 0 ? (scrollX.value / pageWidth) * segWidth : 0 },
-    ],
-  }));
-
-  return (
-    <View className="bg-surface-light rounded-2xl p-1 mt-2 mb-2">
-      <View
-        className="flex-row"
-        onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-      >
-        {segWidth > 0 ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              { position: "absolute", top: 0, bottom: 0, left: 0, width: segWidth },
-              pillStyle,
-            ]}
-            className="bg-surface rounded-xl"
-          />
-        ) : null}
-        {sections.map((s) => (
-          <Segment
-            key={s}
-            label={SECTION_LABELS[s]}
-            active={value === s}
-            onPress={() => onChange(s)}
-          />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function Segment({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  // The highlight is the sliding pill behind the labels; the segment itself is
-  // transparent and just toggles its text color.
-  return (
-    <Pressable
-      onPress={onPress}
-      className="flex-1 py-2 rounded-xl items-center active:opacity-70"
-    >
-      <Text className={`text-sm font-semibold ${active ? "text-zinc-100" : "text-zinc-400"}`}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}

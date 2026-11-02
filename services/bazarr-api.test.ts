@@ -5,6 +5,7 @@ jest.mock("@/lib/http-client", () => ({
 import { serviceRequest } from "@/lib/http-client";
 import { INTERACTIVE_SEARCH_TIMEOUT } from "@/lib/constants";
 import {
+  detectArrLinks,
   getWantedMovies,
   searchWantedEpisode,
   searchWantedMovie,
@@ -107,5 +108,52 @@ describe("Bazarr episode routes", () => {
     mockRequest.mockRejectedValue(err);
 
     await expect(searchWantedEpisode(17, 939, twoLanguages)).rejects.toBe(err);
+  });
+});
+
+describe("detectArrLinks", () => {
+  const settings = {
+    general: { use_radarr: true, use_sonarr: false },
+    radarr: { ip: "radarr", port: 7878, apikey: "radarr-key-2" },
+    sonarr: { ip: "sonarr", port: 8989, apikey: "sonarr-key" },
+    opensubtitlescom: { username: "me", password: "provider-secret" },
+    auth: { apikey: "bazarr-own-key" },
+  };
+  const candidates = {
+    radarr: [
+      { id: "r1", apiKey: "radarr-key-1", localUrl: "http://radarr:7878", remoteUrl: "" },
+      { id: "r2", apiKey: "radarr-key-2", localUrl: "http://radarr2:7878", remoteUrl: "" },
+    ],
+    sonarr: [{ id: "s1", apiKey: "sonarr-key", localUrl: "http://sonarr:8989", remoteUrl: "" }],
+  };
+
+  it("matches by API key and skips an arr Bazarr has switched off", async () => {
+    mockRequest.mockResolvedValue(settings);
+    const result = await detectArrLinks(candidates, "bz-1");
+
+    expect(mockRequest).toHaveBeenCalledWith("bazarr", "/system/settings", {
+      instanceId: "bz-1",
+    });
+    expect(result).toEqual({
+      radarr: { instanceId: "r2", address: "radarr:7878" },
+      sonarr: { instanceId: null, address: null },
+    });
+  });
+
+  it("returns ids and addresses only, never the settings' secrets", async () => {
+    mockRequest.mockResolvedValue(settings);
+    const serialized = JSON.stringify(await detectArrLinks(candidates, "bz-1"));
+
+    for (const secret of ["radarr-key-2", "sonarr-key", "provider-secret", "bazarr-own-key"]) {
+      expect(serialized).not.toContain(secret);
+    }
+  });
+
+  it("tolerates a malformed settings payload", async () => {
+    mockRequest.mockResolvedValue("not settings");
+    await expect(detectArrLinks(candidates)).resolves.toEqual({
+      radarr: { instanceId: null, address: null },
+      sonarr: { instanceId: null, address: null },
+    });
   });
 });

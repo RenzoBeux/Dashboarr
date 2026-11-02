@@ -86,6 +86,7 @@ import type {
   RadarrCollectionMovie,
   RadarrSearchResult,
 } from "@/lib/types";
+import { SectionLabel } from "@/components/ui/section-label";
 
 type DeleteMode = "keep" | "withFiles";
 
@@ -541,14 +542,6 @@ function formatReleaseDate(iso?: string): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <Text className="text-zinc-500 text-[0.65rem] font-bold uppercase tracking-widest mb-2 ml-1">
-      {children}
-    </Text>
-  );
 }
 
 function MovieFileBlock({
