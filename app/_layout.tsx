@@ -50,6 +50,7 @@ import { ToastContainer } from "@/components/ui/toast";
 import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
 import { DASHBOARD_STACK_PREFIX } from "@/lib/tab-routes";
 import "../global.css";
+import { useLibraryViewStore } from "@/store/library-view-store";
 
 // Keep the native splash up while stores hydrate; AnimatedSplash then takes
 // over with an identical frame and animates the reveal. Failure to prevent is
@@ -407,6 +408,7 @@ export default function RootLayout() {
   const hydrateUnraidUi = useUnraidUiStore((s) => s.hydrate);
   const hydrateReleaseFilters = useReleaseFilterStore((s) => s.hydrate);
   const hydrateLibraryTagFilters = useLibraryTagFilterStore((s) => s.hydrate);
+  const hydrateLibraryViews = useLibraryViewStore((s) => s.hydrate);
   const hydrateAddDefaults = useAddDefaultsStore((s) => s.hydrate);
   const hydrateIntro = useIntroStore((s) => s.hydrate);
   const introHydrated = useIntroStore((s) => s.hydrated);
@@ -440,6 +442,7 @@ export default function RootLayout() {
       hydrateUnraidUi();
       hydrateReleaseFilters();
       hydrateLibraryTagFilters();
+      hydrateLibraryViews();
       hydrateAddDefaults();
       hydrateIntro();
     }
@@ -450,6 +453,7 @@ export default function RootLayout() {
     hydrateUnraidUi,
     hydrateReleaseFilters,
     hydrateLibraryTagFilters,
+    hydrateLibraryViews,
     hydrateAddDefaults,
     hydrateIntro,
   ]);

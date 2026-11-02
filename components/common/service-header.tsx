@@ -41,7 +41,12 @@ export function ServiceHeader({
       className={`flex-row items-center gap-2 mb-4 mt-2 ${className}`}
       style={windowControlsPadding}
     >
-      <Text className="text-zinc-100 text-2xl font-bold">{name}</Text>
+      {/* Shrinks and truncates when the row is crowded (a library toolbar's
+          buttons, a long instance name at a large UI scale) instead of
+          pushing siblings out. Never shrinks on its own in a roomy row. */}
+      <Text className="text-zinc-100 text-2xl font-bold shrink" numberOfLines={1}>
+        {name}
+      </Text>
       {serviceId ? <InstancePickerInline serviceId={serviceId} /> : null}
       {serviceId ? (
         // Per-instance status dot: reflects whichever instance the active

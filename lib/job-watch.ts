@@ -25,7 +25,10 @@ export interface JobWatchOptions<K> {
   // job list. A rejection counts as "no information this tick".
   fetchActiveJobIds: () => Promise<number[] | null>;
   // Refresh what these keys stand for (e.g. invalidate React Query keys).
-  refresh: (keys: K[]) => void;
+  // `midway` marks the refreshes while jobs are still running: another one
+  // follows, so a fetch already in flight can be left to finish instead of
+  // being restarted (a big list could otherwise never land).
+  refresh: (keys: K[], opts?: { midway?: boolean }) => void;
   // Fires true when tracking starts and false when it stops, so the UI can
   // show work in progress (a spinner on the row the user acted on).
   onActiveChange?: (active: boolean) => void;
@@ -40,7 +43,9 @@ export interface JobWatchOptions<K> {
 }
 
 export interface JobWatch<K> {
-  track: (keys: K[]) => void;
+  // `maxMs` extends the deadline for an action whose jobs run long (a
+  // library-wide search); it never shortens a deadline already set.
+  track: (keys: K[], opts?: { maxMs?: number }) => void;
   dispose: () => void;
 }
 
@@ -119,7 +124,7 @@ export function createJobWatch<K>({
       } else {
         emptyPolls = 0;
       }
-      if (someFinished) refresh(tracked);
+      if (someFinished) refresh(tracked, { midway: true });
     }
 
     if (now() >= deadline) return finish();
@@ -127,7 +132,7 @@ export function createJobWatch<K>({
   };
 
   return {
-    track(keys) {
+    track(keys, opts) {
       if (disposed || keys.length === 0) return;
       refresh(keys);
       for (const key of keys) {
@@ -137,7 +142,7 @@ export function createJobWatch<K>({
           tracked.push(key);
         }
       }
-      deadline = now() + maxMs;
+      deadline = Math.max(polling ? deadline : 0, now() + (opts?.maxMs ?? maxMs));
       emptyPolls = 0;
       if (!polling) {
         polling = true;

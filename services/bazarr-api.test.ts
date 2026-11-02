@@ -16,21 +16,24 @@ import {
   INTERACTIVE_SEARCH_TIMEOUT,
 } from "@/lib/constants";
 import {
+  blacklistSubtitle,
   deleteSubtitle,
   detectArrLinks,
   downloadSubtitleResult,
   getActiveBazarrJobIds,
   getBazarrMovie,
+  getBazarrMovies,
+  getBazarrSeriesList,
   getBazarrSeriesEpisodes,
   manualSearchSubtitles,
   runSubtitleTool,
+  searchAllWanted,
   searchMissingSubtitles,
   searchSubtitle,
   searchSubtitles,
   setLanguageProfile,
   uploadSubtitle,
   getWantedMovies,
-  searchWantedEpisode,
   searchWantedMovie,
 } from "@/services/bazarr-api";
 
@@ -64,16 +67,22 @@ describe("Bazarr movie routes", () => {
 });
 
 describe("Bazarr episode routes", () => {
-  // /episodes/wanted is GET-only (405 on PATCH, verified on Bazarr 1.6.2).
-  // An episode search is a PATCH on /episodes/subtitles, one per missing language.
+  // /episodes/wanted is GET-only (405 on PATCH, verified on Bazarr 1.6.2) and
+  // there is no episode-level "search-missing" action: an episode search is a
+  // PATCH on /episodes/subtitles per missing language, all query params, with
+  // forced/hi as the strings "True"/"False".
+  const episodeSearches = (langs: { code2: string; forced: boolean; hi: boolean }[]) =>
+    langs.map((lang) => ({
+      target: { type: "episode" as const, seriesId: 17, episodeId: 939 },
+      lang,
+    }));
+
   it("PATCHes /episodes/subtitles once per missing language", async () => {
-    await searchWantedEpisode(
-      17,
-      939,
-      [
-        { name: "English", code2: "en", code3: "eng", hi: false, forced: false },
-        { name: "French", code2: "fr", code3: "fra", hi: true, forced: false },
-      ],
+    await searchSubtitles(
+      episodeSearches([
+        { code2: "en", forced: false, hi: false },
+        { code2: "fr", forced: false, hi: true },
+      ]),
       "inst-1",
     );
 
@@ -93,44 +102,25 @@ describe("Bazarr episode routes", () => {
   });
 
   it("never touches the GET-only wanted route", async () => {
-    await searchWantedEpisode(
-      17,
-      939,
-      [{ name: "English", code2: "en", code3: "eng", hi: false, forced: true }],
-    );
+    await searchSubtitles(episodeSearches([{ code2: "en", forced: true, hi: false }]));
 
     for (const call of mockRequest.mock.calls) {
       expect(call[1]).not.toBe("/episodes/wanted");
     }
   });
 
-  const twoLanguages = [
-    { name: "English", code2: "en", code3: "eng", hi: false, forced: false },
-    { name: "French", code2: "fr", code3: "fra", hi: false, forced: false },
-  ];
-
   it("sends every language without waiting on the previous one", async () => {
     // Pre-1.5.6 Bazarr holds the response until the search finishes.
     mockRequest.mockReturnValue(new Promise(() => {}));
 
-    void searchWantedEpisode(17, 939, twoLanguages);
+    void searchSubtitles(
+      episodeSearches([
+        { code2: "en", forced: false, hi: false },
+        { code2: "fr", forced: false, hi: false },
+      ]),
+    );
 
     expect(mockRequest).toHaveBeenCalledTimes(2);
-  });
-
-  it("succeeds when at least one language was sent", async () => {
-    mockRequest
-      .mockRejectedValueOnce(new Error("timeout"))
-      .mockResolvedValueOnce(undefined);
-
-    await expect(searchWantedEpisode(17, 939, twoLanguages)).resolves.toBeUndefined();
-  });
-
-  it("throws only when every language failed", async () => {
-    const err = new Error("boom");
-    mockRequest.mockRejectedValue(err);
-
-    await expect(searchWantedEpisode(17, 939, twoLanguages)).rejects.toBe(err);
   });
 });
 
@@ -372,5 +362,46 @@ describe("searchSubtitles", () => {
     expect(mockRequest).toHaveBeenCalledTimes(6);
     pending.slice(2).forEach((resolve) => resolve());
     await expect(done).resolves.toBeUndefined();
+  });
+});
+
+describe("library", () => {
+  it("reads the whole movie and series libraries in one page", async () => {
+    mockRequest.mockResolvedValue({ data: [{ radarrId: 1 }], total: 1 });
+    await expect(getBazarrMovies("bz")).resolves.toEqual([{ radarrId: 1 }]);
+    expect(mockRequest).toHaveBeenLastCalledWith("bazarr", "/movies", {
+      params: { start: 0, length: -1 },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+      signal: undefined,
+    });
+    await getBazarrSeriesList("bz");
+    expect(mockRequest).toHaveBeenLastCalledWith("bazarr", "/series", {
+      params: { start: 0, length: -1 },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+      signal: undefined,
+    });
+  });
+
+  it("searches every wanted subtitle with a search-wanted action in the body", async () => {
+    await searchAllWanted("series", "bz");
+    expect(mockRequest).toHaveBeenCalledWith("bazarr", "/series", {
+      method: "PATCH",
+      body: JSON.stringify({ action: "search-wanted" }),
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+    });
+  });
+
+  it("blacklists an episode subtitle with every field as a query param", async () => {
+    const entry = { provider: "opensubtitlescom", subs_id: "s1", language: "de", subtitles_path: "/tv/E.de.srt" };
+    await blacklistSubtitle({ type: "episode", seriesId: 3, episodeId: 99 }, entry, "bz");
+    expect(mockRequest).toHaveBeenCalledWith("bazarr", "/episodes/blacklist", {
+      method: "POST",
+      params: { seriesid: 3, episodeid: 99, ...entry },
+      timeout: INTERACTIVE_SEARCH_TIMEOUT,
+      instanceId: "bz",
+    });
   });
 });

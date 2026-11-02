@@ -45,7 +45,6 @@ describe("routing", () => {
       "/episodes/wanted",
       "/movies/history",
       "/episodes/history",
-      "/providers",
       "/system/status",
       "/system/settings",
     ]) {
