@@ -15,6 +15,7 @@ import {
   FolderTree,
   FolderSync,
   Pencil,
+  Captions,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { toastError } from "@/components/ui/toast";
@@ -69,6 +70,8 @@ import {
 import type { SonarrEpisodeFile, SonarrSeries } from "@/lib/types";
 import { SectionLabel } from "@/components/ui/section-label";
 import { SeasonAccordion } from "@/components/sonarr/season-accordion";
+import { useSeriesSubtitles } from "@/components/subtitles/use-series-subtitles";
+import { SubtitlesSectionLabel } from "@/components/subtitles/subtitles-card";
 
 type DeleteMode = "keep" | "withFiles";
 
@@ -113,6 +116,15 @@ export default function SeriesDetailScreen() {
     episodeFiles?.forEach((f) => map.set(f.id, f));
     return map;
   }, [episodeFiles]);
+
+  // Bazarr subtitles, when a Bazarr instance serves this Sonarr; renders
+  // nothing otherwise.
+  const subtitles = useSeriesSubtitles({
+    instanceId,
+    series,
+    episodes,
+    episodeFileMap,
+  });
 
   // Episodes currently grabbing/downloading, so the per-episode spine, the
   // season bars and the series Progress block can read purple — mirroring the
@@ -339,6 +351,13 @@ export default function SeriesDetailScreen() {
             </View>
           ) : null}
 
+          {subtitles.coverageCard && subtitles.bazarrId ? (
+            <View className="mb-5">
+              <SubtitlesSectionLabel bazarrId={subtitles.bazarrId} />
+              {subtitles.coverageCard}
+            </View>
+          ) : null}
+
           <View className="mb-2">
             <SectionLabel>Seasons</SectionLabel>
             <View className="gap-2">
@@ -355,6 +374,14 @@ export default function SeriesDetailScreen() {
                     )}
                     episodeFileMap={episodeFileMap}
                     episodeActivity={episodeActivity}
+                    episodeLanguages={subtitles.episodeLanguages}
+                    subtitleGaps={subtitles.gapsBySeason.get(season.seasonNumber) ?? 0}
+                    onOpenSubtitles={subtitles.linked ? subtitles.openEpisode : undefined}
+                    onSearchMissingSubtitles={
+                      subtitles.linked
+                        ? () => subtitles.onSearchSeason(season.seasonNumber)
+                        : undefined
+                    }
                   />
                 ))}
             </View>
@@ -375,6 +402,20 @@ export default function SeriesDetailScreen() {
             disabled: rescan.isPending,
             onPress: () => rescan.mutate(series.id),
           },
+          ...(subtitles.linked
+            ? [
+                {
+                  label: "Search missing subtitles",
+                  subtitle:
+                    subtitles.seriesGaps > 0
+                      ? `${subtitles.seriesGaps} episode${subtitles.seriesGaps === 1 ? "" : "s"} missing a language`
+                      : "Nothing missing",
+                  icon: <Icon icon={Captions} size={18} color="#a1a1aa" />,
+                  disabled: subtitles.seriesGaps === 0,
+                  onPress: subtitles.onSearchSeries,
+                },
+              ]
+            : []),
           {
             label: "Delete Show",
             icon: <Icon icon={Trash2} size={18} color="#ef4444" />,
@@ -507,6 +548,8 @@ export default function SeriesDetailScreen() {
           flow.close();
         }}
       />
+
+      {subtitles.modals}
     </>
   );
 }

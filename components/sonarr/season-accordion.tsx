@@ -8,6 +8,7 @@ import {
   Bookmark,
   BookmarkX,
   MoreHorizontal,
+  Captions,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { CollapsibleCard } from "@/components/ui/collapsible-card";
@@ -31,6 +32,7 @@ import type {
   SonarrEpisodeFile,
   SonarrSeason,
 } from "@/lib/types";
+import type { EpisodeLanguages } from "@/lib/subtitle-model";
 
 /**
  * One season on the series detail page: a collapsible card with the season's
@@ -44,6 +46,10 @@ export function SeasonAccordion({
   episodes,
   episodeFileMap,
   episodeActivity,
+  episodeLanguages,
+  subtitleGaps = 0,
+  onOpenSubtitles,
+  onSearchMissingSubtitles,
 }: {
   seriesId: number;
   instanceId?: string;
@@ -51,6 +57,12 @@ export function SeasonAccordion({
   episodes?: SonarrEpisode[];
   episodeFileMap: Map<number, SonarrEpisodeFile>;
   episodeActivity: Map<number, QueueActivity>;
+  // The rest is set only when a Bazarr instance serves this series.
+  episodeLanguages?: Map<number, EpisodeLanguages>;
+  // Episodes of this season missing at least one subtitle language.
+  subtitleGaps?: number;
+  onOpenSubtitles?: (episodeId: number) => void;
+  onSearchMissingSubtitles?: () => void;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -120,6 +132,20 @@ export function SeasonAccordion({
           monitored: !season.monitored,
         }),
     },
+    ...(onSearchMissingSubtitles
+      ? [
+          {
+            label: "Search missing subtitles",
+            subtitle:
+              subtitleGaps > 0
+                ? `${subtitleGaps} episode${subtitleGaps === 1 ? "" : "s"} missing a language`
+                : "Nothing missing",
+            icon: <Icon icon={Captions} size={20} color="#a1a1aa" />,
+            disabled: subtitleGaps === 0,
+            onPress: onSearchMissingSubtitles,
+          },
+        ]
+      : []),
     ...(seasonFileIds.length > 0
       ? [
           {
@@ -143,6 +169,18 @@ export function SeasonAccordion({
         onToggle={setExpanded}
         right={
           <View className="flex-row items-center gap-3">
+            {subtitleGaps > 0 ? (
+              <View
+                className="flex-row items-center gap-1"
+                accessible
+                accessibilityLabel={`${subtitleGaps} episode${subtitleGaps === 1 ? "" : "s"} missing subtitles`}
+              >
+                <Icon icon={Captions} size={13} color="#fb923c" />
+                <Text className="text-orange-400 text-xs font-bold">
+                  {subtitleGaps}
+                </Text>
+              </View>
+            ) : null}
             {stats && (
               <Text className="text-zinc-500 text-xs">
                 {stats.episodeFileCount}/{stats.episodeCount}
@@ -220,6 +258,13 @@ export function SeasonAccordion({
                   }
                   isDownloading={episodeActivity.has(ep.id)}
                   held={episodeActivity.get(ep.id) === "held"}
+                  languages={episodeLanguages?.get(ep.id)}
+                  onOpenSubtitles={
+                    // Only episodes Bazarr lists have a sheet to open.
+                    onOpenSubtitles && episodeLanguages?.get(ep.id)?.chips
+                      ? () => onOpenSubtitles(ep.id)
+                      : undefined
+                  }
                 />
               ))}
           </View>

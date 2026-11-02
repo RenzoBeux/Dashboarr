@@ -185,7 +185,7 @@ describe("tab route resolution", () => {
       });
       checked += 1;
     }
-    expect(checked).toBe(35);
+    expect(checked).toBe(37);
   });
 
   it("keeps a rewritten link in the Dashboard stack even from another tab", () => {
