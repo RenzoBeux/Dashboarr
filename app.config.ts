@@ -234,6 +234,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "expo-camera",
       {
         cameraPermission: "Allow Dashboarr to scan your backend pairing QR code.",
+        microphonePermission: false,
+      },
+    ],
+    [
+      "expo-local-authentication",
+      {
+        faceIDPermission:
+          "Allow Dashboarr to use Face ID to confirm it's you before exporting your settings and API keys.",
       },
     ],
     // Android home-screen "Releasing Soon" calendar widget (issue #224). The
