@@ -20,10 +20,14 @@ jest.mock("@/lib/http-client", () => {
 
 import { serviceRequest, HttpError } from "@/lib/http-client";
 import {
+  bulkFailureMessage,
+  excludeFromCollection,
+  getCollectionMedia,
   getCollections,
   getHealth,
   getMediaCount,
   getVersion,
+  maintainerrActionDate,
   maintainerrActionLabel,
   maintainerrHealthTone,
   parseVersionStatus,
@@ -228,5 +232,79 @@ describe("maintainerrHealthTone", () => {
   it("is down when there is no health payload", () => {
     expect(maintainerrHealthTone(null)).toBe("down");
     expect(maintainerrHealthTone(undefined)).toBe("down");
+  });
+});
+
+describe("collection media + exclusion", () => {
+  it("getCollectionMedia hits the 1-based paged content route with a size", async () => {
+    await getCollectionMedia(3, 2, 25, "inst-1");
+    expect(mockRequest).toHaveBeenCalledWith("maintainerr", "/api/collections/media/3/content/2", {
+      params: { size: 25 },
+      instanceId: "inst-1",
+    });
+  });
+
+  it("excludeFromCollection posts one media id to the bulk route, scoped to the collection", async () => {
+    mockRequest.mockResolvedValue({ results: [{ mediaId: "22793", code: 1 }] });
+    await excludeFromCollection(1, "22793", "inst-1");
+    const [service, path, opts] = mockRequest.mock.calls[0];
+    expect(service).toBe("maintainerr");
+    expect(path).toBe("/api/rules/exclusions/bulk");
+    expect(opts.method).toBe("POST");
+    expect(opts.instanceId).toBe("inst-1");
+    expect(JSON.parse(opts.body)).toEqual({ mediaIds: ["22793"], collectionId: 1, action: 0 });
+  });
+
+  it("excludeFromCollection rejects when the per-item result failed, though the HTTP call succeeded", async () => {
+    mockRequest.mockResolvedValue({
+      results: [{ mediaId: "22793", code: 0, message: "Failed - no rule group" }],
+    });
+    await expect(excludeFromCollection(1, "22793")).rejects.toThrow("no rule group");
+  });
+});
+
+describe("bulkFailureMessage", () => {
+  it("is null when the item succeeded", () => {
+    expect(bulkFailureMessage({ results: [{ mediaId: "1", code: 1 }] }, "1")).toBeNull();
+  });
+
+  it("strips Maintainerr's own 'Failed - ' prefix", () => {
+    expect(
+      bulkFailureMessage({ results: [{ mediaId: "1", code: 0, message: "Failed - no metadata" }] }, "1"),
+    ).toBe("no metadata");
+  });
+
+  it("falls back to a generic reason when the failure carries no message", () => {
+    expect(bulkFailureMessage({ results: [{ mediaId: "1", code: 0 }] }, "1")).toBe(
+      "Maintainerr refused the change",
+    );
+  });
+
+  it("treats a missing result (or body) as a failure", () => {
+    expect(bulkFailureMessage({ results: [{ mediaId: "2", code: 1 }] }, "1")).toBe(
+      "Maintainerr did not confirm the change",
+    );
+    expect(bulkFailureMessage(undefined, "1")).toBe("Maintainerr did not confirm the change");
+  });
+});
+
+describe("maintainerrActionDate", () => {
+  const added = "2026-10-10T04:00:00.000Z";
+
+  it("adds the retention window to the item's addDate", () => {
+    expect(maintainerrActionDate(added, 0, 90)?.toISOString()).toBe("2027-01-08T04:00:00.000Z");
+  });
+
+  it("is null when the collection does not act (DO_NOTHING, or no window)", () => {
+    expect(maintainerrActionDate(added, 4, 90)).toBeNull();
+    expect(maintainerrActionDate(added, 0, null)).toBeNull();
+  });
+
+  it("is null for the immediate quality-profile change, which has no window", () => {
+    expect(maintainerrActionDate(added, 7, null)).toBeNull();
+  });
+
+  it("is null for an unparseable addDate", () => {
+    expect(maintainerrActionDate("not a date", 0, 90)).toBeNull();
   });
 });
