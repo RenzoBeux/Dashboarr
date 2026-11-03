@@ -117,7 +117,7 @@ interface RawPhysicalDisk {
 
 interface RawArray {
   state?: string | null;
-  capacity?: { disks?: { free?: unknown; used?: unknown; total?: unknown } | null } | null;
+  capacity?: { kilobytes?: { free?: unknown; used?: unknown; total?: unknown } | null } | null;
   parities?: RawArrayDisk[] | null;
   disks?: RawArrayDisk[] | null;
   caches?: RawArrayDisk[] | null;
@@ -144,15 +144,17 @@ export function mapArrayDisk(raw: RawArrayDisk): UnraidArrayDisk {
     idx: raw.idx ?? 0,
     name: raw.name ?? raw.device ?? "disk",
     device: raw.device ?? undefined,
-    size: toNum(raw.size),
+    // ArrayDisk.size is the raw emhttp KiB count; unlike its fs* fields,
+    // the API does not convert it to decimal KB.
+    size: toNum(raw.size) * 1024,
     status: raw.status ?? "",
     type: raw.type ?? "",
     temp: raw.temp ?? null,
     rotational: raw.rotational ?? undefined,
     isSpinning: raw.isSpinning ?? undefined,
-    fsSize: toNumOrNull(raw.fsSize),
-    fsFree: toNumOrNull(raw.fsFree),
-    fsUsed: toNumOrNull(raw.fsUsed),
+    fsSize: kilobytesToBytesOrNull(raw.fsSize),
+    fsFree: kilobytesToBytesOrNull(raw.fsFree),
+    fsUsed: kilobytesToBytesOrNull(raw.fsUsed),
     fsType: raw.fsType ?? null,
   };
 }
@@ -170,6 +172,14 @@ export function mapPhysicalDisk(raw: RawPhysicalDisk): UnraidPhysicalDisk {
     isSpinning: raw.isSpinning ?? undefined,
     interfaceType: raw.interfaceType ?? undefined,
   };
+}
+
+// The API converts emhttp filesystem KiB to decimal KB in its slots parser.
+// Keep all application-facing storage quantities in bytes. Physical Disk.size
+// already arrives in bytes and must not pass through this conversion.
+function kilobytesToBytesOrNull(value: unknown): number | null {
+  const kb = toNumOrNull(value);
+  return kb === null ? null : kb * 1000;
 }
 
 // ---- grouping (pure, unit-tested) ----
@@ -204,18 +214,21 @@ export function groupUnraidStorage(
   }
 
   const claimed = new Set<string>();
+  // Physical Disk.device uses /dev/sda on live servers, while ArrayDisk.device
+  // uses sda. Compare the same identity so assigned disks are not shown twice.
+  const deviceKey = (device: string) => device.trim().replace(/^\/dev\//, "");
   for (const d of [...parities, ...dataDisks, ...caches]) {
-    if (d.device) claimed.add(d.device);
+    if (d.device) claimed.add(deviceKey(d.device));
   }
-  if (boot?.device) claimed.add(boot.device);
+  if (boot?.device) claimed.add(deviceKey(boot.device));
   const unassigned = rawPhysical
     .map(mapPhysicalDisk)
-    .filter((d) => d.device.length > 0 && !claimed.has(d.device));
+    .filter((d) => deviceKey(d.device).length > 0 && !claimed.has(deviceKey(d.device)));
 
   const capacity: UnraidCapacity = {
-    free: toNum(rawArray.capacity?.disks?.free),
-    used: toNum(rawArray.capacity?.disks?.used),
-    total: toNum(rawArray.capacity?.disks?.total),
+    free: toNum(rawArray.capacity?.kilobytes?.free) * 1000,
+    used: toNum(rawArray.capacity?.kilobytes?.used) * 1000,
+    total: toNum(rawArray.capacity?.kilobytes?.total) * 1000,
   };
 
   return {
@@ -254,7 +267,7 @@ const CONTAINERS_QUERY = `query UnraidContainers {
 const STORAGE_QUERY = `query UnraidStorage {
   array {
     state
-    capacity { disks { free used total } }
+    capacity { kilobytes { free used total } }
     parities { ${ARRAY_DISK_FIELDS} }
     disks { ${ARRAY_DISK_FIELDS} }
     caches { ${ARRAY_DISK_FIELDS} }
