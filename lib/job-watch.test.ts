@@ -71,6 +71,28 @@ describe("createJobWatch", () => {
     expect(fetchActiveJobIds.mock.calls.length).toBe(calls);
   });
 
+  it("lets a long action extend the deadline, never shorten it", async () => {
+    const busy = Array.from({ length: 50 }, () => [9]);
+    const { watch, refresh } = setup(busy, { maxMs: 3000 });
+    watch.track(["all"], { maxMs: 10_000 });
+    watch.track(["row"]);
+    for (let i = 0; i < 5; i++) await advance(1000);
+    expect(refresh).toHaveBeenCalledTimes(2); // both tracks, no final yet
+    for (let i = 0; i < 5; i++) await advance(1000);
+    expect(refresh).toHaveBeenCalledTimes(3); // final refresh at 10s
+  });
+
+  it("marks refreshes while jobs still run as midway", async () => {
+    const { watch, refresh } = setup([[1, 2], [2], [], []]);
+    watch.track(["x"]);
+    await advance(1000); // [1, 2]
+    await advance(1000); // [2] — job 1 ended, more to come
+    expect(refresh).toHaveBeenLastCalledWith(["x"], { midway: true });
+    await advance(1000); // []
+    await advance(1000); // [] — done
+    expect(refresh).toHaveBeenLastCalledWith(["x"]);
+  });
+
   it("tracks a key once however often it is passed, compared by value", async () => {
     const refresh = jest.fn();
     let call = 0;

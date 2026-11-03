@@ -157,6 +157,48 @@ export function matchLibraryIndex<T>(
   return scored.slice(0, limit).map((s) => s.entry.item);
 }
 
+/**
+ * Narrow a list in place: the items matching the query, in the index's own
+ * order (the caller's sort), with no limit. An empty query keeps everything.
+ * Uses the same matching as matchLibraryIndex — accents, punctuation and
+ * word order don't matter, and a trailing year ("dune 2021") must match the
+ * item's year when it has one. For in-list search over a library, where the
+ * user's sort should stay put rather than reorder by relevance.
+ */
+export function filterLibraryIndex<T>(
+  index: readonly LibraryIndexEntry<T>[],
+  query: string,
+): T[] {
+  const { text, year } = parseLibraryQuery(query);
+  if (!text) return index.map((e) => e.item);
+  const tokens = text.split(" ").filter(Boolean);
+  // The whole query, trailing number included: "blade runner 2049" is a
+  // title, not "blade runner" from 2049.
+  const full = normalizeSearchText(query);
+  const fullTokens = full.split(" ").filter(Boolean);
+  const out: T[] = [];
+  for (const entry of index) {
+    const matchesFull =
+      year !== undefined &&
+      Math.max(
+        scoreHaystack(entry.title, full, fullTokens),
+        scoreHaystack(entry.sortTitle, full, fullTokens),
+      ) > 0;
+    if (!matchesFull) {
+      const score = Math.max(
+        scoreHaystack(entry.title, text, tokens),
+        scoreHaystack(entry.sortTitle, text, tokens),
+      );
+      if (score === 0) continue;
+      if (year !== undefined && entry.fields.year !== undefined && entry.fields.year !== year) {
+        continue;
+      }
+    }
+    out.push(entry.item);
+  }
+  return out;
+}
+
 /** Convenience for callers that don't hold an index (and for tests). */
 export function matchLibraryItems<T>(
   items: readonly T[] | undefined,

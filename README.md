@@ -64,7 +64,7 @@ Dashboarr is a native mobile app (Android & iOS) that connects directly to your 
 | **Jellyfin** | Now playing, recently added, continue watching, library browsing |
 | **Emby** | Now playing, recently added, continue watching, library browsing |
 | **Navidrome** | Library stats (artists, albums, tracks, size), now playing, quick & full rescan, delete missing files, search, playlists |
-| **Bazarr** | Wanted subtitles for movies & episodes, history, on-demand subtitle search |
+| **Bazarr** | Subtitle library with per-language coverage and a Missing filter, search for missing subtitles, history with blacklist |
 | **Glances** | Server CPU, RAM, disk, and network stats |
 | **unRAID** | Start/stop/restart Docker containers, array status, disks grouped by Array / Pools / Unassigned |
 | **Tdarr** | Server & library stats, node queues with worker limits, pause/resume nodes, cancel or kill worker jobs, library scans, file search |

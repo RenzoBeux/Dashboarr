@@ -11,7 +11,7 @@ import { ALL_TAB_ROUTE_ID_SET, TAB_STACK_ANCHORS } from "@/lib/tab-routes";
  *
  * Where a screen lives:
  *   - shared by several tabs: an array group listing exactly those tabs, e.g.
- *     (dashboard,downloads,calendar,movies,tv,library,music,books)/series/[id].tsx
+ *     (dashboard,downloads,calendar,movies,tv,library,music,books,bazarr)/series/[id].tsx
  *   - reachable from one tab only: that tab's own dir, e.g. (pihole)/pihole/queries.tsx
  *   - never a _layout.tsx inside a single (<id>)/ dir: it would conflict with this one
  *   - full-screen editors that change the tab bar itself (dashboard-edit) stay

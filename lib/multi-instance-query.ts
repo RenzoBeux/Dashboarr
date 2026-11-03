@@ -36,7 +36,7 @@ export interface MultiInstanceState {
 
 // A query with nothing to render that has failed at least once, whether it is
 // sitting in its error state or part-way through the next attempt.
-function hasFailedWithoutData(q: MultiInstanceQueryLike): boolean {
+export function hasFailedWithoutData(q: MultiInstanceQueryLike): boolean {
   return q.data === undefined && (q.isError || (q.errorUpdateCount ?? 0) > 0);
 }
 

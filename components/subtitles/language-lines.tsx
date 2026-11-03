@@ -13,13 +13,19 @@ import { fitChips, type AudioTag, type SubtitleChip } from "@/lib/subtitle-model
 import { BASE_REM, useUiScale } from "@/hooks/use-ui-scale";
 
 /**
- * One line, two equal columns: audio languages on the left, subtitles on the
- * right, both left-aligned and each led by its icon (speaker / captions).
- * Used by the Sonarr episode rows and the Bazarr library rows and posters.
+ * Audio languages and subtitles, each led by its icon (speaker / captions):
+ * one line of two equal columns (audio left, subtitles right), or with
+ * `stacked` audio above subtitles for narrow poster overlays. Used by the
+ * Sonarr episode rows and the Bazarr library rows and posters.
  *
  * Each column fills its whole width before collapsing the rest into "+N" —
- * the count is measured, never a fixed cap, so wider screens and the UI scale
- * show as many tags as actually fit.
+ * never a fixed cap, so wider screens and the UI scale show as many tags as
+ * actually fit. The width is measured, unless the caller knows it (`width`):
+ * a poster cell in a virtualized grid would otherwise render twice per
+ * recycle and visibly snap to its "+N" layout.
+ *
+ * Without `audio` only the subtitles line shows, across the full width (the
+ * Bazarr library's missing-episode rows list just what is missing).
  */
 export function LanguageLines({
   audio,
@@ -28,8 +34,11 @@ export function LanguageLines({
   onPress,
   accessibilityLabel,
   ringClassName,
+  stacked = false,
+  width,
 }: {
-  audio: readonly AudioTag[];
+  // Omitted: subtitles only.
+  audio?: readonly AudioTag[];
   // Undefined when Bazarr has no data: the column stays as a blank spacer
   // (no captions icon claiming "none"), aligned with the rows around it.
   subtitles: readonly SubtitleChip[] | undefined;
@@ -37,25 +46,39 @@ export function LanguageLines({
   onPress?: () => void;
   accessibilityLabel?: string;
   ringClassName?: string;
+  // Audio above subtitles instead of side by side (narrow poster overlays).
+  stacked?: boolean;
+  // The component's width in px when the caller already knows it (stacked
+  // only: each line then spans it); otherwise the columns measure themselves.
+  width?: number;
 }) {
+  const columnWidth = stacked ? width : undefined;
   const body = (
-    <View className="flex-row items-center gap-2.5">
-      <Column icon="audio" size={size} count={audio.length}>
-        {(shown) =>
-          audio.slice(0, shown).map((a) => (
-            <AudioLanguagePill
-              key={a.code2}
-              code={a.code2}
-              name={a.name}
-              original={a.original}
-              size={size}
-              ringClassName={ringClassName}
-            />
-          ))
-        }
-      </Column>
+    <View className={stacked ? "gap-0.5" : "flex-row items-center gap-2.5"}>
+      {audio ? (
+        <Column icon="audio" size={size} count={audio.length} stacked={stacked} knownWidth={columnWidth}>
+          {(shown) =>
+            audio.slice(0, shown).map((a) => (
+              <AudioLanguagePill
+                key={a.code2}
+                code={a.code2}
+                name={a.name}
+                original={a.original}
+                size={size}
+                ringClassName={ringClassName}
+              />
+            ))
+          }
+        </Column>
+      ) : null}
       {subtitles ? (
-        <Column icon="subtitles" size={size} count={subtitles.length}>
+        <Column
+          icon="subtitles"
+          size={size}
+          count={subtitles.length}
+          stacked={stacked}
+          knownWidth={columnWidth}
+        >
           {(shown) =>
             subtitles.slice(0, shown).map((c) => (
               <SubtitleTrackChip
@@ -70,7 +93,7 @@ export function LanguageLines({
             ))
           }
         </Column>
-      ) : (
+      ) : stacked ? null : (
         <View className="flex-1" />
       )}
     </View>
@@ -94,15 +117,20 @@ function Column({
   icon,
   size,
   count,
+  stacked,
+  knownWidth,
   children,
 }: {
   icon: "audio" | "subtitles";
   size: TagSize;
   count: number;
+  stacked: boolean;
+  knownWidth?: number;
   children: (shown: number) => React.ReactNode;
 }) {
   const scale = useUiScale();
-  const [width, setWidth] = useState(0);
+  const [measured, setMeasured] = useState(0);
+  const width = knownWidth ?? measured;
   const rem = BASE_REM * scale;
   const w = TAG_WIDTH_REM[size];
   const iconSize = size === "md" ? 14 : size === "sm" ? 12 : 10;
@@ -124,9 +152,11 @@ function Column({
     <View
       // No overflow clipping: corner badges poke above and right of their tag.
       // The top padding gives them room inside the row.
-      className="flex-1 flex-row items-center pt-1.5"
+      // flex-1 splits a side-by-side row in half; stacked lines take the full
+      // width on their own (flex-1 in a column would collapse them).
+      className={`${stacked ? "" : "flex-1 "}flex-row items-center pt-1.5`}
       style={{ gap: w.gap * rem }}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      onLayout={knownWidth === undefined ? (e) => setMeasured(e.nativeEvent.layout.width) : undefined}
     >
       <Icon icon={icon === "audio" ? Volume2 : Captions} size={iconSize} color="#71717a" />
       {children(shown)}
