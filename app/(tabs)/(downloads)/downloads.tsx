@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, Pressable, ScrollView } from "react-native";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { useConfigStore } from "@/store/config-store";
 import { useAttachedKinds } from "@/hooks/use-active-dashboard";
@@ -27,6 +26,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useIsMutating } from "@tanstack/react-query";
 import { TORRENT_ADD_MUTATION_KEY } from "@/lib/torrent-adapter";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 
 type DownloadClient =
   | "qbittorrent"
@@ -258,11 +258,14 @@ export default function DownloadsScreen() {
     : enabledClients[0];
 
   const segmentedControl = showSegmented ? (
-    <DownloadsSegmentedControl
+    <SegmentedControl
+      options={enabledClients.map((c) => ({ value: c, label: SEGMENT_LABELS[c] }))}
       value={activeClient}
-      enabled={enabledClients}
       onChange={setClient}
+      // Freezes switching while a torrent add is in flight.
       disabled={addInFlight}
+      screenInset
+      className="mb-4 mt-2"
     />
   ) : null;
 
@@ -326,81 +329,3 @@ const SEGMENT_LABELS: Record<DownloadClient, string> = {
   sabnzbd: "SABnzbd",
   nzbget: "NZBGet",
 };
-
-// Above this many clients the equal-width segments get too narrow for their
-// labels ("Transmission" at text-sm already fills a quarter-width slot on a
-// 390pt screen, and every label grows with uiScale). Past the threshold the row
-// becomes a horizontal ScrollView of intrinsically-sized segments so nothing
-// clips and every client stays reachable — the same rule the FilterChip rows
-// follow. At or below it the control keeps its full-width look unchanged.
-const MAX_FIXED_SEGMENTS = 3;
-
-function DownloadsSegmentedControl({
-  value,
-  enabled,
-  onChange,
-  disabled = false,
-}: {
-  value: DownloadClient;
-  enabled: DownloadClient[];
-  onChange: (next: DownloadClient) => void;
-  // Freezes switching (the inactive segments) while a torrent add is in flight.
-  disabled?: boolean;
-}) {
-  const segments = enabled.map((c) => (
-    <Segment
-      key={c}
-      label={SEGMENT_LABELS[c]}
-      active={value === c}
-      onPress={() => onChange(c)}
-      fill={enabled.length <= MAX_FIXED_SEGMENTS}
-      disabled={disabled && value !== c}
-    />
-  ));
-
-  if (enabled.length <= MAX_FIXED_SEGMENTS) {
-    return (
-      <View className="flex-row bg-surface-light rounded-2xl p-1 mb-4 mt-2 mx-4">
-        {segments}
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      className="mb-4 mt-2"
-      contentContainerClassName="px-4"
-    >
-      <View className="flex-row bg-surface-light rounded-2xl p-1">{segments}</View>
-    </ScrollView>
-  );
-}
-
-function Segment({
-  label,
-  active,
-  onPress,
-  fill,
-  disabled = false,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  // Split the row evenly (few clients) vs size to the label (scrolling row).
-  fill: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      className={`py-2 rounded-xl items-center active:opacity-70 ${fill ? "flex-1" : "px-4"} ${active ? "bg-surface" : ""} ${disabled ? "opacity-40" : ""}`}
-    >
-      <Text className={`text-sm font-semibold ${active ? "text-zinc-100" : "text-zinc-400"}`}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}

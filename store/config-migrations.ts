@@ -229,8 +229,12 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *   v62 - added the cleanuparrRemoved / cleanuparrCleaned notification
  *         categories for the backend Cleanuparr events poller (#486). Pure
  *         version stamp, same as v61.
+ *   v63 - optional per-instance `linkedRadarrInstanceId` /
+ *         `linkedSonarrInstanceId` on ServiceConfig (Bazarr → Radarr/Sonarr
+ *         link for the subtitle UI). Pure version stamp: absence means the
+ *         link is detected automatically.
  */
-export const CURRENT_CONFIG_VERSION = 62;
+export const CURRENT_CONFIG_VERSION = 63;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -816,6 +820,9 @@ const migrations: Record<number, (payload: any) => any> = {
   // (#486). Pure version stamp: they are optional keys in
   // coerceNotificationSettings.
   61: (payload) => ({ ...payload, version: 62 }),
+  // v62 → v63: optional Bazarr `linkedRadarrInstanceId` /
+  // `linkedSonarrInstanceId` on ServiceConfig. Pure version stamp.
+  62: (payload) => ({ ...payload, version: 63 }),
 };
 
 /**

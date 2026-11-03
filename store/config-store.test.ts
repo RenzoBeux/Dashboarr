@@ -1550,3 +1550,51 @@ describe("removeDashboard — invalidates on a NON-active deletion too (#418)", 
     spy.mockRestore();
   });
 });
+
+describe("updateInstanceSecrets — Bazarr link detection", () => {
+  const RADARR_ID = "00000000-0000-0000-0000-00000000bbbb";
+  const QBIT_ID = "00000000-0000-0000-0000-00000000cccc";
+  const detectionKey = ["bazarr", "bazarr-1", "arr-link-detection", "fp"];
+
+  function seedArrAndClient() {
+    const base = {
+      enabled: true,
+      localUrl: "http://192.168.1.10:7878",
+      remoteUrl: "",
+      useRemote: false,
+    };
+    useConfigStore.setState({
+      serviceInstances: {
+        ...useConfigStore.getState().serviceInstances,
+        radarr: [{ ...base, id: RADARR_ID, name: "Radarr" }],
+        qbittorrent: [{ ...base, id: QBIT_ID, name: "qBittorrent" }],
+      },
+    } as Partial<ReturnType<typeof useConfigStore.getState>>);
+  }
+
+  function detectionInvalidated(spy: jest.SpyInstance): boolean {
+    return spy.mock.calls.some(([filters]) =>
+      filters?.predicate?.({ queryKey: detectionKey }),
+    );
+  }
+
+  it("re-runs detection when a Radarr/Sonarr key is saved", async () => {
+    seedArrAndClient();
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    await useConfigStore.getState().updateInstanceSecrets(RADARR_ID, { apiKey: "fixed" });
+    expect(detectionInvalidated(spy)).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("leaves detection alone for other services", async () => {
+    seedArrAndClient();
+    const spy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
+    await useConfigStore.getState().updateInstanceSecrets(QBIT_ID, { password: "x" });
+    expect(detectionInvalidated(spy)).toBe(false);
+    spy.mockRestore();
+  });
+});

@@ -36,6 +36,9 @@ export interface SelectOption<T extends string | number> {
   value: T;
   label: string;
   description?: string;
+  // Short tag after the label ("Detected"), shown in the sheet and on the
+  // closed field.
+  badge?: string;
 }
 
 interface SelectProps<T extends string | number> {
@@ -82,6 +85,7 @@ export function Select<T extends string | number>({
         >
           {selected?.label ?? placeholder}
         </Text>
+        {selected?.badge ? <OptionBadge label={selected.badge} /> : null}
         <Icon icon={ChevronDown} size={18} color="#71717a" />
       </Pressable>
 
@@ -237,15 +241,20 @@ function SelectSheet<T extends string | number>({
                     }`}
                   >
                     <View className="flex-1">
-                      <Text
-                        className={`text-base ${
-                          isSelected
-                            ? "text-primary font-semibold"
-                            : "text-zinc-100 font-medium"
-                        }`}
-                      >
-                        {option.label}
-                      </Text>
+                      <View className="flex-row items-center gap-2">
+                        <Text
+                          className={`text-base flex-shrink ${
+                            isSelected
+                              ? "text-primary font-semibold"
+                              : "text-zinc-100 font-medium"
+                          }`}
+                        >
+                          {option.label}
+                        </Text>
+                        {option.badge ? (
+                          <OptionBadge label={option.badge} />
+                        ) : null}
+                      </View>
                       {option.description && (
                         <Text className="text-zinc-500 text-xs mt-0.5">
                           {option.description}
@@ -263,5 +272,13 @@ function SelectSheet<T extends string | number>({
         </View>
       </GestureHandlerRootView>
     </Modal>
+  );
+}
+
+function OptionBadge({ label }: { label: string }) {
+  return (
+    <View className="rounded-full bg-primary/15 px-2 py-0.5 mr-2">
+      <Text className="text-primary text-xs font-semibold">{label}</Text>
+    </View>
   );
 }
