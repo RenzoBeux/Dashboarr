@@ -18,9 +18,9 @@ import {
   useMaintainerrCollectionMedia,
   useMaintainerrCollections,
 } from "@/hooks/use-maintainerr";
-import { lightHaptic } from "@/lib/haptics";
+import { lightHaptic, mediumHaptic } from "@/lib/haptics";
 import { formatBytes, relativeDate } from "@/lib/utils";
-import { maintainerrActionDate } from "@/services/maintainerr-api";
+import { maintainerrActionDate, maintainerrMediaTitle } from "@/services/maintainerr-api";
 import type { MaintainerrCollection, MaintainerrCollectionMedia } from "@/lib/types";
 
 export default function MaintainerrCollectionScreen() {
@@ -40,19 +40,32 @@ export default function MaintainerrCollectionScreen() {
   const [confirmTarget, setConfirmTarget] = useState<MaintainerrCollectionMedia | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const exclude = useExcludeMaintainerrMedia();
+  // Tracked per item rather than read off `exclude.variables`, which only holds
+  // the latest call: a second Exclude would clear the first row's spinner.
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
-  const confirmExclude = () => {
+  const confirmExclude = async () => {
     const target = confirmTarget;
     setConfirmVisible(false);
     if (!target) return;
+    mediumHaptic();
     const title = mediaTitle(target);
-    exclude.mutate(
-      { collectionId: id, mediaServerId: target.mediaServerId },
-      {
-        onSuccess: () => toast(`${title} excluded`),
-        onError: (err) => toastError(`Couldn't exclude ${title}`, err),
-      },
-    );
+    const mediaServerId = target.mediaServerId;
+    setPending((prev) => new Set(prev).add(mediaServerId));
+    // mutateAsync, not mutate's per-call callbacks: those fire only for the
+    // latest call, so overlapping excludes would drop the earlier toast.
+    try {
+      await exclude.mutateAsync({ collectionId: id, mediaServerId });
+      toast(`${title} excluded`);
+    } catch (err) {
+      toastError(`Couldn't exclude ${title}`, err);
+    } finally {
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(mediaServerId);
+        return next;
+      });
+    }
   };
 
   return (
@@ -78,7 +91,7 @@ export default function MaintainerrCollectionScreen() {
                 key={item.id}
                 item={item}
                 collection={collection}
-                busy={exclude.isPending && exclude.variables?.mediaServerId === item.mediaServerId}
+                busy={pending.has(item.mediaServerId)}
                 onExclude={() => {
                   setConfirmTarget(item);
                   setConfirmVisible(true);
@@ -122,7 +135,7 @@ export default function MaintainerrCollectionScreen() {
 }
 
 function mediaTitle(item: MaintainerrCollectionMedia): string {
-  const title = item.mediaData?.title;
+  const title = maintainerrMediaTitle(item.mediaData);
   if (!title) return "this item";
   return item.mediaData?.year ? `${title} (${item.mediaData.year})` : title;
 }
@@ -152,7 +165,7 @@ function MediaRow({
     <View className="flex-row items-center gap-3">
       <View className="flex-1 gap-0.5">
         <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
-          {item.mediaData?.title ?? `Item ${item.mediaServerId}`}
+          {maintainerrMediaTitle(item.mediaData) ?? `Item ${item.mediaServerId}`}
           {item.mediaData?.year ? <Text className="text-zinc-500 font-normal"> ({item.mediaData.year})</Text> : null}
         </Text>
         {details.length > 0 ? (

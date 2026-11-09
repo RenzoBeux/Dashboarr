@@ -21,6 +21,17 @@ describe("maintainerr demo collection media", () => {
     }
   });
 
+  it("lists the season collection's members as seasons of a show", () => {
+    const page = getDemoResponse(
+      "maintainerr",
+      "/api/collections/media/2/content/1",
+    ) as MaintainerrCollectionMediaPage;
+    for (const item of page.items) {
+      expect(item.mediaData).toMatchObject({ type: "season" });
+      expect(item.mediaData?.parentTitle).toBeTruthy();
+    }
+  });
+
   it("has no members past page 1", () => {
     const page = getDemoResponse(
       "maintainerr",

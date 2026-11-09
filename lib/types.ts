@@ -3871,6 +3871,14 @@ export interface MaintainerrMediaData {
   year?: number;
   /** "movie" | "show" | "season" | "episode". */
   type?: string;
+  /** A season's show, or an episode's season ("Season 2"). */
+  parentTitle?: string;
+  /** An episode's show. */
+  grandparentTitle?: string;
+  /** Season number for a season, episode number for an episode. */
+  index?: number;
+  /** An episode's season number. */
+  parentIndex?: number;
 }
 
 /** GET /api/collections/media/:id/content/:page. */

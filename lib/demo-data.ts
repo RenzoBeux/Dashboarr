@@ -3592,10 +3592,10 @@ const DEMO_MAINTAINERR_COLLECTIONS = [
   },
   {
     id: 2,
-    title: "Stale TV shows",
+    title: "Watched TV seasons",
     description: "",
     libraryId: "2",
-    type: "show",
+    type: "season",
     isActive: true,
     deleteAfterDays: 30,
     arrAction: 0,
@@ -3620,8 +3620,9 @@ const DEMO_MAINTAINERR_COLLECTIONS = [
   },
 ];
 
-// Members shown on a collection's page. Titles are public-domain films so the
-// screen can be screenshotted; every collection shows the same handful.
+// Members shown on a collection's page. Titles are public-domain works so the
+// screen can be screenshotted; every movie collection shows the same handful,
+// and the season collection its own seasons (rows prefixed with the show).
 const DEMO_MAINTAINERR_MEDIA = [
   { title: "Night of the Living Dead", year: 1968, sizeBytes: 4_831_838_208 },
   { title: "His Girl Friday", year: 1940, sizeBytes: 3_221_225_472 },
@@ -3635,6 +3636,27 @@ const DEMO_MAINTAINERR_MEDIA = [
   sizeBytes: m.sizeBytes,
   isManual: false,
   mediaData: { title: m.title, year: m.year, type: "movie" },
+}));
+
+const DEMO_MAINTAINERR_SEASONS = [
+  { show: "One Step Beyond", season: 1, year: 1959, sizeBytes: 9_663_676_416, added: "2026-10-15" },
+  { show: "One Step Beyond", season: 2, year: 1959, sizeBytes: 10_200_547_328, added: "2026-10-22" },
+  { show: "The Beverly Hillbillies", season: 1, year: 1962, sizeBytes: 12_884_901_888, added: "2026-11-01" },
+].map((m, i) => ({
+  id: 950 + i,
+  collectionId: 2,
+  mediaServerId: String(6000 + i),
+  addDate: `${m.added}T00:00:00.000Z`,
+  image_path: undefined,
+  sizeBytes: m.sizeBytes,
+  isManual: false,
+  mediaData: {
+    title: `Season ${m.season}`,
+    year: m.year,
+    type: "season",
+    parentTitle: m.show,
+    index: m.season,
+  },
 }));
 
 // --- AdGuard Home ------------------------------------------------------------
@@ -4346,10 +4368,12 @@ export function getDemoResponse(
       // match the raw path; only page 1 has members.
       const contentPage = /^\/api\/collections\/media\/(\d+)\/content\/(\d+)$/.exec(basePath);
       if (contentPage) {
+        const collectionId = Number(contentPage[1]);
+        const members = collectionId === 2 ? DEMO_MAINTAINERR_SEASONS : DEMO_MAINTAINERR_MEDIA;
         const items = contentPage[2] === "1"
-          ? DEMO_MAINTAINERR_MEDIA.map((m) => ({ ...m, collectionId: Number(contentPage[1]) }))
+          ? members.map((m) => ({ ...m, collectionId }))
           : [];
-        return { totalSize: DEMO_MAINTAINERR_MEDIA.length, items };
+        return { totalSize: members.length, items };
       }
       // Demo exclusions succeed without changing the fixtures.
       if (normalized === "/api/rules/exclusions/bulk" && method === "POST" && body) {

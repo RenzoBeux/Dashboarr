@@ -30,6 +30,7 @@ import {
   maintainerrActionDate,
   maintainerrActionLabel,
   maintainerrHealthTone,
+  maintainerrMediaTitle,
   parseVersionStatus,
   summarizeCollections,
 } from "@/services/maintainerr-api";
@@ -306,5 +307,46 @@ describe("maintainerrActionDate", () => {
 
   it("is null for an unparseable addDate", () => {
     expect(maintainerrActionDate("not a date", 0, 90)).toBeNull();
+  });
+});
+
+describe("maintainerrMediaTitle", () => {
+  it("uses a movie's or show's own title", () => {
+    expect(maintainerrMediaTitle({ title: "Charade", type: "movie" })).toBe("Charade");
+    expect(maintainerrMediaTitle({ title: "Bonanza", type: "show" })).toBe("Bonanza");
+  });
+
+  it("prefixes a season with its show", () => {
+    expect(
+      maintainerrMediaTitle({ title: "Season 2", type: "season", parentTitle: "Bonanza", index: 2 }),
+    ).toBe("Bonanza, Season 2");
+  });
+
+  it("names an episode by show, season and episode number", () => {
+    expect(
+      maintainerrMediaTitle({
+        title: "The Newcomers",
+        type: "episode",
+        parentTitle: "Season 1",
+        grandparentTitle: "Bonanza",
+        parentIndex: 1,
+        index: 3,
+      }),
+    ).toBe("Bonanza S1E3");
+  });
+
+  it("falls back to show plus episode title without indexes", () => {
+    expect(
+      maintainerrMediaTitle({ title: "The Newcomers", type: "episode", grandparentTitle: "Bonanza" }),
+    ).toBe("Bonanza, The Newcomers");
+  });
+
+  it("keeps the bare title when the parent is missing", () => {
+    expect(maintainerrMediaTitle({ title: "Season 2", type: "season" })).toBe("Season 2");
+  });
+
+  it("is null for an unresolved item", () => {
+    expect(maintainerrMediaTitle(undefined)).toBeNull();
+    expect(maintainerrMediaTitle({ title: "" })).toBeNull();
   });
 });

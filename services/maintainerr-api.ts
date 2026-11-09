@@ -4,6 +4,7 @@ import type {
   MaintainerrCollection,
   MaintainerrCollectionMediaPage,
   MaintainerrHealth,
+  MaintainerrMediaData,
   MaintainerrVersion,
 } from "@/lib/types";
 
@@ -120,6 +121,27 @@ export async function excludeFromCollection(
 }
 
 // --- Pure helpers (unit-tested) ---
+
+/**
+ * A collection member's display title. Seasons and episodes carry only their
+ * own title ("Season 2", an episode name), so a season or episode collection
+ * would list rows that can't be told apart; the show is prefixed from
+ * parentTitle (season) or grandparentTitle (episode). Null when the media
+ * server could not resolve the item.
+ */
+export function maintainerrMediaTitle(media: MaintainerrMediaData | undefined): string | null {
+  if (!media?.title) return null;
+  if (media.type === "season" && media.parentTitle) {
+    return `${media.parentTitle}, ${media.title}`;
+  }
+  if (media.type === "episode" && media.grandparentTitle) {
+    if (media.parentIndex != null && media.index != null) {
+      return `${media.grandparentTitle} S${media.parentIndex}E${media.index}`;
+    }
+    return `${media.grandparentTitle}, ${media.title}`;
+  }
+  return media.title;
+}
 
 /**
  * The reason a bulk media action failed for `mediaId`, or null when it

@@ -146,7 +146,7 @@ function CollectionsCard() {
   );
 }
 
-const TYPE_ICON: Record<string, LucideIcon> = { movie: Film, show: Tv };
+const TYPE_ICON: Record<string, LucideIcon> = { movie: Film, show: Tv, season: Tv, episode: Tv };
 
 // Row glyph per action, decided alongside the label in maintainerrActionLabel so
 // an UNMONITOR or DO_NOTHING collection no longer shows a deletion trash can.
