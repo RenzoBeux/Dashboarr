@@ -3990,10 +3990,10 @@ const DEMO_MAINTAINERR_COLLECTIONS = [
   },
   {
     id: 2,
-    title: "Stale TV shows",
+    title: "Watched TV seasons",
     description: "",
     libraryId: "2",
-    type: "show",
+    type: "season",
     isActive: true,
     deleteAfterDays: 30,
     arrAction: 0,
@@ -4017,6 +4017,45 @@ const DEMO_MAINTAINERR_COLLECTIONS = [
     media: [],
   },
 ];
+
+// Members shown on a collection's page. Titles are public-domain works so the
+// screen can be screenshotted; every movie collection shows the same handful,
+// and the season collection its own seasons (rows prefixed with the show).
+const DEMO_MAINTAINERR_MEDIA = [
+  { title: "Night of the Living Dead", year: 1968, sizeBytes: 4_831_838_208 },
+  { title: "His Girl Friday", year: 1940, sizeBytes: 3_221_225_472 },
+  { title: "Charade", year: 1963, sizeBytes: 6_442_450_944 },
+].map((m, i) => ({
+  id: 900 + i,
+  collectionId: 1,
+  mediaServerId: String(5000 + i),
+  addDate: `2026-0${7 + i}-10T00:00:00.000Z`,
+  image_path: undefined,
+  sizeBytes: m.sizeBytes,
+  isManual: false,
+  mediaData: { title: m.title, year: m.year, type: "movie" },
+}));
+
+const DEMO_MAINTAINERR_SEASONS = [
+  { show: "One Step Beyond", season: 1, year: 1959, sizeBytes: 9_663_676_416, added: "2026-10-15" },
+  { show: "One Step Beyond", season: 2, year: 1959, sizeBytes: 10_200_547_328, added: "2026-10-22" },
+  { show: "The Beverly Hillbillies", season: 1, year: 1962, sizeBytes: 12_884_901_888, added: "2026-11-01" },
+].map((m, i) => ({
+  id: 950 + i,
+  collectionId: 2,
+  mediaServerId: String(6000 + i),
+  addDate: `${m.added}T00:00:00.000Z`,
+  image_path: undefined,
+  sizeBytes: m.sizeBytes,
+  isManual: false,
+  mediaData: {
+    title: `Season ${m.season}`,
+    year: m.year,
+    type: "season",
+    parentTitle: m.show,
+    index: m.season,
+  },
+}));
 
 // --- AdGuard Home ------------------------------------------------------------
 // Domains are the same recognisable-but-generic tracker names Pi-hole's demo
@@ -4803,6 +4842,26 @@ export function getDemoResponse(
       if (normalized === "/api/collections") return DEMO_MAINTAINERR_COLLECTIONS;
       if (normalized === "/api/collections/media/count") {
         return DEMO_MAINTAINERR_COLLECTIONS.reduce((sum, c) => sum + c.mediaCount, 0);
+      }
+      // The page number is the trailing segment `normalized` folds to :id, so
+      // match the raw path; only page 1 has members.
+      const contentPage = /^\/api\/collections\/media\/(\d+)\/content\/(\d+)$/.exec(basePath);
+      if (contentPage) {
+        const collectionId = Number(contentPage[1]);
+        const members = collectionId === 2 ? DEMO_MAINTAINERR_SEASONS : DEMO_MAINTAINERR_MEDIA;
+        const items = contentPage[2] === "1"
+          ? members.map((m) => ({ ...m, collectionId }))
+          : [];
+        return { totalSize: members.length, items };
+      }
+      // Demo exclusions succeed without changing the fixtures.
+      if (normalized === "/api/rules/exclusions/bulk" && method === "POST" && body) {
+        try {
+          const { mediaIds } = JSON.parse(body) as { mediaIds?: string[] };
+          return { results: (mediaIds ?? []).map((mediaId) => ({ mediaId, code: 1 })) };
+        } catch {
+          return { results: [] };
+        }
       }
       return undefined;
     }
