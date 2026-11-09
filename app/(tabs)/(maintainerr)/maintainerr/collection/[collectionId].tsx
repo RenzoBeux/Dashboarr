@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 import { ShieldCheck } from "lucide-react-native";
@@ -7,6 +7,7 @@ import { ConfirmModal } from "@/components/common/confirm-modal";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { usePullToRefresh } from "@/components/common/pull-to-refresh";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
@@ -30,10 +31,28 @@ export default function MaintainerrCollectionScreen() {
   const { data: collections } = useMaintainerrCollections();
   const collection = collections?.find((c) => c.id === id);
 
-  const { data, isLoading, error, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    useMaintainerrCollectionMedia(id);
+  const {
+    data,
+    isLoading,
+    error,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    fetchNextPage,
+  } = useMaintainerrCollectionMedia(id);
   const items = data?.pages.flatMap((p) => p.items) ?? [];
   const total = data?.pages[0]?.totalSize;
+
+  // Maintainerr pages the collection's rows in SQL and only then drops the ones
+  // whose media-server metadata didn't resolve, so a page can come back empty
+  // (or short) while later pages hold media. Skip past an empty page instead of
+  // reading it as the end; a failed fetch stops the chain so it can't loop.
+  const lastPage = data?.pages[data.pages.length - 1];
+  useEffect(() => {
+    if (lastPage && lastPage.items.length === 0 && hasNextPage && !isFetchingNextPage && !isFetchNextPageError) {
+      fetchNextPage();
+    }
+  }, [lastPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
   // Target and visibility are separate so the modal's message doesn't flash to
   // the fallback while it fades out after confirm/cancel.
@@ -74,7 +93,11 @@ export default function MaintainerrCollectionScreen() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Media</CardTitle>
+          <View className="flex-row items-center gap-2">
+            <CardTitle>Media</CardTitle>
+            {/* The worker only handles active collections, so nothing here is scheduled. */}
+            {collection && !collection.isActive ? <Badge label="Inactive" variant="paused" /> : null}
+          </View>
           {total != null ? <Text className="text-zinc-500 text-xs tabular-nums">{total}</Text> : null}
         </CardHeader>
 
@@ -82,8 +105,11 @@ export default function MaintainerrCollectionScreen() {
           <SkeletonCardContent rows={4} />
         ) : error && items.length === 0 ? (
           <ErrorBanner error={error} title="Couldn't load this collection" />
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && !hasNextPage ? (
           <EmptyState compact title="Nothing in this collection" />
+        ) : items.length === 0 ? (
+          // Still skipping empty pages (see the effect above).
+          <SkeletonCardContent rows={4} />
         ) : (
           <View className="gap-3">
             {items.map((item) => (
@@ -153,7 +179,8 @@ function MediaRow({
 }) {
   // When the worker acts on this item; what it does is already on the
   // collection row, so the date alone is shown ("Scheduled", the Overview's word).
-  const actionDate = collection
+  // An inactive collection is never handled, so it has no date.
+  const actionDate = collection?.isActive
     ? maintainerrActionDate(item.addDate, collection.arrAction, collection.deleteAfterDays)
     : null;
   const details = [
