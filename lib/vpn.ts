@@ -16,7 +16,19 @@ const VpnStatus = requireOptionalNativeModule<{
   // iOS-only, and absent from binaries built before it existed — always call
   // through optional chaining.
   activeTunnelInterfaces?(): string[];
+  tunnelDiagnostics?(): TunnelDiagnostics;
 }>("VpnStatus");
+
+export interface TunnelDiagnostics {
+  /** __SCOPED__ proxy keys naming a tunnel (signal 1 of isVpnActive). */
+  scopedProxyInterfaces: string[];
+  /**
+   * Every tunnel interface holding more than link-local IPv6 (signal 2),
+   * counted or not. `addressKinds` are labels like "IPv4 CGNAT" or
+   * "IPv6 ULA", never the addresses, so screenshots are safe to post.
+   */
+  interfaces: { name: string; counts: boolean; addressKinds: string[] }[];
+}
 
 export function detectVpnActive(): boolean {
   try {
@@ -36,6 +48,19 @@ export function getActiveTunnelInterfaces(): string[] {
     return VpnStatus?.activeTunnelInterfaces?.() ?? [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * iOS diagnostics: both detection signals in full, including tunnels that
+ * were ignored and why (#489). Null on Android and on binaries built before
+ * it existed.
+ */
+export function getTunnelDiagnostics(): TunnelDiagnostics | null {
+  try {
+    return VpnStatus?.tunnelDiagnostics?.() ?? null;
+  } catch {
+    return null;
   }
 }
 

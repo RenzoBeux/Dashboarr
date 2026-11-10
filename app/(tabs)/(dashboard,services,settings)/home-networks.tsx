@@ -25,6 +25,7 @@ import { evaluateHomeNetwork } from "@/lib/network";
 import {
   detectVpnActive,
   getActiveTunnelInterfaces,
+  getTunnelDiagnostics,
   isVpnModuleAvailable,
 } from "@/lib/vpn";
 import type { HomeNetwork } from "@/store/config-store";
@@ -46,10 +47,10 @@ function DiagRow({
   bad?: boolean;
 }) {
   return (
-    <View className="flex-row justify-between items-center">
+    <View className="flex-row justify-between items-center gap-3">
       <Text className="text-zinc-500 text-xs">{label}</Text>
       <Text
-        className={`text-xs font-medium ${bad ? "text-amber-400" : "text-zinc-200"}`}
+        className={`shrink text-right text-xs font-medium ${bad ? "text-amber-400" : "text-zinc-200"}`}
       >
         {value}
       </Text>
@@ -78,6 +79,7 @@ export default function HomeNetworksScreen() {
   const liveVpn = detectVpnActive();
   const vpnModule = isVpnModuleAvailable();
   const tunnelInterfaces = getActiveTunnelInterfaces();
+  const tunnelDiag = getTunnelDiagnostics();
   const [diagOpen, setDiagOpen] = useState(false);
 
   // Read-only cross-reference: which workspaces use each network (#148). A
@@ -429,6 +431,24 @@ export default function HomeNetworksScreen() {
                 label="Tunnel interfaces"
                 value={tunnelInterfaces.length ? tunnelInterfaces.join(", ") : "none"}
               />
+            ) : null}
+            {/* Both signals in full (#489): which scoped-proxy keys matched, and
+                what kind of address each tunnel holds, ignored ones included,
+                so a false positive can be traced from a screenshot. */}
+            {tunnelDiag ? (
+              <>
+                <DiagRow
+                  label="Scoped proxy tunnels"
+                  value={tunnelDiag.scopedProxyInterfaces.join(", ") || "none"}
+                />
+                {tunnelDiag.interfaces.map((t) => (
+                  <DiagRow
+                    key={t.name}
+                    label={`${t.name} addresses`}
+                    value={`${t.addressKinds.join(", ")}${t.counts ? "" : " (ignored)"}`}
+                  />
+                ))}
+              </>
             ) : null}
             <DiagRow
               label="On WiFi"
