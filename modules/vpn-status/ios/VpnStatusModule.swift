@@ -74,19 +74,15 @@ public class VpnStatusModule: Module {
   // Which tunnel addresses mean "a VPN is up". nil = link-local IPv6, which
   // every idle system utun carries, so it is not even worth listing.
   //
-  // Counted: IPv4 (Tailscale's 100.64/10, WireGuard/OpenVPN private ranges,
-  // anything routable), global IPv6, and Tailscale's own ULA range
-  // fd7a:115c:a1e0::/48.
+  // Counted: IPv4 except link-local, global IPv6, and ULA. ULA must count:
+  // Tailscale's IPv6 range is fd7a:115c:a1e0::/48 (labelled separately), and
+  // WireGuard supports IPv6-only tunnels in fd00::/8, which "Remote URL needs
+  // a VPN" (#394) services can sit behind.
   //
-  // Ignored: IPv4 link-local, and every other ULA. A ULA-only utun is not
-  // evidence of a VPN: Apple's own tunnels use ULA space (the CoreDevice /
-  // RemotePairing tunnel to a paired Mac is an fdxx::/64), and #489 had utun0
-  // and utun4 counting with no VPN connected, even after Tailscale was
-  // uninstalled. VPN clients assign an IPv4 address (Tailscale a 100.x one,
-  // WireGuard configs list one), and a tunnel without IPv4 could not carry
-  // traffic to an IPv4 LAN address anyway. Erring toward "no VPN" is also the
-  // safe direction: a false positive is what sends local URLs, and API keys,
-  // onto a LAN that is not home.
+  // #489 had utun0 and utun4 counting on an iPhone with no VPN connected,
+  // even after Tailscale was uninstalled. What they hold is not known yet, so
+  // rather than guess, the diagnostics list every tunnel's address kinds;
+  // narrow this rule from what they show.
   private static func classify(_ sa: UnsafePointer<sockaddr>) -> AddressKind? {
     switch Int32(sa.pointee.sa_family) {
     case AF_INET:
@@ -107,7 +103,7 @@ public class VpnStatusModule: Module {
       if b.0 == 0xfd && b.1 == 0x7a && b.2 == 0x11 && b.3 == 0x5c && b.4 == 0xa1 && b.5 == 0xe0 {
         return AddressKind(label: "IPv6 Tailscale", counts: true)
       }
-      if (b.0 & 0xfe) == 0xfc { return AddressKind(label: "IPv6 ULA", counts: false) }
+      if (b.0 & 0xfe) == 0xfc { return AddressKind(label: "IPv6 ULA", counts: true) }
       if (b.0 & 0xe0) == 0x20 { return AddressKind(label: "IPv6 global", counts: true) }
       return AddressKind(label: "IPv6 other", counts: false)
     default:
