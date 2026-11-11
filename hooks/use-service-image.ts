@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useConfigStore } from "@/store/config-store";
 import { redactUrl } from "@/lib/http-client";
 import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
+import { isHttpUrl, toApiMediaCoverPath } from "@/lib/service-image-url";
 
 interface ServiceImage {
   url: string;
@@ -29,23 +30,23 @@ export function useServiceImage(
   );
   const [failCount, setFailCount] = useState(0);
 
-  // TMDB original images are ~6MB each — use w500 to avoid memory pool exhaustion
-  const rawRemote = image?.remoteUrl || undefined;
+  // TMDB original images are ~6MB each — use w500 to avoid memory pool exhaustion.
+  // Lidarr sometimes reports a server disk path here (`/config/MediaCover/...`)
+  // when the artist's metadata has no images (#511), so only keep real URLs.
+  const rawRemote = image && isHttpUrl(image.remoteUrl) ? image.remoteUrl : undefined;
   const remoteUrl = rawRemote?.replace("/t/p/original/", "/t/p/w500/");
 
   let localUrl: string | undefined;
   if (image?.url && baseUrl) {
     const base = baseUrl.replace(/\/+$/, "");
-    let path = image.url.startsWith("/") ? image.url : `/${image.url}`;
-    // Radarr/Sonarr/Lidarr return /MediaCover/... which requires session auth.
-    // The API endpoint <apiBasePath>/MediaCover/... accepts apikey auth — and
-    // the version differs per service (Radarr/Sonarr are /api/v3, Lidarr /api/v1),
-    // so derive it from SERVICE_DEFAULTS rather than hardcoding v3.
-    // Use -500 variant (e.g. poster-500.jpg) to avoid blowing Fresco's memory pool.
-    if (/^\/MediaCover\//i.test(path)) {
-      const apiBase = SERVICE_DEFAULTS[serviceId].apiBasePath;
-      path = `${apiBase}${path.replace(/\/(poster|banner|fanart)\.jpg/, "/$1-500.jpg")}`;
-    }
+    // Radarr/Sonarr/Lidarr return /MediaCover/... which requires session auth;
+    // the API route accepts apikey auth. The API version differs per service
+    // (Radarr/Sonarr are /api/v3, Lidarr /api/v1), so take it from SERVICE_DEFAULTS.
+    const path = toApiMediaCoverPath(
+      image.url.startsWith("/") ? image.url : `/${image.url}`,
+      serviceId,
+      SERVICE_DEFAULTS[serviceId].apiBasePath,
+    );
     const separator = path.includes("?") ? "&" : "?";
     localUrl = `${base}${path}${apiKey ? `${separator}apikey=${apiKey}` : ""}`;
   }

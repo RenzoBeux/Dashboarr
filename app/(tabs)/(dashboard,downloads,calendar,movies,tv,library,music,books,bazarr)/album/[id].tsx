@@ -23,7 +23,6 @@ import {
   useSearchAlbums,
 } from "@/hooks/use-lidarr";
 import { useServiceImage } from "@/hooks/use-service-image";
-import { getLidarrArtistFanart } from "@/services/lidarr-api";
 import { formatBytes } from "@/lib/utils";
 import {
   downloadIndicator,
@@ -47,8 +46,9 @@ export default function AlbumDetailScreen() {
   const searchAlbum = useSearchAlbums(instanceId);
 
   const cover = album?.images.find((i) => i.coverType === "cover");
-  const { src: coverUrl, onError: onCoverError } = useServiceImage(cover, "lidarr");
-  const fanartUrl = getLidarrArtistFanart(album?.artist?.images);
+  const fanart = album?.artist?.images.find((i) => i.coverType === "fanart");
+  const { src: coverUrl, onError: onCoverError } = useServiceImage(cover, "lidarr", instanceId);
+  const { src: fanartUrl, onError: onFanartError } = useServiceImage(fanart, "lidarr", instanceId);
 
   if (isLoading) {
     return <MediaDetailSkeleton />;
@@ -118,6 +118,7 @@ export default function AlbumDetailScreen() {
       <MediaDetailHero
         backdropUrl={fanartUrl}
         posterUrl={coverUrl}
+        onBackdropError={onFanartError}
         onPosterError={onCoverError}
         title={album.title}
         metaLine={buildAlbumMeta(album)}

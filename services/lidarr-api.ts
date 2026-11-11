@@ -1,4 +1,5 @@
 import { serviceRequest } from "@/lib/http-client";
+import { isHttpUrl } from "@/lib/service-image-url";
 import type {
   LidarrArtist,
   LidarrAlbum,
@@ -13,31 +14,18 @@ import type {
 
 // --- Image helpers ---
 //
-// Artists carry a "poster" cover (like Radarr movies / Sonarr series); albums
-// carry a "cover" image. Prefer remoteUrl (immutable CDN) over url (local proxy).
-
-export function getLidarrArtistPoster(
-  images: LidarrImage[] | undefined | null,
-): string | null {
-  if (!images?.length) return null;
-  const poster = images.find((i) => i.coverType === "poster");
-  return poster?.remoteUrl || poster?.url || null;
-}
-
-export function getLidarrArtistFanart(
-  images: LidarrImage[] | undefined | null,
-): string | null {
-  if (!images?.length) return null;
-  const fanart = images.find((i) => i.coverType === "fanart");
-  return fanart?.remoteUrl || fanart?.url || null;
-}
+// Albums carry a "cover" image. This returns a bare URL for surfaces that
+// can't resolve the local /MediaCover path (queue tiles), so only an http(s)
+// remoteUrl counts: Lidarr reports a server disk path there when the metadata
+// has no images (#511), and `url` is relative. Screens that can authenticate
+// against the instance go through useServiceImage instead.
 
 export function getLidarrAlbumCover(
   images: LidarrImage[] | undefined | null,
 ): string | null {
   if (!images?.length) return null;
   const cover = images.find((i) => i.coverType === "cover");
-  return cover?.remoteUrl || cover?.url || null;
+  return cover && isHttpUrl(cover.remoteUrl) ? cover.remoteUrl : null;
 }
 
 // Per-instance routing: every function takes an optional `instanceId` that
