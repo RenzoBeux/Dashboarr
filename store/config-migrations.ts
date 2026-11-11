@@ -233,8 +233,11 @@ import { defaultPinnedTabsForInstall } from "@/lib/tab-routes";
  *         `linkedSonarrInstanceId` on ServiceConfig (Bazarr → Radarr/Sonarr
  *         link for the subtitle UI). Pure version stamp: absence means the
  *         link is detected automatically.
+ *   v64 - optional per-instance `rpcPath` on ServiceConfig (rTorrent
+ *         XML-RPC mount path, #504). Pure version stamp: absence means
+ *         /RPC2, the pre-v64 behavior.
  */
-export const CURRENT_CONFIG_VERSION = 63;
+export const CURRENT_CONFIG_VERSION = 64;
 
 // Per-slot field renames introduced in v15. Same pairs are applied by the
 // hydrate-time migration in config-store.ts so the import path and the local
@@ -823,6 +826,8 @@ const migrations: Record<number, (payload: any) => any> = {
   // v62 → v63: optional Bazarr `linkedRadarrInstanceId` /
   // `linkedSonarrInstanceId` on ServiceConfig. Pure version stamp.
   62: (payload) => ({ ...payload, version: 63 }),
+  // v63 → v64: optional rTorrent `rpcPath` on ServiceConfig. Pure version stamp.
+  63: (payload) => ({ ...payload, version: 64 }),
 };
 
 /**

@@ -6,6 +6,8 @@ import {
   isPrivateHost,
   isPrivateUrl,
   workspaceForcesRemote,
+  normalizeRpcPath,
+  isValidRpcPath,
 } from "./url-validation";
 
 describe("validateServiceUrl", () => {
@@ -251,5 +253,37 @@ describe("isRemoteOnlyOffline (#168)", () => {
 
   it("is true when the workspace is pinned to remote-only and no remote URL exists", () => {
     expect(isRemoteOnlyOffline(inst(), false, false, true)).toBe(true);
+  });
+});
+
+describe("normalizeRpcPath / isValidRpcPath (#504)", () => {
+  it("stores blank and the /RPC2 default as absence", () => {
+    expect(normalizeRpcPath("")).toBeUndefined();
+    expect(normalizeRpcPath("   ")).toBeUndefined();
+    expect(normalizeRpcPath("/RPC2")).toBeUndefined();
+    expect(normalizeRpcPath("RPC2/")).toBeUndefined();
+  });
+
+  it("adds the leading slash and drops trailing ones", () => {
+    expect(normalizeRpcPath("xmlrpc")).toBe("/xmlrpc");
+    expect(normalizeRpcPath(" /xmlrpc/ ")).toBe("/xmlrpc");
+    expect(normalizeRpcPath("/user/rtorrent/rpc")).toBe("/user/rtorrent/rpc");
+  });
+
+  it('keeps a bare "/" for XML-RPC at the root', () => {
+    expect(normalizeRpcPath("/")).toBe("/");
+    expect(normalizeRpcPath("//")).toBe("/");
+  });
+
+  it("accepts plain paths and rejects URLs, queries and spaces", () => {
+    expect(isValidRpcPath("/xmlrpc")).toBe(true);
+    expect(isValidRpcPath("/")).toBe(true);
+    expect(isValidRpcPath("/a/b-c_d.e")).toBe(true);
+    expect(isValidRpcPath("xmlrpc")).toBe(false);
+    expect(isValidRpcPath("/https://box.example/xmlrpc")).toBe(false);
+    expect(isValidRpcPath("/rpc?x=1")).toBe(false);
+    expect(isValidRpcPath("/rpc#x")).toBe(false);
+    expect(isValidRpcPath("/my rpc")).toBe(false);
+    expect(isValidRpcPath(`/${"a".repeat(300)}`)).toBe(false);
   });
 });

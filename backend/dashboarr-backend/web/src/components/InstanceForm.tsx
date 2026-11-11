@@ -5,7 +5,13 @@ import type { ExportPayload, ServiceInstance } from "@/lib/config-types";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import { SEERR_AUTH_MODES, SEERR_AUTH_MODE_LABELS, seerrAuthMode } from "@/lib/seerr-auth";
 import type { SeerrAuthMode } from "@/lib/seerr-auth";
-import { normalizeServiceUrl, validateServiceUrl } from "@/lib/url-validation";
+import {
+  isValidRpcPath,
+  normalizeRpcPath,
+  normalizeServiceUrl,
+  RTORRENT_DEFAULT_RPC_PATH,
+  validateServiceUrl,
+} from "@/lib/url-validation";
 import type { InstancePatch } from "../editor/reducer";
 
 interface Props {
@@ -87,6 +93,38 @@ function UrlInput({
   );
 }
 
+/** rTorrent's XML-RPC mount (#504). Blank stores absence, which means /RPC2. */
+function RpcPathInput({ value, onCommit }: { value: string | undefined; onCommit: (v: string | undefined) => void }) {
+  const [draft, setDraft] = useState(value ?? "");
+  const normalized = normalizeRpcPath(draft);
+  const invalid = normalized !== undefined && !isValidRpcPath(normalized);
+  return (
+    <label className="field">
+      <span>XML-RPC path</span>
+      <input
+        type="text"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={RTORRENT_DEFAULT_RPC_PATH}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          if (invalid) return;
+          setDraft(normalized ?? "");
+          if (normalized !== value) onCommit(normalized);
+        }}
+      />
+      {invalid ? (
+        <span className="error small">Must be a path like /xmlrpc, not a full URL, with no spaces or query string.</span>
+      ) : (
+        <span className="muted small">
+          Added to both URLs. Leave blank for {RTORRENT_DEFAULT_RPC_PATH}. Some seedboxes, like Whatbox, use /xmlrpc.
+        </span>
+      )}
+    </label>
+  );
+}
+
 export function InstanceForm({ kind, instance, secrets, onChange, onSecrets, onSeerrMode, onRemove }: Props) {
   const entry = SERVICE_CATALOG[kind];
   const defaults = SERVICE_DEFAULTS[kind];
@@ -123,6 +161,7 @@ export function InstanceForm({ kind, instance, secrets, onChange, onSecrets, onS
         onCommit={(v) => onChange({ remoteUrl: v })}
       />
       <p className="muted small">{defaults.name} usually listens on port {defaults.defaultPort}.</p>
+      {kind === "rtorrent" ? <RpcPathInput value={instance.rpcPath} onCommit={(v) => onChange({ rpcPath: v })} /> : null}
 
       {isSeerr ? (
         <label className="field">

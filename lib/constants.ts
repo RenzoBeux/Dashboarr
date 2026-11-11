@@ -58,8 +58,9 @@ export const SERVICE_DEFAULTS: Record<
   },
   // rtorrent/ruTorrent speak XML-RPC over the SCGI HTTP mount, conventionally
   // /RPC2 (the mount ships in the standard ruTorrent web-server config and also
-  // covers bare rtorrent). apiBasePath is that mount; users with a nested mount
-  // include the prefix in their base URL. defaultPort is the web-server port in
+  // covers bare rtorrent). apiBasePath is that default mount; an instance's
+  // `rpcPath` replaces it (#504, lib/http-client.ts apiBasePathFor), and users
+  // with a nested /RPC2 can still include the prefix in their base URL. defaultPort is the web-server port in
   // front of rtorrent (not rtorrent's internal SCGI port). HTTP Basic auth.
   // The api module (services/rtorrent-api.ts) POSTs XML-RPC; there is no GET
   // ping endpoint, so pingPath is empty (the connection probe POSTs instead).

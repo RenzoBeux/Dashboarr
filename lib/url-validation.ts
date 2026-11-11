@@ -191,3 +191,36 @@ export function isRemoteOnlyOffline(
   if (!autoSwitchNetwork) return false; // auto-switch off → uses local
   return networkAwayFromHome; // away → remote-only, no remote URL → offline
 }
+
+/** rTorrent's conventional XML-RPC mount, used when an instance sets none. */
+export const RTORRENT_DEFAULT_RPC_PATH = "/RPC2";
+
+/** Longest XML-RPC path accepted by the editor and the backup validator. */
+const RPC_PATH_MAX_LENGTH = 256;
+
+/**
+ * Normalize a typed rTorrent XML-RPC mount path (#504): trims, adds the
+ * leading slash and drops trailing ones, so "xmlrpc", "/xmlrpc" and "/xmlrpc/"
+ * all store as "/xmlrpc". Blank, or the default itself, returns undefined so
+ * the stored shape stays "absent means /RPC2". A bare "/" is kept: XML-RPC
+ * served at the root of its own host.
+ */
+export function normalizeRpcPath(raw: string): string | undefined {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (trimmed === "" && raw.trim() === "") return undefined;
+  const path = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return path === RTORRENT_DEFAULT_RPC_PATH ? undefined : path;
+}
+
+/**
+ * True for a URL path the app can append to the instance's base URL: leading
+ * slash, URL-safe characters only, no empty segments (which is also what
+ * rejects a full URL pasted into the field). No query or fragment.
+ */
+export function isValidRpcPath(path: string): boolean {
+  return (
+    path.length <= RPC_PATH_MAX_LENGTH &&
+    /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/.test(path) &&
+    !path.includes("//")
+  );
+}
