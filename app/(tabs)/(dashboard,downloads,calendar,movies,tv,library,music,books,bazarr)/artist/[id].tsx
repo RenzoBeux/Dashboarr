@@ -93,8 +93,8 @@ export default function ArtistDetailScreen() {
 
   const poster = artist?.images.find((i) => i.coverType === "poster");
   const fanart = artist?.images.find((i) => i.coverType === "fanart");
-  const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "lidarr");
-  const { src: fanartUrl, onError: onFanartError } = useServiceImage(fanart, "lidarr");
+  const { src: posterUrl, onError: onPosterError } = useServiceImage(poster, "lidarr", instanceId);
+  const { src: fanartUrl, onError: onFanartError } = useServiceImage(fanart, "lidarr", instanceId);
 
   if (isLoading) {
     return <MediaDetailSkeleton showSeasonList />;
@@ -561,7 +561,7 @@ function AlbumRow({
   const toggleAlbum = useToggleAlbumMonitored(instanceId);
   const searchAlbum = useSearchAlbums(instanceId);
   const cover = album.images.find((i) => i.coverType === "cover");
-  const { src: coverUrl, onError } = useServiceImage(cover, "lidarr");
+  const { src: coverUrl, onError } = useServiceImage(cover, "lidarr", instanceId);
 
   const stats = album.statistics;
   const have = stats?.trackFileCount ?? 0;
