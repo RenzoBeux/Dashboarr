@@ -23,6 +23,18 @@ export class ServiceHttpError extends Error {
   }
 }
 
+/**
+ * The API base for one instance: the kind's SERVICE_API_BASE, except rTorrent,
+ * whose XML-RPC mount is per-instance (#504, mirrors the app's apiBasePathFor).
+ * "/" means XML-RPC at the root of the base URL.
+ */
+export function apiBaseFor(config: Pick<StoredServiceConfig, "id" | "rpcPath">): string {
+  if (config.id === "rtorrent" && config.rpcPath) {
+    return config.rpcPath === "/" ? "" : config.rpcPath;
+  }
+  return SERVICE_API_BASE[config.id];
+}
+
 export function activeBaseUrl(config: StoredServiceConfig): string {
   // The app pushes its own `useRemote` based on the phone's WiFi state, but the
   // backend is a separate network citizen — usually on the LAN next to the
@@ -202,7 +214,7 @@ export async function serviceFetch<T>(
 ): Promise<T> {
   const baseUrl = activeBaseUrl(config);
   if (!baseUrl) throw new Error(`No URL configured for ${config.id}`);
-  const apiBase = SERVICE_API_BASE[config.id];
+  const apiBase = apiBaseFor(config);
 
   // SABnzbd and Jackett auth live in the query string, not headers.
   const finalParams =
@@ -250,7 +262,7 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   const baseUrl = activeBaseUrl(config);
   if (!baseUrl) return false;
 
-  const apiBase = SERVICE_API_BASE[config.id];
+  const apiBase = apiBaseFor(config);
   // SAB exposes its version through ?mode=version on the same /api endpoint.
   // Jackett's Torznab t=indexers listing is its cheapest apikey-validated GET
   // (apikey in the query string, mirroring the app's pingService).

@@ -122,6 +122,18 @@ describe("pushConfigSnapshot", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("sends rTorrent's XML-RPC path (#504) and only rTorrent's", async () => {
+    setNotifications({});
+    mockConfigRef.current.serviceInstances.rtorrent = [
+      { id: "t1", enabled: true, name: "rTorrent", localUrl: "https://box", remoteUrl: "", useRemote: false, rpcPath: "/xmlrpc" },
+    ];
+    fetchSpy.mockResolvedValueOnce(respond(200));
+    await pushConfigSnapshot();
+    const instances = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string).instances;
+    expect(instances.find((i: any) => i.id === "t1").rpcPath).toBe("/xmlrpc");
+    expect(instances.find((i: any) => i.id === "r1")).not.toHaveProperty("rpcPath");
+  });
+
   it("skips in demo mode so the fake instances never replace the backend's", async () => {
     setNotifications({});
     mockConfigRef.current.demoMode = true;

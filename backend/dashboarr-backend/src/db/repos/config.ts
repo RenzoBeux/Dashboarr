@@ -149,6 +149,8 @@ export interface StoredServiceConfig {
   password: string | null;
   wolMac: string | null;
   pollMs: number | null;
+  /** rTorrent's XML-RPC mount (#504); null means /RPC2. */
+  rpcPath: string | null;
   updatedAt: number;
 }
 
@@ -165,6 +167,7 @@ export function instanceToServiceConfig(inst: StoredServiceInstance): StoredServ
     password: inst.password,
     wolMac: inst.wolMac,
     pollMs: inst.pollMs,
+    rpcPath: inst.rpcPath,
     updatedAt: inst.updatedAt,
   };
 }

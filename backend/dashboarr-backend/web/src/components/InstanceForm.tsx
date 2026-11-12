@@ -93,7 +93,11 @@ function UrlInput({
   );
 }
 
-/** rTorrent's XML-RPC mount (#504). Blank stores absence, which means /RPC2. */
+/**
+ * rTorrent's XML-RPC mount (#504). Blank stores absence, which means /RPC2.
+ * Every keystroke is committed, invalid or not, so the payload always matches
+ * what is on screen and editorProblems can hold Save until it is fixed.
+ */
 function RpcPathInput({ value, onCommit }: { value: string | undefined; onCommit: (v: string | undefined) => void }) {
   const [draft, setDraft] = useState(value ?? "");
   const normalized = normalizeRpcPath(draft);
@@ -107,11 +111,13 @@ function RpcPathInput({ value, onCommit }: { value: string | undefined; onCommit
         spellCheck={false}
         placeholder={RTORRENT_DEFAULT_RPC_PATH}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          const next = normalizeRpcPath(e.target.value);
+          if (next !== value) onCommit(next);
+        }}
         onBlur={() => {
-          if (invalid) return;
-          setDraft(normalized ?? "");
-          if (normalized !== value) onCommit(normalized);
+          if (!invalid) setDraft(normalized ?? "");
         }}
       />
       {invalid ? (

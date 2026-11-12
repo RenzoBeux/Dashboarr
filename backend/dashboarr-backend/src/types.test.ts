@@ -6,6 +6,7 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./types.js";
 import { isQbtCategoryMuted } from "./workers/transitions.js";
+import { apiBaseFor } from "./services/http.js";
 
 /**
  * Regression guard for the bug where the app sends a config entry for a service
@@ -229,4 +230,27 @@ test("perInstance accepts the Cleanuparr categories", () => {
   assert.equal(result.success, true);
   if (!result.success) return;
   assert.deepEqual(result.data.notifications.perInstance, perInstance);
+});
+
+test("rtorrent rpcPath (#504) is kept when valid and dropped, not fatal, when malformed", () => {
+  const result = configPayloadSchema.safeParse({
+    instances: [
+      { id: "a", kind: "rtorrent", enabled: true, name: "Box", localUrl: "https://box.example", rpcPath: "/xmlrpc" },
+      { id: "b", kind: "rtorrent", enabled: true, name: "Bad", localUrl: "https://box.example", rpcPath: "https://x/rpc" },
+      { id: "c", kind: "rtorrent", enabled: true, name: "Num", localUrl: "https://box.example", rpcPath: 42 },
+    ],
+    notifications: DEFAULT_NOTIFICATION_SETTINGS,
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.instances?.[0]?.rpcPath, "/xmlrpc");
+  assert.equal(result.data.instances?.[1]?.rpcPath, undefined);
+  assert.equal(result.data.instances?.[2]?.rpcPath, undefined);
+});
+
+test("apiBaseFor honours rtorrent's rpcPath (#504) and nothing else's", () => {
+  assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: null }), "/RPC2");
+  assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: "/xmlrpc" }), "/xmlrpc");
+  assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: "/" }), "");
+  assert.equal(apiBaseFor({ id: "radarr", rpcPath: "/xmlrpc" }), "/api/v3");
 });

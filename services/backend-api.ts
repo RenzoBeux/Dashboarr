@@ -312,6 +312,9 @@ export async function pushConfigSnapshot(): Promise<void> {
         apiKey: shareSecrets ? secrets.apiKey || undefined : undefined,
         username: shareSecrets ? secrets.username || undefined : undefined,
         password: shareSecrets ? secrets.password || undefined : undefined,
+        // rTorrent's XML-RPC mount (#504), so the backend's offline poller
+        // probes the same endpoint the app does. Absent means /RPC2.
+        rpcPath: kind === "rtorrent" ? inst.rpcPath : undefined,
       };
     });
   });
