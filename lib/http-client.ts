@@ -18,6 +18,7 @@ import {
   isPrivateUrl,
   normalizeServiceUrl,
   resolveActiveUrlKind,
+  RTORRENT_DEFAULT_RPC_PATH,
 } from "@/lib/url-validation";
 import { detectVpnActive, isVpnModuleAvailable } from "@/lib/vpn";
 // The "an NZBHydra2 error is still HTTP 200" rule lives with the rest of that
@@ -499,6 +500,19 @@ function usesHttpAuth(serviceId: ServiceId): boolean {
   return SERVICE_DEFAULTS[serviceId].httpAuth === true;
 }
 
+/**
+ * The API base path for one instance. Every kind uses its SERVICE_DEFAULTS
+ * mount except rTorrent, whose XML-RPC mount is per-instance (#504): /RPC2 by
+ * convention, but seedboxes like Whatbox serve it at /xmlrpc.
+ */
+function apiBasePathFor(serviceId: ServiceId, rpcPath: string | undefined): string {
+  if (serviceId === "rtorrent" && rpcPath) {
+    // "/" means XML-RPC at the root of the base URL; buildUrl joins with "".
+    return rpcPath === "/" ? "" : rpcPath;
+  }
+  return SERVICE_DEFAULTS[serviceId].apiBasePath;
+}
+
 export async function serviceRequest<T>(
   serviceId: ServiceId,
   path: string,
@@ -534,7 +548,6 @@ export async function serviceRequest<T>(
     throw new Error(`Instance ${targetId} for ${serviceId} not found`);
   }
   const secrets = store.instanceSecrets[targetId] ?? {};
-  const defaults = SERVICE_DEFAULTS[serviceId];
 
   if (!inst.enabled) {
     throw new Error(`Service ${serviceId} is not enabled`);
@@ -686,7 +699,7 @@ export async function serviceRequest<T>(
           ? { ...(params ?? {}), ...authParams }
           : params;
 
-  const url = buildUrl(baseUrl, defaults.apiBasePath, path, finalParams);
+  const url = buildUrl(baseUrl, apiBasePathFor(serviceId, inst.rpcPath), path, finalParams);
 
   // FormData bodies (SAB addfile upload) must keep fetch's own multipart
   // Content-Type — the boundary parameter is generated per-request and a
@@ -895,7 +908,12 @@ export async function pingService(
         ? { t: "indexers", configured: "true", apikey: secrets.apiKey ?? "" }
         : authParams;
 
-  const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath, pingParams);
+  const url = buildUrl(
+    baseUrl,
+    apiBasePathFor(serviceId, inst.rpcPath),
+    defaults.pingPath,
+    pingParams,
+  );
 
   if (useConfigStore.getState().demoMode) return 45;
 
@@ -997,6 +1015,9 @@ export interface ConnectionTestInput {
   // editor passes the form's mode; checkInstanceHealth passes the stored one.
   // Absent means the admin API key.
   seerrAuthMode?: SeerrAuthMode;
+  // rTorrent only (#504): the XML-RPC mount path. The editor passes the form's
+  // value; checkInstanceHealth passes the stored one. Absent means /RPC2.
+  rpcPath?: string;
 }
 
 /** Hostname of a probe URL, for naming what we couldn't reach. Null if unparseable. */
@@ -1152,6 +1173,7 @@ export async function checkInstanceHealth(
     customHeaders: secrets.customHeaders,
     instanceId,
     seerrAuthMode: serviceId === "overseerr" ? seerrAuthMode(inst) : undefined,
+    rpcPath: inst.rpcPath,
   });
   if (serviceId === "overseerr") seerrLastHealth.set(instanceId, result);
   return result;
@@ -1879,13 +1901,18 @@ async function runConnectionProbe(
 
     case "rtorrent": {
       // rtorrent has no GET endpoint — POST a tiny XML-RPC system.listMethods
-      // to the /RPC2 mount. Basic and Digest are both answered, so a 401 that
+      // to the instance's XML-RPC mount (/RPC2 unless overridden, #504). Basic and Digest are both answered, so a 401 that
       // survives the retry gets its challenge inspected before deciding whether
       // credentials or the server's auth scheme need attention. A well-formed
       // <methodResponse> (even a <fault>) means we reached an XML-RPC endpoint
       // and authenticated; an HTML body (e.g. the ruTorrent UI) means the URL
       // points somewhere else.
-      const url = buildUrl(baseUrl, defaults.apiBasePath, defaults.pingPath);
+      const rpcPath = input.rpcPath || RTORRENT_DEFAULT_RPC_PATH;
+      const url = buildUrl(
+        baseUrl,
+        apiBasePathFor(serviceId, input.rpcPath),
+        defaults.pingPath,
+      );
       const extra: Record<string, string> = { "Content-Type": "text/xml" };
       // basicAuthHeader sends if EITHER field is set (a token-in-password /
       // empty-username setup is valid). A Digest server rejects Basic, and
@@ -1909,8 +1936,13 @@ async function runConnectionProbe(
       if (res.status === 403) {
         return {
           kind: "auth_failed",
-          message:
-            "RPC access forbidden — check /RPC2 server or reverse-proxy access rules",
+          message: `RPC access forbidden — check ${rpcPath} server or reverse-proxy access rules`,
+        };
+      }
+      if (res.status === 404) {
+        return {
+          kind: "unreachable",
+          message: `Nothing at ${rpcPath}. If your server mounts XML-RPC elsewhere (e.g. /xmlrpc), set the XML-RPC path`,
         };
       }
       if (res.status >= 500)
@@ -1921,7 +1953,7 @@ async function runConnectionProbe(
       if (text.includes("<methodResponse")) return { kind: "ok" };
       return {
         kind: "unreachable",
-        message: "Not an XML-RPC endpoint — check the URL points at /RPC2",
+        message: `Not an XML-RPC endpoint at ${rpcPath}: check the URL and XML-RPC path`,
       };
     }
 

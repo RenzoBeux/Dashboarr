@@ -107,8 +107,10 @@ export function buildHealthProbeSignature(inputs: HealthProbeInputs): string {
       // and the "Waiting for VPN" short-circuit with no URL change, so toggling
       // it in the editor must re-probe at once. (isVpnActive is already keyed.)
       const vpnOnly = inst.remoteRequiresVpn ? 1 : 0;
+      // rTorrent's XML-RPC path (#504) moves the probe with no URL change.
+      const rpcPath = inst.rpcPath ?? "";
       parts.push(
-        `${id}:${inst.id}:${url}:${hasCreds}:${inst.ignoreCertErrors ? 1 : 0}:${headerKeys}:${mode}:${vpnOnly}`,
+        `${id}:${inst.id}:${url}:${hasCreds}:${inst.ignoreCertErrors ? 1 : 0}:${headerKeys}:${mode}:${vpnOnly}:${rpcPath}`,
       );
     }
   }

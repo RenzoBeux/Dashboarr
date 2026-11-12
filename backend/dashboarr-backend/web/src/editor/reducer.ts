@@ -10,6 +10,7 @@ import type {
 } from "@/lib/config-types";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import { seerrAuthMode, seerrHasCredential } from "@/lib/seerr-auth";
+import { isValidRpcPath } from "@/lib/url-validation";
 import type { SeerrAuthMode } from "@/lib/seerr-auth";
 
 /**
@@ -177,6 +178,11 @@ export function editorProblems(payload: ExportPayload): EditorProblem[] {
       const label = inst.name || SERVICE_DEFAULTS[kind].name;
       if (inst.enabled && !inst.localUrl && !inst.remoteUrl) {
         problems.push({ kind, instanceId: inst.id, message: `${label}: enabled but has no URL` });
+      }
+      // The form commits the XML-RPC path as typed (#504); the schema would
+      // silently drop a bad one on save and fall back to /RPC2.
+      if (kind === "rtorrent" && inst.rpcPath !== undefined && !isValidRpcPath(inst.rpcPath)) {
+        problems.push({ kind, instanceId: inst.id, message: `${label}: XML-RPC path must be a path like /xmlrpc` });
       }
       if (kind === "overseerr" && inst.enabled) {
         const mode = seerrAuthMode(inst);

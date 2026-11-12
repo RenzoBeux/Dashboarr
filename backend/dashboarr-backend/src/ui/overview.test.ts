@@ -17,6 +17,7 @@ function instance(over: Partial<StoredServiceInstance> = {}): StoredServiceInsta
     password: null,
     wolMac: "aa:bb:cc:dd:ee:ff",
     pollMs: null,
+    rpcPath: null,
     updatedAt: 1000,
     ...over,
   };

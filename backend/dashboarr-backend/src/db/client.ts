@@ -33,6 +33,8 @@ export function getDb(): Database.Database {
 const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
   // backend 1.7: optimistic-concurrency token for the web editor's slot writes.
   { table: "config_backup", column: "revision", ddl: "revision INTEGER NOT NULL DEFAULT 0" },
+  // backend 1.11: rTorrent's per-instance XML-RPC mount (#504). NULL = /RPC2.
+  { table: "service_instance", column: "rpc_path", ddl: "rpc_path TEXT" },
 ];
 
 function ensureColumns(database: Database.Database): void {

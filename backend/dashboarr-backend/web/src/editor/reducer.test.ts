@@ -114,4 +114,14 @@ describe("notifications and problems", () => {
     const ok = updateSecrets(updateInstance(enabledNoUrl, "radarr", id, { localUrl: "http://x:7878" }), id, { apiKey: "k" });
     expect(editorProblems(ok)).toEqual([]);
   });
+
+  it("holds Save on an invalid rTorrent XML-RPC path until it is fixed (#504)", () => {
+    const { payload, id } = addInstance(blankExportPayload(), "rtorrent");
+    const bad = updateInstance(payload, "rtorrent", id, { rpcPath: "/https://box/xmlrpc" });
+    expect(editorProblems(bad).map((x) => x.message)).toEqual([
+      "rTorrent: XML-RPC path must be a path like /xmlrpc",
+    ]);
+    expect(editorProblems(updateInstance(bad, "rtorrent", id, { rpcPath: "/xmlrpc" }))).toEqual([]);
+    expect(editorProblems(updateInstance(bad, "rtorrent", id, { rpcPath: undefined }))).toEqual([]);
+  });
 });

@@ -77,6 +77,8 @@ interface FakeInstance {
   remoteRequiresVpn?: boolean;
   // Seerr sign-in mode (#332); absent means the admin API key.
   authMode?: "apiKey" | "plex" | "mediaServer" | "local";
+  // rTorrent XML-RPC mount (#504); absent means /RPC2.
+  rpcPath?: string;
 }
 
 interface FakeSecrets {
@@ -2317,5 +2319,93 @@ describe("checkInstanceHealth — Seerr logins suspended (#332)", () => {
     } finally {
       release();
     }
+  });
+});
+
+describe("rTorrent XML-RPC path (#504)", () => {
+  let originalFetch: typeof global.fetch;
+  let fetchSpy: jest.Mock;
+
+  const XML_OK =
+    '<?xml version="1.0"?><methodResponse><params></params></methodResponse>';
+
+  function respond(over: Record<string, any> = {}) {
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "text/xml" }),
+      text: async () => XML_OK,
+      clone() {
+        return this;
+      },
+      ...over,
+    };
+  }
+
+  // The rtorrent fixture with a bare origin and the given mount override.
+  function stateWithRpcPath(rpcPath?: string): FakeState {
+    const state = makeState();
+    state.serviceInstances.rtorrent = [
+      { ...state.serviceInstances.rtorrent[0], localUrl: "https://box.example", rpcPath },
+    ];
+    return state;
+  }
+
+  const post = () =>
+    serviceRequest<string>("rtorrent", "", {
+      method: "POST",
+      headers: { "Content-Type": "text/xml" },
+      body: "<methodCall/>",
+    });
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchSpy = jest.fn().mockResolvedValue(respond());
+    global.fetch = fetchSpy as any;
+    resetDigestSessions();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("posts to /RPC2 when no path is set", async () => {
+    mockStateRef.current = stateWithRpcPath(undefined);
+    await post();
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://box.example/RPC2");
+  });
+
+  it("posts to the instance's own mount", async () => {
+    mockStateRef.current = stateWithRpcPath("/xmlrpc");
+    await post();
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://box.example/xmlrpc");
+  });
+
+  it('treats "/" as XML-RPC at the root of the base URL', async () => {
+    mockStateRef.current = stateWithRpcPath("/");
+    await post();
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://box.example");
+  });
+
+  it("probes the form's path in Test Connection", async () => {
+    mockStateRef.current = makeState();
+    await expect(
+      testServiceConnection("rtorrent", { url: "https://box.example", rpcPath: "/xmlrpc" }),
+    ).resolves.toMatchObject({ kind: "ok" });
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://box.example/xmlrpc");
+  });
+
+  it("points a 404 at the XML-RPC path setting", async () => {
+    mockStateRef.current = makeState();
+    fetchSpy.mockResolvedValueOnce(
+      respond({ ok: false, status: 404, statusText: "Not Found", text: async () => "" }),
+    );
+    const result = await testServiceConnection("rtorrent", { url: "https://box.example" });
+    expect(result).toEqual({
+      kind: "unreachable",
+      message:
+        "Nothing at /RPC2. If your server mounts XML-RPC elsewhere (e.g. /xmlrpc), set the XML-RPC path",
+    });
   });
 });

@@ -64,6 +64,9 @@ import {
   validateServiceUrl,
   normalizeServiceUrl,
   resolveActiveUrlKind,
+  normalizeRpcPath,
+  isValidRpcPath,
+  RTORRENT_DEFAULT_RPC_PATH,
 } from "@/lib/url-validation";
 import { brrrHaptic } from "@/lib/haptics";
 import { ConfirmModal } from "@/components/common/confirm-modal";
@@ -84,6 +87,9 @@ import {
 } from "@/components/settings/service-kind-shared";
 import { AddToDashboardsSheet } from "@/components/dashboard/add-to-dashboards-sheet";
 import { BazarrLinksCard } from "@/components/settings/bazarr-links-card";
+
+const RPC_PATH_INVALID_MESSAGE =
+  "XML-RPC path must be a path like /xmlrpc, not a full URL, with no spaces or query string.";
 
 export function ServiceEditor({
   serviceId,
@@ -135,6 +141,12 @@ export function ServiceEditor({
   const [name, setName] = useState(config.name);
   const [localUrl, setLocalUrl] = useState(config.localUrl);
   const [remoteUrl, setRemoteUrl] = useState(config.remoteUrl);
+  // rTorrent's XML-RPC mount (#504). Blank means the /RPC2 default; the form
+  // keeps what was typed and Save/Test normalize it.
+  const isRtorrent = serviceId === "rtorrent";
+  const [rpcPath, setRpcPath] = useState(config.rpcPath ?? "");
+  const normRpcPath = isRtorrent ? normalizeRpcPath(rpcPath) : undefined;
+  const rpcPathInvalid = normRpcPath !== undefined && !isValidRpcPath(normRpcPath);
   const [apiKey, setApiKey] = useState(secrets.apiKey ?? "");
   const [username, setUsername] = useState(secrets.username ?? "");
   const [password, setPassword] = useState(secrets.password ?? "");
@@ -267,6 +279,7 @@ export function ServiceEditor({
     remoteUrl !== config.remoteUrl ||
     headersJson !== savedHeadersJson ||
     (showsSignIn && authMode !== savedSignInMode) ||
+    (isRtorrent && normRpcPath !== config.rpcPath) ||
     credsDirty;
   const isDirty = name !== config.name || connectionDirty;
 
@@ -370,6 +383,11 @@ export function ServiceEditor({
       toast(remoteResult.message, "error");
       return "aborted";
     }
+    if (rpcPathInvalid) {
+      toast(RPC_PATH_INVALID_MESSAGE, "error");
+      return "aborted";
+    }
+    if (isRtorrent) setRpcPath(normRpcPath ?? "");
     if (remoteResult.kind === "warn") {
       const confirmed = await confirmHttpWarning(remoteResult.message);
       if (!confirmed) return "aborted";
@@ -451,6 +469,8 @@ export function ServiceEditor({
         name: trimmedName,
         localUrl: normLocal,
         remoteUrl: normRemote,
+        // undefined (the /RPC2 default) is stored as absence, like authMode.
+        ...(isRtorrent ? { rpcPath: normRpcPath } : {}),
         ...(showsSignIn
           ? {
               // "apiKey" is stored as absence so exports keep the pre-v53 shape.
@@ -561,6 +581,10 @@ export function ServiceEditor({
   };
 
   const handleTest = async () => {
+    if (rpcPathInvalid) {
+      toast(RPC_PATH_INVALID_MESSAGE, "error");
+      return;
+    }
     setTesting(true);
     // Resolve which URL the app will actually use right now through the SAME
     // helper the health grid's L/R badge uses, so Test can never probe a
@@ -635,6 +659,7 @@ export function ServiceEditor({
       // the real session out from under the app.
       instanceId: connectionDirty ? undefined : instanceId,
       seerrAuthMode: showsSignIn ? authMode : undefined,
+      rpcPath: normRpcPath,
     });
     setTesting(false);
 
@@ -927,6 +952,29 @@ export function ServiceEditor({
             {defaultPort}.
           </Text>
         </View>
+        {isRtorrent ? (
+          <View className="gap-1.5">
+            <TextInput
+              label="XML-RPC path"
+              placeholder={RTORRENT_DEFAULT_RPC_PATH}
+              value={rpcPath}
+              onChangeText={setRpcPath}
+              onBlur={() => {
+                if (!rpcPathInvalid) setRpcPath(normRpcPath ?? "");
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              error={rpcPathInvalid ? RPC_PATH_INVALID_MESSAGE : undefined}
+            />
+            {rpcPathInvalid ? null : (
+              <Text className="text-zinc-600 text-xs">
+                Added to both URLs. Leave blank for {RTORRENT_DEFAULT_RPC_PATH}.
+                Some seedboxes, like Whatbox, use /xmlrpc.
+              </Text>
+            )}
+          </View>
+        ) : null}
       </Card>
 
       <AuthCard

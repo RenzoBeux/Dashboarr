@@ -15,6 +15,7 @@ interface ServiceInstanceRow {
   password: string | null;
   wol_mac: string | null;
   poll_ms: number | null;
+  rpc_path: string | null;
   updated_at: number;
 }
 
@@ -31,6 +32,7 @@ export interface StoredServiceInstance {
   password: string | null;
   wolMac: string | null;
   pollMs: number | null;
+  rpcPath: string | null;
   updatedAt: number;
 }
 
@@ -48,6 +50,7 @@ function mapRow(row: ServiceInstanceRow): StoredServiceInstance {
     password: decryptSecret(row.password),
     wolMac: row.wol_mac,
     pollMs: row.poll_ms,
+    rpcPath: row.rpc_path,
     updatedAt: row.updated_at,
   };
 }
@@ -57,8 +60,8 @@ export function upsertServiceInstance(payload: ServiceInstancePayload): void {
   db.prepare(
     `INSERT INTO service_instance
        (id, service_id, enabled, name, local_url, remote_url, use_remote,
-        api_key, username, password, wol_mac, poll_ms, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        api_key, username, password, wol_mac, poll_ms, rpc_path, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        service_id  = excluded.service_id,
        enabled     = excluded.enabled,
@@ -71,6 +74,7 @@ export function upsertServiceInstance(payload: ServiceInstancePayload): void {
        password    = excluded.password,
        wol_mac     = excluded.wol_mac,
        poll_ms     = excluded.poll_ms,
+       rpc_path    = excluded.rpc_path,
        updated_at  = excluded.updated_at`,
   ).run(
     payload.id,
@@ -85,6 +89,7 @@ export function upsertServiceInstance(payload: ServiceInstancePayload): void {
     encryptSecret(payload.password ?? null),
     payload.wolMac ?? null,
     payload.pollMs ?? null,
+    payload.rpcPath ?? null,
     Date.now(),
   );
 }

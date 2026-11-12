@@ -96,10 +96,24 @@ export type ServiceConfigPayload = z.infer<typeof serviceConfigSchema>;
  * config pushes); `kind` is the service kind. Two Radarrs from one app would
  * arrive as two entries with kind="radarr" and different `id`s.
  */
+/**
+ * rTorrent's XML-RPC mount (#504); absent means /RPC2. Mirrors isValidRpcPath
+ * in the app's lib/url-validation.ts. A malformed value is dropped rather than
+ * failing the whole PUT /config, which would silently stop every push.
+ */
+const rpcPathSchema = z
+  .string()
+  .max(256)
+  .regex(/^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/]*$/)
+  .refine((p) => !p.includes("//"))
+  .optional()
+  .catch(undefined);
+
 export const serviceInstanceSchema = z.object({
   id: z.string().min(1).max(128),
   kind: serviceIdSchema,
   ...sharedServiceFields,
+  rpcPath: rpcPathSchema,
 });
 
 export type ServiceInstancePayload = z.infer<typeof serviceInstanceSchema>;
@@ -379,6 +393,7 @@ export const deviceRegisterSchema = z.object({
 
 export const SERVICE_API_BASE: Record<ServiceId, string> = {
   qbittorrent: "/api/v2",
+  // The conventional mount; an instance's rpcPath replaces it (#504).
   rtorrent: "/RPC2",
   transmission: "/transmission/rpc",
   // Deluge's Web UI is JSON-RPC over a single POST /json endpoint.
@@ -424,8 +439,9 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
 
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   qbittorrent: "/app/version",
-  // rTorrent is XML-RPC over the /RPC2 mount; there is no GET ping path (the
-  // app pings it with an XML-RPC POST). No backend poller uses this today.
+  // rTorrent is XML-RPC over its mount (/RPC2 or the instance's rpcPath,
+  // #504); there is no GET ping path, pingService POSTs system.listMethods
+  // to the mount itself, like the app.
   rtorrent: "",
   // Transmission is JSON-RPC over /transmission/rpc; the ping POSTs session-get
   // (see pingService), so there is no GET ping path.

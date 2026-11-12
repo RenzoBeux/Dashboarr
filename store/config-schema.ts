@@ -21,6 +21,7 @@ import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
 import { isSeerrAuthMode } from "@/lib/seerr-auth";
+import { isValidRpcPath } from "@/lib/url-validation";
 import { isValidShortcutUrl, SHORTCUT_NAME_MAX_LENGTH } from "@/lib/web-shortcuts";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
@@ -144,6 +145,11 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
     if (typeof id === "string" && id.length > 0 && id.length <= 128) {
       out[key] = id;
     }
+  }
+  // v64 (#504): optional rTorrent XML-RPC path. A malformed value is dropped,
+  // which falls back to /RPC2 rather than rejecting the instance.
+  if (typeof v.rpcPath === "string" && isValidRpcPath(v.rpcPath)) {
+    out.rpcPath = v.rpcPath;
   }
   return out;
 }

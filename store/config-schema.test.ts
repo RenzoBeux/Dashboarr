@@ -282,6 +282,24 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.lidarr[0]).not.toHaveProperty("remoteRequiresVpn");
   });
 
+  // v64 (#504): a malformed rTorrent XML-RPC path is dropped (falls back to
+  // /RPC2) instead of rejecting the instance.
+  it("round-trips a valid rpcPath and drops a malformed one (v64)", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: {
+        rtorrent: [
+          validInstance({ rpcPath: "/xmlrpc" }),
+          validInstance({ id: "uuid-2", rpcPath: "https://box.example/xmlrpc" }),
+          validInstance({ id: "uuid-3", rpcPath: 42 }),
+        ],
+      },
+    });
+    expect(result.services.rtorrent[0].rpcPath).toBe("/xmlrpc");
+    expect(result.services.rtorrent[1]).not.toHaveProperty("rpcPath");
+    expect(result.services.rtorrent[2]).not.toHaveProperty("rpcPath");
+  });
+
   it("round-trips arr add-flow defaults (v36)", () => {
     const result = validateExportPayload({
       ...baseValid(),

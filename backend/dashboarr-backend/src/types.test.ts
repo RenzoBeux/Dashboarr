@@ -6,6 +6,8 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./types.js";
 import { isQbtCategoryMuted } from "./workers/transitions.js";
+import { apiBaseFor, pingService } from "./services/http.js";
+import type { StoredServiceConfig } from "./db/repos/config.js";
 
 /**
  * Regression guard for the bug where the app sends a config entry for a service
@@ -229,4 +231,60 @@ test("perInstance accepts the Cleanuparr categories", () => {
   assert.equal(result.success, true);
   if (!result.success) return;
   assert.deepEqual(result.data.notifications.perInstance, perInstance);
+});
+
+test("rtorrent rpcPath (#504) is kept when valid and dropped, not fatal, when malformed", () => {
+  const result = configPayloadSchema.safeParse({
+    instances: [
+      { id: "a", kind: "rtorrent", enabled: true, name: "Box", localUrl: "https://box.example", rpcPath: "/xmlrpc" },
+      { id: "b", kind: "rtorrent", enabled: true, name: "Bad", localUrl: "https://box.example", rpcPath: "https://x/rpc" },
+      { id: "c", kind: "rtorrent", enabled: true, name: "Num", localUrl: "https://box.example", rpcPath: 42 },
+    ],
+    notifications: DEFAULT_NOTIFICATION_SETTINGS,
+  });
+  assert.equal(result.success, true);
+  if (!result.success) return;
+  assert.equal(result.data.instances?.[0]?.rpcPath, "/xmlrpc");
+  assert.equal(result.data.instances?.[1]?.rpcPath, undefined);
+  assert.equal(result.data.instances?.[2]?.rpcPath, undefined);
+});
+
+test("apiBaseFor honours rtorrent's rpcPath (#504) and nothing else's", () => {
+  assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: null }), "/RPC2");
+  assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: "/xmlrpc" }), "/xmlrpc");
+  assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: "/" }), "");
+  assert.equal(apiBaseFor({ id: "radarr", rpcPath: "/xmlrpc" }), "/api/v3");
+});
+
+test("rtorrent ping POSTs system.listMethods to the instance's mount (#504)", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response("<methodResponse/>", { status: 200 });
+  }) as typeof fetch;
+  try {
+    const config: StoredServiceConfig = {
+      id: "rtorrent",
+      enabled: true,
+      name: "Box",
+      localUrl: "https://box.example",
+      remoteUrl: "",
+      useRemote: false,
+      apiKey: null,
+      username: null,
+      password: null,
+      wolMac: null,
+      pollMs: null,
+      rpcPath: "/xmlrpc",
+      updatedAt: 0,
+    };
+    assert.equal(await pingService(config), true);
+    assert.equal(calls[0]?.url, "https://box.example/xmlrpc");
+    assert.equal(calls[0]?.init.method, "POST");
+    assert.match(String(calls[0]?.init.body), /<methodName>system\.listMethods<\/methodName>/);
+    assert.equal(new Headers(calls[0]?.init.headers).get("content-type"), "text/xml");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

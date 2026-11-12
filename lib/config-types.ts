@@ -110,6 +110,11 @@ export interface ServiceConfig {
   // which secret slot it reads. Only the editor writes this, and it writes
   // `undefined` rather than "apiKey" so exports keep the absent shape.
   authMode?: SeerrAuthMode;
+  // v64 (#504): rTorrent-only XML-RPC mount path, appended to the base URL in
+  // place of the conventional /RPC2 (seedboxes like Whatbox mount it at
+  // /xmlrpc). Absent/undefined means /RPC2, the pre-v64 behavior; the editor
+  // stores the default as absence (normalizeRpcPath in lib/url-validation.ts).
+  rpcPath?: string;
 }
 
 // Stored in linkedRadarrInstanceId / linkedSonarrInstanceId to switch the
