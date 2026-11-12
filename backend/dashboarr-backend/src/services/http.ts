@@ -7,6 +7,10 @@ import type { ServiceId } from "../types.js";
 const DEFAULT_TIMEOUT = 15000;
 const PING_TIMEOUT = 5000;
 
+// Mirrors the app's rTorrent probe (lib/http-client.ts pingService).
+const RTORRENT_PING_BODY =
+  '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params></params></methodCall>';
+
 export interface FetchOptions extends RequestInit {
   timeoutMs?: number;
   params?: Record<string, string | number | boolean>;
@@ -282,17 +286,21 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
   try {
-    // NZBGet, Transmission, Deluge and unRAID reject GET on their RPC mount —
-    // all POST. NZBGet posts a JSON-RPC version call; Transmission posts
-    // session-get (a 409 CSRF challenge still counts as reachable since it's
-    // < 500); Deluge posts auth.check_session, the one method it exposes at
-    // AUTH_LEVEL_NONE; unRAID posts the cheapest valid GraphQL document.
+    // NZBGet, Transmission, Deluge, unRAID and rTorrent reject GET on their
+    // RPC mount — all POST. NZBGet posts a JSON-RPC version call; Transmission
+    // posts session-get (a 409 CSRF challenge still counts as reachable since
+    // it's < 500); Deluge posts auth.check_session, the one method it exposes
+    // at AUTH_LEVEL_NONE; unRAID posts the cheapest valid GraphQL document;
+    // rTorrent posts XML-RPC system.listMethods, the same probe the app sends,
+    // so its SCGI mount answers as it would a real call.
     const isNzbget = config.id === "nzbget";
     const isTransmission = config.id === "transmission";
     const isDeluge = config.id === "deluge";
     const isUnraid = config.id === "unraid";
-    const usePost = isNzbget || isTransmission || isDeluge || isUnraid;
+    const isRtorrent = config.id === "rtorrent";
+    const usePost = isNzbget || isTransmission || isDeluge || isUnraid || isRtorrent;
     if (isUnraid) headers.set("Content-Type", "application/json");
+    if (isRtorrent) headers.set("Content-Type", "text/xml");
     const res = await fetch(url, {
       method: usePost ? "POST" : "GET",
       body: isNzbget
@@ -303,7 +311,9 @@ export async function pingService(config: StoredServiceConfig): Promise<boolean>
             ? JSON.stringify({ method: "auth.check_session", params: [], id: 1 })
             : isUnraid
               ? JSON.stringify({ query: "{__typename}" })
-              : undefined,
+              : isRtorrent
+                ? RTORRENT_PING_BODY
+                : undefined,
       headers,
       signal: controller.signal,
     });

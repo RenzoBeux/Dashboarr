@@ -6,7 +6,8 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./types.js";
 import { isQbtCategoryMuted } from "./workers/transitions.js";
-import { apiBaseFor } from "./services/http.js";
+import { apiBaseFor, pingService } from "./services/http.js";
+import type { StoredServiceConfig } from "./db/repos/config.js";
 
 /**
  * Regression guard for the bug where the app sends a config entry for a service
@@ -253,4 +254,37 @@ test("apiBaseFor honours rtorrent's rpcPath (#504) and nothing else's", () => {
   assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: "/xmlrpc" }), "/xmlrpc");
   assert.equal(apiBaseFor({ id: "rtorrent", rpcPath: "/" }), "");
   assert.equal(apiBaseFor({ id: "radarr", rpcPath: "/xmlrpc" }), "/api/v3");
+});
+
+test("rtorrent ping POSTs system.listMethods to the instance's mount (#504)", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response("<methodResponse/>", { status: 200 });
+  }) as typeof fetch;
+  try {
+    const config: StoredServiceConfig = {
+      id: "rtorrent",
+      enabled: true,
+      name: "Box",
+      localUrl: "https://box.example",
+      remoteUrl: "",
+      useRemote: false,
+      apiKey: null,
+      username: null,
+      password: null,
+      wolMac: null,
+      pollMs: null,
+      rpcPath: "/xmlrpc",
+      updatedAt: 0,
+    };
+    assert.equal(await pingService(config), true);
+    assert.equal(calls[0]?.url, "https://box.example/xmlrpc");
+    assert.equal(calls[0]?.init.method, "POST");
+    assert.match(String(calls[0]?.init.body), /<methodName>system\.listMethods<\/methodName>/);
+    assert.equal(new Headers(calls[0]?.init.headers).get("content-type"), "text/xml");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

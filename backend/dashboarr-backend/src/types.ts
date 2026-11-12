@@ -440,7 +440,8 @@ export const SERVICE_API_BASE: Record<ServiceId, string> = {
 export const SERVICE_PING_PATH: Record<ServiceId, string> = {
   qbittorrent: "/app/version",
   // rTorrent is XML-RPC over its mount (/RPC2 or the instance's rpcPath,
-  // #504); the offline poller pings the mount itself.
+  // #504); there is no GET ping path, pingService POSTs system.listMethods
+  // to the mount itself, like the app.
   rtorrent: "",
   // Transmission is JSON-RPC over /transmission/rpc; the ping POSTs session-get
   // (see pingService), so there is no GET ping path.
