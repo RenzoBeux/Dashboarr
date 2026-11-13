@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import { View, Pressable, ScrollView, TextInput } from "react-native";
-import { LayoutGrid, List, Search, X } from "lucide-react-native";
+import { LayoutGrid, List, Search } from "lucide-react-native";
 import { ServiceHeader } from "@/components/common/service-header";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { LibrarySearchInput } from "@/components/common/library-search-field";
 import { Icon } from "@/components/ui/icon";
-import { useThemeColor } from "@/hooks/use-theme-color";
 import { lightHaptic } from "@/lib/haptics";
 import type { LibraryViewMode } from "@/store/library-view-store";
 import type { ServiceId } from "@/lib/constants";
@@ -174,7 +174,6 @@ function LibrarySearchRow({
   placeholder: string;
   autoFocus: boolean;
 }) {
-  const tc = useThemeColor();
   const inputRef = useRef<TextInput>(null);
   useEffect(() => {
     if (!autoFocus) return;
@@ -186,31 +185,14 @@ function LibrarySearchRow({
   }, []);
   return (
     <View className="flex-row items-center gap-2 h-11 px-3 mb-3 rounded-xl bg-surface border border-primary/60">
-      <Icon icon={Search} size={16} color="#71717a" />
-      <TextInput
-        ref={inputRef}
-        value={query}
-        onChangeText={onQuery}
+      <LibrarySearchInput
+        query={query}
+        onQuery={onQuery}
         placeholder={placeholder}
-        placeholderTextColor={tc("#71717a")}
-        autoCapitalize="none"
-        autoCorrect={false}
-        returnKeyType="search"
-        clearButtonMode="never"
-        className="flex-1 text-zinc-100 text-sm py-0"
         accessibilityLabel={placeholder}
+        icon={Search}
+        inputRef={inputRef}
       />
-      {query.length > 0 ? (
-        <Pressable
-          onPress={() => onQuery("")}
-          hitSlop={8}
-          className="active:opacity-70"
-          accessibilityRole="button"
-          accessibilityLabel="Clear search"
-        >
-          <Icon icon={X} size={16} color="#71717a" />
-        </Pressable>
-      ) : null}
     </View>
   );
 }
