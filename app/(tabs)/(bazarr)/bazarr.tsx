@@ -138,14 +138,6 @@ function BazarrScreenInner() {
           search.reset();
         },
       }}
-      search={
-        section === "library"
-          ? {
-              ...search.toolbar,
-              placeholder: kind === "movies" ? "Search movies" : "Search series",
-            }
-          : undefined
-      }
       view={section === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
     />
   );
@@ -168,6 +160,8 @@ function BazarrScreenInner() {
           onFilterChange={setFilter}
           mode={view.mode}
           query={search.applied}
+          searchText={search.query}
+          onSearchText={search.setQuery}
           onClearSearch={search.reset}
           header={header}
           refreshControl={refreshControl}

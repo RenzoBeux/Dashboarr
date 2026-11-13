@@ -1,9 +1,7 @@
-import { useEffect, useRef } from "react";
-import { View, Pressable, ScrollView, TextInput } from "react-native";
-import { LayoutGrid, List, Search } from "lucide-react-native";
+import { View, Pressable, ScrollView } from "react-native";
+import { LayoutGrid, List } from "lucide-react-native";
 import { ServiceHeader } from "@/components/common/service-header";
 import { FilterChip } from "@/components/ui/filter-chip";
-import { LibrarySearchInput } from "@/components/common/library-search-field";
 import { Icon } from "@/components/ui/icon";
 import { lightHaptic } from "@/lib/haptics";
 import type { LibraryViewMode } from "@/store/library-view-store";
@@ -12,19 +10,18 @@ import type { ServiceId } from "@/lib/constants";
 /**
  * The header of a library screen: the service title (with instance picker and
  * status), optional segments next to it (Library / History), and icon
- * buttons on the right — search this list, switch list/poster view, plus any
- * screen-specific actions. Search opens as its own row below the header, so
- * it never hides the segments or the view switch.
+ * buttons on the right: screen-specific actions (Add, Scan…) and the
+ * list/poster switch. The library search is not here: it is the
+ * always-visible LibrarySearchField below the header, so a magnifier up here
+ * only ever means "add".
  *
- * Shared by the Bazarr tab and the Radarr/Sonarr libraries. The search row
- * sits at the top of the screen, so the keyboard can never cover it.
+ * Shared by the Bazarr tab and the Radarr/Sonarr libraries.
  */
 export function LibraryToolbar<S extends string>({
   title,
   serviceId,
   online,
   segments,
-  search,
   view,
   actions,
 }: {
@@ -36,24 +33,10 @@ export function LibraryToolbar<S extends string>({
     value: S;
     onChange: (next: S) => void;
   };
-  search?: {
-    open: boolean;
-    onToggle: () => void;
-    query: string;
-    onQuery: (q: string) => void;
-    placeholder: string;
-  };
   view?: { mode: LibraryViewMode; onToggle: () => void };
-  // Extra icon buttons, before search and view (e.g. Add, Scan).
+  // Extra icon buttons, before the view switch (e.g. Add, Scan).
   actions?: React.ReactNode;
 }) {
-  // Focus the search field when the user opens it, not every time the list
-  // remounts its header (switching view mode or tabs) with search still open.
-  const openAtMount = useRef(search?.open ?? false);
-  useEffect(() => {
-    if (!search?.open) openAtMount.current = false;
-  }, [search?.open]);
-
   return (
     <View>
       <View className="flex-row items-center gap-2">
@@ -96,17 +79,6 @@ export function LibraryToolbar<S extends string>({
         )}
         <View className="flex-row items-center gap-1.5 flex-shrink-0">
           {actions}
-          {search ? (
-            <ToolbarIconButton
-              icon={Search}
-              label={search.open ? "Close search" : "Search this list"}
-              active={search.open}
-              onPress={() => {
-                lightHaptic();
-                search.onToggle();
-              }}
-            />
-          ) : null}
           {view ? (
             <ToolbarIconButton
               icon={view.mode === "list" ? LayoutGrid : List}
@@ -119,15 +91,6 @@ export function LibraryToolbar<S extends string>({
           ) : null}
         </View>
       </View>
-
-      {search?.open ? (
-        <LibrarySearchRow
-          query={search.query}
-          onQuery={search.onQuery}
-          placeholder={search.placeholder}
-          autoFocus={!openAtMount.current}
-        />
-      ) : null}
     </View>
   );
 }
@@ -160,39 +123,5 @@ export function ToolbarIconButton({
     >
       <Icon icon={icon} size={18} color={active ? "#60a5fa" : "#d4d4d8"} />
     </Pressable>
-  );
-}
-
-function LibrarySearchRow({
-  query,
-  onQuery,
-  placeholder,
-  autoFocus,
-}: {
-  query: string;
-  onQuery: (q: string) => void;
-  placeholder: string;
-  autoFocus: boolean;
-}) {
-  const inputRef = useRef<TextInput>(null);
-  useEffect(() => {
-    if (!autoFocus) return;
-    // Focus once the row has mounted, so the keyboard opens with it.
-    const id = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(id);
-    // Only on mount: the decision is made when the row appears.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return (
-    <View className="flex-row items-center gap-2 h-11 px-3 mb-3 rounded-xl bg-surface border border-primary/60">
-      <LibrarySearchInput
-        query={query}
-        onQuery={onQuery}
-        placeholder={placeholder}
-        accessibilityLabel={placeholder}
-        icon={Search}
-        inputRef={inputRef}
-      />
-    </View>
   );
 }
