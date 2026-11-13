@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from "react";
+import { memo, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   type RefreshControlProps,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Film, Eye, EyeOff, Trash2, Info, ScanSearch, Plus } from "lucide-react-native";
+import { Search, Film, Eye, EyeOff, Trash2, Info, ScanSearch } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper, useScreenBottomPadding } from "@/components/common/screen-wrapper";
 import { HealthIssuesBanner } from "@/components/services/health-issues-banner";
@@ -20,7 +20,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/common/error-banner";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { ActionSheet, type ActionSheetAction } from "@/components/ui/action-sheet";
-import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import {
@@ -69,10 +68,13 @@ import { radarrReleaseTime } from "@/lib/radarr-release-date";
 import type { RadarrMovie, RadarrQueueItem } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
+import { LibrarySearchField } from "@/components/common/library-search-field";
+import { FilterTokenRow } from "@/components/common/filter-token-row";
+import { choiceToken, filterTokens, tagToken } from "@/lib/library-filter-tokens";
 import { ArrLibraryListRow } from "@/components/common/arr-library-list-row";
 import { useLibraryView } from "@/hooks/use-library-view";
 import { useLibrarySearch } from "@/hooks/use-library-search";
-import { useLibrarySearchFilter, combineFilters } from "@/hooks/use-library-search-filter";
+import { useLibrarySearchFilter } from "@/hooks/use-library-search-filter";
 import type { LibraryViewMode } from "@/store/library-view-store";
 
 type MovieSheetTarget =
@@ -195,6 +197,30 @@ export const MoviesView = memo(function MoviesView({
   // In-library search and list/poster view (the shared library toolbar).
   const search = useLibrarySearch();
   const view = useLibraryView("radarr", "poster");
+  // Non-default filters and sort as removable tokens under the search field.
+  const tokens = filterTokens([
+    choiceToken({
+      key: "monitor",
+      value: monitorFilter,
+      defaultValue: "monitored",
+      options: MONITOR_FILTER_OPTIONS,
+      reset: () => setMonitorFilter("monitored"),
+    }),
+    tagToken(tagFilter.summary, tagFilter.section?.onClear),
+    choiceToken({
+      key: "sort",
+      value: sort,
+      defaultValue: SORT_DEFAULTS.movies,
+      options: SORT_OPTIONS,
+      kind: "sort",
+      reset: () => setSort(SORT_DEFAULTS.movies),
+    }),
+  ]);
+  // "Show all" under a search: widen every filter, keep the sort.
+  const showAll = useCallback(() => {
+    setMonitorFilter("all");
+    tagFilter.section?.onClear?.();
+  }, [tagFilter.section]);
   const router = useRouter();
   const { data: healthData } = useServiceHealth();
   const { refreshing, onRefresh } = usePullToRefresh([["radarr"]]);
@@ -342,16 +368,11 @@ export const MoviesView = memo(function MoviesView({
               />
             )}
             <ToolbarIconButton
-              icon={Plus}
+              icon={Search}
               label="Add movie"
               onPress={() => router.push("/movie/search")}
             />
           </>
-        }
-        search={
-          tab === "library"
-            ? { ...search.toolbar, placeholder: "Search your movies" }
-            : undefined
         }
         view={tab === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
       />
@@ -382,24 +403,18 @@ export const MoviesView = memo(function MoviesView({
       </ScrollView>
 
       {tab === "library" && (
-        <View className="mb-4">
-          <FilterSortButton
-            summary={[
-              MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)
-                ?.label ?? "",
-              tagFilter.summary,
-              SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-            onPress={() => setFilterSortOpen(true)}
-            active={
-              monitorFilter !== "monitored" ||
-              sort !== SORT_DEFAULTS.movies ||
-              tagFilter.active
-            }
+        <>
+          <LibrarySearchField
+            query={search.query}
+            onQuery={search.setQuery}
+            accessibilityLabel="Search your movies"
+            filter={{
+              onPress: () => setFilterSortOpen(true),
+              activeCount: tokens.length,
+            }}
           />
-        </View>
+          <FilterTokenRow tokens={tokens} />
+        </>
       )}
     </>
   );
@@ -413,6 +428,7 @@ export const MoviesView = memo(function MoviesView({
           query={search.applied}
           mode={view.mode}
           tagFilter={tagFilter.predicate}
+          onShowAll={showAll}
           onLongPress={openMovieSheet}
           listHeader={header}
           refreshControl={refreshCtl}
@@ -504,6 +520,7 @@ function MovieLibrary({
   query,
   mode,
   tagFilter,
+  onShowAll,
   onLongPress,
   listHeader,
   refreshControl,
@@ -514,6 +531,7 @@ function MovieLibrary({
   query: string;
   mode: LibraryViewMode;
   tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
+  onShowAll: () => void;
   onLongPress: (movie: RadarrMovie) => void;
   listHeader: React.ReactElement;
   refreshControl: React.ReactElement<RefreshControlProps>;
@@ -536,11 +554,6 @@ function MovieLibrary({
 
   // In-library search narrows the list without reordering it.
   const searchFilter = useLibrarySearchFilter(movies, query);
-  // Memoized: the grid re-sorts the whole library when this identity changes.
-  const extraFilter = useMemo(
-    () => combineFilters(tagFilter, searchFilter),
-    [tagFilter, searchFilter],
-  );
   const statusOf = (m: RadarrMovie) => ({
     barColor: BAR_KIND_COLOR[radarrBarKind(m, activity.has(m.id))],
     cornerColor: cornerColorFor(m.status),
@@ -553,7 +566,8 @@ function MovieLibrary({
       isLoading={isLoading}
       error={error}
       monitorFilter={monitorFilter}
-      extraFilter={extraFilter}
+      extraFilter={tagFilter}
+      search={{ filter: searchFilter, query, onShowAll }}
       mode={mode}
       renderRow={(m) => (
         <ArrLibraryListRow
