@@ -1,6 +1,7 @@
 import { useState, type RefObject } from "react";
 import { View, Pressable, TextInput } from "react-native";
 import { SlidersHorizontal, TextSearch, X } from "lucide-react-native";
+import { KeyboardController } from "react-native-keyboard-controller";
 import { Icon } from "@/components/ui/icon";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { filterSortA11yLabel } from "@/lib/library-filter-tokens";
@@ -83,6 +84,16 @@ export function LibrarySearchField({
 }) {
   const [focused, setFocused] = useState(false);
   const active = filter.activeCount > 0;
+  // The filter sheet lifts itself by the keyboard's height. Opened while the
+  // keyboard is still closing, it slides in lifted and then drops back, so
+  // close the keyboard first and open the sheet once it is fully down.
+  const openFilter = () => {
+    if (!KeyboardController.isVisible()) {
+      filter.onPress();
+      return;
+    }
+    void KeyboardController.dismiss().then(filter.onPress);
+  };
   return (
     <View
       className={`flex-row items-center gap-2 h-11 pl-3.5 pr-1 mb-3 rounded-full bg-surface border ${
@@ -99,7 +110,7 @@ export function LibrarySearchField({
       />
       <View className="w-px h-5 bg-border ml-1" />
       <Pressable
-        onPress={filter.onPress}
+        onPress={openFilter}
         // The button is 2.25rem round; the slop brings the target past 44pt.
         hitSlop={6}
         className={`w-9 h-9 rounded-full items-center justify-center active:opacity-70 ${
