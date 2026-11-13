@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from "react";
+import { memo, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import {
   Trash2,
   Info,
   ScanSearch,
-  Plus,
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -36,7 +35,6 @@ import {
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { ArrDeleteConfirm } from "@/components/common/arr-delete-confirm";
 import { toastError } from "@/components/ui/toast";
-import { FilterSortButton } from "@/components/common/filter-sort-button";
 import { FilterSortSheet } from "@/components/common/filter-sort-sheet";
 import { useLibraryTagFilter } from "@/hooks/use-library-tag-filter";
 import { tagLabelResolver } from "@/lib/library-tags";
@@ -93,6 +91,9 @@ import type { SonarrSeries, SonarrCalendarEntry } from "@/lib/types";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { groupBy } from "@/lib/group-by";
 import { LibraryToolbar, ToolbarIconButton } from "@/components/common/library-toolbar";
+import { LibrarySearchField } from "@/components/common/library-search-field";
+import { FilterTokenRow } from "@/components/common/filter-token-row";
+import { choiceToken, filterTokens, tagToken } from "@/lib/library-filter-tokens";
 import { ArrLibraryListRow } from "@/components/common/arr-library-list-row";
 import { useLibraryView } from "@/hooks/use-library-view";
 import { useLibrarySearch } from "@/hooks/use-library-search";
@@ -197,6 +198,38 @@ export const TvView = memo(function TvView({
   // In-library search and list/poster view (the shared library toolbar).
   const search = useLibrarySearch();
   const view = useLibraryView("sonarr", "poster");
+  // Non-default filters and sort as removable tokens under the search field.
+  const tokens = filterTokens([
+    choiceToken({
+      key: "monitor",
+      value: monitorFilter,
+      defaultValue: "monitored",
+      options: MONITOR_FILTER_OPTIONS,
+      reset: () => setMonitorFilter("monitored"),
+    }),
+    choiceToken({
+      key: "status",
+      value: statusFilter,
+      defaultValue: "all",
+      options: STATUS_FILTER_OPTIONS,
+      reset: () => setStatusFilter("all"),
+    }),
+    tagToken(tagFilter.summary, tagFilter.section?.onClear),
+    choiceToken({
+      key: "sort",
+      value: sort,
+      defaultValue: SORT_DEFAULTS.series,
+      options: SORT_OPTIONS,
+      kind: "sort",
+      reset: () => setSort(SORT_DEFAULTS.series),
+    }),
+  ]);
+  // "Show all" under a search: widen every filter, keep the sort.
+  const showAll = useCallback(() => {
+    setMonitorFilter("all");
+    setStatusFilter("all");
+    tagFilter.section?.onClear?.();
+  }, [tagFilter.section]);
   // All modal sequencing (sheet → confirm, sheet → push) goes through the
   // flow — see hooks/use-modal-flow.ts.
   const flow = useModalFlow<{
@@ -359,16 +392,11 @@ export const TvView = memo(function TvView({
               disabled={searchMissing.isPending}
             />
             <ToolbarIconButton
-              icon={Plus}
+              icon={Search}
               label="Add series"
               onPress={() => router.push("/series/search")}
             />
           </>
-        }
-        search={
-          tab === "library"
-            ? { ...search.toolbar, placeholder: "Search your shows" }
-            : undefined
         }
         view={tab === "library" ? { mode: view.mode, onToggle: view.toggle } : undefined}
       />
@@ -399,29 +427,18 @@ export const TvView = memo(function TvView({
       </ScrollView>
 
       {tab === "library" && (
-        <View className="mb-4">
-          <FilterSortButton
-            summary={[
-              MONITOR_FILTER_OPTIONS.find((f) => f.value === monitorFilter)
-                ?.label ?? "",
-              statusFilter !== "all"
-                ? (STATUS_FILTER_OPTIONS.find((o) => o.key === statusFilter)
-                    ?.label ?? "")
-                : null,
-              tagFilter.summary,
-              SORT_OPTIONS.find((o) => o.key === sort)?.label ?? "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-            onPress={() => setFilterSortOpen(true)}
-            active={
-              monitorFilter !== "monitored" ||
-              statusFilter !== "all" ||
-              sort !== SORT_DEFAULTS.series ||
-              tagFilter.active
-            }
+        <>
+          <LibrarySearchField
+            query={search.query}
+            onQuery={search.setQuery}
+            accessibilityLabel="Search your shows"
+            filter={{
+              onPress: () => setFilterSortOpen(true),
+              activeCount: tokens.length,
+            }}
           />
-        </View>
+          <FilterTokenRow tokens={tokens} />
+        </>
       )}
     </>
   );
@@ -436,6 +453,7 @@ export const TvView = memo(function TvView({
           mode={view.mode}
           tagFilter={tagFilter.predicate}
           sort={sort}
+          onShowAll={showAll}
           onLongPress={openSeriesSheet}
           listHeader={header}
           refreshControl={refreshCtl}
@@ -541,6 +559,7 @@ function SeriesLibrary({
   mode,
   tagFilter,
   sort,
+  onShowAll,
   onLongPress,
   listHeader,
   refreshControl,
@@ -552,6 +571,7 @@ function SeriesLibrary({
   mode: LibraryViewMode;
   tagFilter: ((item: { tags?: number[] }) => boolean) | undefined;
   sort: SeriesSortKey;
+  onShowAll: () => void;
   onLongPress: (series: SonarrSeries) => void;
   listHeader: React.ReactElement;
   refreshControl: React.ReactElement<RefreshControlProps>;
@@ -581,15 +601,16 @@ function SeriesLibrary({
   // In-library search narrows the list without reordering it.
   const searchPredicate = useLibrarySearchFilter(series, query);
 
-  // The grid has ONE extraFilter slot, so status, tags and search are ANDed
-  // here. All inputs are memo-stable, so this is too — the grid's `sorted` memo
+  // The grid has ONE extraFilter slot, so status and tags are ANDed here; the
+  // search goes in separately so the grid can count what the filters hide.
+  // All inputs are memo-stable, so this is too — the grid's `sorted` memo
   // (and with it a full re-sort of the library) survives every render.
   // combineFilters returns a lone predicate as-is, keeping its identity, and
   // `undefined` when none is active, so the empty state still reads "No shows
   // in library" instead of "No shows match filters".
   const extraFilter = useMemo(
-    () => combineFilters<SonarrSeries>(statusPredicate, tagFilter, searchPredicate),
-    [statusPredicate, tagFilter, searchPredicate],
+    () => combineFilters<SonarrSeries>(statusPredicate, tagFilter),
+    [statusPredicate, tagFilter],
   );
 
   const renderTags = useMemo(() => tagLabelResolver<SonarrSeries>(tags), [tags]);
@@ -607,6 +628,7 @@ function SeriesLibrary({
       error={error}
       monitorFilter={monitorFilter}
       extraFilter={extraFilter}
+      search={{ filter: searchPredicate, query, onShowAll }}
       isMissing={sonarrIsMissing}
       sort={sort}
       compare={compareSeries}
