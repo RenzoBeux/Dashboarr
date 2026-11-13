@@ -47,6 +47,7 @@ export function ArrLibraryListRow({
         fallback={placeholderIcon}
         barColor={status?.barColor}
         progress={status?.progress}
+        held={status?.held}
       />
       <View className="flex-1 min-w-0">
         <Text className="text-zinc-100 text-sm font-semibold" numberOfLines={1}>

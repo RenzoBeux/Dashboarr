@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { Image } from "expo-image";
 import { Icon } from "@/components/ui/icon";
+import { StatusFill } from "@/components/ui/status-fill";
 import { BAR_TRACK_COLOR } from "@/lib/arr-poster-status";
 
 /**
@@ -14,6 +15,7 @@ export function LibraryThumb({
   fallback,
   barColor,
   progress,
+  held,
 }: {
   src?: string;
   onError?: (e?: { error?: string }) => void;
@@ -21,6 +23,8 @@ export function LibraryThumb({
   barColor?: string | null;
   // 0–100; omitted fills the bar.
   progress?: number;
+  // Dash the bar: the *arr is still holding the release (#484).
+  held?: boolean;
 }) {
   return (
     <View className="w-11 h-16 rounded-lg overflow-hidden bg-surface-light items-center justify-center">
@@ -41,10 +45,11 @@ export function LibraryThumb({
           className="absolute bottom-0 left-0 right-0 h-1"
           style={{ backgroundColor: BAR_TRACK_COLOR }}
         >
-          <View
+          <StatusFill
             className="absolute left-0 top-0 bottom-0"
+            color={barColor}
+            held={held}
             style={{
-              backgroundColor: barColor,
               width: `${Math.max(0, Math.min(100, progress ?? 100))}%`,
             }}
           />
