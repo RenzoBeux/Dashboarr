@@ -469,16 +469,28 @@ export function TorrentDownloadsView({
         />
       )}
 
-      {/* Speed Summary */}
+      {/* Speed Summary. One line that shrinks to fit (#502): at a large UI
+          scale "↓ 585.8 KB/s" wrapped while "↑ 0 B/s" didn't, so the row and
+          the whole list under it jumped whenever a speed changed length. */}
       {stats && (
         <View className="flex-row gap-3 mb-4">
           <View className="flex-1 bg-blue-600/10 rounded-xl p-3">
-            <Text className="text-download text-lg font-bold">
+            <Text
+              className="text-download text-lg font-bold"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+            >
               ↓ {formatSpeed(stats.dlSpeed)}
             </Text>
           </View>
           <View className="flex-1 bg-green-600/10 rounded-xl p-3">
-            <Text className="text-upload text-lg font-bold">
+            <Text
+              className="text-upload text-lg font-bold"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+            >
               ↑ {formatSpeed(stats.upSpeed)}
             </Text>
           </View>
