@@ -37,7 +37,7 @@ import {
   type RequestsSortKey,
 } from "@/store/sort-store";
 import { ICON } from "@/lib/constants";
-import { successHaptic, errorHaptic, mediumHaptic } from "@/lib/haptics";
+import { successHaptic, errorHaptic, mediumHaptic, lightHaptic } from "@/lib/haptics";
 import { MediaRow } from "@/components/overseerr/media-row";
 import { PosterCard } from "@/components/overseerr/poster-card";
 import {
@@ -48,6 +48,7 @@ import { usePosterCellWidth } from "@/hooks/use-poster-cell";
 import { MediaDetailModal } from "@/components/overseerr/media-detail-modal";
 import {
   useOverseerrRequests,
+  useOverseerrRequestPages,
   useOverseerrRequestCount,
   useOverseerrSearch,
   useOverseerrMediaDetails,
@@ -68,6 +69,8 @@ import {
 import { getPosterUrl, getBackdropUrl } from "@/services/overseerr-api";
 import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
 import { canDeleteSeerrRequest } from "@/lib/seerr-permissions";
+import { flattenSeerrRequestPages } from "@/lib/seerr-request-pages";
+import { Spinner } from "@/components/ui/spinner";
 import {
   NETWORKS,
   STUDIOS,
@@ -749,7 +752,8 @@ function RequestsList() {
   const setSort = useSortStore((s) => s.setRequests);
   const [filterSortOpen, setFilterSortOpen] = useState(false);
   const { sort: apiSort } = sortToParams(sort);
-  const { data, isLoading, error } = useOverseerrRequests(1, filter, apiSort);
+  const { data, isLoading, error, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    useOverseerrRequestPages(filter, apiSort);
   const caps = useSeerrCapabilities();
   // GET /request/count is server-wide for everyone, so it only means
   // something to an account that sees every request. Anyone else gets their
@@ -779,7 +783,7 @@ function RequestsList() {
   const [sheetTarget, setSheetTarget] = useState<RowTarget | null>(null);
   const flow = useModalFlow<{ actions: void; confirm: ConfirmIntent }>();
 
-  const requests = data?.results ?? [];
+  const requests = useMemo(() => flattenSeerrRequestPages(data?.pages), [data]);
 
   const busy =
     approve.isPending ||
@@ -904,6 +908,23 @@ function RequestsList() {
               }
             />
           ))}
+
+          {hasNextPage && (
+            <Pressable
+              onPress={() => {
+                lightHaptic();
+                fetchNextPage();
+              }}
+              disabled={isFetchingNextPage}
+              className="items-center py-2 active:opacity-70"
+            >
+              {isFetchingNextPage ? (
+                <Spinner size={18} />
+              ) : (
+                <Text className="text-primary text-sm font-medium">Load more</Text>
+              )}
+            </Pressable>
+          )}
         </View>
       )}
 
