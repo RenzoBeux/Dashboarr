@@ -58,6 +58,7 @@ import { resolveRequestUser } from "@/lib/overseerr-request-user";
 import { getSeerrSessionMe } from "@/lib/seerr-session";
 import { deriveSeerrCapabilities } from "@/lib/seerr-permissions";
 import type { SeerrMe } from "@/lib/seerr-auth";
+import { SEERR_REQUESTS_PAGE_SIZE, nextSeerrRequestsPage } from "@/lib/seerr-request-pages";
 
 export function useOverseerrRequests(
   page = 1,
@@ -72,6 +73,26 @@ export function useOverseerrRequests(
     queryFn: () => getRequests(page, 20, filter, sort, id ?? undefined),
     refetchInterval: POLLING_INTERVALS.queue,
     enabled: enabled && !!id && active,
+  });
+}
+
+// The Requests screen's list, 20 at a time with "Load more" (#518). The key
+// stays under ["overseerr", id, "requests"] so the approve / decline / delete
+// invalidations below refresh it too.
+export function useOverseerrRequestPages(
+  filter?: "all" | "approved" | "pending" | "processing" | "available",
+  sort: "added" | "modified" = "added",
+  instanceId?: string,
+) {
+  const { instanceId: id, enabled } = useInstanceTarget("overseerr", instanceId);
+  return useInfiniteQuery({
+    queryKey: ["overseerr", id, "requests", "pages", filter, sort],
+    queryFn: ({ pageParam }) =>
+      getRequests(pageParam, SEERR_REQUESTS_PAGE_SIZE, filter, sort, id ?? undefined),
+    initialPageParam: 1,
+    getNextPageParam: nextSeerrRequestsPage,
+    refetchInterval: POLLING_INTERVALS.queue,
+    enabled: enabled && !!id,
   });
 }
 
