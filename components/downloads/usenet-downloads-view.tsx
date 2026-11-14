@@ -262,7 +262,16 @@ export function UsenetDownloadsView({
           {/* Speed + global pause/resume */}
           <View className="flex-row gap-3 mb-4">
             <View className="flex-1 bg-blue-600/10 rounded-xl p-3">
-              <Text className="text-download text-lg font-bold">↓ {speedLabel}</Text>
+              {/* Single line, shrinks to fit (#502), so the row height never
+                  follows the speed's length. */}
+              <Text
+                className="text-download text-lg font-bold"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                ↓ {speedLabel}
+              </Text>
               {queue?.sizeLeftLabel ? (
                 <Text className="text-zinc-500 text-xs mt-0.5">
                   {queue.sizeLeftLabel} left
