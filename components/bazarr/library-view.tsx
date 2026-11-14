@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { toast, toastError } from "@/components/ui/toast";
 import { CoverageBars } from "@/components/bazarr/coverage-bars";
+import { LibrarySearchField } from "@/components/common/library-search-field";
+import { LibrarySearchStatus } from "@/components/common/library-search-status";
 import {
   BazarrMoviePoster,
   BazarrMovieRow,
@@ -176,6 +178,8 @@ export function BazarrLibraryView({
   onFilterChange: setFilter,
   mode,
   query,
+  searchText,
+  onSearchText,
   onClearSearch,
   langFilter,
   onLangFilterChange: setLangFilter,
@@ -192,8 +196,10 @@ export function BazarrLibraryView({
   filter: LibraryFilter;
   onFilterChange: (filter: LibraryFilter) => void;
   mode: LibraryViewMode;
-  // Debounced in-list search.
+  // Debounced in-list search, and the field's live text.
   query: string;
+  searchText: string;
+  onSearchText: (text: string) => void;
   onClearSearch: () => void;
   // A coverage bar's filter, held by the screen (reset by a link).
   langFilter: LanguageFilter | null;
@@ -313,17 +319,18 @@ export function BazarrLibraryView({
   );
   // Only the kind on screen is filtered: each keystroke would otherwise
   // re-score the hidden library too.
+  // The search hits before the filters, kept apart so the "hidden by
+  // filters" hint can count what the filters keep out.
+  const movieMatches = useMemo(
+    () => (movieIndex ? filterLibraryIndex(movieIndex, query) : movies),
+    [movies, movieIndex, query],
+  );
   const shownMovies = useMemo(
     () =>
       kind === "movies"
-        ? filterMovies(
-            movieIndex ? filterLibraryIndex(movieIndex, query) : movies,
-            filter,
-            langFilter,
-            profileLangs,
-          )
+        ? filterMovies(movieMatches, filter, langFilter, profileLangs)
         : NO_MOVIES,
-    [kind, movies, movieIndex, query, filter, langFilter, profileLangs],
+    [kind, movieMatches, filter, langFilter, profileLangs],
   );
 
   // --- Series ---
@@ -343,18 +350,23 @@ export function BazarrLibraryView({
         : null,
     [series, searchingSeries],
   );
+  const seriesMatches = useMemo(
+    () => (seriesIndex ? filterLibraryIndex(seriesIndex, query) : series),
+    [series, seriesIndex, query],
+  );
   const shownSeries = useMemo(
-    () =>
-      kind === "series"
-        ? filterSeries(seriesIndex ? filterLibraryIndex(seriesIndex, query) : series, filter)
-        : NO_SERIES,
-    [kind, series, seriesIndex, query, filter],
+    () => (kind === "series" ? filterSeries(seriesMatches, filter) : NO_SERIES),
+    [kind, seriesMatches, filter],
   );
 
   const counts = kind === "movies" ? movieCounts : seriesCounts;
   const allBusy = searchingAll.has(kind);
   const missingTotal = counts.missing;
   const filtered = filter !== "all" || !!langFilter || searching;
+  const matches = kind === "movies" ? movieMatches : seriesMatches;
+  const shown = kind === "movies" ? shownMovies : shownSeries;
+  const total = kind === "movies" ? movies.length : series.length;
+  const noun = kind === "movies" ? "movies" : "series";
 
   // Opened from the subtitle tab: land on the movie's Subtitles expanded,
   // as History's links do.
@@ -383,6 +395,11 @@ export function BazarrLibraryView({
           onKindChange(k);
         }}
         className="mb-3"
+      />
+      <LibrarySearchField
+        query={searchText}
+        onQuery={onSearchText}
+        accessibilityLabel={`Search Bazarr ${noun}`}
       />
       {kind === "movies" ? (
         <CoverageBars
@@ -434,6 +451,17 @@ export function BazarrLibraryView({
           </Text>
         </Pressable>
       ) : null}
+      <LibrarySearchStatus
+        query={searching ? query : ""}
+        shown={shown.length}
+        total={total}
+        hidden={searching ? matches.length - shown.length : 0}
+        nounPlural={noun}
+        onShowAll={() => {
+          setFilter("all");
+          setLangFilter(null);
+        }}
+      />
     </View>
   );
 

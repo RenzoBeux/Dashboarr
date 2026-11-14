@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { RefreshControlProps, StyleProp, ViewStyle } from "react-native";
+import { View, type RefreshControlProps, type StyleProp, type ViewStyle } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -8,7 +8,9 @@ import {
   LibraryPosterTile,
   type PosterStatus,
 } from "@/components/common/library-collection";
+import { LibrarySearchStatus } from "@/components/common/library-search-status";
 import { useServiceImage } from "@/hooks/use-service-image";
+import { countHiddenMatches } from "@/lib/library-filter-tokens";
 import type { LibraryViewMode } from "@/store/library-view-store";
 import type { ServiceId } from "@/lib/constants";
 
@@ -56,6 +58,19 @@ interface MonitoredLibraryGridProps<T extends MonitoredItem, S extends string> {
    * empty state can tell "library is empty" from "nothing matches filters".
    */
   extraFilter?: (item: T) => boolean;
+  /**
+   * The library search, kept apart from `extraFilter` so the grid can tell a
+   * search that matches nothing from matches the other filters hide. With
+   * `onShowAll`, the grid shows the result count and a "hidden by filters"
+   * hint under the screen header.
+   */
+  search?: {
+    filter: ((item: T) => boolean) | undefined;
+    /** The applied query text, for the count and the empty state. */
+    query: string;
+    /** Widen the scope: reset every filter (not the sort). */
+    onShowAll: () => void;
+  };
   sort: S;
   compare: (a: T, b: T, sort: S) => number;
   // Widened from the three *arr literals so Bindery can reuse the grid. Its
@@ -118,6 +133,7 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   monitorFilter,
   isMissing,
   extraFilter,
+  search,
   sort,
   compare,
   serviceId,
@@ -135,25 +151,41 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
   mode = "poster",
   renderRow,
 }: MonitoredLibraryGridProps<T, S>) {
+  // The screen's filters without the search: the scope a search runs in.
+  const inScope = useMemo(
+    () => (item: T) => {
+      if (extraFilter && !extraFilter(item)) return false;
+      if (monitorFilter === "monitored") return item.monitored;
+      if (monitorFilter === "unmonitored") return !item.monitored;
+      if (monitorFilter === "missing") return isMissing(item);
+      return true;
+    },
+    [extraFilter, monitorFilter, isMissing],
+  );
+
   const sorted = useMemo(() => {
     // Guard against a non-array slipping through (e.g. an auth-proxy HTML page
     // returned in place of JSON): a truthy string would reach .filter and crash
     // with "undefined is not a function". serviceRequest now throws on that, but
     // keep the call site itself safe against any non-array data.
     if (!Array.isArray(data)) return [];
-    const filtered = data.filter((item) => {
-      if (extraFilter && !extraFilter(item)) return false;
-      if (monitorFilter === "monitored") return item.monitored;
-      if (monitorFilter === "unmonitored") return !item.monitored;
-      if (monitorFilter === "missing") return isMissing(item);
-      return true;
-    });
+    const searchFilter = search?.filter;
+    const filtered = data.filter(
+      (item) => (!searchFilter || searchFilter(item)) && inScope(item),
+    );
     return [...filtered].sort((a, b) => compare(a, b, sort));
-  }, [data, monitorFilter, isMissing, extraFilter, sort, compare]);
+  }, [data, inScope, search?.filter, sort, compare]);
+
+  const hidden = useMemo(
+    () => countHiddenMatches(data, search?.filter, inScope),
+    [data, search?.filter, inScope],
+  );
 
   const emptyTitle = !data?.length
     ? `No ${nounPlural} in library`
-    : extraFilter
+    : search?.filter && hidden === 0
+      ? `No ${nounPlural} match "${search.query.trim()}"`
+      : extraFilter || search?.filter
       ? `No ${nounPlural} match filters`
       : monitorFilter === "monitored"
         ? `No monitored ${nounPlural}`
@@ -193,7 +225,26 @@ export function MonitoredLibraryGrid<T extends MonitoredItem, S extends string>(
           title={emptyTitle}
         />
       }
-      ListHeaderComponent={ListHeaderComponent}
+      ListHeaderComponent={
+        // With a search, always the same wrapper: switching between a bare
+        // header and a wrapped one would remount it and drop the search
+        // field's focus mid-typing (RN #15618).
+        search ? (
+          <View>
+            {ListHeaderComponent}
+            <LibrarySearchStatus
+              query={search.filter ? search.query : ""}
+              shown={sorted.length}
+              total={Array.isArray(data) ? data.length : 0}
+              hidden={hidden}
+              nounPlural={nounPlural}
+              onShowAll={search.onShowAll}
+            />
+          </View>
+        ) : (
+          ListHeaderComponent
+        )
+      }
       refreshControl={refreshControl}
       contentContainerStyle={contentContainerStyle}
     />
