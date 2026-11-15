@@ -251,3 +251,75 @@ export function binderyCanRetryImport(
 
 // Re-exported so callers don't have to know the envelope type name.
 export type { BinderyListEnvelope };
+
+// --- Add-flow search ---
+
+// Same rules as Bindery's own Add Book dialog (web/src/api/booklookup.ts).
+const ISBN_RE = /^97[89]\d{10}$|^\d{9}[\dX]$/;
+const ASIN_RE = /^B[0-9A-Z]{9}$/i;
+// Hyphen look-alikes and whitespace, common in ISBNs copied from web pages.
+const ISBN_SEPARATORS = /[-­‐-―−\s]/g;
+
+export type BinderyBookQuery =
+  | { kind: "isbn"; isbn: string }
+  | { kind: "asin"; asin: string }
+  | { kind: "title"; term: string };
+
+/** ISBNs and ASINs go to /book/lookup; anything else to /search/book. */
+export function classifyBinderyBookQuery(query: string): BinderyBookQuery {
+  const q = query.trim();
+  const compact = q.replace(ISBN_SEPARATORS, "").toUpperCase();
+  if (ISBN_RE.test(compact)) return { kind: "isbn", isbn: compact };
+  if (ASIN_RE.test(q)) return { kind: "asin", asin: q.toUpperCase() };
+  return { kind: "title", term: q };
+}
+
+/**
+ * Bindery errors are `{ error: "..." }` rather than the *arr `{ message }`
+ * shape getHttpErrorMessage reads.
+ */
+export function binderyErrorMessage(err: unknown): string | undefined {
+  const body = (err as { body?: unknown } | null)?.body;
+  if (body && typeof body === "object" && "error" in body) {
+    const msg = (body as { error?: unknown }).error;
+    if (typeof msg === "string" && msg.length > 0) return msg;
+  }
+  return undefined;
+}
+
+/** True for the 409 Bindery answers when adding something already added. */
+export function isBinderyConflict(err: unknown): boolean {
+  return (err as { status?: unknown } | null)?.status === 409;
+}
+
+/**
+ * Search results carry raw provider image URLs. Route them through Bindery's
+ * image proxy like library covers, with no direct fallback, so the device
+ * never contacts the cover host itself.
+ */
+export function binderySearchImageSource(
+  imageUrl: string | undefined | null,
+): BinderyImageSource | undefined {
+  const raw = imageUrl?.trim();
+  if (!raw) return undefined;
+  if (/^https?:\/\//i.test(raw)) {
+    return { url: `/api/v1/images?url=${encodeURIComponent(raw)}`, remoteUrl: "" };
+  }
+  return binderyImageSource(raw);
+}
+
+/** Four-digit release year, or undefined when unknown. */
+export function binderyReleaseYear(releaseDate: string | null | undefined): string | undefined {
+  const year = releaseDate?.slice(0, 4);
+  return year && /^\d{4}$/.test(year) && year !== "0001" ? year : undefined;
+}
+
+/** "★ 4.16 (700)", or undefined when there is no rating. */
+export function binderyRatingLabel(
+  averageRating: number | undefined,
+  ratingsCount: number | undefined,
+): string | undefined {
+  if (!averageRating || averageRating <= 0) return undefined;
+  const avg = `★ ${averageRating.toFixed(2)}`;
+  return ratingsCount ? `${avg} (${ratingsCount.toLocaleString()})` : avg;
+}

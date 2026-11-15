@@ -24,10 +24,25 @@ import {
   getMetadataProfiles,
   getSetting,
   searchAuthors,
+  searchBooks,
+  lookupBook,
+  addBook,
+  searchSeries,
+  addSeries,
   type BinderyAuthorQuery,
 } from "@/services/bindery-api";
+import {
+  binderyErrorMessage,
+  classifyBinderyBookQuery,
+  isBinderyConflict,
+} from "@/lib/bindery-normalize";
 import { toast, toastError } from "@/components/ui/toast";
-import type { BinderyAuthor, BinderyBook } from "@/lib/types";
+import type {
+  BinderyAddBookPayload,
+  BinderyAuthor,
+  BinderyBook,
+  BinderySeriesSearchResult,
+} from "@/lib/types";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 
@@ -161,7 +176,84 @@ export function useBinderyAuthorSearch(term: string, instanceId?: string) {
   });
 }
 
+/** Book search: ISBNs and ASINs use the exact lookup, anything else a title search. */
+export function useBinderyBookSearch(term: string, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bindery", instanceId);
+  return useQuery({
+    queryKey: ["bindery", id, "bookSearch", term],
+    queryFn: async () => {
+      const query = classifyBinderyBookQuery(term);
+      if (query.kind === "title") return searchBooks(query.term, id ?? undefined);
+      try {
+        const result = await lookupBook(
+          query.kind === "isbn" ? { isbn: query.isbn } : { asin: query.asin },
+          id ?? undefined,
+        );
+        return [result];
+      } catch (err) {
+        // 404 means no provider knows the identifier: an empty result, not an error.
+        if ((err as { status?: unknown })?.status === 404) return [];
+        throw err;
+      }
+    },
+    enabled: enabled && term.length >= 2 && !!id,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useBinderySeriesSearch(term: string, instanceId?: string) {
+  const { instanceId: id, enabled } = useInstanceTarget("bindery", instanceId);
+  return useQuery({
+    queryKey: ["bindery", id, "seriesSearch", term],
+    queryFn: () => searchSeries(term, id ?? undefined),
+    enabled: enabled && term.length >= 2 && !!id,
+    placeholderData: keepPreviousData,
+    // Usually fails because Hardcover isn't configured; retrying won't help.
+    retry: false,
+  });
+}
+
 // --- Mutations ---
+
+export function useAddBinderyBook(instanceId?: string) {
+  const queryClient = useQueryClient();
+  const { instanceId: id } = useInstanceTarget("bindery", instanceId);
+  return useMutation({
+    mutationFn: ({ payload }: { payload: BinderyAddBookPayload; title: string }) =>
+      addBook(payload, id ?? undefined),
+    onSuccess: (_data, { title }) => toast(`${title} added to Bindery`),
+    onError: (err, { title }) => {
+      if (isBinderyConflict(err)) {
+        toast(`${title} is already in your library`, "info");
+      } else {
+        toastError("Failed to add book", err, (m) => binderyErrorMessage(err) ?? m);
+      }
+    },
+    onSettled: () => {
+      // Adding a book can also add its author. Refresh search results too so
+      // the row picks up its "In library" state.
+      queryClient.invalidateQueries({ queryKey: ["bindery", id, "authors"] });
+      queryClient.invalidateQueries({ queryKey: ["bindery", id, "books"] });
+      queryClient.invalidateQueries({ queryKey: ["bindery", id, "wanted"] });
+      queryClient.invalidateQueries({ queryKey: ["bindery", id, "bookSearch"] });
+    },
+  });
+}
+
+export function useAddBinderySeries(instanceId?: string) {
+  const { instanceId: id } = useInstanceTarget("bindery", instanceId);
+  return useMutation({
+    mutationFn: (result: BinderySeriesSearchResult) => addSeries(result, id ?? undefined),
+    onSuccess: (_data, result) => toast(`${result.title} added to Bindery`),
+    onError: (err, result) => {
+      if (isBinderyConflict(err)) {
+        toast(`${result.title} is already in Bindery`, "info");
+      } else {
+        toastError("Failed to add series", err, (m) => binderyErrorMessage(err) ?? m);
+      }
+    },
+  });
+}
 
 export function useAddBinderyAuthor(instanceId?: string) {
   const queryClient = useQueryClient();

@@ -7,6 +7,12 @@ import {
   binderyQueueStatusLabel,
   binderyCanRetryImport,
   BINDERY_PAGE_LIMIT,
+  classifyBinderyBookQuery,
+  binderyErrorMessage,
+  isBinderyConflict,
+  binderySearchImageSource,
+  binderyReleaseYear,
+  binderyRatingLabel,
 } from "@/lib/bindery-normalize";
 
 describe("unwrapBinderyList", () => {
@@ -309,5 +315,96 @@ describe("binderyCanRetryImport", () => {
     for (const state of ["failed", "importBlocked", "importHeld", "downloading", undefined]) {
       expect(binderyCanRetryImport(state)).toBe(false);
     }
+  });
+});
+
+describe("classifyBinderyBookQuery", () => {
+  it("detects ISBN-13 and ISBN-10, stripping separators", () => {
+    expect(classifyBinderyBookQuery("978-0-441-17271-9")).toEqual({
+      kind: "isbn",
+      isbn: "9780441172719",
+    });
+    expect(classifyBinderyBookQuery(" 978\u20130441 172719 ")).toEqual({
+      kind: "isbn",
+      isbn: "9780441172719",
+    });
+    expect(classifyBinderyBookQuery("044100590x")).toEqual({ kind: "isbn", isbn: "044100590X" });
+  });
+
+  it("detects an ASIN", () => {
+    expect(classifyBinderyBookQuery("b08fhbv4zx")).toEqual({ kind: "asin", asin: "B08FHBV4ZX" });
+  });
+
+  it("treats anything else as a title", () => {
+    expect(classifyBinderyBookQuery("  Project Hail Mary ")).toEqual({
+      kind: "title",
+      term: "Project Hail Mary",
+    });
+    expect(classifyBinderyBookQuery("1234567890123").kind).toBe("title");
+    expect(classifyBinderyBookQuery("1984").kind).toBe("title");
+  });
+});
+
+describe("binderyErrorMessage", () => {
+  it("reads the { error } body", () => {
+    expect(binderyErrorMessage({ body: { error: "term parameter required" } })).toBe(
+      "term parameter required",
+    );
+  });
+
+  it("returns undefined for other shapes", () => {
+    expect(binderyErrorMessage({ body: { message: "x" } })).toBeUndefined();
+    expect(binderyErrorMessage(new Error("boom"))).toBeUndefined();
+    expect(binderyErrorMessage(null)).toBeUndefined();
+  });
+});
+
+describe("isBinderyConflict", () => {
+  it("is true only for a 409", () => {
+    expect(isBinderyConflict({ status: 409 })).toBe(true);
+    expect(isBinderyConflict({ status: 422 })).toBe(false);
+    expect(isBinderyConflict(new Error("x"))).toBe(false);
+  });
+});
+
+describe("binderySearchImageSource", () => {
+  it("routes a raw URL through the image proxy with no direct fallback", () => {
+    expect(binderySearchImageSource("https://example.com/c.jpg?a=1&b=2")).toEqual({
+      url: "/api/v1/images?url=https%3A%2F%2Fexample.com%2Fc.jpg%3Fa%3D1%26b%3D2",
+      remoteUrl: "",
+    });
+  });
+
+  it("returns undefined for an empty image", () => {
+    expect(binderySearchImageSource("")).toBeUndefined();
+    expect(binderySearchImageSource(undefined)).toBeUndefined();
+  });
+
+  it("defers to binderyImageSource for an already proxied path", () => {
+    const proxied = "/api/v1/images?url=https%3A%2F%2Fexample.com%2Fc.jpg";
+    expect(binderySearchImageSource(proxied)).toEqual(binderyImageSource(proxied));
+  });
+});
+
+describe("binderyReleaseYear", () => {
+  it("takes the year from a date", () => {
+    expect(binderyReleaseYear("2019-04-02T00:00:00Z")).toBe("2019");
+  });
+
+  it("ignores missing and zero dates", () => {
+    expect(binderyReleaseYear(null)).toBeUndefined();
+    expect(binderyReleaseYear("0001-01-01T00:00:00Z")).toBeUndefined();
+  });
+});
+
+describe("binderyRatingLabel", () => {
+  it("formats the average and count", () => {
+    expect(binderyRatingLabel(4.163, 700)).toBe("★ 4.16 (700)");
+    expect(binderyRatingLabel(4, undefined)).toBe("★ 4.00");
+  });
+
+  it("returns undefined without a rating", () => {
+    expect(binderyRatingLabel(0, 10)).toBeUndefined();
+    expect(binderyRatingLabel(undefined, undefined)).toBeUndefined();
   });
 });
