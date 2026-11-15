@@ -1258,6 +1258,55 @@ export interface BinderyAuthorSearchResult {
   statistics?: BinderyAuthorStatistics;
 }
 
+// Result from /search/book or /book/lookup. Like author search results these
+// are provider stubs: `imageUrl` is a raw remote URL, not a proxy path.
+// `libraryBookId` is set when the book is already in the library.
+export interface BinderyBookSearchResult {
+  foreignBookId: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  releaseDate?: string | null;
+  mediaType?: BinderyMediaType | string;
+  narrator?: string;
+  averageRating?: number;
+  ratingsCount?: number;
+  metadataProvider?: string;
+  isbns?: string[];
+  libraryBookId?: number;
+  author?: {
+    foreignAuthorId?: string;
+    authorName?: string;
+  };
+}
+
+// Body of POST /author/book. The author fields may be empty; the server then
+// resolves the author itself.
+export interface BinderyAddBookPayload {
+  foreignBookId: string;
+  foreignAuthorId: string;
+  authorName: string;
+  searchOnAdd: boolean;
+  mediaType?: BinderyMediaType;
+}
+
+// Result from /series/hardcover/search (requires Hardcover to be configured).
+export interface BinderySeriesSearchResult {
+  foreignId: string;
+  providerId: string;
+  slug?: string;
+  title: string;
+  authorName: string;
+  bookCount: number;
+  books?: string[];
+  confidence?: number;
+}
+
+export interface BinderySeries {
+  id: number;
+  title: string;
+}
+
 export interface BinderyAddAuthorPayload {
   foreignAuthorId: string;
   authorName: string;
