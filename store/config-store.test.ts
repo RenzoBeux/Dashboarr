@@ -37,9 +37,10 @@ import {
 } from "./config-store";
 import { useBackendStore } from "./backend-store";
 import { encryptJsonString } from "@/lib/config-crypto";
-import { setJSON } from "./storage";
-import { STORAGE_KEYS } from "@/lib/constants";
+import { getJSON, getString, setJSON, setString } from "./storage";
+import { SECRET_PREFIX, STORAGE_KEYS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
+import * as SecureStore from "expo-secure-store";
 
 // Smoke-test that getActiveUrl always returns a fetch-safe URL, even when the
 // persisted value lacks a scheme. See #106 — health probes were failing on
@@ -49,6 +50,92 @@ import { queryClient } from "@/lib/query-client";
 // store-level read has to normalize on the way out.
 
 const INSTANCE_ID = "00000000-0000-0000-0000-000000000001";
+
+describe("Demo Mode configuration isolation", () => {
+  it("blocks exporting and restoring a backup while demo data is live", async () => {
+    const store = useConfigStore.getState();
+    const payload = buildExportPayload();
+    store.enableDemoMode();
+    try {
+      const onStage = jest.fn();
+      await expect(store.exportConfig("passphrase", onStage)).rejects.toThrow("Turn off Demo Mode");
+      expect(onStage).not.toHaveBeenCalled();
+      expect(buildExportPayload).toThrow("Turn off Demo Mode");
+      await expect(store.importConfigFromPayload(payload)).rejects.toThrow("Turn off Demo Mode");
+    } finally {
+      await store.disableDemoMode();
+    }
+  });
+
+  it("keeps the saved workspace layout, attachments, pins and active workspace", async () => {
+    const dashboards = [
+      { id: "home", name: "Home", widgets: [], attachedInstances: [INSTANCE_ID], activeInstance: { radarr: INSTANCE_ID } },
+      { id: "cabin", name: "Cabin", widgets: [], attachedInstances: [] },
+    ];
+    setJSON(STORAGE_KEYS.dashboards, dashboards);
+    setString(STORAGE_KEYS.activeDashboardId, "home");
+    setJSON(`${STORAGE_KEYS.services}.radarr`, [
+      { id: INSTANCE_ID, name: "Real Radarr", enabled: true, localUrl: "http://radarr.local", remoteUrl: "", useRemote: false },
+    ]);
+    const store = useConfigStore.getState();
+    await store.hydrate();
+    const saved = getJSON(STORAGE_KEYS.dashboards);
+    store.enableDemoMode();
+    try {
+      // Also exercise launch with the Demo Mode preference already enabled.
+      await store.hydrate();
+      const demoRadarr = useConfigStore.getState().serviceInstances.radarr[0];
+      store.renameDashboard("cabin", "Demo Cabin");
+      store.addWidget("downloads");
+      store.setDashboardActiveInstance("home", "radarr", demoRadarr.id);
+      store.removeDashboard("home");
+      expect(useConfigStore.getState().activeDashboardId).toBe("cabin");
+      expect(getJSON(STORAGE_KEYS.dashboards)).toEqual(saved);
+      expect(getString(STORAGE_KEYS.activeDashboardId)).toBe("home");
+    } finally {
+      await store.disableDemoMode();
+    }
+    const restored = useConfigStore.getState();
+    expect(restored.dashboards).toEqual(saved);
+    expect(restored.activeDashboardId).toBe("home");
+    expect(restored.activeInstance.radarr).toBe(INSTANCE_ID);
+  });
+
+  it("keeps the saved service and credentials after editing and removing demo instances", async () => {
+    const instances = [
+      { id: INSTANCE_ID, name: "Real Radarr", enabled: true, localUrl: "http://radarr.local", remoteUrl: "", useRemote: false },
+    ];
+    const readSecret = jest.mocked(SecureStore.getItemAsync);
+    readSecret.mockImplementation(async (key) =>
+      key === `${SECRET_PREFIX}.${INSTANCE_ID}.apiKey` ? "real-key" : null,
+    );
+    setJSON(`${STORAGE_KEYS.services}.radarr`, instances);
+    const store = useConfigStore.getState();
+    await store.hydrate();
+    store.enableDemoMode();
+    try {
+      await store.hydrate();
+      expect(useConfigStore.getState().instanceSecrets).toEqual({});
+      const demoRadarr = useConfigStore.getState().serviceInstances.radarr[0];
+      const writeSecret = jest.mocked(SecureStore.setItemAsync).mockClear();
+      const deleteSecret = jest.mocked(SecureStore.deleteItemAsync).mockClear();
+      store.updateInstance("radarr", demoRadarr.id, { useRemote: true });
+      const added = store.addInstance("radarr", { name: "Another demo" });
+      store.moveInstance("radarr", added.id, "up");
+      await store.updateInstanceSecrets(demoRadarr.id, { apiKey: "demo-key" });
+      await store.removeInstance("radarr", demoRadarr.id);
+      expect(useConfigStore.getState().serviceInstances.radarr.map(({ id }) => id)).toEqual([added.id]);
+      expect(writeSecret).not.toHaveBeenCalled();
+      expect(deleteSecret).not.toHaveBeenCalled();
+      expect(getJSON(`${STORAGE_KEYS.services}.radarr`)).toEqual(instances);
+    } finally {
+      await store.disableDemoMode();
+      readSecret.mockResolvedValue(null);
+    }
+    expect(useConfigStore.getState().serviceInstances.radarr).toEqual(instances);
+    expect(useConfigStore.getState().instanceSecrets[INSTANCE_ID]).toEqual({ apiKey: "real-key" });
+  });
+});
 
 function seed(overrides: {
   localUrl?: string;

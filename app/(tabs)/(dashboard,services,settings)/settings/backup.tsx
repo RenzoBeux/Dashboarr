@@ -131,16 +131,16 @@ export default function BackupSettingsScreen() {
         <SettingsRow
           icon={Upload}
           label="Export settings"
-          subtitle="Save an encrypted backup file"
+          subtitle={demoMode ? "Turn off Demo Mode to export settings" : "Save an encrypted backup file"}
           onPress={handleExport}
-          disabled={exportStage !== null}
+          disabled={demoMode || exportStage !== null}
         />
         <SettingsRow
           icon={FolderDown}
           label="Import settings"
-          subtitle="Restore from a backup file"
+          subtitle={demoMode ? "Turn off Demo Mode to import settings" : "Restore from a backup file"}
           onPress={() => flow.open("confirmImport")}
-          disabled={importStage !== null}
+          disabled={demoMode || importStage !== null}
         />
         <SettingsRow
           icon={ImageOff}

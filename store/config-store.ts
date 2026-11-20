@@ -328,7 +328,7 @@ interface ConfigActions {
   activateDashboardForInstance: (instanceId: string) => void;
   moveDashboard: (dashboardId: string, direction: "up" | "down") => void;
   // v20: dashboard identity + workspace filter + bottom-tab pinning. All four
-  // setters persist via setJSON(STORAGE_KEYS.dashboards, ...).
+  // setters persist through persistDashboards().
   setDashboardIcon: (dashboardId: string, icon: string) => void;
   setDashboardColor: (dashboardId: string, color: string) => void;
   setDashboardAttachedInstances: (dashboardId: string, instanceIds: string[]) => void;
@@ -913,6 +913,52 @@ function pairDemoBazarrLinks(instances: Record<ServiceId, ServiceInstance[]>): v
   if (sonarr) bazarr.linkedSonarrInstanceId = sonarr.id;
 }
 
+function makeDemoConfig(dashboards: Dashboard[], activeDashboardId: string) {
+  const serviceInstances = {} as Record<ServiceId, ServiceInstance[]>;
+  for (const id of SERVICE_IDS) {
+    serviceInstances[id] = [{
+      id: generateInstanceId(),
+      ...defaultServiceConfig(id),
+      enabled: true,
+      localUrl: "http://demo.local",
+      remoteUrl: "",
+    }];
+  }
+  pairDemoDiskIo(serviceInstances);
+  pairDemoBazarrLinks(serviceInstances);
+
+  const demoDashboards = dashboards.map((dashboard) => ({
+    ...dashboard,
+    attachedInstances: undefined,
+    activeInstance: undefined,
+  }));
+  return {
+    dashboards: demoDashboards,
+    serviceInstances,
+    instanceSecrets: {},
+    ...recomputeDerivedFromActive(demoDashboards, activeDashboardId, serviceInstances, {}),
+  };
+}
+
+function persistDashboards(
+  state: Pick<ConfigState, "demoMode">,
+  dashboards: Dashboard[],
+  activeDashboardId?: string,
+): void {
+  if (state.demoMode) return;
+  if (activeDashboardId === undefined) {
+    setJSON(STORAGE_KEYS.dashboards, dashboards);
+  } else {
+    setMany([
+      [STORAGE_KEYS.dashboards, JSON.stringify(dashboards)],
+      [STORAGE_KEYS.activeDashboardId, activeDashboardId],
+    ]);
+  }
+}
+
+// Finish real keychain edits before swapping in demo instances.
+let pendingInstanceWrites = 0;
+
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
   instanceSecrets: {},
@@ -1420,33 +1466,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ...(storedNotificationSettings ?? {}),
     };
 
-    const demoMode = getBoolean(STORAGE_KEYS.demoMode) ?? false;
-    if (demoMode) {
-      // Replace each kind's instances with a single demo instance so the
-      // dashboard has data without touching real configs.
-      for (const id of SERVICE_IDS) {
-        const demoInst: ServiceInstance = {
-          id: generateInstanceId(),
-          ...defaultServiceConfig(id),
-          enabled: true,
-          localUrl: "http://demo.local",
-          remoteUrl: "",
-        };
-        instances[id] = [demoInst];
-      }
-      pairDemoDiskIo(instances);
-      pairDemoBazarrLinks(instances);
-      // v22: drop curated attachments in memory so demo UUIDs resolve. Mirrors
-      // the enableDemoMode action; not persisted (real attachments come back
-      // on disableDemoMode → hydrate).
-      for (let i = 0; i < dashboards.length; i++) {
-        if (dashboards[i].attachedInstances === undefined) continue;
-        const next = { ...dashboards[i] };
-        delete (next as { attachedInstances?: unknown }).attachedInstances;
-        dashboards[i] = next;
-      }
-    }
-
     // v22: one-shot upgrade — fold the legacy `ACTIVE_INSTANCE_KEY` payload
     // onto dashboards that don't already carry an activeInstance map. Mirrors
     // the v21→v22 export migration for local installs that never re-imported.
@@ -1480,24 +1499,22 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       deleteKey(ACTIVE_INSTANCE_KEY);
     }
 
-    const { activeInstance, services, secrets } = recomputeDerivedFromActive(
-      dashboards,
-      activeDashboardId,
-      instances,
-      instanceSecrets,
-    );
+    const demoMode = getBoolean(STORAGE_KEYS.demoMode);
+    const config = demoMode
+      ? makeDemoConfig(dashboards, activeDashboardId)
+      : {
+          dashboards,
+          serviceInstances: instances,
+          instanceSecrets,
+          ...recomputeDerivedFromActive(dashboards, activeDashboardId, instances, instanceSecrets),
+        };
 
     set({
-      serviceInstances: instances,
-      instanceSecrets,
-      activeInstance,
-      services,
-      secrets,
+      ...config,
       autoSwitchNetwork,
       treatVpnAsHome,
       homeNetworks,
       servicesOrder,
-      dashboards,
       activeDashboardId,
       wolDevices,
       shortcuts,
@@ -1520,7 +1537,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set((state) => {
       const list = [...(state.serviceInstances[id] ?? []), inst];
       const serviceInstances = { ...state.serviceInstances, [id]: list };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, list);
+      if (!state.demoMode) setJSON(`${STORAGE_KEYS.services}.${id}`, list);
       // v22: no explicit "make this the active instance" write — the resolver
       // picks the new instance up automatically if the active workspace had
       // no pin for this kind (or its pin became invalid). When the kind has
@@ -1537,28 +1554,38 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeInstance: async (id, instanceId) => {
+    const { demoMode } = get();
+    if (!get().serviceInstances[id]?.some((instance) => instance.id === instanceId)) return;
     // The cached HTTP Digest nonce is keyed by instance, so drop it with the
     // instance rather than leaving it in the map for the process lifetime.
     clearDigestSessions(instanceId);
-    // Same for Seerr's in-memory session entries and the persisted stale-host
-    // list (#332). The server-side logout is the caller's job (seerrClearSession
-    // runs before removal); this only stops a deleted id from lingering.
-    forgetSeerrSession(instanceId);
-    get().forgetSeerrStaleHosts(instanceId);
-    // Drop this instance's remembered add-sheet defaults.
-    useAddDefaultsStore.getState().prune(addDefaultsKey(id, instanceId));
-    // Clear SecureStore entries for this instance before mutating state so a
-    // crash mid-delete doesn't leave orphaned secrets behind.
-    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
-    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.username`);
-    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.password`);
-    await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customHeaders`);
+    if (!demoMode) {
+      // Same for Seerr's in-memory session entries and the persisted stale-host
+      // list (#332). The server-side logout is the caller's job (seerrClearSession
+      // runs before removal); this only stops a deleted id from lingering.
+      forgetSeerrSession(instanceId);
+      get().forgetSeerrStaleHosts(instanceId);
+      // Drop this instance's remembered add-sheet defaults.
+      useAddDefaultsStore.getState().prune(addDefaultsKey(id, instanceId));
+      // Clear SecureStore entries for this instance before mutating state so a
+      // crash mid-delete doesn't leave orphaned secrets behind.
+      pendingInstanceWrites++;
+      try {
+        await deleteSecret(`${SECRET_PREFIX}.${instanceId}.apiKey`);
+        await deleteSecret(`${SECRET_PREFIX}.${instanceId}.username`);
+        await deleteSecret(`${SECRET_PREFIX}.${instanceId}.password`);
+        await deleteSecret(`${SECRET_PREFIX}.${instanceId}.customHeaders`);
+      } finally {
+        pendingInstanceWrites--;
+      }
+    }
 
     set((state) => {
+      if (state.demoMode !== demoMode) return state;
       const list = (state.serviceInstances[id] ?? []).filter((i) => i.id !== instanceId);
       const serviceInstances = { ...state.serviceInstances, [id]: list };
       const { [instanceId]: _removed, ...instanceSecrets } = state.instanceSecrets;
-      setJSON(`${STORAGE_KEYS.services}.${id}`, list);
+      if (!state.demoMode) setJSON(`${STORAGE_KEYS.services}.${id}`, list);
 
       // v22: prune the deleted UUID from every dashboard's `attachedInstances`
       // and `activeInstance[kind]` so storage doesn't accumulate orphans.
@@ -1593,7 +1620,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         return out;
       });
       if (dashboardsChanged) {
-        setJSON(STORAGE_KEYS.dashboards, dashboards);
+        persistDashboards(state, dashboards);
       }
 
       // v21: drop any per-instance notification overrides keyed to the
@@ -1614,7 +1641,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           qbtMutedCategories: Object.keys(rest).length === 0 ? undefined : rest,
         };
       }
-      if (notificationSettings !== state.notificationSettings) {
+      if (!state.demoMode && notificationSettings !== state.notificationSettings) {
         setJSON(STORAGE_KEYS.notificationSettings, notificationSettings);
       }
 
@@ -1646,7 +1673,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const next = [...list];
       next[idx] = { ...prev, ...patch, id: prev.id };
       const serviceInstances = { ...state.serviceInstances, [id]: next };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      if (!state.demoMode) setJSON(`${STORAGE_KEYS.services}.${id}`, next);
       // v22: toggling `enabled` can flip the resolver's fallback (a freshly
       // disabled active pin needs to give way to the next attached+enabled
       // sibling). Other field edits don't affect resolution, but the
@@ -1711,7 +1738,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const next = [...list];
       [next[idx], next[target]] = [next[target], next[idx]];
       const serviceInstances = { ...state.serviceInstances, [id]: next };
-      setJSON(`${STORAGE_KEYS.services}.${id}`, next);
+      if (!state.demoMode) setJSON(`${STORAGE_KEYS.services}.${id}`, next);
       const services = deriveLegacyServices(serviceInstances, state.activeInstance);
       return { serviceInstances, services };
     });
@@ -1770,7 +1797,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         }
         return next;
       });
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
 
       // Re-derive only when we just touched the active workspace; pinning a
       // kind on a non-active workspace doesn't affect the rendered tabs.
@@ -1788,23 +1815,32 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   updateInstanceSecrets: async (instanceId, newSecrets) => {
-    for (const [key, value] of Object.entries(newSecrets)) {
-      const storageKey = `${SECRET_PREFIX}.${instanceId}.${key}`;
-      if (key === "customHeaders") {
-        // Stored as a JSON string so SecureStore (string-only) can hold it.
-        const map = value as Record<string, string> | undefined;
-        if (map && Object.keys(map).length > 0) {
-          await setSecret(storageKey, JSON.stringify(map));
-        } else {
-          await deleteSecret(storageKey);
+    const { demoMode } = get();
+    if (!demoMode) {
+      pendingInstanceWrites++;
+      try {
+        for (const [key, value] of Object.entries(newSecrets)) {
+          const storageKey = `${SECRET_PREFIX}.${instanceId}.${key}`;
+          if (key === "customHeaders") {
+            // Stored as a JSON string so SecureStore (string-only) can hold it.
+            const map = value as Record<string, string> | undefined;
+            if (map && Object.keys(map).length > 0) {
+              await setSecret(storageKey, JSON.stringify(map));
+            } else {
+              await deleteSecret(storageKey);
+            }
+          } else if (typeof value === "string" && value.length > 0) {
+            await setSecret(storageKey, value);
+          } else {
+            await deleteSecret(storageKey);
+          }
         }
-      } else if (typeof value === "string" && value.length > 0) {
-        await setSecret(storageKey, value);
-      } else {
-        await deleteSecret(storageKey);
+      } finally {
+        pendingInstanceWrites--;
       }
     }
     set((state) => {
+      if (state.demoMode !== demoMode) return state;
       const merged: ServiceSecrets = {
         ...(state.instanceSecrets[instanceId] ?? {}),
         ...newSecrets,
@@ -1983,7 +2019,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     };
     set((state) => {
       const dashboards = [...state.dashboards, dashboard];
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
     return dashboard;
@@ -2024,7 +2060,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     };
     set((state) => {
       const dashboards = [...state.dashboards, clone];
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
     return clone;
@@ -2055,15 +2091,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const activeChanged = activeDashboardId === dashboardId;
       if (activeChanged) {
         activeDashboardId = dashboards[0].id;
-        // Atomic pair-write so the trimmed list and its new active id can't
-        // land desynced if the app is killed mid-delete.
-        setMany([
-          [STORAGE_KEYS.dashboards, JSON.stringify(dashboards)],
-          [STORAGE_KEYS.activeDashboardId, activeDashboardId],
-        ]);
-      } else {
-        setJSON(STORAGE_KEYS.dashboards, dashboards);
       }
+      persistDashboards(state, dashboards, activeChanged ? activeDashboardId : undefined);
       // v22: deleting the active workspace re-resolves the active instance
       // per kind against the new active workspace.
       if (activeChanged) {
@@ -2101,7 +2130,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const dashboards = state.dashboards.map((d) =>
         d.id === dashboardId ? { ...d, name: name.trim() || d.name } : d,
       );
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2111,7 +2140,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set((state) => {
       if (!state.dashboards.some((d) => d.id === dashboardId)) return state;
       if (state.activeDashboardId === dashboardId) return state;
-      setString(STORAGE_KEYS.activeDashboardId, dashboardId);
+      if (!state.demoMode) setString(STORAGE_KEYS.activeDashboardId, dashboardId);
       // v22: a workspace switch re-resolves the active instance per kind
       // (different `activeInstance` map + different `attachedInstances` set).
       const derived = recomputeDerivedFromActive(
@@ -2152,7 +2181,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       if (target < 0 || target >= state.dashboards.length) return state;
       const dashboards = [...state.dashboards];
       [dashboards[idx], dashboards[target]] = [dashboards[target], dashboards[idx]];
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2162,7 +2191,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const dashboards = state.dashboards.map((d) =>
         d.id === dashboardId ? { ...d, icon } : d,
       );
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2172,7 +2201,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const dashboards = state.dashboards.map((d) =>
         d.id === dashboardId ? { ...d, color } : d,
       );
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2195,7 +2224,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const dashboards = state.dashboards.map((d) =>
         d.id === dashboardId ? { ...d, attachedInstances: sanitized } : d,
       );
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       // v22: attachment changes on the active workspace can re-resolve the
       // active instance per kind (a previously-pinned UUID may no longer be
       // attached; the fallback set changes).
@@ -2235,7 +2264,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const dashboards = state.dashboards.map((d) =>
         d.id === dashboardId ? { ...d, pinnedTabs: sanitized } : d,
       );
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2265,7 +2294,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         }
         return { ...d, homeNetworkIds: sanitized };
       });
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       // v29: editing the ACTIVE workspace's home-network set can shrink the
       // trusted set (e.g. narrow to a subset that excludes the current SSID, or
       // switch to "always remote"). The cached `networkAwayFromHome` flag was
@@ -2319,7 +2348,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         }
         return { ...d, servicesOrder: sanitized };
       });
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2344,7 +2373,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         }
         return { ...d, tabIcons: sanitized };
       });
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2361,7 +2390,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         return { ...d, widgets: [...d.widgets, slot] };
       });
       if (!added) return state;
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
     return added ? slot : null;
@@ -2373,7 +2402,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         if (d.id !== state.activeDashboardId) return d;
         return { ...d, widgets: d.widgets.filter((w) => w.id !== slotId) };
       });
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2393,7 +2422,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         return { ...d, widgets };
       });
       if (!mutated) return state;
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2424,7 +2453,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           ? { ...d, widgets: [...d.widgets, copy] }
           : d,
       );
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2441,7 +2470,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         return { ...d, widgets };
       });
       if (!mutated) return state;
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2460,7 +2489,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         return { ...d, widgets };
       });
       if (!mutated) return state;
-      setJSON(STORAGE_KEYS.dashboards, dashboards);
+      persistDashboards(state, dashboards);
       return { dashboards };
     });
   },
@@ -2469,7 +2498,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const current = new Set(get().seerrStaleHosts[instanceId] ?? []);
     for (const h of hosts) if (h) current.add(h);
     const next = { ...get().seerrStaleHosts, [instanceId]: [...current] };
-    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.seerrStaleHosts, next);
     set({ seerrStaleHosts: next });
   },
   clearSeerrStaleHost: (instanceId, host) => {
@@ -2478,13 +2507,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const remaining = current.filter((h) => h !== host);
     const { [instanceId]: _dropped, ...rest } = get().seerrStaleHosts;
     const next = remaining.length > 0 ? { ...rest, [instanceId]: remaining } : rest;
-    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.seerrStaleHosts, next);
     set({ seerrStaleHosts: next });
   },
   forgetSeerrStaleHosts: (instanceId) => {
     if (!(instanceId in get().seerrStaleHosts)) return;
     const { [instanceId]: _dropped, ...next } = get().seerrStaleHosts;
-    setJSON(STORAGE_KEYS.seerrStaleHosts, next);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.seerrStaleHosts, next);
     set({ seerrStaleHosts: next });
   },
   isSeerrHostStale: (instanceId, host) =>
@@ -2533,6 +2562,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setInstanceNotificationOverride: (instanceId, category, value) => {
+    if (get().demoMode) return;
     const current = get().notificationSettings;
     const map = { ...(current.perInstance ?? {}) };
     const entry = { ...(map[instanceId] ?? {}) };
@@ -2555,6 +2585,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setQbtMutedCategories: (instanceId, categories) => {
+    if (get().demoMode) return;
     const current = get().notificationSettings;
     const map = { ...(current.qbtMutedCategories ?? {}) };
     const deduped = [...new Set(categories)];
@@ -2714,44 +2745,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   enableDemoMode: () => {
+    if (get().demoMode || pendingInstanceWrites > 0) return;
     setBoolean(STORAGE_KEYS.demoMode, true);
-    const demoInstances = {} as Record<ServiceId, ServiceInstance[]>;
-    for (const id of SERVICE_IDS) {
-      const inst: ServiceInstance = {
-        id: generateInstanceId(),
-        ...defaultServiceConfig(id),
-        enabled: true,
-        localUrl: "http://demo.local",
-        remoteUrl: "",
-      };
-      demoInstances[id] = [inst];
-    }
-    pairDemoDiskIo(demoInstances);
-    pairDemoBazarrLinks(demoInstances);
-    set((state) => {
-      // v22: force every dashboard into auto-attach mode in memory (not
-      // persisted) so the resolver picks up the freshly-generated demo UUIDs.
-      // The user's stored attachments come back on disableDemoMode → hydrate.
-      const demoDashboards = state.dashboards.map((d) => {
-        if (d.attachedInstances === undefined) return d;
-        const next: Dashboard = { ...d };
-        delete (next as { attachedInstances?: unknown }).attachedInstances;
-        return next;
-      });
-      const derived = recomputeDerivedFromActive(
-        demoDashboards,
-        state.activeDashboardId,
-        demoInstances,
-        {},
-      );
-      return {
-        demoMode: true,
-        serviceInstances: demoInstances,
-        instanceSecrets: {},
-        dashboards: demoDashboards,
-        ...derived,
-      };
-    });
+    set((state) => ({
+      demoMode: true,
+      ...makeDemoConfig(state.dashboards, state.activeDashboardId),
+    }));
     queryClient.clear();
   },
 
@@ -2762,6 +2761,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   exportConfig: async (passphrase: string, onStage, onBeforeShare) => {
+    if (get().demoMode) throw new Error("Turn off Demo Mode to export settings.");
     onStage?.("preparing");
     await yieldToPaint();
     if ((await requireDeviceAuth("Authenticate to export configuration")) === "cancelled") {
@@ -2853,6 +2853,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   importConfigFromPayload: async (raw, onStage) => {
     onStage?.("restoring");
     await yieldToPaint();
+    if (get().demoMode) throw new Error("Turn off Demo Mode to import settings.");
     const migrated = migrateConfig(raw);
     const payload = validateExportPayload(migrated);
 
@@ -3086,6 +3087,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
  * encrypting so a restored phone keeps its own pairing.
  */
 export function buildExportPayload(): ExportPayload {
+  if (useConfigStore.getState().demoMode) {
+    throw new Error("Turn off Demo Mode to export settings.");
+  }
   const {
     serviceInstances,
     instanceSecrets,
