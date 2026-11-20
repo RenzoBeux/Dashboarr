@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
-import { getSecret, setSecret, deleteSecret, deleteKey } from "@/store/storage";
+import { getSecret, setSecret, deleteSecret, deleteKey, type SecretChange } from "@/store/storage";
 import { STORAGE_KEYS } from "@/lib/constants";
+import type { ExportPayload } from "@/lib/config-types";
 
 /**
  * Paired-backend state. URL + shared secret live in SecureStore so they don't
@@ -73,9 +74,46 @@ interface BackendState {
   webSlotAppliedRevision: number | null;
 }
 
+type BackendPairing = { url: string; sharedSecret: string; deviceId: string };
+
+const BACKUP_SECRET_KEYS = [
+  SECRET_KEYS.backupEnabled,
+  SECRET_KEYS.backupSalt,
+  SECRET_KEYS.backupKey,
+  SECRET_KEYS.backupKeyIterations,
+];
+const BACKUP_SECRET_OPTIONS = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
+
+function hasSamePairing(previous: BackendState, next: BackendPairing): boolean {
+  return previous.url === next.url &&
+    previous.sharedSecret === next.sharedSecret &&
+    previous.deviceId === next.deviceId;
+}
+
+function pairedState(pairing: BackendPairing, samePairing: boolean): Partial<BackendState> {
+  return {
+    ...pairing,
+    draftUrl: null,
+    isHealthy: true,
+    lastHealthAt: Date.now(),
+    consecutiveFailures: 0,
+    ...(samePairing ? {} : {
+      backupEnabled: false,
+      backupSaltHex: null,
+      backupKeyHex: null,
+      backupKeyIterations: null,
+      lastBackupAt: null,
+      lastBackupError: null,
+      backupInFlight: false,
+      webSlotRevision: null,
+      webSlotAppliedRevision: null,
+    }),
+  };
+}
+
 interface BackendActions {
   hydrate: () => Promise<void>;
-  pair: (input: { url: string; sharedSecret: string; deviceId: string }) => Promise<void>;
+  pair: (input: BackendPairing) => Promise<void>;
   unpair: () => Promise<void>;
   setHealth: (ok: boolean) => void;
   setIgnoreCertErrors: (value: boolean) => Promise<void>;
@@ -147,8 +185,8 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   },
 
   pair: async ({ url, sharedSecret, deviceId }) => {
-    const prev = get();
-    const samePairing = prev.url === url && prev.sharedSecret === sharedSecret && prev.deviceId === deviceId;
+    const pairing = { url, sharedSecret, deviceId };
+    const samePairing = hasSamePairing(get(), pairing);
     await Promise.all([
       setSecret(SECRET_KEYS.url, url),
       setSecret(SECRET_KEYS.sharedSecret, sharedSecret),
@@ -159,37 +197,10 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
     // import calls pair() without unpair(), see importConfigFromPayload).
     // Same for the web-slot revisions. Enabling backup again is explicit.
     if (!samePairing) {
-      await Promise.all([
-        deleteSecret(SECRET_KEYS.backupEnabled),
-        deleteSecret(SECRET_KEYS.backupSalt),
-        deleteSecret(SECRET_KEYS.backupKey),
-        deleteSecret(SECRET_KEYS.backupKeyIterations),
-      ]);
+      await Promise.all(BACKUP_SECRET_KEYS.map(deleteSecret));
       deleteKey(STORAGE_KEYS.backendWebSlotAppliedRevision);
     }
-    // `url` now carries the host, so the draft has done its job.
-    set({
-      url,
-      sharedSecret,
-      deviceId,
-      draftUrl: null,
-      isHealthy: true,
-      lastHealthAt: Date.now(),
-      consecutiveFailures: 0,
-      ...(samePairing
-        ? {}
-        : {
-            backupEnabled: false,
-            backupSaltHex: null,
-            backupKeyHex: null,
-            backupKeyIterations: null,
-            lastBackupAt: null,
-            lastBackupError: null,
-            backupInFlight: false,
-            webSlotRevision: null,
-            webSlotAppliedRevision: null,
-          }),
-    });
+    set(pairedState(pairing, samePairing));
   },
 
   unpair: async () => {
@@ -256,7 +267,7 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
   setDraftUrl: (url) => set({ draftUrl: url }),
 
   enableBackup: async ({ saltHex, keyHex, iterations }) => {
-    const opts = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
+    const opts = BACKUP_SECRET_OPTIONS;
     // Key material first, flag last, so a crash in between reads as "off".
     await setSecret(SECRET_KEYS.backupSalt, saltHex, opts);
     await setSecret(SECRET_KEYS.backupKey, keyHex, opts);
@@ -293,6 +304,43 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
 
   setWebSlot: (patch) => set(patch),
 }));
+
+/** Prepare pairing writes for the same restore transaction as service credentials. */
+export function prepareBackendRestore(backup: ExportPayload["backend"]) {
+  const changes: SecretChange[] = [];
+  let resetWebSlot = false;
+  let patch: Partial<BackendState> = {};
+  if (backup) {
+    const ignoreCertErrors = backup.ignoreCertErrors ?? false;
+    changes.push([SECRET_KEYS.ignoreCertErrors, String(ignoreCertErrors)]);
+    patch = { ignoreCertErrors };
+    if (backup.url && backup.sharedSecret) {
+      const pairing = {
+        url: backup.url,
+        sharedSecret: backup.sharedSecret,
+        deviceId: backup.deviceId ?? "",
+      };
+      const samePairing = hasSamePairing(useBackendStore.getState(), pairing);
+      changes.push(
+        [SECRET_KEYS.url, pairing.url],
+        [SECRET_KEYS.sharedSecret, pairing.sharedSecret],
+        [SECRET_KEYS.deviceId, pairing.deviceId],
+      );
+      if (!samePairing) {
+        resetWebSlot = true;
+        for (const key of BACKUP_SECRET_KEYS) changes.push([key, null, BACKUP_SECRET_OPTIONS]);
+      }
+      patch = { ...patch, ...pairedState(pairing, samePairing) };
+    }
+  }
+  return {
+    changes,
+    resetWebSlot,
+    apply: () => {
+      if (backup) useBackendStore.setState(patch);
+    },
+  };
+}
 
 /** An edit made on the backend's web UI that this phone has not applied yet. */
 export function isWebSlotPending(state: Pick<BackendState, "webSlotRevision" | "webSlotAppliedRevision">): boolean {

@@ -40,6 +40,7 @@ import { encryptJsonString } from "@/lib/config-crypto";
 import { getJSON, getString, setJSON, setString } from "./storage";
 import { SECRET_PREFIX, STORAGE_KEYS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
 // Smoke-test that getActiveUrl always returns a fetch-safe URL, even when the
@@ -1209,6 +1210,123 @@ describe("importConfigFromEnvelope (backend backup restore, Refs #385)", () => {
       useConfigStore.getState().importConfigFromEnvelope(envelope, "not-the-passphrase"),
     ).rejects.toThrow(/Incorrect passphrase/);
     expect(useConfigStore.getState().dashboards).toBe(before);
+  });
+});
+
+describe("configuration restore persistence", () => {
+  const serviceKey = `${STORAGE_KEYS.services}.radarr`;
+  const apiKey = `${SECRET_PREFIX}.${INSTANCE_ID}.apiKey`;
+  const passwordKey = `${SECRET_PREFIX}.${INSTANCE_ID}.password`;
+  const original = {
+    id: INSTANCE_ID,
+    name: "Original Radarr",
+    enabled: true,
+    localUrl: "http://original.local",
+    remoteUrl: "",
+    useRemote: false,
+  };
+  const disk = new Map<string, string>();
+  const keychain = new Map<string, string>();
+
+  beforeEach(async () => {
+    disk.clear();
+    keychain.clear();
+    keychain.set(apiKey, "original-key");
+    keychain.set(passwordKey, "original-password");
+    keychain.set("backend.url", "http://original-backend.local");
+    keychain.set("backend.sharedSecret", "a".repeat(64));
+    keychain.set("backend.deviceId", "original-device");
+    jest.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => keychain.get(key) ?? null);
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      keychain.set(key, value);
+    });
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      keychain.delete(key);
+    });
+    jest.mocked(AsyncStorage.setItem).mockImplementation(async (key, value) => {
+      disk.set(key, value);
+    });
+    jest.mocked(AsyncStorage.multiSet).mockImplementation(async (entries) => {
+      for (const [key, value] of entries) disk.set(key, value);
+    });
+    jest.mocked(AsyncStorage.multiRemove).mockImplementation(async (keys) => {
+      for (const key of keys) disk.delete(key);
+    });
+    setJSON(serviceKey, [original]);
+    setJSON(STORAGE_KEYS.notificationSettings, { enabled: false });
+    await useConfigStore.getState().hydrate();
+    await useBackendStore.getState().hydrate();
+  });
+
+  afterEach(() => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+    jest.mocked(SecureStore.setItemAsync).mockResolvedValue();
+    jest.mocked(SecureStore.deleteItemAsync).mockResolvedValue();
+    jest.mocked(AsyncStorage.setItem).mockResolvedValue();
+    jest.mocked(AsyncStorage.multiSet).mockResolvedValue();
+    jest.mocked(AsyncStorage.multiRemove).mockResolvedValue();
+  });
+
+  function backup() {
+    const payload = buildExportPayload();
+    payload.services = { ...payload.services, radarr: [{ ...original, name: "Imported Radarr" }] };
+    payload.secrets = { [INSTANCE_ID]: { apiKey: "imported-key" } };
+    payload.backend = {
+      url: "http://imported-backend.local",
+      sharedSecret: "b".repeat(64),
+      deviceId: "imported-device",
+    };
+    return payload;
+  }
+
+  it("leaves the old service and credentials intact if the first secret write fails", async () => {
+    jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error("Keychain unavailable"));
+    await expect(useConfigStore.getState().importConfigFromPayload(backup())).rejects.toThrow("Keychain unavailable");
+    expect(keychain.get(apiKey)).toBe("original-key");
+    expect(keychain.get(passwordKey)).toBe("original-password");
+    expect(disk.get(serviceKey)).toBe(JSON.stringify([original]));
+    await useConfigStore.getState().hydrate();
+    expect(useConfigStore.getState().serviceInstances.radarr).toEqual([original]);
+    expect(useConfigStore.getState().instanceSecrets[INSTANCE_ID]?.apiKey).toBe("original-key");
+  });
+
+  it("rolls back changes to reused service IDs and backend pairing after a later failure", async () => {
+    const before = new Map(keychain);
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === "backend.sharedSecret") throw new Error("Backend keychain write failed");
+      keychain.set(key, value);
+    });
+    await expect(useConfigStore.getState().importConfigFromPayload(backup())).rejects.toThrow("Backend keychain write failed");
+    expect(keychain).toEqual(before);
+    expect(disk.get(serviceKey)).toBe(JSON.stringify([original]));
+    expect(useBackendStore.getState().url).toBe("http://original-backend.local");
+  });
+
+  it("rolls back keychain and settings when native storage rejects a partial batch", async () => {
+    const before = new Map(keychain);
+    jest.mocked(AsyncStorage.multiSet).mockImplementationOnce(async (entries) => {
+      const serviceEntry = entries.find(([key]) => key === serviceKey)!;
+      disk.set(...serviceEntry);
+      throw new Error("Settings storage unavailable");
+    });
+    await expect(useConfigStore.getState().importConfigFromPayload(backup())).rejects.toThrow("Settings storage unavailable");
+    expect(keychain).toEqual(before);
+    expect(disk.get(serviceKey)).toBe(JSON.stringify([original]));
+    expect(useConfigStore.getState().serviceInstances.radarr).toEqual([original]);
+  });
+
+  it("commits default notification settings when a legacy backup omits them", async () => {
+    const payload = backup();
+    delete payload.notificationSettings;
+    expect(useConfigStore.getState().notificationSettings.enabled).toBe(false);
+    await useConfigStore.getState().importConfigFromPayload(payload);
+    const restored = useConfigStore.getState().notificationSettings;
+    expect(restored.enabled).toBe(true);
+    expect(JSON.parse(disk.get(STORAGE_KEYS.notificationSettings)!)).toEqual(restored);
+    expect(keychain.get(apiKey)).toBe("imported-key");
+    expect(keychain.has(passwordKey)).toBe(false);
+    await useConfigStore.getState().hydrate();
+    expect(useConfigStore.getState().notificationSettings).toEqual(restored);
   });
 });
 
