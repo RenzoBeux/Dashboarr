@@ -11,6 +11,7 @@ import { toast, toastError } from "@/components/ui/toast";
 import { ConfirmModal } from "@/components/common/confirm-modal";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
 import { useConfigStore } from "@/store/config-store";
+import { coerceWolDevice } from "@/store/config-schema";
 import { sendWakeOnLan } from "@/lib/wake-on-lan";
 import type { WakeOnLanDevice } from "@/store/config-store";
 
@@ -83,13 +84,24 @@ export default function WakeOnLanScreen() {
       return;
     }
 
-    const device: WakeOnLanDevice = {
+    const rawPort = port.trim();
+    const devicePort = rawPort ? Number(rawPort) : undefined;
+    if (rawPort && (!/^\d+$/.test(rawPort) || !devicePort || devicePort > 65535)) {
+      toast("Port must be a whole number from 1 to 65535", "error");
+      return;
+    }
+
+    const device = coerceWolDevice({
       id: editingId ?? generateId(),
       name: name.trim(),
       mac: mac.trim(),
       broadcastAddress: broadcastAddress.trim() || undefined,
-      port: port.trim() ? Number(port.trim()) || 9 : undefined,
-    };
+      port: devicePort,
+    });
+    if (!device) {
+      toast("Check the device name, MAC address and broadcast address lengths", "error");
+      return;
+    }
 
     if (mode === "add") {
       setWolDevices([...wolDevices, device]);

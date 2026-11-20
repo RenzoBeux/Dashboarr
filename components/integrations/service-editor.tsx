@@ -53,6 +53,7 @@ import {
   type PlexServer,
 } from "@/services/plex-auth";
 import { SERVICE_DEFAULTS, type ServiceId } from "@/lib/constants";
+import { customHeaderError, SERVICE_NAME_MAX_LENGTH } from "@/store/config-schema";
 import { SERVICE_CATALOG, secretsShapeFor } from "@/lib/service-catalog";
 import { kindListRoute, isBlankInstance } from "@/lib/integration-status";
 import {
@@ -368,6 +369,17 @@ export function ServiceEditor({
       return "aborted";
     }
 
+    if (trimmedName.length > SERVICE_NAME_MAX_LENGTH && trimmedName !== config.name) {
+      toast(`Name must be at most ${SERVICE_NAME_MAX_LENGTH} characters`, "error");
+      return "aborted";
+    }
+
+    const headerError = customHeaderError(customHeaders, secrets.customHeaders);
+    if (headerError) {
+      toast(headerError, "error");
+      return "aborted";
+    }
+
     const normLocal = normalizeServiceUrl(localUrl);
     const normRemote = normalizeServiceUrl(remoteUrl);
     setLocalUrl(normLocal);
@@ -391,20 +403,6 @@ export function ServiceEditor({
     if (remoteResult.kind === "warn") {
       const confirmed = await confirmHttpWarning(remoteResult.message);
       if (!confirmed) return "aborted";
-    }
-
-    // Mirror the schema validator so the user can't save an invalid header
-    // map and then have hydrate() silently drop it after a restart.
-    const headerNameRe = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
-    for (const [name, val] of Object.entries(customHeaders)) {
-      if (!headerNameRe.test(name)) {
-        toast(`Invalid header name: "${name}"`, "error");
-        return "aborted";
-      }
-      if (/[\r\n]/.test(val)) {
-        toast(`Header "${name}" value contains newlines`, "error");
-        return "aborted";
-      }
     }
 
     // MUST run BEFORE updateInstance, and the ordering is load-bearing.

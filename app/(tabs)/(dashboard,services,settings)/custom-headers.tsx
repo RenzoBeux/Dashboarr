@@ -10,8 +10,7 @@ import { Button } from "@/components/ui/button";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
 import { toast } from "@/components/ui/toast";
 import { useConfigStore } from "@/store/config-store";
-
-const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
+import { customHeaderError } from "@/store/config-schema";
 
 export default function CustomHeadersScreen() {
   const router = useRouter();
@@ -26,15 +25,10 @@ export default function CustomHeadersScreen() {
   const guard = useUnsavedChangesGuard(isDirty, () => router.back());
 
   const handleSave = () => {
-    for (const [name, val] of Object.entries(headers)) {
-      if (!HEADER_NAME_RE.test(name)) {
-        toast(`Invalid header name: "${name}"`, "error");
-        return;
-      }
-      if (/[\r\n]/.test(val)) {
-        toast(`Header "${name}" value contains newlines`, "error");
-        return;
-      }
+    const error = customHeaderError(headers, stored);
+    if (error) {
+      toast(error, "error");
+      return;
     }
     setGlobalCustomHeaders(headers);
     toast("Global headers saved", "success");
