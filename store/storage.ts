@@ -81,3 +81,62 @@ export function setMany(entries: [string, string][]): void {
   for (const [key, value] of entries) cache[key] = value;
   AsyncStorage.multiSet(entries);
 }
+
+// Restore needs to observe native write errors before changing the live cache.
+export async function persistMany(entries: [string, string][]): Promise<void> {
+  const previous: [string, string][] = [];
+  const missing: string[] = [];
+  for (const [key] of entries) {
+    const value = getString(key);
+    if (value === undefined) missing.push(key);
+    else previous.push([key, value]);
+  }
+  try {
+    await AsyncStorage.multiSet(entries);
+  } catch (error) {
+    // The iOS implementation can report an error after writing some entries.
+    try {
+      if (previous.length > 0) await AsyncStorage.multiSet(previous);
+      if (missing.length > 0) await AsyncStorage.multiRemove(missing);
+    } catch {
+      throw new Error("Could not restore the previous settings after a storage error.");
+    }
+    throw error;
+  }
+  for (const [key, value] of entries) cache[key] = value;
+}
+
+export type SecretChange = [
+  key: string,
+  value: string | null,
+  options?: SecureStore.SecureStoreOptions,
+];
+
+export async function persistWithSecrets(
+  changes: SecretChange[],
+  commit: () => Promise<void>,
+): Promise<void> {
+  const previous = await Promise.all(changes.map(async ([key]) => getSecret(key)));
+  const attempted: SecretChange[] = [];
+  try {
+    for (const [index, [key, value, options]] of changes.entries()) {
+      if (value === previous[index]) continue;
+      attempted.push([key, previous[index], options]);
+      if (value === null) await deleteSecret(key);
+      else await setSecret(key, value, options);
+    }
+    await commit();
+  } catch (error) {
+    const restored = await Promise.allSettled(
+      attempted.map(async ([key, value, options]) => {
+        if (await getSecret(key) === value) return;
+        if (value === null) await deleteSecret(key);
+        else await setSecret(key, value, options);
+      }),
+    );
+    if (restored.some((result) => result.status === "rejected")) {
+      throw new Error("Could not restore all previous credentials after a keychain error.");
+    }
+    throw error;
+  }
+}

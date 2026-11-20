@@ -48,6 +48,9 @@ import {
   getJSON,
   setJSON,
   setMany,
+  persistMany,
+  persistWithSecrets,
+  type SecretChange,
   getBoolean,
   setBoolean,
   getString,
@@ -110,7 +113,7 @@ import {
   encryptJsonString,
   isEncryptedEnvelope,
 } from "@/lib/config-crypto";
-import { useBackendStore } from "@/store/backend-store";
+import { prepareBackendRestore, useBackendStore } from "@/store/backend-store";
 import { requireDeviceAuth } from "@/lib/device-auth";
 import { useAddDefaultsStore, addDefaultsKey } from "@/store/add-defaults-store";
 import { queryClient } from "@/lib/query-client";
@@ -958,6 +961,7 @@ function persistDashboards(
 
 // Finish real keychain edits before swapping in demo instances.
 let pendingInstanceWrites = 0;
+let configImportInProgress = false;
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
@@ -1554,6 +1558,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeInstance: async (id, instanceId) => {
+    if (configImportInProgress) throw new Error("Settings are being restored.");
     const { demoMode } = get();
     if (!get().serviceInstances[id]?.some((instance) => instance.id === instanceId)) return;
     // The cached HTTP Digest nonce is keyed by instance, so drop it with the
@@ -1815,6 +1820,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   updateInstanceSecrets: async (instanceId, newSecrets) => {
+    if (configImportInProgress) throw new Error("Settings are being restored.");
     const { demoMode } = get();
     if (!demoMode) {
       pendingInstanceWrites++;
@@ -2745,7 +2751,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   enableDemoMode: () => {
-    if (get().demoMode || pendingInstanceWrites > 0) return;
+    if (get().demoMode || pendingInstanceWrites > 0 || configImportInProgress) return;
     setBoolean(STORAGE_KEYS.demoMode, true);
     set((state) => ({
       demoMode: true,
@@ -2851,235 +2857,146 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   importConfigFromPayload: async (raw, onStage) => {
-    onStage?.("restoring");
-    await yieldToPaint();
     if (get().demoMode) throw new Error("Turn off Demo Mode to import settings.");
-    const migrated = migrateConfig(raw);
-    const payload = validateExportPayload(migrated);
-
-    // Wipe any existing per-instance SecureStore entries before restoring so
-    // we never leak secrets from a previous configuration that the imported
-    // backup didn't replace.
-    const currentInstanceIds = new Set<string>();
-    for (const id of SERVICE_IDS) {
-      for (const inst of get().serviceInstances[id] ?? []) {
-        currentInstanceIds.add(inst.id);
-      }
+    if (configImportInProgress || pendingInstanceWrites > 0) {
+      throw new Error("Another settings change is in progress. Try again when it finishes.");
     }
-    for (const oldId of currentInstanceIds) {
-      await deleteSecret(`${SECRET_PREFIX}.${oldId}.apiKey`);
-      await deleteSecret(`${SECRET_PREFIX}.${oldId}.username`);
-      await deleteSecret(`${SECRET_PREFIX}.${oldId}.password`);
-      await deleteSecret(`${SECRET_PREFIX}.${oldId}.customHeaders`);
-    }
-
-    // Merge imported services over fresh defaults so every kind keeps a slot
-    // in settings even if the backup omits one.
-    const mergedInstances = defaultInstances();
-    for (const id of SERVICE_IDS) {
-      const list = payload.services[id];
-      if (Array.isArray(list) && list.length > 0) {
-        mergedInstances[id] = list;
-      }
-      setJSON(`${STORAGE_KEYS.services}.${id}`, mergedInstances[id]);
-    }
-
-    // Restore secrets keyed by instance UUID.
-    const mergedSecrets: Record<string, ServiceSecrets> = {};
-    for (const [uuid, s] of Object.entries(payload.secrets ?? {})) {
-      if (!s) continue;
-      mergedSecrets[uuid] = s;
-      if (s.apiKey) await setSecret(`${SECRET_PREFIX}.${uuid}.apiKey`, s.apiKey);
-      if (s.username) await setSecret(`${SECRET_PREFIX}.${uuid}.username`, s.username);
-      if (s.password) await setSecret(`${SECRET_PREFIX}.${uuid}.password`, s.password);
-      if (s.customHeaders && Object.keys(s.customHeaders).length > 0) {
-        await setSecret(
-          `${SECRET_PREFIX}.${uuid}.customHeaders`,
-          JSON.stringify(s.customHeaders),
-        );
-      }
-    }
-
-    // v22: active instance per kind is carried inside each dashboard's
-    // `activeInstance` map (the v21→v22 migration already folded any
-    // pre-v22 top-level `activeInstance` onto dashboards). No separate
-    // storage key — `STORAGE_KEYS.dashboards` is the source of truth.
-    // Clean the legacy key from any prior install so a downgrade can't
-    // resurrect a stale global pointer.
-    deleteKey(ACTIVE_INSTANCE_KEY);
-
-    // Restore app settings
-    setBoolean(STORAGE_KEYS.autoSwitchNetwork, payload.autoSwitchNetwork ?? false);
-    const importedTreatVpnAsHome = payload.treatVpnAsHome ?? false;
-    setBoolean(STORAGE_KEYS.treatVpnAsHome, importedTreatVpnAsHome);
-    // Strip BSSID pins so imported networks match by SSID on this device (#168
-    // — a source-device AP MAC won't match here and would wedge us "away").
-    const importedHomeNetworks = stripImportedBssids(payload.homeNetworks ?? []);
-    setJSON(STORAGE_KEYS.homeNetworks, importedHomeNetworks);
-
-    // Dashboards (v14): trust the migrated payload — the migration chain has
-    // already folded any legacy widgetSettings/dashboardWidgets into a single
-    // Default dashboard. If the post-migration payload is somehow empty we
-    // seed a fresh Default so the dashboard screen always has something.
-    // Repair any fully-orphaned home-network selection (#168) so a dashboard
-    // whose ids all went stale reverts to "use all networks" instead of being
-    // silently pinned to "always remote".
-    const importedDashboards: Dashboard[] = repairOrphanedHomeNetworkSelection(
-      Array.isArray(payload.dashboards) && payload.dashboards.length > 0
-        ? payload.dashboards
-        : defaultDashboards(),
-      importedHomeNetworks,
-    );
-    const importedActiveDashboardId =
-      typeof payload.activeDashboardId === "string" &&
-      importedDashboards.some((d) => d.id === payload.activeDashboardId)
-        ? payload.activeDashboardId
-        : importedDashboards[0].id;
-    setJSON(STORAGE_KEYS.dashboards, importedDashboards);
-    setString(STORAGE_KEYS.activeDashboardId, importedActiveDashboardId);
-    // Drop legacy keys from any prior install so they don't shadow the new
-    // dashboards on next hydrate.
-    deleteKey(STORAGE_KEYS.dashboardWidgetsLegacy);
-    deleteKey(STORAGE_KEYS.widgetSettingsLegacy);
-
-    setJSON(STORAGE_KEYS.wolDevices, payload.wolDevices ?? []);
-    setJSON(STORAGE_KEYS.shortcuts, payload.shortcuts ?? []);
-    const importedHapticsEnabled = payload.hapticsEnabled ?? true;
-    setBoolean(STORAGE_KEYS.hapticsEnabled, importedHapticsEnabled);
-    const importedGlobalCustomHeaders = payload.globalCustomHeaders ?? {};
-    setJSON(STORAGE_KEYS.globalCustomHeaders, importedGlobalCustomHeaders);
-    const importedUiScale: UiScale =
-      payload.uiScale && (UI_SCALES as readonly number[]).includes(payload.uiScale)
-        ? payload.uiScale
-        : DEFAULT_UI_SCALE;
-    setJSON(STORAGE_KEYS.uiScale, importedUiScale);
-    const importedAppTheme: AppThemeId = isValidAppTheme(payload.appTheme)
-      ? payload.appTheme
-      : DEFAULT_APP_THEME;
-    setString(STORAGE_KEYS.appTheme, importedAppTheme);
-    const importedWeekStart: WeekStart = isValidWeekStart(payload.weekStart)
-      ? payload.weekStart
-      : DEFAULT_WEEK_START;
-    setString(STORAGE_KEYS.weekStart, importedWeekStart);
-    const importedServicesOrder = sanitizeServicesOrder(payload.servicesOrder);
-    setJSON(STORAGE_KEYS.servicesOrder, importedServicesOrder);
-
-    // Restore backend pairing (v2+)
-    if (payload.backend) {
-      // Restored outside the pairing guard below: an export taken before the
-      // device was paired still carries the TLS-bypass preference, and on a
-      // fresh device that flag is what makes the first pairing succeed at all
-      // when the backend sits behind a private CA (#357).
-      await useBackendStore
-        .getState()
-        .setIgnoreCertErrors(payload.backend.ignoreCertErrors ?? false);
-    }
-    if (payload.backend?.url && payload.backend?.sharedSecret) {
-      await useBackendStore.getState().pair({
-        url: payload.backend.url,
-        sharedSecret: payload.backend.sharedSecret,
-        deviceId: payload.backend.deviceId ?? "",
-      });
-    }
-
-    // Restore notification settings (v2+). Persist to the legacy storage key
-    // (so older app versions on the same device can still read them) and
-    // assign to the store below in the bulk set().
-    const importedNotificationSettings: NotificationSettings = payload.notificationSettings
-      ? { ...DEFAULT_NOTIFICATION_SETTINGS, ...payload.notificationSettings }
-      : DEFAULT_NOTIFICATION_SETTINGS;
-    if (payload.notificationSettings) {
-      setJSON(STORAGE_KEYS.notificationSettings, importedNotificationSettings);
-    }
-
-    const { activeInstance: derivedActiveInstance, services: derivedServices, secrets: derivedSecrets } =
-      recomputeDerivedFromActive(
-        importedDashboards,
-        importedActiveDashboardId,
-        mergedInstances,
-        mergedSecrets,
-      );
-
-    // Seerr sign-in (#332): an import replaces URLs, modes and credentials
-    // under instance ids that may already have a live session in memory, and
-    // the platform cookie jar may hold a cookie for any imported host from
-    // before. Neither may vouch for the imported credentials, so every Seerr
-    // session is dropped and every imported host is marked stale until a
-    // credential login succeeds there. The pre-import instances are dropped
-    // too, in case their ids survive the import.
-    //
-    // Drop, then DRAIN, before anything is installed: a drop supersedes an
-    // in-flight login but cannot cancel its request, and that request's
-    // Set-Cookie still lands when it answers. Without waiting for it here, a
-    // pre-import login could finish after the imported account's login and
-    // put the old account's cookie back in charge of the host. Same rule as
-    // seerrClearSession.
-    // The drain only covers logins already on the wire. The old configuration
-    // stays live until the set() below, and during these awaits the health
-    // poll or any query could start a NEW login with the old credentials, so
-    // every involved instance is suspended (dedupedSeerrLogin rejects) until
-    // the new configuration and its stale-host marks are installed. Released
-    // in a finally so a failed import cannot leave Seerr sign-in blocked.
-    const preImportSeerrIds = (get().serviceInstances.overseerr ?? []).map((i) => i.id);
-    const importedSeerrIds = (mergedInstances.overseerr ?? []).map((i) => i.id);
-    const seerrReleases = [...new Set([...preImportSeerrIds, ...importedSeerrIds])].map(
-      suspendSeerrLogins,
-    );
-    const importedSeerrStaleHosts: Record<string, string[]> = {};
+    configImportInProgress = true;
     try {
-    for (const id of preImportSeerrIds) dropSeerrSession(id);
-    for (const id of preImportSeerrIds) await drainSeerrLogins(id);
-    for (const inst of mergedInstances.overseerr ?? []) {
-      dropSeerrSession(inst.id);
-      const hosts = [...new Set([inst.localUrl, inst.remoteUrl].map(seerrHostOf).filter(Boolean))];
-      if (hosts.length > 0) importedSeerrStaleHosts[inst.id] = hosts;
-    }
-    for (const inst of mergedInstances.overseerr ?? []) await drainSeerrLogins(inst.id);
-    setJSON(STORAGE_KEYS.seerrStaleHosts, importedSeerrStaleHosts);
-
-    // Reload everything into the store
-    set({
-      serviceInstances: mergedInstances,
-      instanceSecrets: mergedSecrets,
-      seerrStaleHosts: importedSeerrStaleHosts,
-      activeInstance: derivedActiveInstance,
-      services: derivedServices,
-      secrets: derivedSecrets,
-      autoSwitchNetwork: payload.autoSwitchNetwork ?? false,
-      treatVpnAsHome: importedTreatVpnAsHome,
-      homeNetworks: importedHomeNetworks,
-      servicesOrder: importedServicesOrder,
-      dashboards: importedDashboards,
-      activeDashboardId: importedActiveDashboardId,
-      // Reset the ephemeral away flag to its safe default. Import can change the
-      // active dashboard, its homeNetworkIds, the global home-network list, and
-      // flip autoSwitchNetwork on — all while a pre-import in-memory `false`
-      // (confirmed-home) flag would otherwise survive and let getActiveUrl serve
-      // the freshly-imported local URLs against the current, un-re-evaluated
-      // network (#148). useNetworkAutoSwitch re-confirms and clears it if home.
-      networkAwayFromHome: true,
-      wolDevices: payload.wolDevices ?? [],
-      shortcuts: payload.shortcuts ?? [],
-      hapticsEnabled: importedHapticsEnabled,
-      globalCustomHeaders: importedGlobalCustomHeaders,
-      uiScale: importedUiScale,
-      appTheme: importedAppTheme,
-      weekStart: importedWeekStart,
-      notificationSettings: importedNotificationSettings,
-    });
+      onStage?.("restoring");
+      await yieldToPaint();
+      await restoreConfig(validateExportPayload(migrateConfig(raw)));
     } finally {
-      for (const release of seerrReleases) release();
+      configImportInProgress = false;
     }
-
-    // Backups preserve instance UUIDs, so every query keyed by instance id
-    // (including ["overseerr", id, "me"], whose permissions gate the Seerr
-    // UI) would otherwise keep serving the PRE-import account for its
-    // staleTime. Clearing after the barrier lifts means the refetches that
-    // follow start from the imported configuration. Same call demo-mode
-    // toggling makes, for the same reason: nothing cached predates this.
-    queryClient.clear();
   },
 }));
+
+const INSTANCE_SECRET_FIELDS = ["apiKey", "username", "password", "customHeaders"] as const;
+
+async function restoreConfig(payload: ExportPayload): Promise<void> {
+  const previous = useConfigStore.getState();
+  const previousIds = new Set(SERVICE_IDS.flatMap((kind) =>
+    (previous.serviceInstances[kind] ?? []).map((instance) => instance.id),
+  ));
+
+  // Keep a blank entry for service kinds omitted from the backup.
+  const serviceInstances = defaultInstances();
+  const instanceSecrets = payload.secrets;
+  const secretChanges: SecretChange[] = [];
+  for (const kind of SERVICE_IDS) {
+    const list = payload.services[kind];
+    if (!list?.length) continue;
+    serviceInstances[kind] = list;
+    for (const { id } of list) {
+      previousIds.delete(id);
+      const secrets = instanceSecrets[id];
+      for (const field of INSTANCE_SECRET_FIELDS) {
+        const raw = secrets?.[field];
+        const value = raw ? (typeof raw === "string" ? raw : JSON.stringify(raw)) : null;
+        secretChanges.push([`${SECRET_PREFIX}.${id}.${field}`, value]);
+      }
+    }
+  }
+
+  // Source-device BSSIDs need to be re-confirmed on this device (#168).
+  const homeNetworks = stripImportedBssids(payload.homeNetworks);
+  const dashboards = repairOrphanedHomeNetworkSelection(payload.dashboards, homeNetworks);
+  const activeDashboardId = payload.activeDashboardId;
+  const notificationSettings = { ...DEFAULT_NOTIFICATION_SETTINGS, ...payload.notificationSettings };
+  const seerrStaleHosts: Record<string, string[]> = {};
+  const next = {
+    serviceInstances,
+    instanceSecrets,
+    ...recomputeDerivedFromActive(dashboards, activeDashboardId, serviceInstances, instanceSecrets),
+    autoSwitchNetwork: payload.autoSwitchNetwork,
+    treatVpnAsHome: payload.treatVpnAsHome ?? false,
+    homeNetworks,
+    servicesOrder: sanitizeServicesOrder(payload.servicesOrder),
+    dashboards,
+    activeDashboardId,
+    // Confirm the network again before letting a service use its local URL.
+    networkAwayFromHome: true,
+    wolDevices: payload.wolDevices ?? [],
+    shortcuts: payload.shortcuts ?? [],
+    hapticsEnabled: payload.hapticsEnabled ?? true,
+    globalCustomHeaders: payload.globalCustomHeaders ?? {},
+    uiScale: payload.uiScale ?? DEFAULT_UI_SCALE,
+    appTheme: payload.appTheme ?? DEFAULT_APP_THEME,
+    weekStart: payload.weekStart ?? DEFAULT_WEEK_START,
+    notificationSettings,
+    seerrStaleHosts,
+  };
+
+  // Imported IDs may be reused with different credentials. Suspend new Seerr
+  // logins until the old requests have drained and the new stale-host marks
+  // are installed, so a late old response cannot overwrite the session cookie.
+  const seerrIds = new Set([
+    ...previous.serviceInstances.overseerr.map((instance) => instance.id),
+    ...serviceInstances.overseerr.map((instance) => instance.id),
+  ]);
+  const seerrReleases = [...seerrIds].map(suspendSeerrLogins);
+  try {
+    for (const id of seerrIds) dropSeerrSession(id);
+    await Promise.all([...seerrIds].map(drainSeerrLogins));
+    for (const instance of serviceInstances.overseerr) {
+      const hosts = [...new Set([instance.localUrl, instance.remoteUrl].map(seerrHostOf).filter(Boolean))];
+      if (hosts.length > 0) seerrStaleHosts[instance.id] = hosts;
+    }
+
+    const backend = prepareBackendRestore(payload.backend);
+    const values: Record<string, unknown> = {
+      [STORAGE_KEYS.autoSwitchNetwork]: next.autoSwitchNetwork,
+      [STORAGE_KEYS.treatVpnAsHome]: next.treatVpnAsHome,
+      [STORAGE_KEYS.homeNetworks]: homeNetworks,
+      [STORAGE_KEYS.servicesOrder]: next.servicesOrder,
+      [STORAGE_KEYS.dashboards]: dashboards,
+      [STORAGE_KEYS.wolDevices]: next.wolDevices,
+      [STORAGE_KEYS.shortcuts]: next.shortcuts,
+      [STORAGE_KEYS.hapticsEnabled]: next.hapticsEnabled,
+      [STORAGE_KEYS.globalCustomHeaders]: next.globalCustomHeaders,
+      [STORAGE_KEYS.uiScale]: next.uiScale,
+      [STORAGE_KEYS.notificationSettings]: notificationSettings,
+      [STORAGE_KEYS.seerrStaleHosts]: seerrStaleHosts,
+      [ACTIVE_INSTANCE_KEY]: null,
+      [STORAGE_KEYS.dashboardWidgetsLegacy]: null,
+      [STORAGE_KEYS.widgetSettingsLegacy]: null,
+    };
+    for (const kind of SERVICE_IDS) values[`${STORAGE_KEYS.services}.${kind}`] = serviceInstances[kind];
+    const entries: [string, string][] = Object.entries(values).map(([key, value]) => [
+      key, JSON.stringify(value),
+    ]);
+    entries.push(
+      [STORAGE_KEYS.activeDashboardId, activeDashboardId],
+      [STORAGE_KEYS.appTheme, next.appTheme],
+      [STORAGE_KEYS.weekStart, next.weekStart],
+    );
+    if (backend.resetWebSlot) entries.push([STORAGE_KEYS.backendWebSlotAppliedRevision, ""]);
+
+    await persistWithSecrets(
+      [...secretChanges, ...backend.changes],
+      () => persistMany(entries),
+    );
+    useConfigStore.setState(next);
+    backend.apply();
+  } finally {
+    for (const release of seerrReleases) release();
+  }
+
+  // Superseded IDs have no references in the restored configuration. Delete
+  // their credentials only after commit so a failed restore can still use them.
+  const cleanup = await Promise.allSettled(
+    [...previousIds].flatMap((id) => INSTANCE_SECRET_FIELDS.map(
+      (field) => deleteSecret(`${SECRET_PREFIX}.${id}.${field}`),
+    )),
+  );
+  if (cleanup.some((result) => result.status === "rejected")) {
+    console.warn("Some credentials for removed service instances could not be cleared.");
+  }
+  // Instance IDs may survive a restore, so cached results may still use the
+  // pre-restore credentials.
+  queryClient.clear();
+}
 
 /**
  * The export payload as the file export writes it. Shared with the backend

@@ -93,7 +93,13 @@ export default function BackupSettingsScreen() {
         return capturedResult?.passphrase ?? null;
       }, setImportStage);
       if (success) {
-        if (capturedResult) await syncRememberedState(capturedResult);
+        if (capturedResult) {
+          try {
+            await syncRememberedState(capturedResult);
+          } catch (err) {
+            console.warn("Failed to persist remembered passphrase", err);
+          }
+        }
         toast("Configuration imported successfully", "success");
         // Import resets the away flag to its safe default, so local-only
         // services start "remote-only" until home is re-confirmed. Prompt for
@@ -114,7 +120,7 @@ export default function BackupSettingsScreen() {
         });
       }
     } catch (e) {
-      toastError("Invalid config file", e);
+      toastError("Failed to import settings", e);
     } finally {
       setImportStage(null);
     }
