@@ -107,6 +107,16 @@ export default function HomeNetworksScreen() {
   const [bssid, setBssid] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<HomeNetwork | null>(null);
+  const affectedWorkspaces = pendingDelete
+    ? dashboards.filter((dashboard) => dashboard.homeNetworkIds?.includes(pendingDelete.id))
+    : [];
+  const removeMessage = pendingDelete
+    ? `Stop treating "${pendingDelete.ssid}" as a home network?`
+    : "";
+  const workspaceMessage = affectedWorkspaces.length > 0
+    ? `\n\nThis network is selected in ${affectedWorkspaces.map(({ name }) => name).join(", ")}. Workspaces that lose their last selected network will use all home networks.`
+    : "";
+
 
   // Location-permission state for the "away" recovery card (#168). Read without
   // prompting on mount AND on every app-resume: tapping "Open Settings" sends the
@@ -642,11 +652,7 @@ export default function HomeNetworksScreen() {
       <ConfirmModal
         visible={pendingDelete !== null}
         title="Remove network"
-        message={
-          pendingDelete
-            ? `Stop treating "${pendingDelete.ssid}" as a home network?`
-            : ""
-        }
+        message={removeMessage + workspaceMessage}
         icon={Trash2}
         tone="danger"
         confirmLabel="Remove"

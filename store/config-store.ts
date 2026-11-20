@@ -592,9 +592,19 @@ function homeNetworksPatch(
     | "activeDashboardId"
   >,
   next: HomeNetwork[],
+  dashboards = state.dashboards,
 ): Pick<ConfigState, "homeNetworks"> &
   Partial<Pick<ConfigState, "networkAwayFromHome" | "currentWifi">> {
-  setJSON(STORAGE_KEYS.homeNetworks, next);
+  if (!state.demoMode) {
+    if (dashboards === state.dashboards) {
+      setJSON(STORAGE_KEYS.homeNetworks, next);
+    } else {
+      setMany([
+        [STORAGE_KEYS.homeNetworks, JSON.stringify(next)],
+        [STORAGE_KEYS.dashboards, JSON.stringify(dashboards)],
+      ]);
+    }
+  }
   const identity = next.length === 0 ? { currentWifi: null } : {};
   // Auto-switch off / demo: getActiveUrl ignores the flag and the evaluator
   // no-ops, so leave it untouched exactly as the evaluator would.
@@ -609,8 +619,7 @@ function homeNetworksPatch(
     return { homeNetworks: next, ...identity };
   }
   const active =
-    state.dashboards.find((d) => d.id === state.activeDashboardId) ??
-    state.dashboards[0];
+    dashboards.find((d) => d.id === state.activeDashboardId) ?? dashboards[0];
   return {
     homeNetworks: next,
     ...identity,
@@ -690,28 +699,27 @@ export function stripImportedBssids(networks: HomeNetwork[]): HomeNetwork[] {
 }
 
 /**
- * Repair dashboards' home-network selections after import (#168). A selection
- * that is a NON-EMPTY array but whose ids are ALL absent from the imported
- * global list is corruption — a clean export/import keeps the two consistent —
- * and it resolves to an empty effective set, which `getActiveUrl` treats as
- * "always remote", silently breaking local URLs with no way for the user to
- * recover. Revert those to `undefined` ("use all networks"). An explicit empty
- * `[]` is left untouched (that's the user's deliberate "always remote" choice,
- * not corruption), as are selections with at least one live id
- * (`resolveEffectiveHomeNetworks` already ignores the stale ones).
+ * Prune unavailable home-network IDs. When a custom selection loses its last
+ * network, use all saved networks again. An explicitly empty selection still
+ * means always remote.
  */
 export function repairOrphanedHomeNetworkSelection(
   dashboards: Dashboard[],
   homeNetworks: HomeNetwork[],
 ): Dashboard[] {
-  const validIds = new Set(homeNetworks.map((n) => n.id));
-  return dashboards.map((d) => {
-    const ids = d.homeNetworkIds;
-    if (!Array.isArray(ids) || ids.length === 0) return d;
-    if (ids.some((id) => validIds.has(id))) return d;
-    const { homeNetworkIds: _orphaned, ...rest } = d;
-    return rest as Dashboard;
+  const validIds = new Set(homeNetworks.map((network) => network.id));
+  let changed = false;
+  const repaired = dashboards.map((dashboard) => {
+    const ids = dashboard.homeNetworkIds;
+    if (!ids?.length) return dashboard;
+    const remaining = ids.filter((id) => validIds.has(id));
+    if (remaining.length === ids.length) return dashboard;
+    changed = true;
+    if (remaining.length > 0) return { ...dashboard, homeNetworkIds: remaining };
+    const { homeNetworkIds: _orphaned, ...rest } = dashboard;
+    return rest;
   });
+  return changed ? repaired : dashboards;
 }
 
 function emptyLegacySecrets(): Record<ServiceId, ServiceSecrets> {
@@ -1415,6 +1423,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
     }
 
+    // Recover workspaces affected by a network deletion on earlier builds.
+    const repairedDashboards = repairOrphanedHomeNetworkSelection(dashboards, homeNetworks);
+    if (repairedDashboards !== dashboards) {
+      dashboards = repairedDashboards;
+      dashboardsNeedPersist = true;
+    }
+
     if (dashboardsNeedPersist) {
       // Atomic pair-write so a crash can't persist the dashboards list without
       // its matching activeDashboardId (or vice versa) and leave them desynced.
@@ -1985,17 +2000,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   removeHomeNetwork: (id) => {
-    set((state) =>
-      homeNetworksPatch(
-        state,
-        state.homeNetworks.filter((n) => n.id !== id),
-      ),
-    );
-    invalidateForHomeNetworkEdit();
+    const { homeNetworks, setHomeNetworks } = get();
+    const next = homeNetworks.filter((network) => network.id !== id);
+    if (next.length !== homeNetworks.length) setHomeNetworks(next);
   },
 
   setHomeNetworks: (networks) => {
-    set((state) => homeNetworksPatch(state, networks));
+    set((state) => {
+      const dashboards = repairOrphanedHomeNetworkSelection(state.dashboards, networks);
+      return { ...homeNetworksPatch(state, networks, dashboards), dashboards };
+    });
     invalidateForHomeNetworkEdit();
   },
 
