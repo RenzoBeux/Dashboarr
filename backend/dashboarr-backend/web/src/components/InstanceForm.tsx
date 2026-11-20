@@ -3,6 +3,7 @@ import type { ServiceId } from "@/lib/constants";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import type { ExportPayload, ServiceInstance } from "@/lib/config-types";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
+import { SERVICE_NAME_MAX_LENGTH } from "@/store/config-schema";
 import { SEERR_AUTH_MODES, SEERR_AUTH_MODE_LABELS, seerrAuthMode } from "@/lib/seerr-auth";
 import type { SeerrAuthMode } from "@/lib/seerr-auth";
 import {
@@ -145,7 +146,7 @@ export function InstanceForm({ kind, instance, secrets, onChange, onSecrets, onS
       <div className="form-grid">
         <label className="field">
           <span>Name</span>
-          <input type="text" autoComplete="off" value={instance.name} onChange={(e) => onChange({ name: e.target.value })} />
+          <input type="text" autoComplete="off" maxLength={SERVICE_NAME_MAX_LENGTH} value={instance.name} onChange={(e) => onChange({ name: e.target.value })} />
         </label>
         <label className="field toggle">
           <input type="checkbox" checked={instance.enabled} onChange={(e) => onChange({ enabled: e.target.checked })} />

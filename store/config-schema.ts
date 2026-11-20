@@ -21,7 +21,7 @@ import { NOTIF_CATEGORIES } from "@/lib/notification-categories";
 import { isValidAppTheme } from "@/lib/app-themes";
 import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
 import { isSeerrAuthMode } from "@/lib/seerr-auth";
-import { isValidRpcPath } from "@/lib/url-validation";
+import { isValidRpcPath, normalizeServiceUrl } from "@/lib/url-validation";
 import { isValidShortcutUrl, SHORTCUT_NAME_MAX_LENGTH } from "@/lib/web-shortcuts";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
@@ -50,19 +50,53 @@ function isHttpUrlOrEmpty(v: unknown): v is string {
   }
 }
 
+function coerceServiceUrl(value: unknown): string | null {
+  if (isHttpUrlOrEmpty(value)) return value;
+  if (typeof value !== "string") return null;
+
+  // A host followed by a numeric port can look like a scheme to URL().
+  // Only recover schemeless service addresses, not explicit non-HTTP schemes.
+  const trimmed = value.trim();
+  if (/^[a-z][a-z\d+.-]*:(?!\d+(?:[/?#]|$))/i.test(trimmed)) return null;
+  const normalized = normalizeServiceUrl(trimmed);
+  return isHttpUrlOrEmpty(normalized) ? normalized : null;
+}
+
+export const SERVICE_NAME_MAX_LENGTH = 200;
+const HEADER_NAME_MAX_LENGTH = 200;
+const HEADER_VALUE_MAX_LENGTH = 4096;
+
 // RFC 7230 token chars — same set the spec allows in field-name. Rejecting
 // CR/LF in values closes off header-injection if someone hand-edits an export.
 const HEADER_NAME_RE = /^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$/;
 const MAX_HEADERS_PER_SCOPE = 32;
+
+export function customHeaderError(
+  headers: Record<string, string>,
+  saved: Record<string, string> = {},
+): string | undefined {
+  for (const [name, value] of Object.entries(headers)) {
+    if (!HEADER_NAME_RE.test(name)) return `Invalid header name: "${name}"`;
+    if (/[\r\n]/.test(value)) return `Header "${name}" value contains newlines`;
+    // An unchanged header from an older backup may already be above the limit.
+    if (Object.prototype.hasOwnProperty.call(saved, name) && value === saved[name]) continue;
+    if (name.length > HEADER_NAME_MAX_LENGTH) {
+      return `Header names must be at most ${HEADER_NAME_MAX_LENGTH} characters`;
+    }
+    if (value.length > HEADER_VALUE_MAX_LENGTH) {
+      return `Header "${name}" value must be at most ${HEADER_VALUE_MAX_LENGTH} characters`;
+    }
+  }
+}
 
 function coerceHeaderMap(v: unknown): Record<string, string> | null {
   if (!isPlainObject(v)) return null;
   const out: Record<string, string> = {};
   let count = 0;
   for (const [key, value] of Object.entries(v)) {
-    if (typeof key !== "string" || key.length === 0 || key.length > 200) return null;
     if (!HEADER_NAME_RE.test(key)) return null;
-    if (typeof value !== "string" || value.length > 4096) return null;
+    // Older editors allowed longer headers. Preserve valid values verbatim.
+    if (typeof value !== "string") return null;
     if (/[\r\n]/.test(value)) return null;
     out[key] = value;
     if (++count > MAX_HEADERS_PER_SCOPE) return null;
@@ -74,16 +108,17 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   if (!isPlainObject(v)) return null;
   if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
   if (typeof v.enabled !== "boolean") return null;
-  if (typeof v.name !== "string" || v.name.length > 200) return null;
-  if (!isHttpUrlOrEmpty(v.localUrl)) return null;
-  if (!isHttpUrlOrEmpty(v.remoteUrl)) return null;
+  if (typeof v.name !== "string") return null;
+  const localUrl = coerceServiceUrl(v.localUrl);
+  const remoteUrl = coerceServiceUrl(v.remoteUrl);
+  if (localUrl === null || remoteUrl === null) return null;
   if (typeof v.useRemote !== "boolean") return null;
   const out: ServiceInstance = {
     id: v.id,
     enabled: v.enabled,
-    name: v.name,
-    localUrl: v.localUrl,
-    remoteUrl: v.remoteUrl,
+    name: v.name.slice(0, SERVICE_NAME_MAX_LENGTH),
+    localUrl,
+    remoteUrl,
     useRemote: v.useRemote,
     // v23: optional. Coerce to a strict boolean so a missing/garbage value
     // (older exports, hand-edited files) lands on the secure default.
@@ -175,7 +210,7 @@ function coerceServiceSecrets(v: unknown): ServiceSecrets | null {
   return out;
 }
 
-function coerceWolDevice(v: unknown): WakeOnLanDevice | null {
+export function coerceWolDevice(v: unknown): WakeOnLanDevice | null {
   if (!isPlainObject(v)) return null;
   if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
   if (typeof v.name !== "string" || v.name.length > 200) return null;
@@ -491,7 +526,7 @@ function coerceBackend(v: unknown): ExportPayload["backend"] | null {
  * payload on success or throws a descriptive Error on any shape violation.
  *
  * Every field is checked: unknown service IDs are dropped (forward-compatible),
- * non-http(s) URLs are rejected, oversize strings are rejected, enum fields
+ * non-http(s) URLs are rejected, known legacy values are recovered, enum fields
  * must match the known set.
  */
 export function validateExportPayload(raw: unknown): ExportPayload {
@@ -621,8 +656,8 @@ export function validateExportPayload(raw: unknown): ExportPayload {
     const devices: WakeOnLanDevice[] = [];
     for (const item of raw.wolDevices) {
       const coerced = coerceWolDevice(item);
-      if (!coerced) throw new Error("Config wolDevices entry is invalid");
-      devices.push(coerced);
+      // An invalid legacy device must not block restoring the rest.
+      if (coerced) devices.push(coerced);
     }
     payload.wolDevices = devices;
   }

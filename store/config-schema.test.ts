@@ -1,4 +1,4 @@
-import { validateExportPayload } from "./config-schema";
+import { coerceWolDevice, customHeaderError, validateExportPayload } from "./config-schema";
 import { ARR_LINK_OFF } from "@/lib/config-types";
 
 const TEST_INSTANCE_ID = "11111111-1111-1111-1111-111111111111";
@@ -139,14 +139,28 @@ describe("validateExportPayload — service instance coercion", () => {
     ).toThrow(/services\.radarr/);
   });
 
-  it("rejects an instance whose name exceeds 200 chars", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        services: { radarr: [validInstance({ name: "x".repeat(201) })] },
-      }),
-    ).toThrow(/services\.radarr/);
+  it("restores an instance with an oversized legacy name", () => {
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { radarr: [validInstance({ name: "x".repeat(201) })] },
+    });
+    expect(result.services.radarr[0].name).toHaveLength(200);
+    expect(result.services.radarr[0].id).toBe(TEST_INSTANCE_ID);
   });
+
+  it.each(["192.168.1.10:7878", "server.local:7878/base", "localhost:7878", "[::1]:7878"])(
+    "normalizes the legacy service URL %s",
+    (url) => {
+      const result = validateExportPayload({
+        ...baseValid(),
+        services: { radarr: [validInstance({ localUrl: url, remoteUrl: url })] },
+      });
+      expect(result.services.radarr[0]).toMatchObject({
+        localUrl: `http://${url}`,
+        remoteUrl: `http://${url}`,
+      });
+    },
+  );
 
   it("rejects ftp:// in localUrl", () => {
     expect(() =>
@@ -828,49 +842,26 @@ describe("validateExportPayload — dashboard.tabIcons (v37)", () => {
 describe("validateExportPayload — WOL devices", () => {
   const baseWol = () => ({ id: "d1", name: "Server", mac: "aa:bb:cc:dd:ee:ff" });
 
-  it("rejects a device with empty id", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        wolDevices: [{ ...baseWol(), id: "" }],
-      }),
-    ).toThrow(/wolDevices/);
-  });
-
-  it("rejects a device with id longer than 128 chars", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        wolDevices: [{ ...baseWol(), id: "x".repeat(129) }],
-      }),
-    ).toThrow(/wolDevices/);
-  });
-
-  it("rejects a device with port 0", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        wolDevices: [{ ...baseWol(), port: 0 }],
-      }),
-    ).toThrow(/wolDevices/);
-  });
-
-  it("rejects a device with port 65536", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        wolDevices: [{ ...baseWol(), port: 65536 }],
-      }),
-    ).toThrow(/wolDevices/);
-  });
-
-  it("rejects a device with non-integer port (9.5)", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        wolDevices: [{ ...baseWol(), port: 9.5 }],
-      }),
-    ).toThrow(/wolDevices/);
+  it.each([
+    { id: "" },
+    { id: "x".repeat(129) },
+    { name: "x".repeat(201) },
+    { mac: "aa:bb:cc:dd:ee:ff with an invalid note" },
+    { port: 0 },
+    { port: 70000 },
+    { port: 9.5 },
+    { broadcastAddress: "x".repeat(46) },
+  ])("skips an invalid legacy device while restoring the rest (%o)", (invalid) => {
+    const good = baseWol();
+    const bad = { ...good, id: "bad", ...invalid };
+    expect(coerceWolDevice(bad)).toBeNull();
+    const result = validateExportPayload({
+      ...baseValid(),
+      wolDevices: [bad, good],
+      services: { radarr: [validInstance()] },
+    });
+    expect(result.wolDevices).toEqual([good]);
+    expect(result.services.radarr[0].id).toBe(TEST_INSTANCE_ID);
   });
 
   it("accepts ports 1 and 65535 (boundaries)", () => {
@@ -883,15 +874,6 @@ describe("validateExportPayload — WOL devices", () => {
     });
     expect(result.wolDevices?.[0].port).toBe(1);
     expect(result.wolDevices?.[1].port).toBe(65535);
-  });
-
-  it("rejects a broadcastAddress longer than 45 chars", () => {
-    expect(() =>
-      validateExportPayload({
-        ...baseValid(),
-        wolDevices: [{ ...baseWol(), broadcastAddress: "x".repeat(46) }],
-      }),
-    ).toThrow(/wolDevices/);
   });
 
   it("preserves an entirely omitted port", () => {
@@ -1647,12 +1629,19 @@ describe("validateExportPayload — service customHeaders", () => {
     ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
   });
 
-  it("rejects a header value longer than 4096 chars", () => {
-    expect(() =>
-      validateExportPayload(
-        withInstance({ customHeaders: { "X-Foo": "x".repeat(4097) } }),
-      ),
-    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
+  it("restores oversized legacy headers verbatim and refuses new oversized headers", () => {
+    const longName = "x".repeat(201);
+    const longValue = "x".repeat(4097);
+    const headers = { [longName]: "value", "X-Custom": longValue };
+    const result = validateExportPayload({
+      ...withInstance({ customHeaders: headers }),
+      globalCustomHeaders: headers,
+    });
+    expect(result.secrets[TEST_INSTANCE_ID]?.customHeaders).toEqual(headers);
+    expect(result.globalCustomHeaders).toEqual(headers);
+    expect(customHeaderError({ [longName]: "value" })).toMatch(/200/);
+    expect(customHeaderError({ "X-Custom": longValue })).toMatch(/4096/);
+    expect(customHeaderError(headers, headers)).toBeUndefined();
   });
 
   it("rejects more than 32 headers", () => {
