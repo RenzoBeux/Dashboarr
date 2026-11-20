@@ -832,6 +832,7 @@ describe("setDashboardHomeNetworkIds — away-flag reset on active-workspace edi
 // re-expose the local URL. This test seeds the persisted shape and rehydrates.
 describe("hydrate — preserves per-dashboard homeNetworkIds (#148)", () => {
   it("round-trips [] (always remote), a subset, and undefined (all) through hydrate", async () => {
+    setJSON(STORAGE_KEYS.homeNetworks, [{ id: "n1", ssid: "Home", bssid: "" }]);
     setJSON(STORAGE_KEYS.dashboards, [
       { id: "A", name: "Remote-only", widgets: [], homeNetworkIds: [] },
       { id: "B", name: "Subset", widgets: [], homeNetworkIds: ["n1"] },
@@ -1113,14 +1114,57 @@ describe("repairOrphanedHomeNetworkSelection (#168)", () => {
     expect(d.homeNetworkIds).toEqual([]);
   });
 
-  it("keeps a selection that still has at least one live id", () => {
+  it("prunes stale IDs without clearing the remaining selection", () => {
     const [d] = repairOrphanedHomeNetworkSelection([dash(["home", "gone"])], nets);
-    expect(d.homeNetworkIds).toEqual(["home", "gone"]);
+    expect(d.homeNetworkIds).toEqual(["home"]);
   });
 
   it("leaves 'use all' (undefined) untouched", () => {
     const [d] = repairOrphanedHomeNetworkSelection([dash(undefined)], nets);
     expect("homeNetworkIds" in d).toBe(false);
+  });
+});
+
+describe("home network deletion", () => {
+  const casa = { id: "casa", ssid: "Casa", bssid: "" };
+  const cabin = { id: "cabin", ssid: "Cabin", bssid: "" };
+  const workspaces = [
+    { id: "A", name: "Home", widgets: [], homeNetworkIds: [casa.id] },
+    { id: "B", name: "Shared", widgets: [], homeNetworkIds: [casa.id, cabin.id] },
+    { id: "C", name: "Remote", widgets: [], homeNetworkIds: [] },
+  ];
+
+  it("repairs workspace selections when deleting and re-adding the same WiFi", async () => {
+    setJSON(STORAGE_KEYS.homeNetworks, [casa, cabin]);
+    setJSON(STORAGE_KEYS.dashboards, workspaces);
+    setString(STORAGE_KEYS.activeDashboardId, "A");
+    const store = useConfigStore.getState();
+    await store.hydrate();
+    store.setAutoSwitch(false);
+    const radarr = store.addInstance("radarr", {
+      enabled: true,
+      localUrl: "http://radarr.local",
+      remoteUrl: "",
+    });
+
+    store.removeHomeNetwork(casa.id);
+    const restoredCasa = store.addHomeNetwork({ ssid: casa.ssid, bssid: "" });
+    expect(restoredCasa.id).not.toBe(casa.id);
+    for (const state of [useConfigStore.getState().dashboards, getJSON<typeof workspaces>(STORAGE_KEYS.dashboards)!]) {
+      expect(state.find((dashboard) => dashboard.id === "A")?.homeNetworkIds).toBeUndefined();
+      expect(state.find((dashboard) => dashboard.id === "B")?.homeNetworkIds).toEqual([cabin.id]);
+      expect(state.find((dashboard) => dashboard.id === "C")?.homeNetworkIds).toEqual([]);
+    }
+    expect(store.getActiveUrl("radarr", radarr.id)).toBe("http://radarr.local");
+  });
+
+  it("repairs stale selections left on disk by an older app", async () => {
+    setJSON(STORAGE_KEYS.homeNetworks, [cabin]);
+    setJSON(STORAGE_KEYS.dashboards, workspaces);
+    await useConfigStore.getState().hydrate();
+    const saved = getJSON<typeof workspaces>(STORAGE_KEYS.dashboards)!;
+    expect(saved.map((dashboard) => dashboard.homeNetworkIds)).toEqual([undefined, [cabin.id], []]);
+    expect(useConfigStore.getState().dashboards).toEqual(saved);
   });
 });
 
