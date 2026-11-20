@@ -195,7 +195,6 @@ export default function MovieDetailScreen() {
         id: movie.id,
         deleteFiles: mode === "withFiles",
         addExclusion,
-        tmdbId: movie.tmdbId,
       },
       {
         // flow.back() pops only once the confirm has fully dismissed.

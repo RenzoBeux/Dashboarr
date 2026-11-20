@@ -82,7 +82,6 @@ type Tab = "library" | "queue" | "wanted";
 type DeleteIntent = {
   id: number;
   title: string;
-  tmdbId?: number;
   withFiles: boolean;
 };
 
@@ -249,7 +248,6 @@ export const MoviesView = memo(function MoviesView({
           flow.open("confirmDelete", {
             id: movie.id,
             title: movie.title,
-            tmdbId: movie.tmdbId,
             withFiles: false,
           }),
       },
@@ -261,7 +259,6 @@ export const MoviesView = memo(function MoviesView({
           flow.open("confirmDelete", {
             id: movie.id,
             title: movie.title,
-            tmdbId: movie.tmdbId,
             withFiles: true,
           }),
       },
@@ -289,7 +286,6 @@ export const MoviesView = memo(function MoviesView({
         id: pendingDelete.id,
         deleteFiles: pendingDelete.withFiles,
         addExclusion,
-        tmdbId: pendingDelete.tmdbId,
       },
       { onError: (err) => toastError("Failed to delete movie", err) },
     );

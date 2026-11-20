@@ -28,10 +28,6 @@ import {
 } from "@/services/radarr-api";
 import { toast, toastError } from "@/components/ui/toast";
 import type { RadarrMovie } from "@/lib/types";
-import { getMovieDetails, deleteMedia, getSeerrMe } from "@/services/overseerr-api";
-import { useSeerrCapabilities } from "@/hooks/use-seerr-capabilities";
-import { deriveSeerrCapabilities } from "@/lib/seerr-permissions";
-import { useConfigStore } from "@/store/config-store";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { radarrQueueQuery } from "@/lib/arr-queue-query";
 import { scheduleGrabRecheck } from "@/lib/post-grab-refresh";
@@ -185,46 +181,18 @@ export function useAddMovie(instanceId?: string) {
 export function useDeleteMovie(instanceId?: string) {
   const queryClient = useQueryClient();
   const { instanceId: id } = useInstanceTarget("radarr", instanceId);
-  // Overseerr cleanup runs against the active Overseerr instance; cross-stack
-  // deletion is a UX nicety, not a contract.
-  const overseerrEnabled = useConfigStore((s) => s.services.overseerr.enabled);
-  // DELETE /media needs MANAGE_REQUESTS; a Seerr signed in as a plain member
-  // (#332) would only 403, so skip the round trip silently for that account.
-  // Only a CONFIRMED denial skips: before /auth/me has answered the hook
-  // reports every capability false, so the mutation resolves it on demand.
-  const seerrCaps = useSeerrCapabilities();
   return useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       id: movieId,
       deleteFiles = false,
       addExclusion = false,
-      tmdbId,
     }: {
       id: number;
       deleteFiles?: boolean;
       addExclusion?: boolean;
-      tmdbId?: number;
-    }) => {
-      await deleteMovie(movieId, { deleteFiles, addExclusion }, id ?? undefined);
-      // Clear Overseerr media entry so the movie can be re-requested
-      if (tmdbId && overseerrEnabled) {
-        try {
-          const canManage = seerrCaps.loaded
-            ? seerrCaps.canManageRequests
-            : deriveSeerrCapabilities(await getSeerrMe()).canManageRequests;
-          if (!canManage) return;
-          const details = await getMovieDetails(tmdbId);
-          if (details.mediaInfo?.id) {
-            await deleteMedia(details.mediaInfo.id);
-          }
-        } catch {
-          // Non-critical — don't block Radarr delete if Overseerr cleanup fails
-        }
-      }
-    },
+    }) => deleteMovie(movieId, { deleteFiles, addExclusion }, id ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
-      queryClient.invalidateQueries({ queryKey: ["overseerr"] });
     },
   });
 }
