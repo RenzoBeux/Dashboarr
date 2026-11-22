@@ -34,11 +34,20 @@ import {
   buildExportPayload,
   stripImportedBssids,
   repairOrphanedHomeNetworkSelection,
+  withConfigWrite,
 } from "./config-store";
 import { useBackendStore } from "./backend-store";
 import { encryptJsonString } from "@/lib/config-crypto";
-import { getJSON, getString, setJSON, setString } from "./storage";
-import { SECRET_PREFIX, STORAGE_KEYS } from "@/lib/constants";
+import {
+  deleteKey,
+  getJSON,
+  getString,
+  persistRestore,
+  recoverInterruptedRestore,
+  setJSON,
+  setString,
+} from "./storage";
+import { SECRET_PREFIX, SERVICE_IDS, STORAGE_KEYS } from "@/lib/constants";
 import { queryClient } from "@/lib/query-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
@@ -52,7 +61,30 @@ import * as SecureStore from "expo-secure-store";
 
 const INSTANCE_ID = "00000000-0000-0000-0000-000000000001";
 
+const initialBackendState = useBackendStore.getState();
+const SEEDED_KEYS = [
+  STORAGE_KEYS.dashboards,
+  STORAGE_KEYS.activeDashboardId,
+  STORAGE_KEYS.homeNetworks,
+  STORAGE_KEYS.autoSwitchNetwork,
+  STORAGE_KEYS.notificationSettings,
+  STORAGE_KEYS.wolDevices,
+  ...SERVICE_IDS.map((id) => `${STORAGE_KEYS.services}.${id}`),
+];
+
+/** Drop what a test wrote to the shared storage cache so later tests don't inherit it. */
+function resetStoredConfig() {
+  for (const key of SEEDED_KEYS) deleteKey(key);
+  useBackendStore.setState(initialBackendState, true);
+}
+
+async function settle() {
+  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe("Demo Mode configuration isolation", () => {
+  afterEach(resetStoredConfig);
+
   it("blocks exporting and restoring a backup while demo data is live", async () => {
     const store = useConfigStore.getState();
     const payload = buildExportPayload();
@@ -1126,6 +1158,8 @@ describe("repairOrphanedHomeNetworkSelection (#168)", () => {
 });
 
 describe("home network deletion", () => {
+  afterEach(resetStoredConfig);
+
   const casa = { id: "casa", ssid: "Casa", bssid: "" };
   const cabin = { id: "cabin", ssid: "Cabin", bssid: "" };
   const workspaces = [
@@ -1309,6 +1343,7 @@ describe("configuration restore persistence", () => {
     jest.mocked(AsyncStorage.setItem).mockResolvedValue();
     jest.mocked(AsyncStorage.multiSet).mockResolvedValue();
     jest.mocked(AsyncStorage.multiRemove).mockResolvedValue();
+    resetStoredConfig();
   });
 
   function backup() {
@@ -1371,6 +1406,225 @@ describe("configuration restore persistence", () => {
     expect(keychain.has(passwordKey)).toBe(false);
     await useConfigStore.getState().hydrate();
     expect(useConfigStore.getState().notificationSettings).toEqual(restored);
+  });
+
+  it("switches to the restored settings and clears cached queries before deleting replaced credentials", async () => {
+    const replacement = "00000000-0000-0000-0000-000000000099";
+    const payload = backup();
+    payload.services = { ...payload.services, radarr: [{ ...original, id: replacement, name: "Imported Radarr" }] };
+    payload.secrets = { [replacement]: { apiKey: "imported-key" } };
+    const clear = jest.spyOn(queryClient, "clear");
+    let atCleanup: { names: string[]; cleared: boolean } | undefined;
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      if (key === apiKey && !atCleanup) {
+        atCleanup = {
+          names: useConfigStore.getState().serviceInstances.radarr.map(({ name }) => name),
+          cleared: clear.mock.calls.length > 0,
+        };
+      }
+      keychain.delete(key);
+    });
+    await useConfigStore.getState().importConfigFromPayload(payload);
+    clear.mockRestore();
+    expect(atCleanup).toEqual({ names: ["Imported Radarr"], cleared: true });
+    expect(keychain.has(apiKey)).toBe(false);
+    expect(keychain.has("restore.journal")).toBe(false);
+  });
+
+  it("clears a reused instance's stored session cookie", async () => {
+    const cookieKey = `${SECRET_PREFIX}.${INSTANCE_ID}.sessionCookie`;
+    keychain.set(cookieKey, "SID=old");
+    await useConfigStore.getState().importConfigFromPayload(backup());
+    expect(keychain.has(cookieKey)).toBe(false);
+  });
+
+  it("removes legacy keys and the replaced backend's backup time instead of storing null", async () => {
+    setString(STORAGE_KEYS.backendBackupLastAt, "123");
+    setJSON(STORAGE_KEYS.widgetSettingsLegacy, {});
+    await useConfigStore.getState().importConfigFromPayload(backup());
+    expect(getString(STORAGE_KEYS.backendBackupLastAt)).toBeUndefined();
+    expect(getString(STORAGE_KEYS.widgetSettingsLegacy)).toBeUndefined();
+    expect(AsyncStorage.multiRemove).toHaveBeenCalledWith(
+      expect.arrayContaining([STORAGE_KEYS.backendBackupLastAt, STORAGE_KEYS.widgetSettingsLegacy]),
+    );
+  });
+});
+
+describe("interrupted restore recovery", () => {
+  const keychain = new Map<string, string>();
+  const disk = new Map<string, string>();
+  const TEST_KEY = "test.restoreEntry";
+
+  beforeEach(() => {
+    keychain.clear();
+    disk.clear();
+    jest.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => keychain.get(key) ?? null);
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      keychain.set(key, value);
+    });
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      keychain.delete(key);
+    });
+    jest.mocked(AsyncStorage.getItem).mockImplementation(async (key) => disk.get(key) ?? null);
+    jest.mocked(AsyncStorage.removeItem).mockImplementation(async (key) => {
+      disk.delete(key);
+    });
+    jest.mocked(AsyncStorage.multiSet).mockImplementation(async (entries) => {
+      for (const [key, value] of entries) disk.set(key, value);
+    });
+  });
+
+  afterEach(() => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+    jest.mocked(SecureStore.setItemAsync).mockResolvedValue();
+    jest.mocked(SecureStore.deleteItemAsync).mockResolvedValue();
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(null);
+    jest.mocked(AsyncStorage.removeItem).mockResolvedValue();
+    jest.mocked(AsyncStorage.multiSet).mockResolvedValue();
+    deleteKey(TEST_KEY);
+  });
+
+  it("puts the keychain back when the app died before the settings were saved", async () => {
+    keychain.set("secrets.a.apiKey", "old");
+    // The settings batch never finishes: the app is killed while it runs.
+    jest.mocked(AsyncStorage.multiSet).mockImplementationOnce(() => new Promise(() => {}));
+    void persistRestore(
+      [["secrets.a.apiKey", "new"], ["secrets.b.apiKey", "added"]],
+      [[TEST_KEY, "v"]],
+      [],
+      () => {},
+    );
+    await settle();
+    expect(keychain.get("secrets.a.apiKey")).toBe("new");
+    await recoverInterruptedRestore();
+    expect(keychain.get("secrets.a.apiKey")).toBe("old");
+    expect(keychain.has("secrets.b.apiKey")).toBe(false);
+    expect(keychain.has("restore.journal")).toBe(false);
+  });
+
+  it("finishes deleting replaced credentials once the settings were saved", async () => {
+    keychain.set("secrets.gone.apiKey", "old");
+    jest.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error("Keychain locked"));
+    const onCommit = jest.fn();
+    await persistRestore([], [[TEST_KEY, "v"]], ["secrets.gone.apiKey"], onCommit);
+    expect(onCommit).toHaveBeenCalled();
+    expect(keychain.has("secrets.gone.apiKey")).toBe(true);
+    expect(keychain.has("restore.journal")).toBe(true);
+    await recoverInterruptedRestore();
+    expect(keychain.has("secrets.gone.apiKey")).toBe(false);
+    expect(keychain.has("restore.journal")).toBe(false);
+    expect(disk.has("app.restoreCommitted")).toBe(false);
+  });
+});
+
+describe("hydrate — repairs values older builds saved", () => {
+  afterEach(resetStoredConfig);
+
+  it("adds the scheme to bare URLs, shortens long names, and saves the result (#526, #529)", async () => {
+    setJSON(`${STORAGE_KEYS.services}.radarr`, [
+      { id: INSTANCE_ID, name: "x".repeat(250), enabled: true, localUrl: "192.168.1.10:7878", remoteUrl: "", useRemote: false },
+    ]);
+    await useConfigStore.getState().hydrate();
+    const expected = { name: "x".repeat(200), localUrl: "http://192.168.1.10:7878", remoteUrl: "" };
+    expect(useConfigStore.getState().serviceInstances.radarr[0]).toMatchObject(expected);
+    expect(getJSON<Record<string, unknown>[]>(`${STORAGE_KEYS.services}.radarr`)![0]).toMatchObject(expected);
+  });
+
+  it("gives Wake-on-LAN devices that share an id their own", async () => {
+    const device = { id: "migrated-1", name: "NAS", mac: "aa:bb:cc:dd:ee:ff" };
+    setJSON(STORAGE_KEYS.wolDevices, [device, { ...device, name: "Desktop" }]);
+    await useConfigStore.getState().hydrate();
+    const devices = useConfigStore.getState().wolDevices;
+    expect(devices.map(({ name }) => name)).toEqual(["NAS", "Desktop"]);
+    expect(new Set(devices.map(({ id }) => id)).size).toBe(2);
+    expect(getJSON(STORAGE_KEYS.wolDevices)).toEqual(devices);
+  });
+});
+
+describe("Demo Mode — global settings and guards", () => {
+  afterEach(async () => {
+    if (useConfigStore.getState().demoMode) await useConfigStore.getState().disableDemoMode();
+    for (const key of [STORAGE_KEYS.treatVpnAsHome, STORAGE_KEYS.servicesOrder, STORAGE_KEYS.globalCustomHeaders]) {
+      deleteKey(key);
+    }
+    resetStoredConfig();
+  });
+
+  it("keeps network and service settings in memory", async () => {
+    const store = useConfigStore.getState();
+    await store.hydrate();
+    store.setAutoSwitch(false);
+    const saved = [STORAGE_KEYS.treatVpnAsHome, STORAGE_KEYS.servicesOrder, STORAGE_KEYS.wolDevices, STORAGE_KEYS.globalCustomHeaders]
+      .map((key) => getString(key));
+    expect(store.enableDemoMode()).toBe(true);
+    store.setAutoSwitch(true);
+    store.setTreatVpnAsHome(true);
+    store.setServicesOrder(["sonarr"]);
+    store.setWolDevices([{ id: "w1", name: "NAS", mac: "aa:bb:cc:dd:ee:ff" }]);
+    store.setGlobalCustomHeaders({ "X-Demo": "1" });
+    expect(useConfigStore.getState()).toMatchObject({ autoSwitchNetwork: true, treatVpnAsHome: true });
+    expect(getString(STORAGE_KEYS.autoSwitchNetwork)).toBe("false");
+    expect(
+      [STORAGE_KEYS.treatVpnAsHome, STORAGE_KEYS.servicesOrder, STORAGE_KEYS.wolDevices, STORAGE_KEYS.globalCustomHeaders]
+        .map((key) => getString(key)),
+    ).toEqual(saved);
+    await store.disableDemoMode();
+    expect(useConfigStore.getState().autoSwitchNetwork).toBe(false);
+    expect(useConfigStore.getState().wolDevices).not.toContainEqual(expect.objectContaining({ id: "w1" }));
+    expect(useConfigStore.getState().globalCustomHeaders).not.toHaveProperty("X-Demo");
+  });
+
+  it("applies notification overrides for demo instances in memory", () => {
+    const store = useConfigStore.getState();
+    expect(store.enableDemoMode()).toBe(true);
+    const qbit = useConfigStore.getState().serviceInstances.qbittorrent[0].id;
+    store.setInstanceNotificationOverride(qbit, "torrentCompleted", false);
+    store.setQbtMutedCategories(qbit, ["tv"]);
+    const settings = useConfigStore.getState().notificationSettings;
+    expect(settings.perInstance?.[qbit]).toEqual({ torrentCompleted: false });
+    expect(settings.qbtMutedCategories?.[qbit]).toEqual(["tv"]);
+    expect(getJSON<{ perInstance?: unknown }>(STORAGE_KEYS.notificationSettings)?.perInstance).toBeUndefined();
+  });
+
+  it("refuses to start, and a restore refuses too, while a settings change is still being written", async () => {
+    const store = useConfigStore.getState();
+    let finish!: () => void;
+    const write = withConfigWrite(() => new Promise<void>((resolve) => { finish = resolve; }));
+    expect(store.enableDemoMode()).toBe(false);
+    expect(useConfigStore.getState().demoMode).toBe(false);
+    await expect(store.importConfigFromPayload(buildExportPayload())).rejects.toThrow(/in progress/);
+    finish();
+    await write;
+    expect(store.enableDemoMode()).toBe(true);
+  });
+
+  it("refuses a backend restore before decrypting it", async () => {
+    const store = useConfigStore.getState();
+    store.enableDemoMode();
+    const onStage = jest.fn();
+    await expect(store.importConfigFromEnvelope({} as never, "passphrase", onStage)).rejects.toThrow(
+      "Turn off Demo Mode",
+    );
+    expect(onStage).not.toHaveBeenCalled();
+  });
+});
+
+describe("setDashboardHomeNetworkIds — unknown networks", () => {
+  afterEach(resetStoredConfig);
+
+  it("keeps only saved networks, and reads a selection of unknown ones as all networks", () => {
+    useConfigStore.setState({
+      homeNetworks: [{ id: "n1", ssid: "Home", bssid: "" }],
+      dashboards: [{ id: "A", name: "A", widgets: [] }],
+      activeDashboardId: "A",
+    });
+    const homeNetworkIds = () => useConfigStore.getState().dashboards[0].homeNetworkIds;
+    useConfigStore.getState().setDashboardHomeNetworkIds("A", ["n1", "gone", "n1"]);
+    expect(homeNetworkIds()).toEqual(["n1"]);
+    useConfigStore.getState().setDashboardHomeNetworkIds("A", ["gone"]);
+    expect(homeNetworkIds()).toBeUndefined();
+    useConfigStore.getState().setDashboardHomeNetworkIds("A", []);
+    expect(homeNetworkIds()).toEqual([]);
   });
 });
 

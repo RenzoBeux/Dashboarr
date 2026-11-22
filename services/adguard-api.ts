@@ -4,6 +4,7 @@ import { useConfigStore } from "@/store/config-store";
 import { getSecret, setSecret, deleteSecret } from "@/store/storage";
 import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
+import { registerSessionReset } from "@/lib/session-registry";
 import type {
   AdguardServerStatus,
   AdguardProtectionRequest,
@@ -33,6 +34,9 @@ interface CookieEntry {
 // One CookieEntry per AdGuard Home instance UUID. Persisted to SecureStore
 // under `secrets.${instanceId}.sessionCookie`.
 const cookieStores = new Map<string, CookieEntry>();
+// A restore may reuse this id with other credentials (the keychain copy is
+// cleared by the restore itself).
+registerSessionReset((instanceId) => cookieStores.delete(instanceId));
 
 function sessionKeyFor(instanceId: string): string {
   return `${SECRET_PREFIX}.${instanceId}.sessionCookie`;

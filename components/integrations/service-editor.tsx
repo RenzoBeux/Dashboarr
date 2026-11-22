@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { Select } from "@/components/ui/select";
 import { HeaderListEditor } from "@/components/ui/header-list-editor";
-import { useConfigStore, type ServiceConfig } from "@/store/config-store";
+import { useConfigStore, withConfigWrite, type ServiceConfig } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
 import { BackHeader } from "@/components/common/back-header";
 import {
@@ -261,7 +261,8 @@ export function ServiceEditor({
   // is not tied to this component and finishes after the unmount.
   const dropBlankNewInstance = () => {
     if (!isBlankNewInstance) return;
-    void removeInstance(serviceId, instanceId);
+    // Refused only while a restore runs, which replaces this blank row anyway.
+    removeInstance(serviceId, instanceId).catch(() => {});
   };
 
   const headersJson = JSON.stringify(customHeaders);
@@ -355,7 +356,12 @@ export function ServiceEditor({
   const handleSave = async (): Promise<"saved" | "prompted" | "aborted"> => {
     setSaving(true);
     try {
-      return await performSave();
+      // Holds off a restore or Demo Mode until both writes below have landed,
+      // so neither can leave the instance half saved.
+      return await withConfigWrite(performSave);
+    } catch (err) {
+      toastError("Could not save", err);
+      return "aborted";
     } finally {
       setSaving(false);
     }
@@ -369,7 +375,8 @@ export function ServiceEditor({
       return "aborted";
     }
 
-    if (trimmedName.length > SERVICE_NAME_MAX_LENGTH && trimmedName !== config.name) {
+    // Older names are shortened on load (hydrate), so the limit always applies.
+    if (trimmedName.length > SERVICE_NAME_MAX_LENGTH) {
       toast(`Name must be at most ${SERVICE_NAME_MAX_LENGTH} characters`, "error");
       return "aborted";
     }
@@ -842,7 +849,7 @@ export function ServiceEditor({
       leaveActionRef.current = null;
       allowRemoveRef.current = true;
       onDeleted();
-      void (async () => {
+      void withConfigWrite(async () => {
         if (serviceId === "qbittorrent") {
           await qbClearSession(instanceId);
         }
@@ -870,7 +877,7 @@ export function ServiceEditor({
         if (isLastInstance) {
           addInstance(serviceId, { name: kindLabel });
         }
-      })();
+      }).catch((err) => toastError("Could not remove the service", err));
     });
   };
 
@@ -924,6 +931,7 @@ export function ServiceEditor({
           placeholder={SERVICE_DEFAULTS_KIND_LABEL[serviceId]}
           value={name}
           onChangeText={setName}
+          maxLength={SERVICE_NAME_MAX_LENGTH}
         />
       </Card>
 

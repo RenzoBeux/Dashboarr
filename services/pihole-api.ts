@@ -2,6 +2,7 @@ import { HttpError, serviceRequest, urlBlock } from "@/lib/http-client";
 import { GRAVITY_UPDATE_TIMEOUT, SERVICE_DEFAULTS } from "@/lib/constants";
 import { buildUrl } from "@/lib/url-builder";
 import { useConfigStore } from "@/store/config-store";
+import { registerSessionReset } from "@/lib/session-registry";
 import {
   PIHOLE_SID_HEADER,
   dedupedPiholeLogin,
@@ -185,6 +186,10 @@ async function piholeRequest<T>(
  * password change is not free. Called from the integrations editor on save and
  * on delete, and from the instance list on delete.
  */
+// Local only: after a restore the stored host may be a different Pi-hole, so
+// no logout is sent with the old session id.
+registerSessionReset((instanceId) => dropPiholeSession(instanceId));
+
 export async function piholeClearSession(instanceId?: string): Promise<void> {
   const ids = instanceId ? [instanceId] : piholeSessionIds();
   await Promise.all(

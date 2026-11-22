@@ -191,8 +191,18 @@ export function useDeleteMovie(instanceId?: string) {
       deleteFiles?: boolean;
       addExclusion?: boolean;
     }) => deleteMovie(movieId, { deleteFiles, addExclusion }, id ?? undefined),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["radarr", id, "movies"] });
+    onSuccess: (_data, { id: movieId }) => {
+      // Every list the movie can appear in, so it doesn't linger on the
+      // calendar, Wanted or the queue until their next poll.
+      for (const list of ["movies", "calendar", "wanted", "queue"]) {
+        queryClient.invalidateQueries({ queryKey: ["radarr", id, list] });
+      }
+      // Marked stale without refetching: the detail screen that ran the delete
+      // is still mounted while it pops, and a refetch there would only 404.
+      queryClient.invalidateQueries({
+        queryKey: ["radarr", id, "movie", movieId],
+        refetchType: "none",
+      });
     },
   });
 }

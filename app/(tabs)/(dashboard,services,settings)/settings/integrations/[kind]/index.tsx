@@ -10,13 +10,14 @@ import { ServiceLogo } from "@/components/ui/service-logo";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { BackHeader } from "@/components/common/back-header";
 import { ConfirmModal } from "@/components/common/confirm-modal";
+import { toastError } from "@/components/ui/toast";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsRow } from "@/components/settings/settings-row";
 import {
   SERVICE_DEFAULTS_KIND_LABEL,
   EMPTY_INSTANCES,
 } from "@/components/settings/service-kind-shared";
-import { useConfigStore } from "@/store/config-store";
+import { useConfigStore, withConfigWrite } from "@/store/config-store";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { SERVICE_CATALOG } from "@/lib/service-catalog";
 import type { HealthStatusKind } from "@/lib/types";
@@ -112,8 +113,16 @@ function KindInstances({
     openInstance(inst.id, { isNew: true });
   };
 
-  const performDelete = async (instanceId: string) => {
+  const performDelete = (instanceId: string) => {
     setConfirmDelete(null);
+    // Holds off a restore or Demo Mode until the removal has landed, so the
+    // logouts below can't be followed by a removal against the wrong config.
+    void withConfigWrite(() => removeWithSessions(instanceId)).catch((err) =>
+      toastError("Could not remove the service", err),
+    );
+  };
+
+  const removeWithSessions = async (instanceId: string) => {
     if (kind === "qbittorrent") {
       // Drop any cached qBit session for the deleted instance before its
       // SecureStore row goes away.
@@ -285,7 +294,7 @@ function KindInstances({
         icon={Trash2}
         tone="danger"
         confirmLabel="Delete"
-        onConfirm={() => confirmDelete && void performDelete(confirmDelete)}
+        onConfirm={() => confirmDelete && performDelete(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />
     </ScreenWrapper>

@@ -1,5 +1,6 @@
 import { HttpError, buildUrl, serviceRequest } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
+import { registerSessionReset } from "@/lib/session-registry";
 import {
   SUBSONIC_API_VERSION,
   SUBSONIC_CLIENT,
@@ -111,6 +112,7 @@ export function navidromeClearSession(instanceId?: string): void {
   if (instanceId) sessions.delete(instanceId);
   else sessions.clear();
 }
+registerSessionReset(navidromeClearSession);
 
 /**
  * The `u`/`t`/`s`/`v`/`c`/`f` every Subsonic request must carry.

@@ -163,7 +163,9 @@ export default function BackupSettingsScreen() {
           value={demoMode}
           onValueChange={(v) => {
             if (v) {
-              enableDemoMode();
+              if (!enableDemoMode()) {
+                toast("Wait for the current settings change to finish, then try again", "info");
+              }
             } else {
               void disableDemoMode();
             }

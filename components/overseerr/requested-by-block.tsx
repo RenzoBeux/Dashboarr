@@ -37,19 +37,35 @@ import type { OverseerrMediaType } from "@/lib/types";
  * UI only shows the requester behind its manage slide-over, so showing it to a
  * signed-in non-manager would leak more than upstream does. In API-key mode the
  * account is the admin, so nothing is hidden in the common setup.
+ *
+ * The Seerr asked is the workspace's active one. Nothing links a Radarr or
+ * Sonarr instance to a Seerr, so when the screen shows a title from another
+ * instance (opened from a widget of another workspace) and several Seerrs are
+ * configured, the active one may be the wrong house: the block stays hidden
+ * rather than name the requesters of another copy of the title.
  */
 export function RequestedByBlock({
   tmdbId,
   mediaType,
+  source,
   className = "",
 }: {
   tmdbId: number | undefined;
   mediaType: OverseerrMediaType;
+  /** The Radarr/Sonarr instance the screen shows; undefined = the active one. */
+  source: { kind: "radarr" | "sonarr"; instanceId: string | undefined };
   className?: string;
 }) {
   const { instanceId, enabled } = useInstanceTarget("overseerr");
+  const sourceIsActive = useConfigStore(
+    (s) => !source.instanceId || s.activeInstance[source.kind] === source.instanceId,
+  );
+  const seerrIsAmbiguous = useConfigStore(
+    (s) => s.serviceInstances.overseerr.filter((i) => i.enabled).length > 1,
+  );
   const hasTmdbId = !!tmdbId && tmdbId > 0;
-  const active = enabled && !!instanceId && hasTmdbId;
+  const active =
+    enabled && !!instanceId && hasTmdbId && (sourceIsActive || !seerrIsAmbiguous);
   const caps = useSeerrCapabilities(instanceId ?? undefined, active);
   const { data } = useOverseerrMediaDetails(
     tmdbId ?? 0,

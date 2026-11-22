@@ -129,6 +129,8 @@ function parseQrPayload(data: string): { token: string; url?: string } | null {
   return null;
 }
 
+const DEMO_RESTORE_MESSAGE = "Turn off Demo Mode to restore settings";
+
 export default function BackendScreen() {
   const url = useBackendStore((s) => s.url);
   const sharedSecret = useBackendStore((s) => s.sharedSecret);
@@ -476,6 +478,11 @@ export default function BackendScreen() {
 
   const openRestore = useCallback(
     async (source: "pair" | "button") => {
+      // Refuse before listing and asking for the passphrase, not after.
+      if (useConfigStore.getState().demoMode) {
+        if (source === "button") toast(DEMO_RESTORE_MESSAGE, "info");
+        return;
+      }
       let slots: BackupMeta[];
       try {
         slots = (await listConfigBackups()).backups;
@@ -501,6 +508,10 @@ export default function BackendScreen() {
     async (slot: BackupMeta) => {
       if (slot.configVersion > CURRENT_CONFIG_VERSION) {
         toast("This backup needs a newer app version", "error");
+        return;
+      }
+      if (useConfigStore.getState().demoMode) {
+        toast(DEMO_RESTORE_MESSAGE, "info");
         return;
       }
       const result = await requestPassphrase("import");
@@ -544,6 +555,10 @@ export default function BackendScreen() {
   );
 
   const applyWebSlot = useCallback(async () => {
+    if (useConfigStore.getState().demoMode) {
+      toast(DEMO_RESTORE_MESSAGE, "info");
+      return;
+    }
     // Re-read so Apply acts on the newest web revision, not a stale list.
     let target = webSlot;
     try {

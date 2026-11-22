@@ -48,9 +48,9 @@ import {
   getJSON,
   setJSON,
   setMany,
-  persistMany,
-  persistWithSecrets,
+  persistRestore,
   type SecretChange,
+  type StorageEntry,
   getBoolean,
   setBoolean,
   getString,
@@ -107,7 +107,13 @@ import {
   migrateConfig,
   migrateWidgetSlotSettings,
 } from "@/store/config-migrations";
-import { validateExportPayload } from "@/store/config-schema";
+import {
+  SERVICE_NAME_MAX_LENGTH,
+  sanitizeWolDevices,
+  truncateText,
+  validateExportPayload,
+} from "@/store/config-schema";
+import { resetInstanceSessions } from "@/lib/session-registry";
 import {
   decryptEnvelope,
   encryptJsonString,
@@ -411,7 +417,8 @@ interface ConfigActions {
   getActiveDashboard: () => Dashboard | undefined;
   getSlot: (slotId: string) => WidgetSlot | undefined;
 
-  enableDemoMode: () => void;
+  /** False when a save, restore or Demo Mode exit is still in progress. */
+  enableDemoMode: () => boolean;
   disableDemoMode: () => Promise<void>;
   exportConfig: (
     passphrase: string,
@@ -970,6 +977,27 @@ function persistDashboards(
 // Finish real keychain edits before swapping in demo instances.
 let pendingInstanceWrites = 0;
 let configImportInProgress = false;
+let demoExitInProgress = false;
+
+/** Whether a settings restore is running (edits made now would be replaced). */
+export function isConfigRestoreInProgress(): boolean {
+  return configImportInProgress;
+}
+
+/**
+ * Run a multi-step edit of the saved configuration (a service save, a removal
+ * and its logouts) so that a restore or Demo Mode cannot start halfway
+ * through it. Refused while a restore is already running.
+ */
+export async function withConfigWrite<T>(write: () => Promise<T>): Promise<T> {
+  if (configImportInProgress) throw new Error("Settings are being restored.");
+  pendingInstanceWrites++;
+  try {
+    return await write();
+  } finally {
+    pendingInstanceWrites--;
+  }
+}
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   serviceInstances: initialInstances,
@@ -1048,6 +1076,22 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         inst.name = SERVICE_DEFAULTS.overseerr.name;
         needsServicesPersist = true;
       }
+    }
+
+    // Older builds could save a URL without a scheme (#529) or a name with no
+    // length limit (#526). The backend rejects either, and with it the whole
+    // config push, so every push notification stops. Repair them once here.
+    for (const id of SERVICE_IDS) {
+      instances[id] = instances[id].map((inst) => {
+        const name = truncateText(inst.name, SERVICE_NAME_MAX_LENGTH);
+        const localUrl = normalizeServiceUrl(inst.localUrl);
+        const remoteUrl = normalizeServiceUrl(inst.remoteUrl);
+        if (name === inst.name && localUrl === inst.localUrl && remoteUrl === inst.remoteUrl) {
+          return inst;
+        }
+        needsServicesPersist = true;
+        return { ...inst, name, localUrl, remoteUrl };
+      });
     }
 
     // v18 one-shot: pre-v18 builds wrote useRemote on every NetInfo event as
@@ -1443,7 +1487,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       getJSON<unknown>(STORAGE_KEYS.servicesOrder),
     );
 
-    const wolDevices = getJSON<WakeOnLanDevice[]>(STORAGE_KEYS.wolDevices) ?? [];
+    // Same repair the import applies: older editors saved duplicate ids and
+    // values above today's limits.
+    const storedWolDevices = getJSON<unknown>(STORAGE_KEYS.wolDevices);
+    const wolDevices = Array.isArray(storedWolDevices) ? sanitizeWolDevices(storedWolDevices) : [];
+    if (
+      Array.isArray(storedWolDevices) &&
+      JSON.stringify(wolDevices) !== JSON.stringify(storedWolDevices)
+    ) {
+      setJSON(STORAGE_KEYS.wolDevices, wolDevices);
+    }
     const shortcuts = getJSON<WebShortcut[]>(STORAGE_KEYS.shortcuts) ?? [];
     const seerrStaleHosts =
       getJSON<Record<string, string[]>>(STORAGE_KEYS.seerrStaleHosts) ?? {};
@@ -1579,14 +1632,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // The cached HTTP Digest nonce is keyed by instance, so drop it with the
     // instance rather than leaving it in the map for the process lifetime.
     clearDigestSessions(instanceId);
+    // Drop this instance's remembered add-sheet defaults. They are stored apart
+    // from the config, so a demo instance's would otherwise outlive it.
+    useAddDefaultsStore.getState().prune(addDefaultsKey(id, instanceId));
     if (!demoMode) {
       // Same for Seerr's in-memory session entries and the persisted stale-host
       // list (#332). The server-side logout is the caller's job (seerrClearSession
       // runs before removal); this only stops a deleted id from lingering.
       forgetSeerrSession(instanceId);
       get().forgetSeerrStaleHosts(instanceId);
-      // Drop this instance's remembered add-sheet defaults.
-      useAddDefaultsStore.getState().prune(addDefaultsKey(id, instanceId));
       // Clear SecureStore entries for this instance before mutating state so a
       // crash mid-delete doesn't leave orphaned secrets behind.
       pendingInstanceWrites++;
@@ -1900,8 +1954,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
   },
 
+  // Demo Mode keeps network and service settings in memory, like the services
+  // and workspaces themselves; exiting reloads what was saved.
   setAutoSwitch: (enabled) => {
-    setBoolean(STORAGE_KEYS.autoSwitchNetwork, enabled);
+    if (!get().demoMode) setBoolean(STORAGE_KEYS.autoSwitchNetwork, enabled);
     set({ autoSwitchNetwork: enabled });
   },
 
@@ -1967,7 +2023,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setTreatVpnAsHome: (enabled) => {
-    setBoolean(STORAGE_KEYS.treatVpnAsHome, enabled);
+    if (!get().demoMode) setBoolean(STORAGE_KEYS.treatVpnAsHome, enabled);
     set({ treatVpnAsHome: enabled });
     // useNetworkAutoSwitch subscribes to this and re-evaluates home/away.
   },
@@ -2015,7 +2071,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   setServicesOrder: (order) => {
     const sanitized = sanitizeServicesOrder(order);
-    setJSON(STORAGE_KEYS.servicesOrder, sanitized);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.servicesOrder, sanitized);
     set({ servicesOrder: sanitized });
   },
 
@@ -2300,17 +2356,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           const { homeNetworkIds: _omit, ...rest } = d;
           return rest;
         }
-        // Dedupe + drop empties. We don't validate ids against the live
-        // network list — cross-device imports may reference ids not present
-        // yet; the resolver ignores stale ids at read time. An empty result is
-        // a valid selection ("no home network here → always remote").
-        const seen = new Set<string>();
-        const sanitized: string[] = [];
-        for (const id of ids) {
-          if (typeof id !== "string" || id.length === 0) continue;
-          if (seen.has(id)) continue;
-          seen.add(id);
-          sanitized.push(id);
+        // Dedupe and keep only saved networks. An explicitly empty selection
+        // is valid ("no home network here, always remote"), but one that only
+        // named unknown networks means "all networks", the same repair hydrate
+        // and network removal apply (repairOrphanedHomeNetworkSelection), so
+        // its meaning can't change across a restart.
+        const known = new Set(state.homeNetworks.map((network) => network.id));
+        const sanitized = [...new Set(ids)].filter(
+          (id) => typeof id === "string" && known.has(id),
+        );
+        if (ids.length > 0 && sanitized.length === 0) {
+          const { homeNetworkIds: _omit, ...rest } = d;
+          return rest;
         }
         return { ...d, homeNetworkIds: sanitized };
       });
@@ -2539,11 +2596,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   isSeerrHostStale: (instanceId, host) =>
     (get().seerrStaleHosts[instanceId] ?? []).includes(host),
   setWolDevices: (devices) => {
-    setJSON(STORAGE_KEYS.wolDevices, devices);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.wolDevices, devices);
     set({ wolDevices: devices });
   },
   setShortcuts: (shortcuts) => {
-    setJSON(STORAGE_KEYS.shortcuts, shortcuts);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.shortcuts, shortcuts);
     set({ shortcuts });
   },
 
@@ -2553,7 +2610,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setGlobalCustomHeaders: (headers) => {
-    setJSON(STORAGE_KEYS.globalCustomHeaders, headers);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.globalCustomHeaders, headers);
     set({ globalCustomHeaders: headers });
   },
 
@@ -2582,7 +2639,6 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   setInstanceNotificationOverride: (instanceId, category, value) => {
-    if (get().demoMode) return;
     const current = get().notificationSettings;
     const map = { ...(current.perInstance ?? {}) };
     const entry = { ...(map[instanceId] ?? {}) };
@@ -2600,12 +2656,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ...current,
       perInstance: Object.keys(map).length === 0 ? undefined : map,
     };
-    setJSON(STORAGE_KEYS.notificationSettings, next);
+    // Demo instance ids are not saved, so their overrides stay in memory.
+    if (!get().demoMode) setJSON(STORAGE_KEYS.notificationSettings, next);
     set({ notificationSettings: next });
   },
 
   setQbtMutedCategories: (instanceId, categories) => {
-    if (get().demoMode) return;
     const current = get().notificationSettings;
     const map = { ...(current.qbtMutedCategories ?? {}) };
     const deduped = [...new Set(categories)];
@@ -2618,7 +2674,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       ...current,
       qbtMutedCategories: Object.keys(map).length === 0 ? undefined : map,
     };
-    setJSON(STORAGE_KEYS.notificationSettings, next);
+    if (!get().demoMode) setJSON(STORAGE_KEYS.notificationSettings, next);
     set({ notificationSettings: next });
   },
 
@@ -2675,8 +2731,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     // 1. The per-instance "always use remote" user override always wins.
     if (inst.useRemote) return remote || local;
-    // 2. A workspace that explicitly selected NO (live) home networks
-    //    (homeNetworkIds: [] — or only stale ids) is "always remote". Honor that
+    // 2. A workspace that explicitly selected NO home networks
+    //    (homeNetworkIds: []) is "always remote". Ids that no longer match a
+    //    saved network count as none here (fail closed), though removal,
+    //    hydrate and restore repair such a selection to "all". Honor that
     //    even when global auto-switch is off, so the per-workspace remote-only
     //    choice can't be silently overridden by the global toggle and re-expose
     //    the local URL (#148). `undefined` (auto-attach all networks) is NOT
@@ -2765,19 +2823,29 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   enableDemoMode: () => {
-    if (get().demoMode || pendingInstanceWrites > 0 || configImportInProgress) return;
+    if (get().demoMode) return true;
+    // A save, removal or restore still writing the real config, or the exit
+    // still reloading it: swapping in demo data now would mix the two.
+    if (pendingInstanceWrites > 0 || configImportInProgress || demoExitInProgress) return false;
     setBoolean(STORAGE_KEYS.demoMode, true);
     set((state) => ({
       demoMode: true,
       ...makeDemoConfig(state.dashboards, state.activeDashboardId),
     }));
     queryClient.clear();
+    return true;
   },
 
   disableDemoMode: async () => {
-    deleteKey(STORAGE_KEYS.demoMode);
-    queryClient.clear();
-    await get().hydrate();
+    if (demoExitInProgress) return;
+    demoExitInProgress = true;
+    try {
+      deleteKey(STORAGE_KEYS.demoMode);
+      queryClient.clear();
+      await get().hydrate();
+    } finally {
+      demoExitInProgress = false;
+    }
   },
 
   exportConfig: async (passphrase: string, onStage, onBeforeShare) => {
@@ -2858,6 +2926,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   importConfigFromEnvelope: async (envelope, passphrase, onStage) => {
+    // Before the slow decrypt, so the user isn't made to wait for a refusal.
+    if (get().demoMode) throw new Error("Turn off Demo Mode to import settings.");
     onStage?.("decrypting");
     await yieldToPaint();
     const decrypted = await decryptEnvelope(envelope, passphrase);
@@ -2886,13 +2956,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 }));
 
-const INSTANCE_SECRET_FIELDS = ["apiKey", "username", "password", "customHeaders"] as const;
+// sessionCookie (qBittorrent, AdGuard Home) is never in a backup, so a restore
+// always clears it: a reused ID must not keep the session it logged in with
+// before the restore.
+const INSTANCE_SECRET_FIELDS = ["apiKey", "username", "password", "customHeaders", "sessionCookie"] as const;
 
 async function restoreConfig(payload: ExportPayload): Promise<void> {
   const previous = useConfigStore.getState();
-  const previousIds = new Set(SERVICE_IDS.flatMap((kind) =>
+  const allPreviousIds = SERVICE_IDS.flatMap((kind) =>
     (previous.serviceInstances[kind] ?? []).map((instance) => instance.id),
-  ));
+  );
+  // Ends up holding only the IDs the backup does not reuse.
+  const previousIds = new Set(allPreviousIds);
 
   // Keep a blank entry for service kinds omitted from the backup.
   const serviceInstances = defaultInstances();
@@ -2906,7 +2981,8 @@ async function restoreConfig(payload: ExportPayload): Promise<void> {
       previousIds.delete(id);
       const secrets = instanceSecrets[id];
       for (const field of INSTANCE_SECRET_FIELDS) {
-        const raw = secrets?.[field];
+        // A backup never carries a session cookie, so it is always cleared.
+        const raw = field === "sessionCookie" ? undefined : secrets?.[field];
         const value = raw ? (typeof raw === "string" ? raw : JSON.stringify(raw)) : null;
         secretChanges.push([`${SECRET_PREFIX}.${id}.${field}`, value]);
       }
@@ -2972,44 +3048,47 @@ async function restoreConfig(payload: ExportPayload): Promise<void> {
       [STORAGE_KEYS.uiScale]: next.uiScale,
       [STORAGE_KEYS.notificationSettings]: notificationSettings,
       [STORAGE_KEYS.seerrStaleHosts]: seerrStaleHosts,
-      [ACTIVE_INSTANCE_KEY]: null,
-      [STORAGE_KEYS.dashboardWidgetsLegacy]: null,
-      [STORAGE_KEYS.widgetSettingsLegacy]: null,
     };
     for (const kind of SERVICE_IDS) values[`${STORAGE_KEYS.services}.${kind}`] = serviceInstances[kind];
-    const entries: [string, string][] = Object.entries(values).map(([key, value]) => [
+    const entries: StorageEntry[] = Object.entries(values).map(([key, value]) => [
       key, JSON.stringify(value),
     ]);
     entries.push(
       [STORAGE_KEYS.activeDashboardId, activeDashboardId],
       [STORAGE_KEYS.appTheme, next.appTheme],
       [STORAGE_KEYS.weekStart, next.weekStart],
+      // Legacy keys must not shadow the restored dashboards.
+      [ACTIVE_INSTANCE_KEY, null],
+      [STORAGE_KEYS.dashboardWidgetsLegacy, null],
+      [STORAGE_KEYS.widgetSettingsLegacy, null],
     );
-    if (backend.resetWebSlot) entries.push([STORAGE_KEYS.backendWebSlotAppliedRevision, ""]);
+    if (backend.resetWebSlot) {
+      // Both belong to the backend being replaced.
+      entries.push(
+        [STORAGE_KEYS.backendWebSlotAppliedRevision, null],
+        [STORAGE_KEYS.backendBackupLastAt, null],
+      );
+    }
 
-    await persistWithSecrets(
-      [...secretChanges, ...backend.changes],
-      () => persistMany(entries),
+    // Superseded IDs have no references in the restored configuration. Their
+    // credentials are deleted only after the commit, so a failed restore can
+    // still use them; persistRestore retries on the next launch if needed.
+    const cleanup = [...previousIds].flatMap((id) =>
+      INSTANCE_SECRET_FIELDS.map((field) => `${SECRET_PREFIX}.${id}.${field}`),
     );
-    useConfigStore.setState(next);
-    backend.apply();
+    await persistRestore([...secretChanges, ...backend.changes], entries, cleanup, () => {
+      useConfigStore.setState(next);
+      backend.apply();
+      // A reused ID may now carry other credentials, and a removed one none.
+      resetInstanceSessions(allPreviousIds);
+      // Cached results may have been fetched with the pre-restore credentials.
+      // Cleared in the same tick as the state swap, so no screen re-renders
+      // against them in between.
+      queryClient.clear();
+    });
   } finally {
     for (const release of seerrReleases) release();
   }
-
-  // Superseded IDs have no references in the restored configuration. Delete
-  // their credentials only after commit so a failed restore can still use them.
-  const cleanup = await Promise.allSettled(
-    [...previousIds].flatMap((id) => INSTANCE_SECRET_FIELDS.map(
-      (field) => deleteSecret(`${SECRET_PREFIX}.${id}.${field}`),
-    )),
-  );
-  if (cleanup.some((result) => result.status === "rejected")) {
-    console.warn("Some credentials for removed service instances could not be cleared.");
-  }
-  // Instance IDs may survive a restore, so cached results may still use the
-  // pre-restore credentials.
-  queryClient.clear();
 }
 
 /**

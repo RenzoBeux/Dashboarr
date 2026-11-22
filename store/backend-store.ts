@@ -199,6 +199,8 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
     if (!samePairing) {
       await Promise.all(BACKUP_SECRET_KEYS.map(deleteSecret));
       deleteKey(STORAGE_KEYS.backendWebSlotAppliedRevision);
+      // Otherwise loadBackupStatus() shows the old backend's last backup time.
+      deleteKey(STORAGE_KEYS.backendBackupLastAt);
     }
     set(pairedState(pairing, samePairing));
   },
@@ -220,8 +222,10 @@ export const useBackendStore = create<BackendState & BackendActions>((set, get) 
       deleteSecret(SECRET_KEYS.backupKey),
       deleteSecret(SECRET_KEYS.backupKeyIterations),
     ]);
-    // Web-slot revisions belong to the pairing being dropped.
+    // Web-slot revisions and the last backup time belong to the pairing
+    // being dropped.
     deleteKey(STORAGE_KEYS.backendWebSlotAppliedRevision);
+    deleteKey(STORAGE_KEYS.backendBackupLastAt);
     set({
       url: null,
       sharedSecret: null,

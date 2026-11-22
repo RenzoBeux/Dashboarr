@@ -116,10 +116,13 @@ export function isPrivateUrl(url: string): boolean {
 
 /**
  * True when the active workspace explicitly selected NO live home network
- * (`homeNetworkIds: []`, or only ids that no longer match a saved network) and
- * is therefore pinned to "always remote" — `getActiveUrl` step 2 (#148), which
- * holds even when global auto-switch is off. `undefined` (auto-attach every
- * network, the default) is NOT remote-only.
+ * (`homeNetworkIds: []`) and is therefore pinned to "always remote" —
+ * `getActiveUrl` step 2 (#148), which holds even when global auto-switch is
+ * off. Ids that no longer match a saved network count as none (fail closed);
+ * network removal, hydrate and restore repair a selection left with only such
+ * ids to `undefined` (repairOrphanedHomeNetworkSelection), so this only covers
+ * the moment in between. `undefined` (every network, the default) is NOT
+ * remote-only.
  *
  * Feeds the `workspaceForcesRemote` argument of `resolveActiveUrlKind` /
  * `isRemoteOnlyOffline`. Shared so the health grid's L/R badge and the settings

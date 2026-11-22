@@ -16,6 +16,7 @@ import { BASE_REM } from "@/hooks/use-ui-scale";
 import { useStackScreenOptions } from "@/hooks/use-stack-screen-options";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
+import { recoverInterruptedRestore } from "@/store/storage";
 import { useSortStore } from "@/store/sort-store";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
 import { useUnraidUiStore } from "@/store/unraid-ui-store";
@@ -428,8 +429,12 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    hydrate();
-    hydrateBackend();
+    // Both stores read the keychain, so an interrupted restore is finished or
+    // undone first.
+    void recoverInterruptedRestore().finally(() => {
+      hydrate();
+      hydrateBackend();
+    });
     configureNotifications();
   }, [hydrate, hydrateBackend]);
 
