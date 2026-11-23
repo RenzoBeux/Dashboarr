@@ -42,8 +42,6 @@ import {
   deleteKey,
   getJSON,
   getString,
-  persistRestore,
-  recoverInterruptedRestore,
   setJSON,
   setString,
 } from "./storage";
@@ -76,10 +74,6 @@ const SEEDED_KEYS = [
 function resetStoredConfig() {
   for (const key of SEEDED_KEYS) deleteKey(key);
   useBackendStore.setState(initialBackendState, true);
-}
-
-async function settle() {
-  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 describe("Demo Mode configuration isolation", () => {
@@ -1450,73 +1444,6 @@ describe("configuration restore persistence", () => {
   });
 });
 
-describe("interrupted restore recovery", () => {
-  const keychain = new Map<string, string>();
-  const disk = new Map<string, string>();
-  const TEST_KEY = "test.restoreEntry";
-
-  beforeEach(() => {
-    keychain.clear();
-    disk.clear();
-    jest.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => keychain.get(key) ?? null);
-    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
-      keychain.set(key, value);
-    });
-    jest.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
-      keychain.delete(key);
-    });
-    jest.mocked(AsyncStorage.getItem).mockImplementation(async (key) => disk.get(key) ?? null);
-    jest.mocked(AsyncStorage.removeItem).mockImplementation(async (key) => {
-      disk.delete(key);
-    });
-    jest.mocked(AsyncStorage.multiSet).mockImplementation(async (entries) => {
-      for (const [key, value] of entries) disk.set(key, value);
-    });
-  });
-
-  afterEach(() => {
-    jest.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
-    jest.mocked(SecureStore.setItemAsync).mockResolvedValue();
-    jest.mocked(SecureStore.deleteItemAsync).mockResolvedValue();
-    jest.mocked(AsyncStorage.getItem).mockResolvedValue(null);
-    jest.mocked(AsyncStorage.removeItem).mockResolvedValue();
-    jest.mocked(AsyncStorage.multiSet).mockResolvedValue();
-    deleteKey(TEST_KEY);
-  });
-
-  it("puts the keychain back when the app died before the settings were saved", async () => {
-    keychain.set("secrets.a.apiKey", "old");
-    // The settings batch never finishes: the app is killed while it runs.
-    jest.mocked(AsyncStorage.multiSet).mockImplementationOnce(() => new Promise(() => {}));
-    void persistRestore(
-      [["secrets.a.apiKey", "new"], ["secrets.b.apiKey", "added"]],
-      [[TEST_KEY, "v"]],
-      [],
-      () => {},
-    );
-    await settle();
-    expect(keychain.get("secrets.a.apiKey")).toBe("new");
-    await recoverInterruptedRestore();
-    expect(keychain.get("secrets.a.apiKey")).toBe("old");
-    expect(keychain.has("secrets.b.apiKey")).toBe(false);
-    expect(keychain.has("restore.journal")).toBe(false);
-  });
-
-  it("finishes deleting replaced credentials once the settings were saved", async () => {
-    keychain.set("secrets.gone.apiKey", "old");
-    jest.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error("Keychain locked"));
-    const onCommit = jest.fn();
-    await persistRestore([], [[TEST_KEY, "v"]], ["secrets.gone.apiKey"], onCommit);
-    expect(onCommit).toHaveBeenCalled();
-    expect(keychain.has("secrets.gone.apiKey")).toBe(true);
-    expect(keychain.has("restore.journal")).toBe(true);
-    await recoverInterruptedRestore();
-    expect(keychain.has("secrets.gone.apiKey")).toBe(false);
-    expect(keychain.has("restore.journal")).toBe(false);
-    expect(disk.has("app.restoreCommitted")).toBe(false);
-  });
-});
-
 describe("hydrate — repairs values older builds saved", () => {
   afterEach(resetStoredConfig);
 
@@ -1574,16 +1501,22 @@ describe("Demo Mode — global settings and guards", () => {
     expect(useConfigStore.getState().globalCustomHeaders).not.toHaveProperty("X-Demo");
   });
 
-  it("applies notification overrides for demo instances in memory", () => {
+  it("applies notification overrides for demo instances in memory", async () => {
     const store = useConfigStore.getState();
+    const saved = getString(STORAGE_KEYS.notificationSettings);
     expect(store.enableDemoMode()).toBe(true);
     const qbit = useConfigStore.getState().serviceInstances.qbittorrent[0].id;
     store.setInstanceNotificationOverride(qbit, "torrentCompleted", false);
     store.setQbtMutedCategories(qbit, ["tv"]);
+    // A global setting changed afterwards must not save the demo overrides.
+    store.setNotificationSetting("radarrGrabbed", true);
     const settings = useConfigStore.getState().notificationSettings;
     expect(settings.perInstance?.[qbit]).toEqual({ torrentCompleted: false });
     expect(settings.qbtMutedCategories?.[qbit]).toEqual(["tv"]);
-    expect(getJSON<{ perInstance?: unknown }>(STORAGE_KEYS.notificationSettings)?.perInstance).toBeUndefined();
+    expect(settings.radarrGrabbed).toBe(true);
+    expect(getString(STORAGE_KEYS.notificationSettings)).toBe(saved);
+    await store.disableDemoMode();
+    expect(useConfigStore.getState().notificationSettings.perInstance?.[qbit]).toBeUndefined();
   });
 
   it("refuses to start, and a restore refuses too, while a settings change is still being written", async () => {

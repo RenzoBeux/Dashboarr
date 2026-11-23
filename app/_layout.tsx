@@ -429,8 +429,8 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    // Both stores read the keychain, so an interrupted restore is finished or
-    // undone first.
+    // Both stores read the keychain and the saved settings, so an interrupted
+    // restore is finished or undone first.
     void recoverInterruptedRestore().finally(() => {
       hydrate();
       hydrateBackend();

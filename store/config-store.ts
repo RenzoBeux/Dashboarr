@@ -2634,7 +2634,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   setNotificationSetting: (key, value) => {
     const next = { ...get().notificationSettings, [key]: value };
-    setJSON(STORAGE_KEYS.notificationSettings, next);
+    // The object also holds the per-instance overrides, which in Demo Mode
+    // name demo instances.
+    if (!get().demoMode) setJSON(STORAGE_KEYS.notificationSettings, next);
     set({ notificationSettings: next });
   },
 

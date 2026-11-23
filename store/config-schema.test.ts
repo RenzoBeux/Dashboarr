@@ -1702,19 +1702,20 @@ describe("validateExportPayload — service customHeaders", () => {
     expect(customHeaderError({ [longName]: "value" })).toMatch(/200/);
     expect(customHeaderError({ "X-Custom": longValue })).toMatch(/4096/);
     expect(customHeaderError(headers, headers)).toBeUndefined();
-    // Rotating the value of an old long-named header still saves, and so does
-    // renaming a header that keeps an old long value.
+    // Rotating the value of an old long-named header still saves. Renaming one
+    // that keeps an old long value makes it a new header, so it is checked.
     expect(customHeaderError({ [longName]: "rotated" }, headers)).toBeUndefined();
     expect(customHeaderError({ "X-Renamed": longValue }, headers)).toMatch(/4096/);
   });
 
-  it("still rejects headers no real server needs", () => {
-    expect(() =>
-      validateExportPayload(withInstance({ customHeaders: { "X-Big": "x".repeat(64 * 1024 + 1) } })),
-    ).toThrow(new RegExp(`secrets\\.${TEST_INSTANCE_ID}`));
-    expect(() =>
-      validateExportPayload({ ...baseValid(), globalCustomHeaders: { ["x".repeat(1025)]: "v" } }),
-    ).toThrow(/globalCustomHeaders/);
+  it("restores legacy headers of any length, since older editors had no limit", () => {
+    const headers = { ["x".repeat(1025)]: "v", "X-Big": "x".repeat(64 * 1024 + 1) };
+    const result = validateExportPayload({
+      ...withInstance({ customHeaders: headers }),
+      globalCustomHeaders: headers,
+    });
+    expect(result.secrets[TEST_INSTANCE_ID]?.customHeaders).toEqual(headers);
+    expect(result.globalCustomHeaders).toEqual(headers);
   });
 
   it("rejects more than 32 headers", () => {

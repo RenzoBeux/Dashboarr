@@ -92,11 +92,6 @@ export function truncateText(value: string, max: number): string {
 export const SERVICE_NAME_MAX_LENGTH = 200;
 const HEADER_NAME_MAX_LENGTH = 200;
 const HEADER_VALUE_MAX_LENGTH = 4096;
-// Older editors had no limit, so imports keep longer headers verbatim. These
-// hard caps only reject input no real header needs, since every header is sent
-// on every request to every service.
-const HEADER_NAME_IMPORT_MAX_LENGTH = 1024;
-const HEADER_VALUE_IMPORT_MAX_LENGTH = 64 * 1024;
 
 // RFC 7230 token chars — same set the spec allows in field-name. Rejecting
 // CR/LF in values closes off header-injection if someone hand-edits an export.
@@ -128,9 +123,10 @@ function coerceHeaderMap(v: unknown): Record<string, string> | null {
   const out: Record<string, string> = {};
   let count = 0;
   for (const [key, value] of Object.entries(v)) {
-    if (!HEADER_NAME_RE.test(key) || key.length > HEADER_NAME_IMPORT_MAX_LENGTH) return null;
-    // Older editors allowed longer headers. Preserve valid values verbatim.
-    if (typeof value !== "string" || value.length > HEADER_VALUE_IMPORT_MAX_LENGTH) return null;
+    if (!HEADER_NAME_RE.test(key)) return null;
+    // No length limit: older editors had none, and anything this app could
+    // save must restore.
+    if (typeof value !== "string") return null;
     if (/[\r\n]/.test(value)) return null;
     out[key] = value;
     if (++count > MAX_HEADERS_PER_SCOPE) return null;
