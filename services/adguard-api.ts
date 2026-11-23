@@ -56,7 +56,7 @@ export class AdguardRateLimitedError extends Error {
 export async function adguardLogin(instanceId?: string): Promise<boolean> {
   const id = resolveAdguardInstanceId(instanceId);
   // Bound before the settings are read: a clear in between discards this
-  // login, and aborts it so its response never reaches the platform jar.
+  // login.
   const session = cookies.session(id);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
@@ -71,15 +71,17 @@ export async function adguardLogin(instanceId?: string): Promise<boolean> {
   }
   headers.set("Content-Type", "application/json");
 
-  const response = await fetch(buildUrl(baseUrl, apiBase, "/login"), {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      name: secrets.username ?? "",
-      password: secrets.password ?? "",
+  const url = buildUrl(baseUrl, apiBase, "/login");
+  const response = await cookies.login(id, session, url, () =>
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        name: secrets.username ?? "",
+        password: secrets.password ?? "",
+      }),
     }),
-    signal: session.signal,
-  });
+  );
 
   if (response.status === 429) {
     const retryAfter = response.headers.get("retry-after");

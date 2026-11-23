@@ -1,5 +1,6 @@
 import { deleteSecret, getSecret, setSecret } from "@/store/storage";
 import { SECRET_PREFIX } from "@/lib/constants";
+import { hostOf } from "@/lib/url-validation";
 
 /**
  * Recorded when a login worked but its Set-Cookie header was not readable.
@@ -9,12 +10,34 @@ import { SECRET_PREFIX } from "@/lib/constants";
  */
 export const NATIVE_JAR_SENTINEL = "__native_cookie_jar__";
 
+const noop = () => {};
+
 export interface CookieSession {
   cached: string | null;
   loaded: boolean;
   loginPromise: Promise<boolean> | null;
-  /** Aborted when the session is cleared. Logins pass it to fetch. */
-  signal: AbortSignal;
+}
+
+/** How long a login waits for discarded logins to its host to finish. */
+const DISCARDED_LOGIN_WAIT_MS = 30_000;
+
+interface LoginInFlight {
+  owner: CookieSession;
+  host: string;
+  finished: Promise<void>;
+}
+
+/** Resolves false when `deadline` passes first. */
+async function finishedBy(logins: Promise<void>[], deadline: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now()));
+  });
+  try {
+    return await Promise.race([Promise.all(logins).then(() => true), late]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -25,19 +48,21 @@ export interface CookieSession {
  * A login stores its cookie on the session object it started on. Clearing an
  * instance (new credentials or URL, a restore) swaps in a new object, so a
  * login still in flight for the old settings cannot hand its cookie to the
- * new ones. The clear also aborts that login: where the platform jar keeps
- * the cookie, its response would otherwise replace the new login's cookie for
- * the same host, and the next request would run as the previous account.
+ * new ones. Where the platform jar keeps the cookie, that login's response
+ * would still replace the cookie of a newer login to the same host, and later
+ * requests would run as the previous account. Aborting it is not enough: on
+ * iOS React Native only cancels a request whose id already reached
+ * JavaScript, and the jar can take the cookie before JavaScript sees the
+ * response. So a login waits until every discarded login to its host has
+ * finished, and its own cookie lands last.
  */
 export function createCookieSessionCache() {
   const sessions = new Map<string, CookieSession>();
-  const controllers = new WeakMap<CookieSession, AbortController>();
+  const inFlight = new Map<string, Set<LoginInFlight>>();
   const keyFor = (instanceId: string) => `${SECRET_PREFIX}.${instanceId}.sessionCookie`;
 
   function create(instanceId: string, loaded: boolean): CookieSession {
-    const controller = new AbortController();
-    const entry = { cached: null, loaded, loginPromise: null, signal: controller.signal };
-    controllers.set(entry, controller);
+    const entry = { cached: null, loaded, loginPromise: null };
     sessions.set(instanceId, entry);
     return entry;
   }
@@ -48,6 +73,45 @@ export function createCookieSessionCache() {
 
   function staleRequest(): Error {
     return new Error("The service settings changed during the request. Try again.");
+  }
+
+  function discardedLogins(instanceId: string, owner: CookieSession, host: string) {
+    return [...(inFlight.get(instanceId) ?? [])]
+      .filter((login) => login.owner !== owner && login.host === host)
+      .map((login) => login.finished);
+  }
+
+  /**
+   * Send a login for `owner` to `url` once the discarded logins to the same
+   * host (cookies ignore the port) have finished. Throws when the instance is
+   * cleared meanwhile, or when they do not finish in time.
+   */
+  async function login<T>(
+    instanceId: string,
+    owner: CookieSession,
+    url: string,
+    send: () => Promise<T>,
+  ): Promise<T> {
+    const host = hostOf(url);
+    const deadline = Date.now() + DISCARDED_LOGIN_WAIT_MS;
+    for (;;) {
+      if (sessions.get(instanceId) !== owner) throw staleRequest();
+      const waiting = discardedLogins(instanceId, owner, host);
+      if (waiting.length === 0) break;
+      if (!(await finishedBy(waiting, deadline))) {
+        throw new Error(
+          "A sign-in made with the previous settings has not finished yet. Try again shortly.",
+        );
+      }
+    }
+    // Sent in the same tick as the check above, so no clear slips in between.
+    const request = send();
+    const logins = inFlight.get(instanceId) ?? new Set<LoginInFlight>();
+    inFlight.set(instanceId, logins);
+    const entry: LoginInFlight = { owner, host, finished: request.then(noop, noop) };
+    logins.add(entry);
+    void entry.finished.then(() => logins.delete(entry));
+    return request;
   }
 
   async function getCookie(instanceId: string): Promise<string | null> {
@@ -116,9 +180,7 @@ export function createCookieSessionCache() {
    * login managed to write.
    */
   async function clear(instanceId: string): Promise<void> {
-    const previous = sessions.get(instanceId);
     create(instanceId, true);
-    if (previous) controllers.get(previous)?.abort();
     await deleteSecret(keyFor(instanceId));
   }
 
@@ -129,6 +191,7 @@ export function createCookieSessionCache() {
 
   return {
     session,
+    login,
     getCookie,
     cookieForRequest,
     storeCookie,

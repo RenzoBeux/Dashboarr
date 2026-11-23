@@ -38,7 +38,7 @@ function resolveQbInstanceId(instanceId?: string): string {
 export async function qbLogin(instanceId?: string): Promise<boolean> {
   const id = resolveQbInstanceId(instanceId);
   // Bound before the settings are read: a clear in between discards this
-  // login, and aborts it so its response never reaches the platform jar.
+  // login.
   const session = cookies.session(id);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
@@ -56,12 +56,14 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
   }
   headers.set("Content-Type", "application/x-www-form-urlencoded");
 
-  const response = await fetch(buildUrl(baseUrl, apiBase, "/auth/login"), {
-    method: "POST",
-    headers,
-    body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
-    signal: session.signal,
-  });
+  const url = buildUrl(baseUrl, apiBase, "/auth/login");
+  const response = await cookies.login(id, session, url, () =>
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
+    }),
+  );
 
   if (!response.ok) return false;
 

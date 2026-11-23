@@ -16,6 +16,17 @@ import { createCookieSessionCache } from "./cookie-session-cache";
 const ID = "qb-1";
 const KEY = `secrets.${ID}.sessionCookie`;
 
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+// A login whose response arrives when the test says so.
+function heldLogin() {
+  let finish!: () => void;
+  const response = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  return { send: () => response, finish };
+}
+
 beforeEach(() => {
   mockKeychain.clear();
   jest.mocked(deleteSecret).mockClear();
@@ -65,18 +76,70 @@ describe("createCookieSessionCache", () => {
     await expect(cookies.getCookie(ID)).resolves.toBe("expired");
     const login = cookies.session(ID);
     await cookies.dropCookie(ID, login);
-    expect(login.signal.aborted).toBe(false);
     await expect(cookies.storeCookie(ID, login, "fresh")).resolves.toBe(true);
     await expect(cookies.getCookie(ID)).resolves.toBe("fresh");
     expect(mockKeychain.get(KEY)).toBe("fresh");
   });
 
-  it("aborts the logins of a cleared session", async () => {
+  it("sends a login only once the discarded logins to its host have finished", async () => {
     const cookies = createCookieSessionCache();
-    const login = cookies.session(ID);
+    const old = heldLogin();
+    const oldLogin = cookies.login(ID, cookies.session(ID), "http://qb.local:8080", old.send);
     await cookies.clear(ID);
-    expect(login.signal.aborted).toBe(true);
-    expect(cookies.session(ID).signal.aborted).toBe(false);
+    const send = jest.fn(async () => "new");
+    // Another port of the same host: the platform jar ignores ports.
+    const newLogin = cookies.login(ID, cookies.session(ID), "https://QB.local:9443/api", send);
+    await flush();
+    expect(send).not.toHaveBeenCalled();
+    old.finish();
+    await oldLogin;
+    await expect(newLogin).resolves.toBe("new");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hold a login to another host", async () => {
+    const cookies = createCookieSessionCache();
+    void cookies.login(ID, cookies.session(ID), "http://old.local", heldLogin().send);
+    await cookies.clear(ID);
+    await expect(
+      cookies.login(ID, cookies.session(ID), "http://new.local", async () => "new"),
+    ).resolves.toBe("new");
+  });
+
+  it("does not send a login for settings cleared while it waited", async () => {
+    const cookies = createCookieSessionCache();
+    const old = heldLogin();
+    void cookies.login(ID, cookies.session(ID), "http://qb.local", old.send);
+    await cookies.clear(ID);
+    const send = jest.fn(async () => {});
+    const waiting = cookies.login(ID, cookies.session(ID), "http://qb.local", send);
+    await cookies.clear(ID);
+    old.finish();
+    await expect(waiting).rejects.toThrow("settings changed");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("gives up on a discarded login that does not finish, until it does", async () => {
+    jest.useFakeTimers();
+    try {
+      const cookies = createCookieSessionCache();
+      const old = heldLogin();
+      void cookies.login(ID, cookies.session(ID), "http://qb.local", old.send);
+      await cookies.clear(ID);
+      const send = jest.fn(async () => "new");
+      const waiting = cookies.login(ID, cookies.session(ID), "http://qb.local", send);
+      const gaveUp = expect(waiting).rejects.toThrow("has not finished yet");
+      await jest.advanceTimersByTimeAsync(30_000);
+      await gaveUp;
+      expect(send).not.toHaveBeenCalled();
+      old.finish();
+      await jest.advanceTimersByTimeAsync(0);
+      await expect(cookies.login(ID, cookies.session(ID), "http://qb.local", send)).resolves.toBe(
+        "new",
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("leaves the new session's cookie alone when a request from before a clear is rejected", async () => {

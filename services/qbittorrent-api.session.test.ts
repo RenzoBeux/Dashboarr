@@ -54,16 +54,7 @@ function response(status: number, body: string, setCookie?: string) {
   };
 }
 
-// A response the test sends when it chooses. Rejects once the request is
-// aborted, like fetch.
-function held(init?: RequestInit) {
-  let answer!: (value: unknown) => void;
-  const promise = new Promise((resolve, reject) => {
-    answer = resolve;
-    init?.signal?.addEventListener("abort", () => reject(new Error("Aborted")));
-  });
-  return { promise, answer };
-}
+const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 describe("qBittorrent session after a restore", () => {
   const originalFetch = global.fetch;
@@ -80,9 +71,9 @@ describe("qBittorrent session after a restore", () => {
       sent.push({ url, cookie });
       if (url.endsWith("/auth/login")) {
         if (url.startsWith("http://old.local")) {
-          const login = held(init);
-          finishOldLogin = () => login.answer(response(200, "Ok.", "SID=old-sid; HttpOnly"));
-          return login.promise;
+          return new Promise((resolve) => {
+            finishOldLogin = () => resolve(response(200, "Ok.", "SID=old-sid; HttpOnly"));
+          });
         }
         return response(200, "Ok.", "SID=new-sid; HttpOnly");
       }
@@ -90,7 +81,7 @@ describe("qBittorrent session after a restore", () => {
     }) as unknown as typeof fetch;
 
     const oldRequest = getSpeedLimitsMode("qb-1");
-    await new Promise((resolve) => setImmediate(resolve));
+    await flush();
     // The restore commits: new settings for the same id, sessions reset.
     mockConfig.url = "http://new.local";
     resetInstanceSessions(["qb-1"]);
@@ -108,14 +99,16 @@ describe("qBittorrent session after a restore", () => {
     expect(mockKeychain.get("secrets.qb-1.sessionCookie")).toBe("new-sid");
   });
 
-  it("keeps a late login for the previous account on the same host out of the iOS cookie jar", async () => {
+  it("keeps a late login for the previous account on the same host from replacing the new one", async () => {
     mockPlatform.OS = "ios";
     mockConfig.url = "http://qb.local";
     mockConfig.username = "old-user";
     resetInstanceSessions(["qb-1"]);
     // iOS strips Set-Cookie: the platform jar takes the SID as the response
-    // arrives and attaches it to every later request to that host.
+    // arrives and attaches it to every later request to that host. A request
+    // once sent runs to the end: React Native cannot always cancel it.
     const jar = new Map<string, string>();
+    const logins: string[] = [];
     const sidsUsed: (string | undefined)[] = [];
     let finishOldLogin!: () => void;
     global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
@@ -124,29 +117,32 @@ describe("qBittorrent session after a restore", () => {
         sidsUsed.push(jar.get(host));
         return response(200, "0");
       }
-      const user = new URLSearchParams(String(init?.body)).get("username");
-      const login = held(init);
+      const user = new URLSearchParams(String(init?.body)).get("username") ?? "";
+      logins.push(user);
       const land = () => {
-        // A cancelled request never gets as far as the jar.
-        if (init?.signal?.aborted) return;
         jar.set(host, `${user}-sid`);
-        login.answer(response(200, "Ok."));
+        return response(200, "Ok.");
       };
-      if (user === "old-user") finishOldLogin = land;
-      else land();
-      return login.promise;
+      if (user !== "old-user") return land();
+      return new Promise((resolve) => {
+        finishOldLogin = () => resolve(land());
+      });
     }) as unknown as typeof fetch;
 
     const oldRequest = getSpeedLimitsMode("qb-1");
-    await new Promise((resolve) => setImmediate(resolve));
+    await flush();
     // The restore keeps the host and switches the account.
     mockConfig.username = "new-user";
     resetInstanceSessions(["qb-1"]);
-    await getSpeedLimitsMode("qb-1");
-    // The old login is answered only now, after the new one.
+    const newRequest = getSpeedLimitsMode("qb-1");
+    await flush();
+    // The old login could still land after a new one, so none goes out yet.
+    expect(logins).toEqual(["old-user"]);
     finishOldLogin();
+    await newRequest;
     await getSpeedLimitsMode("qb-1");
     await expect(oldRequest).rejects.toThrow();
+    expect(logins[1]).toBe("new-user");
     expect(sidsUsed).toEqual(["new-user-sid", "new-user-sid"]);
   });
 });
