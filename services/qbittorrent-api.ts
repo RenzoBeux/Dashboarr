@@ -37,7 +37,8 @@ function resolveQbInstanceId(instanceId?: string): string {
  */
 export async function qbLogin(instanceId?: string): Promise<boolean> {
   const id = resolveQbInstanceId(instanceId);
-  // Bound before the settings are read: a clear in between discards this login.
+  // Bound before the settings are read: a clear in between discards this
+  // login, and aborts it so its response never reaches the platform jar.
   const session = cookies.session(id);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
@@ -59,6 +60,7 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
     method: "POST",
     headers,
     body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
+    signal: session.signal,
   });
 
   if (!response.ok) return false;
@@ -191,7 +193,7 @@ async function qbRequest<T>(
 
   // Re-authenticate if session expired
   if (response.status === 403) {
-    await cookies.dropCookie(id);
+    await cookies.dropCookie(id, session);
     await ensureAuth(id);
     applyCookie(headers, await cookies.cookieForRequest(id, session));
     const retry = await fetch(buildUrl(baseUrl, apiBase, path), {

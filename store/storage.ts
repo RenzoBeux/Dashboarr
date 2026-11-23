@@ -119,6 +119,7 @@ function secretChange(
   return options ? [key, value, options] : [key, value];
 }
 
+
 // A restore writes the keychain, then the settings batch, then a commit
 // marker, and the app can be killed anywhere in between. Before changing
 // anything it records what it will overwrite: the previous credentials in a
@@ -127,7 +128,11 @@ function secretChange(
 // in AsyncStorage, which holds no credentials. The next launch then either
 // finishes the restore (the marker matches the journal) or puts both back.
 const RESTORE_JOURNAL_KEY = "restore.journal";
+// The snapshot keeps each previous value in a row of its own, exactly as it was
+// stored: Android cannot read back a row over about 2 MB, and values that are
+// readable one per row could pass that together. A manifest names the rows.
 const RESTORE_SNAPSHOT_KEY = "app.restoreSnapshot";
+const RESTORE_SNAPSHOT_ROW_PREFIX = `${RESTORE_SNAPSHOT_KEY}.`;
 const RESTORE_COMMIT_KEY = "app.restoreCommitted";
 const RESTORE_JOURNAL_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -139,9 +144,27 @@ interface RestoreJournal {
   cleanup: string[];
 }
 
-interface RestoreSnapshot {
+/** Each restored key with the row holding its previous value, or null when it had none. */
+interface SnapshotManifest {
   id: string;
-  entries: StorageEntry[];
+  rows: [key: string, row: string | null][];
+}
+
+/**
+ * What a launch found of an earlier restore:
+ * - "none": nothing left over.
+ * - "cleanup": the restore landed and only deleting the credentials of the
+ *   instances it replaced is left. The next launch retries it.
+ * - "pending": neither finished nor undone because storage failed again, so
+ *   the settings and the keychain may each hold part of it.
+ */
+export type RestoreRecovery = "none" | "cleanup" | "pending";
+
+export class RestorePendingError extends Error {
+  constructor() {
+    super("An interrupted restore could not be finished or undone yet.");
+    this.name = "RestorePendingError";
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -170,22 +193,53 @@ function parseJournal(raw: string): RestoreJournal | null {
   }
 }
 
-function parseSnapshot(raw: string | null): RestoreSnapshot | null {
-  if (!raw) return null;
+function parseManifest(raw: string): SnapshotManifest | null {
   try {
     const value: unknown = JSON.parse(raw);
-    if (!isRecord(value) || typeof value.id !== "string" || !Array.isArray(value.entries)) return null;
-    const entries: StorageEntry[] = [];
-    for (const entry of value.entries as unknown[]) {
+    if (!isRecord(value) || typeof value.id !== "string" || !Array.isArray(value.rows)) return null;
+    const rows: SnapshotManifest["rows"] = [];
+    for (const entry of value.rows as unknown[]) {
       if (!Array.isArray(entry)) return null;
-      const [key, stored] = entry as unknown[];
-      if (typeof key !== "string" || (stored !== null && typeof stored !== "string")) return null;
-      entries.push([key, stored]);
+      const [key, row] = entry as unknown[];
+      if (typeof key !== "string" || (row !== null && typeof row !== "string")) return null;
+      rows.push([key, row]);
     }
-    return { id: value.id, entries };
+    return { id: value.id, rows };
   } catch {
     return null;
   }
+}
+
+/**
+ * The settings to put back for the journal `id`, or null when the app was
+ * killed before the snapshot was complete, so before the settings batch
+ * started.
+ */
+async function readSnapshot(id: string): Promise<StorageEntry[] | null> {
+  const raw = await AsyncStorage.getItem(RESTORE_SNAPSHOT_KEY);
+  if (raw === null) return null;
+  // The manifest is written in one piece after its rows and removed before
+  // them, so anything else here is damage. Loading the settings anyway could
+  // pair them with the wrong credentials.
+  const manifest = parseManifest(raw);
+  if (manifest?.id !== id) throw new Error("The previous settings to put back are unreadable.");
+  const names = manifest.rows.flatMap(([, row]) => (row === null ? [] : [row]));
+  const values = new Map<string, string | null>(names.length > 0 ? await AsyncStorage.multiGet(names) : []);
+  return manifest.rows.map(([key, row]): StorageEntry => {
+    if (row === null) return [key, null];
+    const value = values.get(row);
+    if (value == null) throw new Error("Some previous settings to put back are missing.");
+    return [key, value];
+  });
+}
+
+// The manifest goes first, so it never names a row that is already gone.
+async function removeSnapshot(): Promise<void> {
+  await AsyncStorage.removeItem(RESTORE_SNAPSHOT_KEY);
+  const rows = (await AsyncStorage.getAllKeys()).filter((key) =>
+    key.startsWith(RESTORE_SNAPSHOT_ROW_PREFIX),
+  );
+  if (rows.length > 0) await AsyncStorage.multiRemove(rows);
 }
 
 async function putBackSecrets(changes: SecretChange[]): Promise<boolean> {
@@ -202,7 +256,7 @@ async function putBackSecrets(changes: SecretChange[]): Promise<boolean> {
 // The snapshot is removed before the journal at every step, so it never
 // outlives the journal that tells whether to apply it.
 async function finishRestore(journal: RestoreJournal): Promise<boolean> {
-  await AsyncStorage.removeItem(RESTORE_SNAPSHOT_KEY);
+  await removeSnapshot();
   const results = await Promise.allSettled(journal.cleanup.map((key) => deleteSecret(key)));
   // Keep the journal so the next launch retries what could not be deleted.
   if (results.some((result) => result.status === "rejected")) {
@@ -215,43 +269,52 @@ async function finishRestore(journal: RestoreJournal): Promise<boolean> {
 }
 
 async function undoRestore(journal: RestoreJournal): Promise<boolean> {
-  const snapshot = parseSnapshot(await AsyncStorage.getItem(RESTORE_SNAPSHOT_KEY));
-  // No snapshot means the app was killed before it was saved, so before the
-  // settings batch started.
-  if (snapshot?.id === journal.id) await writeEntries(snapshot.entries);
-  await AsyncStorage.removeItem(RESTORE_SNAPSHOT_KEY);
+  const previous = await readSnapshot(journal.id);
+  if (previous) await writeEntries(previous);
+  await removeSnapshot();
   if (!(await putBackSecrets(journal.previous))) return false;
   await deleteSecret(RESTORE_JOURNAL_KEY);
   return true;
 }
 
+let recovering: Promise<RestoreRecovery> | null = null;
+
 /**
- * Finish or undo a restore the app was killed in the middle of. Runs at launch
- * before any store reads storage, and before a new restore starts. Resolves
- * false while a restore is still pending because storage failed again.
+ * Finish or undo a restore the app was killed in the middle of. Runs before
+ * the settings are loaded and before a new restore starts. Never throws.
+ * Concurrent callers (the app and the Android widget task can share a JS
+ * context) share one run.
  */
-export async function recoverInterruptedRestore(): Promise<boolean> {
+export function recoverInterruptedRestore(): Promise<RestoreRecovery> {
+  recovering ??= recover().finally(() => {
+    recovering = null;
+  });
+  return recovering;
+}
+
+async function recover(): Promise<RestoreRecovery> {
+  let committed = false;
   try {
     const raw = await getSecret(RESTORE_JOURNAL_KEY);
-    if (!raw) return true;
+    if (!raw) return "none";
     const journal = parseJournal(raw);
     if (!journal) {
-      await AsyncStorage.removeItem(RESTORE_SNAPSHOT_KEY);
+      await removeSnapshot();
       await deleteSecret(RESTORE_JOURNAL_KEY);
-      return true;
+      return "none";
     }
-    if ((await AsyncStorage.getItem(RESTORE_COMMIT_KEY)) === journal.id) {
-      return await finishRestore(journal);
-    }
-    return await undoRestore(journal);
+    committed = (await AsyncStorage.getItem(RESTORE_COMMIT_KEY)) === journal.id;
+    if (committed) return (await finishRestore(journal)) ? "none" : "cleanup";
+    return (await undoRestore(journal)) ? "none" : "pending";
   } catch (error) {
     console.warn("Could not recover an interrupted settings restore", error);
-    return false;
+    // Once committed, the settings and the keychain both hold the restore.
+    return committed ? "cleanup" : "pending";
   }
 }
 
 async function undoFailedRestore(
-  snapshot: RestoreSnapshot,
+  previousSettings: StorageEntry[],
   attempted: SecretChange[],
   settingsTouched: boolean,
 ): Promise<boolean> {
@@ -259,9 +322,9 @@ async function undoFailedRestore(
     if (settingsTouched) {
       // The marker may have landed even though its write reported an error.
       await AsyncStorage.removeItem(RESTORE_COMMIT_KEY);
-      await writeEntries(snapshot.entries);
+      await writeEntries(previousSettings);
     }
-    await AsyncStorage.removeItem(RESTORE_SNAPSHOT_KEY);
+    await removeSnapshot();
     if (!(await putBackSecrets(attempted))) return false;
     await deleteSecret(RESTORE_JOURNAL_KEY);
     return true;
@@ -286,7 +349,7 @@ export async function persistRestore(
 ): Promise<void> {
   // A pending journal is the only record of what to put back, so it must not
   // be replaced.
-  if (!(await recoverInterruptedRestore())) {
+  if ((await recoverInterruptedRestore()) !== "none") {
     throw new Error("The previous restore could not be finished or undone yet. Try again.");
   }
   const current = await Promise.all(changes.map(async ([key]) => getSecret(key)));
@@ -299,15 +362,24 @@ export async function persistRestore(
   });
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   const journal: RestoreJournal = { id, previous, cleanup };
-  const snapshot: RestoreSnapshot = {
+  const previousSettings: StorageEntry[] = entries.map(([key]) => [key, getString(key) ?? null]);
+  const rows: [string, string][] = [];
+  const manifest: SnapshotManifest = {
     id,
-    entries: entries.map(([key]) => [key, getString(key) ?? null]),
+    rows: previousSettings.map(([key, value], index) => {
+      if (value === null) return [key, null];
+      const row = `${RESTORE_SNAPSHOT_ROW_PREFIX}${id}.${index}`;
+      rows.push([row, value]);
+      return [key, row];
+    }),
   };
   await setSecret(RESTORE_JOURNAL_KEY, JSON.stringify(journal), RESTORE_JOURNAL_OPTIONS);
   const attempted: SecretChange[] = [];
   let settingsTouched = false;
   try {
-    await AsyncStorage.setItem(RESTORE_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    // The manifest last, so it only exists once every row does.
+    if (rows.length > 0) await AsyncStorage.multiSet(rows);
+    await AsyncStorage.setItem(RESTORE_SNAPSHOT_KEY, JSON.stringify(manifest));
     for (const [index, [key, value, options]] of pending.entries()) {
       attempted.push(previous[index]);
       if (value === null) await deleteSecret(key);
@@ -319,7 +391,7 @@ export async function persistRestore(
     // whole batch is on disk.
     await AsyncStorage.setItem(RESTORE_COMMIT_KEY, id);
   } catch (error) {
-    if (await undoFailedRestore(snapshot, attempted, settingsTouched)) throw error;
+    if (await undoFailedRestore(previousSettings, attempted, settingsTouched)) throw error;
     // The journal stays, so the next launch puts the rest back.
     throw new Error(
       `${errorMessage(error)} Some previous settings could not be put back yet; the app will retry on its next launch.`,

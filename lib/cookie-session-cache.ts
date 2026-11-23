@@ -13,6 +13,8 @@ export interface CookieSession {
   cached: string | null;
   loaded: boolean;
   loginPromise: Promise<boolean> | null;
+  /** Aborted when the session is cleared. Logins pass it to fetch. */
+  signal: AbortSignal;
 }
 
 /**
@@ -23,19 +25,29 @@ export interface CookieSession {
  * A login stores its cookie on the session object it started on. Clearing an
  * instance (new credentials or URL, a restore) swaps in a new object, so a
  * login still in flight for the old settings cannot hand its cookie to the
- * new ones.
+ * new ones. The clear also aborts that login: where the platform jar keeps
+ * the cookie, its response would otherwise replace the new login's cookie for
+ * the same host, and the next request would run as the previous account.
  */
 export function createCookieSessionCache() {
   const sessions = new Map<string, CookieSession>();
+  const controllers = new WeakMap<CookieSession, AbortController>();
   const keyFor = (instanceId: string) => `${SECRET_PREFIX}.${instanceId}.sessionCookie`;
 
-  function session(instanceId: string): CookieSession {
-    let entry = sessions.get(instanceId);
-    if (!entry) {
-      entry = { cached: null, loaded: false, loginPromise: null };
-      sessions.set(instanceId, entry);
-    }
+  function create(instanceId: string, loaded: boolean): CookieSession {
+    const controller = new AbortController();
+    const entry = { cached: null, loaded, loginPromise: null, signal: controller.signal };
+    controllers.set(entry, controller);
+    sessions.set(instanceId, entry);
     return entry;
+  }
+
+  function session(instanceId: string): CookieSession {
+    return sessions.get(instanceId) ?? create(instanceId, false);
+  }
+
+  function staleRequest(): Error {
+    return new Error("The service settings changed during the request. Try again.");
   }
 
   async function getCookie(instanceId: string): Promise<string | null> {
@@ -61,9 +73,7 @@ export function createCookieSessionCache() {
     owner: CookieSession,
   ): Promise<string | null> {
     const cookie = await getCookie(instanceId);
-    if (sessions.get(instanceId) !== owner) {
-      throw new Error("The service settings changed during the request. Try again.");
-    }
+    if (sessions.get(instanceId) !== owner) throw staleRequest();
     return cookie;
   }
 
@@ -88,13 +98,15 @@ export function createCookieSessionCache() {
   }
 
   /**
-   * Forget the current cookie after the server rejected it. Logins already in
-   * flight stay valid: they use the same settings.
+   * Forget the cookie after the server rejected a request made while `owner`
+   * was current. Logins already in flight stay valid: they use the same
+   * settings. Throws once the instance was cleared, leaving the new session's
+   * cookie alone.
    */
-  async function dropCookie(instanceId: string): Promise<void> {
-    const entry = session(instanceId);
-    entry.cached = null;
-    entry.loaded = true;
+  async function dropCookie(instanceId: string, owner: CookieSession): Promise<void> {
+    if (sessions.get(instanceId) !== owner) throw staleRequest();
+    owner.cached = null;
+    owner.loaded = true;
     await deleteSecret(keyFor(instanceId));
   }
 
@@ -104,7 +116,9 @@ export function createCookieSessionCache() {
    * login managed to write.
    */
   async function clear(instanceId: string): Promise<void> {
-    sessions.set(instanceId, { cached: null, loaded: true, loginPromise: null });
+    const previous = sessions.get(instanceId);
+    create(instanceId, true);
+    if (previous) controllers.get(previous)?.abort();
     await deleteSecret(keyFor(instanceId));
   }
 

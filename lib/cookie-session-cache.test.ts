@@ -64,10 +64,29 @@ describe("createCookieSessionCache", () => {
     mockKeychain.set(KEY, "expired");
     await expect(cookies.getCookie(ID)).resolves.toBe("expired");
     const login = cookies.session(ID);
-    await cookies.dropCookie(ID);
+    await cookies.dropCookie(ID, login);
+    expect(login.signal.aborted).toBe(false);
     await expect(cookies.storeCookie(ID, login, "fresh")).resolves.toBe(true);
     await expect(cookies.getCookie(ID)).resolves.toBe("fresh");
     expect(mockKeychain.get(KEY)).toBe("fresh");
+  });
+
+  it("aborts the logins of a cleared session", async () => {
+    const cookies = createCookieSessionCache();
+    const login = cookies.session(ID);
+    await cookies.clear(ID);
+    expect(login.signal.aborted).toBe(true);
+    expect(cookies.session(ID).signal.aborted).toBe(false);
+  });
+
+  it("leaves the new session's cookie alone when a request from before a clear is rejected", async () => {
+    const cookies = createCookieSessionCache();
+    const before = cookies.session(ID);
+    await cookies.clear(ID);
+    await cookies.storeCookie(ID, cookies.session(ID), "new-sid");
+    await expect(cookies.dropCookie(ID, before)).rejects.toThrow("settings changed");
+    await expect(cookies.getCookie(ID)).resolves.toBe("new-sid");
+    expect(mockKeychain.get(KEY)).toBe("new-sid");
   });
 
   it("leaves instances this run never used alone on a restore", async () => {

@@ -45,6 +45,8 @@ import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
 import {
   initStorage,
+  recoverInterruptedRestore,
+  RestorePendingError,
   getJSON,
   setJSON,
   setMany,
@@ -255,6 +257,10 @@ export type ImportStage = "downloading" | "decrypting" | "restoring";
 const yieldToPaint = () => new Promise<void>((resolve) => setTimeout(resolve, 16));
 
 interface ConfigActions {
+  /**
+   * Load the saved settings. Finishes or undoes an interrupted restore first,
+   * and rejects with RestorePendingError while that keeps failing.
+   */
   hydrate: () => Promise<void>;
 
   // Multi-instance (v13+) actions. Operate by UUID so renames/reorders don't
@@ -1029,6 +1035,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 
   hydrate: async () => {
+    // Loading half a restore would pair one configuration's settings with the
+    // other's credentials, and send them to its servers.
+    if ((await recoverInterruptedRestore()) === "pending") throw new RestorePendingError();
     // Populate in-memory cache from AsyncStorage
     await initStorage();
 

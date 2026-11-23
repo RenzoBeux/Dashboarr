@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -16,7 +16,7 @@ import { BASE_REM } from "@/hooks/use-ui-scale";
 import { useStackScreenOptions } from "@/hooks/use-stack-screen-options";
 import { useConfigStore } from "@/store/config-store";
 import { useBackendStore } from "@/store/backend-store";
-import { recoverInterruptedRestore } from "@/store/storage";
+import { RestorePendingError } from "@/store/storage";
 import { useSortStore } from "@/store/sort-store";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
 import { useUnraidUiStore } from "@/store/unraid-ui-store";
@@ -46,6 +46,7 @@ import { syncInsecureHosts } from "@/lib/insecure-tls";
 import { ErrorBoundary, SilentErrorBoundary } from "@/components/common/error-boundary";
 import { AppStack } from "@/components/navigation/app-stack";
 import { AnimatedSplash } from "@/components/common/animated-splash";
+import { RestorePendingScreen } from "@/components/common/restore-pending-screen";
 import { AppUpdateChecker } from "@/components/common/app-update-checker";
 import { ToastContainer } from "@/components/ui/toast";
 import { WorkspaceIntroOverlay } from "@/components/onboarding/workspace-intro-overlay";
@@ -418,6 +419,7 @@ export default function RootLayout() {
   const markIntroSeen = useIntroStore((s) => s.markWorkspaceIntroSeen);
   const stackScreenOptions = useStackScreenOptions();
   const [splashDone, setSplashDone] = useState(false);
+  const [restorePending, setRestorePending] = useState(false);
 
   // Backstop: if hydration ever hangs, don't leave the native splash stuck
   // on screen forever — hideAsync is idempotent with the overlay's own hide.
@@ -428,15 +430,38 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    // Both stores read the keychain and the saved settings, so an interrupted
-    // restore is finished or undone first.
-    void recoverInterruptedRestore().finally(() => {
-      hydrate();
-      hydrateBackend();
-    });
-    configureNotifications();
+  // The config store finishes or undoes an interrupted restore before it loads
+  // anything. The backend store reads the keychain too, so it goes second.
+  const boot = useCallback(async () => {
+    try {
+      await hydrate();
+    } catch (error) {
+      if (error instanceof RestorePendingError) {
+        setRestorePending(true);
+        SplashScreen.hideAsync().catch(() => {});
+      } else {
+        console.warn("Could not load the saved settings", error);
+      }
+      return;
+    }
+    setRestorePending(false);
+    void hydrateBackend();
   }, [hydrate, hydrateBackend]);
+
+  useEffect(() => {
+    void boot();
+    configureNotifications();
+  }, [boot]);
+
+  // The keychain may only have been locked, so retry whenever the app comes
+  // back to the foreground.
+  useEffect(() => {
+    if (!restorePending) return;
+    const subscription = AppState.addEventListener("change", (status) => {
+      if (status === "active") void boot();
+    });
+    return () => subscription.remove();
+  }, [restorePending, boot]);
 
   // Sort prefs read sync from the storage cache, which is populated by
   // useConfigStore.hydrate(). Wait for that before reading.
@@ -478,7 +503,14 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
-  if (!hydrated) return null;
+  if (!hydrated) {
+    if (!restorePending) return null;
+    return (
+      <ThemeRoot>
+        <RestorePendingScreen onRetry={boot} />
+      </ThemeRoot>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

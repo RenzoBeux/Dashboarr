@@ -42,6 +42,7 @@ import {
   deleteKey,
   getJSON,
   getString,
+  RestorePendingError,
   setJSON,
   setString,
 } from "./storage";
@@ -1377,15 +1378,37 @@ describe("configuration restore persistence", () => {
 
   it("rolls back keychain and settings when native storage rejects a partial batch", async () => {
     const before = new Map(keychain);
-    jest.mocked(AsyncStorage.multiSet).mockImplementationOnce(async (entries) => {
-      const serviceEntry = entries.find(([key]) => key === serviceKey)!;
-      disk.set(...serviceEntry);
-      throw new Error("Settings storage unavailable");
+    let rejected = false;
+    jest.mocked(AsyncStorage.multiSet).mockImplementation(async (entries) => {
+      const serviceEntry = entries.find(([key]) => key === serviceKey);
+      if (serviceEntry && !rejected) {
+        rejected = true;
+        disk.set(...serviceEntry);
+        throw new Error("Settings storage unavailable");
+      }
+      for (const [key, value] of entries) disk.set(key, value);
     });
     await expect(useConfigStore.getState().importConfigFromPayload(backup())).rejects.toThrow("Settings storage unavailable");
     expect(keychain).toEqual(before);
     expect(disk.get(serviceKey)).toBe(JSON.stringify([original]));
     expect(useConfigStore.getState().serviceInstances.radarr).toEqual([original]);
+  });
+
+  it("loads nothing while an interrupted restore cannot be undone", async () => {
+    // Killed mid-restore: the imported key is in the keychain, and putting the
+    // original back keeps failing.
+    keychain.set("restore.journal", JSON.stringify({ id: "r1", previous: [[apiKey, "original-key"]], cleanup: [] }));
+    keychain.set(apiKey, "imported-key");
+    jest.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("Keychain locked"));
+    await expect(useConfigStore.getState().hydrate()).rejects.toBeInstanceOf(RestorePendingError);
+    expect(useConfigStore.getState().instanceSecrets[INSTANCE_ID]?.apiKey).toBe("original-key");
+
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      keychain.set(key, value);
+    });
+    await useConfigStore.getState().hydrate();
+    expect(keychain.get(apiKey)).toBe("original-key");
+    expect(keychain.has("restore.journal")).toBe(false);
   });
 
   it("commits default notification settings when a legacy backup omits them", async () => {
