@@ -22,6 +22,7 @@ export interface CookieSession {
 const DISCARDED_LOGIN_WAIT_MS = 30_000;
 
 interface LoginInFlight {
+  instanceId: string;
   owner: CookieSession;
   host: string;
   finished: Promise<void>;
@@ -54,11 +55,13 @@ async function finishedBy(logins: Promise<void>[], deadline: number): Promise<bo
  * iOS React Native only cancels a request whose id already reached
  * JavaScript, and the jar can take the cookie before JavaScript sees the
  * response. So a login waits until every discarded login to its host has
- * finished, and its own cookie lands last.
+ * finished, and its own cookie lands last. That includes the logins of other
+ * instances: the jar keys cookies by host, and a restore can replace the id
+ * that pointed at it.
  */
 export function createCookieSessionCache() {
   const sessions = new Map<string, CookieSession>();
-  const inFlight = new Map<string, Set<LoginInFlight>>();
+  const inFlight = new Set<LoginInFlight>();
   const keyFor = (instanceId: string) => `${SECRET_PREFIX}.${instanceId}.sessionCookie`;
 
   function create(instanceId: string, loaded: boolean): CookieSession {
@@ -75,16 +78,16 @@ export function createCookieSessionCache() {
     return new Error("The service settings changed during the request. Try again.");
   }
 
-  function discardedLogins(instanceId: string, owner: CookieSession, host: string) {
-    return [...(inFlight.get(instanceId) ?? [])]
-      .filter((login) => login.owner !== owner && login.host === host)
+  function discardedLogins(host: string) {
+    return [...inFlight]
+      .filter((login) => login.host === host && sessions.get(login.instanceId) !== login.owner)
       .map((login) => login.finished);
   }
 
   /**
    * Send a login for `owner` to `url` once the discarded logins to the same
-   * host (cookies ignore the port) have finished. Throws when the instance is
-   * cleared meanwhile, or when they do not finish in time.
+   * host (cookies ignore the port), of any instance, have finished. Throws
+   * when the instance is cleared meanwhile, or when they do not finish in time.
    */
   async function login<T>(
     instanceId: string,
@@ -96,7 +99,7 @@ export function createCookieSessionCache() {
     const deadline = Date.now() + DISCARDED_LOGIN_WAIT_MS;
     for (;;) {
       if (sessions.get(instanceId) !== owner) throw staleRequest();
-      const waiting = discardedLogins(instanceId, owner, host);
+      const waiting = discardedLogins(host);
       if (waiting.length === 0) break;
       if (!(await finishedBy(waiting, deadline))) {
         throw new Error(
@@ -106,11 +109,9 @@ export function createCookieSessionCache() {
     }
     // Sent in the same tick as the check above, so no clear slips in between.
     const request = send();
-    const logins = inFlight.get(instanceId) ?? new Set<LoginInFlight>();
-    inFlight.set(instanceId, logins);
-    const entry: LoginInFlight = { owner, host, finished: request.then(noop, noop) };
-    logins.add(entry);
-    void entry.finished.then(() => logins.delete(entry));
+    const entry = { instanceId, owner, host, finished: request.then(noop, noop) };
+    inFlight.add(entry);
+    void entry.finished.then(() => inFlight.delete(entry));
     return request;
   }
 

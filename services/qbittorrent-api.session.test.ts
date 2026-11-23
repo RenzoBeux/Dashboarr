@@ -20,9 +20,12 @@ jest.mock("@/store/config-store", () => ({
     getState: () => ({
       demoMode: false,
       getActiveInstanceId: () => "qb-1",
-      getInstance: () => ({ id: "qb-1", enabled: true }),
+      getInstance: (_kind: string, id: string) => ({ id, enabled: true }),
       getMergedHeaders: () => ({}),
-      instanceSecrets: { "qb-1": { username: mockConfig.username, password: "secret" } },
+      instanceSecrets: {
+        "qb-1": { username: mockConfig.username, password: "secret" },
+        "qb-2": { username: mockConfig.username, password: "secret" },
+      },
     }),
   },
 }));
@@ -99,7 +102,10 @@ describe("qBittorrent session after a restore", () => {
     expect(mockKeychain.get("secrets.qb-1.sessionCookie")).toBe("new-sid");
   });
 
-  it("keeps a late login for the previous account on the same host from replacing the new one", async () => {
+  it.each([
+    ["keeps", "qb-1"],
+    ["replaces", "qb-2"],
+  ])("keeps a late login for the previous account on the same host from replacing the new one when a restore %s the id", async (_change, newId) => {
     mockPlatform.OS = "ios";
     mockConfig.url = "http://qb.local";
     mockConfig.username = "old-user";
@@ -131,16 +137,17 @@ describe("qBittorrent session after a restore", () => {
 
     const oldRequest = getSpeedLimitsMode("qb-1");
     await flush();
-    // The restore keeps the host and switches the account.
+    // The restore keeps the host and switches the account. It resets every
+    // previous id.
     mockConfig.username = "new-user";
     resetInstanceSessions(["qb-1"]);
-    const newRequest = getSpeedLimitsMode("qb-1");
+    const newRequest = getSpeedLimitsMode(newId);
     await flush();
     // The old login could still land after a new one, so none goes out yet.
     expect(logins).toEqual(["old-user"]);
     finishOldLogin();
     await newRequest;
-    await getSpeedLimitsMode("qb-1");
+    await getSpeedLimitsMode(newId);
     await expect(oldRequest).rejects.toThrow();
     expect(logins[1]).toBe("new-user");
     expect(sidsUsed).toEqual(["new-user-sid", "new-user-sid"]);

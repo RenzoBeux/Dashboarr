@@ -97,6 +97,28 @@ describe("createCookieSessionCache", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  it("waits for a discarded login to the same host from an instance a restore replaced", async () => {
+    const cookies = createCookieSessionCache();
+    const old = heldLogin();
+    void cookies.login("qb-old", cookies.session("qb-old"), "http://qb.local", old.send);
+    // The restore resets every previous id, including the ones it drops.
+    await cookies.clear("qb-old");
+    const send = jest.fn(async () => "new");
+    const newLogin = cookies.login("qb-new", cookies.session("qb-new"), "http://qb.local", send);
+    await flush();
+    expect(send).not.toHaveBeenCalled();
+    old.finish();
+    await expect(newLogin).resolves.toBe("new");
+  });
+
+  it("does not hold a login for another instance's live login to the same host", async () => {
+    const cookies = createCookieSessionCache();
+    void cookies.login("qb-other", cookies.session("qb-other"), "http://qb.local", heldLogin().send);
+    await expect(
+      cookies.login(ID, cookies.session(ID), "http://qb.local:8081", async () => "new"),
+    ).resolves.toBe("new");
+  });
+
   it("does not hold a login to another host", async () => {
     const cookies = createCookieSessionCache();
     void cookies.login(ID, cookies.session(ID), "http://old.local", heldLogin().send);
