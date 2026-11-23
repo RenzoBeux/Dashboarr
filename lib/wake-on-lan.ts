@@ -1,5 +1,6 @@
 import dgram from "react-native-udp";
 import { Buffer } from "buffer";
+import { parseMacBytes } from "@/lib/mac-address";
 
 export class WakeOnLanError extends Error {
   constructor(message: string) {
@@ -18,14 +19,8 @@ interface WakeOnLanOptions {
  * Parse a MAC address string into 6 bytes. Accepts ':', '-', '.' separators or none.
  */
 function parseMac(mac: string): number[] {
-  const clean = mac.replace(/[:\-.\s]/g, "").toLowerCase();
-  if (!/^[0-9a-f]{12}$/.test(clean)) {
-    throw new WakeOnLanError(`Invalid MAC address: ${mac}`);
-  }
-  const bytes: number[] = [];
-  for (let i = 0; i < 12; i += 2) {
-    bytes.push(parseInt(clean.slice(i, i + 2), 16));
-  }
+  const bytes = parseMacBytes(mac);
+  if (!bytes) throw new WakeOnLanError(`Invalid MAC address: ${mac}`);
   return bytes;
 }
 

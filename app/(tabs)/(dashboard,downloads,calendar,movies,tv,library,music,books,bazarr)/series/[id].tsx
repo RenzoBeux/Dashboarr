@@ -301,7 +301,11 @@ export default function SeriesDetailScreen() {
 
           <MediaStatsStrip stats={stats} className="mb-5" />
 
-          <RequestedByBlock tmdbId={series.tmdbId} mediaType="tv" />
+          <RequestedByBlock
+            tmdbId={series.tmdbId}
+            mediaType="tv"
+            source={{ kind: "sonarr", instanceId }}
+          />
 
           <EpisodeProgressBlock
             series={series}

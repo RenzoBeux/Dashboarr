@@ -3,6 +3,7 @@ import { buildUrl, HttpError, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
+import { registerSessionReset } from "@/lib/session-registry";
 import type {
   TorrentGlobalStats,
   TorrentStatus,
@@ -267,6 +268,7 @@ export function delugeClearSession(instanceId?: string): void {
   if (instanceId) sessions.delete(instanceId);
   else sessions.clear();
 }
+registerSessionReset(delugeClearSession);
 
 interface RpcEnvelope<T> {
   result?: T | null;

@@ -1,10 +1,11 @@
 import { Platform } from "react-native";
 import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
-import { getSecret, setSecret, deleteSecret } from "@/store/storage";
-import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
+import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
 import { QB_ADD_REFUSED_MESSAGE } from "@/lib/download-client-error";
+import { registerSessionReset } from "@/lib/session-registry";
+import { createCookieSessionCache, NATIVE_JAR_SENTINEL } from "@/lib/cookie-session-cache";
 import type {
   QBTransferInfo,
   QBServerState,
@@ -14,52 +15,11 @@ import type {
   QBSpeedPreferences,
 } from "@/lib/types";
 
-// iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
-// lives in the native jar and we can't read the SID from JS. Android's OkHttp
-// CookieJar usually also consumes Set-Cookie before fetch exposes it, so we
-// fall back to the same sentinel approach when we can't parse the SID.
-const NATIVE_JAR_SENTINEL = "__native_cookie_jar__";
-
-interface CookieEntry {
-  cached: string | null;
-  loaded: boolean;
-  loginPromise: Promise<boolean> | null;
-}
-
-// One CookieEntry per qBittorrent instance UUID, so two simultaneously-
-// configured qBits keep separate session state. Persisted to SecureStore under
-// `secrets.${instanceId}.sessionCookie`.
-const cookieStores = new Map<string, CookieEntry>();
-
-function sessionKeyFor(instanceId: string): string {
-  return `${SECRET_PREFIX}.${instanceId}.sessionCookie`;
-}
-
-function getEntry(instanceId: string): CookieEntry {
-  let entry = cookieStores.get(instanceId);
-  if (!entry) {
-    entry = { cached: null, loaded: false, loginPromise: null };
-    cookieStores.set(instanceId, entry);
-  }
-  return entry;
-}
-
-async function getCookie(instanceId: string): Promise<string | null> {
-  const entry = getEntry(instanceId);
-  if (!entry.loaded) {
-    entry.cached = await getSecret(sessionKeyFor(instanceId));
-    entry.loaded = true;
-  }
-  return entry.cached;
-}
-
-async function setCookie(instanceId: string, value: string | null): Promise<void> {
-  const entry = getEntry(instanceId);
-  entry.cached = value;
-  entry.loaded = true;
-  if (value) await setSecret(sessionKeyFor(instanceId), value);
-  else await deleteSecret(sessionKeyFor(instanceId));
-}
+// One session per qBittorrent instance UUID, so two simultaneously-configured
+// qBits keep separate session state. See lib/cookie-session-cache.ts.
+const cookies = createCookieSessionCache();
+// A restore may reuse this id with other settings.
+registerSessionReset(cookies.clearIfUsed);
 
 // Resolve which qBittorrent instance to talk to. The hooks layer (step 3) will
 // thread instanceId explicitly; until then, callers default to the active
@@ -77,6 +37,9 @@ function resolveQbInstanceId(instanceId?: string): string {
  */
 export async function qbLogin(instanceId?: string): Promise<boolean> {
   const id = resolveQbInstanceId(instanceId);
+  // Bound before the settings are read: a clear in between discards this
+  // login.
+  const session = cookies.session(id);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
   const baseUrl = resolveReachableUrl("qbittorrent", id);
@@ -93,11 +56,14 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
   }
   headers.set("Content-Type", "application/x-www-form-urlencoded");
 
-  const response = await fetch(buildUrl(baseUrl, apiBase, "/auth/login"), {
-    method: "POST",
-    headers,
-    body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
-  });
+  const url = buildUrl(baseUrl, apiBase, "/auth/login");
+  const response = await cookies.login(id, session, url, () =>
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: `username=${encodeURIComponent(secrets.username ?? "")}&password=${encodeURIComponent(secrets.password ?? "")}`,
+    }),
+  );
 
   if (!response.ok) return false;
 
@@ -119,13 +85,9 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
   if (Platform.OS !== "ios") {
     const setCookieHeader = response.headers.get("set-cookie");
     const match = setCookieHeader?.match(/SID=([^;]+)/);
-    if (match?.[1]) {
-      await setCookie(id, match[1]);
-      return true;
-    }
+    if (match?.[1]) return cookies.storeCookie(id, session, match[1]);
   }
-  await setCookie(id, NATIVE_JAR_SENTINEL);
-  return true;
+  return cookies.storeCookie(id, session, NATIVE_JAR_SENTINEL);
 }
 
 /**
@@ -133,8 +95,8 @@ export async function qbLogin(instanceId?: string): Promise<boolean> {
  * Deduplicates concurrent login attempts.
  */
 async function ensureAuth(instanceId: string): Promise<void> {
-  if (await getCookie(instanceId)) return;
-  const entry = getEntry(instanceId);
+  if (await cookies.getCookie(instanceId)) return;
+  const entry = cookies.session(instanceId);
   if (entry.loginPromise) {
     // Waiters must propagate the leader's outcome — otherwise a failed login
     // returns void to the waiter, which then sends an unauth'd request and
@@ -194,6 +156,8 @@ async function qbRequest<T>(
   instanceId?: string,
 ): Promise<T> {
   const id = resolveQbInstanceId(instanceId);
+  // Bound before the settings are read, like the login.
+  const session = cookies.session(id);
   const store = useConfigStore.getState();
 
   if (store.demoMode) {
@@ -222,7 +186,7 @@ async function qbRequest<T>(
     headers.set(k, v);
   }
 
-  applyCookie(headers, await getCookie(id));
+  applyCookie(headers, await cookies.cookieForRequest(id, session));
 
   const response = await fetch(buildUrl(baseUrl, apiBase, path), {
     ...options,
@@ -231,9 +195,9 @@ async function qbRequest<T>(
 
   // Re-authenticate if session expired
   if (response.status === 403) {
-    await setCookie(id, null);
+    await cookies.dropCookie(id, session);
     await ensureAuth(id);
-    applyCookie(headers, await getCookie(id));
+    applyCookie(headers, await cookies.cookieForRequest(id, session));
     const retry = await fetch(buildUrl(baseUrl, apiBase, path), {
       ...options,
       headers,
@@ -254,17 +218,17 @@ async function qbRequest<T>(
  */
 export async function qbClearSession(instanceId?: string): Promise<void> {
   if (instanceId) {
-    await setCookie(instanceId, null);
+    await cookies.clear(instanceId);
     return;
   }
   // Clear every known instance's cache + storage.
   const store = useConfigStore.getState();
   const ids = (store.serviceInstances.qbittorrent ?? []).map((i) => i.id);
-  // Include any cookieStores keys we might have for instances not currently in
-  // the store (e.g. after a deletion that didn't clean up).
-  for (const id of cookieStores.keys()) ids.push(id);
+  // Include any sessions we might have for instances not currently in the
+  // store (e.g. after a deletion that didn't clean up).
+  ids.push(...cookies.ids());
   for (const id of new Set(ids)) {
-    await setCookie(id, null);
+    await cookies.clear(id);
   }
 }
 

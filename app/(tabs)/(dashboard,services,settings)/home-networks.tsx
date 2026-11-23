@@ -106,16 +106,37 @@ export default function HomeNetworksScreen() {
   const [ssid, setSsid] = useState("");
   const [bssid, setBssid] = useState("");
   const [detecting, setDetecting] = useState(false);
+  // The network stays set until the confirm has fully closed, so its text
+  // doesn't vanish while the dialog fades out.
   const [pendingDelete, setPendingDelete] = useState<HomeNetwork | null>(null);
-  const affectedWorkspaces = pendingDelete
-    ? dashboards.filter((dashboard) => dashboard.homeNetworkIds?.includes(pendingDelete.id))
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const otherNetworks = pendingDelete
+    ? homeNetworks.filter((network) => network.id !== pendingDelete.id)
+    : [];
+  // Only the workspaces whose selection this empties change behavior: they go
+  // back to trusting every saved home network (repairOrphanedHomeNetworkSelection).
+  const emptiedWorkspaces = pendingDelete
+    ? dashboards.filter((dashboard) => {
+        const ids = dashboard.homeNetworkIds;
+        return (
+          !!ids?.includes(pendingDelete.id) &&
+          !ids.some((id) => otherNetworks.some((network) => network.id === id))
+        );
+      })
     : [];
   const removeMessage = pendingDelete
     ? `Stop treating "${pendingDelete.ssid}" as a home network?`
     : "";
-  const workspaceMessage = affectedWorkspaces.length > 0
-    ? `\n\nThis network is selected in ${affectedWorkspaces.map(({ name }) => name).join(", ")}. Workspaces that lose their last selected network will use all home networks.`
-    : "";
+  const workspaceMessage =
+    emptiedWorkspaces.length > 0 && otherNetworks.length > 0
+      ? `\n\n${emptiedWorkspaces.map(({ name }) => name).join(", ")} ${
+          emptiedWorkspaces.length === 1 ? "uses" : "use"
+        } only this network. After removing it, ${
+          emptiedWorkspaces.length === 1 ? "it" : "they"
+        } will use local URLs on every other saved home network: ${otherNetworks
+          .map((network) => network.ssid)
+          .join(", ")}.`
+      : "";
 
 
   // Location-permission state for the "away" recovery card (#168). Read without
@@ -297,7 +318,7 @@ export default function HomeNetworksScreen() {
     if (!pendingDelete) return;
     removeHomeNetwork(pendingDelete.id);
     toast(`${pendingDelete.ssid} removed`, "success");
-    setPendingDelete(null);
+    setDeleteVisible(false);
   };
 
   if (mode === "add" || mode === "edit") {
@@ -616,7 +637,10 @@ export default function HomeNetworksScreen() {
                     <Icon icon={Pencil} size={16} color="#71717a" />
                   </Pressable>
                   <Pressable
-                    onPress={() => setPendingDelete(network)}
+                    onPress={() => {
+                      setPendingDelete(network);
+                      setDeleteVisible(true);
+                    }}
                     className="p-2 active:opacity-70"
                   >
                     <Icon icon={Trash2} size={16} color="#71717a" />
@@ -650,14 +674,15 @@ export default function HomeNetworksScreen() {
       )}
 
       <ConfirmModal
-        visible={pendingDelete !== null}
+        visible={deleteVisible}
         title="Remove network"
         message={removeMessage + workspaceMessage}
         icon={Trash2}
         tone="danger"
         confirmLabel="Remove"
         onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
+        onCancel={() => setDeleteVisible(false)}
+        onClosed={() => setPendingDelete(null)}
       />
     </ScreenWrapper>
   );

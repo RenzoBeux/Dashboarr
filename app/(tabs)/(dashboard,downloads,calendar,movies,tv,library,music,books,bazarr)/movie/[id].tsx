@@ -299,7 +299,11 @@ export default function MovieDetailScreen() {
 
           <MediaStatsStrip stats={stats} className="mb-5" />
 
-          <RequestedByBlock tmdbId={movie.tmdbId} mediaType="movie" />
+          <RequestedByBlock
+            tmdbId={movie.tmdbId}
+            mediaType="movie"
+            source={{ kind: "radarr", instanceId }}
+          />
 
           <MovieFileBlock
             movie={movie}

@@ -2,6 +2,7 @@ import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
 import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
+import { registerSessionReset } from "@/lib/session-registry";
 import {
   type BeszelAuthCollection,
   dropBeszelSession,
@@ -293,6 +294,8 @@ export async function getContainers(
  * entry outright rather than just resetting its fields, matching Pi-hole's
  * `clearSession`.
  */
+registerSessionReset((instanceId) => beszelClearSession(instanceId));
+
 export function beszelClearSession(instanceId?: string): void {
   const ids = instanceId ? [instanceId] : beszelSessionIds();
   for (const id of ids) {

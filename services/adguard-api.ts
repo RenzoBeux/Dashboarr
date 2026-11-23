@@ -1,9 +1,10 @@
 import { Platform } from "react-native";
 import { buildUrl, resolveReachableUrl } from "@/lib/http-client";
 import { useConfigStore } from "@/store/config-store";
-import { getSecret, setSecret, deleteSecret } from "@/store/storage";
-import { SERVICE_DEFAULTS, SECRET_PREFIX } from "@/lib/constants";
+import { SERVICE_DEFAULTS } from "@/lib/constants";
 import { getDemoResponse } from "@/lib/demo-data";
+import { registerSessionReset } from "@/lib/session-registry";
+import { createCookieSessionCache, NATIVE_JAR_SENTINEL } from "@/lib/cookie-session-cache";
 import type {
   AdguardServerStatus,
   AdguardProtectionRequest,
@@ -14,55 +15,15 @@ import type {
   AdguardRewriteEntry,
 } from "@/lib/types";
 
-// iOS's NSURLSession strips Set-Cookie from response.headers — the cookie
-// lives in the native jar and we can't read agh_session from JS. Android's
-// OkHttp CookieJar usually also consumes Set-Cookie before fetch exposes it,
-// so we fall back to the same sentinel approach when we can't parse it.
-// Mirrors services/qbittorrent-api.ts, the closest existing analog (login
-// endpoint + cookie session, not a header token like Pi-hole's X-FTL-SID).
-const NATIVE_JAR_SENTINEL = "__native_cookie_jar__";
-
 const SESSION_COOKIE_NAME = "agh_session";
 
-interface CookieEntry {
-  cached: string | null;
-  loaded: boolean;
-  loginPromise: Promise<boolean> | null;
-}
-
-// One CookieEntry per AdGuard Home instance UUID. Persisted to SecureStore
-// under `secrets.${instanceId}.sessionCookie`.
-const cookieStores = new Map<string, CookieEntry>();
-
-function sessionKeyFor(instanceId: string): string {
-  return `${SECRET_PREFIX}.${instanceId}.sessionCookie`;
-}
-
-function getEntry(instanceId: string): CookieEntry {
-  let entry = cookieStores.get(instanceId);
-  if (!entry) {
-    entry = { cached: null, loaded: false, loginPromise: null };
-    cookieStores.set(instanceId, entry);
-  }
-  return entry;
-}
-
-async function getCookie(instanceId: string): Promise<string | null> {
-  const entry = getEntry(instanceId);
-  if (!entry.loaded) {
-    entry.cached = await getSecret(sessionKeyFor(instanceId));
-    entry.loaded = true;
-  }
-  return entry.cached;
-}
-
-async function setCookie(instanceId: string, value: string | null): Promise<void> {
-  const entry = getEntry(instanceId);
-  entry.cached = value;
-  entry.loaded = true;
-  if (value) await setSecret(sessionKeyFor(instanceId), value);
-  else await deleteSecret(sessionKeyFor(instanceId));
-}
+// One session per AdGuard Home instance UUID. Mirrors
+// services/qbittorrent-api.ts, the closest existing analog (login endpoint +
+// cookie session, not a header token like Pi-hole's X-FTL-SID). See
+// lib/cookie-session-cache.ts.
+const cookies = createCookieSessionCache();
+// A restore may reuse this id with other settings.
+registerSessionReset(cookies.clearIfUsed);
 
 function resolveAdguardInstanceId(instanceId?: string): string {
   if (instanceId) return instanceId;
@@ -94,6 +55,9 @@ export class AdguardRateLimitedError extends Error {
  */
 export async function adguardLogin(instanceId?: string): Promise<boolean> {
   const id = resolveAdguardInstanceId(instanceId);
+  // Bound before the settings are read: a clear in between discards this
+  // login.
+  const session = cookies.session(id);
   const store = useConfigStore.getState();
   const secrets = store.instanceSecrets[id] ?? {};
   const baseUrl = resolveReachableUrl("adguard", id);
@@ -107,14 +71,17 @@ export async function adguardLogin(instanceId?: string): Promise<boolean> {
   }
   headers.set("Content-Type", "application/json");
 
-  const response = await fetch(buildUrl(baseUrl, apiBase, "/login"), {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      name: secrets.username ?? "",
-      password: secrets.password ?? "",
+  const url = buildUrl(baseUrl, apiBase, "/login");
+  const response = await cookies.login(id, session, url, () =>
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        name: secrets.username ?? "",
+        password: secrets.password ?? "",
+      }),
     }),
-  });
+  );
 
   if (response.status === 429) {
     const retryAfter = response.headers.get("retry-after");
@@ -123,19 +90,15 @@ export async function adguardLogin(instanceId?: string): Promise<boolean> {
   if (!response.ok) return false;
 
   // Set-Cookie isn't readable on iOS (and usually not on Android either — see
-  // NATIVE_JAR_SENTINEL above), so fall back to trusting the platform jar.
+  // NATIVE_JAR_SENTINEL), so fall back to trusting the platform jar.
   if (Platform.OS !== "ios") {
     const setCookieHeader = response.headers.get("set-cookie");
     const match = setCookieHeader?.match(
       new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`),
     );
-    if (match?.[1]) {
-      await setCookie(id, match[1]);
-      return true;
-    }
+    if (match?.[1]) return cookies.storeCookie(id, session, match[1]);
   }
-  await setCookie(id, NATIVE_JAR_SENTINEL);
-  return true;
+  return cookies.storeCookie(id, session, NATIVE_JAR_SENTINEL);
 }
 
 /**
@@ -158,8 +121,8 @@ async function ensureAuth(instanceId: string): Promise<void> {
   const secrets = store.instanceSecrets[instanceId] ?? {};
   if (!secrets.username && !secrets.password) return;
 
-  if (await getCookie(instanceId)) return;
-  const entry = getEntry(instanceId);
+  if (await cookies.getCookie(instanceId)) return;
+  const entry = cookies.session(instanceId);
   if (entry.loginPromise) {
     const ok = await entry.loginPromise;
     if (!ok) throw new Error("AdGuard Home authentication failed");
@@ -209,6 +172,8 @@ async function adguardRequest<T>(
   instanceId?: string,
 ): Promise<T> {
   const id = resolveAdguardInstanceId(instanceId);
+  // Bound before the settings are read, like the login.
+  const session = cookies.session(id);
   const store = useConfigStore.getState();
 
   if (store.demoMode) {
@@ -233,7 +198,7 @@ async function adguardRequest<T>(
     headers.set(k, v);
   }
 
-  applyCookie(headers, await getCookie(id));
+  applyCookie(headers, await cookies.cookieForRequest(id, session));
 
   const response = await fetch(buildUrl(baseUrl, apiBase, path), {
     ...options,
@@ -244,9 +209,9 @@ async function adguardRequest<T>(
   // hits this (it never sent a cookie to expire), so this only fires for a
   // genuinely credentialed instance.
   if (response.status === 401 || response.status === 403) {
-    await setCookie(id, null);
+    await cookies.dropCookie(id, session);
     await ensureAuth(id);
-    applyCookie(headers, await getCookie(id));
+    applyCookie(headers, await cookies.cookieForRequest(id, session));
     const retry = await fetch(buildUrl(baseUrl, apiBase, path), {
       ...options,
       headers,
@@ -266,14 +231,14 @@ async function adguardRequest<T>(
  */
 export async function adguardClearSession(instanceId?: string): Promise<void> {
   if (instanceId) {
-    await setCookie(instanceId, null);
+    await cookies.clear(instanceId);
     return;
   }
   const store = useConfigStore.getState();
   const ids = (store.serviceInstances.adguard ?? []).map((i) => i.id);
-  for (const id of cookieStores.keys()) ids.push(id);
+  ids.push(...cookies.ids());
   for (const id of new Set(ids)) {
-    await setCookie(id, null);
+    await cookies.clear(id);
   }
 }
 

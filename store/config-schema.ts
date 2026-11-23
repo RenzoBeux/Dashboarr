@@ -23,6 +23,8 @@ import { ALL_PICKABLE_TABS, MAX_PINNED_TABS } from "@/lib/tab-routes";
 import { isSeerrAuthMode } from "@/lib/seerr-auth";
 import { isValidRpcPath, normalizeServiceUrl } from "@/lib/url-validation";
 import { isValidShortcutUrl, SHORTCUT_NAME_MAX_LENGTH } from "@/lib/web-shortcuts";
+import { isValidMac } from "@/lib/mac-address";
+import { generateInstanceId } from "@/lib/instance-id";
 
 const NOTIF_CATEGORY_SET: ReadonlySet<string> = new Set(NOTIF_CATEGORIES);
 
@@ -54,12 +56,37 @@ function coerceServiceUrl(value: unknown): string | null {
   if (isHttpUrlOrEmpty(value)) return value;
   if (typeof value !== "string") return null;
 
-  // A host followed by a numeric port can look like a scheme to URL().
-  // Only recover schemeless service addresses, not explicit non-HTTP schemes.
+  // Only recover schemeless service addresses. An explicit non-HTTP scheme
+  // ("ftp://nas"), a scheme missing its colon ("https//nas") or a bare "//nas"
+  // is a mistake to report, not an address to prefix with http://.
   const trimmed = value.trim();
-  if (/^[a-z][a-z\d+.-]*:(?!\d+(?:[/?#]|$))/i.test(trimmed)) return null;
+  if (/^(?:[a-z][a-z\d+.-]*:?)?\/\//i.test(trimmed)) return null;
+  // "name:" reads as a scheme to URL(), except when it is a host with a port
+  // ("nas:8080") or the credentials of a userinfo part ("user:pass@nas").
+  const end = trimmed.search(/[/?#]/);
+  const authority = end === -1 ? trimmed : trimmed.slice(0, end);
+  if (
+    /^[a-z][a-z\d+.-]*:/i.test(authority) &&
+    !/^[^:@]+:\d+$/.test(authority) &&
+    !authority.includes("@")
+  ) {
+    return null;
+  }
   const normalized = normalizeServiceUrl(trimmed);
   return isHttpUrlOrEmpty(normalized) ? normalized : null;
+}
+
+/**
+ * Shorten to at most `max` UTF-16 units without splitting a surrogate pair
+ * (which would leave a broken character at the end), then drop trailing
+ * whitespace. Used to repair names saved by builds that had no length limit.
+ */
+export function truncateText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  let cut = value.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  return cut.trimEnd();
 }
 
 export const SERVICE_NAME_MAX_LENGTH = 200;
@@ -78,12 +105,14 @@ export function customHeaderError(
   for (const [name, value] of Object.entries(headers)) {
     if (!HEADER_NAME_RE.test(name)) return `Invalid header name: "${name}"`;
     if (/[\r\n]/.test(value)) return `Header "${name}" value contains newlines`;
-    // An unchanged header from an older backup may already be above the limit.
-    if (Object.prototype.hasOwnProperty.call(saved, name) && value === saved[name]) continue;
-    if (name.length > HEADER_NAME_MAX_LENGTH) {
+    // A header from an older backup may already be above the limits. Check the
+    // name only when it is new and the value only when it changed, so rotating
+    // the value of an old long-named header still saves.
+    const savedValue = Object.prototype.hasOwnProperty.call(saved, name) ? saved[name] : undefined;
+    if (savedValue === undefined && name.length > HEADER_NAME_MAX_LENGTH) {
       return `Header names must be at most ${HEADER_NAME_MAX_LENGTH} characters`;
     }
-    if (value.length > HEADER_VALUE_MAX_LENGTH) {
+    if (value !== savedValue && value.length > HEADER_VALUE_MAX_LENGTH) {
       return `Header "${name}" value must be at most ${HEADER_VALUE_MAX_LENGTH} characters`;
     }
   }
@@ -95,7 +124,8 @@ function coerceHeaderMap(v: unknown): Record<string, string> | null {
   let count = 0;
   for (const [key, value] of Object.entries(v)) {
     if (!HEADER_NAME_RE.test(key)) return null;
-    // Older editors allowed longer headers. Preserve valid values verbatim.
+    // No length limit: older editors had none, and anything this app could
+    // save must restore.
     if (typeof value !== "string") return null;
     if (/[\r\n]/.test(value)) return null;
     out[key] = value;
@@ -116,7 +146,7 @@ function coerceServiceInstance(v: unknown): ServiceInstance | null {
   const out: ServiceInstance = {
     id: v.id,
     enabled: v.enabled,
-    name: v.name.slice(0, SERVICE_NAME_MAX_LENGTH),
+    name: truncateText(v.name, SERVICE_NAME_MAX_LENGTH),
     localUrl,
     remoteUrl,
     useRemote: v.useRemote,
@@ -210,21 +240,78 @@ function coerceServiceSecrets(v: unknown): ServiceSecrets | null {
   return out;
 }
 
-export function coerceWolDevice(v: unknown): WakeOnLanDevice | null {
+export const WOL_NAME_MAX_LENGTH = 200;
+export const WOL_BROADCAST_MAX_LENGTH = 45;
+// Bounds garbage only. A stored MAC the sender cannot parse is still kept so
+// the user can fix it in the editor instead of losing the device.
+const WOL_STORED_MAC_MAX_LENGTH = 256;
+
+function isValidWolPort(port: unknown): port is number {
+  return typeof port === "number" && Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+function isValidId(id: unknown): id is string {
+  return typeof id === "string" && id.length > 0 && id.length <= 128;
+}
+
+/**
+ * Validation for the Wake-on-LAN editor. Names the field that failed and its
+ * limit. Stored devices go through the lenient `sanitizeWolDevices` instead.
+ */
+export function wolDeviceError(device: {
+  name: string;
+  mac: string;
+  broadcastAddress?: string;
+  port?: number;
+}): string | undefined {
+  if (device.name.length > WOL_NAME_MAX_LENGTH) {
+    return `Name must be at most ${WOL_NAME_MAX_LENGTH} characters`;
+  }
+  if (!isValidMac(device.mac)) {
+    return "MAC address must be 12 hex digits, for example AA:BB:CC:DD:EE:FF";
+  }
+  if (device.broadcastAddress !== undefined && device.broadcastAddress.length > WOL_BROADCAST_MAX_LENGTH) {
+    return `Broadcast address must be at most ${WOL_BROADCAST_MAX_LENGTH} characters`;
+  }
+  if (device.port !== undefined && !isValidWolPort(device.port)) {
+    return "Port must be a whole number from 1 to 65535";
+  }
+  return undefined;
+}
+
+/**
+ * Repair one stored or imported device instead of dropping it: shorten an
+ * over-long name, treat an invalid optional port or broadcast as absent. Only
+ * an entry with no usable MAC string is dropped. The id is not checked here;
+ * `sanitizeWolDevices` replaces missing or duplicate ids.
+ */
+function repairWolDevice(v: unknown): Omit<WakeOnLanDevice, "id"> & { id: unknown } | null {
   if (!isPlainObject(v)) return null;
-  if (typeof v.id !== "string" || v.id.length === 0 || v.id.length > 128) return null;
-  if (typeof v.name !== "string" || v.name.length > 200) return null;
-  if (typeof v.mac !== "string" || v.mac.length > 32) return null;
-  const out: WakeOnLanDevice = { id: v.id, name: v.name, mac: v.mac };
-  if (v.broadcastAddress !== undefined) {
-    if (typeof v.broadcastAddress !== "string" || v.broadcastAddress.length > 45) return null;
+  if (typeof v.mac !== "string" || v.mac.length > WOL_STORED_MAC_MAX_LENGTH) return null;
+  const name = typeof v.name === "string" ? truncateText(v.name, WOL_NAME_MAX_LENGTH) : "";
+  const out: Omit<WakeOnLanDevice, "id"> & { id: unknown } = { id: v.id, name, mac: v.mac };
+  if (typeof v.broadcastAddress === "string" && v.broadcastAddress.length <= WOL_BROADCAST_MAX_LENGTH) {
     out.broadcastAddress = v.broadcastAddress;
   }
-  if (v.port !== undefined) {
-    if (typeof v.port !== "number" || !Number.isInteger(v.port) || v.port < 1 || v.port > 65535) {
-      return null;
-    }
-    out.port = v.port;
+  if (isValidWolPort(v.port)) out.port = v.port;
+  return out;
+}
+
+/**
+ * Repair a stored or imported device list. A missing, malformed or duplicate
+ * id gets a fresh one: the editor updates and deletes by id, so two devices
+ * sharing one would be edited and removed together.
+ */
+export function sanitizeWolDevices(list: unknown[]): WakeOnLanDevice[] {
+  const seen = new Set<string>();
+  const out: WakeOnLanDevice[] = [];
+  for (const item of list) {
+    const repaired = repairWolDevice(item);
+    if (!repaired) continue;
+    let id = isValidId(repaired.id) && !seen.has(repaired.id) ? repaired.id : generateInstanceId();
+    while (seen.has(id)) id = generateInstanceId();
+    seen.add(id);
+    out.push({ ...repaired, id });
   }
   return out;
 }
@@ -348,8 +435,9 @@ function coerceDashboard(v: unknown): Dashboard | null {
   // v29: optional per-workspace home-network selection (#148). Present-but-not-
   // array is rejected; otherwise dedupe + drop empties (import-tolerant, like
   // attachedInstances), and cap at MAX_HOME_NETWORKS. Ids aren't validated
-  // against the live list — the resolver ignores stale ids. An explicit empty
-  // array is preserved — it's a valid selection ("no home network here").
+  // here; the restore repairs a selection left with only unknown ids to "all
+  // networks" (repairOrphanedHomeNetworkSelection). An explicit empty array
+  // is preserved — it's a valid selection ("no home network here").
   if (v.homeNetworkIds !== undefined && v.homeNetworkIds !== null) {
     if (!Array.isArray(v.homeNetworkIds)) return null;
     const seen = new Set<string>();
@@ -653,13 +741,7 @@ export function validateExportPayload(raw: unknown): ExportPayload {
 
   if (raw.wolDevices !== undefined && raw.wolDevices !== null) {
     if (!Array.isArray(raw.wolDevices)) throw new Error("Config wolDevices is invalid");
-    const devices: WakeOnLanDevice[] = [];
-    for (const item of raw.wolDevices) {
-      const coerced = coerceWolDevice(item);
-      // An invalid legacy device must not block restoring the rest.
-      if (coerced) devices.push(coerced);
-    }
-    payload.wolDevices = devices;
+    payload.wolDevices = sanitizeWolDevices(raw.wolDevices);
   }
 
   if (raw.shortcuts !== undefined && raw.shortcuts !== null) {

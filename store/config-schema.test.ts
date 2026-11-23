@@ -1,4 +1,10 @@
-import { coerceWolDevice, customHeaderError, validateExportPayload } from "./config-schema";
+import {
+  customHeaderError,
+  sanitizeWolDevices,
+  truncateText,
+  validateExportPayload,
+  wolDeviceError,
+} from "./config-schema";
 import { ARR_LINK_OFF } from "@/lib/config-types";
 
 const TEST_INSTANCE_ID = "11111111-1111-1111-1111-111111111111";
@@ -148,7 +154,24 @@ describe("validateExportPayload — service instance coercion", () => {
     expect(result.services.radarr[0].id).toBe(TEST_INSTANCE_ID);
   });
 
-  it.each(["192.168.1.10:7878", "server.local:7878/base", "localhost:7878", "[::1]:7878"])(
+  it("shortens a legacy name without splitting an emoji", () => {
+    const name = `${"x".repeat(199)}\u{1F600}`;
+    const result = validateExportPayload({
+      ...baseValid(),
+      services: { radarr: [validInstance({ name })] },
+    });
+    expect(result.services.radarr[0].name).toBe("x".repeat(199));
+    expect(truncateText("abc   def", 5)).toBe("abc");
+  });
+
+  it.each([
+    "192.168.1.10:7878",
+    "server.local:7878/base",
+    "localhost:7878",
+    "[::1]:7878",
+    "admin:secret@192.168.1.5:8080",
+    "user:1234@nas:8080",
+  ])(
     "normalizes the legacy service URL %s",
     (url) => {
       const result = validateExportPayload({
@@ -159,6 +182,18 @@ describe("validateExportPayload — service instance coercion", () => {
         localUrl: `http://${url}`,
         remoteUrl: `http://${url}`,
       });
+    },
+  );
+
+  it.each(["https//radarr.example.com", "//nas", "mailto:someone"])(
+    "rejects the mistyped service URL %s instead of prefixing http://",
+    (url) => {
+      expect(() =>
+        validateExportPayload({
+          ...baseValid(),
+          services: { radarr: [validInstance({ remoteUrl: url })] },
+        }),
+      ).toThrow(/services\.radarr/);
     },
   );
 
@@ -843,25 +878,50 @@ describe("validateExportPayload — WOL devices", () => {
   const baseWol = () => ({ id: "d1", name: "Server", mac: "aa:bb:cc:dd:ee:ff" });
 
   it.each([
-    { id: "" },
-    { id: "x".repeat(129) },
-    { name: "x".repeat(201) },
-    { mac: "aa:bb:cc:dd:ee:ff with an invalid note" },
-    { port: 0 },
-    { port: 70000 },
-    { port: 9.5 },
-    { broadcastAddress: "x".repeat(46) },
-  ])("skips an invalid legacy device while restoring the rest (%o)", (invalid) => {
+    [{ name: "x".repeat(201) }, { name: "x".repeat(200) }],
+    [{ mac: "aa:bb:cc:dd:ee:ff with an invalid note" }, { mac: "aa:bb:cc:dd:ee:ff with an invalid note" }],
+    [{ port: 0 }, {}],
+    [{ port: 70000 }, {}],
+    [{ port: 9.5 }, {}],
+    [{ port: null }, {}],
+    [{ broadcastAddress: "x".repeat(46) }, {}],
+  ])("repairs a legacy device instead of dropping it (%o)", (legacy, expected) => {
     const good = baseWol();
-    const bad = { ...good, id: "bad", ...invalid };
-    expect(coerceWolDevice(bad)).toBeNull();
     const result = validateExportPayload({
       ...baseValid(),
-      wolDevices: [bad, good],
+      wolDevices: [{ ...good, id: "legacy", ...legacy }, good],
       services: { radarr: [validInstance()] },
     });
-    expect(result.wolDevices).toEqual([good]);
+    expect(result.wolDevices).toEqual([{ ...good, id: "legacy", ...expected }, good]);
     expect(result.services.radarr[0].id).toBe(TEST_INSTANCE_ID);
+  });
+
+  it("gives a device with a missing or duplicate id a fresh one", () => {
+    const devices = sanitizeWolDevices([
+      { ...baseWol(), id: "" },
+      { ...baseWol(), id: "x".repeat(129) },
+      baseWol(),
+      { ...baseWol(), name: "Desktop" },
+    ]);
+    expect(devices).toHaveLength(4);
+    expect(new Set(devices.map(({ id }) => id)).size).toBe(4);
+    expect(devices[2].id).toBe("d1");
+    expect(devices[3]).toMatchObject({ name: "Desktop", mac: baseWol().mac });
+    expect(devices[3].id).not.toBe("d1");
+  });
+
+  it("drops only an entry with no usable MAC", () => {
+    const devices = sanitizeWolDevices(["nope", { ...baseWol(), mac: 42 }, baseWol()]);
+    expect(devices).toEqual([baseWol()]);
+  });
+
+  it("reports which editor field is invalid", () => {
+    const device = { name: "Server", mac: "aa:bb:cc:dd:ee:ff" };
+    expect(wolDeviceError(device)).toBeUndefined();
+    expect(wolDeviceError({ ...device, mac: "00:11:22:33:44:55 (Intel NIC)" })).toMatch(/MAC/);
+    expect(wolDeviceError({ ...device, name: "x".repeat(201) })).toMatch(/Name.*200/);
+    expect(wolDeviceError({ ...device, broadcastAddress: "x".repeat(46) })).toMatch(/Broadcast.*45/);
+    expect(wolDeviceError({ ...device, port: 70000 })).toMatch(/Port/);
   });
 
   it("accepts ports 1 and 65535 (boundaries)", () => {
@@ -1642,6 +1702,20 @@ describe("validateExportPayload — service customHeaders", () => {
     expect(customHeaderError({ [longName]: "value" })).toMatch(/200/);
     expect(customHeaderError({ "X-Custom": longValue })).toMatch(/4096/);
     expect(customHeaderError(headers, headers)).toBeUndefined();
+    // Rotating the value of an old long-named header still saves. Renaming one
+    // that keeps an old long value makes it a new header, so it is checked.
+    expect(customHeaderError({ [longName]: "rotated" }, headers)).toBeUndefined();
+    expect(customHeaderError({ "X-Renamed": longValue }, headers)).toMatch(/4096/);
+  });
+
+  it("restores legacy headers of any length, since older editors had no limit", () => {
+    const headers = { ["x".repeat(1025)]: "v", "X-Big": "x".repeat(64 * 1024 + 1) };
+    const result = validateExportPayload({
+      ...withInstance({ customHeaders: headers }),
+      globalCustomHeaders: headers,
+    });
+    expect(result.secrets[TEST_INSTANCE_ID]?.customHeaders).toEqual(headers);
+    expect(result.globalCustomHeaders).toEqual(headers);
   });
 
   it("rejects more than 32 headers", () => {
