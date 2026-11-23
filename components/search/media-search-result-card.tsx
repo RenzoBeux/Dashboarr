@@ -37,7 +37,10 @@ interface MediaSearchResultCardProps {
   addPending?: boolean;
   /** Unused when `alreadyAdded` — library rows have nothing to add. */
   onQuickAdd?: () => void;
+  /** Omit to hide the advanced button. */
   onAdvanced?: () => void;
+  /** When set, tapping a not-yet-added card calls this. */
+  onSelect?: () => void;
   onOpenExisting: () => void;
 }
 
@@ -59,6 +62,7 @@ export function MediaSearchResultCard({
   addPending = false,
   onQuickAdd,
   onAdvanced,
+  onSelect,
   onOpenExisting,
 }: MediaSearchResultCardProps) {
   const { src: posterUrl, onError: onPosterError } = useServiceImage(
@@ -69,7 +73,7 @@ export function MediaSearchResultCard({
   return (
     <Card
       className="flex-row gap-3"
-      onPress={alreadyAdded ? onOpenExisting : undefined}
+      onPress={alreadyAdded ? onOpenExisting : onSelect}
     >
       {posterUrl ? (
         <Image
@@ -112,9 +116,11 @@ export function MediaSearchResultCard({
         </View>
       ) : (
         <View className="flex-row items-center self-center">
-          <Pressable onPress={onAdvanced} className="p-2 active:opacity-70" hitSlop={4}>
-            <Icon icon={SlidersHorizontal} size={18} color="#a1a1aa" />
-          </Pressable>
+          {onAdvanced ? (
+            <Pressable onPress={onAdvanced} className="p-2 active:opacity-70" hitSlop={4}>
+              <Icon icon={SlidersHorizontal} size={18} color="#a1a1aa" />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={onQuickAdd}
             className="p-2 active:opacity-70"

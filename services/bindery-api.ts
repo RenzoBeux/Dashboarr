@@ -8,6 +8,10 @@ import {
 import type {
   BinderyAuthor,
   BinderyAuthorSearchResult,
+  BinderyAddBookPayload,
+  BinderyBookSearchResult,
+  BinderySeries,
+  BinderySeriesSearchResult,
   BinderyBook,
   BinderyBookStatus,
   BinderyAddAuthorPayload,
@@ -387,6 +391,77 @@ export async function searchAuthors(
     instanceId,
   });
   return unwrapBinderyList<BinderyAuthorSearchResult>(data).items;
+}
+
+/** Searches the metadata provider for books. Same `term` parameter as authors. */
+export async function searchBooks(
+  term: string,
+  instanceId?: string,
+): Promise<BinderyBookSearchResult[]> {
+  const data = await serviceRequest<unknown>("bindery", "/search/book", {
+    params: { term },
+    instanceId,
+  });
+  return unwrapBinderyList<BinderyBookSearchResult>(data).items;
+}
+
+/** Exact lookup by ISBN or ASIN. Answers 404 when no provider knows it. */
+export function lookupBook(
+  query: { isbn: string } | { asin: string },
+  instanceId?: string,
+): Promise<BinderyBookSearchResult> {
+  return serviceRequest<BinderyBookSearchResult>("bindery", "/book/lookup", {
+    params: query,
+    timeout: INTERACTIVE_SEARCH_TIMEOUT,
+    instanceId,
+  });
+}
+
+/**
+ * Adds a single book, creating its author if needed, without monitoring the
+ * author's catalogue. Answers 409 with `existingBookId` when already added.
+ */
+export function addBook(
+  payload: BinderyAddBookPayload,
+  instanceId?: string,
+): Promise<BinderyBook> {
+  return serviceRequest<BinderyBook>("bindery", "/author/book", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    instanceId,
+  });
+}
+
+/** Searches Hardcover for series. Fails unless Hardcover is configured. */
+export async function searchSeries(
+  term: string,
+  instanceId?: string,
+): Promise<BinderySeriesSearchResult[]> {
+  const data = await serviceRequest<unknown>("bindery", "/series/hardcover/search", {
+    params: { term, limit: 20 },
+    instanceId,
+  });
+  return unwrapBinderyList<BinderySeriesSearchResult>(data).items;
+}
+
+/**
+ * Creates a series from a Hardcover result and links it. Answers 409 with
+ * `seriesId` when a series is already linked to it.
+ */
+export function addSeries(
+  result: BinderySeriesSearchResult,
+  instanceId?: string,
+): Promise<BinderySeries> {
+  const { foreignId, providerId, slug, title, authorName, bookCount, confidence } = result;
+  return serviceRequest<BinderySeries>("bindery", "/series", {
+    method: "POST",
+    body: JSON.stringify({
+      hardcover: { foreignId, providerId, slug, title, authorName, bookCount, confidence },
+    }),
+    headers: { "Content-Type": "application/json" },
+    instanceId,
+  });
 }
 
 export { BINDERY_PAGE_LIMIT };
