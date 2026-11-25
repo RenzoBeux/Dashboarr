@@ -4642,6 +4642,10 @@ export function getDemoResponse(
       if (mode === "queue") return DEMO_SAB_QUEUE;
       if (mode === "history") return DEMO_SAB_HISTORY;
       if (mode === "version") return DEMO_SAB_VERSION;
+      // Static fixture: report the move without reordering anything.
+      if (mode === "switch") {
+        return { result: { position: Number(params?.value2) || 0, priority: 0 } };
+      }
       // pause/resume/addurl all return { status: true }
       return { status: true };
     }
