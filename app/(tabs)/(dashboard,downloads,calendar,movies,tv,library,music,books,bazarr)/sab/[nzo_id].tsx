@@ -1,6 +1,16 @@
 import { View, Text, ActivityIndicator } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
+import {
+  Pause,
+  Play,
+  Trash2,
+  ArrowDown,
+  Clock,
+  ChevronsUp,
+  ChevronUp,
+  ChevronDown,
+  ChevronsDown,
+} from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ScreenWrapper } from "@/components/common/screen-wrapper";
 import { ErrorBanner } from "@/components/common/error-banner";
@@ -10,6 +20,9 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { useMoveSabSlot, useSabSlotPosition } from "@/hooks/use-sab-queue-order";
+import { sabQueueMoveTarget, type SabQueueMove } from "@/lib/sab-queue-move";
+import { toast, toastError } from "@/components/ui/toast";
 import {
   useSabQueue,
   useSabHistory,
@@ -58,6 +71,8 @@ export default function SabSlotDetailScreen() {
 
   const queueSlot = queue?.slots.find((s) => s.nzo_id === nzo_id);
   const historySlot = history?.slots.find((s) => s.nzo_id === nzo_id);
+  const positionQuery = useSabSlotPosition(nzo_id, instanceId, !!queueSlot);
+  const moveSlot = useMoveSabSlot(instanceId);
 
   if (!queueSlot && !historySlot) {
     // "Not found" only after both queue and history have actually resolved.
@@ -97,6 +112,36 @@ export default function SabSlotDetailScreen() {
     : 0;
   const isPaused = status === "Paused";
   const badgeVariant = getBadgeVariant(status);
+
+  const slotPosition = positionQuery.data ?? null;
+  const moveTarget = (move: SabQueueMove) =>
+    slotPosition
+      ? sabQueueMoveTarget(move, slotPosition.position, slotPosition.length)
+      : null;
+  const runMove = (move: SabQueueMove) => {
+    const target = moveTarget(move);
+    if (target === null) return;
+    moveSlot.mutate(
+      { nzoId: nzo_id, position: target },
+      {
+        onSuccess: (result) => {
+          if (result.position < 0) toast("SABnzbd didn't move the download", "error");
+        },
+        onError: (err) => toastError("Failed to move download", err),
+      },
+    );
+  };
+  const moveButton = (move: SabQueueMove, label: string, icon: typeof ChevronUp) => (
+    <Button
+      label={label}
+      variant="outline"
+      size="sm"
+      onPress={() => runMove(move)}
+      disabled={moveSlot.isPending || moveTarget(move) === null}
+      icon={<Icon icon={icon} size={14} color="#a1a1aa" />}
+      className="flex-1"
+    />
+  );
 
   const runDelete = (deleteFiles: boolean) => {
     if (inQueue) {
@@ -163,6 +208,35 @@ export default function SabSlotDetailScreen() {
           />
         )}
       </Card>
+
+      {/* Queue order (#515): SAB's mode=switch. */}
+      {inQueue && (
+        <Card className="mb-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-zinc-100 text-sm font-semibold">Queue position</Text>
+            {slotPosition ? (
+              <Text className="text-zinc-400 text-sm">
+                {(slotPosition.position + 1).toLocaleString()} of{" "}
+                {slotPosition.length.toLocaleString()}
+              </Text>
+            ) : positionQuery.isLoading ? (
+              <ActivityIndicator size="small" color="#3b82f6" />
+            ) : null}
+          </View>
+          <View className="flex-row gap-2 mb-2">
+            {moveButton("top", "Top", ChevronsUp)}
+            {moveButton("up", "Up", ChevronUp)}
+          </View>
+          <View className="flex-row gap-2">
+            {moveButton("down", "Down", ChevronDown)}
+            {moveButton("bottom", "Bottom", ChevronsDown)}
+          </View>
+          <Text className="text-zinc-500 text-xs mt-3">
+            SABnzbd keeps jobs grouped by priority, so a move can change this
+            job&apos;s priority.
+          </Text>
+        </Card>
+      )}
 
       {/* Actions */}
       <View className="flex-row gap-3">
