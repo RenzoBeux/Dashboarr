@@ -16,6 +16,10 @@ const IS_DEV = process.env.APP_VARIANT === "development";
 const APP_NAME = IS_DEV ? "Dashboarr Dev" : "Dashboarr";
 const BUNDLE_ID = IS_DEV ? "com.dashboarr.app.dev" : "com.dashboarr.app";
 const APP_SCHEME = IS_DEV ? "dashboarr-dev" : "dashboarr";
+// Shared container between the app and its iOS widget extension (#477): the app
+// writes the widget snapshot there, the widget reads it. Per variant, so the Dev
+// build never feeds the production widget. targets/widget mirrors it.
+const APP_GROUP = `group.${BUNDLE_ID}`;
 
 // google-services.json holds real FCM credentials, so it's gitignored and a
 // fresh clone won't have it. Local dev builds must still work: when the file
@@ -136,6 +140,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // permission at runtime (handled in lib/wifi.ts via expo-location).
     entitlements: {
       "com.apple.developer.networking.wifi-info": true,
+      "com.apple.security.application-groups": [APP_GROUP],
     },
   },
   android: {
@@ -271,5 +276,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         ],
       },
     ],
+    // iOS Home Screen + Lock Screen "Releasing Soon" widget (#477): links the
+    // WidgetKit extension in targets/widget into the prebuilt Xcode project.
+    // The app feeds it through the App Group above (widgets/ios-widget.ts).
+    "@bacons/apple-targets",
   ],
 });

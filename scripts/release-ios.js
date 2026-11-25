@@ -48,6 +48,12 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "ios-release.json");
 // Bundle id is stable. Keeping it as a script constant rather than parsing
 // app.config.ts keeps the script free of project-runtime deps.
 const BUNDLE_ID = "com.dashboarr.app";
+// Every signed target in the archive: the app and its WidgetKit extension
+// (targets/widget, #477). Each needs its own App Store profile, and both carry
+// the App Group the app shares with the widget (app.config.ts APP_GROUP).
+const WIDGET_BUNDLE_ID = `${BUNDLE_ID}.widget`;
+const SIGNED_BUNDLE_IDS = [BUNDLE_ID, WIDGET_BUNDLE_ID];
+const APP_GROUP = `group.${BUNDLE_ID}`;
 
 const PROFILE_DIRS = [
   path.join(os.homedir(), "Library", "Developer", "Xcode", "UserData", "Provisioning Profiles"),
@@ -123,7 +129,18 @@ function findAppStoreProfile(teamId, bundleId) {
       if (team[1] !== teamId) continue;
       if (appId[1] !== wantedAppId) continue;
       if (/<key>ProvisionedDevices<\/key>/.test(xml)) continue;
-      return { name: name[1], uuid: file.replace(/\.mobileprovision$/, ""), path: full };
+      const groups = xml.match(
+        /<key>com\.apple\.security\.application-groups<\/key>\s*<array>([\s\S]*?)<\/array>/
+      );
+      const appGroups = groups
+        ? [...groups[1].matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1])
+        : [];
+      return {
+        name: name[1],
+        uuid: file.replace(/\.mobileprovision$/, ""),
+        path: full,
+        appGroups,
+      };
     }
   }
   return null;
@@ -253,7 +270,7 @@ async function loadConfig() {
   return next;
 }
 
-function patchPbxprojSigning(teamId, profileName) {
+function patchPbxprojSigning(teamId, profileNames) {
   // Expo's prebuild template ships with two signing settings that are wrong for
   // an App Store archive on this machine:
   //   (a) `"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer"` at project
@@ -296,47 +313,62 @@ function patchPbxprojSigning(teamId, profileName) {
     }
   }
 
-  // (B) Inject manual signing into the Dashboarr target's Release config.
-  // Match each XCBuildConfiguration block; only patch the one whose name is
-  // Release AND that contains our app's PRODUCT_BUNDLE_IDENTIFIER (which is
-  // only set on the target's own configs, never on project-level configs).
-  const blockRe = /([0-9A-F]{24} \/\* (?:Debug|Release) \*\/ = \{\s*isa = XCBuildConfiguration;[\s\S]*?\n\t\t\tname = (\w+);\n\t\t\};)/g;
+  // (B) Inject manual signing into each signed target's Release config.
+  // Match each XCBuildConfiguration block; only patch the ones whose name is
+  // Release AND that contain one of our PRODUCT_BUNDLE_IDENTIFIERs (only set on
+  // the targets' own configs, never on project-level configs).
+  // Object ids are 24 hex digits from Xcode, but @bacons/apple-targets writes
+  // its own (the widget's are "XX...XX"), so accept any alphanumerics.
+  const blockRe = /([0-9A-Za-z]{24} \/\* (?:Debug|Release) \*\/ = \{\s*isa = XCBuildConfiguration;[\s\S]*?\n\t\t\tname = (\w+);\n\t\t\};)/g;
   // The bundle id may be written bare or quoted depending on the prebuild
   // template version (`= com.dashboarr.app;` vs `= "com.dashboarr.app";`) —
-  // accept both, or the patch silently finds nothing and the script dies.
-  const bundleIdRe = new RegExp(
-    `PRODUCT_BUNDLE_IDENTIFIER = "?${BUNDLE_ID.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"?;`
-  );
-  let injections = 0;
+  // accept both, or the patch silently finds nothing and the script dies. The
+  // trailing `"?;` keeps com.dashboarr.app from matching the widget's id.
+  const bundleIdRe = (bundleId) =>
+    new RegExp(
+      `PRODUCT_BUNDLE_IDENTIFIER = "?${bundleId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"?;`
+    );
+  const patched = new Set();
   content = content.replace(blockRe, (block, _id, configName) => {
     if (configName !== "Release") return block;
-    if (!bundleIdRe.test(block)) return block;
+    const bundleId = Object.keys(profileNames).find((id) => bundleIdRe(id).test(block));
+    if (!bundleId) return block;
+    patched.add(bundleId);
     if (block.includes("PROVISIONING_PROFILE_SPECIFIER")) return block;
     const inject =
       `\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";\n` +
       `\t\t\t\t"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";\n` +
       `\t\t\t\tCODE_SIGN_STYLE = Manual;\n` +
       `\t\t\t\tDEVELOPMENT_TEAM = ${teamId};\n` +
-      `\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "${profileName}";\n`;
-    injections++;
-    return block.replace(/buildSettings = \{\n/, `buildSettings = {\n${inject}`);
+      `\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "${profileNames[bundleId]}";\n`;
+    // Drop any copy of these keys the generator already wrote (the widget
+    // target ships CODE_SIGN_STYLE = Automatic): with a key twice in one
+    // block, Xcode keeps the later one and the injected Manual would lose.
+    const cleaned = block.replace(
+      /^\t\t\t\t(?:CODE_SIGN_IDENTITY|"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]"|CODE_SIGN_STYLE|DEVELOPMENT_TEAM|PROVISIONING_PROFILE_SPECIFIER) = [^\n]*;\n/gm,
+      ""
+    );
+    return cleaned.replace(/buildSettings = \{\n/, `buildSettings = {\n${inject}`);
   });
 
+  const missing = Object.keys(profileNames).filter((id) => !patched.has(id));
+  if (missing.length > 0) {
+    die(
+      `Pbxproj patch: could not locate the Release config of ${missing.join(", ")} (looking for a block with that PRODUCT_BUNDLE_IDENTIFIER).`,
+      "The Xcode project layout may have changed; this script needs updating."
+    );
+  }
   if (content === original) {
     log("Pbxproj: signing already configured (no patch needed).");
     return;
   }
-  if (injections === 0) {
-    die(
-      `Pbxproj patch: could not locate the Dashboarr target's Release config (looking for a block with PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID}).`,
-      "The Xcode project layout may have changed; this script needs updating."
-    );
-  }
   fs.writeFileSync(pbxprojPath, content);
-  log(`Pbxproj: patched Release config → manual signing, team ${teamId}, profile "${profileName}".`);
+  for (const [bundleId, profileName] of Object.entries(profileNames)) {
+    log(`Pbxproj: ${bundleId} Release → manual signing, team ${teamId}, profile "${profileName}".`);
+  }
 }
 
-function writeExportOptions(teamId, profileName) {
+function writeExportOptions(teamId, profileNames) {
   fs.mkdirSync(BUILD_DIR, { recursive: true });
   // Manual signing for IPA export. The archive was signed with Apple Distribution
   // pinned to `profileName` via the pbxproj patch; tell exportArchive to use the
@@ -358,8 +390,9 @@ function writeExportOptions(teamId, profileName) {
     <string>Apple Distribution</string>
     <key>provisioningProfiles</key>
     <dict>
-        <key>${BUNDLE_ID}</key>
-        <string>${profileName}</string>
+${Object.entries(profileNames)
+  .map(([id, name]) => `        <key>${id}</key>\n        <string>${name}</string>`)
+  .join("\n")}
     </dict>
     <key>uploadSymbols</key>
     <true/>
@@ -385,20 +418,35 @@ async function main() {
   // it produces downstream is deeply misleading. Check it first.
   ensureXcodeLicenseAccepted();
 
-  // Locate the App Store profile we'll pin manual signing to. Doing this
-  // up-front (before prebuild) lets us fail fast if it isn't installed.
-  const profile = findAppStoreProfile(cfg.teamId, BUNDLE_ID);
-  if (!profile) {
-    die(
-      `No App Store provisioning profile found for ${BUNDLE_ID} in team ${cfg.teamId}.`,
-      "Create one at https://developer.apple.com/account/resources/profiles/list\n" +
-      "  (Type: App Store, App ID: " + BUNDLE_ID + ", Cert: Apple Distribution)\n" +
-      "Then in Xcode → Settings → Accounts → Manage Profiles → Download Manual Profiles,\n" +
-      "or drop the .mobileprovision into\n" +
-      "  ~/Library/Developer/Xcode/UserData/Provisioning Profiles/"
-    );
+  // Locate the App Store profile we'll pin manual signing to, per signed
+  // target. Doing this up-front (before prebuild) lets us fail fast if one
+  // isn't installed or predates the App Group.
+  const profileNames = {};
+  for (const bundleId of SIGNED_BUNDLE_IDS) {
+    const profile = findAppStoreProfile(cfg.teamId, bundleId);
+    if (!profile) {
+      die(
+        `No App Store provisioning profile found for ${bundleId} in team ${cfg.teamId}.`,
+        "Create one at https://developer.apple.com/account/resources/profiles/list\n" +
+        "  (Type: App Store, App ID: " + bundleId + ", Cert: Apple Distribution)\n" +
+        (bundleId === WIDGET_BUNDLE_ID
+          ? `  The widget's App ID needs the App Groups capability with ${APP_GROUP}.\n`
+          : "") +
+        "Then in Xcode → Settings → Accounts → Manage Profiles → Download Manual Profiles,\n" +
+        "or drop the .mobileprovision into\n" +
+        "  ~/Library/Developer/Xcode/UserData/Provisioning Profiles/"
+      );
+    }
+    if (!profile.appGroups.includes(APP_GROUP)) {
+      die(
+        `The App Store profile "${profile.name}" for ${bundleId} doesn't include the App Group ${APP_GROUP}.`,
+        `Enable App Groups on the ${bundleId} App ID with ${APP_GROUP}, regenerate the profile,\n` +
+        "and download it again (Xcode → Settings → Accounts → Download Manual Profiles)."
+      );
+    }
+    profileNames[bundleId] = profile.name;
+    log(`Profile:   ${bundleId} → ${profile.name} (${profile.uuid})`);
   }
-  log(`Profile:   ${profile.name} (${profile.uuid})`);
 
   // 0. Keychain preflight. The Embed-Pods-Frameworks phase fails with
   //   errSecInternalComponent if codesign can't reach the signing key — and that
@@ -419,7 +467,7 @@ async function main() {
   // signing on this setup picks the wrong identity (Apple Development from a
   // different team than the App Store profile), and pinning manual signing in
   // pbxproj is the only durable fix that survives every `expo prebuild --clean`.
-  patchPbxprojSigning(cfg.teamId, profile.name);
+  patchPbxprojSigning(cfg.teamId, profileNames);
 
   // 2. Archive — Release config, generic iOS device.
   // No code-signing args on the command line: the Dashboarr target's Release
@@ -444,7 +492,7 @@ async function main() {
   // 3. Export IPA from the archive — also manual signing pinned to the same
   // profile so exportArchive doesn't try (and fail) to negotiate with Apple.
   log("\nStep 3/4: export ipa");
-  writeExportOptions(cfg.teamId, profile.name);
+  writeExportOptions(cfg.teamId, profileNames);
   if (fs.existsSync(IPA_DIR)) {
     fs.rmSync(IPA_DIR, { recursive: true, force: true });
   }

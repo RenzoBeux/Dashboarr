@@ -21,6 +21,10 @@ ios/
 !modules/*/ios/**
 # ...but never the Gradle build output the un-ignore above would otherwise sweep in.
 modules/*/android/build/
+# iOS widget extension sources live in targets/ (@bacons/apple-targets, #477).
+# Prebuild regenerates these from expo-target.config.js, per app variant.
+targets/*/generated.entitlements
+targets/*/Assets.xcassets/
 .env
 .env.local
 # Ignore local Claude Code state (settings.local.json, etc.)...
