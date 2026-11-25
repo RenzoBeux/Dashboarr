@@ -7,12 +7,14 @@ import {
   deleteSabSlot,
   getSabHistory,
   getSabQueue,
+  getSabQueueSummary,
   pauseSabAll,
   pauseSabSlot,
   resumeSabAll,
   resumeSabSlot,
 } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { sabQueueHasMore, sabQueueWindowRequest } from "@/lib/sab-queue-window";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { SabnzbdSpeedLimitsControl } from "@/components/sabnzbd/speed-limits-control";
 import type {
@@ -20,6 +22,7 @@ import type {
   UsenetAdapter,
   UsenetHistoryState,
   UsenetQueueState,
+  UsenetQueueWindow,
   UsenetStatus,
 } from "@/lib/usenet-adapter";
 import type {
@@ -91,24 +94,91 @@ function historySlotToItem(s: SabHistorySlot, index: number): UnifiedItem {
   };
 }
 
+function queueState(queue: SabQueue): UsenetQueueState {
+  return {
+    items: queue.slots.map(queueSlotToItem),
+    paused: queue.paused,
+    speedLabel: queue.speed?.trim() ? `${queue.speed}B/s` : undefined,
+    sizeLeftLabel: queue.sizeleft || undefined,
+  };
+}
+
+// One window of the queue plus what the list needs to page further.
+interface SabQueuePage {
+  queue: SabQueue;
+  hasMore: boolean;
+  total?: number;
+}
+
+// The statuses SAB can filter on itself. Only "paused" maps one to one: while
+// the downloader runs, SAB reports every other unpaused job as "Downloading"
+// whatever its internal status (api.py build_queue), so a server-side
+// "Queued" filter would return rows the list then shows as downloading.
+function sabServerStatus(status?: UsenetStatus): string[] | undefined {
+  return status === "paused" ? ["Paused"] : undefined;
+}
+
+async function fetchSabQueuePage(
+  instanceId: string | undefined,
+  window?: UsenetQueueWindow,
+): Promise<SabQueuePage> {
+  if (!window) {
+    const queue = await getSabQueue(instanceId);
+    return { queue, hasMore: false, total: Number(queue.noofslots) };
+  }
+  // Newest first reads the tail, and SAB pages from the head only, so the
+  // queue length comes first from a one-job answer. That rules out the server
+  // status filter there: SAB can't count its matches to locate their tail, so
+  // the list filters the tail window itself.
+  const fromEnd = window.fromEnd;
+  const status = fromEnd ? undefined : sabServerStatus(window.status);
+  const queueLength = fromEnd
+    ? Number((await getSabQueueSummary(instanceId)).noofslots)
+    : undefined;
+  const request = sabQueueWindowRequest(window.limit, fromEnd, queueLength);
+  const queue = await getSabQueue(instanceId, { ...request, status });
+  return {
+    queue,
+    hasMore: sabQueueHasMore(
+      { noofslots: Number(queue.noofslots), slots: queue.slots },
+      request,
+      !!status,
+    ),
+    total: status ? undefined : Number(queue.noofslots),
+  };
+}
+
 export const sabnzbdAdapter: UsenetAdapter = {
   serviceId: "sabnzbd",
   displayName: "SABnzbd",
   detailRoute: (id, instanceId) =>
     instanceId ? `/sab/${id}?instanceId=${instanceId}` : `/sab/${id}`,
 
-  useQueue: (instanceId) => {
+  useQueue: (instanceId, window) => {
     const { instanceId: id, enabled } = useInstanceTarget("sabnzbd", instanceId);
     return useQuery({
-      queryKey: ["sabnzbd", id, "queue"],
-      queryFn: () => getSabQueue(id ?? undefined),
+      // Not ["sabnzbd", id, "queue"]: queueQueryOptions caches the raw SabQueue
+      // there, and one key must hold one data shape.
+      queryKey: [
+        "sabnzbd",
+        id,
+        "queue",
+        "page",
+        window?.limit ?? 0,
+        window?.fromEnd ?? false,
+        window?.status ?? "all",
+      ],
+      queryFn: () => fetchSabQueuePage(id ?? undefined, window),
       refetchInterval: POLLING_INTERVALS.activeTorrents,
       enabled: enabled && !!id,
-      select: (queue): UsenetQueueState => ({
-        items: queue.slots.map(queueSlotToItem),
-        paused: queue.paused,
-        speedLabel: queue.speed?.trim() ? `${queue.speed}B/s` : undefined,
-        sizeLeftLabel: queue.sizeleft || undefined,
+      // Growing the window, or a new sort/filter, keeps the current rows on
+      // screen until the new slice lands. Never across instances.
+      placeholderData: (previous, previousQuery) =>
+        previousQuery?.queryKey[1] === id ? previous : undefined,
+      select: (page): UsenetQueueState => ({
+        ...queueState(page.queue),
+        hasMore: page.hasMore,
+        total: page.total,
       }),
     });
   },
@@ -117,15 +187,7 @@ export const sabnzbdAdapter: UsenetAdapter = {
     queryKey: ["sabnzbd", instanceId, "queue"],
     queryFn: () => getSabQueue(instanceId) as Promise<unknown>,
     refetchInterval: POLLING_INTERVALS.activeTorrents,
-    select: (raw): UsenetQueueState => {
-      const queue = raw as SabQueue;
-      return {
-        items: queue.slots.map(queueSlotToItem),
-        paused: queue.paused,
-        speedLabel: queue.speed?.trim() ? `${queue.speed}B/s` : undefined,
-        sizeLeftLabel: queue.sizeleft || undefined,
-      };
-    },
+    select: (raw): UsenetQueueState => queueState(raw as SabQueue),
   }),
 
   useHistory: (limit, instanceId) => {

@@ -24,12 +24,40 @@ interface SabStatusEnvelope {
 
 // --- Queue ---
 
-export async function getSabQueue(instanceId?: string): Promise<SabQueue> {
+// Optional slice of mode=queue. With none of these SAB answers the whole queue,
+// which for a few thousand jobs is over a megabyte per poll (#514).
+// - start/limit: window over the queue in SAB's order. limit 0 = everything.
+// - status: SAB-side status filter (internal job status, e.g. "Paused"). Only
+//   SAB 4.2+ reads it; older versions ignore it and answer unfiltered.
+// - nzoIds: just these jobs (3.x+).
+export interface SabQueueQuery {
+  start?: number;
+  limit?: number;
+  status?: string[];
+  nzoIds?: string[];
+}
+
+export async function getSabQueue(
+  instanceId?: string,
+  query: SabQueueQuery = {},
+): Promise<SabQueue> {
+  const params: Record<string, string | number> = { mode: "queue" };
+  if (query.start) params.start = query.start;
+  if (query.limit) params.limit = query.limit;
+  if (query.status?.length) params.status = query.status.join(",");
+  if (query.nzoIds?.length) params.nzo_ids = query.nzoIds.join(",");
   const env = await serviceRequest<SabQueueEnvelope>("sabnzbd", "", {
-    params: { mode: "queue" },
+    params,
     instanceId,
   });
   return env.queue;
+}
+
+// The queue's header fields (speed, size left, pause state, speed limit) with a
+// single job, for callers that never read the job list. SAB computes the header
+// over the whole queue regardless of the window.
+export function getSabQueueSummary(instanceId?: string): Promise<SabQueue> {
+  return getSabQueue(instanceId, { limit: 1 });
 }
 
 export async function getSabHistory(

@@ -50,6 +50,21 @@ export interface UsenetQueueState {
   // cheaply; otherwise omit and the shared header just shows nothing.
   speedLabel?: string;
   sizeLeftLabel?: string;
+  // Set only by adapters that honor a UsenetQueueWindow. `hasMore` = jobs exist
+  // outside the window; `total` = jobs in the whole queue, when the service can
+  // count them (SAB can't under a status filter).
+  hasMore?: boolean;
+  total?: number;
+}
+
+// The slice of the queue the Downloads list asks for. Adapters whose service
+// can't page (NZBGet's listgroups) ignore it and return everything.
+export interface UsenetQueueWindow {
+  limit: number;
+  // The last `limit` jobs instead of the first (newest-first sort).
+  fromEnd: boolean;
+  // Narrow to this status on the server when the service can.
+  status?: UsenetStatus;
 }
 
 export interface UsenetHistoryState {
@@ -66,7 +81,10 @@ export interface UsenetAdapter {
   // notification deep-links). Receives the slot id and the originating instance.
   detailRoute: (id: string, instanceId?: string) => string;
 
-  useQueue: (instanceId?: string) => UseQueryResult<UsenetQueueState>;
+  useQueue: (
+    instanceId?: string,
+    window?: UsenetQueueWindow,
+  ) => UseQueryResult<UsenetQueueState>;
   useHistory: (limit: number, instanceId?: string) => UseQueryResult<UsenetHistoryState>;
 
   // Per-instance query options (for `useQueries` fan-outs in dashboard widgets

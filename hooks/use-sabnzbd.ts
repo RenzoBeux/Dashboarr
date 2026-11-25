@@ -1,5 +1,6 @@
 import {
   getSabQueue,
+  getSabQueueSummary,
   getSabHistory,
   pauseSabAll,
   resumeSabAll,
@@ -9,6 +10,7 @@ import {
   deleteSabHistorySlot,
   addSabUrl,
   setSabSpeedLimit,
+  type SabQueueQuery,
 } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
@@ -18,11 +20,25 @@ import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 // when passed (by aggregated dashboard cards or per-instance watchers), queries
 // fan out to that specific instance with its own cache slot.
 
-export function useSabQueue(instanceId?: string) {
+// `query` narrows the fetch (see SabQueueQuery) and is part of the cache key.
+// Without it this is the whole queue, shared with the dashboard queue widget.
+export function useSabQueue(instanceId?: string, query?: SabQueueQuery) {
   return useServiceQuery(
     "sabnzbd",
-    ["queue"],
-    getSabQueue,
+    query ? ["queue", query] : ["queue"],
+    (id) => getSabQueue(id, query),
+    POLLING_INTERVALS.activeTorrents,
+    instanceId,
+  );
+}
+
+// Header fields only (speed, size left, pause state, speed limit): one job
+// instead of the whole queue, which can be over a megabyte (#514).
+export function useSabQueueSummary(instanceId?: string) {
+  return useServiceQuery(
+    "sabnzbd",
+    ["queue", "summary"],
+    getSabQueueSummary,
     POLLING_INTERVALS.activeTorrents,
     instanceId,
   );

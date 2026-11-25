@@ -11,7 +11,7 @@ import { getServerState } from "@/services/qbittorrent-api";
 import { getRtorrentGlobalStats } from "@/services/rtorrent-api";
 import { getTransmissionGlobalStats } from "@/services/transmission-api";
 import { getDelugeGlobalStats } from "@/services/deluge-api";
-import { getSabQueue } from "@/services/sabnzbd-api";
+import { getSabQueueSummary } from "@/services/sabnzbd-api";
 import { getNzbgetStatus } from "@/services/nzbget-api";
 import { getNet, selectInterfaces } from "@/services/glances-api";
 import { useEnabledInstances } from "@/hooks/use-instance-target";
@@ -136,8 +136,10 @@ export function SpeedStatsCard({ slotId }: WidgetComponentProps) {
   // counter) — it gets folded into the down pill only.
   const sabQueries = useQueries({
     queries: sabInstances.map((inst) => ({
-      queryKey: ["sabnzbd", inst.id, "queue"] as const,
-      queryFn: () => getSabQueue(inst.id),
+      // The one-job summary: the speed is a header field, and the full queue
+      // can be over a megabyte (#514).
+      queryKey: ["sabnzbd", inst.id, "queue", "summary"] as const,
+      queryFn: () => getSabQueueSummary(inst.id),
       refetchInterval: POLLING_INTERVALS.transferSpeed,
     })),
   });

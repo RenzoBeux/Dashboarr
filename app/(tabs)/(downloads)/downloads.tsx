@@ -270,28 +270,34 @@ export default function DownloadsScreen() {
   ) : null;
 
   if (activeClient === "sabnzbd") {
+    // Owns its screen like TorrentDownloadsView: the list is a virtualized
+    // FlatList, which can't sit inside ScreenWrapper's ScrollView (#514).
     return (
-      <ScreenWrapper>
+      <>
         <UsenetDownloadsView
+          key="sabnzbd"
           adapter={sabnzbdAdapter}
           showHeader={!showSegmented}
           segmentedControl={segmentedControl}
         />
         {magnetSheet}
-      </ScreenWrapper>
+      </>
     );
   }
 
   if (activeClient === "nzbget") {
+    // Owns its screen like TorrentDownloadsView: the list is a virtualized
+    // FlatList, which can't sit inside ScreenWrapper's ScrollView (#514).
     return (
-      <ScreenWrapper>
+      <>
         <UsenetDownloadsView
+          key="nzbget"
           adapter={nzbgetAdapter}
           showHeader={!showSegmented}
           segmentedControl={segmentedControl}
         />
         {magnetSheet}
-      </ScreenWrapper>
+      </>
     );
   }
 

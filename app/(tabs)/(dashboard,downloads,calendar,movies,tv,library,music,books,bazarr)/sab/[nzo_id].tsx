@@ -44,7 +44,7 @@ export default function SabSlotDetailScreen() {
     data: queue,
     isLoading: queueLoading,
     error: queueError,
-  } = useSabQueue(instanceId);
+  } = useSabQueue(instanceId, { nzoIds: [nzo_id] });
   const {
     data: history,
     isLoading: historyLoading,
