@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
-import { Image } from "expo-image";
 import {
   Captions,
   Check,
@@ -38,6 +37,7 @@ import type {
   RadarrImage,
   SonarrImage,
 } from "@/lib/types";
+import { LibraryThumb } from "@/components/common/library-thumb";
 
 /**
  * Rows and poster cells of the Bazarr library. Artwork and the original
@@ -138,7 +138,7 @@ export function BazarrMovieRow({
         accessibilityRole="button"
         accessibilityLabel={movieA11yLabel(movie)}
       >
-        <Thumb src={src} onError={onError} fallback={Film} />
+        <LibraryThumb src={src} onError={onError} fallback={Film} />
         <View className="flex-1 min-w-0">
           <Text
             className={`text-zinc-100 text-sm font-semibold ${showSearch ? "pr-9" : ""}`}
@@ -266,7 +266,7 @@ export function BazarrSeriesRow({
           accessibilityRole="button"
           accessibilityLabel={seriesA11yLabel(series)}
         >
-          <Thumb src={src} onError={onError} fallback={Tv} />
+          <LibraryThumb src={src} onError={onError} fallback={Tv} />
           <View className="flex-1 min-w-0 justify-center">
             <View className="flex-row items-center justify-between gap-2">
               <Text className="flex-1 text-zinc-100 text-sm font-semibold" numberOfLines={1}>
@@ -473,33 +473,6 @@ export function BazarrSeriesPoster({
 }
 
 // --- Shared bits ---
-
-function Thumb({
-  src,
-  onError,
-  fallback,
-}: {
-  src?: string;
-  onError?: (e?: { error?: string }) => void;
-  fallback: React.ComponentType<any>;
-}) {
-  return (
-    <View className="w-11 h-16 rounded-lg overflow-hidden bg-surface-light items-center justify-center">
-      {src ? (
-        <Image
-          source={{ uri: src }}
-          className="w-full h-full"
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          recyclingKey={src}
-          onError={onError}
-        />
-      ) : (
-        <Icon icon={fallback} size={18} color="#71717a" />
-      )}
-    </View>
-  );
-}
 
 function DoneBadge({ label }: { label: string }) {
   return (
