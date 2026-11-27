@@ -1,4 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import type { SabQueue } from "@/lib/types";
 import {
   addSabFile,
@@ -14,15 +21,16 @@ import {
   resumeSabSlot,
 } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
-import { sabQueueHasMore, sabQueueWindowRequest } from "@/lib/sab-queue-window";
+import { mergeSabQueuePages, sabQueuePageQueries } from "@/lib/sab-queue-pages";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { SabnzbdSpeedLimitsControl } from "@/components/sabnzbd/speed-limits-control";
 import type {
   UnifiedItem,
   UsenetAdapter,
   UsenetHistoryState,
+  UsenetQueueList,
+  UsenetQueuePaging,
   UsenetQueueState,
-  UsenetQueueWindow,
   UsenetStatus,
 } from "@/lib/usenet-adapter";
 import type {
@@ -74,6 +82,7 @@ function queueSlotToItem(s: SabQueueSlot): UnifiedItem {
     source: "queue",
     bytes: parseFloatSafe(s.mb) * 1024 * 1024,
     index: s.index,
+    addedAt: s.time_added || undefined,
   };
 }
 
@@ -103,13 +112,6 @@ function queueState(queue: SabQueue): UsenetQueueState {
   };
 }
 
-// One window of the queue plus what the list needs to page further.
-interface SabQueuePage {
-  queue: SabQueue;
-  hasMore: boolean;
-  total?: number;
-}
-
 // The statuses SAB can filter on itself. Only "paused" maps one to one: while
 // the downloader runs, SAB reports every other unpaused job as "Downloading"
 // whatever its internal status (api.py build_queue), so a server-side
@@ -118,34 +120,94 @@ function sabServerStatus(status?: UsenetStatus): string[] | undefined {
   return status === "paused" ? ["Paused"] : undefined;
 }
 
-async function fetchSabQueuePage(
-  instanceId: string | undefined,
-  window?: UsenetQueueWindow,
-): Promise<SabQueuePage> {
-  if (!window) {
-    const queue = await getSabQueue(instanceId);
-    return { queue, hasMore: false, total: Number(queue.noofslots) };
-  }
-  // Newest first reads the tail, and SAB pages from the head only, so the
-  // queue length comes first from a one-job answer. That rules out the server
-  // status filter there: SAB can't count its matches to locate their tail, so
-  // the list filters the tail window itself.
-  const fromEnd = window.fromEnd;
-  const status = fromEnd ? undefined : sabServerStatus(window.status);
-  const queueLength = fromEnd
-    ? Number((await getSabQueueSummary(instanceId)).noofslots)
-    : undefined;
-  const request = sabQueueWindowRequest(window.limit, fromEnd, queueLength);
-  const queue = await getSabQueue(instanceId, { ...request, status });
-  return {
-    queue,
-    hasMore: sabQueueHasMore(
-      { noofslots: Number(queue.noofslots), slots: queue.slots },
-      request,
-      !!status,
-    ),
-    total: status ? undefined : Number(queue.noofslots),
+// The page queries' answers as the list's queue (see mergeSabQueuePages).
+function combineSabPages(
+  results: UseQueryResult<SabQueue>[],
+  statusFiltered: boolean,
+  headerOnly: boolean,
+) {
+  const merged = mergeSabQueuePages(
+    results.map((r) => r.data),
+    statusFiltered,
+  );
+  const first = results[0];
+  const last = results[results.length - 1];
+  const newestMissing = results.length > 1 && last.data === undefined;
+  const data: UsenetQueueState | undefined = merged && {
+    ...queueState({ ...merged.head, slots: [] }),
+    items: headerOnly
+      ? []
+      : merged.slots.map(({ slot, page }) => ({ ...queueSlotToItem(slot), page })),
+    hasMore: headerOnly ? false : merged.hasMore,
+    total: merged.total,
   };
+  return {
+    data,
+    error: first.error,
+    isLoading: first.isLoading,
+    loadingMore: newestMissing && last.isFetching,
+    loadMoreError: newestMissing && !last.isFetching ? last.error : null,
+    retryNewest: last.refetch,
+  };
+}
+
+// The Downloads list's queue, a page per request (see sabQueuePageQueries).
+function useSabQueueList(
+  instanceId: string | undefined,
+  paging: UsenetQueuePaging | undefined,
+): UsenetQueueList {
+  const { instanceId: id, enabled } = useInstanceTarget("sabnzbd", instanceId);
+  const queryClient = useQueryClient();
+  const active = enabled && !!id;
+  const headerOnly = paging?.pages === 0;
+  const status = sabServerStatus(paging?.status);
+
+  const statusFiltered = !!status;
+  const combine = useCallback(
+    (results: UseQueryResult<SabQueue>[]) =>
+      combineSabPages(results, statusFiltered, headerOnly),
+    [statusFiltered, headerOnly],
+  );
+  const list = useQueries({
+    queries: headerOnly
+      ? [
+          {
+            // The History filters show no queue rows: one job is enough for
+            // the header, shared with the speed-limit button's poll.
+            queryKey: ["sabnzbd", id, "queue", "summary"] as const,
+            queryFn: () => getSabQueueSummary(id ?? undefined),
+            refetchInterval: POLLING_INTERVALS.activeTorrents,
+            enabled: active,
+          },
+        ]
+      : sabQueuePageQueries({
+          instanceId: id,
+          active,
+          status,
+          pages: paging?.pages ?? 1,
+          livePages: paging?.livePages ?? [],
+          pollInterval: POLLING_INTERVALS.activeTorrents,
+          read: (query) => getSabQueue(id ?? undefined, query),
+        }),
+    combine,
+  });
+
+  const { retryNewest, ...rest } = list;
+  const retryLoadMore = useCallback(() => {
+    void retryNewest();
+  }, [retryNewest]);
+  const loadMoreFailed = !!rest.loadMoreError;
+  const refetch = useCallback(
+    () =>
+      Promise.all([
+        // Refetches the polling pages now and marks the rest stale.
+        queryClient.invalidateQueries({ queryKey: ["sabnzbd", id, "queue", "page"] }),
+        queryClient.invalidateQueries({ queryKey: ["sabnzbd", id, "queue", "summary"] }),
+        loadMoreFailed ? retryNewest() : undefined,
+      ]),
+    [queryClient, id, loadMoreFailed, retryNewest],
+  );
+  return { ...rest, retryLoadMore, refetch };
 }
 
 export const sabnzbdAdapter: UsenetAdapter = {
@@ -154,34 +216,7 @@ export const sabnzbdAdapter: UsenetAdapter = {
   detailRoute: (id, instanceId) =>
     instanceId ? `/sab/${id}?instanceId=${instanceId}` : `/sab/${id}`,
 
-  useQueue: (instanceId, window) => {
-    const { instanceId: id, enabled } = useInstanceTarget("sabnzbd", instanceId);
-    return useQuery({
-      // Not ["sabnzbd", id, "queue"]: queueQueryOptions caches the raw SabQueue
-      // there, and one key must hold one data shape.
-      queryKey: [
-        "sabnzbd",
-        id,
-        "queue",
-        "page",
-        window?.limit ?? 0,
-        window?.fromEnd ?? false,
-        window?.status ?? "all",
-      ],
-      queryFn: () => fetchSabQueuePage(id ?? undefined, window),
-      refetchInterval: POLLING_INTERVALS.activeTorrents,
-      enabled: enabled && !!id,
-      // Growing the window, or a new sort/filter, keeps the current rows on
-      // screen until the new slice lands. Never across instances.
-      placeholderData: (previous, previousQuery) =>
-        previousQuery?.queryKey[1] === id ? previous : undefined,
-      select: (page): UsenetQueueState => ({
-        ...queueState(page.queue),
-        hasMore: page.hasMore,
-        total: page.total,
-      }),
-    });
-  },
+  useQueue: (instanceId, paging) => useSabQueueList(instanceId, paging),
 
   queueQueryOptions: (instanceId) => ({
     queryKey: ["sabnzbd", instanceId, "queue"],

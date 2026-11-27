@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
+  type ViewToken,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
@@ -45,12 +46,14 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { truncateText } from "@/lib/utils";
 import { useAppTheme } from "@/hooks/use-app-theme";
-import { SAB_QUEUE_PAGE_SIZE } from "@/lib/sab-queue-window";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import {
+  compareAddedDesc,
+  pickLivePages,
   usenetBadgeVariant,
   type UnifiedItem,
   type UsenetAdapter,
-  type UsenetQueueWindow,
+  type UsenetQueuePaging,
 } from "@/lib/usenet-adapter";
 
 type FilterType = "all" | "downloading" | "paused" | "queued" | "completed" | "failed";
@@ -85,9 +88,12 @@ function compare(a: UnifiedItem, b: UnifiedItem, sort: SortKey): number {
     case "size-desc":
       return b.bytes - a.bytes;
     case "added-desc":
-      return b.index - a.index;
+      return compareAddedDesc(a, b);
   }
 }
+
+const sameNumbers = (a: readonly number[], b: readonly number[]) =>
+  a.length === b.length && a.every((n, i) => n === b[i]);
 
 interface ViewProps {
   adapter: UsenetAdapter;
@@ -106,25 +112,31 @@ export function UsenetDownloadsView({
   const [showAddModal, setShowAddModal] = useState(false);
   const [nzbUrl, setNzbUrl] = useState("");
   const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
-  // Pages of the queue window (#514). Adapters that can't page ignore it.
+  // Queue pages to hold, and the ones with rows on screen (#514). Adapters
+  // that can't page ignore both.
   const [pages, setPages] = useState(1);
+  const [livePages, setLivePages] = useState<number[]>([]);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken<UnifiedItem>[] }) => {
+      const next = pickLivePages(
+        viewableItems.flatMap((v) => (v.item?.page === undefined ? [] : [v.item.page])),
+      );
+      setLivePages((prev) => (sameNumbers(prev, next) ? prev : next));
+    },
+  ).current;
 
   const historyFilter = filter === "completed" || filter === "failed";
   // The History filters only need the queue's header (speed, size left).
-  const queueWindow = useMemo<UsenetQueueWindow>(
+  const queuePaging = useMemo<UsenetQueuePaging>(
     () =>
       historyFilter
-        ? { limit: 1, fromEnd: false }
-        : {
-            limit: pages * SAB_QUEUE_PAGE_SIZE,
-            fromEnd: sort === "added-desc",
-            status: filter === "all" ? undefined : filter,
-          },
-    [historyFilter, pages, sort, filter],
+        ? { pages: 0, livePages: [] }
+        : { pages, status: filter === "all" ? undefined : filter, livePages },
+    [historyFilter, pages, filter, livePages],
   );
 
-  const queueQuery = adapter.useQueue(undefined, queueWindow);
-  const { data: queue, error: queueError } = queueQuery;
+  const queueList = adapter.useQueue(undefined, queuePaging);
+  const { data: queue, error: queueError } = queueList;
   const historyQuery = adapter.useHistory(50);
   const { data: history, error: historyError } = historyQuery;
   const fetchError = queueError ?? historyError;
@@ -268,26 +280,28 @@ export function UsenetDownloadsView({
   const speedLabel = queue?.speedLabel ?? "0 B/s";
 
   const theme = useAppTheme();
+  const tc = useThemeColor();
   const safeAreaEdges = useScreenSafeAreaEdges();
   const listBottomPadding = useScreenBottomPadding();
   const doRefresh = useCallback(async () => {
-    await Promise.all([queueQuery.refetch(), historyQuery.refetch()]);
+    await Promise.all([queueList.refetch(), historyQuery.refetch()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueQuery.refetch, historyQuery.refetch]);
+  }, [queueList.refetch, historyQuery.refetch]);
   const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
 
-  const loadingMore = queueQuery.isPlaceholderData;
-  const canLoadMore = !historyFilter && queue?.hasMore === true && !loadingMore;
+  // A failed page waits for Retry rather than loading the one after it.
+  const canLoadMore =
+    !historyFilter &&
+    queue?.hasMore === true &&
+    !queueList.loadingMore &&
+    !queueList.loadMoreError;
   const loadMore = () => {
     if (canLoadMore) setPages((p) => p + 1);
   };
-  // A new filter or sort starts again from the first page.
+  // A new filter starts again from the first page. Sorts reorder the loaded
+  // jobs, so they keep them.
   const changeFilter = (next: FilterType) => {
     setFilter(next);
-    setPages(1);
-  };
-  const changeSort = (next: SortKey) => {
-    setSort(next);
     setPages(1);
   };
 
@@ -413,12 +427,24 @@ export function UsenetDownloadsView({
     </>
   );
 
-  // Only for a windowed queue: how much of it is loaded, and the way to more.
+  // Only for a paged queue: how much of it is loaded, and the way to more.
+  // Sorts and the Downloading/Queued filters apply to the loaded jobs.
   const loadedCount = queue?.items.length ?? 0;
   const footer =
-    historyFilter || queue?.hasMore === undefined ? null : loadingMore ? (
+    historyFilter || queue?.hasMore === undefined ? null : queueList.loadingMore ? (
       <View className="py-4 items-center">
-        <ActivityIndicator color="#3b82f6" />
+        <ActivityIndicator color={tc("#3b82f6")} />
+      </View>
+    ) : queueList.loadMoreError ? (
+      <View className="py-4 gap-2">
+        <ErrorBanner error={queueList.loadMoreError} title="Couldn't load more jobs" />
+        <Button
+          label="Retry"
+          variant="outline"
+          size="sm"
+          onPress={queueList.retryLoadMore}
+          className="self-center"
+        />
       </View>
     ) : queue.hasMore ? (
       <View className="py-4 items-center gap-2">
@@ -430,6 +456,8 @@ export function UsenetDownloadsView({
         <Button label="Load more" variant="outline" size="sm" onPress={loadMore} />
       </View>
     ) : null;
+
+  const listLoading = historyFilter ? historyQuery.isLoading : queueList.isLoading;
 
   return (
     <SafeAreaView edges={safeAreaEdges} className="flex-1 bg-background">
@@ -454,11 +482,16 @@ export function UsenetDownloadsView({
         ListEmptyComponent={
           fetchError ? (
             <ErrorBanner error={fetchError} title="Failed to load downloads" />
+          ) : listLoading ? (
+            <View className="py-10 items-center">
+              <ActivityIndicator color={tc("#3b82f6")} />
+            </View>
           ) : (
             <EmptyState title="Nothing to show" message={`No ${filter} items`} />
           )
         }
         ListFooterComponent={footer}
+        onViewableItemsChanged={onViewableItemsChanged}
         // Scrolling pulls the next page in. Not while the filtered list is
         // empty: an empty list sits at its end, and paging through a few
         // thousand jobs for a filter with no matches is the button's call.
@@ -498,7 +531,7 @@ export function UsenetDownloadsView({
         onFilterChange={changeFilter}
         sortOptions={SORT_OPTIONS}
         sortValue={sort}
-        onSortChange={changeSort}
+        onSortChange={setSort}
       />
 
       <ActionSheet

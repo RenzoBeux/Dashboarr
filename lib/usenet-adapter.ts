@@ -41,6 +41,12 @@ export interface UnifiedItem {
   // queue index; for history items it's the negative array index so newest
   // history sorts highest.
   index: number;
+  // When the job was added, epoch seconds, if the service says (SAB 5.0+).
+  // Newest First uses it over `index`: queue order isn't add order.
+  addedAt?: number;
+  // The queue page the row came from, for adapters that page (see
+  // UsenetQueuePaging).
+  page?: number;
 }
 
 export interface UsenetQueueState {
@@ -50,21 +56,83 @@ export interface UsenetQueueState {
   // cheaply; otherwise omit and the shared header just shows nothing.
   speedLabel?: string;
   sizeLeftLabel?: string;
-  // Set only by adapters that honor a UsenetQueueWindow. `hasMore` = jobs exist
-  // outside the window; `total` = jobs in the whole queue, when the service can
-  // count them (SAB can't under a status filter).
+  // Set only by adapters that page (see UsenetQueuePaging). `hasMore` = jobs
+  // exist past the loaded pages; `total` = jobs in the whole queue, when the
+  // service can count them (SAB can't under a status filter).
   hasMore?: boolean;
   total?: number;
 }
 
-// The slice of the queue the Downloads list asks for. Adapters whose service
-// can't page (NZBGet's listgroups) ignore it and return everything.
-export interface UsenetQueueWindow {
-  limit: number;
-  // The last `limit` jobs instead of the first (newest-first sort).
-  fromEnd: boolean;
+// How much of the queue the Downloads list wants. Adapters whose service can't
+// page (NZBGet's listgroups) ignore it and answer the whole queue.
+export interface UsenetQueuePaging {
+  // Pages to hold, read from the head of the queue. 0 = only the header
+  // (speed, size left), for the History filters.
+  pages: number;
   // Narrow to this status on the server when the service can.
   status?: UsenetStatus;
+  // Pages with rows on screen (see pickLivePages). They poll along with the
+  // first page; the others keep their rows and refresh when back on screen.
+  livePages: readonly number[];
+}
+
+// The queue as the Downloads list reads it: one or more requests behind it.
+export interface UsenetQueueList {
+  data?: UsenetQueueState;
+  // The first page failed. The list shows it only when it has no rows.
+  error: Error | null;
+  // Nothing to show yet.
+  isLoading: boolean;
+  // The newest page is on its way, or failed. The rows already loaded stay.
+  loadingMore: boolean;
+  loadMoreError: Error | null;
+  retryLoadMore: () => void;
+  refetch: () => Promise<unknown>;
+}
+
+// A single-request queue (no paging) as a UsenetQueueList.
+export function wholeQueueList(query: UseQueryResult<UsenetQueueState>): UsenetQueueList {
+  return {
+    data: query.data,
+    error: query.error,
+    isLoading: query.isLoading,
+    loadingMore: false,
+    loadMoreError: null,
+    retryLoadMore: () => {},
+    refetch: query.refetch,
+  };
+}
+
+// Pages that keep polling besides the first. Bounds a poll to three requests
+// of a page each, however the rows on screen are sorted.
+export const MAX_LIVE_PAGES = 2;
+
+/**
+ * The pages to keep live, from the pages of the rows on screen: the ones with
+ * the most rows there, the first page aside (it always polls).
+ */
+export function pickLivePages(
+  visiblePages: readonly number[],
+  max = MAX_LIVE_PAGES,
+): number[] {
+  const counts = new Map<number, number>();
+  for (const page of visiblePages) {
+    if (page > 0) counts.set(page, (counts.get(page) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .slice(0, max)
+    .map(([page]) => page)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Newest First. Queue order isn't add order (SAB slots a new job by priority,
+ * so a Force job lands on top of older ones), so the add time decides where
+ * the service gives one; otherwise the higher index (later in the queue) wins.
+ */
+export function compareAddedDesc(a: UnifiedItem, b: UnifiedItem): number {
+  return a.addedAt && b.addedAt ? b.addedAt - a.addedAt : b.index - a.index;
 }
 
 export interface UsenetHistoryState {
@@ -81,10 +149,7 @@ export interface UsenetAdapter {
   // notification deep-links). Receives the slot id and the originating instance.
   detailRoute: (id: string, instanceId?: string) => string;
 
-  useQueue: (
-    instanceId?: string,
-    window?: UsenetQueueWindow,
-  ) => UseQueryResult<UsenetQueueState>;
+  useQueue: (instanceId?: string, paging?: UsenetQueuePaging) => UsenetQueueList;
   useHistory: (limit: number, instanceId?: string) => UseQueryResult<UsenetHistoryState>;
 
   // Per-instance query options (for `useQueries` fan-outs in dashboard widgets

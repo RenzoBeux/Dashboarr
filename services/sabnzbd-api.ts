@@ -1,5 +1,6 @@
 import { serviceRequest } from "@/lib/http-client";
 import type { SabHistory, SabQueue } from "@/lib/types";
+import { readSabSlot, type SabQueueQuery } from "@/lib/sab-queue-pages";
 
 // SABnzbd has a single endpoint at /api?mode=<command>; this module just maps
 // each call we care about to the right `mode` + params. Auth (apikey + output)
@@ -24,19 +25,8 @@ interface SabStatusEnvelope {
 
 // --- Queue ---
 
-// Optional slice of mode=queue. With none of these SAB answers the whole queue,
-// which for a few thousand jobs is over a megabyte per poll (#514).
-// - start/limit: window over the queue in SAB's order. limit 0 = everything.
-// - status: SAB-side status filter (internal job status, e.g. "Paused"). Only
-//   SAB 4.2+ reads it; older versions ignore it and answer unfiltered.
-// - nzoIds: just these jobs (3.x+).
-export interface SabQueueQuery {
-  start?: number;
-  limit?: number;
-  status?: string[];
-  nzoIds?: string[];
-}
-
+// mode=queue, whole or sliced (see SabQueueQuery). Unsliced, a few thousand
+// jobs come to over a megabyte (#514).
 export async function getSabQueue(
   instanceId?: string,
   query: SabQueueQuery = {},
@@ -58,6 +48,16 @@ export async function getSabQueue(
 // over the whole queue regardless of the window.
 export function getSabQueueSummary(instanceId?: string): Promise<SabQueue> {
   return getSabQueue(instanceId, { limit: 1 });
+}
+
+// One job with its queue-wide ETA, read near `near`, its last known index (see
+// readSabSlot). `slots` is empty once the job has left the queue.
+export function getSabQueueSlot(
+  nzoId: string,
+  near: number | undefined,
+  instanceId?: string,
+): Promise<SabQueue> {
+  return readSabSlot(nzoId, near, (query) => getSabQueue(instanceId, query));
 }
 
 export async function getSabHistory(

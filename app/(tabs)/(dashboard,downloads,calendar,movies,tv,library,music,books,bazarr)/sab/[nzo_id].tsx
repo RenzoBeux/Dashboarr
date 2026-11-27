@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { useModalFlow } from "@/hooks/use-modal-flow";
 import {
-  useSabQueue,
+  useSabQueueSlot,
   useSabHistory,
   usePauseSabSlot,
   useResumeSabSlot,
@@ -44,7 +44,7 @@ export default function SabSlotDetailScreen() {
     data: queue,
     isLoading: queueLoading,
     error: queueError,
-  } = useSabQueue(instanceId, { nzoIds: [nzo_id] });
+  } = useSabQueueSlot(nzo_id, instanceId);
   const {
     data: history,
     isLoading: historyLoading,

@@ -146,6 +146,9 @@ export interface SabQueueSlot {
   percentage: string;
   timeleft: string;
   index: number;
+  // When the job joined the queue, epoch seconds. SAB 5.0+; 0 for jobs queued
+  // before an upgrade to 5.0.
+  time_added?: number;
 }
 
 export interface SabQueue {

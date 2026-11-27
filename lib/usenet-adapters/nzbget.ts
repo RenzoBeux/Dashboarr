@@ -17,12 +17,13 @@ import { POLLING_INTERVALS } from "@/lib/constants";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { NzbgetSpeedLimitsControl } from "@/components/nzbget/speed-limits-control";
 import { combineHiLo, formatBytes, formatEta, formatSpeed } from "@/lib/utils";
-import type {
-  UnifiedItem,
-  UsenetAdapter,
-  UsenetHistoryState,
-  UsenetQueueState,
-  UsenetStatus,
+import {
+  wholeQueueList,
+  type UnifiedItem,
+  type UsenetAdapter,
+  type UsenetHistoryState,
+  type UsenetQueueState,
+  type UsenetStatus,
 } from "@/lib/usenet-adapter";
 import type {
   NzbgetGroup,
@@ -148,14 +149,17 @@ export const nzbgetAdapter: UsenetAdapter = {
   detailRoute: (id, instanceId) =>
     instanceId ? `/nzb/${id}?instanceId=${instanceId}` : `/nzb/${id}`,
 
+  // listgroups can't page: the whole queue, whatever the list asks for.
   useQueue: (instanceId) => {
     const { instanceId: id, enabled } = useInstanceTarget("nzbget", instanceId);
-    return useQuery({
-      queryKey: ["nzbget", id, "queue"],
-      queryFn: () => fetchQueueState(id ?? undefined),
-      refetchInterval: POLLING_INTERVALS.activeTorrents,
-      enabled: enabled && !!id,
-    });
+    return wholeQueueList(
+      useQuery({
+        queryKey: ["nzbget", id, "queue"],
+        queryFn: () => fetchQueueState(id ?? undefined),
+        refetchInterval: POLLING_INTERVALS.activeTorrents,
+        enabled: enabled && !!id,
+      }),
+    );
   },
 
   queueQueryOptions: (instanceId) => ({

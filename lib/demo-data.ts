@@ -189,6 +189,7 @@ const DEMO_SAB_QUEUE = {
         percentage: "40",
         timeleft: "0:07:08",
         index: 0,
+        time_added: NOW_TS - 3 * 3600,
       },
       {
         nzo_id: "SABnzbd_nzo_demo02",
@@ -203,6 +204,8 @@ const DEMO_SAB_QUEUE = {
         percentage: "44",
         timeleft: "0:11:06",
         index: 1,
+        // High priority: added last, but SAB slots it above the Normal jobs.
+        time_added: NOW_TS - 20 * 60,
       },
       {
         nzo_id: "SABnzbd_nzo_demo03",
@@ -217,6 +220,7 @@ const DEMO_SAB_QUEUE = {
         percentage: "0",
         timeleft: "0:00:00",
         index: 2,
+        time_added: NOW_TS - 2 * 3600,
       },
     ],
   },
