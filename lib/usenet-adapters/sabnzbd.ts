@@ -1,11 +1,4 @@
-import { useCallback } from "react";
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-  type UseQueryResult,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SabQueue } from "@/lib/types";
 import {
   addSabFile,
@@ -21,7 +14,8 @@ import {
   resumeSabSlot,
 } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
-import { mergeSabQueuePages, sabQueuePageQueries } from "@/lib/sab-queue-pages";
+import { SAB_QUEUE_PAGE_SIZE } from "@/lib/sab-queue-snapshot";
+import { useSabQueueSnapshot } from "@/hooks/use-sab-queue-snapshot";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
 import { SabnzbdSpeedLimitsControl } from "@/components/sabnzbd/speed-limits-control";
 import type {
@@ -29,8 +23,8 @@ import type {
   UsenetAdapter,
   UsenetHistoryState,
   UsenetQueueList,
-  UsenetQueuePaging,
   UsenetQueueState,
+  UsenetQueueView,
   UsenetStatus,
 } from "@/lib/usenet-adapter";
 import type {
@@ -120,94 +114,55 @@ function sabServerStatus(status?: UsenetStatus): string[] | undefined {
   return status === "paused" ? ["Paused"] : undefined;
 }
 
-// The page queries' answers as the list's queue (see mergeSabQueuePages).
-function combineSabPages(
-  results: UseQueryResult<SabQueue>[],
-  statusFiltered: boolean,
-  headerOnly: boolean,
-) {
-  const merged = mergeSabQueuePages(
-    results.map((r) => r.data),
-    statusFiltered,
-  );
-  const first = results[0];
-  const last = results[results.length - 1];
-  const newestMissing = results.length > 1 && last.data === undefined;
-  const data: UsenetQueueState | undefined = merged && {
-    ...queueState({ ...merged.head, slots: [] }),
-    items: headerOnly
-      ? []
-      : merged.slots.map(({ slot, page }) => ({ ...queueSlotToItem(slot), page })),
-    hasMore: headerOnly ? false : merged.hasMore,
-    total: merged.total,
-  };
-  return {
-    data,
-    error: first.error,
-    isLoading: first.isLoading,
-    loadingMore: newestMissing && last.isFetching,
-    loadMoreError: newestMissing && !last.isFetching ? last.error : null,
-    retryNewest: last.refetch,
-  };
-}
-
-// The Downloads list's queue, a page per request (see sabQueuePageQueries).
+// The Downloads list's queue: the whole queue, read and kept current by
+// useSabQueueSnapshot, or only the header for the History filters.
 function useSabQueueList(
   instanceId: string | undefined,
-  paging: UsenetQueuePaging | undefined,
+  view: UsenetQueueView | undefined,
 ): UsenetQueueList {
   const { instanceId: id, enabled } = useInstanceTarget("sabnzbd", instanceId);
-  const queryClient = useQueryClient();
-  const active = enabled && !!id;
-  const headerOnly = paging?.pages === 0;
-  const status = sabServerStatus(paging?.status);
-
-  const statusFiltered = !!status;
-  const combine = useCallback(
-    (results: UseQueryResult<SabQueue>[]) =>
-      combineSabPages(results, statusFiltered, headerOnly),
-    [statusFiltered, headerOnly],
-  );
-  const list = useQueries({
-    queries: headerOnly
-      ? [
-          {
-            // The History filters show no queue rows: one job is enough for
-            // the header, shared with the speed-limit button's poll.
-            queryKey: ["sabnzbd", id, "queue", "summary"] as const,
-            queryFn: () => getSabQueueSummary(id ?? undefined),
-            refetchInterval: POLLING_INTERVALS.activeTorrents,
-            enabled: active,
-          },
-        ]
-      : sabQueuePageQueries({
-          instanceId: id,
-          active,
-          status,
-          pages: paging?.pages ?? 1,
-          livePages: paging?.livePages ?? [],
-          pollInterval: POLLING_INTERVALS.activeTorrents,
-          read: (query) => getSabQueue(id ?? undefined, query),
-        }),
-    combine,
+  const headerOnly = !!view?.headerOnly;
+  // The History filters show no queue rows: one job is enough for the header,
+  // shared with the speed-limit button's poll.
+  const summary = useQuery({
+    queryKey: ["sabnzbd", id, "queue", "summary"],
+    queryFn: () => getSabQueueSummary(id ?? undefined),
+    refetchInterval: POLLING_INTERVALS.activeTorrents,
+    enabled: enabled && !!id && headerOnly,
+  });
+  const snapshot = useSabQueueSnapshot(instanceId, {
+    status: sabServerStatus(view?.status),
+    livePages: view?.livePages ?? [],
+    enabled: !headerOnly,
   });
 
-  const { retryNewest, ...rest } = list;
-  const retryLoadMore = useCallback(() => {
-    void retryNewest();
-  }, [retryNewest]);
-  const loadMoreFailed = !!rest.loadMoreError;
-  const refetch = useCallback(
-    () =>
-      Promise.all([
-        // Refetches the polling pages now and marks the rest stale.
-        queryClient.invalidateQueries({ queryKey: ["sabnzbd", id, "queue", "page"] }),
-        queryClient.invalidateQueries({ queryKey: ["sabnzbd", id, "queue", "summary"] }),
-        loadMoreFailed ? retryNewest() : undefined,
-      ]),
-    [queryClient, id, loadMoreFailed, retryNewest],
-  );
-  return { ...rest, retryLoadMore, refetch };
+  if (headerOnly) {
+    return {
+      data: summary.data && { ...queueState(summary.data), items: [] },
+      error: summary.error,
+      isLoading: summary.isLoading,
+      partial: false,
+      readError: null,
+      retryRead: () => {},
+      refetch: summary.refetch,
+    };
+  }
+  const queue = snapshot.queue;
+  return {
+    data: queue && {
+      ...queueState(queue),
+      items: queue.slots.map((slot) => ({
+        ...queueSlotToItem(slot),
+        page: Math.floor(slot.index / SAB_QUEUE_PAGE_SIZE),
+      })),
+    },
+    error: snapshot.error,
+    isLoading: snapshot.isLoading,
+    partial: !!queue && !snapshot.complete,
+    readError: snapshot.readError,
+    retryRead: snapshot.retryRead,
+    refetch: snapshot.refetch,
+  };
 }
 
 export const sabnzbdAdapter: UsenetAdapter = {
@@ -216,7 +171,7 @@ export const sabnzbdAdapter: UsenetAdapter = {
   detailRoute: (id, instanceId) =>
     instanceId ? `/sab/${id}?instanceId=${instanceId}` : `/sab/${id}`,
 
-  useQueue: (instanceId, paging) => useSabQueueList(instanceId, paging),
+  useQueue: (instanceId, view) => useSabQueueList(instanceId, view),
 
   queueQueryOptions: (instanceId) => ({
     queryKey: ["sabnzbd", instanceId, "queue"],

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Pause, Play, Trash2, ArrowDown, Clock } from "lucide-react-native";
@@ -10,8 +11,9 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
 import { useModalFlow } from "@/hooks/use-modal-flow";
+import { useSabQueueSnapshot } from "@/hooks/use-sab-queue-snapshot";
+import { SAB_QUEUE_PAGE_SIZE } from "@/lib/sab-queue-snapshot";
 import {
-  useSabQueueSlot,
   useSabHistory,
   usePauseSabSlot,
   useResumeSabSlot,
@@ -40,11 +42,11 @@ export default function SabSlotDetailScreen() {
     nzo_id: string;
     instanceId?: string;
   }>();
-  const {
-    data: queue,
-    isLoading: queueLoading,
-    error: queueError,
-  } = useSabQueueSlot(nzo_id, instanceId);
+  // The same queue as the Downloads list (#514), so the two show the same
+  // ETA, with the job's own page polled too once it's found.
+  const [jobPages, setJobPages] = useState<number[]>([]);
+  const queueView = useSabQueueSnapshot(instanceId, { livePages: jobPages });
+  const queue = queueView.queue;
   const {
     data: history,
     isLoading: historyLoading,
@@ -58,6 +60,14 @@ export default function SabSlotDetailScreen() {
 
   const queueSlot = queue?.slots.find((s) => s.nzo_id === nzo_id);
   const historySlot = history?.slots.find((s) => s.nzo_id === nzo_id);
+  const jobPage = queueSlot ? Math.floor(queueSlot.index / SAB_QUEUE_PAGE_SIZE) : 0;
+  useEffect(() => {
+    setJobPages((prev) => (prev[0] === jobPage ? prev : [jobPage]));
+  }, [jobPage]);
+  // Not in the first page: wait for the whole queue before calling it gone.
+  const queueLoading =
+    queueView.isLoading || (!queueSlot && !queueView.complete && !queueView.readError);
+  const queueError = queueView.error ?? (queueView.complete ? null : queueView.readError);
 
   if (!queueSlot && !historySlot) {
     // "Not found" only after both queue and history have actually resolved.

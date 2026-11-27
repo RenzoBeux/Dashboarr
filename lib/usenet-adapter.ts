@@ -44,8 +44,8 @@ export interface UnifiedItem {
   // When the job was added, epoch seconds, if the service says (SAB 5.0+).
   // Newest First uses it over `index`: queue order isn't add order.
   addedAt?: number;
-  // The queue page the row came from, for adapters that page (see
-  // UsenetQueuePaging).
+  // The polled page of the queue the row sits in, for adapters that poll the
+  // queue by page (see UsenetQueueView).
   page?: number;
 }
 
@@ -56,49 +56,44 @@ export interface UsenetQueueState {
   // cheaply; otherwise omit and the shared header just shows nothing.
   speedLabel?: string;
   sizeLeftLabel?: string;
-  // Set only by adapters that page (see UsenetQueuePaging). `hasMore` = jobs
-  // exist past the loaded pages; `total` = jobs in the whole queue, when the
-  // service can count them (SAB can't under a status filter).
-  hasMore?: boolean;
-  total?: number;
 }
 
-// How much of the queue the Downloads list wants. Adapters whose service can't
-// page (NZBGet's listgroups) ignore it and answer the whole queue.
-export interface UsenetQueuePaging {
-  // Pages to hold, read from the head of the queue. 0 = only the header
-  // (speed, size left), for the History filters.
-  pages: number;
+// What the Downloads list needs from the queue. Adapters that read the whole
+// queue in one request (NZBGet's listgroups) ignore it.
+export interface UsenetQueueView {
+  // Only the header (speed, size left), for the History filters.
+  headerOnly?: boolean;
   // Narrow to this status on the server when the service can.
   status?: UsenetStatus;
   // Pages with rows on screen (see pickLivePages). They poll along with the
-  // first page; the others keep their rows and refresh when back on screen.
+  // first page.
   livePages: readonly number[];
 }
 
 // The queue as the Downloads list reads it: one or more requests behind it.
 export interface UsenetQueueList {
   data?: UsenetQueueState;
-  // The first page failed. The list shows it only when it has no rows.
+  // The first read failed. The list shows it only when it has no rows.
   error: Error | null;
   // Nothing to show yet.
   isLoading: boolean;
-  // The newest page is on its way, or failed. The rows already loaded stay.
-  loadingMore: boolean;
-  loadMoreError: Error | null;
-  retryLoadMore: () => void;
+  // The rows don't cover the whole queue yet: the rest is on its way, or its
+  // read failed (readError). Sorts and filters see only what's there.
+  partial: boolean;
+  readError: Error | null;
+  retryRead: () => void;
   refetch: () => Promise<unknown>;
 }
 
-// A single-request queue (no paging) as a UsenetQueueList.
+// A single-request queue as a UsenetQueueList.
 export function wholeQueueList(query: UseQueryResult<UsenetQueueState>): UsenetQueueList {
   return {
     data: query.data,
     error: query.error,
     isLoading: query.isLoading,
-    loadingMore: false,
-    loadMoreError: null,
-    retryLoadMore: () => {},
+    partial: false,
+    readError: null,
+    retryRead: () => {},
     refetch: query.refetch,
   };
 }
@@ -149,7 +144,7 @@ export interface UsenetAdapter {
   // notification deep-links). Receives the slot id and the originating instance.
   detailRoute: (id: string, instanceId?: string) => string;
 
-  useQueue: (instanceId?: string, paging?: UsenetQueuePaging) => UsenetQueueList;
+  useQueue: (instanceId?: string, view?: UsenetQueueView) => UsenetQueueList;
   useHistory: (limit: number, instanceId?: string) => UseQueryResult<UsenetHistoryState>;
 
   // Per-instance query options (for `useQueries` fan-outs in dashboard widgets

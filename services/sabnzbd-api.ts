@@ -1,6 +1,6 @@
 import { serviceRequest } from "@/lib/http-client";
 import type { SabHistory, SabQueue } from "@/lib/types";
-import { readSabSlot, type SabQueueQuery } from "@/lib/sab-queue-pages";
+import type { SabQueueQuery } from "@/lib/sab-queue-snapshot";
 
 // SABnzbd has a single endpoint at /api?mode=<command>; this module just maps
 // each call we care about to the right `mode` + params. Auth (apikey + output)
@@ -48,16 +48,6 @@ export async function getSabQueue(
 // over the whole queue regardless of the window.
 export function getSabQueueSummary(instanceId?: string): Promise<SabQueue> {
   return getSabQueue(instanceId, { limit: 1 });
-}
-
-// One job with its queue-wide ETA, read near `near`, its last known index (see
-// readSabSlot). `slots` is empty once the job has left the queue.
-export function getSabQueueSlot(
-  nzoId: string,
-  near: number | undefined,
-  instanceId?: string,
-): Promise<SabQueue> {
-  return readSabSlot(nzoId, near, (query) => getSabQueue(instanceId, query));
 }
 
 export async function getSabHistory(

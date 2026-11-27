@@ -53,7 +53,7 @@ import {
   usenetBadgeVariant,
   type UnifiedItem,
   type UsenetAdapter,
-  type UsenetQueuePaging,
+  type UsenetQueueView,
 } from "@/lib/usenet-adapter";
 
 type FilterType = "all" | "downloading" | "paused" | "queued" | "completed" | "failed";
@@ -112,9 +112,8 @@ export function UsenetDownloadsView({
   const [showAddModal, setShowAddModal] = useState(false);
   const [nzbUrl, setNzbUrl] = useState("");
   const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
-  // Queue pages to hold, and the ones with rows on screen (#514). Adapters
-  // that can't page ignore both.
-  const [pages, setPages] = useState(1);
+  // The queue pages with rows on screen, which poll (#514). Adapters that
+  // read the whole queue at once ignore them.
   const [livePages, setLivePages] = useState<number[]>([]);
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken<UnifiedItem>[] }) => {
@@ -127,15 +126,15 @@ export function UsenetDownloadsView({
 
   const historyFilter = filter === "completed" || filter === "failed";
   // The History filters only need the queue's header (speed, size left).
-  const queuePaging = useMemo<UsenetQueuePaging>(
+  const queueView = useMemo<UsenetQueueView>(
     () =>
       historyFilter
-        ? { pages: 0, livePages: [] }
-        : { pages, status: filter === "all" ? undefined : filter, livePages },
-    [historyFilter, pages, filter, livePages],
+        ? { headerOnly: true, livePages: [] }
+        : { status: filter === "all" ? undefined : filter, livePages },
+    [historyFilter, filter, livePages],
   );
 
-  const queueList = adapter.useQueue(undefined, queuePaging);
+  const queueList = adapter.useQueue(undefined, queueView);
   const { data: queue, error: queueError } = queueList;
   const historyQuery = adapter.useHistory(50);
   const { data: history, error: historyError } = historyQuery;
@@ -289,22 +288,6 @@ export function UsenetDownloadsView({
   }, [queueList.refetch, historyQuery.refetch]);
   const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
 
-  // A failed page waits for Retry rather than loading the one after it.
-  const canLoadMore =
-    !historyFilter &&
-    queue?.hasMore === true &&
-    !queueList.loadingMore &&
-    !queueList.loadMoreError;
-  const loadMore = () => {
-    if (canLoadMore) setPages((p) => p + 1);
-  };
-  // A new filter starts again from the first page. Sorts reorder the loaded
-  // jobs, so they keep them.
-  const changeFilter = (next: FilterType) => {
-    setFilter(next);
-    setPages(1);
-  };
-
   const header = (
     <>
       {multiSelect.isActive ? (
@@ -427,35 +410,26 @@ export function UsenetDownloadsView({
     </>
   );
 
-  // Only for a paged queue: how much of it is loaded, and the way to more.
-  // Sorts and the Downloading/Queued filters apply to the loaded jobs.
-  const loadedCount = queue?.items.length ?? 0;
+  // While the rows are only the first page of a large queue: the rest is on
+  // its way, or its read failed and the rows shown stay.
   const footer =
-    historyFilter || queue?.hasMore === undefined ? null : queueList.loadingMore ? (
-      <View className="py-4 items-center">
-        <ActivityIndicator color={tc("#3b82f6")} />
-      </View>
-    ) : queueList.loadMoreError ? (
+    historyFilter || !queueList.partial ? null : queueList.readError ? (
       <View className="py-4 gap-2">
-        <ErrorBanner error={queueList.loadMoreError} title="Couldn't load more jobs" />
+        <ErrorBanner error={queueList.readError} title="Couldn't read the whole queue" />
         <Button
           label="Retry"
           variant="outline"
           size="sm"
-          onPress={queueList.retryLoadMore}
+          onPress={queueList.retryRead}
           className="self-center"
         />
       </View>
-    ) : queue.hasMore ? (
+    ) : (
       <View className="py-4 items-center gap-2">
-        <Text className="text-zinc-500 text-xs">
-          {queue.total !== undefined
-            ? `Showing ${loadedCount.toLocaleString()} of ${queue.total.toLocaleString()} jobs`
-            : `Showing the first ${loadedCount.toLocaleString()} jobs`}
-        </Text>
-        <Button label="Load more" variant="outline" size="sm" onPress={loadMore} />
+        <ActivityIndicator color={tc("#3b82f6")} />
+        <Text className="text-zinc-500 text-xs">Loading the rest of the queue</Text>
       </View>
-    ) : null;
+    );
 
   const listLoading = historyFilter ? historyQuery.isLoading : queueList.isLoading;
 
@@ -492,13 +466,6 @@ export function UsenetDownloadsView({
         }
         ListFooterComponent={footer}
         onViewableItemsChanged={onViewableItemsChanged}
-        // Scrolling pulls the next page in. Not while the filtered list is
-        // empty: an empty list sits at its end, and paging through a few
-        // thousand jobs for a filter with no matches is the button's call.
-        onEndReached={() => {
-          if (sortedItems.length > 0) loadMore();
-        }}
-        onEndReachedThreshold={0.5}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 8,
@@ -528,7 +495,7 @@ export function UsenetDownloadsView({
         title="Filter & sort downloads"
         filterOptions={FILTER_OPTIONS}
         filterValue={filter}
-        onFilterChange={changeFilter}
+        onFilterChange={setFilter}
         sortOptions={SORT_OPTIONS}
         sortValue={sort}
         onSortChange={setSort}

@@ -1,7 +1,4 @@
-import { useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import {
-  getSabQueueSlot,
   getSabQueueSummary,
   getSabHistory,
   pauseSabAll,
@@ -13,7 +10,6 @@ import {
   addSabUrl,
   setSabSpeedLimit,
 } from "@/services/sabnzbd-api";
-import { cachedSabSlotIndex } from "@/lib/sab-queue-pages";
 import { POLLING_INTERVALS } from "@/lib/constants";
 import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 
@@ -21,33 +17,6 @@ import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 // When omitted, the user's active SABnzbd is used (single-instance behavior);
 // when passed (by aggregated dashboard cards or per-instance watchers), queries
 // fan out to that specific instance with its own cache slot.
-
-// One queued job for its detail screen, with the ETA the queue shows (#514):
-// never the whole queue, and never an nzo_ids read, whose ETA leaves out the
-// jobs ahead (see readSabSlot). The job's last index steers the next read; the
-// first comes from the list's or the dashboard widget's cached pages.
-export function useSabQueueSlot(nzoId: string, instanceId?: string) {
-  const queryClient = useQueryClient();
-  const near = useRef<number | undefined>(undefined);
-  return useServiceQuery(
-    "sabnzbd",
-    ["queue", "slot", nzoId],
-    async (id) => {
-      const hint =
-        near.current ??
-        cachedSabSlotIndex(
-          queryClient.getQueriesData({ queryKey: ["sabnzbd", id, "queue"] }),
-          nzoId,
-        );
-      const queue = await getSabQueueSlot(nzoId, hint, id);
-      const index = queue.slots[0]?.index;
-      near.current = index !== undefined && index >= 0 ? index : undefined;
-      return queue;
-    },
-    POLLING_INTERVALS.activeTorrents,
-    instanceId,
-  );
-}
 
 // Header fields only (speed, size left, pause state, speed limit): one job
 // instead of the whole queue, which can be over a megabyte (#514).
