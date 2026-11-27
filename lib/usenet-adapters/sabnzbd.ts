@@ -143,6 +143,7 @@ function useSabQueueList(
       isLoading: summary.isLoading,
       partial: false,
       readError: null,
+      reading: false,
       retryRead: () => {},
       refetch: summary.refetch,
     };
@@ -160,6 +161,7 @@ function useSabQueueList(
     isLoading: snapshot.isLoading,
     partial: !!queue && !snapshot.complete,
     readError: snapshot.readError,
+    reading: snapshot.reading,
     retryRead: snapshot.retryRead,
     refetch: snapshot.refetch,
   };

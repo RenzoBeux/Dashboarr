@@ -23,13 +23,21 @@ export function sabQueuePageRequest(page: number): { start: number; limit: numbe
 
 const statusKey = (status: string[] | undefined) => status?.join(",") ?? "all";
 
+// Every polled page of the queue (or of a status filter's matches).
+export function sabQueuePagesKey(
+  instanceId: string | null | undefined,
+  status: string[] | undefined,
+) {
+  return ["sabnzbd", instanceId, "queue", "page", statusKey(status)] as const;
+}
+
 // A polled page of the queue: the first, or one with rows on screen.
 export function sabQueuePageKey(
   instanceId: string | null | undefined,
   status: string[] | undefined,
   page: number,
 ) {
-  return ["sabnzbd", instanceId, "queue", "page", statusKey(status), page] as const;
+  return [...sabQueuePagesKey(instanceId, status), page] as const;
 }
 
 // The whole queue, as one consistent read (SabQueueSnapshot).
@@ -44,18 +52,22 @@ export interface SabQueueSnapshot {
   // Every job (or every match of a status filter), in SAB's order, from reads
   // that agree with each other. `index` is the job's position.
   slots: SabQueueSlot[];
-  // noofslots / noofslots_total when read (see sabQueueSignature).
+  // The queue's counts and size when read (see sabQueueSignature).
   signature: string;
 }
 
 /**
  * What changes when a job arrives, leaves or changes state anywhere in the
  * queue: `noofslots` is the queue's length (even under a status filter, which
- * `NzbQueue.queue_info` doesn't count), and `noofslots_total` the jobs it
- * counts as downloadable, neither paused nor checking.
+ * `NzbQueue.queue_info` doesn't count), `noofslots_total` the jobs it counts
+ * as downloadable, neither paused nor checking, and `mb` their total size.
+ * A job's size is set when it is imported and only drops when files are
+ * removed from it (NzbObject.add_nzf, NzbQueue.remove_nzf), so `mb` doesn't
+ * move with progress, but does when one job leaves and another arrives
+ * between two reads, which leaves both counts as they were.
  */
 export function sabQueueSignature(queue: SabQueue): string {
-  return `${queue.noofslots}/${queue.noofslots_total}`;
+  return `${queue.noofslots}/${queue.noofslots_total}/${queue.mb}`;
 }
 
 // Whether a read starting at `start` reached the end of the queue (or of a
@@ -68,14 +80,27 @@ export function sabPageEndsQueue(queue: SabQueue, start: number, statusFiltered:
 
 const SNAPSHOT_ATTEMPTS = 3;
 
+// Every attempt at reading the whole queue saw it change.
+export class SabQueueChangedError extends Error {
+  constructor() {
+    super("The SABnzbd queue kept changing while it was being read.");
+    this.name = "SabQueueChangedError";
+  }
+}
+
 /**
  * The whole queue, SAB_QUEUE_PAGE_SIZE jobs per request (#514). Jobs shift
- * position as others finish, arrive or are deleted, so pages read at different
- * times don't line up: a job that moves across a page boundary between two
- * reads is in neither. Every read after the first therefore starts one job
- * early, on the last job already held, and the queue's signature must not
- * change from read to read. When either check fails the queue moved during
- * the read, and it starts over.
+ * position as others finish, arrive, are deleted or are moved, so pages read
+ * at different times don't line up: a job that crosses a page boundary between
+ * two reads is in neither, or in both. Every read after the first therefore
+ * starts one job early, on the last job already held, the queue's signature
+ * must not change from read to read, and no job may come back. When any check
+ * fails the queue moved during the read, and it starts over.
+ *
+ * Moves alone never change the signature, and two jobs that swap places
+ * across a boundary leave the overlapping job where it was too, but the one
+ * that moved back is then read twice. With moves only, the reads cover as many
+ * positions as the queue has jobs, so when no job repeats, none is missing.
  *
  * `head` is a page-0 read to start from (the list polls it anyway); a stale
  * one fails the first check and costs a fresh read. Once `signal` aborts, no
@@ -99,27 +124,31 @@ export async function readSabQueueSnapshot(
         : await readPage({ start: 0, limit: SAB_QUEUE_PAGE_SIZE, status });
     const signature = sabQueueSignature(first);
     const slots = [...(first.slots ?? [])];
+    const held = new Set(slots.map((s) => s.nzo_id));
     let consistent = true;
     let done = sabPageEndsQueue(first, 0, statusFiltered);
     while (!done) {
       const start = slots.length - 1;
       const page = await readPage({ start, limit: SAB_QUEUE_PAGE_SIZE, status });
       const received = page.slots ?? [];
+      const added = received.slice(1);
       if (
         sabQueueSignature(page) !== signature ||
-        received[0]?.nzo_id !== slots[start].nzo_id
+        received[0]?.nzo_id !== slots[start].nzo_id ||
+        added.some((s) => held.has(s.nzo_id))
       ) {
         consistent = false;
         break;
       }
-      slots.push(...received.slice(1));
+      for (const s of added) held.add(s.nzo_id);
+      slots.push(...added);
       done = received.length <= 1 || sabPageEndsQueue(page, start, statusFiltered);
     }
     if (consistent) {
       return { slots: slots.map((slot, index) => ({ ...slot, index })), signature };
     }
   }
-  throw new Error("The SABnzbd queue changed during every read of it. Pull to refresh to try again.");
+  throw new SabQueueChangedError();
 }
 
 /**
@@ -148,19 +177,28 @@ export interface SabPageRead {
 export const SAB_SNAPSHOT_GAP_PER_PAGE_MS = 2000;
 
 /**
- * Whether to read the whole queue again: a page polled since the last read
- * disagrees with it (sabPageAgrees), and the read is old enough for its size.
- * A queue that doesn't change is never read again.
+ * Whether to read the whole queue (again): a page polled since the last good
+ * read disagrees with it (sabPageAgrees), or there was none and the first
+ * attempt failed; and the last attempt, good or failed (`failedAt`, 0 for
+ * none), is old enough for the queue's size. A queue that doesn't change is
+ * never read again, and a failing read is tried again no more often than a
+ * changing queue is read.
  */
 export function sabSnapshotNeedsRead(
-  snapshot: SabQueueSnapshot,
+  snapshot: SabQueueSnapshot | undefined,
   readAt: number,
+  failedAt: number,
   pages: readonly SabPageRead[],
   now: number,
 ): boolean {
-  const outdated = pages.some((p) => p.readAt > readAt && !sabPageAgrees(snapshot, p.queue, p.page));
-  const pageCount = Math.max(1, Math.ceil(snapshot.slots.length / SAB_QUEUE_PAGE_SIZE));
-  return outdated && now - readAt >= pageCount * SAB_SNAPSHOT_GAP_PER_PAGE_MS;
+  const outdated = snapshot
+    ? pages.some((p) => p.readAt > readAt && !sabPageAgrees(snapshot, p.queue, p.page))
+    : failedAt > 0;
+  const jobs = snapshot
+    ? snapshot.slots.length
+    : Number(pages.find((p) => p.page === 0)?.queue.noofslots) || 0;
+  const pageCount = Math.max(1, Math.ceil(jobs / SAB_QUEUE_PAGE_SIZE));
+  return outdated && now - Math.max(readAt, failedAt) >= pageCount * SAB_SNAPSHOT_GAP_PER_PAGE_MS;
 }
 
 /**

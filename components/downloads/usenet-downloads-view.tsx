@@ -288,6 +288,24 @@ export function UsenetDownloadsView({
   }, [queueList.refetch, historyQuery.refetch]);
   const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
 
+  // A failed read of the whole queue, with a Retry that shows the read
+  // running (it is also retried on its own).
+  function readErrorBlock(title: string, className: string) {
+    return (
+      <View className={`gap-2 ${className}`}>
+        <ErrorBanner error={queueList.readError} title={title} />
+        <Button
+          label="Retry"
+          variant="outline"
+          size="sm"
+          onPress={queueList.retryRead}
+          loading={queueList.reading}
+          className="self-center"
+        />
+      </View>
+    );
+  }
+
   const header = (
     <>
       {multiSelect.isActive ? (
@@ -407,6 +425,12 @@ export function UsenetDownloadsView({
         </>
       )}
 
+      {/* The whole queue is shown, but its last refresh failed: say so above
+          the rows, which may be out of date, not at the end of a long list. */}
+      {!historyFilter && !queueList.partial && queueList.readError
+        ? readErrorBlock("Couldn't refresh the queue", "mb-4")
+        : null}
+
     </>
   );
 
@@ -414,16 +438,7 @@ export function UsenetDownloadsView({
   // its way, or its read failed and the rows shown stay.
   const footer =
     historyFilter || !queueList.partial ? null : queueList.readError ? (
-      <View className="py-4 gap-2">
-        <ErrorBanner error={queueList.readError} title="Couldn't read the whole queue" />
-        <Button
-          label="Retry"
-          variant="outline"
-          size="sm"
-          onPress={queueList.retryRead}
-          className="self-center"
-        />
-      </View>
+      readErrorBlock("Couldn't read the whole queue", "py-4")
     ) : (
       <View className="py-4 items-center gap-2">
         <ActivityIndicator color={tc("#3b82f6")} />

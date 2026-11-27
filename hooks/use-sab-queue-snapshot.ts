@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { notifyManager, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSabQueue } from "@/services/sabnzbd-api";
 import { POLLING_INTERVALS } from "@/lib/constants";
+import { retryQuery } from "@/lib/query-client";
 import {
+  SabQueueChangedError,
   mergeSabQueue,
   readSabQueueSnapshot,
   sabPageEndsQueue,
   sabQueuePageKey,
   sabQueuePageRequest,
+  sabQueuePagesKey,
   sabQueueSnapshotKey,
   sabSnapshotNeedsRead,
   type SabPageRead,
@@ -33,20 +36,70 @@ export interface SabQueueSnapshotView {
   isLoading: boolean;
   // The first page failed. Shown only when there are no rows.
   error: Error | null;
-  // Reading the whole queue failed; the rows already shown stay.
+  // The last read of the whole queue failed. Before any good read the rows
+  // are the first page (complete is false); after one they are that read,
+  // possibly out of date. Either way it is read again on its own, as often as
+  // a changing queue would be, or now with retryRead.
   readError: Error | null;
+  // A read of the whole queue is running.
+  reading: boolean;
   retryRead: () => void;
   // Pull-to-refresh: the polled pages and a fresh whole-queue read.
   refetch: () => Promise<unknown>;
+}
+
+// readSabQueueSnapshot already tried three times when the queue kept
+// changing; anything else (a dropped request) gets the app's usual retries.
+const retrySnapshot = (failureCount: number, error: Error) =>
+  !(error instanceof SabQueueChangedError) && retryQuery(failureCount, error);
+
+/**
+ * Every read of this queue's pages in the cache, whichever screen polls it.
+ * The list polls the pages on screen and a job's detail polls the job's page;
+ * both show the queue from all of them, so they show the same numbers.
+ */
+function useCachedPageReads(id: string | null, status: string[] | undefined): SabPageRead[] {
+  const cache = useQueryClient().getQueryCache();
+  const statusKey = status?.join(",");
+  const prefix = useMemo(
+    () => sabQueuePagesKey(id, status),
+    // statusKey stands for `status`, which callers rebuild on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, statusKey],
+  );
+  // As useIsFetching does: deferred, so no screen updates while another renders.
+  const subscribe = useCallback(
+    (onChange: () => void) => cache.subscribe(notifyManager.batchCalls(onChange)),
+    [cache],
+  );
+  const version = useSyncExternalStore(subscribe, () =>
+    cache
+      .findAll({ queryKey: prefix })
+      .map((q) => `${String(q.queryKey[prefix.length])}:${q.state.dataUpdatedAt}`)
+      .join(),
+  );
+  return useMemo(
+    () =>
+      cache.findAll({ queryKey: prefix }).flatMap((q) => {
+        const queue = q.state.data as SabQueue | undefined;
+        const page = q.queryKey[prefix.length];
+        return queue && typeof page === "number"
+          ? [{ page, queue, readAt: q.state.dataUpdatedAt }]
+          : [];
+      }),
+    // `version` changes whenever a page's data does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cache, prefix, version],
+  );
 }
 
 /**
  * SABnzbd's queue for the Downloads list and the job detail (#514). The first
  * page and the pages on screen poll every 5 s, SAB_QUEUE_PAGE_SIZE jobs each.
  * The whole queue is read once (readSabQueueSnapshot), then again only when a
- * polled page shows it changed (sabSnapshotNeedsRead), and after any SAB
- * mutation, which invalidates the instance's queries. Sorts and filters see
- * every job, and the list and the detail show the same numbers.
+ * polled page shows it changed or the last read failed (sabSnapshotNeedsRead),
+ * and after any SAB mutation, which invalidates the instance's queries. Sorts
+ * and filters see every job, and the list and the detail show the same numbers.
  */
 export function useSabQueueSnapshot(
   instanceId: string | undefined,
@@ -87,36 +140,26 @@ export function useSabQueueSnapshot(
       ),
     // Not needed while the first page holds the whole queue.
     enabled: active && !!head.data && !headIsWhole,
-    // Re-read on a detected change (below) or an invalidation, never by age.
+    // Re-read on a detected change or a failure (below) or an invalidation,
+    // never by age.
     staleTime: Infinity,
+    retry: retrySnapshot,
   });
   const snapshot = snapshotQuery.data;
   const snapshotReadAt = snapshotQuery.dataUpdatedAt;
-
-  const readsKey = pageResults.map((r, i) => `${pages[i]}:${r.dataUpdatedAt}`).join();
-  const reads = useMemo<SabPageRead[]>(
-    () =>
-      pageResults.flatMap((r, i) =>
-        r.data ? [{ page: pages[i], queue: r.data, readAt: r.dataUpdatedAt }] : [],
-      ),
-    // readsKey changes whenever a page's data does.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [readsKey],
-  );
+  const reads = useCachedPageReads(id, status);
 
   const needsRead =
-    !!snapshot && !headIsWhole && sabSnapshotNeedsRead(snapshot, snapshotReadAt, reads, Date.now());
+    active &&
+    !!head.data &&
+    !headIsWhole &&
+    sabSnapshotNeedsRead(snapshot, snapshotReadAt, snapshotQuery.errorUpdatedAt, reads, Date.now());
   const { refetch: refetchSnapshot, isFetching: snapshotFetching } = snapshotQuery;
-  // After a failed read the list's Retry (or the next mutation) reads again,
-  // not a loop against a failing server. The list and a job's detail can both
-  // be mounted and notice the same change: the second joins the first read
-  // instead of cancelling it for a new one.
-  const readFailed = snapshotQuery.status === "error";
+  // The list and a job's detail can both be mounted and notice the same
+  // change: the second joins the first read instead of cancelling it.
   useEffect(() => {
-    if (needsRead && !snapshotFetching && !readFailed) {
-      void refetchSnapshot({ cancelRefetch: false });
-    }
-  }, [needsRead, snapshotFetching, readFailed, refetchSnapshot]);
+    if (needsRead && !snapshotFetching) void refetchSnapshot({ cancelRefetch: false });
+  }, [needsRead, snapshotFetching, refetchSnapshot]);
 
   const merged = useMemo(
     () => mergeSabQueue(snapshot, snapshotReadAt, reads, statusFiltered),
@@ -140,7 +183,11 @@ export function useSabQueueSnapshot(
     complete: merged?.complete ?? false,
     isLoading: head.isLoading,
     error: head.error,
-    readError: snapshotFetching ? null : snapshotQuery.error,
+    // TanStack keeps the error through a retry once there is data, and clears
+    // it at the start of one while there is none, so the list shows the
+    // failure next to the stale rows, or its spinner while the rest loads.
+    readError: headIsWhole ? null : snapshotQuery.error,
+    reading: snapshotFetching,
     retryRead,
     refetch,
   };

@@ -80,7 +80,11 @@ export interface UsenetQueueList {
   // The rows don't cover the whole queue yet: the rest is on its way, or its
   // read failed (readError). Sorts and filters see only what's there.
   partial: boolean;
+  // Reading the whole queue failed: the rest of it (partial), or a refresh of
+  // rows that may now be out of date. It is tried again on its own.
   readError: Error | null;
+  // A read of the whole queue is running.
+  reading: boolean;
   retryRead: () => void;
   refetch: () => Promise<unknown>;
 }
@@ -93,6 +97,7 @@ export function wholeQueueList(query: UseQueryResult<UsenetQueueState>): UsenetQ
     isLoading: query.isLoading,
     partial: false,
     readError: null,
+    reading: false,
     retryRead: () => {},
     refetch: query.refetch,
   };

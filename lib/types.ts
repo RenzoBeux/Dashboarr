@@ -162,6 +162,9 @@ export interface SabQueue {
   sizeleft: string;
   noofslots: number;
   noofslots_total: number;
+  // Total size in MiB of the jobs noofslots_total counts. Fixed per job, so
+  // it doesn't move with progress (see sabQueueSignature).
+  mb?: string;
   diskspace1: string;
   diskspace2: string;
   status: "Idle" | "Paused" | "Downloading";

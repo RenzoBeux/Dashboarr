@@ -1,6 +1,9 @@
+import { act, createElement, type ReactElement } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getDemoResponse } from "@/lib/demo-data";
 import {
   SAB_QUEUE_PAGE_SIZE,
+  SabQueueChangedError,
   formatSabTimeLeft,
   mergeSabQueue,
   readSabQueueSnapshot,
@@ -14,12 +17,32 @@ import {
 } from "@/lib/sab-queue-snapshot";
 import { compareAddedDesc, pickLivePages, type UnifiedItem } from "@/lib/usenet-adapter";
 import type { SabQueue, SabQueueSlot } from "@/lib/types";
+import {
+  useSabQueueSnapshot,
+  type SabQueueSnapshotView,
+} from "@/hooks/use-sab-queue-snapshot";
+
+// Comes with jest-expo, without type declarations.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { create } = require("react-test-renderer") as {
+  create: (element: ReactElement) => { unmount: () => void };
+};
+
+// The hook's SAB instance is whichever FakeSab a test puts here.
+const mockSab: { current?: FakeSab } = {};
+jest.mock("@/hooks/use-instance-target", () => ({
+  useInstanceTarget: () => ({ instanceId: "sab", enabled: true }),
+}));
+jest.mock("@/services/sabnzbd-api", () => ({
+  getSabQueue: (_id: string | undefined, query: SabQueueQuery) => mockSab.current!.read(query),
+}));
 
 // --- A queue that answers mode=queue the way SABnzbd 5.1.3 does ------------
 // NzbQueue.queue_info: filters narrow the matches, start/limit window them,
 // `noofslots` is the queue's length unless nzo_ids is sent, `noofslots_total`
-// counts jobs neither paused nor checking, and the bytes ahead of the window
-// are every such job before `start`, propagating ones included.
+// counts jobs neither paused nor checking, `mb` is their total size, and the
+// bytes ahead of the window are every such job before `start`, propagating
+// ones included.
 // api.py build_queue: inside the window a job adds its bytes to the running
 // ETA only when it is Force, or the downloader runs and the job is queued or
 // downloading with no propagation delay.
@@ -28,8 +51,10 @@ const MEBI = 1024 * 1024;
 
 interface FakeJob {
   nzo_id: string;
-  // Whole MiB, so `mbleft` carries them exactly.
+  // MiB left, whole or half, so `mbleft` carries them exactly.
   mib: number;
+  // MiB in all, `mib` unless the job has started.
+  size?: number;
   status?: "Queued" | "Paused" | "Checking";
   priority?: "Force" | "High" | "Normal" | "Low";
   propagating?: boolean;
@@ -53,12 +78,15 @@ class FakeSab {
   bps = MEBI;
   // Runs before the read numbered `n` (0-based) is answered.
   beforeRead?: (n: number) => void;
+  // Reads it answers with an error, after counting them.
+  failing?: (query: SabQueueQuery) => boolean;
 
   constructor(public jobs: FakeJob[]) {}
 
   read = async (query: SabQueueQuery): Promise<SabQueue> => {
     this.beforeRead?.(this.calls.length);
     this.calls.push(query);
+    if (this.failing?.(query)) throw new Error("Request timed out");
     return this.answer(query);
   };
 
@@ -66,6 +94,7 @@ class FakeSab {
     const start = query.start ?? 0;
     const limit = query.limit ?? 0;
     let qSize = 0;
+    let mibTotal = 0;
     let bytesBefore = 0;
     let matched = 0;
     const window: FakeJob[] = [];
@@ -73,6 +102,7 @@ class FakeSab {
       const status = job.status ?? "Queued";
       if ((status !== "Paused" && status !== "Checking") || job.priority === "Force") {
         qSize++;
+        mibTotal += job.size ?? job.mib;
         if (matched < start) bytesBefore += job.mib * MEBI;
       }
       if (query.status?.length && !query.status.includes(status)) continue;
@@ -106,7 +136,7 @@ class FakeSab {
         cat: "tv",
         status: apiStatus,
         priority: job.priority ?? "Normal",
-        mb: job.mib.toFixed(2),
+        mb: (job.size ?? job.mib).toFixed(2),
         mbleft: job.mib.toFixed(2),
         size: `${job.mib} MB`,
         sizeleft: `${job.mib} MB`,
@@ -125,6 +155,7 @@ class FakeSab {
       sizeleft: "",
       noofslots: query.nzoIds?.length ? matched : this.jobs.length,
       noofslots_total: qSize,
+      mb: mibTotal.toFixed(2),
       diskspace1: "",
       diskspace2: "",
       status: "Downloading",
@@ -139,6 +170,11 @@ class FakeSab {
 
   finish(nzoId: string) {
     this.jobs = this.jobs.filter((j) => j.nzo_id !== nzoId);
+  }
+
+  // Two `switch` calls of SAB's that trade the jobs at positions a and b.
+  swap(a: number, b: number) {
+    [this.jobs[a], this.jobs[b]] = [this.jobs[b], this.jobs[a]];
   }
 }
 
@@ -177,6 +213,48 @@ describe("reading the whole queue", () => {
     expect(ids(snapshot.slots)).toEqual(sab.jobs.map((j) => j.nzo_id));
   });
 
+  it("starts over when two jobs trade places across pages mid-read", async () => {
+    // The reviewer's case: neither the counts nor the overlapping job change,
+    // but job50 would be read twice and job150 not at all.
+    const sab = new FakeSab(jobs(300));
+    sab.beforeRead = (n) => {
+      if (n === 1) sab.swap(50, 150);
+    };
+    const snapshot = await readSabQueueSnapshot(sab.read, undefined);
+    expect(ids(snapshot.slots)).toEqual(sab.jobs.map((j) => j.nzo_id));
+    expect(sab.calls.filter((c) => c.start === 0)).toHaveLength(2);
+  });
+
+  it("never loses or repeats a job, however jobs move mid-read", async () => {
+    // Seeded (mulberry32), so a failure replays.
+    let seed = 514;
+    const random = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = (n: number) => Math.floor(random() * n);
+    let accepted = 0;
+    for (let trial = 0; trial < 300; trial++) {
+      const sab = new FakeSab(jobs(150 + pick(300)));
+      sab.beforeRead = () => {
+        if (random() < 0.7) return;
+        const n = sab.jobs.length;
+        if (random() < 0.5) sab.swap(pick(n), pick(n));
+        else sab.jobs.splice(pick(n), 0, ...sab.jobs.splice(pick(n), 1));
+      };
+      try {
+        const snapshot = await readSabQueueSnapshot(sab.read, undefined);
+        expect(ids(snapshot.slots).sort()).toEqual(sab.jobs.map((j) => j.nzo_id).sort());
+        accepted++;
+      } catch (error) {
+        expect(error).toBeInstanceOf(SabQueueChangedError);
+      }
+    }
+    expect(accepted).toBeGreaterThan(200);
+  });
+
   it("starts over when a job arrives or changes state behind the read", async () => {
     const sab = new FakeSab(jobs(300));
     sab.beforeRead = (n) => {
@@ -206,7 +284,9 @@ describe("reading the whole queue", () => {
     sab.beforeRead = (n) => {
       if (n % 2 === 1) sab.finish(sab.jobs[0].nzo_id);
     };
-    await expect(readSabQueueSnapshot(sab.read, undefined)).rejects.toThrow(/changed during every read/);
+    await expect(readSabQueueSnapshot(sab.read, undefined)).rejects.toBeInstanceOf(
+      SabQueueChangedError,
+    );
   });
 
   it("stops reading once cancelled", async () => {
@@ -236,10 +316,10 @@ describe("keeping it current", () => {
 
   it("never reads a queue that didn't change again, whatever its values do", async () => {
     const { sab, snapshot } = await setup();
-    sab.jobs[0].mib = 1;
+    Object.assign(sab.jobs[0], { size: 2, mib: 1 });
     const head = sab.page(0, 5000);
     expect(sabPageAgrees(snapshot, head.queue, 0)).toBe(true);
-    expect(sabSnapshotNeedsRead(snapshot, 1000, [head], 3_600_000)).toBe(false);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, [head], 3_600_000)).toBe(false);
     // The rows take the newer values.
     expect(mergeSabQueue(snapshot, 1000, [head], false)!.queue.slots[0].mbleft).toBe("1.00");
   });
@@ -256,8 +336,8 @@ describe("keeping it current", () => {
     expect(ids(shown)).toContain("job200");
 
     // Three pages: no sooner than 6 s after the last read.
-    expect(sabSnapshotNeedsRead(snapshot, 1000, polled, 6999)).toBe(false);
-    expect(sabSnapshotNeedsRead(snapshot, 1000, polled, 7000)).toBe(true);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, polled, 6999)).toBe(false);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, polled, 7000)).toBe(true);
     const next = await readSabQueueSnapshot(sab.read, undefined);
     expect(ids(mergeSabQueue(next, 8000, polled, false)!.queue.slots)).toEqual(
       sab.jobs.map((j) => j.nzo_id),
@@ -268,6 +348,35 @@ describe("keeping it current", () => {
     const { sab, snapshot } = await setup();
     sab.jobs.push({ nzo_id: "late", mib: 2 });
     expect(sabPageAgrees(snapshot, sab.page(0, 5000).queue, 0)).toBe(false);
+  });
+
+  it("notices one job leaving and another arriving, through the queue's size", async () => {
+    const { sab, snapshot } = await setup();
+    // On a page nobody polls, between two polls: both counts stay as they were.
+    sab.jobs.splice(150, 1, { nzo_id: "new", mib: 3 });
+    const head = sab.page(0, 5000).queue;
+    expect([head.noofslots, head.noofslots_total]).toEqual([300, 300]);
+    expect(sabPageAgrees(snapshot, head, 0)).toBe(false);
+    // Progress alone leaves it as it was.
+    Object.assign(sab.jobs[0], { size: 2, mib: 1 });
+    sab.jobs.splice(150, 1, { nzo_id: "job150", mib: 2 });
+    expect(sabPageAgrees(snapshot, sab.page(0, 6000).queue, 0)).toBe(true);
+  });
+
+  it("tries a failed read again, no sooner than a changing queue is read", async () => {
+    const { sab, snapshot } = await setup();
+    sab.jobs.push({ nzo_id: "late", mib: 2 });
+    const polled = [sab.page(0, 5000)];
+    // The read that change set off failed at 8 s: three pages wait 6 s from there.
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 8000, polled, 13_999)).toBe(false);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 8000, polled, 14_000)).toBe(true);
+  });
+
+  it("tries a failed first read again, sized by the first page's count", () => {
+    const head = [new FakeSab(jobs(300)).page(0, 1000)];
+    expect(sabSnapshotNeedsRead(undefined, 0, 0, head, 60_000)).toBe(false);
+    expect(sabSnapshotNeedsRead(undefined, 0, 2000, head, 7999)).toBe(false);
+    expect(sabSnapshotNeedsRead(undefined, 0, 2000, head, 8000)).toBe(true);
   });
 
   it("shows a one-page queue straight from its polled first page", async () => {
@@ -343,6 +452,109 @@ describe("Newest First", () => {
   it("falls back to queue order without add times (SAB before 5.0)", () => {
     const sorted = [item(0), item(1), item(2, 0)].sort(compareAddedDesc);
     expect(sorted.map((i) => i.index)).toEqual([2, 1, 0]);
+  });
+});
+
+describe("the list and a job's detail, mounted together", () => {
+  let now = 1_000_000;
+  // Unmounted after each test, passed or not, so no poll outlives it.
+  let unmounts: (() => void)[] = [];
+  beforeAll(() => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  });
+  beforeEach(() => {
+    now = 1_000_000;
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+  });
+  afterEach(() => {
+    unmounts.forEach((unmount) => unmount());
+    unmounts = [];
+    jest.restoreAllMocks();
+  });
+
+  // One screen per list of pages on screen, each with its own useSabQueueSnapshot.
+  function mount(...livePages: number[][]) {
+    const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } });
+    const views: SabQueueSnapshotView[] = [];
+    function Screen({ i, pages }: { i: number; pages: number[] }) {
+      views[i] = useSabQueueSnapshot(undefined, { livePages: pages });
+      return null;
+    }
+    let root: ReturnType<typeof create>;
+    act(() => {
+      root = create(
+        createElement(
+          QueryClientProvider,
+          { client },
+          ...livePages.map((pages, i) => createElement(Screen, { key: i, i, pages })),
+        ),
+      );
+    });
+    unmounts.push(() => {
+      act(() => root.unmount());
+      client.clear();
+    });
+    return {
+      views,
+      // A poll of one page, `ms` after the last thing that happened.
+      poll: async (page: number, ms: number) => {
+        now += ms;
+        await act(() =>
+          client.refetchQueries({ queryKey: sabQueuePageKey("sab", undefined, page) }),
+        );
+      },
+    };
+  }
+
+  const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  async function until(check: () => boolean) {
+    for (let i = 0; i < 100 && !check(); i++) await settle();
+    expect(check()).toBe(true);
+  }
+
+  it("read again after a failed refresh, and say it failed meanwhile", async () => {
+    const sab = (mockSab.current = new FakeSab(jobs(300)));
+    const { views, poll } = mount([]);
+    await until(() => views[0].complete && views[0].queue?.slots.length === 300);
+
+    // The reviewer's case: a job arrives, and reads past the first page fail.
+    sab.jobs.push({ nzo_id: "late", mib: 2 });
+    sab.failing = (query) => (query.start ?? 0) > 0;
+    await poll(0, 7000);
+    await until(() => !!views[0].readError && !views[0].reading);
+    expect(views[0].complete).toBe(true);
+    expect(views[0].queue!.slots).toHaveLength(300);
+
+    // Not again straight away: the poll is the only request.
+    const calls = sab.calls.length;
+    await poll(0, 5000);
+    await settle();
+    expect(sab.calls).toHaveLength(calls + 1);
+
+    // Then on its own, with no pull to refresh.
+    sab.failing = undefined;
+    await poll(0, 5000);
+    await until(() => views[0].queue?.slots.length === 301);
+    expect(views[0].readError).toBeNull();
+  });
+
+  it("show the same ETAs, whichever pages each polls", async () => {
+    // The reviewer's case: the list has page 3 on screen, the detail is for
+    // job450 on page 4, and job350, ahead of it, makes progress that only the
+    // list's poll sees. 500 jobs of 2 MiB at 1 MiB/s.
+    const sab = (mockSab.current = new FakeSab(jobs(500)));
+    const { views, poll } = mount([3], [4]);
+    await until(() => views.length === 2 && views.every((v) => v.complete));
+    const eta = (v: SabQueueSnapshotView) =>
+      v.queue!.slots.find((s) => s.nzo_id === "job450")!.timeleft;
+    expect(views.map(eta)).toEqual(["0:15:02", "0:15:02"]);
+
+    Object.assign(sab.jobs[350], { size: 2, mib: 1 });
+    await poll(3, 5000);
+    await until(() => eta(views[0]) === "0:15:01");
+    await settle();
+    expect(views.map(eta)).toEqual(["0:15:01", "0:15:01"]);
+    expect(sab.answer({}).slots[450].timeleft).toBe("0:15:01");
   });
 });
 

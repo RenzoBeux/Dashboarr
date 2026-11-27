@@ -6,7 +6,7 @@ import { QueryClient } from "@tanstack/react-query";
 // Status is duck-typed (HttpError carries a numeric `status`) rather than
 // imported, to avoid a require cycle: http-client imports the config store,
 // which imports this module.
-function retryQuery(failureCount: number, error: unknown): boolean {
+export function retryQuery(failureCount: number, error: unknown): boolean {
   const status = (error as { status?: unknown } | null)?.status;
   if (status === 401 || status === 403) return false;
   // A reachability guard refused to contact the host (UrlBlockedError in
