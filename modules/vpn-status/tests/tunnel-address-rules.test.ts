@@ -14,8 +14,12 @@ const hasSwiftc = spawnSync("swiftc", ["--version"]).status === 0;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vpn-tunnel-rules-"));
     try {
       const bin = path.join(dir, "rules-test");
+      // Keep the module cache in the temp dir: the default one under the home
+      // directory is not writable in every sandbox.
       execFileSync("swiftc", [
         "-parse-as-library",
+        "-module-cache-path",
+        path.join(dir, "module-cache"),
         "-o",
         bin,
         path.join(__dirname, "../ios/TunnelAddressRules.swift"),
