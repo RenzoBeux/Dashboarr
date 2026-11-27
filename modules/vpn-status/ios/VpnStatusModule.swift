@@ -14,9 +14,10 @@ public class VpnStatusModule: Module {
     //    confirms not all VPNs set that property, and WireGuard/Tailscale
     //    tunnels are the reported false negatives (#340).
     // 2. A running tunnel interface (utun/tun/tap/ppp) holding an address a VPN
-    //    assigns (see `classify`). Catches every NEPacketTunnelProvider VPN,
-    //    including split tunnels whose routes never touch the default path,
-    //    the "WireGuard to my homelab LAN only" setup from #340.
+    //    assigns (see `TunnelInterface.counts`). Catches every
+    //    NEPacketTunnelProvider VPN, including split tunnels whose routes never
+    //    touch the default path, the "WireGuard to my homelab LAN only" setup
+    //    from #340.
     Function("isVpnActive") { () -> Bool in
       !Self.scopedProxyTunnels().isEmpty || Self.tunnelInterfaces().contains { $0.counts }
     }
@@ -58,54 +59,16 @@ public class VpnStatusModule: Module {
     }.sorted()
   }
 
-  private struct AddressKind {
-    let label: String
-    let counts: Bool
-  }
-
-  private struct TunnelInterface {
-    let name: String
-    var running = false
-    var kinds: [String] = []
-    var anyCounts = false
-    var counts: Bool { running && anyCounts }
-  }
-
-  // Which tunnel addresses mean "a VPN is up". nil = link-local IPv6, which
-  // every idle system utun carries, so it is not even worth listing.
-  //
-  // Counted: IPv4 except link-local, global IPv6, and ULA. ULA must count:
-  // Tailscale's IPv6 range is fd7a:115c:a1e0::/48 (labelled separately), and
-  // WireGuard supports IPv6-only tunnels in fd00::/8, which "Remote URL needs
-  // a VPN" (#394) services can sit behind.
-  //
-  // #489 had utun0 and utun4 counting on an iPhone with no VPN connected,
-  // even after Tailscale was uninstalled. What they hold is not known yet, so
-  // rather than guess, the diagnostics list every tunnel's address kinds;
-  // narrow this rule from what they show.
-  private static func classify(_ sa: UnsafePointer<sockaddr>) -> AddressKind? {
+  // One address's kind (see TunnelAddressRules.swift), nil when not worth
+  // listing.
+  private static func classify(_ sa: UnsafePointer<sockaddr>) -> TunnelAddressKind? {
     switch Int32(sa.pointee.sa_family) {
     case AF_INET:
       let sin = UnsafeRawPointer(sa).assumingMemoryBound(to: sockaddr_in.self).pointee
-      let addr = UInt32(bigEndian: sin.sin_addr.s_addr)
-      let b0 = UInt8(addr >> 24)
-      let b1 = UInt8((addr >> 16) & 0xff)
-      if b0 == 169 && b1 == 254 { return AddressKind(label: "IPv4 link-local", counts: false) }
-      if b0 == 100 && (b1 & 0xc0) == 64 { return AddressKind(label: "IPv4 CGNAT", counts: true) }
-      if b0 == 10 || (b0 == 172 && (b1 & 0xf0) == 16) || (b0 == 192 && b1 == 168) {
-        return AddressKind(label: "IPv4 private", counts: true)
-      }
-      return AddressKind(label: "IPv4", counts: true)
+      return TunnelAddressRules.classifyIPv4(UInt32(bigEndian: sin.sin_addr.s_addr))
     case AF_INET6:
       let sin6 = UnsafeRawPointer(sa).assumingMemoryBound(to: sockaddr_in6.self).pointee
-      let b = sin6.sin6_addr.__u6_addr.__u6_addr8
-      if b.0 == 0xfe && (b.1 & 0xc0) == 0x80 { return nil }
-      if b.0 == 0xfd && b.1 == 0x7a && b.2 == 0x11 && b.3 == 0x5c && b.4 == 0xa1 && b.5 == 0xe0 {
-        return AddressKind(label: "IPv6 Tailscale", counts: true)
-      }
-      if (b.0 & 0xfe) == 0xfc { return AddressKind(label: "IPv6 ULA", counts: true) }
-      if (b.0 & 0xe0) == 0x20 { return AddressKind(label: "IPv6 global", counts: true) }
-      return AddressKind(label: "IPv6 other", counts: false)
+      return TunnelAddressRules.classifyIPv6(withUnsafeBytes(of: sin6.sin6_addr) { Array($0) })
     default:
       return nil
     }
@@ -133,8 +96,7 @@ public class VpnStatusModule: Module {
       guard let kind = classify(UnsafePointer(sa)) else { continue }
       var tunnel = found[name] ?? TunnelInterface(name: name)
       tunnel.running = flags & UInt32(IFF_RUNNING) != 0
-      if !tunnel.kinds.contains(kind.label) { tunnel.kinds.append(kind.label) }
-      tunnel.anyCounts = tunnel.anyCounts || kind.counts
+      tunnel.add(kind)
       found[name] = tunnel
     }
     return found.values.sorted { $0.name < $1.name }
