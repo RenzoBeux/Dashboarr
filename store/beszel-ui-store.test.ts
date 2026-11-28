@@ -43,6 +43,12 @@ describe("useBeszelUiStore", () => {
     expect(useBeszelUiStore.getState().range).toBe("1w");
   });
 
+  it("restores Live", () => {
+    setJSON(STORAGE_KEY, "live");
+    useBeszelUiStore.getState().hydrate();
+    expect(useBeszelUiStore.getState().range).toBe("live");
+  });
+
   it("ignores a stored value that is no longer a valid range", () => {
     setJSON(STORAGE_KEY, "6h");
     useBeszelUiStore.getState().hydrate();

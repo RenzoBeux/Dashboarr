@@ -40,3 +40,27 @@ export const BESZEL_RANGE_ORDER: BeszelRange[] = ["1h", "12h", "24h", "1w", "30d
 export function beszelSinceFilter(r: BeszelRange, now: number): string {
   return new Date(now - BESZEL_RANGES[r].ms).toISOString().slice(0, 19).replace("T", " ");
 }
+
+/**
+ * Everything the range chips offer: the stored-rollup ranges plus "live", the
+ * hub's 1-second realtime stream (lib/beszel-realtime.ts), which has no rollup.
+ */
+export type BeszelChartRange = "live" | BeszelRange;
+
+export const BESZEL_CHART_RANGE_ORDER: BeszelChartRange[] = ["live", ...BESZEL_RANGE_ORDER];
+
+export function chartRangeLabel(r: BeszelChartRange): string {
+  return r === "live" ? "Live" : BESZEL_RANGES[r].label;
+}
+
+export type TickFormat = "seconds" | "time" | "day";
+
+export function tickFormatFor(r: BeszelChartRange): TickFormat {
+  if (r === "live") return "seconds";
+  return BESZEL_RANGES[r].longFormat ? "day" : "time";
+}
+
+/** A remembered Live choice shows 1h while Live is unavailable, without overwriting it. */
+export function effectiveRange(stored: BeszelChartRange, liveOk: boolean): BeszelChartRange {
+  return stored === "live" && !liveOk ? "1h" : stored;
+}
