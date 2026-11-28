@@ -96,10 +96,11 @@ function useCachedPageReads(id: string | null, status: string[] | undefined): Sa
 /**
  * SABnzbd's queue for the Downloads list and the job detail (#514). The first
  * page and the pages on screen poll every 5 s, SAB_QUEUE_PAGE_SIZE jobs each.
- * The whole queue is read once (readSabQueueSnapshot), then again only when a
- * polled page shows it changed or the last read failed (sabSnapshotNeedsRead),
- * and after any SAB mutation, which invalidates the instance's queries. Sorts
- * and filters see every job, and the list and the detail show the same numbers.
+ * The whole queue is read once (readSabQueueSnapshot), then again soon when a
+ * polled page shows it changed or the last read failed, and otherwise at a
+ * max age (sabSnapshotNeedsRead), and after any SAB mutation, which
+ * invalidates the instance's queries. Sorts and filters see every job, and the
+ * list and the detail show the same numbers.
  */
 export function useSabQueueSnapshot(
   instanceId: string | undefined,
@@ -140,8 +141,7 @@ export function useSabQueueSnapshot(
       ),
     // Not needed while the first page holds the whole queue.
     enabled: active && !!head.data && !headIsWhole,
-    // Re-read on a detected change or a failure (below) or an invalidation,
-    // never by age.
+    // Re-read by sabSnapshotNeedsRead (below) or an invalidation.
     staleTime: Infinity,
     retry: retrySnapshot,
   });

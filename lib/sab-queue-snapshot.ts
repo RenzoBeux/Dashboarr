@@ -172,17 +172,25 @@ export interface SabPageRead {
 }
 
 // A re-read of a queue of P pages waits at least P times this long after the
-// previous read: a busy 2,300-job queue is read whole at most every 46 s,
+// previous attempt: a busy 2,300-job queue is read whole at most every 46 s,
 // against every 5 s before #514, and a one-page queue at every poll.
 export const SAB_SNAPSHOT_GAP_PER_PAGE_MS = 2000;
 
+// Some changes show in no poll: a paused job replaced by another paused job
+// off screen leaves the counts, the size (which leaves paused jobs out) and
+// the polled pages as they were, and SAB's queue has no version or change
+// counter. So the whole queue is also read once it is P times this old: every
+// 30 s for 300 jobs, every 3 min 50 s for 2,300: about 10 jobs a second.
+export const SAB_SNAPSHOT_MAX_AGE_PER_PAGE_MS = 10_000;
+
 /**
- * Whether to read the whole queue (again): a page polled since the last good
- * read disagrees with it (sabPageAgrees), or there was none and the first
- * attempt failed; and the last attempt, good or failed (`failedAt`, 0 for
- * none), is old enough for the queue's size. A queue that doesn't change is
- * never read again, and a failing read is tried again no more often than a
- * changing queue is read.
+ * Whether to read the whole queue (again), and when, after the last attempt,
+ * good or failed (`failedAt`, 0 for none):
+ * - the last attempt failed (a refresh, or the first read): after the gap, so
+ *   a failing read is tried again no more often than a changing queue is read;
+ * - a page polled since the last good read disagrees with it (sabPageAgrees):
+ *   after the gap;
+ * - otherwise, once it reaches the max age, for the changes no poll shows.
  */
 export function sabSnapshotNeedsRead(
   snapshot: SabQueueSnapshot | undefined,
@@ -191,14 +199,17 @@ export function sabSnapshotNeedsRead(
   pages: readonly SabPageRead[],
   now: number,
 ): boolean {
-  const outdated = snapshot
-    ? pages.some((p) => p.readAt > readAt && !sabPageAgrees(snapshot, p.queue, p.page))
-    : failedAt > 0;
+  const failed = failedAt > readAt;
+  if (!snapshot && !failed) return false;
+  const changed =
+    !!snapshot && pages.some((p) => p.readAt > readAt && !sabPageAgrees(snapshot, p.queue, p.page));
   const jobs = snapshot
     ? snapshot.slots.length
     : Number(pages.find((p) => p.page === 0)?.queue.noofslots) || 0;
   const pageCount = Math.max(1, Math.ceil(jobs / SAB_QUEUE_PAGE_SIZE));
-  return outdated && now - Math.max(readAt, failedAt) >= pageCount * SAB_SNAPSHOT_GAP_PER_PAGE_MS;
+  const wait =
+    failed || changed ? SAB_SNAPSHOT_GAP_PER_PAGE_MS : SAB_SNAPSHOT_MAX_AGE_PER_PAGE_MS;
+  return now - Math.max(readAt, failedAt) >= pageCount * wait;
 }
 
 /**

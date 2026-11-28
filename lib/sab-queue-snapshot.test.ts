@@ -10,6 +10,7 @@ import {
   sabPageAgrees,
   sabQueuePageKey,
   sabQueuePageRequest,
+  sabQueueSignature,
   sabQueueSnapshotKey,
   sabSnapshotNeedsRead,
   type SabPageRead,
@@ -181,6 +182,9 @@ class FakeSab {
 const jobs = (n: number, extra: (k: number) => Partial<FakeJob> = () => ({})): FakeJob[] =>
   Array.from({ length: n }, (_, k) => ({ nzo_id: `job${k}`, mib: 2, ...extra(k) }));
 const ids = (slots: SabQueueSlot[]) => slots.map((s) => s.nzo_id);
+// 300 jobs added one after another, the last of them paused.
+const paused299 = () =>
+  jobs(300, (k) => ({ time_added: 1000 + k, ...(k === 299 ? { status: "Paused" as const } : {}) }));
 
 describe("reading the whole queue", () => {
   it("reads 2,300 jobs in requests of 100, every job once and in order", async () => {
@@ -314,12 +318,14 @@ describe("keeping it current", () => {
     return { sab, snapshot };
   }
 
-  it("never reads a queue that didn't change again, whatever its values do", async () => {
+  it("reads a queue that didn't change again only at its max age, whatever its values do", async () => {
     const { sab, snapshot } = await setup();
     Object.assign(sab.jobs[0], { size: 2, mib: 1 });
     const head = sab.page(0, 5000);
     expect(sabPageAgrees(snapshot, head.queue, 0)).toBe(true);
-    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, [head], 3_600_000)).toBe(false);
+    // Three pages: 30 s after the last read.
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, [head], 30_999)).toBe(false);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, [head], 31_000)).toBe(true);
     // The rows take the newer values.
     expect(mergeSabQueue(snapshot, 1000, [head], false)!.queue.slots[0].mbleft).toBe("1.00");
   });
@@ -370,6 +376,29 @@ describe("keeping it current", () => {
     // The read that change set off failed at 8 s: three pages wait 6 s from there.
     expect(sabSnapshotNeedsRead(snapshot, 1000, 8000, polled, 13_999)).toBe(false);
     expect(sabSnapshotNeedsRead(snapshot, 1000, 8000, polled, 14_000)).toBe(true);
+  });
+
+  it("finds a change no poll shows by its max age", async () => {
+    // The reviewer's case: a paused job at the tail is replaced by a newer
+    // paused job of another size. Paused jobs count toward neither
+    // noofslots_total nor mb, and the first page stays as it was.
+    const sab = new FakeSab(paused299());
+    const snapshot = await readSabQueueSnapshot(sab.read, undefined);
+    sab.jobs.splice(299, 1, { nzo_id: "newer", mib: 5, status: "Paused", time_added: 5000 });
+    const head = sab.page(0, 5000);
+    expect(sabQueueSignature(head.queue)).toBe(snapshot.signature);
+    expect(sabPageAgrees(snapshot, head.queue, 0)).toBe(true);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, [head], 30_999)).toBe(false);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 0, [head], 31_000)).toBe(true);
+  });
+
+  it("tries a failed refresh again when no poll shows a change", async () => {
+    // The reviewer's case: a pull to refresh fails past the first page at
+    // 8 s, and the queue stays as it was.
+    const { sab, snapshot } = await setup();
+    const head = [sab.page(0, 9000)];
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 8000, head, 13_999)).toBe(false);
+    expect(sabSnapshotNeedsRead(snapshot, 1000, 8000, head, 14_000)).toBe(true);
   });
 
   it("tries a failed first read again, sized by the first page's count", () => {
@@ -525,17 +554,54 @@ describe("the list and a job's detail, mounted together", () => {
     expect(views[0].complete).toBe(true);
     expect(views[0].queue!.slots).toHaveLength(300);
 
-    // Not again straight away: the poll is the only request.
-    const calls = sab.calls.length;
+    // Not again straight away: only the first page is read.
+    const wholeReads = () => sab.calls.filter((c) => (c.start ?? 0) > 0).length;
+    const before = wholeReads();
     await poll(0, 5000);
     await settle();
-    expect(sab.calls).toHaveLength(calls + 1);
+    expect(wholeReads()).toBe(before);
 
     // Then on its own, with no pull to refresh.
     sab.failing = undefined;
     await poll(0, 5000);
     await until(() => views[0].queue?.slots.length === 301);
     expect(views[0].readError).toBeNull();
+  });
+
+  it("clear a failed refresh on their own once reads work again", async () => {
+    const sab = (mockSab.current = new FakeSab(jobs(300)));
+    const { views, poll } = mount([]);
+    await until(() => views[0].complete && views[0].queue?.slots.length === 300);
+
+    // The reviewer's case: a pull to refresh while reads past the first page
+    // fail, then they work again, and the queue never changes.
+    sab.failing = (query) => (query.start ?? 0) > 0;
+    now += 1000;
+    await act(async () => {
+      await views[0].refetch();
+    });
+    await until(() => !!views[0].readError && !views[0].reading);
+    sab.failing = undefined;
+    await poll(0, 7000);
+    await until(() => !views[0].reading && views[0].readError === null);
+  });
+
+  it("find a change no poll shows by the queue's max age", async () => {
+    // The reviewer's case: the paused job at the tail is replaced by a newer
+    // paused job of another size, off screen.
+    const sab = (mockSab.current = new FakeSab(paused299()));
+    const { views, poll } = mount([]);
+    await until(() => views[0].complete);
+    sab.jobs.splice(299, 1, { nzo_id: "newer", mib: 5, status: "Paused", time_added: 5000 });
+    const shown = (id: string) => views[0].queue!.slots.some((s) => s.nzo_id === id);
+
+    await poll(0, 29_000);
+    await settle();
+    expect(shown("newer")).toBe(false);
+    // Three pages: read again 30 s after the last read.
+    await poll(0, 1000);
+    await until(() => shown("newer"));
+    expect(shown("job299")).toBe(false);
   });
 
   it("show the same ETAs, whichever pages each polls", async () => {
