@@ -57,19 +57,25 @@ class FakeXhr {
 type Call = { url: string; init: RequestInit };
 let calls: Call[];
 let subscribeStatus: number;
+let subscribeMessage: string;
+let authGate: Promise<void> | null;
 
 function mockFetch() {
   calls = [];
   global.fetch = jest.fn((url: string, init: RequestInit = {}) => {
     calls.push({ url, init });
     if (url.includes("auth-with-password")) {
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({ token: "tok-user" }) } as Response);
+      const ok = { ok: true, status: 200, json: async () => ({ token: "tok-user" }) } as Response;
+      const rejected = { ok: false, status: 400, json: async () => ({ message: "Failed to authenticate." }) } as Response;
+      if (authGate) return authGate.then(() => rejected);
+      return Promise.resolve(ok);
     }
+    const body = JSON.stringify({ code: subscribeStatus, message: subscribeMessage, data: {} });
     return Promise.resolve({
       ok: subscribeStatus < 300,
       status: subscribeStatus,
-      json: async () => ({}),
-      text: async () => "",
+      json: async () => JSON.parse(body),
+      text: async () => body,
     } as Response);
   }) as unknown as typeof fetch;
 }
@@ -95,6 +101,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   FakeXhr.instances = [];
   subscribeStatus = 204;
+  subscribeMessage = "";
+  authGate = null;
   setStore();
   mockFetch();
 });
@@ -171,6 +179,60 @@ describe("openBeszelRealtime", () => {
     expect(xhr.aborted).toBe(true);
     expect(FakeXhr.instances).toHaveLength(2);
     expect(statuses).toEqual(["connecting", "live"]);
+  });
+
+  it("treats a silent stream as dropped after 15s", async () => {
+    const { statuses } = open();
+    FakeXhr.instances[0].emit('id: cid-1\nevent: PB_CONNECT\ndata: {}\n\n');
+    await flush();
+    jest.advanceTimersByTime(14_000);
+    expect(statuses).toEqual(["connecting", "live"]);
+    jest.advanceTimersByTime(2_000);
+    expect(statuses).toEqual(["connecting", "live", "reconnecting"]);
+    expect(FakeXhr.instances[0].aborted).toBe(true);
+  });
+
+  it("keeps a stream that keeps delivering", async () => {
+    const { statuses } = open();
+    const xhr = FakeXhr.instances[0];
+    xhr.emit('id: cid-1\nevent: PB_CONNECT\ndata: {}\n\n');
+    await flush();
+    for (let i = 0; i < 6; i++) {
+      jest.advanceTimersByTime(5_000);
+      xhr.emit(`event: ${TOPIC}\ndata: {"stats":{}}\n\n`);
+    }
+    expect(statuses).toEqual(["connecting", "live"]);
+    expect(FakeXhr.instances).toHaveLength(1);
+  });
+
+  it("retries, not forbids, when the hub lost the realtime client id", async () => {
+    subscribeStatus = 404;
+    subscribeMessage = "Missing or invalid client id.";
+    const { statuses } = open();
+    FakeXhr.instances[0].emit('id: cid-1\nevent: PB_CONNECT\ndata: {}\n\n');
+    await flush();
+    expect(statuses).toEqual(["connecting", "reconnecting"]);
+  });
+
+  it("reports forbidden when the users login is rejected", async () => {
+    let release!: () => void;
+    authGate = new Promise((r) => (release = r));
+    const { statuses } = open();
+    FakeXhr.instances[0].emit('id: cid-1\nevent: PB_CONNECT\ndata: {}\n\n');
+    release();
+    await flush();
+    expect(statuses).toEqual(["connecting", "forbidden"]);
+  });
+
+  it("stays quiet when a login rejection lands after close()", async () => {
+    let release!: () => void;
+    authGate = new Promise((r) => (release = r));
+    const { statuses, close } = open();
+    FakeXhr.instances[0].emit('id: cid-1\nevent: PB_CONNECT\ndata: {}\n\n');
+    close();
+    release();
+    await flush();
+    expect(statuses).toEqual(["connecting"]);
   });
 
   it("close() aborts the stream and cancels a pending reconnect", () => {

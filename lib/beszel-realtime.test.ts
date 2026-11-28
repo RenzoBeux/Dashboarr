@@ -1,4 +1,5 @@
 import {
+  appStateKeepsLive,
   appendWindow,
   beszelRealtimeTopic,
   liveSupported,
@@ -67,5 +68,13 @@ describe("liveSupported", () => {
     expect(liveSupported({ status: "up", agentVersion: "0.12.9" })).toBe(false);
     expect(liveSupported({ status: "up", agentVersion: "" })).toBe(false);
     expect(liveSupported({ status: "down", agentVersion: "0.21.2" })).toBe(false);
+  });
+});
+
+describe("appStateKeepsLive", () => {
+  it("keeps streaming through iOS's transient inactive state, stops in the background", () => {
+    expect(appStateKeepsLive("active")).toBe(true);
+    expect(appStateKeepsLive("inactive")).toBe(true);
+    expect(appStateKeepsLive("background")).toBe(false);
   });
 });

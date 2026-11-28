@@ -62,3 +62,13 @@ export function liveSupported(system: { status: string; agentVersion: string }):
   const [major, minor] = [Number(m[1]), Number(m[2])];
   return major > 0 || minor >= 13;
 }
+
+/**
+ * Whether the Live stream stays open in this AppState. iOS reports
+ * "inactive" for Control Center, the notification shade, the app switcher and
+ * Face ID prompts; closing on those would wipe the window and re-authenticate
+ * for a glance. Only a real background closes it.
+ */
+export function appStateKeepsLive(state: string): boolean {
+  return state !== "background";
+}

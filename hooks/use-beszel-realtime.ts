@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { useInstanceTarget } from "@/hooks/use-instance-target";
-import { appendWindow, normalizeRealtimeMessage } from "@/lib/beszel-realtime";
+import { appStateKeepsLive, appendWindow, normalizeRealtimeMessage } from "@/lib/beszel-realtime";
 import type { BeszelContainerStatsPoint, BeszelStatsPoint } from "@/lib/types";
 import { openBeszelRealtime, type RealtimeStatus } from "@/services/beszel-realtime";
 
@@ -14,9 +14,9 @@ interface LiveBuffers {
 const EMPTY: LiveBuffers = { stats: [], containers: [] };
 
 function useAppActive(): boolean {
-  const [active, setActive] = useState(AppState.currentState === "active");
+  const [active, setActive] = useState(appStateKeepsLive(AppState.currentState));
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (s) => setActive(s === "active"));
+    const sub = AppState.addEventListener("change", (s) => setActive(appStateKeepsLive(s)));
     return () => sub.remove();
   }, []);
   return active;

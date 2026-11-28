@@ -22,6 +22,11 @@ const DEMO_INTERVAL_MS = 1000;
 // RN's XHR keeps the whole stream in responseText; at ~1 message a second a
 // long Live session would grow without bound, so start a fresh stream past this.
 const RECYCLE_AFTER_CHARS = 2 * 1024 * 1024;
+// The hub pushes a frame every second. A half-open socket (Wi-Fi roam, VPN
+// reconnect, expired NAT entry) fires neither load nor error, and RN's
+// default read timeout is infinite, so silence this long counts as a drop.
+const STALL_MS = 15_000;
+const WATCHDOG_TICK_MS = 1_000;
 
 /**
  * Subscribes to the hub's 1-second `rt_metrics` stream for one system, the
@@ -54,9 +59,14 @@ export function openBeszelRealtime(opts: OpenOptions): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
   let stopped = false;
+  let lastByteAt = 0;
+  const watchdog = setInterval(() => {
+    if (current && Date.now() - lastByteAt > STALL_MS) drop(current);
+  }, WATCHDOG_TICK_MS);
 
   function stop() {
     stopped = true;
+    clearInterval(watchdog);
     if (timer) clearTimeout(timer);
     timer = null;
     current?.abort();
@@ -91,7 +101,13 @@ export function openBeszelRealtime(opts: OpenOptions): () => void {
         body: JSON.stringify({ clientId, subscriptions: [topic] }),
       });
       if (stopped || xhr !== current) return;
-      // The hub answers 404 when the account isn't a user of this system.
+      // PocketBase also 404s "Missing or invalid client id." when the stream
+      // it belongs to closed between PB_CONNECT and this POST: retry that.
+      if (res.status === 404 && /client id/i.test(await res.text().catch(() => ""))) {
+        if (stopped || xhr !== current) return;
+        return drop(xhr);
+      }
+      // Otherwise the hub answers 404 when the account isn't a user of this system.
       if (res.status === 401 || res.status === 403 || res.status === 404) {
         stop();
         onStatus("forbidden");
@@ -100,6 +116,7 @@ export function openBeszelRealtime(opts: OpenOptions): () => void {
       if (!res.ok) return drop(xhr);
       onStatus("live");
     } catch (err) {
+      if (stopped || xhr !== current) return; // closed or superseded while awaiting
       if (err instanceof BeszelAuthError) {
         stop();
         onStatus("forbidden");
@@ -120,6 +137,7 @@ export function openBeszelRealtime(opts: OpenOptions): () => void {
     }
     const xhr = makeXhr();
     current = xhr;
+    lastByteAt = Date.now();
     let seen = 0;
     const parser = createSseParser((e: SseEvent) => {
       if (xhr !== current) return;
@@ -148,6 +166,7 @@ export function openBeszelRealtime(opts: OpenOptions): () => void {
     xhr.setRequestHeader("Accept", "text/event-stream");
     xhr.setRequestHeader("Cache-Control", "no-cache");
     xhr.onprogress = () => {
+      if (xhr === current) lastByteAt = Date.now();
       const text = xhr.responseText;
       if (text.length > seen) {
         parser.push(text.slice(seen));
