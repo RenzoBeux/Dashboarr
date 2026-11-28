@@ -41,6 +41,12 @@ export interface UnifiedItem {
   // queue index; for history items it's the negative array index so newest
   // history sorts highest.
   index: number;
+  // When the job was added, epoch seconds, if the service says (SAB 5.0+).
+  // Newest First uses it over `index`: queue order isn't add order.
+  addedAt?: number;
+  // The polled page of the queue the row sits in, for adapters that poll the
+  // queue by page (see UsenetQueueView).
+  page?: number;
 }
 
 export interface UsenetQueueState {
@@ -50,6 +56,83 @@ export interface UsenetQueueState {
   // cheaply; otherwise omit and the shared header just shows nothing.
   speedLabel?: string;
   sizeLeftLabel?: string;
+}
+
+// What the Downloads list needs from the queue. Adapters that read the whole
+// queue in one request (NZBGet's listgroups) ignore it.
+export interface UsenetQueueView {
+  // Only the header (speed, size left), for the History filters.
+  headerOnly?: boolean;
+  // Narrow to this status on the server when the service can.
+  status?: UsenetStatus;
+  // Pages with rows on screen (see pickLivePages). They poll along with the
+  // first page.
+  livePages: readonly number[];
+}
+
+// The queue as the Downloads list reads it: one or more requests behind it.
+export interface UsenetQueueList {
+  data?: UsenetQueueState;
+  // The first read failed. The list shows it only when it has no rows.
+  error: Error | null;
+  // Nothing to show yet.
+  isLoading: boolean;
+  // The rows don't cover the whole queue yet: the rest is on its way, or its
+  // read failed (readError). Sorts and filters see only what's there.
+  partial: boolean;
+  // Reading the whole queue failed: the rest of it (partial), or a refresh of
+  // rows that may now be out of date. It is tried again on its own.
+  readError: Error | null;
+  // A read of the whole queue is running.
+  reading: boolean;
+  retryRead: () => void;
+  refetch: () => Promise<unknown>;
+}
+
+// A single-request queue as a UsenetQueueList.
+export function wholeQueueList(query: UseQueryResult<UsenetQueueState>): UsenetQueueList {
+  return {
+    data: query.data,
+    error: query.error,
+    isLoading: query.isLoading,
+    partial: false,
+    readError: null,
+    reading: false,
+    retryRead: () => {},
+    refetch: query.refetch,
+  };
+}
+
+// Pages that keep polling besides the first. Bounds a poll to three requests
+// of a page each, however the rows on screen are sorted.
+export const MAX_LIVE_PAGES = 2;
+
+/**
+ * The pages to keep live, from the pages of the rows on screen: the ones with
+ * the most rows there, the first page aside (it always polls).
+ */
+export function pickLivePages(
+  visiblePages: readonly number[],
+  max = MAX_LIVE_PAGES,
+): number[] {
+  const counts = new Map<number, number>();
+  for (const page of visiblePages) {
+    if (page > 0) counts.set(page, (counts.get(page) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .slice(0, max)
+    .map(([page]) => page)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Newest First. Queue order isn't add order (SAB slots a new job by priority,
+ * so a Force job lands on top of older ones), so the add time decides where
+ * the service gives one; otherwise the higher index (later in the queue) wins.
+ */
+export function compareAddedDesc(a: UnifiedItem, b: UnifiedItem): number {
+  return a.addedAt && b.addedAt ? b.addedAt - a.addedAt : b.index - a.index;
 }
 
 export interface UsenetHistoryState {
@@ -66,7 +149,7 @@ export interface UsenetAdapter {
   // notification deep-links). Receives the slot id and the originating instance.
   detailRoute: (id: string, instanceId?: string) => string;
 
-  useQueue: (instanceId?: string) => UseQueryResult<UsenetQueueState>;
+  useQueue: (instanceId?: string, view?: UsenetQueueView) => UsenetQueueList;
   useHistory: (limit: number, instanceId?: string) => UseQueryResult<UsenetHistoryState>;
 
   // Per-instance query options (for `useQueries` fan-outs in dashboard widgets

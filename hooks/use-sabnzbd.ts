@@ -1,5 +1,5 @@
 import {
-  getSabQueue,
+  getSabQueueSummary,
   getSabHistory,
   pauseSabAll,
   resumeSabAll,
@@ -18,11 +18,13 @@ import { useServiceQuery, useServiceMutation } from "@/hooks/use-service-query";
 // when passed (by aggregated dashboard cards or per-instance watchers), queries
 // fan out to that specific instance with its own cache slot.
 
-export function useSabQueue(instanceId?: string) {
+// Header fields only (speed, size left, pause state, speed limit): one job
+// instead of the whole queue, which can be over a megabyte (#514).
+export function useSabQueueSummary(instanceId?: string) {
   return useServiceQuery(
     "sabnzbd",
-    ["queue"],
-    getSabQueue,
+    ["queue", "summary"],
+    getSabQueueSummary,
     POLLING_INTERVALS.activeTorrents,
     instanceId,
   );

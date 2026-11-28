@@ -1,5 +1,6 @@
 import { serviceRequest } from "@/lib/http-client";
 import type { SabHistory, SabQueue } from "@/lib/types";
+import type { SabQueueQuery } from "@/lib/sab-queue-snapshot";
 
 // SABnzbd has a single endpoint at /api?mode=<command>; this module just maps
 // each call we care about to the right `mode` + params. Auth (apikey + output)
@@ -24,12 +25,29 @@ interface SabStatusEnvelope {
 
 // --- Queue ---
 
-export async function getSabQueue(instanceId?: string): Promise<SabQueue> {
+// mode=queue, whole or sliced (see SabQueueQuery). Unsliced, a few thousand
+// jobs come to over a megabyte (#514).
+export async function getSabQueue(
+  instanceId?: string,
+  query: SabQueueQuery = {},
+): Promise<SabQueue> {
+  const params: Record<string, string | number> = { mode: "queue" };
+  if (query.start) params.start = query.start;
+  if (query.limit) params.limit = query.limit;
+  if (query.status?.length) params.status = query.status.join(",");
+  if (query.nzoIds?.length) params.nzo_ids = query.nzoIds.join(",");
   const env = await serviceRequest<SabQueueEnvelope>("sabnzbd", "", {
-    params: { mode: "queue" },
+    params,
     instanceId,
   });
   return env.queue;
+}
+
+// The queue's header fields (speed, size left, pause state, speed limit) with a
+// single job, for callers that never read the job list. SAB computes the header
+// over the whole queue regardless of the window.
+export function getSabQueueSummary(instanceId?: string): Promise<SabQueue> {
+  return getSabQueue(instanceId, { limit: 1 });
 }
 
 export async function getSabHistory(

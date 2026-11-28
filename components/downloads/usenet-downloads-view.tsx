@@ -1,5 +1,15 @@
-import { useState, useCallback, useMemo } from "react";
-import { View, Text, Pressable, BackHandler } from "react-native";
+import { useState, useCallback, useMemo, useRef } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  BackHandler,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  type ViewToken,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as DocumentPicker from "expo-document-picker";
 import { toastError } from "@/components/ui/toast";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -14,6 +24,12 @@ import {
 } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
 import { ServiceHeader } from "@/components/common/service-header";
+import { DemoBanner } from "@/components/common/demo-banner";
+import { useRefreshSpinner } from "@/components/common/pull-to-refresh";
+import {
+  useScreenBottomPadding,
+  useScreenSafeAreaEdges,
+} from "@/components/common/screen-wrapper";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Badge } from "@/components/ui/badge";
@@ -29,10 +45,15 @@ import { errorHaptic, mediumHaptic } from "@/lib/haptics";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useServiceHealth } from "@/hooks/use-service-health";
 import { truncateText } from "@/lib/utils";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeColor } from "@/hooks/use-theme-color";
 import {
+  compareAddedDesc,
+  pickLivePages,
   usenetBadgeVariant,
   type UnifiedItem,
   type UsenetAdapter,
+  type UsenetQueueView,
 } from "@/lib/usenet-adapter";
 
 type FilterType = "all" | "downloading" | "paused" | "queued" | "completed" | "failed";
@@ -67,9 +88,12 @@ function compare(a: UnifiedItem, b: UnifiedItem, sort: SortKey): number {
     case "size-desc":
       return b.bytes - a.bytes;
     case "added-desc":
-      return b.index - a.index;
+      return compareAddedDesc(a, b);
   }
 }
+
+const sameNumbers = (a: readonly number[], b: readonly number[]) =>
+  a.length === b.length && a.every((n, i) => n === b[i]);
 
 interface ViewProps {
   adapter: UsenetAdapter;
@@ -88,9 +112,32 @@ export function UsenetDownloadsView({
   const [showAddModal, setShowAddModal] = useState(false);
   const [nzbUrl, setNzbUrl] = useState("");
   const [bulkDelete, setBulkDelete] = useState<{ count: number } | null>(null);
+  // The queue pages with rows on screen, which poll (#514). Adapters that
+  // read the whole queue at once ignore them.
+  const [livePages, setLivePages] = useState<number[]>([]);
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken<UnifiedItem>[] }) => {
+      const next = pickLivePages(
+        viewableItems.flatMap((v) => (v.item?.page === undefined ? [] : [v.item.page])),
+      );
+      setLivePages((prev) => (sameNumbers(prev, next) ? prev : next));
+    },
+  ).current;
 
-  const { data: queue, error: queueError } = adapter.useQueue();
-  const { data: history, error: historyError } = adapter.useHistory(50);
+  const historyFilter = filter === "completed" || filter === "failed";
+  // The History filters only need the queue's header (speed, size left).
+  const queueView = useMemo<UsenetQueueView>(
+    () =>
+      historyFilter
+        ? { headerOnly: true, livePages: [] }
+        : { status: filter === "all" ? undefined : filter, livePages },
+    [historyFilter, filter, livePages],
+  );
+
+  const queueList = adapter.useQueue(undefined, queueView);
+  const { data: queue, error: queueError } = queueList;
+  const historyQuery = adapter.useHistory(50);
+  const { data: history, error: historyError } = historyQuery;
   const fetchError = queueError ?? historyError;
   const { data: healthData } = useServiceHealth();
 
@@ -106,8 +153,7 @@ export function UsenetDownloadsView({
   const router = useRouter();
 
   const items = useMemo<UnifiedItem[]>(() => {
-    const useHistoryList = filter === "completed" || filter === "failed";
-    if (useHistoryList) {
+    if (historyFilter) {
       const slots = history?.items ?? [];
       return slots.filter((s) =>
         filter === "completed" ? s.status === "completed" : s.status === "failed",
@@ -116,7 +162,7 @@ export function UsenetDownloadsView({
     const slots = queue?.items ?? [];
     if (filter === "all") return slots;
     return slots.filter((s) => s.status === filter);
-  }, [queue, history, filter]);
+  }, [queue, history, filter, historyFilter]);
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => compare(a, b, sort)),
@@ -232,7 +278,35 @@ export function UsenetDownloadsView({
 
   const speedLabel = queue?.speedLabel ?? "0 B/s";
 
-  return (
+  const theme = useAppTheme();
+  const tc = useThemeColor();
+  const safeAreaEdges = useScreenSafeAreaEdges();
+  const listBottomPadding = useScreenBottomPadding();
+  const doRefresh = useCallback(async () => {
+    await Promise.all([queueList.refetch(), historyQuery.refetch()]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueList.refetch, historyQuery.refetch]);
+  const { refreshing, onRefresh } = useRefreshSpinner(doRefresh);
+
+  // A failed read of the whole queue, with a Retry that shows the read
+  // running (it is also retried on its own).
+  function readErrorBlock(title: string, className: string) {
+    return (
+      <View className={`gap-2 ${className}`}>
+        <ErrorBanner error={queueList.readError} title={title} />
+        <Button
+          label="Retry"
+          variant="outline"
+          size="sm"
+          onPress={queueList.retryRead}
+          loading={queueList.reading}
+          className="self-center"
+        />
+      </View>
+    );
+  }
+
+  const header = (
     <>
       {multiSelect.isActive ? (
         <SelectionBar
@@ -351,28 +425,84 @@ export function UsenetDownloadsView({
         </>
       )}
 
-      {/* Slot List */}
-      {sortedItems.length === 0 ? (
-        fetchError ? (
-          <ErrorBanner error={fetchError} title="Failed to load downloads" />
-        ) : (
-          <EmptyState title="Nothing to show" message={`No ${filter} items`} />
-        )
-      ) : (
-        <View className="gap-2">
-          {sortedItems.map((item) => (
-            <SlotListItem
-              key={item.id}
-              item={item}
-              adapter={adapter}
-              selectionMode={multiSelect.isActive}
-              isSelected={multiSelect.isSelected(item)}
-              onPress={() => handleItemPress(item)}
-              onLongPress={() => handleItemLongPress(item)}
-            />
-          ))}
-        </View>
-      )}
+      {/* The whole queue is shown, but its last refresh failed: say so above
+          the rows, which may be out of date, not at the end of a long list. */}
+      {!historyFilter && !queueList.partial && queueList.readError
+        ? readErrorBlock("Couldn't refresh the queue", "mb-4")
+        : null}
+
+    </>
+  );
+
+  // While the rows are only the first page of a large queue: the rest is on
+  // its way, or its read failed and the rows shown stay.
+  const footer =
+    historyFilter || !queueList.partial ? null : queueList.readError ? (
+      readErrorBlock("Couldn't read the whole queue", "py-4")
+    ) : (
+      <View className="py-4 items-center gap-2">
+        <ActivityIndicator color={tc("#3b82f6")} />
+        <Text className="text-zinc-500 text-xs">Loading the rest of the queue</Text>
+      </View>
+    );
+
+  const listLoading = historyFilter ? historyQuery.isLoading : queueList.isLoading;
+
+  return (
+    <SafeAreaView edges={safeAreaEdges} className="flex-1 bg-background">
+      <DemoBanner />
+      {/* Virtualized (#514): a queue of a few thousand jobs rendered as one
+          plain View stalled the whole screen. */}
+      <FlatList
+        data={sortedItems}
+        keyExtractor={(item) => `${item.source}:${item.id}`}
+        renderItem={({ item }) => (
+          <SlotListItem
+            item={item}
+            adapter={adapter}
+            selectionMode={multiSelect.isActive}
+            isSelected={multiSelect.isSelected(item)}
+            onPress={() => handleItemPress(item)}
+            onLongPress={() => handleItemLongPress(item)}
+          />
+        )}
+        ItemSeparatorComponent={() => <View className="h-2" />}
+        ListHeaderComponent={header}
+        ListEmptyComponent={
+          fetchError ? (
+            <ErrorBanner error={fetchError} title="Failed to load downloads" />
+          ) : listLoading ? (
+            <View className="py-10 items-center">
+              <ActivityIndicator color={tc("#3b82f6")} />
+            </View>
+          ) : (
+            <EmptyState title="Nothing to show" message={`No ${filter} items`} />
+          )
+        }
+        ListFooterComponent={footer}
+        onViewableItemsChanged={onViewableItemsChanged}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 8,
+          paddingBottom: listBottomPadding,
+          flexGrow: 1,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#3b82f6"
+            colors={["#3b82f6"]}
+            progressBackgroundColor={theme.surface}
+          />
+        }
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        removeClippedSubviews
+      />
 
       <FilterSortSheet
         visible={filterSortOpen}
@@ -406,7 +536,7 @@ export function UsenetDownloadsView({
           },
         ]}
       />
-    </>
+    </SafeAreaView>
   );
 }
 

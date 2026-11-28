@@ -2,18 +2,18 @@ import { useState } from "react";
 import { Pressable } from "react-native";
 import { Zap } from "lucide-react-native";
 import { Icon } from "@/components/ui/icon";
-import { useSabQueue, useSetSabSpeedLimit } from "@/hooks/use-sabnzbd";
+import { useSabQueueSummary, useSetSabSpeedLimit } from "@/hooks/use-sabnzbd";
 import { UsenetSpeedLimitsSheet } from "@/components/usenet/speed-limits-sheet";
 
 // Self-contained speed-limits header control for SABnzbd: a Zap button that
 // opens the shared usenet speed-limit sheet. The button shows the amber "active"
 // tint whenever a download limit is set. Mirrors the torrent SpeedLimitsControl
 // convention — each client owns its own hooks so the shared view stays generic.
-// Reads the current absolute limit from the queue's `speedlimit_abs` (bytes/s),
-// which shares its cache key with the downloads view's queue poll.
+// Reads the current absolute limit from the queue's `speedlimit_abs` (bytes/s)
+// through the one-job summary poll, never the full queue.
 export function SabnzbdSpeedLimitsControl() {
   const [open, setOpen] = useState(false);
-  const { data: queue } = useSabQueue();
+  const { data: queue } = useSabQueueSummary();
   const setLimit = useSetSabSpeedLimit();
 
   const currentKbps = Number(queue?.speedlimit_abs ?? 0) / 1024;

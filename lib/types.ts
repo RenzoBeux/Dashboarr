@@ -146,6 +146,9 @@ export interface SabQueueSlot {
   percentage: string;
   timeleft: string;
   index: number;
+  // When the job joined the queue, epoch seconds. SAB 5.0+; 0 for jobs queued
+  // before an upgrade to 5.0.
+  time_added?: number;
 }
 
 export interface SabQueue {
@@ -159,6 +162,9 @@ export interface SabQueue {
   sizeleft: string;
   noofslots: number;
   noofslots_total: number;
+  // Total size in MiB of the jobs noofslots_total counts. Fixed per job, so
+  // it doesn't move with progress (see sabQueueSignature).
+  mb?: string;
   diskspace1: string;
   diskspace2: string;
   status: "Idle" | "Paused" | "Downloading";

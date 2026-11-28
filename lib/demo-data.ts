@@ -189,6 +189,7 @@ const DEMO_SAB_QUEUE = {
         percentage: "40",
         timeleft: "0:07:08",
         index: 0,
+        time_added: NOW_TS - 3 * 3600,
       },
       {
         nzo_id: "SABnzbd_nzo_demo02",
@@ -203,6 +204,8 @@ const DEMO_SAB_QUEUE = {
         percentage: "44",
         timeleft: "0:11:06",
         index: 1,
+        // High priority: added last, but SAB slots it above the Normal jobs.
+        time_added: NOW_TS - 20 * 60,
       },
       {
         nzo_id: "SABnzbd_nzo_demo03",
@@ -217,10 +220,41 @@ const DEMO_SAB_QUEUE = {
         percentage: "0",
         timeleft: "0:00:00",
         index: 2,
+        time_added: NOW_TS - 2 * 3600,
       },
     ],
   },
 };
+
+// mode=queue with SAB's own windowing and filters (api.py _api_queue_default,
+// NzbQueue.queue_info): nzo_ids and status narrow the list, start/limit window
+// it (limit 0 = all), `index` counts from `start`, and `noofslots` is the whole
+// queue's length unless nzo_ids is sent.
+function demoSabQueue(params?: Record<string, string | number | boolean>) {
+  const list = (v: unknown) =>
+    String(v ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  const nzoIds = list(params?.nzo_ids);
+  const statuses = list(params?.status);
+  const start = Number(params?.start ?? 0) || 0;
+  const limit = Number(params?.limit ?? 0) || 0;
+  const all = DEMO_SAB_QUEUE.queue.slots;
+  const matched = all.filter(
+    (s) =>
+      (nzoIds.length === 0 || nzoIds.includes(s.nzo_id)) &&
+      (statuses.length === 0 || statuses.includes(s.status)),
+  );
+  const window = limit ? matched.slice(start, start + limit) : matched;
+  return {
+    queue: {
+      ...DEMO_SAB_QUEUE.queue,
+      noofslots: nzoIds.length ? matched.length : all.length,
+      slots: window.map((s, i) => ({ ...s, index: (limit ? start : 0) + i })),
+    },
+  };
+}
 
 const DEMO_SAB_HISTORY = {
   history: {
@@ -4639,7 +4673,8 @@ export function getDemoResponse(
       // SAB hits a single endpoint at /api with mode= as a query param, so
       // the routing key lives in params, not the path.
       const mode = String(params?.mode ?? "queue");
-      if (mode === "queue") return DEMO_SAB_QUEUE;
+      if (mode === "queue" && params?.name === undefined) return demoSabQueue(params);
+      if (mode === "queue") return { status: true };
       if (mode === "history") return DEMO_SAB_HISTORY;
       if (mode === "version") return DEMO_SAB_VERSION;
       // pause/resume/addurl all return { status: true }
