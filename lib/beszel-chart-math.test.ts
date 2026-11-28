@@ -3,9 +3,8 @@ import {
   chartYMax,
   formatChartValue,
   hasAnyValue,
-  topSeriesByAverage,
+  topKeysByAverage,
 } from "@/lib/beszel-chart-math";
-import type { BeszelContainerStatsPoint } from "@/lib/types";
 
 describe("chartYMax", () => {
   it("uses the fixed max for percentage charts", () => {
@@ -53,25 +52,21 @@ describe("hasAnyValue", () => {
   });
 });
 
-describe("topSeriesByAverage", () => {
-  function point(containers: Record<string, number>): BeszelContainerStatsPoint {
-    const out: BeszelContainerStatsPoint["containers"] = {};
-    for (const [n, cpu] of Object.entries(containers)) out[n] = { cpuPct: cpu, memBytes: 0 };
-    return { createdAt: "x", containers: out };
-  }
-
+describe("topKeysByAverage", () => {
   it("keeps the busiest n and counts the rest", () => {
-    const pts = [point({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7 })];
-    expect(topSeriesByAverage(pts, (c) => c.cpuPct)).toEqual({
+    expect(topKeysByAverage([{ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7 }])).toEqual({
       names: ["g", "f", "e", "d", "c"],
       hiddenCount: 2,
     });
   });
 
-  it("averages only the points a container appears in", () => {
+  it("averages only the points a key appears in", () => {
     // "late" started mid-window at 10%; counting its absence as 0 would rank it below "steady".
-    const pts = [point({ steady: 6 }), point({ steady: 6, late: 10 })];
-    expect(topSeriesByAverage(pts, (c) => c.cpuPct, 1).names).toEqual(["late"]);
+    expect(topKeysByAverage([{ steady: 6 }, { steady: 6, late: 10 }], 1).names).toEqual(["late"]);
+  });
+
+  it("skips undefined readings", () => {
+    expect(topKeysByAverage([{ a: undefined, b: 1 }])).toEqual({ names: ["b"], hiddenCount: 0 });
   });
 });
 

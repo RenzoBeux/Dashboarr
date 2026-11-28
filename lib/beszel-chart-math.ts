@@ -1,5 +1,4 @@
 import { formatBytes, formatSpeed } from "@/lib/utils";
-import type { BeszelContainerStatsPoint } from "@/lib/types";
 
 export type ChartUnit = "pct" | "bytes" | "bytesPs" | "celsius" | "load";
 export type ChartValues = (number | undefined)[];
@@ -81,19 +80,17 @@ export function buildPath(values: ChartValues, width: number, height: number, to
 }
 
 /**
- * The `n` containers with the highest average of `pick` over the window. Each
- * container averages only the points it appears in, so one started mid-window
- * isn't penalised for the time it didn't exist.
+ * The `n` keys with the highest average across `maps` (one map per point).
+ * Each key averages only the points it appears in, so a container started (or
+ * a sensor appearing) mid-window isn't penalised for the time it didn't exist.
  */
-export function topSeriesByAverage(
-  points: BeszelContainerStatsPoint[],
-  pick: (c: BeszelContainerStatsPoint["containers"][string]) => number | undefined,
+export function topKeysByAverage(
+  maps: Record<string, number | undefined>[],
   n = 5,
 ): { names: string[]; hiddenCount: number } {
   const sums = new Map<string, { total: number; count: number }>();
-  for (const p of points) {
-    for (const [name, c] of Object.entries(p.containers)) {
-      const v = pick(c);
+  for (const m of maps) {
+    for (const [name, v] of Object.entries(m)) {
       if (v === undefined) continue;
       const acc = sums.get(name) ?? { total: 0, count: 0 };
       acc.total += v;
