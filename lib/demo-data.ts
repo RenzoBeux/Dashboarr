@@ -3627,6 +3627,23 @@ function demoBeszelContainerStats(systemId: string, rollup: string) {
     .reverse();
 }
 
+/**
+ * One synthetic rt_metrics message ({stats, container}) for demo mode's Live
+ * view. The rollup generators index their waves by position, so the newest
+ * point is jittered by wall-clock time to keep a 1-second stream moving.
+ */
+export function demoBeszelRealtimeMessage(systemId: string, now = Date.now()) {
+  const wobble = Math.sin(now / 4000);
+  const stats = { ...demoBeszelStats(systemId, "1m")[0].stats };
+  stats.cpu = Math.max(0, stats.cpu + wobble * 8);
+  stats.b = [Math.round(stats.b[0] * (1 + wobble * 0.5)), Math.round(stats.b[1] * (1 + wobble * 0.5))];
+  const container = demoBeszelContainerStats(systemId, "1m")[0].stats.map((c) => ({
+    ...c,
+    c: Math.max(0, c.c * (1 + wobble * 0.3)),
+  }));
+  return { stats, info: {}, container };
+}
+
 // --- Navidrome ---
 // Wire shapes are upstream-exact: the Subsonic `subsonic-response` envelope
 // (so lib/navidrome-normalize.ts's unwrap runs for real), an ISO lastScan, and

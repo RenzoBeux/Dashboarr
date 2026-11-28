@@ -21,7 +21,7 @@ import type {
 
 const API_BASE = SERVICE_DEFAULTS.beszel.apiBasePath;
 
-function resolveBeszelInstanceId(instanceId?: string): string {
+export function resolveBeszelInstanceId(instanceId?: string): string {
   if (instanceId) return instanceId;
   const id = useConfigStore.getState().getActiveInstanceId("beszel");
   if (!id) throw new Error("No Beszel instance configured");
@@ -76,6 +76,36 @@ interface BeszelPageResponse<T> {
   items: T[];
 }
 
+type AuthAttempt = { token: string; authCollection: BeszelAuthCollection } | { failed: true; message: string };
+
+/** One auth-with-password call; a 400 is a credential rejection, other failures throw. */
+async function authWithPassword(id: string, collection: BeszelAuthCollection): Promise<AuthAttempt> {
+  const store = useConfigStore.getState();
+  const secrets = store.instanceSecrets[id] ?? {};
+  const baseUrl = resolveReachableUrl("beszel", id);
+  if (!baseUrl) throw new Error("No URL configured for Beszel");
+  const url = buildUrl(baseUrl, API_BASE, `/collections/${collection}/auth-with-password`);
+  const headers = new Headers();
+  const customHeaders = store.getMergedHeaders("beszel", id);
+  for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+  headers.set("Content-Type", "application/json");
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      identity: secrets.username ?? "",
+      password: secrets.password ?? "",
+    }),
+  });
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    return { failed: true, message: body?.message ?? "Wrong email or password" };
+  }
+  if (!res.ok) throw new BeszelHttpError(res.status, await beszelErrorMessage(res));
+  const body = (await res.json()) as { token: string };
+  return { token: body.token, authCollection: collection };
+}
+
 /**
  * POST /api/collections/{collection}/auth-with-password. Tries `_superusers`
  * first (bypasses per-system sharing rules), falling back to `users` on a
@@ -87,43 +117,28 @@ export async function beszelLogin(
   instanceId?: string,
 ): Promise<{ token: string; authCollection: BeszelAuthCollection }> {
   const id = resolveBeszelInstanceId(instanceId);
-  const store = useConfigStore.getState();
-  const secrets = store.instanceSecrets[id] ?? {};
-  const baseUrl = resolveReachableUrl("beszel", id);
-  if (!baseUrl) throw new Error("No URL configured for Beszel");
 
-  const attempt = async (
-    collection: BeszelAuthCollection,
-  ): Promise<{ token: string; authCollection: BeszelAuthCollection } | { failed: true; message: string }> => {
-    const url = buildUrl(baseUrl, API_BASE, `/collections/${collection}/auth-with-password`);
-    const headers = new Headers();
-    const customHeaders = store.getMergedHeaders("beszel", id);
-    for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
-    headers.set("Content-Type", "application/json");
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        identity: secrets.username ?? "",
-        password: secrets.password ?? "",
-      }),
-    });
-    if (res.status === 400) {
-      const body = (await res.json().catch(() => null)) as { message?: string } | null;
-      return { failed: true, message: body?.message ?? "Wrong email or password" };
-    }
-    if (!res.ok) throw new BeszelHttpError(res.status, await beszelErrorMessage(res));
-    const body = (await res.json()) as { token: string };
-    return { token: body.token, authCollection: collection };
-  };
-
-  const superuser = await attempt("_superusers");
+  const superuser = await authWithPassword(id, "_superusers");
   if (!("failed" in superuser)) return superuser;
 
-  const user = await attempt("users");
+  const user = await authWithPassword(id, "users");
   if (!("failed" in user)) return user;
 
   throw new BeszelAuthError(user.message);
+}
+
+/**
+ * A `users`-collection token for the realtime stream. The hub only delivers
+ * rt_metrics to `users` records listed on the system (internal/hub/systems/
+ * system_realtime.go `notify`/`HasUser`), so the superuser token beszelLogin
+ * prefers would be refused. Beszel's first-run setup creates both accounts
+ * with the same credentials, so the instance's credentials usually work here.
+ * Not cached: it's fetched once per stream connection.
+ */
+export async function beszelUserToken(instanceId?: string): Promise<string> {
+  const user = await authWithPassword(resolveBeszelInstanceId(instanceId), "users");
+  if ("failed" in user) throw new BeszelAuthError(user.message);
+  return user.token;
 }
 
 async function beszelFetch<T>(

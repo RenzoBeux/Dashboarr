@@ -6,6 +6,7 @@ import { useConfigStore } from "@/store/config-store";
 import { resetBeszelSessions } from "@/lib/beszel-session";
 import {
   BeszelAuthError,
+  beszelUserToken,
   beszelClearSession,
   beszelLogin,
   getContainerStats,
@@ -104,6 +105,20 @@ describe("beszelLogin", () => {
     const { calls } = fetchMock(() => jsonResponse(500, {}));
     await expect(beszelLogin(INSTANCE)).rejects.toThrow("Beszel request failed: 500");
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("beszelUserToken", () => {
+  it("authenticates against users only, even when a superuser would succeed", async () => {
+    const { calls } = fetchMock(() => jsonResponse(200, { token: "tok-user" }));
+    await expect(beszelUserToken(INSTANCE)).resolves.toBe("tok-user");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain("/api/collections/users/auth-with-password");
+  });
+
+  it("throws BeszelAuthError when users rejects the credentials", async () => {
+    fetchMock(() => jsonResponse(400, { message: "Failed to authenticate." }));
+    await expect(beszelUserToken(INSTANCE)).rejects.toThrow(BeszelAuthError);
   });
 });
 
