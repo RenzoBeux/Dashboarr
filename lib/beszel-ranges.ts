@@ -53,10 +53,12 @@ export function chartRangeLabel(r: BeszelChartRange): string {
   return r === "live" ? "Live" : BESZEL_RANGES[r].label;
 }
 
-export type TickFormat = "seconds" | "time" | "day";
+export type TickFormat = "seconds" | "time" | "dayTime" | "day";
 
 export function tickFormatFor(r: BeszelChartRange): TickFormat {
   if (r === "live") return "seconds";
+  // A 24h window starts and ends at the same clock time: the day tells them apart.
+  if (r === "24h") return "dayTime";
   return BESZEL_RANGES[r].longFormat ? "day" : "time";
 }
 

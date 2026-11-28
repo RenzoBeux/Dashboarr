@@ -48,7 +48,9 @@ describe("chart ranges with Live", () => {
 
   it("picks the tick format per range", () => {
     expect(tickFormatFor("live")).toBe("seconds");
-    expect(tickFormatFor("24h")).toBe("time");
+    expect(tickFormatFor("12h")).toBe("time");
+    // 24h ends at the same clock time it started, so the day must show too.
+    expect(tickFormatFor("24h")).toBe("dayTime");
     expect(tickFormatFor("1w")).toBe("day");
   });
 

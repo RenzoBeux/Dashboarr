@@ -1,4 +1,4 @@
-import { buildDockerCharts, buildSystemCharts, historyView } from "@/lib/beszel-chart-series";
+import { buildDockerCharts, buildSystemCharts, historyView, liveView } from "@/lib/beszel-chart-series";
 import type { BeszelContainerStatsPoint, BeszelStatsPoint } from "@/lib/types";
 
 const GiB = 1024 ** 3;
@@ -76,5 +76,22 @@ describe("historyView", () => {
   it("is loading with no data, empty with data but no charts", () => {
     expect(historyView({ error: null, isPlaceholderData: false, hasData: false, charts: [] })).toBe("loading");
     expect(historyView({ error: null, isPlaceholderData: false, hasData: true, charts: [] })).toBe("empty");
+  });
+});
+
+describe("liveView", () => {
+  const charts = buildSystemCharts([pt({ cpuPct: 1 })]);
+
+  it("shows the access message when the hub refuses the subscription", () => {
+    expect(liveView({ status: "forbidden", charts })).toBe("forbidden");
+  });
+
+  it("waits for the first point while connecting", () => {
+    expect(liveView({ status: "connecting", charts: [] })).toBe("loading");
+    expect(liveView({ status: null, charts: [] })).toBe("loading");
+  });
+
+  it("keeps the last points on screen while reconnecting", () => {
+    expect(liveView({ status: "reconnecting", charts })).toBe("charts");
   });
 });

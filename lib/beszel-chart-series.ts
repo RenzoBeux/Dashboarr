@@ -134,3 +134,17 @@ export function historyView(q: {
   if (!q.hasData) return "loading";
   return q.charts.length === 0 ? "empty" : "charts";
 }
+
+export type LiveView = "forbidden" | "loading" | "charts";
+
+/**
+ * What the History card shows on the Live range. Points already received stay
+ * on screen through a reconnect; until the first one arrives it's loading.
+ */
+export function liveView(q: {
+  status: "connecting" | "live" | "reconnecting" | "forbidden" | null;
+  charts: ChartConfig[];
+}): LiveView {
+  if (q.status === "forbidden") return "forbidden";
+  return q.charts.length === 0 ? "loading" : "charts";
+}

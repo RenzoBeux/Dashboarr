@@ -27,34 +27,36 @@ export function useBeszelSystems(instanceId?: string) {
  * queryFn so each poll slides the window forward; keepPreviousData keeps the
  * old range's charts on screen while a newly picked range loads.
  */
-export function useBeszelSystemStats(systemId: string | undefined, range: BeszelRange, instanceId?: string) {
+export function useBeszelSystemStats(systemId: string | undefined, range: BeszelRange | null, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("beszel", instanceId);
-  const { rollup, pollMs } = BESZEL_RANGES[range];
+  // null = Live range: the stream replaces these, so don't fetch.
+  const { rollup, pollMs } = BESZEL_RANGES[range ?? "1h"];
   return useQuery({
     queryKey: ["beszel", id, "system_stats", systemId, range],
     queryFn: async () =>
-      (await getSystemStats(systemId as string, rollup, beszelSinceFilter(range, Date.now()), id ?? undefined))
+      (await getSystemStats(systemId as string, rollup, beszelSinceFilter(range ?? "1h", Date.now()), id ?? undefined))
         .map(normalizeBeszelStatsPoint)
         .reverse(), // API returns newest-first; charts read chronologically
     refetchInterval: pollMs,
     placeholderData: keepPreviousData,
-    enabled: enabled && !!id && !!systemId,
+    enabled: enabled && !!id && !!systemId && range !== null,
   });
 }
 
 /** Per-container rollups over `range`, chronological — feeds the Docker charts. */
-export function useBeszelContainerStats(systemId: string | undefined, range: BeszelRange, instanceId?: string) {
+export function useBeszelContainerStats(systemId: string | undefined, range: BeszelRange | null, instanceId?: string) {
   const { instanceId: id, enabled } = useInstanceTarget("beszel", instanceId);
-  const { rollup, pollMs } = BESZEL_RANGES[range];
+  // null = Live range: the stream replaces these, so don't fetch.
+  const { rollup, pollMs } = BESZEL_RANGES[range ?? "1h"];
   return useQuery({
     queryKey: ["beszel", id, "container_stats", systemId, range],
     queryFn: async () =>
-      (await getContainerStats(systemId as string, rollup, beszelSinceFilter(range, Date.now()), id ?? undefined))
+      (await getContainerStats(systemId as string, rollup, beszelSinceFilter(range ?? "1h", Date.now()), id ?? undefined))
         .map(normalizeBeszelContainerStatsPoint)
         .reverse(),
     refetchInterval: pollMs,
     placeholderData: keepPreviousData,
-    enabled: enabled && !!id && !!systemId,
+    enabled: enabled && !!id && !!systemId && range !== null,
   });
 }
 

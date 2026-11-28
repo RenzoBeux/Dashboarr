@@ -17,12 +17,29 @@ import {
   useBeszelSystems,
   useBeszelSystemStats,
 } from "@/hooks/use-beszel";
-import { buildDockerCharts, buildSystemCharts, historyView, type ChartConfig } from "@/lib/beszel-chart-series";
-import { BESZEL_RANGE_ORDER, BESZEL_RANGES } from "@/lib/beszel-ranges";
+import { useBeszelRealtime } from "@/hooks/use-beszel-realtime";
+import {
+  buildDockerCharts,
+  buildSystemCharts,
+  historyView,
+  liveView,
+  type ChartConfig,
+} from "@/lib/beszel-chart-series";
+import {
+  BESZEL_CHART_RANGE_ORDER,
+  chartRangeLabel,
+  effectiveRange,
+  tickFormatFor,
+  type TickFormat,
+} from "@/lib/beszel-ranges";
+import { liveSupported } from "@/lib/beszel-realtime";
 import { lightHaptic } from "@/lib/haptics";
+import { toast } from "@/components/ui/toast";
 import { useBeszelUiStore } from "@/store/beszel-ui-store";
 
-function ChartList({ charts, timestamps, longFormat }: { charts: ChartConfig[]; timestamps: string[]; longFormat: boolean }) {
+const LIVE_STATUS_NOTE = { connecting: "Connecting…", reconnecting: "Reconnecting…" } as const;
+
+function ChartList({ charts, timestamps, tickFormat }: { charts: ChartConfig[]; timestamps: string[]; tickFormat: TickFormat }) {
   return (
     <View className="gap-5">
       {charts.map((c) => (
@@ -32,7 +49,7 @@ function ChartList({ charts, timestamps, longFormat }: { charts: ChartConfig[]; 
           unit={c.unit}
           series={c.series}
           timestamps={timestamps}
-          longFormat={longFormat}
+          tickFormat={tickFormat}
           fixedMax={c.fixedMax}
           subtitle={c.subtitle}
           hiddenCount={c.hiddenCount}
@@ -48,23 +65,37 @@ export default function BeszelSystemScreen() {
   const { data: systems, isLoading, error: systemsError } = useBeszelSystems();
   const system = systems?.find((s) => s.id === systemId);
 
-  const range = useBeszelUiStore((s) => s.range);
+  const storedRange = useBeszelUiStore((s) => s.range);
   const setRange = useBeszelUiStore((s) => s.setRange);
-  const { longFormat } = BESZEL_RANGES[range];
+  const liveOk = !!system && liveSupported(system);
+  const range = effectiveRange(storedRange, liveOk);
+  const isLive = range === "live";
+  const historyRange = isLive ? null : range;
+  const tickFormat = tickFormatFor(range);
+
   const {
     data: statsPoints,
     error: statsError,
     isPlaceholderData: statsStale,
-  } = useBeszelSystemStats(systemId, range);
-  const { data: containerPoints } = useBeszelContainerStats(systemId, range);
-  const systemCharts = buildSystemCharts(statsPoints ?? []);
-  const dockerCharts = buildDockerCharts(containerPoints ?? []);
-  const view = historyView({
-    error: statsError,
-    isPlaceholderData: statsStale,
-    hasData: !!statsPoints,
-    charts: systemCharts,
-  });
+  } = useBeszelSystemStats(systemId, historyRange);
+  const { data: containerPoints } = useBeszelContainerStats(systemId, historyRange);
+  const live = useBeszelRealtime(systemId, isLive);
+
+  const shownStats = isLive ? live.stats : statsPoints;
+  const shownContainers = isLive ? live.containers : containerPoints;
+  const systemCharts = buildSystemCharts(shownStats ?? []);
+  const dockerCharts = buildDockerCharts(shownContainers ?? []);
+  const view = isLive
+    ? liveView({ status: live.status, charts: systemCharts })
+    : historyView({
+        error: statsError,
+        isPlaceholderData: statsStale,
+        hasData: !!statsPoints,
+        charts: systemCharts,
+      });
+  const liveNote = isLive && (live.status === "connecting" || live.status === "reconnecting")
+    ? LIVE_STATUS_NOTE[live.status]
+    : null;
   const {
     data: containers,
     isLoading: containersLoading,
@@ -103,43 +134,58 @@ export default function BeszelSystemScreen() {
               contentContainerClassName="gap-2"
               className="mb-4"
             >
-              {BESZEL_RANGE_ORDER.map((r) => (
-                <FilterChip
-                  key={r}
-                  label={BESZEL_RANGES[r].label}
-                  selected={r === range}
-                  onPress={() => {
-                    if (r === range) return;
-                    lightHaptic();
-                    setRange(r);
-                  }}
-                />
-              ))}
+              {BESZEL_CHART_RANGE_ORDER.map((r) => {
+                const disabled = r === "live" && !liveOk;
+                return (
+                  <View key={r} className={disabled ? "opacity-40" : undefined}>
+                    <FilterChip
+                      label={chartRangeLabel(r)}
+                      selected={r === range}
+                      onPress={() => {
+                        if (disabled) {
+                          toast("Live needs a running agent, v0.13 or newer", "info");
+                          return;
+                        }
+                        if (r === range) return;
+                        lightHaptic();
+                        setRange(r);
+                      }}
+                    />
+                  </View>
+                );
+              })}
             </ScrollView>
-            {view === "error" ? (
+            {liveNote ? <Text className="text-zinc-500 text-xs mb-3">{liveNote}</Text> : null}
+            {view === "forbidden" ? (
+              <EmptyState
+                compact
+                title="Live data needs a Beszel user account"
+                message="The hub only streams to user accounts with access to this system. A superuser login isn't enough: add a regular user with the same email and password, or share this system with yours."
+              />
+            ) : view === "error" ? (
               <ErrorBanner error={statsError} title="Couldn't load history" />
-            ) : view === "loading" || !statsPoints ? (
+            ) : view === "loading" || !shownStats ? (
               <Skeleton height={160} />
             ) : view === "empty" ? (
               <EmptyState compact title="No history in this range yet" />
             ) : (
               <ChartList
                 charts={systemCharts}
-                timestamps={statsPoints.map((p) => p.createdAt)}
-                longFormat={longFormat}
+                timestamps={shownStats.map((p) => p.createdAt)}
+                tickFormat={tickFormat}
               />
             )}
           </Card>
 
-          {dockerCharts.length > 0 && containerPoints ? (
+          {dockerCharts.length > 0 && shownContainers ? (
             <Card>
               <CardHeader>
                 <CardTitle>Docker</CardTitle>
               </CardHeader>
               <ChartList
                 charts={dockerCharts}
-                timestamps={containerPoints.map((p) => p.createdAt)}
-                longFormat={longFormat}
+                timestamps={shownContainers.map((p) => p.createdAt)}
+                tickFormat={tickFormat}
               />
             </Card>
           ) : null}

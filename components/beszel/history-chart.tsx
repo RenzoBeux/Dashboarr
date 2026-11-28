@@ -12,6 +12,7 @@ import {
   type ChartUnit,
   type ChartValues,
 } from "@/lib/beszel-chart-math";
+import type { TickFormat } from "@/lib/beszel-ranges";
 
 export interface HistorySeries {
   key: string;
@@ -26,8 +27,8 @@ interface HistoryChartProps {
   series: HistorySeries[];
   /** createdAt of each point, same length and order as every series' values. */
   timestamps: string[];
-  /** Day labels (1w/30d) instead of clock times. */
-  longFormat: boolean;
+  /** Axis label style: seconds (Live), clock time (1h-24h) or day (1w/30d). */
+  tickFormat: TickFormat;
   /** Fixed Y top, e.g. 100 for percentages; otherwise scales to the data. */
   fixedMax?: number;
   /** Replaces the latest-value readout in the header (e.g. "9.8 GB / 16 GB"). */
@@ -41,13 +42,20 @@ function lastDefined(values: ChartValues): number | undefined {
   return undefined;
 }
 
-function formatTick(iso: string | undefined, longFormat: boolean): string {
+function formatTick(iso: string | undefined, tickFormat: TickFormat): string {
   if (!iso) return "";
   const d = parseBeszelDate(iso);
   if (!d) return "";
-  return longFormat
-    ? d.toLocaleDateString([], { month: "short", day: "numeric" })
-    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (tickFormat === "day") return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  if (tickFormat === "dayTime") {
+    return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleTimeString(
+    [],
+    tickFormat === "seconds"
+      ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+      : { hour: "2-digit", minute: "2-digit" },
+  );
 }
 
 /**
@@ -61,7 +69,7 @@ export function HistoryChart({
   unit,
   series,
   timestamps,
-  longFormat,
+  tickFormat,
   fixedMax,
   subtitle,
   hiddenCount = 0,
@@ -118,9 +126,9 @@ export function HistoryChart({
       </View>
 
       <View className="flex-row justify-between mt-1">
-        <Text className="text-zinc-600 text-[0.65rem]">{formatTick(timestamps[0], longFormat)}</Text>
+        <Text className="text-zinc-600 text-[0.65rem]">{formatTick(timestamps[0], tickFormat)}</Text>
         <Text className="text-zinc-600 text-[0.65rem]">
-          {formatTick(timestamps[timestamps.length - 1], longFormat)}
+          {formatTick(timestamps[timestamps.length - 1], tickFormat)}
         </Text>
       </View>
 
