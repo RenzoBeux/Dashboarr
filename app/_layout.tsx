@@ -19,6 +19,7 @@ import { useBackendStore } from "@/store/backend-store";
 import { RestorePendingError } from "@/store/storage";
 import { useSortStore } from "@/store/sort-store";
 import { useGlancesUiStore } from "@/store/glances-ui-store";
+import { useBeszelUiStore } from "@/store/beszel-ui-store";
 import { useUnraidUiStore } from "@/store/unraid-ui-store";
 import { useReleaseFilterStore } from "@/store/releases-filter-store";
 import { useLibraryTagFilterStore } from "@/store/library-tag-filter-store";
@@ -407,6 +408,7 @@ export default function RootLayout() {
   const hydrateBackend = useBackendStore((s) => s.hydrate);
   const hydrateSort = useSortStore((s) => s.hydrate);
   const hydrateGlancesUi = useGlancesUiStore((s) => s.hydrate);
+  const hydrateBeszelUi = useBeszelUiStore((s) => s.hydrate);
   const hydrateUnraidUi = useUnraidUiStore((s) => s.hydrate);
   const hydrateReleaseFilters = useReleaseFilterStore((s) => s.hydrate);
   const hydrateLibraryTagFilters = useLibraryTagFilterStore((s) => s.hydrate);
@@ -469,6 +471,7 @@ export default function RootLayout() {
     if (hydrated) {
       hydrateSort();
       hydrateGlancesUi();
+      hydrateBeszelUi();
       hydrateUnraidUi();
       hydrateReleaseFilters();
       hydrateLibraryTagFilters();
@@ -480,6 +483,7 @@ export default function RootLayout() {
     hydrated,
     hydrateSort,
     hydrateGlancesUi,
+    hydrateBeszelUi,
     hydrateUnraidUi,
     hydrateReleaseFilters,
     hydrateLibraryTagFilters,
