@@ -1,3 +1,5 @@
+import type { BeszelRollup } from "@/lib/beszel-ranges";
+
 // --- qBittorrent Types ---
 
 export interface QBTransferInfo {
@@ -4143,32 +4145,57 @@ export interface BeszelInfoWire {
 export interface BeszelSystemStatsRecord {
   id: string;
   system: string;
-  type: "1m" | "10m" | "20m" | "120m" | "480m";
+  type: BeszelRollup;
   stats: BeszelStatsWire;
   created: string;
 }
 
 /**
- * The terse wire shape of `system_stats.stats` (system.Stats in Go) — richer
- * than BeszelInfoWire. Only the fields the app actually reads are typed here;
- * unlisted keys (bat, ni, dio, cpub, cpus, dios, f, bats, z, diot, s, su, mb,
- * mz) exist on the wire but nothing renders them yet.
+ * The terse wire shape of `system_stats.stats` (system.Stats in Go, checked
+ * against v0.21.2). Only the fields the app reads are typed. Newer agents
+ * report byte arrays (`mem`, `dio`, `b`, `swap`); older ones only the
+ * deprecated MB/GB scalars (`m`/`mu`, `dr`/`dw`, `ns`/`nr`, `su`), which the
+ * hub still serves — lib/beszel-normalize.ts reads both.
  */
 export interface BeszelStatsWire {
-  cpu: number; // Cpu %
-  m: number; // Mem, GB
-  mu: number; // MemUsed, GB
-  mp: number; // MemPct
-  d: number; // DiskTotal, GB
-  du: number; // DiskUsed, GB
-  dp: number; // DiskPct
-  dr?: number; // DiskReadPs
-  dw?: number; // DiskWritePs
-  ns?: number; // NetworkSent
-  nr?: number; // NetworkRecv
+  cpu?: number; // Cpu %
+  m?: number; // Mem total, GB (deprecated)
+  mu?: number; // MemUsed, GB (deprecated)
+  mp?: number; // MemPct
+  mem?: [number, number, number, number]; // [total, used, buff/cache, zfs arc] bytes
+  d?: number; // DiskTotal, GB
+  du?: number; // DiskUsed, GB
+  dp?: number; // DiskPct
+  dr?: number; // DiskReadPs, MB/s (agents < 0.13)
+  dw?: number; // DiskWritePs, MB/s (agents < 0.13)
+  dio?: [number, number]; // [read, write] bytes/s
+  ns?: number; // NetworkSent, MB/s (deprecated)
+  nr?: number; // NetworkRecv, MB/s (deprecated)
+  b?: [number, number]; // Bandwidth [sent, recv] bytes/s
+  su?: number; // SwapUsed, GB (deprecated)
+  swap?: [number, number]; // [total, used] bytes
   t?: Record<string, number>; // Temperatures, sensor name -> celsius
   la?: [number, number, number]; // LoadAvg 1/5/15
   g?: Record<string, BeszelGpuWire>; // GPUData, gpu id -> reading
+}
+
+/** GET /api/collections/container_stats/records item — one rollup of every container. */
+export interface BeszelContainerStatsRecord {
+  id: string;
+  system: string;
+  type: BeszelRollup;
+  stats: BeszelContainerStatWire[];
+  created: string;
+}
+
+/** container.Stats in Go: `m` is MB; `b` (bytes/s) replaced `ns`/`nr` (MB) in 0.18.3. */
+export interface BeszelContainerStatWire {
+  n: string; // Name
+  c: number; // Cpu %
+  m: number; // Mem, MB
+  b?: [number, number]; // [sent, recv] bytes/s
+  ns?: number; // NetworkSent, MB/s (deprecated)
+  nr?: number; // NetworkRecv, MB/s (deprecated)
 }
 
 export interface BeszelGpuWire {
@@ -4217,8 +4244,26 @@ export interface BeszelSystem {
 /** Normalized chart-friendly point derived from a BeszelSystemStatsRecord. */
 export interface BeszelStatsPoint {
   createdAt: string;
-  cpuPct: number;
-  memPct: number;
-  diskPct: number;
-  loadAvg1?: number;
+  cpuPct?: number;
+  memPct?: number;
+  memUsedBytes?: number;
+  memTotalBytes?: number;
+  diskPct?: number;
+  diskUsedBytes?: number;
+  diskTotalBytes?: number;
+  diskReadBps?: number;
+  diskWriteBps?: number;
+  netSentBps?: number;
+  netRecvBps?: number;
+  load?: [number, number, number];
+  /** Sensor name -> °C; empty when the agent reports none. */
+  temps: Record<string, number>;
+  /** GPU name -> usage %; empty without a GPU. */
+  gpus: Record<string, number>;
+  swapUsedBytes?: number;
+}
+
+export interface BeszelContainerStatsPoint {
+  createdAt: string;
+  containers: Record<string, { cpuPct: number; memBytes: number; netBps?: number }>;
 }

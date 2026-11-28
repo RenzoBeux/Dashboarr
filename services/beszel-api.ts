@@ -11,15 +11,17 @@ import {
   beszelSessionIds,
   updateBeszelToken,
 } from "@/lib/beszel-session";
+import type { BeszelRollup } from "@/lib/beszel-ranges";
 import type {
   BeszelContainerRecord,
+  BeszelContainerStatsRecord,
   BeszelSystemRecord,
   BeszelSystemStatsRecord,
 } from "@/lib/types";
 
 const API_BASE = SERVICE_DEFAULTS.beszel.apiBasePath;
 
-function resolveBeszelInstanceId(instanceId?: string): string {
+export function resolveBeszelInstanceId(instanceId?: string): string {
   if (instanceId) return instanceId;
   const id = useConfigStore.getState().getActiveInstanceId("beszel");
   if (!id) throw new Error("No Beszel instance configured");
@@ -74,6 +76,36 @@ interface BeszelPageResponse<T> {
   items: T[];
 }
 
+type AuthAttempt = { token: string; authCollection: BeszelAuthCollection } | { failed: true; message: string };
+
+/** One auth-with-password call; a 400 is a credential rejection, other failures throw. */
+async function authWithPassword(id: string, collection: BeszelAuthCollection): Promise<AuthAttempt> {
+  const store = useConfigStore.getState();
+  const secrets = store.instanceSecrets[id] ?? {};
+  const baseUrl = resolveReachableUrl("beszel", id);
+  if (!baseUrl) throw new Error("No URL configured for Beszel");
+  const url = buildUrl(baseUrl, API_BASE, `/collections/${collection}/auth-with-password`);
+  const headers = new Headers();
+  const customHeaders = store.getMergedHeaders("beszel", id);
+  for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
+  headers.set("Content-Type", "application/json");
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      identity: secrets.username ?? "",
+      password: secrets.password ?? "",
+    }),
+  });
+  if (res.status === 400) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    return { failed: true, message: body?.message ?? "Wrong email or password" };
+  }
+  if (!res.ok) throw new BeszelHttpError(res.status, await beszelErrorMessage(res));
+  const body = (await res.json()) as { token: string };
+  return { token: body.token, authCollection: collection };
+}
+
 /**
  * POST /api/collections/{collection}/auth-with-password. Tries `_superusers`
  * first (bypasses per-system sharing rules), falling back to `users` on a
@@ -85,43 +117,28 @@ export async function beszelLogin(
   instanceId?: string,
 ): Promise<{ token: string; authCollection: BeszelAuthCollection }> {
   const id = resolveBeszelInstanceId(instanceId);
-  const store = useConfigStore.getState();
-  const secrets = store.instanceSecrets[id] ?? {};
-  const baseUrl = resolveReachableUrl("beszel", id);
-  if (!baseUrl) throw new Error("No URL configured for Beszel");
 
-  const attempt = async (
-    collection: BeszelAuthCollection,
-  ): Promise<{ token: string; authCollection: BeszelAuthCollection } | { failed: true; message: string }> => {
-    const url = buildUrl(baseUrl, API_BASE, `/collections/${collection}/auth-with-password`);
-    const headers = new Headers();
-    const customHeaders = store.getMergedHeaders("beszel", id);
-    for (const [k, v] of Object.entries(customHeaders)) headers.set(k, v);
-    headers.set("Content-Type", "application/json");
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        identity: secrets.username ?? "",
-        password: secrets.password ?? "",
-      }),
-    });
-    if (res.status === 400) {
-      const body = (await res.json().catch(() => null)) as { message?: string } | null;
-      return { failed: true, message: body?.message ?? "Wrong email or password" };
-    }
-    if (!res.ok) throw new BeszelHttpError(res.status, await beszelErrorMessage(res));
-    const body = (await res.json()) as { token: string };
-    return { token: body.token, authCollection: collection };
-  };
-
-  const superuser = await attempt("_superusers");
+  const superuser = await authWithPassword(id, "_superusers");
   if (!("failed" in superuser)) return superuser;
 
-  const user = await attempt("users");
+  const user = await authWithPassword(id, "users");
   if (!("failed" in user)) return user;
 
   throw new BeszelAuthError(user.message);
+}
+
+/**
+ * A `users`-collection token for the realtime stream. The hub only delivers
+ * rt_metrics to `users` records listed on the system (internal/hub/systems/
+ * system_realtime.go `notify`/`HasUser`), so the superuser token beszelLogin
+ * prefers would be refused. Beszel's first-run setup creates both accounts
+ * with the same credentials, so the instance's credentials usually work here.
+ * Not cached: it's fetched once per stream connection.
+ */
+export async function beszelUserToken(instanceId?: string): Promise<string> {
+  const user = await authWithPassword(resolveBeszelInstanceId(instanceId), "users");
+  if ("failed" in user) throw new BeszelAuthError(user.message);
+  return user.token;
 }
 
 async function beszelFetch<T>(
@@ -247,24 +264,43 @@ export async function getSystems(instanceId?: string): Promise<BeszelSystemRecor
   return result.items;
 }
 
+// A 30-day window at 480m is ~90 records and 1h at 1m is ~60; 500 leaves
+// headroom for a hub whose rollups land more often than nominal.
+const STATS_PER_PAGE = "500";
+
+function windowFilter(systemId: string, rollup: BeszelRollup, since: string): string {
+  return `system='${systemId}'&&type='${rollup}'&&created>='${since}'`;
+}
+
 /**
- * GET /api/collections/system_stats/records for one system's historical
- * rollup at the given interval, most recent first.
+ * GET /api/collections/system_stats/records for one system's rollups of
+ * `rollup` created at or after `since` (see beszelSinceFilter), newest first.
  */
 export async function getSystemStats(
   systemId: string,
-  type: "1m" | "10m" | "20m" | "120m" | "480m",
-  limit: number,
+  rollup: BeszelRollup,
+  since: string,
   instanceId?: string,
 ): Promise<BeszelSystemStatsRecord[]> {
   const result = await beszelListRequest<BeszelSystemStatsRecord>(
     instanceId,
     "/collections/system_stats/records",
-    {
-      filter: `system='${systemId}'&&type='${type}'`,
-      sort: "-created",
-      perPage: String(limit),
-    },
+    { filter: windowFilter(systemId, rollup, since), sort: "-created", perPage: STATS_PER_PAGE },
+  );
+  return result.items;
+}
+
+/** GET /api/collections/container_stats/records — every container's stats per rollup. */
+export async function getContainerStats(
+  systemId: string,
+  rollup: BeszelRollup,
+  since: string,
+  instanceId?: string,
+): Promise<BeszelContainerStatsRecord[]> {
+  const result = await beszelListRequest<BeszelContainerStatsRecord>(
+    instanceId,
+    "/collections/container_stats/records",
+    { filter: windowFilter(systemId, rollup, since), sort: "-created", perPage: STATS_PER_PAGE },
   );
   return result.items;
 }

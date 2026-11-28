@@ -3553,43 +3553,95 @@ const DEMO_BESZEL_CONTAINERS = [
   },
 ];
 
-// A synthetic 12-point 1m rollup, generated at request time so it always
-// reads as "recent" instead of drifting stale like a frozen fixture would.
-// Takes the requested system id so each system's chart shows its own data
-// instead of both always rendering media-server's numbers.
-function demoBeszelStats(systemId: string) {
+// Synthetic rollups, generated at request time so they always read as
+// "recent" instead of drifting stale like a frozen fixture would. Spaced by
+// the requested rollup type so every chart range (1h..30d) has a full window,
+// and keyed by system id so each system's charts show their own numbers. Uses
+// the newer byte-array fields (mem/dio/b/swap) so demo mode exercises the
+// same path as a current agent.
+const DEMO_BESZEL_POINTS = 60;
+const GIB = 1024 ** 3;
+const MIB = 1024 ** 2;
+
+function demoBeszelTimes(rollup: string) {
+  const stepMs = (parseInt(rollup, 10) || 1) * 60_000;
   const now = Date.now();
+  return Array.from({ length: DEMO_BESZEL_POINTS }, (_, i) => ({
+    t: i / (DEMO_BESZEL_POINTS - 1),
+    wave: Math.sin((i / 12) * Math.PI * 2),
+    created: new Date(now - (DEMO_BESZEL_POINTS - 1 - i) * stepMs).toISOString(),
+  }));
+}
+
+function demoBeszelStats(systemId: string, rollup: string) {
   const isBackupNas = systemId === DEMO_BESZEL_SYSTEM_B.id;
-  return Array.from({ length: 12 }, (_, i) => {
-    const t = i / 11;
-    return {
-      id: `demo-beszel-stat-${systemId}-${i}`,
+  return demoBeszelTimes(rollup)
+    .map(({ t, wave, created }, i) => {
+      const memTotal = (isBackupNas ? 32 : 16) * GIB;
+      const memUsed = memTotal * (isBackupNas ? 0.28 + t * 0.08 : 0.4 + t * 0.15 + wave * 0.03);
+      const busy = isBackupNas ? 0 : Math.max(0, wave);
+      return {
+        id: `demo-beszel-stat-${systemId}-${i}`,
+        system: systemId,
+        type: rollup,
+        created,
+        stats: {
+          cpu: isBackupNas ? 8 + wave * 3 : 30 + wave * 15,
+          mp: (memUsed / memTotal) * 100,
+          mem: [memTotal, memUsed, memTotal * 0.2, 0],
+          d: isBackupNas ? 3725.8 : 467.35,
+          du: isBackupNas ? 3280 + t * 15 : 260 + t * 5,
+          dp: isBackupNas ? 88 + t * 0.5 : 55 + t,
+          dio: [(4 + busy * 40) * MIB, (1 + busy * 12) * MIB],
+          b: [(0.5 + busy * 6) * MIB, (2 + busy * 25) * MIB],
+          la: isBackupNas ? [0.3 + t * 0.2, 0.25, 0.2] : [1.5 + wave, 1.2 + wave * 0.5, 1.0],
+          t: isBackupNas
+            ? { cpu_thermal: 41 + wave * 2, nvme0: 38 + wave }
+            : { coretemp: 52 + wave * 8, nvme0: 44 + wave * 3 },
+          ...(isBackupNas ? {} : { g: { "0": { n: "Intel Arc A380", u: 20 + busy * 40 } } }),
+          swap: [4 * GIB, (isBackupNas ? 0.1 : 0.6 + t * 0.2) * GIB],
+        },
+      };
+    })
+    .reverse(); // newest first, matching the real sort=-created
+}
+
+function demoBeszelContainerStats(systemId: string, rollup: string) {
+  const containers = DEMO_BESZEL_CONTAINERS.filter((c) => c.system === systemId);
+  return demoBeszelTimes(rollup)
+    .map(({ wave, created }, i) => ({
+      id: `demo-beszel-cstat-${systemId}-${i}`,
       system: systemId,
-      type: "1m",
-      created: new Date(now - (11 - i) * 60_000).toISOString(),
-      stats: isBackupNas
-        ? {
-            cpu: 5 + Math.sin(t * Math.PI * 2) * 3 + 5,
-            m: 31.25,
-            mu: 9 + t * 2,
-            mp: 28 + t * 8,
-            d: 3725.8,
-            du: 3280 + t * 15,
-            dp: 88 + t * 0.5,
-            la: [0.3 + t * 0.2, 0.25, 0.2],
-          }
-        : {
-            cpu: 20 + Math.sin(t * Math.PI * 2) * 15 + 20,
-            m: 15.36,
-            mu: 6 + t * 3,
-            mp: 40 + t * 15,
-            d: 467.35,
-            du: 260 + t * 5,
-            dp: 55 + t,
-            la: [1.5 + t, 1.2, 1.0],
-          },
-    };
-  }).reverse(); // newest first, matching the real sort=-created
+      type: rollup,
+      created,
+      stats: containers.map((c, ci) => {
+        const swing = 1 + Math.sin((i + ci * 5) / 4) * 0.4 + wave * 0.1;
+        return {
+          n: c.name,
+          c: c.cpu * swing,
+          m: c.memory * (0.9 + swing * 0.1),
+          b: [Math.round(c.cpu * swing * 40_000), Math.round(c.cpu * swing * 120_000)],
+        };
+      }),
+    }))
+    .reverse();
+}
+
+/**
+ * One synthetic rt_metrics message ({stats, container}) for demo mode's Live
+ * view. The rollup generators index their waves by position, so the newest
+ * point is jittered by wall-clock time to keep a 1-second stream moving.
+ */
+export function demoBeszelRealtimeMessage(systemId: string, now = Date.now()) {
+  const wobble = Math.sin(now / 4000);
+  const stats = { ...demoBeszelStats(systemId, "1m")[0].stats };
+  stats.cpu = Math.max(0, stats.cpu + wobble * 8);
+  stats.b = [Math.round(stats.b[0] * (1 + wobble * 0.5)), Math.round(stats.b[1] * (1 + wobble * 0.5))];
+  const container = demoBeszelContainerStats(systemId, "1m")[0].stats.map((c) => ({
+    ...c,
+    c: Math.max(0, c.c * (1 + wobble * 0.3)),
+  }));
+  return { stats, info: {}, container };
 }
 
 // --- Navidrome ---
@@ -4999,7 +5051,14 @@ export function getDemoResponse(
       if (normalized === "/collections/system_stats/records") {
         const filter = typeof params?.filter === "string" ? params.filter : "";
         const systemId = filter.match(/system='([^']+)'/)?.[1] ?? DEMO_BESZEL_SYSTEM_A.id;
-        return demoBeszelStats(systemId);
+        const rollup = filter.match(/type='([^']+)'/)?.[1] ?? "1m";
+        return demoBeszelStats(systemId, rollup);
+      }
+      if (normalized === "/collections/container_stats/records") {
+        const filter = typeof params?.filter === "string" ? params.filter : "";
+        const systemId = filter.match(/system='([^']+)'/)?.[1] ?? DEMO_BESZEL_SYSTEM_A.id;
+        const rollup = filter.match(/type='([^']+)'/)?.[1] ?? "1m";
+        return demoBeszelContainerStats(systemId, rollup);
       }
       if (normalized === "/collections/containers/records") {
         const filter = typeof params?.filter === "string" ? params.filter : "";

@@ -1,5 +1,6 @@
 import {
   formatBeszelUptime,
+  normalizeBeszelContainerStatsPoint,
   normalizeBeszelInfo,
   normalizeBeszelStatsPoint,
   normalizeBeszelSystem,
@@ -98,48 +99,143 @@ describe("normalizeBeszelSystem", () => {
   });
 });
 
+const GiB = 1024 ** 3;
+const MiB = 1024 ** 2;
+
+function statsRecord(stats: object): BeszelSystemStatsRecord {
+  return {
+    id: "stat1",
+    system: "sys1",
+    type: "1m",
+    created: "2026-09-16T15:06:54.723Z",
+    stats: stats as BeszelSystemStatsRecord["stats"],
+  };
+}
+
 describe("normalizeBeszelStatsPoint", () => {
-  it("maps the historical stats terse keys, distinct from the Info shape", () => {
-    const record: BeszelSystemStatsRecord = {
-      id: "stat1",
-      system: "sys1",
-      type: "1m",
-      created: "2026-09-16T15:06:54.723Z",
-      stats: {
-        cpu: 73.67,
-        m: 15.36,
-        mu: 5.16,
-        mp: 33.58,
-        d: 467.35,
-        du: 265.78,
-        dp: 59.79,
-        la: [11.56, 7.64, 5.03],
-      },
-    };
-    expect(normalizeBeszelStatsPoint(record)).toEqual({
+  it("reads the new-agent byte fields", () => {
+    const p = normalizeBeszelStatsPoint(
+      statsRecord({
+        cpu: 10,
+        mp: 50,
+        dp: 40,
+        du: 200,
+        d: 400,
+        mem: [16e9, 8e9, 1e9, 0],
+        dio: [1000, 2000],
+        b: [300, 400],
+        la: [1, 2, 3],
+        t: { cpu: 55 },
+        g: { "0": { n: "Arc", u: 12 } },
+        swap: [4e9, 1e9],
+      }),
+    );
+    expect(p).toEqual({
       createdAt: "2026-09-16T15:06:54.723Z",
-      cpuPct: 73.67,
-      memPct: 33.58,
-      diskPct: 59.79,
-      loadAvg1: 11.56,
+      cpuPct: 10,
+      memPct: 50,
+      memUsedBytes: 8e9,
+      memTotalBytes: 16e9,
+      diskPct: 40,
+      diskUsedBytes: 200 * GiB,
+      diskTotalBytes: 400 * GiB,
+      diskReadBps: 1000,
+      diskWriteBps: 2000,
+      netSentBps: 300,
+      netRecvBps: 400,
+      load: [1, 2, 3],
+      temps: { cpu: 55 },
+      gpus: { Arc: 12 },
+      swapUsedBytes: 1e9,
     });
   });
 
-  it("defaults missing metrics to 0", () => {
-    const record: BeszelSystemStatsRecord = {
-      id: "stat1",
+  it("falls back to the legacy MB/GB fields from older agents", () => {
+    const p = normalizeBeszelStatsPoint(
+      statsRecord({ cpu: 1, mp: 2, dp: 3, m: 16, mu: 8, dr: 1.5, dw: 2, ns: 0.5, nr: 1, su: 2 }),
+    );
+    expect(p.memUsedBytes).toBe(8 * GiB);
+    expect(p.memTotalBytes).toBe(16 * GiB);
+    expect(p.diskReadBps).toBe(1.5 * MiB);
+    expect(p.diskWriteBps).toBe(2 * MiB);
+    expect(p.netSentBps).toBe(0.5 * MiB);
+    expect(p.netRecvBps).toBe(MiB);
+    expect(p.swapUsedBytes).toBe(2 * GiB);
+  });
+
+  it("leaves absent metrics undefined instead of 0", () => {
+    const p = normalizeBeszelStatsPoint(statsRecord({}));
+    expect(p.cpuPct).toBeUndefined();
+    expect(p.memPct).toBeUndefined();
+    expect(p.load).toBeUndefined();
+    expect(p.temps).toEqual({});
+    expect(p.gpus).toEqual({});
+  });
+});
+
+describe("normalizeBeszelStatsPoint zero handling", () => {
+  // Beszel serialises b/dio with omitzero: an idle link or disk is sent as no key at all.
+  it("reads an absent b/dio (and no legacy scalars) as zero, not missing", () => {
+    const p = normalizeBeszelStatsPoint(statsRecord({ cpu: 1, mp: 2, dp: 3 }));
+    expect(p.netSentBps).toBe(0);
+    expect(p.netRecvBps).toBe(0);
+    expect(p.diskReadBps).toBe(0);
+    expect(p.diskWriteBps).toBe(0);
+  });
+
+  it("treats a [0,0,0] load (Windows agents report none) as absent", () => {
+    expect(normalizeBeszelStatsPoint(statsRecord({ la: [0, 0, 0] })).load).toBeUndefined();
+  });
+
+  it("keeps two GPUs with the same model name apart", () => {
+    const p = normalizeBeszelStatsPoint(
+      statsRecord({ g: { "0": { n: "RTX 3090", u: 10 }, "1": { n: "RTX 3090", u: 90 }, "2": { n: "Arc", u: 5 } } }),
+    );
+    expect(p.gpus).toEqual({ "RTX 3090 #0": 10, "RTX 3090 #1": 90, Arc: 5 });
+  });
+});
+
+describe("normalizeBeszelContainerStatsPoint", () => {
+  it("reads a container with no b and no ns/nr as 0 B/s (omitzero)", () => {
+    const p = normalizeBeszelContainerStatsPoint({
+      id: "cs1",
+      system: "sys1",
+      type: "1m",
+      created: "x",
+      stats: [{ n: "idle", c: 0.1, m: 50 }],
+    });
+    expect(p.containers.idle.netBps).toBe(0);
+  });
+
+  it("maps each container, preferring byte bandwidth and falling back to MB", () => {
+    const p = normalizeBeszelContainerStatsPoint({
+      id: "cs1",
       system: "sys1",
       type: "1m",
       created: "2026-09-16T15:06:54.723Z",
-      stats: {} as never,
-    };
-    expect(normalizeBeszelStatsPoint(record)).toEqual({
-      createdAt: "2026-09-16T15:06:54.723Z",
-      cpuPct: 0,
-      memPct: 0,
-      diskPct: 0,
-      loadAvg1: undefined,
+      stats: [
+        { n: "plex", c: 12, m: 512, b: [100, 200] },
+        { n: "old", c: 1, m: 10, ns: 1, nr: 1 },
+      ],
     });
+    expect(p).toEqual({
+      createdAt: "2026-09-16T15:06:54.723Z",
+      containers: {
+        plex: { cpuPct: 12, memBytes: 512 * MiB, netBps: 300 },
+        old: { cpuPct: 1, memBytes: 10 * MiB, netBps: 2 * MiB },
+      },
+    });
+  });
+
+  it("tolerates a record with no stats array", () => {
+    const p = normalizeBeszelContainerStatsPoint({
+      id: "cs1",
+      system: "sys1",
+      type: "1m",
+      created: "x",
+      stats: null as never,
+    });
+    expect(p.containers).toEqual({});
   });
 });
 
