@@ -17,7 +17,7 @@ import {
   useBeszelSystems,
   useBeszelSystemStats,
 } from "@/hooks/use-beszel";
-import { buildDockerCharts, buildSystemCharts, type ChartConfig } from "@/lib/beszel-chart-series";
+import { buildDockerCharts, buildSystemCharts, historyView, type ChartConfig } from "@/lib/beszel-chart-series";
 import { BESZEL_RANGE_ORDER, BESZEL_RANGES } from "@/lib/beszel-ranges";
 import { lightHaptic } from "@/lib/haptics";
 import { useBeszelUiStore } from "@/store/beszel-ui-store";
@@ -51,10 +51,20 @@ export default function BeszelSystemScreen() {
   const range = useBeszelUiStore((s) => s.range);
   const setRange = useBeszelUiStore((s) => s.setRange);
   const { longFormat } = BESZEL_RANGES[range];
-  const { data: statsPoints, error: statsError } = useBeszelSystemStats(systemId, range);
+  const {
+    data: statsPoints,
+    error: statsError,
+    isPlaceholderData: statsStale,
+  } = useBeszelSystemStats(systemId, range);
   const { data: containerPoints } = useBeszelContainerStats(systemId, range);
   const systemCharts = buildSystemCharts(statsPoints ?? []);
   const dockerCharts = buildDockerCharts(containerPoints ?? []);
+  const view = historyView({
+    error: statsError,
+    isPlaceholderData: statsStale,
+    hasData: !!statsPoints,
+    charts: systemCharts,
+  });
   const {
     data: containers,
     isLoading: containersLoading,
@@ -106,12 +116,12 @@ export default function BeszelSystemScreen() {
                 />
               ))}
             </ScrollView>
-            {statsError && !statsPoints?.length ? (
+            {view === "error" ? (
               <ErrorBanner error={statsError} title="Couldn't load history" />
-            ) : statsPoints && systemCharts.length === 0 ? (
-              <EmptyState compact title="No history in this range yet" />
-            ) : !statsPoints ? (
+            ) : view === "loading" || !statsPoints ? (
               <Skeleton height={160} />
+            ) : view === "empty" ? (
+              <EmptyState compact title="No history in this range yet" />
             ) : (
               <ChartList
                 charts={systemCharts}

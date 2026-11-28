@@ -2,6 +2,7 @@ import {
   buildPath,
   chartYMax,
   formatChartValue,
+  parseBeszelDate,
   hasAnyValue,
   topKeysByAverage,
 } from "@/lib/beszel-chart-math";
@@ -77,5 +78,16 @@ describe("formatChartValue", () => {
     expect(formatChartValue(1.234, "load")).toBe("1.23");
     expect(formatChartValue(1024 ** 3, "bytes")).toBe("1.0 GB");
     expect(formatChartValue(1024 ** 2, "bytesPs")).toBe("1.0 MB/s");
+  });
+});
+
+describe("parseBeszelDate", () => {
+  it("parses PocketBase's space-separated UTC datetime", () => {
+    expect(parseBeszelDate("2026-11-28 10:00:00.123Z")?.toISOString()).toBe("2026-11-28T10:00:00.123Z");
+  });
+
+  it("passes ISO strings through and rejects junk", () => {
+    expect(parseBeszelDate("2026-11-28T10:00:00.000Z")?.getTime()).toBe(Date.UTC(2026, 10, 28, 10));
+    expect(parseBeszelDate("nope")).toBeUndefined();
   });
 });

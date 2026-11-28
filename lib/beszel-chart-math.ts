@@ -30,6 +30,15 @@ export function formatChartValue(v: number, unit: ChartUnit): string {
   }
 }
 
+/**
+ * PocketBase serialises `created` as "YYYY-MM-DD HH:MM:SS.sssZ" — a space,
+ * not ISO's "T", which some JS engines refuse to parse. Normalise first.
+ */
+export function parseBeszelDate(s: string): Date | undefined {
+  const d = new Date(s.replace(" ", "T"));
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
 export function hasAnyValue(series: ChartValues[]): boolean {
   return series.some((s) => s.some((v) => v !== undefined));
 }

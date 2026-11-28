@@ -8,6 +8,7 @@ import {
   chartYMax,
   formatChartValue,
   hasAnyValue,
+  parseBeszelDate,
   type ChartUnit,
   type ChartValues,
 } from "@/lib/beszel-chart-math";
@@ -42,8 +43,8 @@ function lastDefined(values: ChartValues): number | undefined {
 
 function formatTick(iso: string | undefined, longFormat: boolean): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = parseBeszelDate(iso);
+  if (!d) return "";
   return longFormat
     ? d.toLocaleDateString([], { month: "short", day: "numeric" })
     : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

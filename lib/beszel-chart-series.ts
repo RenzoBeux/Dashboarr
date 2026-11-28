@@ -114,3 +114,23 @@ export function buildDockerCharts(points: BeszelContainerStatsPoint[]): ChartCon
     { key: "docker-net", label: "Network", unit: "bytesPs", ...net },
   ]);
 }
+
+export type HistoryView = "error" | "loading" | "empty" | "charts";
+
+/**
+ * What the History card shows. With keepPreviousData the last range's points
+ * stay on hand after a range switch, so "has data" alone would hide a failed
+ * switch under the new chip; an error while showing placeholder data means the
+ * selected range never loaded. A failed background refetch of the range on
+ * screen keeps its charts.
+ */
+export function historyView(q: {
+  error: unknown;
+  isPlaceholderData: boolean;
+  hasData: boolean;
+  charts: ChartConfig[];
+}): HistoryView {
+  if (q.error && (!q.hasData || q.isPlaceholderData)) return "error";
+  if (!q.hasData) return "loading";
+  return q.charts.length === 0 ? "empty" : "charts";
+}

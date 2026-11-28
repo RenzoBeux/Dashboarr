@@ -167,15 +167,46 @@ describe("normalizeBeszelStatsPoint", () => {
     const p = normalizeBeszelStatsPoint(statsRecord({}));
     expect(p.cpuPct).toBeUndefined();
     expect(p.memPct).toBeUndefined();
-    expect(p.netSentBps).toBeUndefined();
-    expect(p.diskReadBps).toBeUndefined();
     expect(p.load).toBeUndefined();
     expect(p.temps).toEqual({});
     expect(p.gpus).toEqual({});
   });
 });
 
+describe("normalizeBeszelStatsPoint zero handling", () => {
+  // Beszel serialises b/dio with omitzero: an idle link or disk is sent as no key at all.
+  it("reads an absent b/dio (and no legacy scalars) as zero, not missing", () => {
+    const p = normalizeBeszelStatsPoint(statsRecord({ cpu: 1, mp: 2, dp: 3 }));
+    expect(p.netSentBps).toBe(0);
+    expect(p.netRecvBps).toBe(0);
+    expect(p.diskReadBps).toBe(0);
+    expect(p.diskWriteBps).toBe(0);
+  });
+
+  it("treats a [0,0,0] load (Windows agents report none) as absent", () => {
+    expect(normalizeBeszelStatsPoint(statsRecord({ la: [0, 0, 0] })).load).toBeUndefined();
+  });
+
+  it("keeps two GPUs with the same model name apart", () => {
+    const p = normalizeBeszelStatsPoint(
+      statsRecord({ g: { "0": { n: "RTX 3090", u: 10 }, "1": { n: "RTX 3090", u: 90 }, "2": { n: "Arc", u: 5 } } }),
+    );
+    expect(p.gpus).toEqual({ "RTX 3090 #0": 10, "RTX 3090 #1": 90, Arc: 5 });
+  });
+});
+
 describe("normalizeBeszelContainerStatsPoint", () => {
+  it("reads a container with no b and no ns/nr as 0 B/s (omitzero)", () => {
+    const p = normalizeBeszelContainerStatsPoint({
+      id: "cs1",
+      system: "sys1",
+      type: "1m",
+      created: "x",
+      stats: [{ n: "idle", c: 0.1, m: 50 }],
+    });
+    expect(p.containers.idle.netBps).toBe(0);
+  });
+
   it("maps each container, preferring byte bandwidth and falling back to MB", () => {
     const p = normalizeBeszelContainerStatsPoint({
       id: "cs1",

@@ -61,10 +61,27 @@ export function formatBeszelUptime(seconds: number): string {
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
 
-/** A byte array wins when the agent sent one; an all-zero array means "not reported". */
+/**
+ * Rate pairs (`b`, `dio`) are serialised with omitzero, and current agents no
+ * longer send the legacy MB/s scalars, so an idle link or disk arrives as no
+ * key at all: absence on an existing record means 0, not "not reported".
+ */
 function pair(arr: [number, number] | undefined, i: 0 | 1, legacy: number | undefined, legacyScale: number) {
-  if (arr && (arr[0] || arr[1])) return arr[i];
-  return legacy === undefined ? undefined : legacy * legacyScale;
+  if (arr) return arr[i];
+  return (legacy ?? 0) * legacyScale;
+}
+
+/** Keys GPUs by model name, adding the GPU id only when two cards share a name. */
+function gpuReadings(g: BeszelStatsWire["g"]): Record<string, number> {
+  const entries = Object.entries(g ?? {});
+  const counts = new Map<string, number>();
+  for (const [id, r] of entries) counts.set(r.n || id, (counts.get(r.n || id) ?? 0) + 1);
+  const out: Record<string, number> = {};
+  for (const [id, r] of entries) {
+    const name = r.n || id;
+    out[(counts.get(name) ?? 0) > 1 ? `${name} #${id}` : name] = r.u;
+  }
+  return out;
 }
 
 function scaled(v: number | undefined, scale: number) {
@@ -74,8 +91,6 @@ function scaled(v: number | undefined, scale: number) {
 export function normalizeBeszelStatsPoint(record: BeszelSystemStatsRecord): BeszelStatsPoint {
   const s: BeszelStatsWire = record.stats ?? {};
   const hasMemBytes = !!s.mem && s.mem[0] > 0;
-  const gpus: Record<string, number> = {};
-  for (const [id, g] of Object.entries(s.g ?? {})) gpus[g.n || id] = g.u;
   return {
     createdAt: record.created,
     cpuPct: s.cpu,
@@ -89,9 +104,11 @@ export function normalizeBeszelStatsPoint(record: BeszelSystemStatsRecord): Besz
     diskWriteBps: pair(s.dio, 1, s.dw, MiB),
     netSentBps: pair(s.b, 0, s.ns, MiB),
     netRecvBps: pair(s.b, 1, s.nr, MiB),
-    load: s.la,
+    // `la` is a fixed-length array upstream (never omitted); agents without a
+    // load average (Windows) send [0,0,0], which would chart as a flat line.
+    load: s.la && (s.la[0] || s.la[1] || s.la[2]) ? s.la : undefined,
     temps: { ...(s.t ?? {}) },
-    gpus,
+    gpus: gpuReadings(s.g),
     swapUsedBytes: s.swap && s.swap[0] > 0 ? s.swap[1] : scaled(s.su, GiB),
   };
 }
@@ -101,11 +118,11 @@ export function normalizeBeszelContainerStatsPoint(
 ): BeszelContainerStatsPoint {
   const containers: BeszelContainerStatsPoint["containers"] = {};
   for (const c of record.stats ?? []) {
-    const legacy = c.ns === undefined && c.nr === undefined ? undefined : ((c.ns ?? 0) + (c.nr ?? 0)) * MiB;
     containers[c.n] = {
       cpuPct: c.c,
       memBytes: c.m * MiB,
-      netBps: c.b && (c.b[0] || c.b[1]) ? c.b[0] + c.b[1] : legacy,
+      // `b` is omitzero like the system pair: missing on an idle container.
+      netBps: c.b ? c.b[0] + c.b[1] : ((c.ns ?? 0) + (c.nr ?? 0)) * MiB,
     };
   }
   return { createdAt: record.created, containers };

@@ -1,4 +1,4 @@
-import { buildDockerCharts, buildSystemCharts } from "@/lib/beszel-chart-series";
+import { buildDockerCharts, buildSystemCharts, historyView } from "@/lib/beszel-chart-series";
 import type { BeszelContainerStatsPoint, BeszelStatsPoint } from "@/lib/types";
 
 const GiB = 1024 ** 3;
@@ -59,5 +59,22 @@ describe("buildDockerCharts", () => {
     expect(cpu.series.find((s) => s.label === "new")!.values).toEqual([undefined, 1]);
     const net = charts[2];
     expect(net.series.map((s) => s.label)).toEqual(["plex"]);
+  });
+});
+
+describe("historyView", () => {
+  const charts = buildSystemCharts([pt({ cpuPct: 1 })]);
+
+  it("shows the error when the selected range failed, even with the previous range's data on hand", () => {
+    expect(historyView({ error: new Error("x"), isPlaceholderData: true, hasData: true, charts })).toBe("error");
+  });
+
+  it("keeps showing charts when a background refetch of the same range fails", () => {
+    expect(historyView({ error: new Error("x"), isPlaceholderData: false, hasData: true, charts })).toBe("charts");
+  });
+
+  it("is loading with no data, empty with data but no charts", () => {
+    expect(historyView({ error: null, isPlaceholderData: false, hasData: false, charts: [] })).toBe("loading");
+    expect(historyView({ error: null, isPlaceholderData: false, hasData: true, charts: [] })).toBe("empty");
   });
 });
