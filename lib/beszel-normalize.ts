@@ -1,4 +1,6 @@
 import type {
+  BeszelContainerStatsPoint,
+  BeszelContainerStatsRecord,
   BeszelInfoWire,
   BeszelStatsWire,
   BeszelSystem,
@@ -56,15 +58,55 @@ export function formatBeszelUptime(seconds: number): string {
   return `${minutes}m`;
 }
 
-export function normalizeBeszelStatsPoint(
-  record: BeszelSystemStatsRecord,
-): BeszelStatsPoint {
-  const s: BeszelStatsWire = record.stats;
+const MiB = 1024 ** 2;
+const GiB = 1024 ** 3;
+
+/** A byte array wins when the agent sent one; an all-zero array means "not reported". */
+function pair(arr: [number, number] | undefined, i: 0 | 1, legacy: number | undefined, legacyScale: number) {
+  if (arr && (arr[0] || arr[1])) return arr[i];
+  return legacy === undefined ? undefined : legacy * legacyScale;
+}
+
+function scaled(v: number | undefined, scale: number) {
+  return v === undefined ? undefined : v * scale;
+}
+
+export function normalizeBeszelStatsPoint(record: BeszelSystemStatsRecord): BeszelStatsPoint {
+  const s: BeszelStatsWire = record.stats ?? {};
+  const hasMemBytes = !!s.mem && s.mem[0] > 0;
+  const gpus: Record<string, number> = {};
+  for (const [id, g] of Object.entries(s.g ?? {})) gpus[g.n || id] = g.u;
   return {
     createdAt: record.created,
-    cpuPct: s.cpu ?? 0,
-    memPct: s.mp ?? 0,
-    diskPct: s.dp ?? 0,
-    loadAvg1: s.la?.[0],
+    cpuPct: s.cpu,
+    memPct: s.mp,
+    memUsedBytes: hasMemBytes ? s.mem![1] : scaled(s.mu, GiB),
+    memTotalBytes: hasMemBytes ? s.mem![0] : scaled(s.m, GiB),
+    diskPct: s.dp,
+    diskUsedBytes: scaled(s.du, GiB),
+    diskTotalBytes: scaled(s.d, GiB),
+    diskReadBps: pair(s.dio, 0, s.dr, MiB),
+    diskWriteBps: pair(s.dio, 1, s.dw, MiB),
+    netSentBps: pair(s.b, 0, s.ns, MiB),
+    netRecvBps: pair(s.b, 1, s.nr, MiB),
+    load: s.la,
+    temps: { ...(s.t ?? {}) },
+    gpus,
+    swapUsedBytes: s.swap && s.swap[0] > 0 ? s.swap[1] : scaled(s.su, GiB),
   };
+}
+
+export function normalizeBeszelContainerStatsPoint(
+  record: BeszelContainerStatsRecord,
+): BeszelContainerStatsPoint {
+  const containers: BeszelContainerStatsPoint["containers"] = {};
+  for (const c of record.stats ?? []) {
+    const legacy = c.ns === undefined && c.nr === undefined ? undefined : ((c.ns ?? 0) + (c.nr ?? 0)) * MiB;
+    containers[c.n] = {
+      cpuPct: c.c,
+      memBytes: c.m * MiB,
+      netBps: c.b && (c.b[0] || c.b[1]) ? c.b[0] + c.b[1] : legacy,
+    };
+  }
+  return { createdAt: record.created, containers };
 }
