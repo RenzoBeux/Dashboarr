@@ -11,8 +11,10 @@ import {
   beszelSessionIds,
   updateBeszelToken,
 } from "@/lib/beszel-session";
+import type { BeszelRollup } from "@/lib/beszel-ranges";
 import type {
   BeszelContainerRecord,
+  BeszelContainerStatsRecord,
   BeszelSystemRecord,
   BeszelSystemStatsRecord,
 } from "@/lib/types";
@@ -247,24 +249,43 @@ export async function getSystems(instanceId?: string): Promise<BeszelSystemRecor
   return result.items;
 }
 
+// A 30-day window at 480m is ~90 records and 1h at 1m is ~60; 500 leaves
+// headroom for a hub whose rollups land more often than nominal.
+const STATS_PER_PAGE = "500";
+
+function windowFilter(systemId: string, rollup: BeszelRollup, since: string): string {
+  return `system='${systemId}'&&type='${rollup}'&&created>='${since}'`;
+}
+
 /**
- * GET /api/collections/system_stats/records for one system's historical
- * rollup at the given interval, most recent first.
+ * GET /api/collections/system_stats/records for one system's rollups of
+ * `rollup` created at or after `since` (see beszelSinceFilter), newest first.
  */
 export async function getSystemStats(
   systemId: string,
-  type: "1m" | "10m" | "20m" | "120m" | "480m",
-  limit: number,
+  rollup: BeszelRollup,
+  since: string,
   instanceId?: string,
 ): Promise<BeszelSystemStatsRecord[]> {
   const result = await beszelListRequest<BeszelSystemStatsRecord>(
     instanceId,
     "/collections/system_stats/records",
-    {
-      filter: `system='${systemId}'&&type='${type}'`,
-      sort: "-created",
-      perPage: String(limit),
-    },
+    { filter: windowFilter(systemId, rollup, since), sort: "-created", perPage: STATS_PER_PAGE },
+  );
+  return result.items;
+}
+
+/** GET /api/collections/container_stats/records — every container's stats per rollup. */
+export async function getContainerStats(
+  systemId: string,
+  rollup: BeszelRollup,
+  since: string,
+  instanceId?: string,
+): Promise<BeszelContainerStatsRecord[]> {
+  const result = await beszelListRequest<BeszelContainerStatsRecord>(
+    instanceId,
+    "/collections/container_stats/records",
+    { filter: windowFilter(systemId, rollup, since), sort: "-created", perPage: STATS_PER_PAGE },
   );
   return result.items;
 }

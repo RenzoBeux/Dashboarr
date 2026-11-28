@@ -8,6 +8,7 @@ import {
   BeszelAuthError,
   beszelClearSession,
   beszelLogin,
+  getContainerStats,
   getContainers,
   getSystemStats,
   getSystems,
@@ -214,14 +215,29 @@ describe("getSystems / retry backstop", () => {
 });
 
 describe("getSystemStats / getContainers filters", () => {
-  it("sends the system + type filter for stats", async () => {
+  it("asks for the rollup type created inside the window, newest first", async () => {
     const { calls } = fetchMock(({ url }) => {
       if (url.includes("auth-with-password")) return jsonResponse(200, { token: "tok-1" });
       return jsonResponse(200, page([]));
     });
-    await getSystemStats("sys-1", "1m", 12, INSTANCE);
+    await getSystemStats("sys-1", "10m", "2026-11-28 09:00:00", INSTANCE);
     const listCall = calls.find((c) => c.url.includes("system_stats"));
-    expect(listCall!.url).toContain("filter=system%3D'sys-1'%26%26type%3D'1m'");
+    const params = new URL(listCall!.url).searchParams;
+    expect(params.get("filter")).toBe("system='sys-1'&&type='10m'&&created>='2026-11-28 09:00:00'");
+    expect(params.get("sort")).toBe("-created");
+    expect(params.get("perPage")).toBe("500");
+  });
+
+  it("queries container_stats with the same window filter", async () => {
+    const { calls } = fetchMock(({ url }) => {
+      if (url.includes("auth-with-password")) return jsonResponse(200, { token: "tok-1" });
+      return jsonResponse(200, page([]));
+    });
+    await getContainerStats("sys-1", "120m", "2026-11-21 10:00:00", INSTANCE);
+    const listCall = calls.find((c) => c.url.includes("/collections/container_stats/records"));
+    const params = new URL(listCall!.url).searchParams;
+    expect(params.get("filter")).toBe("system='sys-1'&&type='120m'&&created>='2026-11-21 10:00:00'");
+    expect(params.get("perPage")).toBe("500");
   });
 
   it("sends the system filter for containers", async () => {
@@ -242,6 +258,27 @@ describe("demo mode", () => {
     await getSystems(INSTANCE);
     expect(fn).not.toHaveBeenCalled();
   });
+  it("serves stats spaced by the requested rollup, for every chart", async () => {
+    setStore({ demoMode: true });
+    fetchMock(() => jsonResponse(200, {}));
+    const stats = await getSystemStats("demo-beszel-sys-a", "480m", "2026-01-01 00:00:00", INSTANCE);
+    expect(stats.length).toBeGreaterThan(10);
+    expect(stats.every((r) => r.type === "480m")).toBe(true);
+    const spanMs = Date.parse(stats[0].created) - Date.parse(stats[stats.length - 1].created);
+    expect(spanMs).toBeGreaterThan(7 * 86_400_000);
+    const s = stats[0].stats;
+    expect(s.mem && s.dio && s.b && s.t && s.g && s.swap).toBeTruthy();
+  });
+
+  it("serves container stats for the requested system only", async () => {
+    setStore({ demoMode: true });
+    fetchMock(() => jsonResponse(200, {}));
+    const stats = await getContainerStats("demo-beszel-sys-a", "1m", "2026-01-01 00:00:00", INSTANCE);
+    expect(stats.length).toBeGreaterThan(10);
+    expect(stats[0].system).toBe("demo-beszel-sys-a");
+    expect(stats[0].stats.length).toBeGreaterThan(0);
+  });
+
 });
 
 describe("beszelClearSession", () => {
